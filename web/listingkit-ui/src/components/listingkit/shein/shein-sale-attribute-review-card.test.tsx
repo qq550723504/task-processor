@@ -54,7 +54,7 @@ describe("SheinSaleAttributeReviewCard", () => {
     );
 
     expect(screen.getByText("SHEIN 销售属性确认")).toBeInTheDocument();
-    expect(screen.getByText("状态 partial")).toBeInTheDocument();
+    expect(screen.getByText("状态 待补齐")).toBeInTheDocument();
     expect(screen.getByText("主规格 27")).toBeInTheDocument();
     expect(screen.getByText("主规格确认")).toBeInTheDocument();
     expect(screen.getByText("其他规格确认")).toBeInTheDocument();

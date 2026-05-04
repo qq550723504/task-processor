@@ -14,6 +14,23 @@ import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
+function formatStatusDate(value?: string) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function TaskStatusScreen({
   taskId,
   task,
@@ -72,7 +89,7 @@ export function TaskStatusScreen({
       <Card className="p-6">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-            ListingKit 任务
+            任务状态
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
             查看当前任务进度
@@ -80,6 +97,34 @@ export function TaskStatusScreen({
           <p className="text-sm leading-6 text-zinc-600">
             创建任务后，可以先在这里查看当前进度，再决定进入工作台、队列或返回修改。
           </p>
+          <div className="grid gap-3 pt-2 md:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                任务 ID
+              </p>
+              <p className="mt-1 break-all text-sm text-zinc-700">{taskId}</p>
+            </div>
+            {formatStatusDate(task.result?.updated_at ?? task.completed_at) ? (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  最近更新
+                </p>
+                <p className="mt-1 text-sm text-zinc-700">
+                  {formatStatusDate(task.result?.updated_at ?? task.completed_at)}
+                </p>
+              </div>
+            ) : null}
+            {formatStatusDate(task.created_at) ? (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  创建时间
+                </p>
+                <p className="mt-1 text-sm text-zinc-700">
+                  {formatStatusDate(task.created_at)}
+                </p>
+              </div>
+            ) : null}
+          </div>
         </div>
       </Card>
 

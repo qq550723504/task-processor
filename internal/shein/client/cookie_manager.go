@@ -19,6 +19,7 @@ type CookieManager struct {
 	storeID          int64
 	managementClient *management.ClientManager
 	logger           *logrus.Entry
+	resolvedTenantID int64
 }
 
 // NewCookieManager 创建Cookie管理器
@@ -35,6 +36,21 @@ func NewCookieManager(storeID int64, managementClient *management.ClientManager)
 // LoadCookies 从管理系统加载Cookie
 func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
+
+	if cm.managementClient != nil {
+		cookieStr, tenantID, err := cm.managementClient.GetSheinCookie(cm.storeID)
+		if err != nil {
+			cm.logger.WithError(err).Warn("从 login Redis 读取 SHEIN Cookie 失败，将回退到 management store api")
+		} else if strings.TrimSpace(cookieStr) != "" {
+			cm.resolvedTenantID = tenantID
+			cookies, parseErr := cm.parseCookieString(cookieStr)
+			if parseErr != nil {
+				cm.logger.WithError(parseErr).Error("解析 Redis Cookie 字符串失败")
+				return nil, fmt.Errorf("解析 Redis Cookie 字符串失败: %w", parseErr)
+			}
+			return cookies, nil
+		}
+	}
 
 	// 检查管理系统客户端是否可用
 	if cm.managementClient == nil {
@@ -223,4 +239,8 @@ func (cm *CookieManager) TestConnection() error {
 
 	cm.logger.Debug("管理系统连接测试成功")
 	return nil
+}
+
+func (cm *CookieManager) GetResolvedTenantID() int64 {
+	return cm.resolvedTenantID
 }

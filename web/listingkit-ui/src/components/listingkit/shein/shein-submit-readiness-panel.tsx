@@ -252,6 +252,39 @@ function ReadinessItems({
   );
 }
 
+function SubmitFailureGuidance({
+  detail,
+  impact,
+  nextStep,
+}: {
+  detail: string;
+  impact: string;
+  nextStep: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+          发生了什么
+        </p>
+        <p className="break-words text-sm leading-6 text-rose-700">{detail}</p>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+          可能影响
+        </p>
+        <p className="text-sm leading-6 text-zinc-700">{impact}</p>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+          下一步怎么做
+        </p>
+        <p className="text-sm leading-6 text-zinc-700">{nextStep}</p>
+      </div>
+    </div>
+  );
+}
+
 function ChecklistSection({
   title,
   items,
@@ -514,9 +547,19 @@ export function SheinSubmitReadinessPanel({
                     : "提交失败"}
               </p>
               {submitErrorMessage ? (
-                <p className="break-words text-sm leading-6 text-rose-700">
-                  {submitErrorMessage}
-                </p>
+                <SubmitFailureGuidance
+                  detail={submitErrorMessage}
+                  impact={
+                    submitAction === "save_draft"
+                      ? "本次不会把资料保存到 SHEIN 草稿箱，请先处理图片上传或阻断项后再重试。"
+                      : "本次不会把资料正式提交到 SHEIN，当前任务会停留在可修复状态。"
+                  }
+                  nextStep={
+                    submitAction === "save_draft"
+                      ? "先检查图片上传、最终资料和阻断项，再重新保存到 SHEIN 草稿箱。"
+                      : "先回到工作台处理阻断项或图片上传问题，确认后再重新发布。"
+                  }
+                />
               ) : (
                 <p className="text-sm leading-6 text-zinc-700">
                   正在上传图片并{submitAction === "save_draft" ? "保存到 SHEIN 草稿箱" : "提交 SHEIN"}。

@@ -20,7 +20,8 @@ export type CustomerIssueActionKey =
   | "images"
   | "category"
   | "attributes"
-  | "sale_attributes";
+  | "sale_attributes"
+  | "pricing";
 
 export type CustomerIssue = {
   category: CustomerIssueCategory;
@@ -109,7 +110,8 @@ function byKey(key?: string | null): IssueTemplate | null {
       category: "价格/库存问题",
       title: "价格或库存需要检查",
       message: "请在最终确认页检查 SKU 售价、库存和包装相关信息。",
-      actionLabel: "去检查价格库存",
+      actionLabel: "去检查价格和 SKU",
+      actionKey: "pricing",
     };
   }
   return null;
@@ -202,7 +204,8 @@ function byText(rawText: string): IssueTemplate {
       category: "价格/库存问题",
       title: "价格或库存信息不完整",
       message: "请检查最终确认页中的 SKU 售价、库存、包装和数量信息。",
-      actionLabel: "去检查价格库存",
+      actionLabel: "去检查价格和 SKU",
+      actionKey: "pricing",
     };
   }
   if (rawText.includes("图片") || text.includes("image")) {

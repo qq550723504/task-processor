@@ -29,6 +29,35 @@ function Field({
   );
 }
 
+function presentSourceLabel(label: string) {
+  switch (label) {
+    case "SDS SKU":
+      return "SDS SKU";
+    case "Category":
+      return "类目";
+    case "Material":
+      return "材质";
+    case "Variant SKU":
+      return "变体 SKU";
+    case "Size":
+      return "尺寸";
+    case "Color":
+      return "颜色";
+    case "Weight":
+      return "重量";
+    case "Production cycle":
+      return "生产周期";
+    case "SDS price":
+      return "SDS 成本价";
+    case "Print area":
+      return "印刷区域";
+    case "Image request":
+      return "出图要求";
+    default:
+      return label;
+  }
+}
+
 export function SheinSourceProductPanel({
   shein,
 }: {
@@ -47,7 +76,7 @@ export function SheinSourceProductPanel({
       <div className="space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            SDS source product
+            SDS 来源商品
           </p>
           <p className="mt-1 break-words text-sm leading-6 text-zinc-700">
             {source.title}
@@ -55,17 +84,17 @@ export function SheinSourceProductPanel({
         </div>
 
         <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <Field label="SDS SKU" value={source.sku} />
-          <Field label="Category" value={joinPath(source.category_path)} />
-          <Field label="Material" value={material} />
-          <Field label="Variant SKU" value={source.variant_sku} />
-          <Field label="Size" value={source.variant_size} />
-          <Field label="Color" value={source.variant_color} />
-          <Field label="Weight" value={source.variant_weight ? `${source.variant_weight}g` : undefined} />
-          <Field label="Production cycle" value={source.production_cycle ? `${source.production_cycle}h` : undefined} />
-          <Field label="SDS price" value={source.variant_price ? formatSDSPrice(source.variant_price) : undefined} />
-          <Field label="Print area" value={source.attributes?.design_area} />
-          <Field label="Image request" value={source.attributes?.picture_request} />
+          <Field label={presentSourceLabel("SDS SKU")} value={source.sku} />
+          <Field label={presentSourceLabel("Category")} value={joinPath(source.category_path)} />
+          <Field label={presentSourceLabel("Material")} value={material} />
+          <Field label={presentSourceLabel("Variant SKU")} value={source.variant_sku} />
+          <Field label={presentSourceLabel("Size")} value={source.variant_size} />
+          <Field label={presentSourceLabel("Color")} value={source.variant_color} />
+          <Field label={presentSourceLabel("Weight")} value={source.variant_weight ? `${source.variant_weight}g` : undefined} />
+          <Field label={presentSourceLabel("Production cycle")} value={source.production_cycle ? `${source.production_cycle}h` : undefined} />
+          <Field label={presentSourceLabel("SDS price")} value={source.variant_price ? formatSDSPrice(source.variant_price) : undefined} />
+          <Field label={presentSourceLabel("Print area")} value={source.attributes?.design_area} />
+          <Field label={presentSourceLabel("Image request")} value={source.attributes?.picture_request} />
         </dl>
       </div>
     </Card>

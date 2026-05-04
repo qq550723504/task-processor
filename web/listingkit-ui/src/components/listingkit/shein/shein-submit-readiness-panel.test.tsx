@@ -230,6 +230,12 @@ describe("SheinSubmitReadinessPanel", () => {
     expect(
       screen.getByText("SHEIN image upload unavailable: token missing"),
     ).toBeInTheDocument();
+    expect(screen.getByText("发生了什么")).toBeInTheDocument();
+    expect(screen.getByText("可能影响")).toBeInTheDocument();
+    expect(screen.getByText("下一步怎么做")).toBeInTheDocument();
+    expect(
+      screen.getByText("本次不会把资料保存到 SHEIN 草稿箱，请先处理图片上传或阻断项后再重试。"),
+    ).toBeInTheDocument();
   });
 
   it("keeps blocker repair entries visible in compact workspace mode", async () => {

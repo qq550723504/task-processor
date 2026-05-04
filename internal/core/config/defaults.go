@@ -217,6 +217,11 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.enabled", p.Enabled)
 	v.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled)
 	v.SetDefault("platforms.shein.fetchMode", p.FetchMode)
+	v.SetDefault("platforms.shein.cookieRedis.host", p.CookieRedis.Host)
+	v.SetDefault("platforms.shein.cookieRedis.port", p.CookieRedis.Port)
+	v.SetDefault("platforms.shein.cookieRedis.password", p.CookieRedis.Password)
+	v.SetDefault("platforms.shein.cookieRedis.db", p.CookieRedis.DB)
+	v.SetDefault("platforms.shein.cookieRedis.pool_size", p.CookieRedis.PoolSize)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

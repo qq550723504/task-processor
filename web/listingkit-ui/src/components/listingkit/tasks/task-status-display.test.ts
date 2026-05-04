@@ -34,7 +34,7 @@ describe("task-status-display", () => {
         error: "product enrichment failed",
       }),
     ).toEqual({
-      title: "Preview unavailable",
+      title: "预览暂不可用",
       description:
         "product enrichment failed",
     });
@@ -47,9 +47,30 @@ describe("task-status-display", () => {
         error: "quality score too low",
       }),
     ).toEqual({
-      title: "No generation queue items",
+      title: "暂时没有可处理的队列项",
       description:
         "quality score too low",
+    });
+  });
+
+  it("treats queued and running statuses as in-flight aliases", () => {
+    expect(
+      deriveTaskPreviewEmptyState({
+        status: "queued",
+      }),
+    ).toEqual({
+      title: "预览还在生成中",
+      description:
+        "任务仍在处理中，生成完成后这里会自动显示预览内容。你也可以稍后从任务列表继续。",
+    });
+    expect(
+      deriveTaskQueueEmptyState({
+        status: "running",
+      }),
+    ).toEqual({
+      title: "队列项还在准备中",
+      description:
+        "任务仍在处理中，生成规划完成后这里会自动出现队列项。你也可以稍后回到任务列表继续。",
     });
   });
 });

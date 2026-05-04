@@ -2,6 +2,8 @@
 
 import {
   presentActionCtaKind,
+  presentResolvedActionSummary,
+  presentResolvedActionTitle,
   presentRecoverySummary,
 } from "@/components/listingkit/shared/action-presentation";
 import { Card } from "@/components/shared/card";
@@ -13,26 +15,26 @@ import type {
 const overviewMetrics = [
   {
     key: "previewable_items" as const,
-    label: "Previewable",
+    label: "可预览",
   },
   {
     key: "retryable_count" as const,
-    label: "Retryable",
+    label: "可重试",
   },
   {
     key: "approved_sections" as const,
-    label: "Approved",
+    label: "已通过",
   },
   {
     key: "review_pending_sections" as const,
-    label: "Pending",
+    label: "待处理",
   },
 ] as const;
 
 const reviewMetrics = [
-  { key: "approved_sections" as const, label: "Approved" },
-  { key: "deferred_sections" as const, label: "Deferred" },
-  { key: "pending_sections" as const, label: "Pending" },
+  { key: "approved_sections" as const, label: "已通过" },
+  { key: "deferred_sections" as const, label: "已延后" },
+  { key: "pending_sections" as const, label: "待处理" },
 ] as const;
 
 export function WorkspaceOverviewPanel({
@@ -71,11 +73,11 @@ export function WorkspaceOverviewPanel({
       {overview?.resolved_action_summary ? (
         <Card className="p-4 md:col-span-2 xl:col-span-4">
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-            Recommended next step
+            当前建议
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <p className="text-lg font-semibold text-zinc-950">
-              {overview.resolved_action_summary.title}
+              {presentResolvedActionTitle(overview.resolved_action_summary.title)}
             </p>
             <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
               {presentActionCtaKind(overview.resolved_action_summary.cta_kind)}
@@ -83,7 +85,7 @@ export function WorkspaceOverviewPanel({
           </div>
           {overview.resolved_action_summary.summary ? (
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              {overview.resolved_action_summary.summary}
+              {presentResolvedActionSummary(overview.resolved_action_summary.summary)}
             </p>
           ) : null}
         </Card>
@@ -98,7 +100,7 @@ export function WorkspaceOverviewPanel({
           return (
             <Card className="border-amber-200 bg-amber-50/60 p-4 md:col-span-2 xl:col-span-3">
               <p className="text-xs uppercase tracking-[0.18em] text-amber-700">
-                Recovery focus
+                恢复重点
               </p>
               <p className="mt-2 text-lg font-semibold text-zinc-950">
                 {recovery.title}

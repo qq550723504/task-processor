@@ -15,11 +15,17 @@ import (
 // PricingRuleAPIClient 自动核价规则API客户端实现
 type PricingRuleAPIClient struct {
 	*ManagementAPIClient
-	logger *logrus.Entry
+	localDataProvider *LocalDataProvider
+	logger            *logrus.Entry
 }
 
 // GetPricingRule 获取自动核价规则（返回数组）
 func (m *PricingRuleAPIClient) GetPricingRule(req *api.PricingRuleReqDTO) ([]api.PricingRuleRespDTO, error) {
+	if m.localDataProvider != nil {
+		if rules, err := m.localDataProvider.GetPricingRule(req); err != nil || rules != nil {
+			return rules, err
+		}
+	}
 	if m.logger == nil {
 		m.logger = logger.GetGlobalLogger("PricingRuleAPIClient")
 	}

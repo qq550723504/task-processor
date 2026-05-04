@@ -158,11 +158,44 @@ export function QueueScreen({ taskId }: { taskId: string }) {
     );
   }
 
+  if (queue.isError || taskResult.isError) {
+    return (
+      <EmptyState
+        title="队列暂时无法加载"
+        description="当前无法读取生成队列或任务状态。你可以返回工作台继续查看，或回到任务列表稍后重试。"
+        action={
+          <div className="flex flex-wrap gap-3">
+            <Link
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
+            >
+              打开工作台
+            </Link>
+            <Link
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              href="/listing-kits"
+            >
+              返回任务列表
+            </Link>
+          </div>
+        }
+      />
+    );
+  }
+
   if (!queue.data) {
     return (
       <EmptyState
-        title="Queue unavailable"
-        description="The task did not return generation queue data."
+        title="队列数据暂未准备完成"
+        description="当前任务还没有返回完整的生成队列。你可以先打开工作台查看处理进度，或稍后回到这里继续。"
+        action={
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+            href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
+          >
+            打开工作台
+          </Link>
+        }
       />
     );
   }

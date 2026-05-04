@@ -316,28 +316,37 @@ export function SheinStudioGenerationPanel({
         generationError={generationError}
         saveMessage={saveMessage}
         selectedStyleCount={selectedStyleCount}
+        selectionReady={selectionReady}
       />
 
-      <div className="flex flex-wrap gap-3">
-        <Button disabled={isGenerating} onClick={onGenerate}>
-          {isGenerating ? "生成中..." : "生成款式图"}
-        </Button>
-        <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} tone="ghost">
-          保存批次
-        </Button>
-        <Button
-          disabled={
-            isGenerating ||
-            isCreatingTasks ||
-            selectedStyleCount === 0 ||
-            !selectionReady
-          }
-          onClick={onCreateTasks}
-          tone="secondary"
-        >
-          {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
-        </Button>
-      </div>
+      {selectionReady ? (
+        <div className="flex flex-wrap gap-3">
+          <Button disabled={isGenerating} onClick={onGenerate}>
+            {isGenerating ? "生成中..." : "生成款式图"}
+          </Button>
+          <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} tone="ghost">
+            保存批次
+          </Button>
+          <Button
+            disabled={
+              isGenerating ||
+              isCreatingTasks ||
+              selectedStyleCount === 0 ||
+              !selectionReady
+            }
+            onClick={onCreateTasks}
+            tone="secondary"
+          >
+            {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-3">
+          <Button disabled type="button">
+            先选择商品
+          </Button>
+        </div>
+      )}
 
       <div id="shein-created-tasks" className="scroll-mt-6">
         <SheinCreatedTasksList tasks={createdTasks} />
@@ -575,15 +584,22 @@ function GenerationMessages({
   generationError,
   saveMessage,
   selectedStyleCount,
+  selectionReady,
 }: {
   creatingError: string;
   creatingMessage: string;
   generationError: string;
   saveMessage: string;
   selectedStyleCount: number;
+  selectionReady: boolean;
 }) {
   return (
     <>
+      {!selectionReady ? (
+        <Message tone="info">
+          当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。
+        </Message>
+      ) : null}
       {generationError ? (
         <Message tone="error">{generationError}</Message>
       ) : null}

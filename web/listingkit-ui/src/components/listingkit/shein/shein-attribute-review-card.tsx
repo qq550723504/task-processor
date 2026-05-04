@@ -8,6 +8,19 @@ import type {
   SheinResolvedAttribute,
 } from "@/lib/types/listingkit";
 
+function presentAttributeReviewStatus(status?: string) {
+  switch (status) {
+    case "resolved":
+      return "已完成";
+    case "partial":
+      return "待补齐";
+    case "blocked":
+      return "有阻断";
+    default:
+      return status;
+  }
+}
+
 function AttributeRow({
   name,
   value,
@@ -128,7 +141,9 @@ function SheinAttributeReviewContent({
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
-          {current.status ? <span>状态 {current.status}</span> : null}
+          {current.status ? (
+            <span>状态 {presentAttributeReviewStatus(current.status)}</span>
+          ) : null}
           {typeof current.resolved_count === "number" ? (
             <span>已确认 {current.resolved_count}</span>
           ) : null}

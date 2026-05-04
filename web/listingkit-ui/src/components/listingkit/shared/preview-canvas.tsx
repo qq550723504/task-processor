@@ -35,11 +35,11 @@ export function PreviewCanvas({
   if (!preview?.preview_svg) {
     return (
       <EmptyState
-        title={emptyState?.title ?? "No preview available"}
+        title={emptyState?.title ?? "暂时没有可预览内容"}
         description={
           emptyState?.description ??
           response?.revision_mismatch_reason ??
-          "The selected slot does not currently expose an SVG sidecar preview."
+          "当前选中的分区还没有可直接展示的预览图。"
         }
       />
     );

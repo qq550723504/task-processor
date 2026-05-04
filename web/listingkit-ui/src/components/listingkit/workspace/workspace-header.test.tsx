@@ -26,7 +26,7 @@ describe("WorkspaceHeader", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Review fallback" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查恢复项" }));
 
     expect(onSelectRecovery).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -38,7 +38,10 @@ describe("WorkspaceHeader", () => {
   it("shows navigation links for tasks and shein studio", () => {
     render(
       <WorkspaceHeader
-        title="Queue task-123"
+        title="测试任务"
+        statusLabel="待确认"
+        updatedAtLabel="2026-05-04 10:30"
+        subtitle="SHEIN · 最终确认"
         showSheinStudioLink
       />,
     );
@@ -49,5 +52,10 @@ describe("WorkspaceHeader", () => {
     expect(
       screen.getByRole("link", { name: "返回 SHEIN 工作室" }),
     ).toHaveAttribute("href", "/listing-kits/shein");
+    expect(screen.getByText("任务状态")).toBeInTheDocument();
+    expect(screen.getByText("待确认")).toBeInTheDocument();
+    expect(screen.getByText("最近更新")).toBeInTheDocument();
+    expect(screen.getByText("2026-05-04 10:30")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN · 最终确认")).toBeInTheDocument();
   });
 });

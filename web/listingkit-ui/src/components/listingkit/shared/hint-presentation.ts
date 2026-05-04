@@ -1,6 +1,8 @@
 import {
   presentRecoveryCtaKind,
   presentRecoveryMetaLabel,
+  presentRecoverySummaryText,
+  presentRecoveryTitle,
 } from "@/components/listingkit/shared/action-presentation";
 import type { RecoveryDescriptor } from "@/lib/types/listingkit";
 
@@ -37,62 +39,62 @@ function sentenceCaseWords(value: string) {
 
 const retryHintCopy: Record<string, RetryHintPresentation> = {
   retry_dispatch: {
-    label: "Retry generation",
-    description: "The generation step can be retried immediately.",
+    label: "重新生成当前内容",
+    description: "当前生成步骤可以立即重试。",
   },
   refresh_revision: {
-    label: "Refresh task revision",
-    description: "Reload the latest task state before trying another action.",
+    label: "刷新任务状态",
+    description: "先刷新最新任务状态，再尝试下一步操作。",
   },
   review_fallback: {
-    label: "Review fallback",
-    description: "A fallback result is available and should be reviewed before retrying.",
+    label: "检查兜底结果",
+    description: "当前有一份兜底结果可用，建议先检查后再决定是否重试。",
   },
   wait_for_generation: {
-    label: "Wait for generation",
-    description: "The task is still producing assets. Retry after more output is available.",
+    label: "等待生成继续推进",
+    description: "任务仍在继续生成，等更多结果产出后再继续处理。",
   },
   no_retry: {
-    label: "No retry needed",
-    description: "No additional retry action is recommended for this item.",
+    label: "暂时无需重试",
+    description: "当前这一项不建议继续重试。",
   },
 };
 
 const recoveryCopy: Record<string, Omit<RecoveryDescriptorPresentation, "metaLabel">> = {
   review_fallback: {
-    title: "Use fallback review",
-    description: "A fallback result is available and should be reviewed before retrying.",
-    ctaLabel: "Review fallback",
+    title: "使用兜底结果继续检查",
+    description: "当前有一份兜底结果可用，建议先检查后再决定是否重试。",
+    ctaLabel: "检查恢复项",
   },
   retry_dispatch: {
-    title: "Retry generation",
-    description: "The failed generation step can be retried now.",
-    ctaLabel: "Retry now",
+    title: "重新生成当前内容",
+    description: "当前失败的生成步骤可以直接重试。",
+    ctaLabel: "立即重试",
   },
   refresh_revision: {
-    title: "Refresh task state",
-    description: "Reload the latest revision before deciding on the next action.",
-    ctaLabel: "Refresh state",
+    title: "刷新任务状态",
+    description: "先刷新到最新任务状态，再决定下一步操作。",
+    ctaLabel: "刷新状态",
   },
   wait_for_generation: {
-    title: "Wait for generation",
-    description: "More generation output is expected before this item can move forward.",
-    ctaLabel: "Check later",
+    title: "等待生成继续推进",
+    description: "需要等待更多生成结果后，这一项才能继续推进。",
+    ctaLabel: "稍后再看",
   },
 };
 
 export function presentRetryHint(hint?: string): RetryHintPresentation {
   if (!hint) {
     return {
-      label: "No retry guidance",
-      description: "No retry recommendation is available for this item.",
+      label: "暂无重试建议",
+      description: "当前这一项还没有可执行的重试建议。",
     };
   }
 
   return (
     retryHintCopy[hint] ?? {
       label: sentenceCaseWords(hint),
-      description: "Follow the current task guidance before retrying.",
+      description: "请先按照当前任务提示处理，再决定是否重试。",
     }
   );
 }
@@ -102,13 +104,15 @@ export function presentRecoveryDescriptor(
 ): RecoveryDescriptorPresentation {
   const hint = descriptor?.recovery_hint ?? "review_fallback";
   const copy = recoveryCopy[hint] ?? {
-    title: titleCaseWords(hint),
-    description: "Follow the current recovery guidance for this resource.",
+    title: presentRecoveryTitle(titleCaseWords(hint)),
+    description: "请先按照当前恢复提示处理这一项。",
     ctaLabel: presentRecoveryCtaKind(descriptor?.recovery_cta_kind ?? "review"),
   };
 
   return {
     ...copy,
+    title: presentRecoveryTitle(copy.title),
+    description: presentRecoverySummaryText(copy.description) ?? copy.description,
     ctaLabel: descriptor?.recovery_cta_kind
       ? presentRecoveryCtaKind(descriptor.recovery_cta_kind)
       : copy.ctaLabel,

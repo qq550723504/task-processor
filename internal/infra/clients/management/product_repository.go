@@ -11,13 +11,17 @@ import (
 // ProductDataAPIClient 产品数据API客户端实现
 type ProductDataAPIClient struct {
 	*ManagementAPIClient
-	StoreID int64
+	StoreID           int64
+	localDataProvider *LocalDataProvider
 }
 
 // BatchCreateOrUpdate 批量创建或更新产品数据
 func (c *ProductDataAPIClient) BatchCreateOrUpdate(req *api.ProductDataBatchSaveReqDTO) (int, error) {
 	if req == nil || len(req.Products) == 0 {
 		return 0, nil
+	}
+	if c.localDataProvider != nil {
+		return c.localDataProvider.BatchCreateOrUpdateProductData(req)
 	}
 
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/batch-save", c.baseURL)
@@ -147,6 +151,11 @@ type ProductListResponse struct {
 
 // ListByStore 查询店铺的所有产品数据
 func (c *ProductDataAPIClient) ListByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*api.ProductDataDTO, error) {
+	if c.localDataProvider != nil {
+		if products, err := c.localDataProvider.ListProductDataByStore(platform, tenantID, storeID, shelfStatus); err != nil || products != nil {
+			return products, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/list-by-store", c.baseURL)
 
 	reqBody := map[string]any{
@@ -207,6 +216,9 @@ func (c *ProductDataAPIClient) ListByStore(platform string, tenantID, storeID in
 
 // BatchUpdateAttributes 批量更新产品属性
 func (c *ProductDataAPIClient) BatchUpdateAttributes(req *api.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
+	if c.localDataProvider != nil {
+		return c.localDataProvider.BatchUpdateProductAttributes(req)
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/batch-update-attributes", c.baseURL)
 
 	reqBody := map[string]any{
@@ -246,6 +258,11 @@ func convertToProductAttributesItems(items []api.ProductAttributesItemDTO) []map
 
 // PageProductDataByStore 分页查询店铺产品数据
 func (c *ProductDataAPIClient) PageProductDataByStore(req *api.ProductDataListByStorePageReqDTO) (*api.PageResult[*api.ProductDataRespDTO], error) {
+	if c.localDataProvider != nil {
+		if page, err := c.localDataProvider.PageProductDataByStore(req); err != nil || page != nil {
+			return page, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/page-by-store", c.baseURL)
 
 	reqBody := map[string]any{

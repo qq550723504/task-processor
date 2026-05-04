@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"task-processor/internal/core/logger"
 
-	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein"
 )
 
@@ -46,66 +45,12 @@ func (h *CollectCategoryRestrictionsHandler) Handle(ctx *shein.TaskContext) erro
 
 // collectCategoryRestrictions 收集分类限制信息
 func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *shein.TaskContext) error {
-	// 检查必要的上下文信息
-	if ctx.ManagementClientMgr == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein.NewNonRetryableError("管理客户端管理器未初始化", nil)
-	}
-
-	if ctx.Task == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein.NewNonRetryableError("任务信息未初始化", nil)
-	}
-
-	// 获取品类限制集合API客户端
-	categoryRestrictionClient := ctx.ManagementClientMgr.GetCategoryRestrictionCollectionsClient()
-	if categoryRestrictionClient == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein.NewNonRetryableError("品类限制集合API客户端不存在", nil)
-	}
-
-	// 从上下文中获取规格配置错误信息
-	// 这些信息在publish_product_handler.go中已经被记录到ctx.SpecificationErrors中
 	errorResults := ctx.SpecificationErrors
-
-	// 如果没有规格配置错误信息，则直接返回
 	if len(errorResults) == 0 {
-		logger.GetGlobalLogger("shein/category").Info("没有检测到规格配置错误信息")
+		logger.GetGlobalLogger("shein/category").Debug("没有检测到规格配置错误信息")
 		return nil
 	}
-
-	// 处理规格配置错误
-	for _, result := range errorResults {
-		if result.Module == "specification_info" && result.Form == "main_specification" {
-			// 解析错误信息中的属性信息
-			forbiddenAttrID, forbiddenAttrName, defaultAttrID, defaultAttrName := h.parseSpecificationError(ctx, result.Messages)
-
-			// 创建品类限制集合请求DTO
-			req := &management_api.CategoryRestrictionCollectionsCreateReqDTO{
-				CategoryId:             ctx.ProductData.CategoryID,
-				PlatformName:           "Shein",
-				ForbiddenAttributeId:   forbiddenAttrID,
-				ForbiddenAttributeName: forbiddenAttrName,
-				DefaultAttributeId:     defaultAttrID,
-				DefaultAttributeName:   defaultAttrName,
-				OccurrenceCount:        1,
-				ConfidenceScore:        1.0,
-				IsConfirmed:            false,
-				IsAutoApplied:          false,
-			}
-
-			// 调用API提交品类限制集合
-			id, err := categoryRestrictionClient.CreateCategoryRestrictionCollections(req)
-			if err != nil {
-				logger.GetGlobalLogger("shein/category").Warnf("提交分类限制错误失败: %v", err)
-				// 提交分类限制错误失败可能是网络或系统问题，可重试
-				return shein.NewRetryableError("提交分类限制错误失败", err)
-			} else {
-				logger.GetGlobalLogger("shein/category").Infof("成功提交分类限制错误到管理系统，ID: %d", id)
-			}
-		}
-	}
-
+	logger.GetGlobalLogger("shein/category").Infof("category restriction collection disabled, skipped %d specification errors", len(errorResults))
 	return nil
 }
 

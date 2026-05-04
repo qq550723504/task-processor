@@ -108,10 +108,18 @@ describe("TaskStatusScreen", () => {
         task={{
           task_id: "task_123",
           status: "processing",
+          created_at: "2026-05-04T10:00:00Z",
+          result: {
+            updated_at: "2026-05-04T10:30:00Z",
+          },
         }}
       />,
     );
 
+    expect(screen.getByText("任务状态")).toBeInTheDocument();
+    expect(screen.getByText("任务 ID")).toBeInTheDocument();
+    expect(screen.getAllByText("task_123").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("最近更新").length).toBeGreaterThan(0);
     expect(screen.getByText("任务处理中")).toBeInTheDocument();
     expect(screen.getByText("正在生成图片")).toBeInTheDocument();
     expect(

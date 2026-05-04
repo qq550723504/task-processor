@@ -11,6 +11,22 @@ function primaryTaskError(task: ListingKitTaskResult) {
   return failedChild?.error;
 }
 
+function formatTaskDate(value?: string) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }) {
   if (!task?.status || task.status === "completed") {
     return null;
@@ -41,6 +57,9 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
   const reviewReasons = extractTaskReviewReasons(task);
   const failedChildren =
     task.result?.child_tasks?.filter((child) => child.status === "failed") ?? [];
+  const createdAt = formatTaskDate(task.created_at);
+  const updatedAt = formatTaskDate(task.result?.updated_at ?? task.completed_at);
+  const taskIdentifier = task.task_id ?? task.result?.task_id;
 
   return (
     <Card className="border-zinc-200 bg-white/90 p-5">
@@ -66,6 +85,35 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
             {presentation.label}
           </span>
         </div>
+
+        {taskIdentifier || createdAt || updatedAt ? (
+          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:grid-cols-3">
+            {taskIdentifier ? (
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  任务标识
+                </div>
+                <p className="break-all text-sm text-zinc-700">{taskIdentifier}</p>
+              </div>
+            ) : null}
+            {updatedAt ? (
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  最近更新
+                </div>
+                <p className="text-sm text-zinc-700">{updatedAt}</p>
+              </div>
+            ) : null}
+            {createdAt ? (
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  已创建
+                </div>
+                <p className="text-sm text-zinc-700">{createdAt}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {task.status === "needs_review" && reviewReasons.length > 0 ? (
           <div className="space-y-2">

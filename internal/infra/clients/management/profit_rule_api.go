@@ -9,10 +9,16 @@ import (
 // ProfitRuleAPIClient 利润规则API客户端实现
 type ProfitRuleAPIClient struct {
 	*ManagementAPIClient
+	localDataProvider *LocalDataProvider
 }
 
 // GetProfitRule 获取利润规则
 func (m *ProfitRuleAPIClient) GetProfitRule(req *api.ProfitRuleReqDTO) (*api.ProfitRuleRespDTO, error) {
+	if m.localDataProvider != nil {
+		if rule, err := m.localDataProvider.GetProfitRule(req); err != nil || rule != nil {
+			return rule, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/profit-rule/get?tenantId=%d&storeId=%d", m.baseURL, req.TenantID, req.StoreID)
 
 	var result APIResponse

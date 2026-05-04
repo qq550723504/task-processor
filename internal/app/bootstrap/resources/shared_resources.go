@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
@@ -64,7 +65,9 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		}
 
 		logger.WithError(err).Warn("management runtime unavailable, continuing without management client")
-		runtime = &managementRuntime{}
+		runtime = &managementRuntime{
+			managementClient: newConfiguredManagementClient(cfg, logger),
+		}
 	}
 
 	resources := &SharedResources{
@@ -104,15 +107,34 @@ func buildManagementRuntime(cfg *config.Config, logger *logrus.Logger) (*managem
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
 
-	managementClient := management.NewClientManager(&cfg.Management)
+	managementClient := newConfiguredManagementClient(cfg, logger)
 	managementClient.GetClient()
 	managementClient.SetUserToken(accessToken, tenantID)
-	managementClient.SetDataFreshnessDays(cfg.Amazon.DataFreshnessDays)
 
 	return &managementRuntime{
 		authClient:       authClient,
 		managementClient: managementClient,
 	}, nil
+}
+
+func newConfiguredManagementClient(cfg *config.Config, logger *logrus.Logger) *management.ClientManager {
+	managementClient := management.NewClientManager(&cfg.Management)
+	managementClient.SetDataFreshnessDays(cfg.Amazon.DataFreshnessDays)
+
+	if provider, err := management.NewLocalDataProvider(cfg.Database, cfg.Redis); err != nil {
+		logger.WithError(err).Warn("failed to configure local management data provider")
+	} else if provider != nil {
+		managementClient.SetLocalDataProvider(provider)
+	}
+
+	cookieRedis := cfg.Platforms.Shein.CookieRedis
+	if strings.TrimSpace(cookieRedis.Host) != "" {
+		if err := managementClient.SetSheinCookieRedisConfig(&cookieRedis); err != nil {
+			logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
+		}
+	}
+
+	return managementClient
 }
 
 func buildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor {

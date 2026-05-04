@@ -182,4 +182,33 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeDisabled();
     expect(screen.getByText("还差 1 个阻断项，修复后才能提交。")).toBeInTheDocument();
   });
+
+  it("renders structured submit failure guidance in final review mode", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: {
+            ready: false,
+            blocking_items: [
+              { key: "images", label: "最终图片", message: "缺少色块来源图" },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+        submitErrorMessage="SHEIN image upload unavailable: token missing"
+      />,
+    );
+
+    expect(screen.getByText("提交失败")).toBeInTheDocument();
+    expect(screen.getByText("发生了什么")).toBeInTheDocument();
+    expect(screen.getByText("可能影响")).toBeInTheDocument();
+    expect(screen.getByText("下一步怎么做")).toBeInTheDocument();
+    expect(
+      screen.getByText("本次不会把资料提交到 SHEIN，请先处理阻断项或上传问题后再重试。"),
+    ).toBeInTheDocument();
+  });
 });

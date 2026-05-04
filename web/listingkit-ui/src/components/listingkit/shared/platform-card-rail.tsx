@@ -49,7 +49,7 @@ export function PlatformCardRail({
                 {card.resolved_action_summary?.title ? (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                      Next step
+                      下一步
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="break-words text-sm font-medium text-zinc-900">
@@ -67,7 +67,7 @@ export function PlatformCardRail({
                 {recovery ? (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                      Recovery
+                      恢复操作
                     </p>
                     <p className="break-words text-sm font-medium text-zinc-900">
                       {recovery.presentation.title}
