@@ -1786,9 +1786,12 @@ func TestSubmitTaskBlocksSharedSingleImageAcrossMultipleSKCs(t *testing.T) {
 		t.Fatalf("review reasons = %#v, want failed variant reason", saved.Result.ReviewReasons)
 	}
 	for _, skc := range saved.Result.Shein.RequestDraft.SKCList {
-		if skc.ImageInfo != nil && strings.TrimSpace(skc.ImageInfo.MainImage) != "" {
-			t.Fatalf("skc image info = %+v, want cleared shared images", skc.ImageInfo)
+		if skc.ImageInfo == nil || strings.TrimSpace(skc.ImageInfo.MainImage) == "" {
+			t.Fatalf("skc image info = %+v, want preserved shared images", skc.ImageInfo)
 		}
+	}
+	if saved.Result.Shein.Metadata[sheinVariantImageCoverageStatusKey] != "blocked" {
+		t.Fatalf("metadata = %#v, want blocked variant image coverage status", saved.Result.Shein.Metadata)
 	}
 }
 

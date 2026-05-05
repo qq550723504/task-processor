@@ -21,11 +21,11 @@ type templateAttributeBatchSelection struct {
 }
 
 type templateAttributeBatchChoice struct {
-	AttributeID          int      `json:"attribute_id,omitempty"`
-	AttributeValueID     int      `json:"attribute_value_id,omitempty"`
-	AttributeExtraValue  string   `json:"attribute_extra_value,omitempty"`
-	TextValue            string   `json:"text_value,omitempty"`
-	Reasons              []string `json:"reasons,omitempty"`
+	AttributeID         int      `json:"attribute_id,omitempty"`
+	AttributeValueID    int      `json:"attribute_value_id,omitempty"`
+	AttributeExtraValue string   `json:"attribute_extra_value,omitempty"`
+	TextValue           string   `json:"text_value,omitempty"`
+	Reasons             []string `json:"reasons,omitempty"`
 }
 
 func inferDisplayAttributesTemplateBatch(
@@ -58,17 +58,13 @@ func inferDisplayAttributesTemplateBatch(
 		return nil, nil
 	}
 
-	var payload templateAttributeBatchSelection
-	if err := json.Unmarshal([]byte(response), &payload); err != nil {
-		var choices []templateAttributeBatchChoice
-		if arrayErr := json.Unmarshal([]byte(response), &choices); arrayErr != nil {
-			log.WithError(err).
-				WithField("pending_count", len(pending)).
-				WithField("response_preview", truncateDisplayAttributeBatchResponse(response, 600)).
-				Warn("SHEIN 模板批量属性决策响应解析失败")
-			return nil, nil
-		}
-		payload.Selections = choices
+	payload, err := parseDisplayAttributeTemplateBatchResponse(response)
+	if err != nil {
+		log.WithError(err).
+			WithField("pending_count", len(pending)).
+			WithField("response_preview", truncateDisplayAttributeBatchResponse(response, 600)).
+			Warn("SHEIN 模板批量属性决策响应解析失败")
+		return nil, nil
 	}
 	byID := make(map[int]sheinattribute.AttributeInfo, len(pending))
 	for _, attr := range pending {
@@ -278,4 +274,89 @@ func truncateDisplayAttributeBatchResponse(response string, limit int) string {
 		return response
 	}
 	return response[:limit] + "..."
+}
+
+func parseDisplayAttributeTemplateBatchResponse(response string) (templateAttributeBatchSelection, error) {
+	var payload templateAttributeBatchSelection
+	if err := json.Unmarshal([]byte(response), &payload); err == nil {
+		return payload, nil
+	}
+	if choices, err := parseDisplayAttributeTemplateBatchChoices(response); err == nil {
+		payload.Selections = choices
+		return payload, nil
+	}
+
+	extracted := extractFirstBalancedJSON(response)
+	if extracted == "" || extracted == response {
+		return templateAttributeBatchSelection{}, fmt.Errorf("parse batch response: invalid JSON")
+	}
+	if err := json.Unmarshal([]byte(extracted), &payload); err == nil {
+		return payload, nil
+	}
+	if choices, err := parseDisplayAttributeTemplateBatchChoices(extracted); err == nil {
+		payload.Selections = choices
+		return payload, nil
+	}
+	return templateAttributeBatchSelection{}, fmt.Errorf("parse batch response: invalid JSON")
+}
+
+func parseDisplayAttributeTemplateBatchChoices(response string) ([]templateAttributeBatchChoice, error) {
+	var choices []templateAttributeBatchChoice
+	if err := json.Unmarshal([]byte(response), &choices); err != nil {
+		return nil, err
+	}
+	return choices, nil
+}
+
+func extractFirstBalancedJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	start := strings.IndexAny(raw, "[{")
+	if start < 0 {
+		return ""
+	}
+	segment := raw[start:]
+	stack := make([]rune, 0, 8)
+	inString := false
+	escaped := false
+	for i, r := range segment {
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch r {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			continue
+		}
+		switch r {
+		case '"':
+			inString = true
+		case '{', '[':
+			stack = append(stack, r)
+		case '}':
+			if len(stack) == 0 || stack[len(stack)-1] != '{' {
+				return ""
+			}
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return strings.TrimSpace(segment[:i+1])
+			}
+		case ']':
+			if len(stack) == 0 || stack[len(stack)-1] != '[' {
+				return ""
+			}
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return strings.TrimSpace(segment[:i+1])
+			}
+		}
+	}
+	return ""
 }

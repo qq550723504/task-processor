@@ -902,11 +902,11 @@ func TestEnforceSheinVariantImageCoverageBlocksSharedSingleImageAcrossMultipleSK
 	if !strings.Contains(warning, "SDS render failed for selected color variants: white") {
 		t.Fatalf("warning = %q", warning)
 	}
-	if pkg.RequestDraft.SKCList[0].ImageInfo != nil || pkg.RequestDraft.SKCList[1].ImageInfo != nil {
-		t.Fatalf("request draft skc image info should be cleared: %+v", pkg.RequestDraft.SKCList)
+	if pkg.RequestDraft.SKCList[0].ImageInfo == nil || pkg.RequestDraft.SKCList[1].ImageInfo == nil {
+		t.Fatalf("request draft skc image info should be preserved: %+v", pkg.RequestDraft.SKCList)
 	}
-	if len(pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList) != 0 || len(pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList) != 0 {
-		t.Fatalf("preview skc images should be cleared: %+v", pkg.PreviewProduct.SKCList)
+	if len(pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList) == 0 || len(pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList) == 0 {
+		t.Fatalf("preview skc images should be preserved: %+v", pkg.PreviewProduct.SKCList)
 	}
 }
 

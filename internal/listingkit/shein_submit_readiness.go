@@ -129,6 +129,17 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		false,
 	)
 
+	coverageMessage, coverageBlocked := sheinVariantImageCoverageStatus(pkg)
+	addCheck(
+		"variant_image_coverage",
+		"变体图片覆盖",
+		!coverageBlocked,
+		firstNonEmptyString(coverageMessage, "变体图片覆盖不完整，请为每个颜色规格补齐独立商品图后再提交"),
+		[]string{"shein.metadata.variant_image_coverage_status", "shein.metadata.variant_image_coverage_message", "shein.request_draft.skc_list"},
+		"确认图片",
+		false,
+	)
+
 	skcCount := len(pkg.SkcList)
 	if skcCount == 0 && pkg.RequestDraft != nil {
 		skcCount = len(pkg.RequestDraft.SKCList)

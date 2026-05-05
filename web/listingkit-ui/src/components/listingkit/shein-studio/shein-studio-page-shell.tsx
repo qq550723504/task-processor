@@ -64,10 +64,10 @@ export function SheinStudioPageShell({
       description:
         "审核通过后，系统会把当前结果带入 SHEIN 资料确认工作台。",
     },
-    create: {
-      title: "创建 SHEIN 上架任务",
+    tasks: {
+      title: "确认 SHEIN 上架资料",
       description:
-        "这一步会把已确认的资料转成正式任务，后续可继续保存草稿或提交发布。",
+        "这一步会把已确认的资料带入正式任务，继续保存草稿或提交发布。",
     },
   }[visibleStep];
 

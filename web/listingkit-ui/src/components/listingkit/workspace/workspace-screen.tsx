@@ -588,7 +588,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     }
     const resolvedCount =
       current.resolved_count ??
-      current.product_attributes?.length ??
+      current.resolved_attributes?.length ??
       current.pending_attributes?.length ??
       0;
     if (resolvedCount <= 0 && !(current.review_notes?.length ?? 0)) {

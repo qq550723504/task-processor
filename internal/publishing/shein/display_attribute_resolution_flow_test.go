@@ -430,3 +430,49 @@ func TestInferDisplayAttributesTemplateBatchAddsTextDiagnostics(t *testing.T) {
 		t.Fatalf("notes = %#v, want evidence field summary", notes)
 	}
 }
+
+func TestInferDisplayAttributesTemplateBatchToleratesTrailingMalformedJSON(t *testing.T) {
+	t.Parallel()
+
+	attributes := []sheinattribute.AttributeInfo{
+		{
+			AttributeID:     1001519,
+			AttributeNameEn: "Product Features",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 8790846, AttributeValueEn: "Printing"},
+			},
+		},
+		{
+			AttributeID:     77,
+			AttributeNameEn: "Season",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 1601, AttributeValueEn: "All"},
+			},
+		},
+	}
+	inputs := []common.Attribute{
+		{Name: "production_process", Value: "UV打印"},
+		{Name: "design_area", Value: "单面印制"},
+	}
+	llm := &captureAttributeLLM{
+		responses: []string{
+			`{"selections":[{"attribute_id":1001519,"attribute_value_id":8790846,"reasons":["printing is directly supported by the source evidence"]}]}{"attribute_id":77,"attribute_value_id":1601,"reasons":["all-season is broad and safe"]}`,
+		},
+	}
+
+	resolved, notes := inferDisplayAttributesTemplateBatch(attributes, inputs, map[int]ResolvedAttribute{}, llm)
+	if len(resolved) != 1 {
+		t.Fatalf("resolved = %#v, want first valid selection recovered", resolved)
+	}
+	if resolved[0].AttributeID != 1001519 {
+		t.Fatalf("attribute id = %d, want 1001519", resolved[0].AttributeID)
+	}
+	joined := strings.Join(notes, "\n")
+	if !strings.Contains(joined, "printing is directly supported") {
+		t.Fatalf("notes = %#v, want recovered reasons", notes)
+	}
+}

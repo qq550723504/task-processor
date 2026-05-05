@@ -306,6 +306,7 @@ func applySheinVariantImageCoverageGuard(task *Task, pkg *sheinpub.Package) bool
 		return false
 	}
 	warning, blocked := enforceSheinVariantImageCoverage(pkg, task.Request, task.Result.SDSSync)
+	setSheinVariantImageCoverageMetadata(pkg, warning, blocked)
 	if !blocked || strings.TrimSpace(warning) == "" {
 		return false
 	}
@@ -335,12 +336,52 @@ func enforceSheinVariantImageCoverage(pkg *sheinpub.Package, req *GenerateReques
 	if coverageCount >= skcCount {
 		return "", false
 	}
-	clearSharedSheinSKCImages(pkg)
 	warning := "变体图片覆盖不完整：当前颜色规格多于可用变体图，已阻止将同一张图复用到所有 SKC，请补齐每个颜色的商品图后再提交"
 	if sdsSummary != nil && strings.TrimSpace(sdsSummary.Error) != "" {
 		warning = warning + "；" + strings.TrimSpace(sdsSummary.Error)
 	}
 	return warning, true
+}
+
+const (
+	sheinVariantImageCoverageStatusKey  = "variant_image_coverage_status"
+	sheinVariantImageCoverageMessageKey = "variant_image_coverage_message"
+)
+
+func setSheinVariantImageCoverageMetadata(pkg *sheinpub.Package, warning string, blocked bool) {
+	if pkg == nil {
+		return
+	}
+	if pkg.Metadata == nil {
+		if !blocked {
+			return
+		}
+		pkg.Metadata = map[string]string{}
+	}
+	if blocked {
+		pkg.Metadata[sheinVariantImageCoverageStatusKey] = "blocked"
+		pkg.Metadata[sheinVariantImageCoverageMessageKey] = strings.TrimSpace(warning)
+		return
+	}
+	delete(pkg.Metadata, sheinVariantImageCoverageStatusKey)
+	delete(pkg.Metadata, sheinVariantImageCoverageMessageKey)
+	if len(pkg.Metadata) == 0 {
+		pkg.Metadata = nil
+	}
+}
+
+func sheinVariantImageCoverageStatus(pkg *sheinpub.Package) (string, bool) {
+	if pkg == nil || pkg.Metadata == nil {
+		return "", false
+	}
+	if strings.TrimSpace(pkg.Metadata[sheinVariantImageCoverageStatusKey]) != "blocked" {
+		return "", false
+	}
+	message := strings.TrimSpace(pkg.Metadata[sheinVariantImageCoverageMessageKey])
+	if message == "" {
+		message = "变体图片覆盖不完整，请为每个颜色规格补齐独立商品图后再提交"
+	}
+	return message, true
 }
 
 func sheinDistinctSKCMainImageCount(pkg *sheinpub.Package) int {
