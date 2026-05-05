@@ -107,7 +107,11 @@
      - `TASK_PROCESSOR_SDS_VERIFY_CAPTCHA_PARAM`
      - `TASK_PROCESSOR_SDS_EXTRA_INFO`
 
-当 SDS 接口返回 `ret=20001` 或 HTTP `401/403` 时，客户端会自动重拉登录态并重试一次。
+当 SDS 接口返回以下任一鉴权失效信号时，客户端会自动重拉登录态并重试一次：
+
+- `ret=20001`
+- HTTP `401/403`
+- HTTP `400` 且响应体明确包含 `用户未登录`、`auth required` 或 `login required`
 
 可以直接用 CLI 单独验证 `req` 登录：
 

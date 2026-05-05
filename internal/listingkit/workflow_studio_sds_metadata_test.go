@@ -6,6 +6,50 @@ import (
 	"task-processor/internal/productenrich"
 )
 
+func TestStudioAttributesAndSpecificationsIncludeRichSDSFields(t *testing.T) {
+	sds := &SDSSyncOptions{
+		ProductSKU:             "MG17701062",
+		Material:               "复合板",
+		MaterialDescription:    "优选复合板材质",
+		ProductionProcess:      "UV打印",
+		ProductPerformance:     "静音无声，轻奢质地。",
+		ApplicableScenarios:    "办公室、卧室、客厅",
+		SpecialDescription:     "挂钟不含电池。",
+		ProductSize:            "25*25cm",
+		PackagingSpecification: "30*30*5cm，0.45kg",
+		VariantSize:            "25cm/9.8inch",
+		VariantColor:           "White",
+	}
+
+	attrs := studioAttributes(sds, productenrich.FieldTrace{})
+	if attrs["material_description"].Value != "优选复合板材质" {
+		t.Fatalf("material_description = %+v", attrs["material_description"])
+	}
+	if attrs["product_performance"].Value == "" {
+		t.Fatalf("product_performance = %+v", attrs["product_performance"])
+	}
+	if attrs["product_size"].Value != "25*25cm" {
+		t.Fatalf("product_size = %+v", attrs["product_size"])
+	}
+	if attrs["packaging_specification"].Value == "" {
+		t.Fatalf("packaging_specification = %+v", attrs["packaging_specification"])
+	}
+
+	specs := studioSpecifications(sds)
+	if specs == nil {
+		t.Fatal("specs = nil")
+	}
+	if specs.Technical["product_size"] != "25*25cm" {
+		t.Fatalf("technical product_size = %+v", specs.Technical)
+	}
+	if specs.Technical["packaging_specification"] != "30*30*5cm，0.45kg" {
+		t.Fatalf("technical packaging_specification = %+v", specs.Technical)
+	}
+	if specs.Technical["product_performance"] == "" {
+		t.Fatalf("technical product_performance = %+v", specs.Technical)
+	}
+}
+
 func TestStudioVariantsAddsVariantDiscriminatorWhenVariantSKUMissing(t *testing.T) {
 	sds := &SDSSyncOptions{
 		ProductSKU: "MG8014186001",

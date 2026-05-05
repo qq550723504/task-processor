@@ -165,4 +165,39 @@ describe("SheinAttributeReviewCard", () => {
     expect(screen.getByText("其他建议属性（不阻断提交）")).toBeInTheDocument();
     expect(screen.queryByText("必填未完成")).not.toBeInTheDocument();
   });
+
+  it("allows fallback confirmation when template candidates are unavailable", async () => {
+    const user = userEvent.setup();
+    const onConfirmFallbackAttributes = vi.fn();
+
+    render(
+      <SheinAttributeReviewCard
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              source: "fallback",
+              pending_attributes: [
+                { name: "material", value: "涤纶" },
+                { name: "product_sku", value: "MG8089002" },
+              ],
+              review_notes: [
+                "缺少 SHEIN AttributeAPI，当前无法加载在线属性模板",
+                "SHEIN 店铺 cookie 不可用，已降级为离线解析",
+              ],
+            },
+          },
+        }}
+        onConfirmFallbackAttributes={onConfirmFallbackAttributes}
+      />,
+    );
+
+    expect(screen.getByText("当前没有可选的 SHEIN 模板候选值")).toBeInTheDocument();
+    expect(screen.getByText("material")).toBeInTheDocument();
+    expect(screen.getByText("涤纶")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "按当前 SDS 属性确认" }));
+
+    expect(onConfirmFallbackAttributes).toHaveBeenCalledTimes(1);
+  });
 });

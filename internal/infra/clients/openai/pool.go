@@ -114,8 +114,16 @@ func (p *RequestPool) CreateChatCompletion(ctx context.Context, req *ChatComplet
 // createChatCompletion 基础客户端的聊天完成实现
 func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	var lastErr error
+	maxRetries := bc.config.MaxRetries
+	if req != nil && req.MaxRetries != nil {
+		maxRetries = *req.MaxRetries
+	}
+	timeout := bc.config.Timeout
+	if req != nil && req.Timeout != nil && *req.Timeout > 0 {
+		timeout = *req.Timeout
+	}
 
-	for attempt := 0; attempt <= bc.config.MaxRetries; attempt++ {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			// 计算指数退避延迟时间
 			delay := bc.config.RetryDelay * time.Duration(1<<uint(attempt-1))
@@ -129,7 +137,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		}
 
 		// 设置超时
-		timeoutCtx, cancel := context.WithTimeout(ctx, bc.config.Timeout)
+		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 
 		// 转换请求参数
 		openaiReq := openai.ChatCompletionRequest{
@@ -169,7 +177,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		}
 	}
 
-	return nil, fmt.Errorf("调用OpenAI API失败，已重试%d次: %w", bc.config.MaxRetries, lastErr)
+	return nil, fmt.Errorf("调用OpenAI API失败，已重试%d次: %w", maxRetries, lastErr)
 }
 
 // waitForRateLimit 等待速率限制

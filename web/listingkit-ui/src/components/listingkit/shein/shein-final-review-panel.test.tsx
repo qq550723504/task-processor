@@ -97,6 +97,39 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeDisabled();
   });
 
+  it("shows manual fallback attribute confirmation as done when final attributes are empty", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          editor_context: {
+            attributes: {
+              current: {
+                status: "resolved",
+                source: "manual_fallback_review",
+                resolved_count: 18,
+              },
+            },
+          },
+          final_review: {
+            confirmed: false,
+            category_id: 123,
+            sale_attributes: [{ name: "Color", value: "Black" }],
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("已按当前 SDS 属性确认 18 个普通属性")).toBeInTheDocument();
+    expect(
+      screen.queryByText("普通属性未展示已确认结果，建议检查必填属性。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("enables save draft and publish after confirmed ready review", () => {
     render(
       <SheinFinalReviewPanel

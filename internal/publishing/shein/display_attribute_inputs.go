@@ -7,35 +7,33 @@ import (
 )
 
 func buildDerivedAttributeInputs(pkg *Package) []common.Attribute {
-	if pkg == nil {
-		return nil
-	}
-	result := make([]common.Attribute, 0, 12)
-	appendValue := func(name string, value string) {
-		value = strings.TrimSpace(value)
-		if strings.TrimSpace(name) == "" || value == "" {
-			return
+	return buildDerivedAttributeInputsFromEvidence(buildDisplayAttributeEvidencePool(pkg))
+}
+
+func findAttributeValue(items []common.Attribute, candidates ...string) string {
+	for _, candidate := range candidates {
+		for _, item := range items {
+			if matchesAttributeName(item.Name, candidate) && strings.TrimSpace(item.Value) != "" {
+				return strings.TrimSpace(item.Value)
+			}
 		}
-		result = append(result, common.Attribute{Name: name, Value: value})
 	}
+	return ""
+}
 
-	appendValue("Product Title", firstNonEmpty(pkg.SpuName, pkg.ProductNameEn, pkg.ProductNameMulti))
-	appendValue("Category Name", pkg.CategoryName)
-	if len(pkg.CategoryPath) > 0 {
-		appendValue("Category Path", strings.Join(pkg.CategoryPath, " > "))
+func findAttributeValueInMap(items map[string]string, candidates ...string) string {
+	for _, candidate := range candidates {
+		for key, value := range items {
+			if matchesAttributeName(key, candidate) && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
 	}
-	appendValue("Description", pkg.Description)
+	return ""
+}
 
-	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 || len(pkg.RequestDraft.SKCList[0].SKUList) == 0 {
-		return dedupeAttributeInputs(result)
-	}
-	sku := pkg.RequestDraft.SKCList[0].SKUList[0]
-	appendValue("Length (cm)", sku.Length)
-	appendValue("Width (cm)", sku.Width)
-	appendValue("Height (cm)", sku.Height)
-	appendValue("Weight", common.FormatFloat(sku.Weight))
-	appendValue("Weight ("+strings.ToLower(strings.TrimSpace(sku.WeightUnit))+")", common.FormatFloat(sku.Weight))
-	return dedupeAttributeInputs(result)
+func matchesAttributeName(actual string, candidate string) bool {
+	return normalizeText(actual) == normalizeText(candidate)
 }
 
 func dedupeAttributeInputs(items []common.Attribute) []common.Attribute {

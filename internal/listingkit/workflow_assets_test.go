@@ -42,13 +42,15 @@ type stubWorkflowImageService struct {
 }
 
 type stubWorkflowSDSSyncService struct {
-	result          *sdsadapter.SyncResult
-	remoteResult    *sdsworkflow.SyncResult
-	err             error
-	remoteErr       error
-	lastInput       sdsusecase.ImageResultInput
-	lastRemoteInput sdsusecase.RemoteImageInput
-	remoteCalls     int
+	result           *sdsadapter.SyncResult
+	remoteResult     *sdsworkflow.SyncResult
+	remoteResults    []*sdsworkflow.SyncResult
+	err              error
+	remoteErr        error
+	lastInput        sdsusecase.ImageResultInput
+	lastRemoteInput  sdsusecase.RemoteImageInput
+	lastRemoteInputs []sdsusecase.RemoteImageInput
+	remoteCalls      int
 }
 
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
@@ -67,8 +69,15 @@ func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *prod
 func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
 	s.remoteCalls++
 	s.lastRemoteInput = input
+	s.lastRemoteInputs = append(s.lastRemoteInputs, input)
 	if s.remoteErr != nil {
 		return nil, s.remoteErr
+	}
+	if len(s.remoteResults) > 0 {
+		index := s.remoteCalls - 1
+		if index < len(s.remoteResults) {
+			return s.remoteResults[index], nil
+		}
 	}
 	if s.remoteResult != nil {
 		return s.remoteResult, nil
@@ -395,25 +404,44 @@ func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestSyncSDSDesignVariantsDoesNotResubmitMissingVariant(t *testing.T) {
+func TestSyncSDSDesignVariantsSubmitsEachRepresentativeVariantAsPrimary(t *testing.T) {
 	t.Parallel()
 
 	sdsSvc := &stubWorkflowSDSSyncService{
-		remoteResult: &sdsworkflow.SyncResult{
-			DesignResult: &sdsdesign.PrepareSyncDesignResult{
-				Page: &sdsdesign.DesignProductPage{
-					Product: sdsdesign.DesignProduct{ID: 101},
-				},
-				Request: &sdsdesign.SyncDesignRequest{
-					PrototypeGroupID: 15506,
-					Prototypes: []sdsdesign.SyncDesignPrototype{
-						{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-101"}}},
+		remoteResults: []*sdsworkflow.SyncResult{
+			{
+				DesignResult: &sdsdesign.PrepareSyncDesignResult{
+					Page: &sdsdesign.DesignProductPage{
+						Product: sdsdesign.DesignProduct{ID: 101},
 					},
+					Request: &sdsdesign.SyncDesignRequest{
+						PrototypeGroupID: 15506,
+						Prototypes: []sdsdesign.SyncDesignPrototype{
+							{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-101"}}},
+						},
+					},
+					RenderedImageURLsByProduct: map[int64][]string{
+						101: []string{"https://cdn.sdspod.com/out/101-main.jpg"},
+					},
+					RenderedImageURLs: []string{"https://cdn.sdspod.com/out/101-main.jpg"},
 				},
-				RenderedImageURLsByProduct: map[int64][]string{
-					101: []string{"https://cdn.sdspod.com/out/101-main.jpg"},
+			},
+			{
+				DesignResult: &sdsdesign.PrepareSyncDesignResult{
+					Page: &sdsdesign.DesignProductPage{
+						Product: sdsdesign.DesignProduct{ID: 102},
+					},
+					Request: &sdsdesign.SyncDesignRequest{
+						PrototypeGroupID: 15506,
+						Prototypes: []sdsdesign.SyncDesignPrototype{
+							{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-102"}}},
+						},
+					},
+					RenderedImageURLsByProduct: map[int64][]string{
+						102: []string{"https://cdn.sdspod.com/out/102-main.jpg"},
+					},
+					RenderedImageURLs: []string{"https://cdn.sdspod.com/out/102-main.jpg"},
 				},
-				RenderedImageURLs: []string{"https://cdn.sdspod.com/out/101-main.jpg"},
 			},
 		},
 	}
@@ -438,17 +466,20 @@ func TestSyncSDSDesignVariantsDoesNotResubmitMissingVariant(t *testing.T) {
 
 	svc.syncSDSDesignVariantsFromRemote(context.Background(), task, result, task.Request.ImageURLs[0])
 
-	if sdsSvc.remoteCalls != 1 {
-		t.Fatalf("remote calls = %d, want exactly one SDS sync request", sdsSvc.remoteCalls)
+	if sdsSvc.remoteCalls != 2 {
+		t.Fatalf("remote calls = %d, want one SDS sync request per representative variant", sdsSvc.remoteCalls)
 	}
-	if got := sdsSvc.lastRemoteInput.Sync.RelatedVariantIDs; len(got) != 2 || got[0] != 101 || got[1] != 102 {
-		t.Fatalf("related variants = %+v, want both variants in one sync request", got)
+	if got := sdsSvc.lastRemoteInputs[0].Sync; got.VariantID != 101 || len(got.RelatedVariantIDs) != 0 {
+		t.Fatalf("first sds input = %+v, want variant 101 without related variants", got)
 	}
-	if result.SDSSync == nil || result.SDSSync.Status != "failed" {
-		t.Fatalf("sds sync = %+v, want failed when a selected variant render is missing", result.SDSSync)
+	if got := sdsSvc.lastRemoteInputs[1].Sync; got.VariantID != 102 || len(got.RelatedVariantIDs) != 0 {
+		t.Fatalf("second sds input = %+v, want variant 102 without related variants", got)
 	}
-	if result.SDSSync != nil && result.SDSSync.Error == "" {
-		t.Fatalf("sds sync = %+v, want explicit missing-render error", result.SDSSync)
+	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
+		t.Fatalf("sds sync = %+v, want completed when all selected variants render", result.SDSSync)
+	}
+	if len(result.SDSSync.VariantResults) != 2 {
+		t.Fatalf("variant results = %+v, want 2", result.SDSSync.VariantResults)
 	}
 }
 

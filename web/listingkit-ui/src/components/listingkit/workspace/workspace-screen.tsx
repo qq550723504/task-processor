@@ -337,10 +337,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     {
       key: "category",
       label: "确认类目",
-      description: "确认 SHEIN 类目和 category path，不使用静态兜底。",
+      description: sheinCategoryBlocked
+        ? "确认 SHEIN 类目和 category path，不使用静态兜底。"
+        : "SHEIN 类目已确认，可查看当前类目摘要。",
       href: "#shein-category-review-card",
       state: sheinCategoryBlocked ? "blocked" : "done",
-      actionLabel: "确认类目",
+      actionLabel: sheinCategoryBlocked ? "确认类目" : "查看类目",
     },
     {
       key: "attributes",
@@ -442,7 +444,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     const sheinPreview = preview.data?.shein;
     const current = sheinPreview?.editor_context?.category?.current;
     const suggested = current?.suggested_category;
-    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
 
     if (!suggested?.category_id) {
       return;
@@ -464,8 +465,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         },
         sale_attribute_resolution: {
           recommend_category_review: false,
-          category_review_reason:
-            saleCurrent?.category_review_reason,
+          category_review_reason: "",
         },
       },
     });
@@ -474,7 +474,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleConfirmCurrentSheinCategory = () => {
     const sheinPreview = preview.data?.shein;
     const current = sheinPreview?.editor_context?.category?.current;
-    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
 
     if (!current?.category_id) {
       return;
@@ -496,7 +495,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         },
         sale_attribute_resolution: {
           recommend_category_review: false,
-          category_review_reason: saleCurrent?.category_review_reason,
+          category_review_reason: "",
         },
       },
     });
@@ -505,8 +504,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleApplyManualSheinCategory = async (
     candidate: SheinManualCategoryCandidate,
   ) => {
-    const sheinPreview = preview.data?.shein;
-    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
     await applyRevision.mutateAsync({
       platform: "shein",
       actor: "workspace",
@@ -523,7 +520,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         },
         sale_attribute_resolution: {
           recommend_category_review: false,
-          category_review_reason: saleCurrent?.category_review_reason,
+          category_review_reason: "",
         },
       },
     });
@@ -579,6 +576,43 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             pendingAttributeCandidates.length === 0
               ? ["SHEIN 普通属性已人工确认"]
               : current.review_notes,
+        },
+      },
+    });
+  };
+
+  const handleConfirmSheinFallbackAttributes = () => {
+    const current = preview.data?.shein?.editor_context?.attributes?.current;
+    if (!current) {
+      return;
+    }
+    const resolvedCount =
+      current.resolved_count ??
+      current.product_attributes?.length ??
+      current.pending_attributes?.length ??
+      0;
+    if (resolvedCount <= 0 && !(current.review_notes?.length ?? 0)) {
+      return;
+    }
+
+    applyRevision.mutate({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Confirm SHEIN fallback attributes for internal testing",
+      shein: {
+        attribute_resolution: {
+          status: "resolved",
+          source: "manual_fallback_review",
+          category_id: preview.data?.shein?.category_id,
+          template_count: current.template_count,
+          resolved_count: Math.max(resolvedCount, 1),
+          unresolved_count: 0,
+          pending_attributes: [],
+          pending_attribute_candidates: [],
+          recommended_attribute_candidates: [],
+          review_notes: [
+            "内部测试已按当前 SDS 属性确认；当前未写入真实 SHEIN attribute_id，正式发布前建议重新获取模板后复核。",
+          ],
         },
       },
     });
@@ -839,6 +873,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
                 editorContext={preview.data?.shein?.editor_context}
                 isApplying={applyRevision.isPending}
                 onConfirmAttributes={handleConfirmSheinAttributes}
+                onConfirmFallbackAttributes={handleConfirmSheinFallbackAttributes}
               />
             </div>
           ) : null}

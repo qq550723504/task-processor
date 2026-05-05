@@ -206,6 +206,27 @@ export function SheinFinalReviewPanel({
   const finalImages = (finalReview?.images ?? []).filter(
     (image) => image.final !== false && image.url,
   );
+  const attributeResolution = shein?.editor_context?.attributes?.current;
+  const finalAttributeCount = finalReview?.attributes?.length ?? 0;
+  const resolvedAttributeCount =
+    finalAttributeCount || attributeResolution?.resolved_count || 0;
+  const attributeBlocked = hasBlockingKey(allBlockingItems, [
+    "attributes",
+    "attribute_review",
+  ]);
+  const attributeResolvedByState =
+    !attributeBlocked &&
+    attributeResolution?.status === "resolved" &&
+    resolvedAttributeCount > 0;
+  const attributeDone = !attributeBlocked && (finalAttributeCount > 0 || attributeResolvedByState);
+  const attributeMessage =
+    finalAttributeCount > 0
+      ? `已确认 ${finalAttributeCount} 个普通属性`
+      : attributeResolvedByState && attributeResolution?.source === "manual_fallback_review"
+        ? `已按当前 SDS 属性确认 ${resolvedAttributeCount} 个普通属性`
+        : attributeResolvedByState
+          ? `已确认 ${resolvedAttributeCount} 个普通属性`
+          : "普通属性未展示已确认结果，建议检查必填属性。";
   const imageBlocked =
     hasBlockingKey(allBlockingItems, ["images", "preview_product"]) ||
     imageCounts.final === 0 ||
@@ -228,15 +249,8 @@ export function SheinFinalReviewPanel({
     {
       key: "attributes",
       title: "普通属性",
-      status: hasBlockingKey(allBlockingItems, ["attributes", "attribute_review"])
-        ? "blocked"
-        : (finalReview?.attributes?.length ?? 0) > 0
-          ? "done"
-          : "warning",
-      message:
-        (finalReview?.attributes?.length ?? 0) > 0
-          ? `已确认 ${finalReview?.attributes?.length ?? 0} 个普通属性`
-          : "普通属性未展示已确认结果，建议检查必填属性。",
+      status: attributeBlocked ? "blocked" : attributeDone ? "done" : "warning",
+      message: attributeMessage,
       actionLabel: "去确认属性",
     },
     {

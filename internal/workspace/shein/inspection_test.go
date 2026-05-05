@@ -49,3 +49,27 @@ func TestBuildAttributePayloadPrefersPendingAttributesFromResolution(t *testing.
 		t.Fatalf("pending attribute name = %q, want Width (cm)", payload.PendingAttributes[0].Name)
 	}
 }
+
+func TestBuildAttributePayloadDoesNotRecreatePendingAttributesAfterManualFallbackConfirmation(t *testing.T) {
+	pkg := &sheinpub.Package{
+		ProductAttributes: []common.Attribute{
+			{Name: "material", Value: "涤纶"},
+			{Name: "product_sku", Value: "MG8089002"},
+		},
+		AttributeResolution: &sheinpub.AttributeResolution{
+			Status:            "resolved",
+			Source:            "manual_fallback_review",
+			ResolvedCount:     2,
+			UnresolvedCount:   0,
+			PendingAttributes: []common.Attribute{},
+		},
+	}
+
+	payload := BuildAttributePayload(pkg)
+	if payload == nil {
+		t.Fatal("expected payload")
+	}
+	if len(payload.PendingAttributes) != 0 {
+		t.Fatalf("pending attributes = %#v, want empty after fallback confirmation", payload.PendingAttributes)
+	}
+}

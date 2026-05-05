@@ -197,8 +197,8 @@ export function SheinSaleAttributeReviewCard({
 
         {current.review_notes?.length ? (
           <div className="space-y-2">
-            {current.review_notes.map((note) => (
-              <p className="text-sm leading-6 text-zinc-700" key={note}>
+            {current.review_notes.map((note, index) => (
+              <p className="text-sm leading-6 text-zinc-700" key={`${index}-${note}`}>
                 {note}
               </p>
             ))}

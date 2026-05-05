@@ -7,15 +7,20 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/productenrich"
 )
 
 type MemTaskRepository struct {
-	mu    sync.RWMutex
-	tasks map[string]*listingkit.Task
+	mu               sync.RWMutex
+	tasks            map[string]*listingkit.Task
+	canonicalProduct map[string]*listingkit.CanonicalProductCacheEntry
 }
 
 func NewMemTaskRepository() listingkit.Repository {
-	return &MemTaskRepository{tasks: make(map[string]*listingkit.Task)}
+	return &MemTaskRepository{
+		tasks:            make(map[string]*listingkit.Task),
+		canonicalProduct: make(map[string]*listingkit.CanonicalProductCacheEntry),
+	}
 }
 
 func (r *MemTaskRepository) CreateTask(_ context.Context, task *listingkit.Task) error {
@@ -186,5 +191,35 @@ func (r *MemTaskRepository) SaveTaskResult(_ context.Context, taskID string, res
 	}
 	task.Result = result
 	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
+	if fingerprint == "" {
+		return nil, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.canonicalProduct == nil {
+		return nil, nil
+	}
+	entry := r.canonicalProduct[fingerprint]
+	if entry == nil {
+		return nil, nil
+	}
+	return entry.CanonicalProduct()
+}
+
+func (r *MemTaskRepository) SaveCanonicalProductCache(_ context.Context, fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) error {
+	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.canonicalProduct == nil {
+		r.canonicalProduct = make(map[string]*listingkit.CanonicalProductCacheEntry)
+	}
+	r.canonicalProduct[fingerprint] = entry
 	return nil
 }

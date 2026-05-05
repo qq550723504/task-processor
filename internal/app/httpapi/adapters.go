@@ -128,7 +128,7 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
-	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.CanonicalProductCacheEntry{}); err != nil {
 		return nil, nil, fmt.Errorf("listingkit auto-migrate failed: %w", err)
 	}
 

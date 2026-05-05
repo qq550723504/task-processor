@@ -15,10 +15,28 @@ type captureAttributeLLM struct {
 	responses []string
 	err       error
 	prompt    string
+	maxTokens int
+	maxTokensSet bool
 }
 
-func (s *captureAttributeLLM) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
-	return nil, s.err
+func (s *captureAttributeLLM) CreateChatCompletion(_ context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	prompt := ""
+	if req != nil && len(req.Messages) > 0 {
+		prompt = req.Messages[0].Content
+	}
+	if req != nil && req.MaxTokens != nil {
+		s.maxTokens = *req.MaxTokens
+		s.maxTokensSet = true
+	}
+	content, err := s.Generate(context.Background(), prompt)
+	if err != nil {
+		return nil, err
+	}
+	return &openaiclient.ChatCompletionResponse{
+		Choices: []openaiclient.ChatCompletionChoice{{
+			Message: openaiclient.ChatCompletionMessage{Role: "assistant", Content: content},
+		}},
+	}, nil
 }
 
 func (s *captureAttributeLLM) Generate(_ context.Context, prompt string) (string, error) {
@@ -45,8 +63,20 @@ type scriptedAttributeLLM struct {
 	prompts   []string
 }
 
-func (s *scriptedAttributeLLM) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
-	return nil, s.err
+func (s *scriptedAttributeLLM) CreateChatCompletion(_ context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	prompt := ""
+	if req != nil && len(req.Messages) > 0 {
+		prompt = req.Messages[0].Content
+	}
+	content, err := s.Generate(context.Background(), prompt)
+	if err != nil {
+		return nil, err
+	}
+	return &openaiclient.ChatCompletionResponse{
+		Choices: []openaiclient.ChatCompletionChoice{{
+			Message: openaiclient.ChatCompletionMessage{Role: "assistant", Content: content},
+		}},
+	}, nil
 }
 
 func (s *scriptedAttributeLLM) Generate(_ context.Context, prompt string) (string, error) {
@@ -74,6 +104,29 @@ func findResolvedAttributeForTest(attributes []ResolvedAttribute, attributeID in
 		}
 	}
 	return nil
+}
+
+func TestDisplayAttributeTemplateBatchDoesNotLimitOutputBudget(t *testing.T) {
+	llm := &captureAttributeLLM{responses: []string{`{"selections":[]}`}}
+
+	if _, err := generateDisplayAttributeTemplateBatch(context.Background(), llm, "prompt"); err != nil {
+		t.Fatalf("generate batch = %v", err)
+	}
+	if llm.maxTokensSet {
+		t.Fatalf("max tokens = %d, want unset for maximum provider output budget", llm.maxTokens)
+	}
+
+	promptText := buildDisplayAttributeTemplateBatchPrompt([]sheinattribute.AttributeInfo{{
+		AttributeID:       1000546,
+		AttributeNameEn:   "Product Model",
+		AttributeInputNum: 1,
+	}}, []common.Attribute{{Name: "variant_sku", Value: "MG17701061001"}})
+	if strings.Contains(promptText, "compact JSON") || strings.Contains(promptText, "reason short") {
+		t.Fatalf("prompt = %q, want no compact/short output instruction", promptText)
+	}
+	if !strings.Contains(promptText, "complete JSON") {
+		t.Fatalf("prompt = %q, want complete JSON instruction", promptText)
+	}
 }
 
 func TestAttributeResolverSkipsSaleScopeAttributes(t *testing.T) {
@@ -104,7 +157,6 @@ func TestAttributeResolverSkipsSaleScopeAttributes(t *testing.T) {
 	}, &scriptedAttributeLLM{
 		responses: []string{
 			`{"attribute_id":0,"reasons":["sale attribute should not map to display template"]}`,
-			`{"attribute_id":112,"reasons":["upper material matches template field"]}`,
 			`{"attribute_value_id":5930427,"reasons":["mesh fabric is the template value"]}`,
 		},
 	})
@@ -148,8 +200,7 @@ func TestAttributeResolverMapsTemplateValueID(t *testing.T) {
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":112,"reasons":["upper material matches template field"]}`,
-			`{"attribute_value_id":5930427,"reasons":["mesh fabric is the closest match"]}`,
+			`{"selections":[{"attribute_id":112,"attribute_value_id":5930427,"reasons":["mesh fabric is the closest match"]}]}`,
 		},
 	})
 
@@ -167,8 +218,55 @@ func TestAttributeResolverMapsTemplateValueID(t *testing.T) {
 	if got := resolution.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 5930427 {
 		t.Fatalf("attribute value id = %v, want 5930427", got)
 	}
-	if resolution.ResolvedAttributes[0].MatchedBy != "llm_attribute_value" {
-		t.Fatalf("matched by = %q, want llm_attribute_value", resolution.ResolvedAttributes[0].MatchedBy)
+	if resolution.ResolvedAttributes[0].MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("matched by = %q, want llm_attribute_template_batch", resolution.ResolvedAttributes[0].MatchedBy)
+	}
+}
+
+func TestAttributeResolverAcceptsBatchTextValueAlias(t *testing.T) {
+	resolver := NewAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1000546,
+						AttributeName:     "产品型号",
+						AttributeNameEn:   "Product Model",
+						AttributeType:     4,
+						AttributeInputNum: 1,
+					},
+				},
+			}},
+		},
+	}, &scriptedAttributeLLM{
+		responses: []string{
+			`{"selections":[{"attribute_id":1000546,"attribute_value_id":0,"text_value":"MG17701061001","reasons":["model comes from variant sku"]}]}`,
+		},
+	})
+
+	pkg := &Package{
+		CategoryID: 3105,
+		ProductAttributes: []common.Attribute{
+			{Name: "variant_sku", Value: "MG17701061001"},
+		},
+	}
+
+	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
+	}
+	if resolution.ResolvedCount != 1 {
+		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
+	}
+	got := findResolvedAttributeForTest(resolution.ResolvedAttributes, 1000546)
+	if got == nil {
+		t.Fatalf("resolved attributes = %#v, want Product Model", resolution.ResolvedAttributes)
+	}
+	if got.Value != "MG17701061001" || got.AttributeExtraValue != "MG17701061001" {
+		t.Fatalf("resolved text = value %q extra %q, want MG17701061001", got.Value, got.AttributeExtraValue)
+	}
+	if got.MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("matched by = %q, want llm_attribute_template_batch", got.MatchedBy)
 	}
 }
 
@@ -200,10 +298,7 @@ func TestAttributeResolverNormalizesMaterialValueSynonyms(t *testing.T) {
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":112,"reasons":["flyknit is an upper material source field"]}`,
-			`{"attribute_id":1000003,"reasons":["mesh is a lining material source field"]}`,
-			`{"attribute_value_id":5930427,"reasons":["flyknit best aligns with mesh fabric template value"]}`,
-			`{"attribute_value_id":6001001,"reasons":["mesh aligns with mesh fabric template value"]}`,
+			`{"selections":[{"attribute_id":112,"attribute_value_id":5930427,"reasons":["flyknit best aligns with mesh fabric template value"]},{"attribute_id":1000003,"attribute_value_id":6001001,"reasons":["mesh aligns with mesh fabric template value"]}]}`,
 		},
 	})
 
@@ -231,8 +326,8 @@ func TestAttributeResolverNormalizesMaterialValueSynonyms(t *testing.T) {
 	if upper.AttributeValueID == nil || *upper.AttributeValueID != 5930427 {
 		t.Fatalf("Upper Material value id = %v, want 5930427", upper.AttributeValueID)
 	}
-	if upper.MatchedBy != "llm_attribute_value" {
-		t.Fatalf("Upper Material matched by = %q, want llm_attribute_value", upper.MatchedBy)
+	if upper.MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("Upper Material matched by = %q, want llm_attribute_template_batch", upper.MatchedBy)
 	}
 
 	lining, ok := got["Lining Material"]
@@ -242,8 +337,8 @@ func TestAttributeResolverNormalizesMaterialValueSynonyms(t *testing.T) {
 	if lining.AttributeValueID == nil || *lining.AttributeValueID != 6001001 {
 		t.Fatalf("Lining Material value id = %v, want 6001001", lining.AttributeValueID)
 	}
-	if lining.MatchedBy != "llm_attribute_value" {
-		t.Fatalf("Lining Material matched by = %q, want llm_attribute_value", lining.MatchedBy)
+	if lining.MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("Lining Material matched by = %q, want llm_attribute_template_batch", lining.MatchedBy)
 	}
 }
 
@@ -274,7 +369,6 @@ func TestAttributeResolverMarksMissingRequiredDisplayAttributesAsPending(t *test
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":160,"reasons":["material matches template field"]}`,
 			`{"attribute_value_id":1001,"reasons":["棉 matches cotton"]}`,
 		},
 	})
@@ -369,7 +463,6 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 			},
 		}, &scriptedAttributeLLM{
 			responses: []string{
-				`{"attribute_id":160,"reasons":["material matches template field"]}`,
 				`{"attribute_value_id":11,"reasons":["棉 matches cotton"]}`,
 			},
 		})
@@ -411,7 +504,6 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 			},
 		}, &scriptedAttributeLLM{
 			responses: []string{
-				`{"attribute_id":160,"reasons":["material matches template field"]}`,
 				`{"attribute_value_id":13,"reasons":["麻 matches linen"]}`,
 			},
 		})
@@ -458,9 +550,7 @@ func TestAttributeResolverResolvesDependentAttributeAfterParentEvenWhenInputOrde
 	}, &scriptedAttributeLLM{
 		responses: []string{
 			`{"attribute_id":1000547,"reasons":["other material matches dependent field"]}`,
-			`{"attribute_id":160,"reasons":["material matches parent field"]}`,
-			`{"attribute_value_id":11,"reasons":["棉 matches cotton"]}`,
-			`{"attribute_value_id":22,"reasons":["麻 matches linen"]}`,
+			`{"selections":[{"attribute_id":160,"attribute_value_id":11,"reasons":["棉 matches cotton"]},{"attribute_id":1000547,"attribute_value_id":22,"reasons":["麻 matches linen"]}]}`,
 		},
 	})
 
@@ -544,8 +634,7 @@ func TestAttributeResolverMatchesPolyesterAliases(t *testing.T) {
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":160,"reasons":["材质 matches Material field"]}`,
-			`{"attribute_value_id":2001,"reasons":["涤纶 matches polyester"]}`,
+			`{"selections":[{"attribute_id":160,"attribute_value_id":2001,"reasons":["涤纶 matches polyester"]}]}`,
 		},
 	})
 
@@ -597,7 +686,7 @@ func TestAttributeResolverDoesNotMatchPolyesterAliasesWithoutLLM(t *testing.T) {
 	}
 }
 
-func TestAttributeResolverMatchesOccasionAliasFromScene(t *testing.T) {
+func TestAttributeResolverSkipsOptionalOccasionAliasFromSceneWithoutExactMatch(t *testing.T) {
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
 			Data: []sheinattribute.AttributeTemplate{{
@@ -613,12 +702,7 @@ func TestAttributeResolverMatchesOccasionAliasFromScene(t *testing.T) {
 				},
 			}},
 		},
-	}, &scriptedAttributeLLM{
-		responses: []string{
-			`{"attribute_id":3001,"reasons":["场景 maps to occasion field"]}`,
-			`{"attribute_value_id":901,"reasons":["室外 aligns with outdoor occasion"]}`,
-		},
-	})
+	}, &scriptedAttributeLLM{})
 
 	pkg := &Package{
 		CategoryID: 11814,
@@ -628,15 +712,12 @@ func TestAttributeResolverMatchesOccasionAliasFromScene(t *testing.T) {
 	}
 
 	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
-	if resolution.ResolvedCount != 1 {
-		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
-	}
-	if resolution.ResolvedAttributes[0].AttributeID != 3001 {
-		t.Fatalf("attribute id = %d, want 3001", resolution.ResolvedAttributes[0].AttributeID)
+	if resolution.ResolvedCount != 0 {
+		t.Fatalf("resolved count = %d, want 0 for optional alias-only field", resolution.ResolvedCount)
 	}
 }
 
-func TestAttributeResolverMatchesRoomAliasFromSpace(t *testing.T) {
+func TestAttributeResolverSkipsOptionalRoomAliasFromSpaceWithoutExactMatch(t *testing.T) {
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
 			Data: []sheinattribute.AttributeTemplate{{
@@ -660,12 +741,7 @@ func TestAttributeResolverMatchesRoomAliasFromSpace(t *testing.T) {
 				},
 			}},
 		},
-	}, &scriptedAttributeLLM{
-		responses: []string{
-			`{"attribute_id":3002,"reasons":["空间 maps to room field"]}`,
-			`{"attribute_value_id":902,"reasons":["空间 室外 aligns with Outdoor room"]}`,
-		},
-	})
+	}, &scriptedAttributeLLM{})
 
 	pkg := &Package{
 		CategoryID: 11814,
@@ -675,11 +751,8 @@ func TestAttributeResolverMatchesRoomAliasFromSpace(t *testing.T) {
 	}
 
 	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
-	if resolution.ResolvedCount != 1 {
-		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
-	}
-	if resolution.ResolvedAttributes[0].AttributeID != 3002 {
-		t.Fatalf("attribute id = %d, want 3002", resolution.ResolvedAttributes[0].AttributeID)
+	if resolution.ResolvedCount != 0 {
+		t.Fatalf("resolved count = %d, want 0 for optional alias-only field", resolution.ResolvedCount)
 	}
 }
 
@@ -709,7 +782,6 @@ func TestAttributeResolverSkipsOtherMaterialPendingWhenParentUsesStandardValue(t
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":160,"reasons":["材质 maps to Material field"]}`,
 			`{"attribute_value_id":2001,"reasons":["涤纶 matches polyester"]}`,
 		},
 	})
@@ -729,14 +801,8 @@ func TestAttributeResolverSkipsOtherMaterialPendingWhenParentUsesStandardValue(t
 	}
 }
 
-func TestAttributeResolverIncludesSegmentsAndContextInValueMappingPrompt(t *testing.T) {
-	llm := &captureAttributeLLM{
-		responses: []string{
-			`{"attribute_id":3001,"reasons":["场景 maps to occasion field"]}`,
-			`{"attribute_id":0,"reasons":["风格 is not the target field"]}`,
-			`{"attribute_value_id":901,"reasons":["室外 and 阳台 jointly indicate outdoor use"]}`,
-		},
-	}
+func TestAttributeResolverSkipsOptionalAliasPromptExpansion(t *testing.T) {
+	llm := &captureAttributeLLM{}
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
 			Data: []sheinattribute.AttributeTemplate{{
@@ -763,16 +829,11 @@ func TestAttributeResolverIncludesSegmentsAndContextInValueMappingPrompt(t *test
 	}
 
 	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
-	if resolution.ResolvedCount != 1 {
-		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
+	if resolution.ResolvedCount != 0 {
+		t.Fatalf("resolved count = %d, want 0 for optional alias-only field", resolution.ResolvedCount)
 	}
-	if resolution.ResolvedAttributes[0].AttributeValueID == nil || *resolution.ResolvedAttributes[0].AttributeValueID != 901 {
-		t.Fatalf("attribute value id = %v, want 901", resolution.ResolvedAttributes[0].AttributeValueID)
-	}
-	for _, expected := range []string{"Source value segments:", "\"室外\"", "\"阳台\"", "Additional source context:", "风格=\"北欧\""} {
-		if !strings.Contains(llm.prompt, expected) {
-			t.Fatalf("prompt = %q, want substring %q", llm.prompt, expected)
-		}
+	if strings.TrimSpace(llm.prompt) != "" {
+		t.Fatalf("prompt = %q, want empty because optional alias-only field should not call LLM", llm.prompt)
 	}
 }
 
@@ -795,10 +856,7 @@ func TestAttributeResolverInfersMissingRequiredDisplayAttributeFromContext(t *te
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":0,"reasons":["产品类别 is not a display template field"]}`,
-			`{"attribute_id":0,"reasons":["材质 alone does not identify the target field here"]}`,
-			`{"attribute_id":0,"reasons":["空间 alone does not identify the target field here"]}`,
-			`{"attribute_value_id":701,"reasons":["textile cushion signals support non-hazardous classification"]}`,
+			`{"selections":[{"attribute_id":3002,"attribute_value_id":701,"reasons":["textile cushion signals support non-hazardous classification"]}]}`,
 		},
 	})
 
@@ -818,8 +876,8 @@ func TestAttributeResolverInfersMissingRequiredDisplayAttributeFromContext(t *te
 	if len(resolution.PendingAttributes) != 0 {
 		t.Fatalf("pending attributes = %#v, want none", resolution.PendingAttributes)
 	}
-	if resolution.ResolvedAttributes[0].MatchedBy != "llm_attribute_inference" {
-		t.Fatalf("matched by = %q, want llm_attribute_inference", resolution.ResolvedAttributes[0].MatchedBy)
+	if resolution.ResolvedAttributes[0].MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("matched by = %q, want llm_attribute_template_batch", resolution.ResolvedAttributes[0].MatchedBy)
 	}
 	if got := resolution.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 701 {
 		t.Fatalf("attribute value id = %v, want 701", got)
@@ -851,8 +909,6 @@ func TestMissingDisplayAttributeValuePromptAllowsNeutralRequiredInference(t *tes
 	for _, expected := range []string{
 		"product semantics",
 		"required=true",
-		"Prefer broad or neutral candidates",
-		"For season attributes, choose a broad all-season or multi-season candidate",
 		`product_english_name="Washed denim hat"`,
 		`production_process="烫画"`,
 		`applicable_scenarios="户外,运动,棒球"`,
@@ -864,7 +920,7 @@ func TestMissingDisplayAttributeValuePromptAllowsNeutralRequiredInference(t *tes
 	}
 }
 
-func TestAttributeResolverBatchInfersRemainingRequiredAttributes(t *testing.T) {
+func TestAttributeResolverTemplateBatchInfersRemainingAttributes(t *testing.T) {
 	attributes := []sheinattribute.AttributeInfo{
 		{
 			AttributeID:     1001519,
@@ -898,15 +954,15 @@ func TestAttributeResolverBatchInfersRemainingRequiredAttributes(t *testing.T) {
 	}
 	resolvedByID := map[int]ResolvedAttribute{}
 
-	resolved, notes := inferMissingRequiredDisplayAttributesBatch(attributes, inputs, resolvedByID, llm)
+	resolved, notes := inferDisplayAttributesTemplateBatch(attributes, inputs, resolvedByID, llm)
 	if len(resolved) != 2 {
 		t.Fatalf("resolved = %+v, notes=%+v, want 2", resolved, notes)
 	}
-	if got := findResolvedAttributeForTest(resolved, 1001519); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 8790846 || got.MatchedBy != "llm_attribute_batch_inference" {
-		t.Fatalf("element resolution = %+v, want batch Printing", got)
+	if got := findResolvedAttributeForTest(resolved, 1001519); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 8790846 || got.MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("element resolution = %+v, want template batch Printing", got)
 	}
-	if got := findResolvedAttributeForTest(resolved, 77); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 1601 || got.MatchedBy != "llm_attribute_batch_inference" {
-		t.Fatalf("season resolution = %+v, want batch All", got)
+	if got := findResolvedAttributeForTest(resolved, 77); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 1601 || got.MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("season resolution = %+v, want template batch All", got)
 	}
 	if !strings.Contains(llm.prompts[0], `production_process="烫画"`) {
 		t.Fatalf("prompt = %q, want production process context", llm.prompts[0])
@@ -965,58 +1021,6 @@ func TestAttributeResolverRepairsRemainingRequiredAttributes(t *testing.T) {
 	}
 }
 
-func TestAttributeResolverUsesTemplateCandidateSemanticsForSafeRequiredValues(t *testing.T) {
-	attributes := []sheinattribute.AttributeInfo{
-		{
-			AttributeID:     1001519,
-			AttributeNameEn: "Element",
-			AttributeStatus: 3,
-			AttributeValueInfoList: []sheinattribute.AttributeValue{
-				{AttributeValueID: 8790846, AttributeValue: "印花", AttributeValueEn: "Printing"},
-				{AttributeValueID: 900, AttributeValue: "刺绣", AttributeValueEn: "Embroidery"},
-			},
-		},
-		{
-			AttributeID:     101,
-			AttributeNameEn: "Style",
-			AttributeStatus: 3,
-			AttributeValueInfoList: []sheinattribute.AttributeValue{
-				{AttributeValueID: 167, AttributeValue: "Casual休闲", AttributeValueEn: "Casual"},
-				{AttributeValueID: 2491, AttributeValue: "派对", AttributeValueEn: "Party"},
-			},
-		},
-		{
-			AttributeID:     77,
-			AttributeNameEn: "Season",
-			AttributeStatus: 3,
-			AttributeValueInfoList: []sheinattribute.AttributeValue{
-				{AttributeValueID: 654, AttributeValue: "夏", AttributeValueEn: "Summer"},
-				{AttributeValueID: 1601, AttributeValue: "ALL/全球/所有", AttributeValueEn: "All"},
-			},
-		},
-	}
-	inputs := []common.Attribute{
-		{Name: "product_english_name", Value: "Washed denim hat"},
-		{Name: "production_process", Value: "烫画"},
-		{Name: "design_area", Value: "区域印制"},
-	}
-	resolvedByID := map[int]ResolvedAttribute{}
-
-	resolved, notes := inferMissingRequiredDisplayAttributesFromCandidateSemantics(attributes, inputs, resolvedByID)
-	if len(resolved) != 3 {
-		t.Fatalf("resolved = %+v, notes=%+v, want 3", resolved, notes)
-	}
-	if got := findResolvedAttributeForTest(resolved, 1001519); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 8790846 {
-		t.Fatalf("element resolution = %+v, want Printing", got)
-	}
-	if got := findResolvedAttributeForTest(resolved, 101); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 167 {
-		t.Fatalf("style resolution = %+v, want Casual", got)
-	}
-	if got := findResolvedAttributeForTest(resolved, 77); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 1601 {
-		t.Fatalf("season resolution = %+v, want All", got)
-	}
-}
-
 func TestAttributeResolverInfersImportantTextAttributeFromContext(t *testing.T) {
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
@@ -1033,8 +1037,7 @@ func TestAttributeResolverInfersImportantTextAttributeFromContext(t *testing.T) 
 		},
 	}, &scriptedAttributeLLM{
 		responses: []string{
-			`{"attribute_id":0,"reasons":["source sku is not an exact field match"]}`,
-			`{"value":"MG17701062","reasons":["source sku is an explicit product identifier"]}`,
+			`{"selections":[{"attribute_id":1000546,"attribute_extra_value":"MG17701062","reasons":["source sku is an explicit product identifier"]}]}`,
 		},
 	})
 
@@ -1053,8 +1056,8 @@ func TestAttributeResolverInfersImportantTextAttributeFromContext(t *testing.T) 
 	if got.AttributeID != 1000546 || got.AttributeExtraValue != "MG17701062" {
 		t.Fatalf("resolved attribute = %+v, want product model text value", got)
 	}
-	if got.MatchedBy != "llm_attribute_text_inference" {
-		t.Fatalf("matched by = %q, want llm_attribute_text_inference", got.MatchedBy)
+	if got.MatchedBy != "llm_attribute_template_batch" {
+		t.Fatalf("matched by = %q, want llm_attribute_template_batch", got.MatchedBy)
 	}
 }
 
