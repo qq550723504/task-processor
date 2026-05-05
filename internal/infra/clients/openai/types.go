@@ -33,6 +33,8 @@ type ChatCompletionRequest struct {
 	MaxTokens   *int                    `json:"max_tokens,omitempty"`
 	Model       string                  `json:"model"`
 	Messages    []ChatCompletionMessage `json:"messages"`
+	Timeout     *time.Duration          `json:"-"`
+	MaxRetries  *int                    `json:"-"`
 }
 
 // ChatCompletionChoice 聊天完成选择

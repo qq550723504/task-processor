@@ -6,8 +6,10 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/productenrich"
 )
 
 type taskRepository struct {
@@ -134,6 +136,37 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 
 func (r *taskRepository) SaveTaskResult(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{"result": result})
+}
+
+func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
+	if fingerprint == "" {
+		return nil, nil
+	}
+	var entry listingkit.CanonicalProductCacheEntry
+	if err := r.db.WithContext(ctx).Where("fingerprint = ?", fingerprint).First(&entry).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return entry.CanonicalProduct()
+}
+
+func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) error {
+	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
+	if err != nil {
+		return err
+	}
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "fingerprint"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"product":        entry.Product,
+				"source_task_id": sourceTaskID,
+				"updated_at":     gorm.Expr("NOW()"),
+			}),
+		}).
+		Create(entry).Error
 }
 
 func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, updates map[string]any) error {

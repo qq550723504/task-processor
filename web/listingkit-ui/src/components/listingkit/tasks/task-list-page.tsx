@@ -137,7 +137,7 @@ export function TaskListPage() {
         <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
-              ListingKit Tasks
+              任务总览
             </p>
             <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-zinc-950">
               任务列表
@@ -210,6 +210,12 @@ export function TaskListPage() {
           <EmptyState
             title="任务列表加载失败"
             description="后端列表接口暂时不可用，可以刷新重试。"
+            action={
+              <Button tone="secondary" onClick={() => tasks.refetch()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                刷新
+              </Button>
+            }
           />
         ) : items.length === 0 ? (
           <EmptyState
@@ -288,9 +294,19 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
-              {formatDate(task.created_at)}
+              创建于 {formatDate(task.created_at)}
             </div>
-            <div className="mt-1 text-xs text-zinc-500">{task.image_count ?? 0} images</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              最近更新 {formatDate(task.updated_at ?? task.created_at)}
+            </div>
+            {task.completed_at ? (
+              <div className="mt-1 text-xs text-zinc-500">
+                完成时间 {formatDate(task.completed_at)}
+              </div>
+            ) : null}
+            <div className="mt-1 text-xs text-zinc-500">
+              {task.image_count ?? 0} 张图片
+            </div>
           </div>
           <Link href={`/listing-kits/${task.task_id}/status`} className={secondaryLinkClass}>
             状态

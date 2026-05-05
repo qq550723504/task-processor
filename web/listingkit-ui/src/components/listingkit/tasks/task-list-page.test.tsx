@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskListPage } from "@/components/listingkit/tasks/task-list-page";
 
@@ -119,5 +119,53 @@ describe("TaskListPage", () => {
 
     expect(screen.getByText("任务 ID")).toBeInTheDocument();
     expect(screen.getByText("10856aa8-7e11-4257-ac11-dd095ed1593d")).toBeInTheDocument();
+  });
+
+  it("shows diagnostic timestamps and refresh guidance when the task list fails", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByText("任务列表加载失败")).toBeInTheDocument();
+    expect(
+      screen.getByText("后端列表接口暂时不可用，可以刷新重试。"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "刷新" })[1]);
+    expect(mocks.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows latest update time and completion context in the row card", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            task_id: "task-3",
+            status: "completed",
+            platforms: ["shein"],
+            title: "诊断商品",
+            created_at: "2026-04-27T10:00:00Z",
+            updated_at: "2026-04-27T10:30:00Z",
+            completed_at: "2026-04-27T11:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByText(/最近更新\s/)).toBeInTheDocument();
+    expect(screen.getByText(/完成时间\s/)).toBeInTheDocument();
   });
 });

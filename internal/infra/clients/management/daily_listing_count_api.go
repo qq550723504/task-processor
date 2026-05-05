@@ -9,10 +9,16 @@ import (
 // DailyListingCountAPIClient 每日上架数量API客户端实现
 type DailyListingCountAPIClient struct {
 	*ManagementAPIClient
+	localDataProvider *LocalDataProvider
 }
 
 // GetDailyListingCount 获取每日上架数量
 func (c *DailyListingCountAPIClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*api.DailyListingCountRespDTO, error) {
+	if c.localDataProvider != nil {
+		if resp, err := c.localDataProvider.GetDailyListingCount(tenantID, storeID, userID, date); err != nil || resp != nil {
+			return resp, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/store/get-daily-listing-count", c.baseURL)
 
 	params := map[string]any{
@@ -50,6 +56,9 @@ func (c *DailyListingCountAPIClient) GetDailyListingCount(tenantID, storeID, use
 
 // SetDailyListingCount 设置每日上架数量
 func (c *DailyListingCountAPIClient) SetDailyListingCount(req *api.DailyListingCountSetReqDTO) error {
+	if c.localDataProvider != nil {
+		return c.localDataProvider.SetDailyListingCount(req)
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/store/set-daily-listing-count", c.baseURL)
 
 	var result APIResponse
@@ -63,6 +72,9 @@ func (c *DailyListingCountAPIClient) SetDailyListingCount(req *api.DailyListingC
 
 // TryConsumeDailyQuota 原子预占每日上架额度
 func (c *DailyListingCountAPIClient) TryConsumeDailyQuota(req *api.TryConsumeDailyQuotaReqDTO) (*api.TryConsumeDailyQuotaRespDTO, error) {
+	if c.localDataProvider != nil {
+		return c.localDataProvider.TryConsumeDailyQuota(req)
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/store/try-consume-daily-quota", c.baseURL)
 
 	result, err := getTypedResult[api.TryConsumeDailyQuotaRespDTO](c.ManagementAPIClient, http.MethodPut, url, req)
@@ -75,6 +87,9 @@ func (c *DailyListingCountAPIClient) TryConsumeDailyQuota(req *api.TryConsumeDai
 
 // RollbackDailyQuota 回滚每日上架额度预占
 func (c *DailyListingCountAPIClient) RollbackDailyQuota(req *api.RollbackDailyQuotaReqDTO) (int64, error) {
+	if c.localDataProvider != nil {
+		return c.localDataProvider.RollbackDailyQuota(req)
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/store/rollback-daily-quota", c.baseURL)
 
 	result, err := getTypedResult[int64](c.ManagementAPIClient, http.MethodPut, url, req)
@@ -87,6 +102,9 @@ func (c *DailyListingCountAPIClient) RollbackDailyQuota(req *api.RollbackDailyQu
 
 // SetRemainingListingQuota 设置剩余发品额度
 func (c *DailyListingCountAPIClient) SetRemainingListingQuota(tenantID, storeID int64, quota int) (bool, error) {
+	if c.localDataProvider != nil {
+		return c.localDataProvider.SetRemainingListingQuota(tenantID, storeID, quota)
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/store/set-remaining-listing-quota?tenantId=%d&storeId=%d&quota=%d",
 		c.baseURL, tenantID, storeID, quota)
 

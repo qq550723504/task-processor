@@ -22,6 +22,44 @@ func TestBuildDerivedAttributeInputsIncludesProductContextWithoutSKU(t *testing.
 	}
 }
 
+func TestBuildDerivedAttributeInputsIncludesRichSDSContext(t *testing.T) {
+	inputs := buildDerivedAttributeInputs(&Package{
+		ProductAttributes: []common.Attribute{
+			{Name: "material_description", Value: "优选复合板材质"},
+			{Name: "production_process", Value: "UV打印"},
+			{Name: "product_performance", Value: "静音无声，轻奢质地"},
+			{Name: "applicable_scenarios", Value: "办公室、卧室、客厅"},
+			{Name: "product_size", Value: "25*25cm"},
+			{Name: "packaging_specification", Value: "30*30*5cm，0.45kg"},
+			{Name: "variant_sku", Value: "MG17701061001"},
+			{Name: "variant_size", Value: "25cm/9.8inch"},
+			{Name: "variant_color", Value: "White"},
+		},
+	})
+	got := map[string]string{}
+	for _, input := range inputs {
+		got[input.Name] = input.Value
+	}
+	if got["Material"] != "优选复合板材质" {
+		t.Fatalf("Material = %q, want material_description fallback", got["Material"])
+	}
+	if got["Production Process"] != "UV打印" {
+		t.Fatalf("Production Process = %q", got["Production Process"])
+	}
+	if got["Product Performance"] == "" || got["Applicable Scenarios"] == "" {
+		t.Fatalf("derived SDS context = %#v", got)
+	}
+	if got["Product Size"] != "25*25cm" || got["Packaging Specification"] == "" {
+		t.Fatalf("size/packaging context = %#v", got)
+	}
+	if got["Product Model"] != "MG17701061001" {
+		t.Fatalf("Product Model = %q, want variant sku fallback", got["Product Model"])
+	}
+	if got["Variant Size"] != "25cm/9.8inch" || got["Variant Color"] != "White" {
+		t.Fatalf("variant context = %#v", got)
+	}
+}
+
 func TestImportantTemplateAttributesBecomePendingCandidates(t *testing.T) {
 	doc := "Important marketplace attribute"
 	attributes := []sheinattribute.AttributeInfo{

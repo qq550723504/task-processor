@@ -8,6 +8,19 @@ import type {
   SheinResolvedAttribute,
 } from "@/lib/types/listingkit";
 
+function presentAttributeReviewStatus(status?: string) {
+  switch (status) {
+    case "resolved":
+      return "已完成";
+    case "partial":
+      return "待补齐";
+    case "blocked":
+      return "有阻断";
+    default:
+      return status;
+  }
+}
+
 function AttributeRow({
   name,
   value,
@@ -38,10 +51,12 @@ export function SheinAttributeReviewCard({
   editorContext,
   isApplying,
   onConfirmAttributes,
+  onConfirmFallbackAttributes,
 }: {
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
+  onConfirmFallbackAttributes?: () => void;
 }) {
   const current = editorContext?.attributes?.current;
 
@@ -69,6 +84,7 @@ export function SheinAttributeReviewCard({
       isApplying={isApplying}
       key={pendingCandidatesSignature([...pendingCandidates, ...recommendedCandidates])}
       onConfirmAttributes={onConfirmAttributes}
+      onConfirmFallbackAttributes={onConfirmFallbackAttributes}
       pendingCandidates={pendingCandidates}
       recommendedCandidates={recommendedCandidates}
       resolvedAttributes={resolvedAttributes}
@@ -80,6 +96,7 @@ function SheinAttributeReviewContent({
   current,
   isApplying,
   onConfirmAttributes,
+  onConfirmFallbackAttributes,
   pendingCandidates,
   recommendedCandidates,
   resolvedAttributes,
@@ -87,6 +104,7 @@ function SheinAttributeReviewContent({
   current: NonNullable<NonNullable<SheinEditorContext["attributes"]>["current"]>;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
+  onConfirmFallbackAttributes?: () => void;
   pendingCandidates: SheinPendingAttributeCandidate[];
   recommendedCandidates: SheinPendingAttributeCandidate[];
   resolvedAttributes: SheinResolvedAttribute[];
@@ -109,11 +127,15 @@ function SheinAttributeReviewContent({
     ...importantCandidates,
     ...optionalCandidates,
   ];
+  const fallbackPendingAttributes =
+    selectableCandidates.length === 0 ? current.pending_attributes ?? [] : [];
   const selectedAttributes = buildSelectedAttributes(
     selectableCandidates,
     selectedValues,
   );
   const canConfirm = selectedAttributes.length > 0 && Boolean(onConfirmAttributes);
+  const canConfirmFallback =
+    fallbackPendingAttributes.length > 0 && Boolean(onConfirmFallbackAttributes);
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
@@ -128,7 +150,9 @@ function SheinAttributeReviewContent({
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
-          {current.status ? <span>状态 {current.status}</span> : null}
+          {current.status ? (
+            <span>状态 {presentAttributeReviewStatus(current.status)}</span>
+          ) : null}
           {typeof current.resolved_count === "number" ? (
             <span>已确认 {current.resolved_count}</span>
           ) : null}
@@ -280,10 +304,43 @@ function SheinAttributeReviewContent({
           </div>
         ) : null}
 
+        {fallbackPendingAttributes.length > 0 ? (
+          <div
+            className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3"
+            id="shein-attribute-required-group"
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                当前没有可选的 SHEIN 模板候选值
+              </p>
+              <p className="mt-1 text-sm leading-6 text-amber-900">
+                当前只能看到 SDS 来源属性，无法选择真实 SHEIN attribute_id。内部测试可先按当前 SDS 属性确认，正式发布前仍建议重新获取模板后复核。
+              </p>
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {fallbackPendingAttributes.map((attribute) => (
+                <AttributeRow
+                  key={`${attribute.name ?? ""}-${attribute.value ?? ""}`}
+                  name={attribute.name}
+                  value={attribute.value}
+                />
+              ))}
+            </div>
+            <Button
+              className="h-9"
+              disabled={!canConfirmFallback || isApplying}
+              onClick={() => onConfirmFallbackAttributes?.()}
+              tone="secondary"
+            >
+              {isApplying ? "保存中..." : "按当前 SDS 属性确认"}
+            </Button>
+          </div>
+        ) : null}
+
         {current.review_notes?.length ? (
           <div className="space-y-2">
-            {current.review_notes.map((note) => (
-              <p className="text-sm leading-6 text-zinc-700" key={note}>
+            {current.review_notes.map((note, index) => (
+              <p className="text-sm leading-6 text-zinc-700" key={`${index}-${note}`}>
                 {note}
               </p>
             ))}

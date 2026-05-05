@@ -97,6 +97,39 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeDisabled();
   });
 
+  it("shows manual fallback attribute confirmation as done when final attributes are empty", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          editor_context: {
+            attributes: {
+              current: {
+                status: "resolved",
+                source: "manual_fallback_review",
+                resolved_count: 18,
+              },
+            },
+          },
+          final_review: {
+            confirmed: false,
+            category_id: 123,
+            sale_attributes: [{ name: "Color", value: "Black" }],
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("已按当前 SDS 属性确认 18 个普通属性")).toBeInTheDocument();
+    expect(
+      screen.queryByText("普通属性未展示已确认结果，建议检查必填属性。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("enables save draft and publish after confirmed ready review", () => {
     render(
       <SheinFinalReviewPanel
@@ -181,5 +214,34 @@ describe("SheinFinalReviewPanel", () => {
 
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeDisabled();
     expect(screen.getByText("还差 1 个阻断项，修复后才能提交。")).toBeInTheDocument();
+  });
+
+  it("renders structured submit failure guidance in final review mode", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: {
+            ready: false,
+            blocking_items: [
+              { key: "images", label: "最终图片", message: "缺少色块来源图" },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+        submitErrorMessage="SHEIN image upload unavailable: token missing"
+      />,
+    );
+
+    expect(screen.getByText("提交失败")).toBeInTheDocument();
+    expect(screen.getByText("发生了什么")).toBeInTheDocument();
+    expect(screen.getByText("可能影响")).toBeInTheDocument();
+    expect(screen.getByText("下一步怎么做")).toBeInTheDocument();
+    expect(
+      screen.getByText("本次不会把资料提交到 SHEIN，请先处理阻断项或上传问题后再重试。"),
+    ).toBeInTheDocument();
   });
 });

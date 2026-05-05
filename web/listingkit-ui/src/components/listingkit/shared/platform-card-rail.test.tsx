@@ -40,8 +40,8 @@ describe("PlatformCardRail", () => {
     );
 
     expect(screen.getAllByText("Review detail previews")).toHaveLength(2);
-    expect(screen.getByText("Use fallback review")).toBeInTheDocument();
-    expect(screen.getByText("Medium severity / act now")).toBeInTheDocument();
+    expect(screen.getByText("使用兜底结果继续检查")).toBeInTheDocument();
+    expect(screen.getByText("中优先级 / 立即处理")).toBeInTheDocument();
   });
 
   it("exposes separate review and recovery actions", async () => {
@@ -88,7 +88,7 @@ describe("PlatformCardRail", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelectRecovery).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Review fallback" }));
+    await user.click(screen.getByRole("button", { name: "检查恢复项" }));
     expect(onSelectRecovery).toHaveBeenCalledWith(
       expect.objectContaining({
         recovery_hint: "review_fallback",
@@ -142,10 +142,10 @@ describe("PlatformCardRail", () => {
       />,
     );
 
-    expect(screen.getByText("Retry generation")).toBeInTheDocument();
-    expect(screen.getByText("High severity / act now")).toBeInTheDocument();
+    expect(screen.getByText("重新生成当前内容")).toBeInTheDocument();
+    expect(screen.getByText("高优先级 / 立即处理")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Retry now" }));
+    await user.click(screen.getByRole("button", { name: "立即重试" }));
 
     expect(onSelectRecovery).toHaveBeenCalledWith(
       expect.objectContaining({

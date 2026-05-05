@@ -17,21 +17,25 @@ func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
 			Text:      "botanical cushion print",
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
-					VariantID:           212097,
-					ParentProductID:     212096,
-					ProductName:         "Custom Pillow Cover",
-					ProductSKU:          "NS212096",
-					CategoryPath:        []string{"Home", "Decor", "Cushions"},
-					Material:            "Polyester",
-					MaterialDescription: "Soft polyester fabric",
-					ProductionProcess:   "Heat transfer",
-					ProductPerformance:  "Comfortable printed pillow cover for home decor.",
-					VariantSKU:          "NS212096001",
-					VariantSize:         "10x10inch",
-					VariantColor:        "White",
-					VariantPrice:        12.8,
-					VariantWeight:       180,
-					ProductionCycle:     48,
+					VariantID:              212097,
+					ParentProductID:        212096,
+					ProductName:            "Custom Pillow Cover",
+					ProductSKU:             "NS212096",
+					CategoryPath:           []string{"Home", "Decor", "Cushions"},
+					Material:               "Polyester",
+					MaterialDescription:    "Soft polyester fabric",
+					ProductionProcess:      "Heat transfer",
+					ProductPerformance:     "Comfortable printed pillow cover for home decor.",
+					ProductSize:            "10x10inch",
+					PackagingSpecification: "1 piece per poly bag, 22x16x3cm, 0.2kg",
+					SpecialDescription:     "Invisible zipper closure.",
+					ApplicableScenarios:    "Living room, bedroom",
+					VariantSKU:             "NS212096001",
+					VariantSize:            "10x10inch",
+					VariantColor:           "White",
+					VariantPrice:           12.8,
+					VariantWeight:          180,
+					ProductionCycle:        48,
 				},
 			},
 		},
@@ -50,8 +54,23 @@ func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
 	if canonical.Attributes["material"].Value != "Polyester" {
 		t.Fatalf("material attribute = %+v", canonical.Attributes["material"])
 	}
+	if canonical.Attributes["material_description"].Value != "Soft polyester fabric" {
+		t.Fatalf("material_description attribute = %+v", canonical.Attributes["material_description"])
+	}
+	if canonical.Attributes["product_size"].Value != "10x10inch" {
+		t.Fatalf("product_size attribute = %+v", canonical.Attributes["product_size"])
+	}
+	if canonical.Attributes["packaging_specification"].Value == "" {
+		t.Fatalf("packaging_specification attribute = %+v", canonical.Attributes["packaging_specification"])
+	}
 	if canonical.Specifications == nil || canonical.Specifications.Weight == nil || canonical.Specifications.Weight.Value != 180 {
 		t.Fatalf("specifications = %+v", canonical.Specifications)
+	}
+	if canonical.Specifications.Technical["product_size"] != "10x10inch" {
+		t.Fatalf("product_size technical spec = %+v", canonical.Specifications.Technical)
+	}
+	if canonical.Specifications.Technical["packaging_specification"] == "" {
+		t.Fatalf("packaging_specification technical spec = %+v", canonical.Specifications.Technical)
 	}
 	if len(canonical.Variants) != 1 {
 		t.Fatalf("variants = %d", len(canonical.Variants))
@@ -170,6 +189,48 @@ func TestBuildSDSVariantSyncSummariesCapturesMissingFinishedProductObservation(t
 	}
 	if !strings.Contains(summary.Error, "did not create finished product records") {
 		t.Fatalf("error = %q", summary.Error)
+	}
+}
+
+func TestBuildSDSVariantSyncSummariesDoesNotReusePrimaryFinishedProductObservation(t *testing.T) {
+	options := &SDSSyncOptions{VariantID: 101}
+	summaries := buildSDSVariantSyncSummaries(options, []SDSSyncVariantOption{
+		{VariantID: 101, VariantSKU: "SKU-RED", Color: "red"},
+		{VariantID: 102, VariantSKU: "SKU-GREEN", Color: "green"},
+	}, &sdsdesign.PrepareSyncDesignResult{
+		Page: &sdsdesign.DesignProductPage{
+			Product: sdsdesign.DesignProduct{ID: 101},
+		},
+		Request: &sdsdesign.SyncDesignRequest{
+			Prototypes: []sdsdesign.SyncDesignPrototype{
+				{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-red"}}},
+			},
+		},
+		RenderedImageURLs: []string{"https://cdn.sdspod.com/out/red.jpg"},
+		RenderedImageURLsByProduct: map[int64][]string{
+			101: []string{"https://cdn.sdspod.com/out/red.jpg"},
+		},
+		RenderedImageObservations: map[int64]sdsdesign.RenderedImageObservation{
+			101: {
+				ProductID:   101,
+				Found:       true,
+				BuildFinish: true,
+				ItemID:      "item-red",
+				ImageCount:  1,
+			},
+		},
+	})
+	if len(summaries) != 2 {
+		t.Fatalf("summaries = %d, want 2", len(summaries))
+	}
+	if summaries[0].Diagnostics == nil || summaries[0].Diagnostics.FinishedProduct == nil {
+		t.Fatalf("primary diagnostics = %+v, want finished product observation", summaries[0].Diagnostics)
+	}
+	if summaries[1].Diagnostics != nil && summaries[1].Diagnostics.FinishedProduct != nil {
+		t.Fatalf("related diagnostics reused primary finished product: %+v", summaries[1].Diagnostics.FinishedProduct)
+	}
+	if !strings.Contains(summaries[1].Error, "did not create finished product records") {
+		t.Fatalf("related error = %q", summaries[1].Error)
 	}
 }
 
@@ -372,6 +433,97 @@ func TestApplySDSTemplateImagesToSheinUsesColorSpecificRenderedMockups(t *testin
 	}
 	if pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList[0].ImageURL != whiteImages[0] {
 		t.Fatalf("preview white skc image = %+v", pkg.PreviewProduct.SKCList[1].ImageInfo)
+	}
+}
+
+func TestApplySDSTemplateImagesToSheinUsesVariantFallbackWhenSomeRenderedMockupsMissing(t *testing.T) {
+	sourceImage := "http://127.0.0.1:9100/listingkit-assets/source.png"
+	redRendered := []string{"https://cdn.sdspod.com/out/red-main.jpg", "https://cdn.sdspod.com/out/red-2.jpg"}
+	greenOfficial := []string{"https://cdn.sds.example.com/green-main.jpg", "https://cdn.sds.example.com/green-2.jpg"}
+	pkg := &sheinpub.Package{
+		Images: sheinImageSet(sourceImage),
+		SkcList: []sheinpub.SKCPackage{
+			{
+				SkcName:    "red",
+				SaleName:   "red",
+				Attributes: map[string]string{"Color": "red"},
+				SKUs:       []common.Variant{{SKU: "MG8089002001"}},
+			},
+			{
+				SkcName:    "green",
+				SaleName:   "green",
+				Attributes: map[string]string{"Color": "green"},
+				SKUs:       []common.Variant{{SKU: "MG8089002002"}},
+			},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(sheinImageSet(sourceImage)),
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					SkcName:      "red",
+					SaleName:     "red",
+					SupplierCode: "MG8089002001-STYLE",
+					SaleAttribute: &sheinpub.ResolvedSaleAttribute{
+						Name:  "Color",
+						Value: "red",
+					},
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "MG8089002001-One size",
+						Attributes:  map[string]string{"Color": "red", "source_sds_sku": "MG8089002001"},
+					}},
+				},
+				{
+					SkcName:      "green",
+					SaleName:     "green",
+					SupplierCode: "MG8089002002-STYLE",
+					SaleAttribute: &sheinpub.ResolvedSaleAttribute{
+						Name:  "Color",
+						Value: "green",
+					},
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "MG8089002002-One size",
+						Attributes:  map[string]string{"Color": "green", "source_sds_sku": "MG8089002002"},
+					}},
+				},
+			},
+		},
+	}
+
+	applySDSTemplateImagesToShein(pkg, &SDSSyncSummary{
+		Status:       "failed",
+		VariantColor: "red",
+		Error:        "SDS render failed for selected color variants: green",
+		VariantResults: []SDSSyncSummary{
+			{VariantSKU: "MG8089002001", VariantColor: "red", Status: "completed", MockupImageURLs: redRendered},
+			{VariantSKU: "MG8089002002", VariantColor: "green", Status: "render_unavailable", Error: "SDS did not return current fused mockup images"},
+		},
+	}, []string{sourceImage}, &SDSSyncOptions{
+		Variants: []SDSSyncVariantOption{
+			{VariantSKU: "MG8089002001", Color: "red", MockupImageURLs: []string{"https://cdn.sds.example.com/red-official.jpg"}},
+			{VariantSKU: "MG8089002002", Color: "green", MockupImageURLs: greenOfficial},
+		},
+	})
+
+	if pkg.Images.MainImage != redRendered[0] {
+		t.Fatalf("spu main image = %q, want rendered red", pkg.Images.MainImage)
+	}
+	if pkg.RequestDraft.SKCList[0].ImageInfo.MainImage != redRendered[0] {
+		t.Fatalf("red skc image = %+v", pkg.RequestDraft.SKCList[0].ImageInfo)
+	}
+	if pkg.RequestDraft.SKCList[1].ImageInfo.MainImage != greenOfficial[0] {
+		t.Fatalf("green skc image = %+v", pkg.RequestDraft.SKCList[1].ImageInfo)
+	}
+	if pkg.RequestDraft.SKCList[1].SKUList[0].MainImage != greenOfficial[0] {
+		t.Fatalf("green sku main image = %q", pkg.RequestDraft.SKCList[1].SKUList[0].MainImage)
+	}
+	if pkg.SkcList[1].MainImageURL != greenOfficial[0] {
+		t.Fatalf("green skc package main image = %q", pkg.SkcList[1].MainImageURL)
+	}
+	if pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) != 2 {
+		t.Fatalf("preview product = %+v", pkg.PreviewProduct)
+	}
+	if got := pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList[0].ImageURL; got != greenOfficial[0] {
+		t.Fatalf("preview green skc image = %q, want %q", got, greenOfficial[0])
 	}
 }
 

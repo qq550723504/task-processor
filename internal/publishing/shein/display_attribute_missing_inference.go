@@ -64,6 +64,46 @@ func inferMissingRequiredDisplayAttributes(
 	return inferred, dedupeStrings(notes)
 }
 
+func inferMissingDisplayAttributeTextCandidates(
+	attributes []sheinattribute.AttributeInfo,
+	inputs []common.Attribute,
+	resolvedByID map[int]ResolvedAttribute,
+	llm openaiclient.ChatCompleter,
+) ([]ResolvedAttribute, []string) {
+	if llm == nil || len(attributes) == 0 || len(inputs) == 0 {
+		return nil, nil
+	}
+	inferred := make([]ResolvedAttribute, 0)
+	notes := make([]string, 0)
+	for _, attr := range attributes {
+		if (!isTemplateRequired(attr) && !isTemplateImportant(attr)) || !dependencyIsActiveWithInputs(attr, resolvedByID, inputs) {
+			continue
+		}
+		if _, ok := resolvedByID[attr.AttributeID]; ok {
+			continue
+		}
+		if len(attr.AttributeValueInfoList) > 0 {
+			continue
+		}
+		match, reasons, ok := inferDisplayAttributeTextFromContext(attr, inputs, llm)
+		if !ok {
+			notes = append(notes, reasons...)
+			if evidence := describeDisplayAttributeEvidenceFields(inputs, 8); evidence != "" {
+				notes = append(notes, fmt.Sprintf(
+					"SHEIN 普通属性文本诊断: 属性 %q 当前可用证据字段为 [%s]",
+					firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+					evidence,
+				))
+			}
+			continue
+		}
+		inferred = append(inferred, match)
+		resolvedByID[match.AttributeID] = match
+		notes = append(notes, reasons...)
+	}
+	return inferred, dedupeStrings(notes)
+}
+
 type templateAttributeTextSelection struct {
 	Value   string   `json:"value,omitempty"`
 	Reason  string   `json:"reason,omitempty"`
@@ -208,7 +248,7 @@ func buildMissingDisplayAttributeInferencePrompt(attr sheinattribute.AttributeIn
 		sourceBlock.WriteString("\n")
 	}
 	var candidateBlock strings.Builder
-	for _, option := range attr.AttributeValueInfoList {
+	for _, option := range narrowDisplayAttributeValueOptions(attr, "", "", inputs, maxDisplayAttributePromptCandidates) {
 		candidateBlock.WriteString(fmt.Sprintf(
 			"- attribute_value_id=%d value=%q value_en=%q\n",
 			option.AttributeValueID,
@@ -218,10 +258,6 @@ func buildMissingDisplayAttributeInferencePrompt(attr sheinattribute.AttributeIn
 	}
 	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeMissingValue, `You infer one missing SHEIN display attribute from source product signals and product semantics.
 For required template attributes, choose the safest candidate attribute_value_id when the product semantics support it and no source evidence contradicts it.
-Prefer broad or neutral candidates over returning 0 for required fields when the candidate list contains a generic fit.
-For element, pattern, decoration, or motif attributes, consider artwork, printing, production_process, design_area, and visual theme signals.
-For season attributes, choose a broad all-season or multi-season candidate when the product is not limited to a specific season.
-For style attributes, choose the safest everyday/neutral style candidate when the product has no niche style signal.
 For important-but-not-required attributes, be more conservative and return 0 unless the match is clearly supported.
 Do not invent unsupported specific claims. Return 0 when all candidates would be misleading.
 Return JSON only with keys attribute_value_id and reasons.

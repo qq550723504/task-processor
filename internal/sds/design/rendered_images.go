@@ -13,6 +13,7 @@ import (
 const (
 	renderedImagePollInterval    = 5 * time.Second
 	maxRenderedImagePollAttempts = 24
+	maxRenderedImagePollExtra    = 24
 )
 
 func (s *Service) fetchRenderedImageURLs(ctx context.Context, input PrepareSyncDesignInput, result *PrepareSyncDesignResult) []string {
@@ -45,6 +46,7 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 	variantID := resolvedDesignVariantID(input, result)
 	expectedCount := expectedRenderedImageCount(result)
 	targetIDs := renderedTargetVariantIDs(input, variantID)
+	maxAttempts := renderedImagePollAttempts(len(targetIDs))
 	var best map[int64][]string
 	bestObservations := make(map[int64]RenderedImageObservation, len(targetIDs))
 	sensitiveWordRepairAttempted := false
@@ -61,7 +63,7 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 		}
 		return current
 	}
-	for attempt := 0; attempt < maxRenderedImagePollAttempts; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -110,6 +112,17 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 		}
 	}
 	return finalize(best)
+}
+
+func renderedImagePollAttempts(targetCount int) int {
+	if targetCount <= 1 {
+		return maxRenderedImagePollAttempts
+	}
+	extra := (targetCount - 1) * 8
+	if extra > maxRenderedImagePollExtra {
+		extra = maxRenderedImagePollExtra
+	}
+	return maxRenderedImagePollAttempts + extra
 }
 
 func (s *Service) fetchFinishedProductImageURLs(ctx context.Context, input PrepareSyncDesignInput, result *PrepareSyncDesignResult, variantID int64, parentProductID int64) []string {

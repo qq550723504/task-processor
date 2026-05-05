@@ -55,6 +55,8 @@ function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null
     suggestedCategory?.category_id === currentCategory?.category_id;
 
   if (
+    !currentCategory?.category_id &&
+    !currentCategory?.category_path?.length &&
     !recommendCategoryReview &&
     !categoryReviewReason &&
     !suggestedCategory?.category_id
@@ -70,6 +72,11 @@ function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null
     currentCategory: currentCategory ?? null,
     suggestedCategory,
     isSuggestionApplied,
+    isReviewNeeded: Boolean(
+      recommendCategoryReview ||
+        categoryReviewReason ||
+        (suggestedCategory?.category_id && !isSuggestionApplied),
+    ),
   };
 }
 
@@ -255,16 +262,30 @@ export function SheinCategoryReviewCard({
   };
 
   return (
-    <Card className="border-sky-200 bg-sky-50/60 p-5">
+    <Card
+      className={
+        model.isReviewNeeded
+          ? "border-sky-200 bg-sky-50/60 p-5"
+          : "border-emerald-200 bg-emerald-50/60 p-5"
+      }
+    >
       <div className="space-y-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-            SHEIN 类目审核
+          <p
+            className={
+              model.isReviewNeeded
+                ? "text-xs font-semibold uppercase tracking-[0.18em] text-sky-700"
+                : "text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700"
+            }
+          >
+            {model.isReviewNeeded ? "SHEIN 类目审核" : "SHEIN 类目已确认"}
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
             {model.isSuggestionApplied
               ? "当前类目已经与接受的建议类目一致。"
-              : "当前类目映射需要在最终提交前再确认一次。"}
+              : model.isReviewNeeded
+                ? "当前类目映射需要在最终提交前再确认一次。"
+                : "当前 SHEIN 类目已确认，后续只需要继续处理普通属性或提交检查。"}
           </p>
         </div>
 
@@ -284,7 +305,8 @@ export function SheinCategoryReviewCard({
           isApplied={model.isSuggestionApplied}
         />
 
-        {model.suggestedCategory?.category_id &&
+        {model.isReviewNeeded &&
+        model.suggestedCategory?.category_id &&
         !model.isSuggestionApplied &&
         onApplySuggestedCategory ? (
           <div className="flex flex-wrap justify-end gap-3">
@@ -307,7 +329,8 @@ export function SheinCategoryReviewCard({
           </div>
         ) : null}
 
-        {!model.suggestedCategory?.category_id &&
+        {model.isReviewNeeded &&
+        !model.suggestedCategory?.category_id &&
         model.currentCategory?.category_id &&
         onConfirmCurrentCategory ? (
           <div className="flex justify-end">

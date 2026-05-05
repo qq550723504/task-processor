@@ -87,7 +87,7 @@ func buildSaveDesignRequest(result *PrepareSyncDesignResult) SaveDesignRequest {
 			layers = append(layers, layer)
 		}
 		prototype.Layers = layers
-		prototype.Images = psdThumbnailURLs(result.Page.PSDs)
+		prototype.Images = saveDesignImagesForPrototype(result, prototype)
 		prototypes = append(prototypes, prototype)
 	}
 
@@ -98,6 +98,32 @@ func buildSaveDesignRequest(result *PrepareSyncDesignResult) SaveDesignRequest {
 		Prototypes:       prototypes,
 	}
 	return req
+}
+
+func saveDesignImagesForPrototype(result *PrepareSyncDesignResult, prototype SyncDesignPrototype) []string {
+	if result == nil {
+		return nil
+	}
+	for _, productID := range prototype.ProductIDs {
+		if result.RelatedPages != nil {
+			if page := result.RelatedPages[productID]; page != nil {
+				if urls := psdThumbnailURLs(page.PSDs); len(urls) > 0 {
+					return urls
+				}
+			}
+		}
+		if result.Page != nil && result.Page.Product.ID == productID {
+			if urls := psdThumbnailURLs(result.Page.PSDs); len(urls) > 0 {
+				return urls
+			}
+		}
+	}
+	if result.Page != nil {
+		if urls := psdThumbnailURLs(result.Page.PSDs); len(urls) > 0 {
+			return urls
+		}
+	}
+	return append([]string(nil), prototype.Images...)
 }
 
 func psdThumbnailURLs(psds []PSDDocument) []string {

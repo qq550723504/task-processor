@@ -30,6 +30,7 @@ import {
 import {
   canSelectSheinReadinessItem,
   isSheinWorkspaceActionKey,
+  normalizeSheinWorkspaceActionKey,
   sheinWorkspaceTargetIdForKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
 import { SlotNavigationList } from "@/components/listingkit/review/slot-navigation-list";
@@ -112,6 +113,40 @@ function submitErrorMessage(error: unknown) {
   return String(error);
 }
 
+function formatWorkspaceDate(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function workspaceTaskStatusLabel(status?: string) {
+  switch (status) {
+    case "pending":
+      return "待处理";
+    case "processing":
+      return "处理中";
+    case "completed":
+      return "已完成";
+    case "needs_review":
+      return "待审核";
+    case "failed":
+      return "失败";
+    default:
+      return status ?? "未知";
+  }
+}
+
 function hasSheinCategoryReviewSignal(editorContext?: SheinEditorContext | null) {
   const currentCategory = editorContext?.category?.current;
   const currentSale = editorContext?.sale_attributes?.current;
@@ -149,6 +184,12 @@ function hasSheinSaleAttributeReviewSignal(
       current?.sku_attributes?.length ||
       current?.candidates?.length,
   );
+}
+
+function selectedPlatformFromReviewTarget(
+  target?: { platform?: string; panel_state?: { selected_platform?: string } } | null,
+) {
+  return target?.platform ?? target?.panel_state?.selected_platform;
 }
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
@@ -194,7 +235,13 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
   const focusedPreview =
     reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
-  const selectedPlatform = sessionData?.selected_platform ?? preview.data?.selected_platform;
+  const selectedPlatform =
+    sessionData?.selected_platform ??
+    selectedPlatformFromReviewTarget(sessionData?.focused_target) ??
+    selectedPlatformFromReviewTarget(sessionData?.default_target) ??
+    (platformCards.length === 1 ? platformCards[0]?.platform : undefined) ??
+    (preview.data?.platforms?.length === 1 ? preview.data.platforms[0] : undefined) ??
+    preview.data?.selected_platform;
   const focusedScenePreset = resolveWorkspaceScenePreset({
     reviewPreviewPreset: reviewPreview.data?.scene_preset,
     focusedScenePreset: sessionData?.focused_scene_preset,
@@ -272,12 +319,16 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const isSheinFinalReviewMode =
     selectedPlatform === "shein" &&
     searchParams.get("section_key") === "final_review";
+  const shouldOpenSheinAdvancedDetails =
+    selectedPlatform === "shein" &&
+    !isSheinFinalReviewMode &&
+    (sheinCategoryBlocked || sheinAttributeBlocked || sheinSaleAttributeBlocked);
   const sheinFlowSteps: SheinFlowStep[] = [
     {
       key: "preview",
       label: "检查图片",
       description: sheinImages.length
-        ? `${sheinImages.length} SHEIN data images ready for review.`
+        ? `已准备 ${sheinImages.length} 张 SHEIN 资料图，先确认图片再进入资料提交。`
         : "检查 SDS 官方渲染图是否已经进入 SHEIN 资料。",
       href: "#shein-preview-images",
       state: sheinPreviewBlocked || !sheinImages.length ? "blocked" : "done",
@@ -286,10 +337,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     {
       key: "category",
       label: "确认类目",
-      description: "确认 SHEIN 类目和 category path，不使用静态兜底。",
+      description: sheinCategoryBlocked
+        ? "确认 SHEIN 类目和 category path，不使用静态兜底。"
+        : "SHEIN 类目已确认，可查看当前类目摘要。",
       href: "#shein-category-review-card",
       state: sheinCategoryBlocked ? "blocked" : "done",
-      actionLabel: "确认类目",
+      actionLabel: sheinCategoryBlocked ? "确认类目" : "查看类目",
     },
     {
       key: "attributes",
@@ -391,7 +444,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     const sheinPreview = preview.data?.shein;
     const current = sheinPreview?.editor_context?.category?.current;
     const suggested = current?.suggested_category;
-    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
 
     if (!suggested?.category_id) {
       return;
@@ -413,8 +465,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         },
         sale_attribute_resolution: {
           recommend_category_review: false,
-          category_review_reason:
-            saleCurrent?.category_review_reason,
+          category_review_reason: "",
         },
       },
     });
@@ -423,7 +474,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleConfirmCurrentSheinCategory = () => {
     const sheinPreview = preview.data?.shein;
     const current = sheinPreview?.editor_context?.category?.current;
-    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
 
     if (!current?.category_id) {
       return;
@@ -445,7 +495,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         },
         sale_attribute_resolution: {
           recommend_category_review: false,
-          category_review_reason: saleCurrent?.category_review_reason,
+          category_review_reason: "",
         },
       },
     });
@@ -454,8 +504,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleApplyManualSheinCategory = async (
     candidate: SheinManualCategoryCandidate,
   ) => {
-    const sheinPreview = preview.data?.shein;
-    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
     await applyRevision.mutateAsync({
       platform: "shein",
       actor: "workspace",
@@ -472,7 +520,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         },
         sale_attribute_resolution: {
           recommend_category_review: false,
-          category_review_reason: saleCurrent?.category_review_reason,
+          category_review_reason: "",
         },
       },
     });
@@ -533,20 +581,58 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     });
   };
 
+  const handleConfirmSheinFallbackAttributes = () => {
+    const current = preview.data?.shein?.editor_context?.attributes?.current;
+    if (!current) {
+      return;
+    }
+    const resolvedCount =
+      current.resolved_count ??
+      current.product_attributes?.length ??
+      current.pending_attributes?.length ??
+      0;
+    if (resolvedCount <= 0 && !(current.review_notes?.length ?? 0)) {
+      return;
+    }
+
+    applyRevision.mutate({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Confirm SHEIN fallback attributes for internal testing",
+      shein: {
+        attribute_resolution: {
+          status: "resolved",
+          source: "manual_fallback_review",
+          category_id: preview.data?.shein?.category_id,
+          template_count: current.template_count,
+          resolved_count: Math.max(resolvedCount, 1),
+          unresolved_count: 0,
+          pending_attributes: [],
+          pending_attribute_candidates: [],
+          recommended_attribute_candidates: [],
+          review_notes: [
+            "内部测试已按当前 SDS 属性确认；当前未写入真实 SHEIN attribute_id，正式发布前建议重新获取模板后复核。",
+          ],
+        },
+      },
+    });
+  };
+
   const canSelectSheinBlockingItem = (item: SheinReadinessItem) =>
     canSelectSheinReadinessItem(item);
 
   const handleSelectSheinBlockingItem = (item: SheinReadinessItem) => {
-    if (!isSheinWorkspaceActionKey(item.key)) {
+    const normalizedKey = normalizeSheinWorkspaceActionKey(item.key);
+    if (!normalizedKey) {
       return;
     }
-    const targetId = sheinWorkspaceTargetIdForKey(item.key);
+    const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
     openSheinAdvancedDetailsForTarget(targetId);
     const card =
-      item.key === "attributes" || item.key === "attribute_review"
+      normalizedKey === "attributes" || normalizedKey === "attribute_review"
         ? document.getElementById("shein-attribute-required-group") ??
           document.getElementById(targetId)
-        : item.key === "sale_attributes" || item.key === "variants"
+        : normalizedKey === "sale_attributes" || normalizedKey === "variants"
           ? document.getElementById("shein-sale-attribute-unresolved-group") ??
             document.getElementById(targetId)
         : document.getElementById(targetId);
@@ -557,16 +643,17 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   };
 
   const handleRunSheinPrimaryAction = (key?: string | null) => {
-    if (!isSheinWorkspaceActionKey(key)) {
+    const normalizedKey = normalizeSheinWorkspaceActionKey(key);
+    if (!normalizedKey) {
       return;
     }
-    const targetId = sheinWorkspaceTargetIdForKey(key);
+    const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
     openSheinAdvancedDetailsForTarget(targetId);
     const card =
-      key === "attributes" || key === "attribute_review"
+      normalizedKey === "attributes" || normalizedKey === "attribute_review"
         ? document.getElementById("shein-attribute-required-group") ??
           document.getElementById(targetId)
-        : key === "sale_attributes" || key === "variants"
+        : normalizedKey === "sale_attributes" || normalizedKey === "variants"
           ? document.getElementById("shein-sale-attribute-unresolved-group") ??
             document.getElementById(targetId)
         : document.getElementById(targetId);
@@ -664,20 +751,150 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     );
   }
 
-  if (!preview.data || !sessionData) {
+  if (preview.isError || session.isError || taskResult.isError) {
     return (
       <EmptyState
-        title="Workspace unavailable"
-        description="The task did not return preview and review session data."
+        title="工作台暂时无法加载"
+        description="当前无法完整读取任务状态、预览或审核会话。你可以刷新重试，或先回到任务列表重新进入。"
+        action={
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+              onClick={() =>
+                Promise.all([
+                  preview.refetch(),
+                  session.refetch(),
+                  taskResult.refetch(),
+                ])
+              }
+              type="button"
+            >
+              刷新当前页面
+            </button>
+            <Link
+              href="/listing-kits"
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+            >
+              返回任务列表
+            </Link>
+          </div>
+        }
       />
     );
   }
 
+  if (!preview.data || !sessionData) {
+    return (
+      <EmptyState
+        title="工作台数据暂未准备完成"
+        description="当前任务还没有返回完整的预览和审核会话数据。可以稍后刷新，或先回到任务列表查看任务状态。"
+        action={
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+              onClick={() =>
+                Promise.all([
+                  preview.refetch(),
+                  session.refetch(),
+                  taskResult.refetch(),
+                ])
+              }
+              type="button"
+            >
+              重新加载
+            </button>
+            <Link
+              href="/listing-kits"
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+            >
+              返回任务列表
+            </Link>
+          </div>
+        }
+      />
+    );
+  }
+
+  const workspaceTitle =
+    preview.data?.shein?.final_review?.title ||
+    preview.data?.shein?.source_product?.title ||
+    `任务 ${taskId.slice(0, 8)}`;
+  const workspaceStatusLabel = workspaceTaskStatusLabel(taskResult.data?.status);
+  const workspaceUpdatedAt = formatWorkspaceDate(
+    taskResult.data?.result?.updated_at ??
+      taskResult.data?.completed_at ??
+      taskResult.data?.created_at,
+  );
+  const workspaceSubtitle =
+    selectedPlatform === "shein"
+      ? `SHEIN · ${isSheinFinalReviewMode ? "最终确认" : "审核工作台"} · ${taskId}`
+      : `任务标识 · ${taskId}`;
+  const sheinAdvancedReviewDetails =
+    selectedPlatform === "shein" && showSheinReviewDetails && !isSheinFinalReviewMode ? (
+      <details
+        className="group rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm"
+        id="shein-advanced-review-details"
+        open={shouldOpenSheinAdvancedDetails}
+      >
+        <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+              高级详情
+            </p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-950">
+              类目和属性映射诊断
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">
+              {shouldOpenSheinAdvancedDetails
+                ? "当前存在 SHEIN 阻断项，已经为你展开需要优先处理的类目和属性诊断。"
+                : "这里是内部排查信息，默认收起。需要处理类目、普通属性或销售属性时再展开。"}
+            </p>
+          </div>
+          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600">
+            {shouldOpenSheinAdvancedDetails ? "已自动展开" : "点击展开"}
+          </span>
+        </summary>
+        <div className="mt-5 grid min-w-0 items-start gap-4 xl:grid-cols-2">
+          {showSheinCategoryReview ? (
+            <div id="shein-category-review-card" className="min-w-0">
+              <SheinCategoryReviewCard
+                taskId={taskId}
+                editorContext={preview.data?.shein?.editor_context}
+                isApplying={applyRevision.isPending}
+                onApplySuggestedCategory={handleApplySuggestedSheinCategory}
+                onConfirmCurrentCategory={handleConfirmCurrentSheinCategory}
+                onApplyManualCategory={handleApplyManualSheinCategory}
+              />
+            </div>
+          ) : null}
+          {showSheinAttributeReview ? (
+            <div id="shein-attribute-review-card" className="min-w-0">
+              <SheinAttributeReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+                isApplying={applyRevision.isPending}
+                onConfirmAttributes={handleConfirmSheinAttributes}
+                onConfirmFallbackAttributes={handleConfirmSheinFallbackAttributes}
+              />
+            </div>
+          ) : null}
+          {showSheinSaleAttributeReview ? (
+            <div id="shein-sale-attribute-review-card" className="min-w-0">
+              <SheinSaleAttributeReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+              />
+            </div>
+          ) : null}
+        </div>
+      </details>
+    ) : null;
+
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden">
       <WorkspaceHeader
-        title={`Task ${taskId.slice(0, 8)}`}
-        subtitle={taskId}
+        title={workspaceTitle}
+        subtitle={workspaceSubtitle}
+        statusLabel={workspaceStatusLabel}
+        updatedAtLabel={workspaceUpdatedAt}
         summary={
           suppressResolvedActionSummary
             ? undefined
@@ -720,11 +937,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
 
       {selectedPlatform === "shein" ? (
         <SheinFlowNav
-          eyebrow="SHEIN review flow"
+          eyebrow="SHEIN 审核流程"
           steps={sheinFlowSteps}
           title="先审核修复，再提交"
         />
       ) : null}
+      {shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
 
       {isSheinFinalReviewMode ? (
         <section className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
@@ -733,7 +951,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-zinc-500">
-                    Final review mode
+                    最终确认模式
                   </p>
                   <h2 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">
                     确认图片、价格和 SKU 后再提交
@@ -977,59 +1195,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       </div>
       )}
 
-      {selectedPlatform === "shein" && showSheinReviewDetails && !isSheinFinalReviewMode ? (
-        <details
-          className="group rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm"
-          id="shein-advanced-review-details"
-        >
-          <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-                高级详情
-              </p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-950">
-                类目和属性映射诊断
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-zinc-600">
-                这里是内部排查信息，默认收起。需要处理类目、普通属性或销售属性时再展开。
-              </p>
-            </div>
-            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600">
-              点击展开
-            </span>
-          </summary>
-          <div className="mt-5 grid min-w-0 items-start gap-4 xl:grid-cols-2">
-            {showSheinCategoryReview ? (
-              <div id="shein-category-review-card" className="min-w-0">
-                <SheinCategoryReviewCard
-                  taskId={taskId}
-                  editorContext={preview.data?.shein?.editor_context}
-                  isApplying={applyRevision.isPending}
-                  onApplySuggestedCategory={handleApplySuggestedSheinCategory}
-                  onConfirmCurrentCategory={handleConfirmCurrentSheinCategory}
-                  onApplyManualCategory={handleApplyManualSheinCategory}
-                />
-              </div>
-            ) : null}
-            {showSheinAttributeReview ? (
-              <div id="shein-attribute-review-card" className="min-w-0">
-                <SheinAttributeReviewCard
-                  editorContext={preview.data?.shein?.editor_context}
-                  isApplying={applyRevision.isPending}
-                  onConfirmAttributes={handleConfirmSheinAttributes}
-                />
-              </div>
-            ) : null}
-            {showSheinSaleAttributeReview ? (
-              <div id="shein-sale-attribute-review-card" className="min-w-0">
-                <SheinSaleAttributeReviewCard
-                  editorContext={preview.data?.shein?.editor_context}
-                />
-              </div>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
+      {!shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
     </div>
   );
 }

@@ -94,6 +94,10 @@ func buildSDSVariantSyncSummaries(options *SDSSyncOptions, variants []SDSSyncVar
 			Status:           "completed",
 			Diagnostics:      cloneSDSSyncDiagnostics(base.Diagnostics),
 		}
+		if summary.Diagnostics != nil && variant.VariantID != base.ProductID {
+			summary.Diagnostics.FinishedProduct = nil
+			summary.Diagnostics.SensitiveWords = nil
+		}
 		if len(summary.MockupImageURLs) == 0 && variant.VariantID == base.ProductID {
 			summary.MockupImageURLs = uniqueNonEmptyStrings(base.MockupImageURLs)
 		}

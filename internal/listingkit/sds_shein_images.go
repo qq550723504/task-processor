@@ -65,27 +65,28 @@ func applySelectedSDSImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, 
 	return true
 }
 
-func applySDSTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string) {
+func applySDSTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options ...*SDSSyncOptions) {
 	if pkg == nil || summary == nil {
 		return
 	}
-	if summary.Status == "failed" {
+	var sdsOptions *SDSSyncOptions
+	if len(options) > 0 {
+		sdsOptions = options[0]
+	}
+	if len(summary.VariantResults) > 0 || hasSDSVariantOptionMockups(sdsOptions) {
+		applySDSVariantTemplateImagesToShein(pkg, summary, sourceImages, sdsOptions)
 		return
 	}
-	if len(summary.VariantResults) > 0 {
-		applySDSVariantTemplateImagesToShein(pkg, summary, sourceImages)
+	if summary.Status == "failed" {
 		return
 	}
 	if len(summary.MockupImageURLs) == 0 {
 		return
 	}
 
-	images := &common.ImageSet{
-		MainImage:    summary.MockupImageURLs[0],
-		SourceImages: uniqueNonEmptyStrings(sourceImages),
-	}
-	if len(summary.MockupImageURLs) > 1 {
-		images.Gallery = append([]string(nil), summary.MockupImageURLs[1:]...)
+	images := imageSetFromSDSMockups(summary.MockupImageURLs, sourceImages)
+	if images == nil {
+		return
 	}
 	pkg.Images = images
 
@@ -104,24 +105,23 @@ func applySDSTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummar
 	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
 }
 
-func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string) {
+func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) {
 	byColor := map[string]*common.ImageSet{}
 	bySKU := map[string]*common.ImageSet{}
+	if options != nil {
+		for _, item := range options.Variants {
+			registerSDSVariantImageSet(bySKU, byColor, item.VariantSKU, item.Color, imageSetFromSDSVariantOption(item, sourceImages), false)
+		}
+	}
 	for i := range summary.VariantResults {
 		item := &summary.VariantResults[i]
 		if len(item.MockupImageURLs) == 0 || item.Status == "failed" {
 			continue
 		}
 		images := imageSetFromSDSMockups(item.MockupImageURLs, sourceImages)
-		key := normalizeSDSColorKey(item.VariantColor)
-		if _, exists := byColor[key]; !exists {
-			byColor[key] = images
-		}
-		if sku := normalizeSDSColorKey(item.VariantSKU); sku != "__default__" {
-			bySKU[sku] = images
-		}
+		registerSDSVariantImageSet(bySKU, byColor, item.VariantSKU, item.VariantColor, images, true)
 	}
-	if len(byColor) == 0 {
+	if len(byColor) == 0 && len(bySKU) == 0 {
 		return
 	}
 
@@ -132,11 +132,34 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 				defaultImages = images
 				break
 			}
+			if images := bySKU[normalizeSDSColorKey(item.VariantSKU)]; images != nil {
+				defaultImages = images
+				break
+			}
 		}
+	}
+	if defaultImages == nil && options != nil {
+		for _, item := range options.Variants {
+			if images := byColor[normalizeSDSColorKey(item.Color)]; images != nil {
+				defaultImages = images
+				break
+			}
+			if images := bySKU[normalizeSDSColorKey(item.VariantSKU)]; images != nil {
+				defaultImages = images
+				break
+			}
+		}
+	}
+	if defaultImages == nil {
+		defaultImages = firstSDSImageSet(byColor)
+	}
+	if defaultImages == nil {
+		defaultImages = firstSDSImageSet(bySKU)
 	}
 	if defaultImages == nil {
 		return
 	}
+
 	pkg.Images = defaultImages
 	if pkg.RequestDraft != nil {
 		pkg.RequestDraft.ImageInfo = sheinpub.BuildImageDraft(defaultImages)
@@ -163,6 +186,54 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 		pkg.SkcList[skcIndex].MainImageURL = images.MainImage
 	}
 	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+}
+
+func hasSDSVariantOptionMockups(options *SDSSyncOptions) bool {
+	if options == nil {
+		return false
+	}
+	for _, item := range options.Variants {
+		if imageSetFromSDSVariantOption(item, nil) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func imageSetFromSDSVariantOption(item SDSSyncVariantOption, sourceImages []string) *common.ImageSet {
+	mockups := uniqueNonEmptyStrings(item.MockupImageURLs)
+	if len(mockups) == 0 {
+		mockups = uniqueNonEmptyStrings([]string{item.MockupImageURL})
+	}
+	if len(mockups) == 0 {
+		return nil
+	}
+	return imageSetFromSDSMockups(mockups, sourceImages)
+}
+
+func registerSDSVariantImageSet(bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet, sku string, color string, images *common.ImageSet, overwrite bool) {
+	if images == nil {
+		return
+	}
+	if key := normalizeSDSColorKey(color); key != "__default__" {
+		if overwrite || byColor[key] == nil {
+			byColor[key] = images
+		}
+	}
+	if key := normalizeSDSColorKey(sku); key != "__default__" {
+		if overwrite || bySKU[key] == nil {
+			bySKU[key] = images
+		}
+	}
+}
+
+func firstSDSImageSet(values map[string]*common.ImageSet) *common.ImageSet {
+	for _, images := range values {
+		if images != nil {
+			return images
+		}
+	}
+	return nil
 }
 
 func resolveSDSImagesForSKC(pkg *sheinpub.Package, index int, bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet) *common.ImageSet {
@@ -232,6 +303,10 @@ func sourceSDSSKUFromSupplierSKU(value string) string {
 }
 
 func imageSetFromSDSMockups(mockups []string, sourceImages []string) *common.ImageSet {
+	mockups = uniqueNonEmptyStrings(mockups)
+	if len(mockups) == 0 {
+		return nil
+	}
 	images := &common.ImageSet{
 		MainImage:    mockups[0],
 		SourceImages: uniqueNonEmptyStrings(sourceImages),

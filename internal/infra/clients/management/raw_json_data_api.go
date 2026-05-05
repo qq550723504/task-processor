@@ -14,6 +14,7 @@ import (
 type RawJsonDataAPIClient struct {
 	*ManagementAPIClient
 	dataFreshnessDays int
+	localDataProvider *LocalDataProvider
 }
 
 // SetDataFreshnessDays 设置数据新鲜度天数
@@ -23,6 +24,21 @@ func (m *RawJsonDataAPIClient) SetDataFreshnessDays(days int) {
 
 // GetRawJsonData 获取原始JSON数据，数据不新鲜时返回 nil
 func (m *RawJsonDataAPIClient) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
+	if m.localDataProvider != nil {
+		if rawData, err := m.localDataProvider.GetRawJSONData(req); err != nil || rawData != nil {
+			if err != nil || rawData == nil {
+				return rawData, err
+			}
+			freshnessDays := m.dataFreshnessDays
+			if freshnessDays <= 0 {
+				freshnessDays = 15
+			}
+			if !isDataFresh(rawData.CreateTime, rawData.UpdateTime, freshnessDays) {
+				return nil, nil
+			}
+			return rawData, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/raw-json-data/get", m.baseURL)
 
 	var result APIResponse
@@ -72,6 +88,11 @@ func isDataFresh(createTime, updateTime int64, freshnessDays int) bool {
 
 // CreateRawJsonData 创建原始JSON数据
 func (m *RawJsonDataAPIClient) CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
+	if m.localDataProvider != nil {
+		if id, err := m.localDataProvider.CreateRawJSONData(req); err != nil || id != 0 {
+			return id, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/raw-json-data/create", m.baseURL)
 	var result struct {
 		Code    int             `json:"code"`

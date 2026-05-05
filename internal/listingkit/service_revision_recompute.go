@@ -34,10 +34,37 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		s.sheinSaleAttributeResolver,
 		s.sheinPricingPolicy,
 	)
+	applySheinSaleAttributeReviewOverride(task.Result.Shein, req.Shein.SaleAttributeResolution)
 	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(task.Result.Shein)
 	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)
 	refreshSheinReviewState(task.Result.Shein)
+}
+
+func applySheinSaleAttributeReviewOverride(pkg *sheinpub.Package, patch *SheinSaleAttributeResolutionPatch) {
+	if pkg == nil || patch == nil ||
+		(patch.RecommendCategoryReview == nil && patch.CategoryReviewReason == nil) {
+		return
+	}
+	if pkg.SaleAttributeResolution == nil {
+		pkg.SaleAttributeResolution = &sheinpub.SaleAttributeResolution{}
+	}
+	confirmedCategoryReview := patch.RecommendCategoryReview != nil && !*patch.RecommendCategoryReview
+	if patch.RecommendCategoryReview != nil {
+		pkg.SaleAttributeResolution.RecommendCategoryReview = *patch.RecommendCategoryReview
+		if !*patch.RecommendCategoryReview && pkg.CategoryResolution != nil {
+			pkg.CategoryResolution.SuggestedCategory = nil
+		}
+	}
+	if patch.CategoryReviewReason != nil {
+		if confirmedCategoryReview {
+			pkg.SaleAttributeResolution.CategoryReviewReason = ""
+		} else {
+			pkg.SaleAttributeResolution.CategoryReviewReason = *patch.CategoryReviewReason
+		}
+	} else if confirmedCategoryReview {
+		pkg.SaleAttributeResolution.CategoryReviewReason = ""
+	}
 }
 
 func shouldRefreshSheinDerivedState(req *SheinRevisionInput) bool {

@@ -166,6 +166,8 @@ export type CreateListingKitTaskRequest = {
       applicable_scenarios?: string;
       washing_instructions?: string;
       special_description?: string;
+      product_size?: string;
+      packaging_specification?: string;
       design_area?: string;
       picture_request?: string;
       is_electricity?: number;

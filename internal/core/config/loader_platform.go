@@ -7,6 +7,13 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 		Enabled:          v.GetBool(prefix + ".enabled"),
 		SchedulerEnabled: v.GetBool(prefix + ".schedulerEnabled"),
 		FetchMode:        v.GetString(prefix + ".fetchMode"),
+		CookieRedis: RedisConfig{
+			Host:     v.GetString(prefix + ".cookieRedis.host"),
+			Port:     v.GetInt(prefix + ".cookieRedis.port"),
+			Password: v.GetString(prefix + ".cookieRedis.password"),
+			DB:       v.GetInt(prefix + ".cookieRedis.db"),
+			PoolSize: v.GetInt(prefix + ".cookieRedis.pool_size"),
+		},
 		AutoPricing: AutoPricingConfig{
 			Enabled:        v.GetBool(prefix + ".autoPricing.enabled"),
 			Interval:       v.GetInt(prefix + ".autoPricing.interval"),

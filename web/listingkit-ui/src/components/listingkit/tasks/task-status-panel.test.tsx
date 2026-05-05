@@ -87,4 +87,24 @@ describe("TaskStatusPanel", () => {
       screen.getByText("image pipeline uses scraped 1688 source images"),
     ).toBeInTheDocument();
   });
+
+  it("renders task diagnostics for in-flight tasks", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          task_id: "task-123",
+          status: "processing",
+          created_at: "2026-05-04T10:00:00Z",
+          result: {
+            updated_at: "2026-05-04T10:30:00Z",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("任务标识")).toBeInTheDocument();
+    expect(screen.getByText("task-123")).toBeInTheDocument();
+    expect(screen.getByText("最近更新")).toBeInTheDocument();
+    expect(screen.getByText("已创建")).toBeInTheDocument();
+  });
 });

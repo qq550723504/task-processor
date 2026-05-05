@@ -1,6 +1,7 @@
 package management
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
@@ -21,11 +22,12 @@ type ClientManager struct {
 	// 图片下载超时时间
 	imageDownloadTimeout time.Duration
 
-	// 品类限制缓存
-	categoryRestrictionCache *CategoryRestrictionCache
-
 	// 数据新鲜度天数
 	dataFreshnessDays int
+
+	sheinCookieProvider SheinCookieProvider
+	localDataProvider   *LocalDataProvider
+	localTaskRPC        *LocalTaskRPCProvider
 }
 
 // NewClientManager 创建新的客户端管理器
@@ -44,9 +46,6 @@ func NewClientManager(cfg *config.ManagementConfig) *ClientManager {
 		// 默认数据新鲜度7天
 		dataFreshnessDays: 7,
 	}
-
-	// 初始化品类限制缓存
-	cm.categoryRestrictionCache = NewCategoryRestrictionCache(cm)
 
 	return cm
 }
@@ -99,6 +98,8 @@ func (cm *ClientManager) GetStoreClient() *StoreAPIClient {
 	baseClient := cm.GetClient()
 	return &StoreAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
+		sheinCookieProvider: cm.sheinCookieProvider,
 	}
 }
 
@@ -108,6 +109,7 @@ func (cm *ClientManager) GetRawJsonDataClient() *RawJsonDataAPIClient {
 	baseClient := cm.GetClient()
 	client := &RawJsonDataAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 	// 设置数据新鲜度天数
 	cm.mutex.RLock()
@@ -127,6 +129,7 @@ func (cm *ClientManager) GetFilterRuleClient() *FilterRuleAPIClient {
 	baseClient := cm.GetClient()
 	return &FilterRuleAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -136,24 +139,7 @@ func (cm *ClientManager) GetProfitRuleClient() *ProfitRuleAPIClient {
 	baseClient := cm.GetClient()
 	return &ProfitRuleAPIClient{
 		ManagementAPIClient: baseClient,
-	}
-}
-
-// GetSensitiveWordClient 获取敏感词API客户端
-func (cm *ClientManager) GetSensitiveWordClient() *SensitiveWordAPIClient {
-	// 直接基于基础客户端创建
-	baseClient := cm.GetClient()
-	return &SensitiveWordAPIClient{
-		ManagementAPIClient: baseClient,
-	}
-}
-
-// GetCategoryRestrictionCollectionsClient 获取品类限制集合API客户端
-func (cm *ClientManager) GetCategoryRestrictionCollectionsClient() *CategoryRestrictionCollectionsAPIClient {
-	// 直接基于基础客户端创建
-	baseClient := cm.GetClient()
-	return &CategoryRestrictionCollectionsAPIClient{
-		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -163,6 +149,7 @@ func (cm *ClientManager) GetPricingRuleClient() *PricingRuleAPIClient {
 	baseClient := cm.GetClient()
 	return &PricingRuleAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -172,6 +159,7 @@ func (cm *ClientManager) GetImportTaskClient() *ImportTaskAPIClient {
 	baseClient := cm.GetClient()
 	return &ImportTaskAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -181,6 +169,7 @@ func (cm *ClientManager) GetDailyListingCountClient() *DailyListingCountAPIClien
 	baseClient := cm.GetClient()
 	return &DailyListingCountAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -189,6 +178,7 @@ func (cm *ClientManager) GetTaskRPCClient() *TaskRPCAPIClient {
 	baseClient := cm.GetClient()
 	return &TaskRPCAPIClient{
 		ManagementAPIClient: baseClient,
+		localProvider:       cm.localTaskRPC,
 	}
 }
 
@@ -198,6 +188,7 @@ func (cm *ClientManager) GetProductImportMappingClient() *ProductImportMappingAP
 	baseClient := cm.GetClient()
 	return &ProductImportMappingAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -208,6 +199,7 @@ func (cm *ClientManager) GetProductDataClient(storeID int64) *ProductDataAPIClie
 	return &ProductDataAPIClient{
 		ManagementAPIClient: baseClient,
 		StoreID:             storeID,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -226,12 +218,8 @@ func (cm *ClientManager) GetProductDataClientWithTenant(storeID, tenantID int64)
 	return &ProductDataAPIClient{
 		ManagementAPIClient: baseClient,
 		StoreID:             storeID,
+		localDataProvider:   cm.localDataProvider,
 	}
-}
-
-// GetCategoryRestrictionCache 获取品类限制缓存
-func (cm *ClientManager) GetCategoryRestrictionCache() *CategoryRestrictionCache {
-	return cm.categoryRestrictionCache
 }
 
 // GetInventoryRecordClient 获取库存记录API客户端
@@ -240,6 +228,7 @@ func (cm *ClientManager) GetInventoryRecordClient() *InventoryRecordAPIClient {
 	baseClient := cm.GetClient()
 	return &InventoryRecordAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -249,6 +238,7 @@ func (cm *ClientManager) GetOperationStrategyClient() *OperationStrategyClient {
 	baseClient := cm.GetClient()
 	return &OperationStrategyClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -301,4 +291,50 @@ func (cm *ClientManager) SetImageDownloadTimeout(timeout time.Duration) {
 	if cm.imageDownloader != nil {
 		cm.imageDownloader = NewImageDownloader(timeout)
 	}
+}
+
+func (cm *ClientManager) SetSheinCookieProvider(provider SheinCookieProvider) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.sheinCookieProvider = provider
+}
+
+func (cm *ClientManager) SetLocalDataProvider(provider *LocalDataProvider) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.localDataProvider = provider
+	if provider != nil {
+		cm.localTaskRPC = NewLocalTaskRPCProvider(provider)
+	} else {
+		cm.localTaskRPC = nil
+	}
+}
+
+func (cm *ClientManager) SetSheinCookieRedisConfig(cfg *config.RedisConfig) error {
+	provider, err := newRedisSheinCookieProvider(cfg)
+	if err != nil {
+		return err
+	}
+	cm.SetSheinCookieProvider(provider)
+	return nil
+}
+
+func (cm *ClientManager) GetSheinCookie(storeID int64) (string, int64, error) {
+	cm.mutex.RLock()
+	provider := cm.sheinCookieProvider
+	cm.mutex.RUnlock()
+
+	if provider == nil {
+		return "", 0, nil
+	}
+
+	result, err := provider.GetCookie(context.Background(), storeID)
+	if err != nil {
+		return "", 0, err
+	}
+	if result == nil {
+		return "", 0, nil
+	}
+
+	return result.CookieJSON, result.TenantID, nil
 }

@@ -9,10 +9,17 @@ import (
 // InventoryRecordAPIClient 库存记录API客户端实现
 type InventoryRecordAPIClient struct {
 	*ManagementAPIClient
+	localDataProvider *LocalDataProvider
 }
 
 // CreateInventoryRecord 创建库存记录
 func (m *InventoryRecordAPIClient) CreateInventoryRecord(req *api.InventoryRecordCreateReqDTO) (int64, error) {
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		id, err := m.localDataProvider.CreateInventoryRecord(req)
+		if err != nil || id > 0 {
+			return id, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/create", m.baseURL)
 	id, err := getTypedResult[int64](m.ManagementAPIClient, http.MethodPost, url, req)
 	if err != nil {
@@ -23,6 +30,11 @@ func (m *InventoryRecordAPIClient) CreateInventoryRecord(req *api.InventoryRecor
 
 // GetLatestInventoryRecord 获取最新的库存记录
 func (m *InventoryRecordAPIClient) GetLatestInventoryRecord(platform, productId, region string) (*api.InventoryRecordRespDTO, error) {
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		if record, found, err := m.localDataProvider.GetLatestInventoryRecord(platform, productId, region); err != nil || found {
+			return record, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/get-latest", m.baseURL)
 
 	params := map[string]any{

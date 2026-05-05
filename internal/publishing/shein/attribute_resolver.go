@@ -71,11 +71,19 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 属性模板已加载，但暂未命中可映射属性")
 	}
+	unresolvedNames := make([]string, 0, len(resolution.PendingAttributes))
+	for _, item := range resolution.PendingAttributes {
+		if strings.TrimSpace(item.Name) == "" {
+			continue
+		}
+		unresolvedNames = append(unresolvedNames, strings.TrimSpace(item.Name))
+	}
 	log.WithFields(logrus.Fields{
 		"category_id":      resolution.CategoryID,
 		"resolved_count":   resolution.ResolvedCount,
 		"unresolved_count": resolution.UnresolvedCount,
 		"status":           resolution.Status,
+		"unresolved_attrs": unresolvedNames,
 	}).Info("resolved SHEIN display attributes")
 	return resolution
 }
@@ -84,34 +92,19 @@ func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Packa
 	if templates == nil || len(templates.Data) == 0 || pkg == nil {
 		return nil, nil, nil, nil, nil
 	}
-	inputs := buildAttributeInputs(pkg)
-	if len(inputs) == 0 {
+	evidence := buildDisplayAttributeEvidencePool(pkg)
+	if evidence == nil {
 		return nil, nil, nil, nil, nil
 	}
-	return resolveDisplayAttributes(templates.Data[0].AttributeInfos, inputs, llm)
+	return resolveDisplayAttributes(templates.Data[0].AttributeInfos, evidence, llm)
 }
 
 func buildAttributeInputs(pkg *Package) []common.Attribute {
-	if pkg == nil {
+	evidence := buildDisplayAttributeEvidencePool(pkg)
+	if evidence == nil {
 		return nil
 	}
-	result := make([]common.Attribute, 0, len(pkg.ProductAttributes)+4)
-	if len(pkg.ProductAttributes) > 0 {
-		result = append(result, pkg.ProductAttributes...)
-	}
-	if len(result) == 0 && len(pkg.Attributes) > 0 {
-		for name, value := range pkg.Attributes {
-			if strings.TrimSpace(name) == "" || strings.TrimSpace(value) == "" {
-				continue
-			}
-			result = append(result, common.Attribute{Name: name, Value: value})
-		}
-	}
-	result = append(result, buildDerivedAttributeInputs(pkg)...)
-	if len(result) == 0 {
-		return nil
-	}
-	return dedupeAttributeInputs(result)
+	return evidence.AttributeInputs()
 }
 
 func isSaleScopeAttribute(attr sheinattribute.AttributeInfo) bool {

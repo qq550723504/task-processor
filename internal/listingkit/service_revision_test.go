@@ -51,6 +51,26 @@ func (stubRevisionSheinSaleResolver) Resolve(req *sheinpub.BuildRequest, canonic
 	}
 }
 
+type stubRevisionSheinSaleReviewResolver struct{}
+
+func (stubRevisionSheinSaleReviewResolver) Resolve(req *sheinpub.BuildRequest, canonical *productenrich.CanonicalProduct, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
+	valueID := 2493
+	return &sheinpub.SaleAttributeResolution{
+		Status:                  "resolved",
+		PrimaryAttributeID:      27,
+		RecommendCategoryReview: true,
+		CategoryReviewReason:    "resolver still recommends category review",
+		SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+			Scope:            "skc",
+			Name:             "Color",
+			Value:            "Black",
+			AttributeID:      27,
+			AttributeValueID: &valueID,
+			MatchedBy:        "test",
+		}},
+	}
+}
+
 func (r *stubApplyRevisionRepo) CreateTask(ctx context.Context, task *Task) error {
 	r.task = task
 	return nil
@@ -364,6 +384,109 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 	}
 	if repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute == nil || repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeID != 27 {
 		t.Fatalf("request draft skc sale attribute = %+v", repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute)
+	}
+}
+
+func TestApplyTaskRevisionKeepsManualCategoryReviewConfirmationAfterRefresh(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	categoryID := 2645
+	productTypeID := 539
+	topCategoryID := 2374
+	task := &Task{
+		ID: "task-apply-shein-category-confirm",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Text:         "pet bandana",
+		},
+		Status: TaskStatusCompleted,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-category-confirm",
+			CanonicalProduct: &productenrich.CanonicalProduct{
+				Title: "pet bandana",
+				Variants: []productenrich.CanonicalVariant{{
+					SKU: "SKU-1",
+					Attributes: map[string]productenrich.CanonicalAttribute{
+						"Color": {Value: "Black"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:     categoryID,
+				CategoryIDList: []int{2374, 2638, 2645},
+				CategoryPath:   []string{"宠物用品", "宠物配饰", "宠物围巾"},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  topCategoryID,
+				CategoryResolution: &SheinCategoryResolution{
+					Status:         "resolved",
+					Source:         "ai_category_tree",
+					CategoryID:     categoryID,
+					CategoryIDList: []int{2374, 2638, 2645},
+					MatchedPath:    []string{"宠物用品", "宠物配饰", "宠物围巾"},
+					ProductTypeID:  productTypeID,
+					TopCategoryID:  topCategoryID,
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:                  "resolved",
+					RecommendCategoryReview: true,
+					CategoryReviewReason:    "当前类目路径与商品语义明显不一致，建议优先人工复核 SHEIN 类目是否正确",
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{
+		repo:                       repo,
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleReviewResolver{},
+	}
+
+	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Actor:    "workspace",
+		Reason:   "Confirm current SHEIN category",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				Status:         stringPtr("resolved"),
+				Source:         stringPtr("ai_category_tree"),
+				MatchedPath:    []string{"宠物用品", "宠物配饰", "宠物围巾"},
+				CategoryID:     &categoryID,
+				CategoryIDList: []int{2374, 2638, 2645},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  &topCategoryID,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				RecommendCategoryReview: boolPtr(false),
+				CategoryReviewReason:    stringPtr(""),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if preview == nil || preview.AppliedChanges == nil || preview.AppliedChanges.ChangeCount == 0 {
+		t.Fatalf("applied changes = %+v", preview)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution == nil {
+		t.Fatal("expected sale attribute resolution")
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.RecommendCategoryReview {
+		t.Fatalf("sale attribute resolution = %+v, want confirmed category review", repo.task.Result.Shein.SaleAttributeResolution)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.CategoryReviewReason != "" {
+		t.Fatalf("sale attribute reason = %q, want empty", repo.task.Result.Shein.SaleAttributeResolution.CategoryReviewReason)
+	}
+	if repo.task.Result.Shein.CategoryResolution != nil && repo.task.Result.Shein.CategoryResolution.SuggestedCategory != nil {
+		t.Fatalf("suggested category = %+v, want nil after manual confirmation", repo.task.Result.Shein.CategoryResolution.SuggestedCategory)
 	}
 }
 

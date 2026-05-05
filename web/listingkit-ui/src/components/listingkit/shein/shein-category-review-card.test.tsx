@@ -65,8 +65,8 @@ describe("SheinCategoryReviewCard", () => {
     expect(screen.queryByText("建议类目")).not.toBeInTheDocument();
   });
 
-  it("returns null when there is no category review signal", () => {
-    const { container } = render(
+  it("renders confirmed category summary when there is no review signal", () => {
+    render(
       <SheinCategoryReviewCard
         editorContext={{
           category: {
@@ -79,7 +79,11 @@ describe("SheinCategoryReviewCard", () => {
       />,
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(screen.getByText("SHEIN 类目已确认")).toBeInTheDocument();
+    expect(
+      screen.getByText("家居&生活 > 家庭用品 > 鞋用品 > 鞋配饰 (12143)"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认当前类目" })).not.toBeInTheDocument();
   });
 
   it("fires apply callback when suggested category action is clicked", async () => {

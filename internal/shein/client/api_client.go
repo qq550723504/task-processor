@@ -157,6 +157,12 @@ func (c *APIClient) GetBaseURL() string {
 
 // GetTenantID 获取租户ID
 func (c *APIClient) GetTenantID() int64 {
+	if c.cookieManager != nil {
+		if tenantID := c.cookieManager.GetResolvedTenantID(); tenantID > 0 {
+			return tenantID
+		}
+	}
+
 	// 从店铺信息获取tenantID
 	if c.managementClient != nil {
 		storeClient := c.managementClient.GetStoreClient()

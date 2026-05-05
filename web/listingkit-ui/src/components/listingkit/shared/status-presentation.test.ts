@@ -24,28 +24,28 @@ describe("status-presentation", () => {
 
   it("maps review-ready platform status to warning review copy", () => {
     expect(presentPlatformStatus({ status: "review_ready", needs_review: true })).toEqual({
-      label: "Ready for review",
+      label: "待检查",
       tone: "warning",
     });
   });
 
   it("maps retry-needed platform status to danger retry copy", () => {
     expect(presentPlatformStatus({ status: "retry_needed", needs_review: false })).toEqual({
-      label: "Retry needed",
+      label: "需要重试",
       tone: "danger",
     });
   });
 
   it("maps queue state to clearer copy", () => {
     expect(presentQueueState({ state: "fallback" })).toEqual({
-      label: "Fallback",
+      label: "使用兜底结果",
       tone: "warning",
     });
   });
 
   it("maps pending review queue status to review copy", () => {
     expect(presentQueueReviewStatus({ review_status: "pending" })).toEqual({
-      label: "Pending review",
+      label: "待复核",
       tone: "warning",
     });
   });

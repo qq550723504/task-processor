@@ -17,9 +17,9 @@ describe("RecoverySummaryCard", () => {
       />,
     );
 
-    expect(screen.getByText("Use fallback review")).toBeInTheDocument();
-    expect(screen.getByText("Medium severity / act now")).toBeInTheDocument();
-    expect(screen.getByText("Review fallback")).toBeInTheDocument();
+    expect(screen.getByText("使用兜底结果继续检查")).toBeInTheDocument();
+    expect(screen.getByText("中优先级 / 立即处理")).toBeInTheDocument();
+    expect(screen.getByText("检查恢复项")).toBeInTheDocument();
   });
 
   it("triggers the primary recovery action", () => {
@@ -43,7 +43,7 @@ describe("RecoverySummaryCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Review fallback" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查恢复项" }));
 
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({

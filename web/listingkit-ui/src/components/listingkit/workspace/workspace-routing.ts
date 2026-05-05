@@ -1,6 +1,13 @@
 import type { ReviewTarget } from "@/lib/types/listingkit";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
+function selectedPlatformFromTarget(target?: ReviewTarget | null) {
+  const panelState = (target as ReviewTarget & {
+    panel_state?: { selected_platform?: string };
+  } | null)?.panel_state;
+  return target?.platform ?? panelState?.selected_platform;
+}
+
 export function buildWorkspaceSearch(
   currentSearch: string,
   target?: ReviewTarget | null,
@@ -10,7 +17,7 @@ export function buildWorkspaceSearch(
   );
 
   const nextValues: Record<string, string | undefined> = {
-    platform: target?.platform,
+    platform: selectedPlatformFromTarget(target),
     slot: target?.slot,
     preview_capability: target?.capability,
     section_key: target?.section_key,

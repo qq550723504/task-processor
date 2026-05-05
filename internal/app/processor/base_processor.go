@@ -3,6 +3,7 @@ package processor
 
 import (
 	"context"
+	"strings"
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
@@ -39,6 +40,17 @@ func NewBaseProcessor(ctx context.Context, cfg *BaseProcessorConfig) *BaseProces
 		managementClient = management.NewClientManager(&cfg.Config.Management)
 		// 设置数据新鲜度天数
 		managementClient.SetDataFreshnessDays(cfg.Config.Amazon.DataFreshnessDays)
+		if provider, err := management.NewLocalDataProvider(cfg.Config.Database, cfg.Config.Redis); err != nil {
+			cfg.Logger.WithError(err).Warn("failed to configure local management data provider")
+		} else if provider != nil {
+			managementClient.SetLocalDataProvider(provider)
+		}
+		cookieRedis := cfg.Config.Platforms.Shein.CookieRedis
+		if strings.TrimSpace(cookieRedis.Host) != "" {
+			if err := managementClient.SetSheinCookieRedisConfig(&cookieRedis); err != nil {
+				cfg.Logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
+			}
+		}
 	}
 
 	// 创建状态管理器 - 使用传入的context用于长期运行的后台任务

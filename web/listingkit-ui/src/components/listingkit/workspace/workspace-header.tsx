@@ -13,6 +13,8 @@ import type {
 export function WorkspaceHeader({
   title,
   subtitle,
+  statusLabel,
+  updatedAtLabel,
   summary,
   recoverySummary,
   showSheinStudioLink = false,
@@ -21,6 +23,8 @@ export function WorkspaceHeader({
 }: {
   title: string;
   subtitle?: string;
+  statusLabel?: string;
+  updatedAtLabel?: string;
   summary?: ResolvedActionSummary | null;
   recoverySummary?: RecoverySummary | null;
   showSheinStudioLink?: boolean;
@@ -32,7 +36,7 @@ export function WorkspaceHeader({
       <div className="min-w-0 space-y-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-            ListingKit Workspace
+            ListingKit 工作台
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <Link
@@ -53,8 +57,24 @@ export function WorkspaceHeader({
           <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
             {title}
           </h1>
+          {statusLabel || updatedAtLabel ? (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-600">
+              {statusLabel ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5">
+                  <span className="font-semibold text-zinc-700">任务状态</span>
+                  <span>{statusLabel}</span>
+                </span>
+              ) : null}
+              {updatedAtLabel ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5">
+                  <span className="font-semibold text-zinc-700">最近更新</span>
+                  <span>{updatedAtLabel}</span>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {subtitle ? (
-            <p className="mt-2 break-all font-mono text-xs text-zinc-500">
+            <p className="mt-2 break-all text-xs text-zinc-500">
               {subtitle}
             </p>
           ) : null}

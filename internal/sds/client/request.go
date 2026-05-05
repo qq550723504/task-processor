@@ -174,9 +174,15 @@ func (c *Client) detectAuthError(op, path string, resp *req.Response, err error)
 		if isHTTPAuthFailure(statusErr.StatusCode) {
 			return &AuthRequiredError{Op: op, StatusCode: statusErr.StatusCode, Message: statusErr.Message}
 		}
+		if isBodyAuthFailure(statusErr.StatusCode, statusErr.Message) {
+			return &AuthRequiredError{Op: op, StatusCode: statusErr.StatusCode, Message: statusErr.Message}
+		}
 		if resp != nil {
 			if ret, msg, ok := parseBusinessError(resp); ok && ret == 20001 {
 				return &AuthRequiredError{Op: op, StatusCode: statusErr.StatusCode, Message: msg}
+			}
+			if isBodyAuthFailure(resp.StatusCode, resp.String()) {
+				return &AuthRequiredError{Op: op, StatusCode: resp.StatusCode, Message: strings.TrimSpace(resp.String())}
 			}
 		}
 	}
@@ -185,6 +191,9 @@ func (c *Client) detectAuthError(op, path string, resp *req.Response, err error)
 		if ret, msg, ok := parseBusinessError(resp); ok && ret == 20001 {
 			return &AuthRequiredError{Op: op, StatusCode: resp.StatusCode, Message: msg}
 		}
+		if isBodyAuthFailure(resp.StatusCode, resp.String()) {
+			return &AuthRequiredError{Op: op, StatusCode: resp.StatusCode, Message: strings.TrimSpace(resp.String())}
+		}
 	}
 
 	return nil
@@ -192,6 +201,31 @@ func (c *Client) detectAuthError(op, path string, resp *req.Response, err error)
 
 func isHTTPAuthFailure(statusCode int) bool {
 	return statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden
+}
+
+func isBodyAuthFailure(statusCode int, message string) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
+		return false
+	}
+
+	indicators := []string{
+		"用户未登录",
+		"auth required",
+		"login required",
+		"not logged in",
+		"unauthenticated",
+	}
+	for _, indicator := range indicators {
+		if strings.Contains(normalized, strings.ToLower(indicator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseBusinessError(resp *req.Response) (int, string, bool) {

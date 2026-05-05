@@ -37,13 +37,22 @@ func studioAttributes(sds *SDSSyncOptions, trace productenrich.FieldTrace) map[s
 	}
 	attrs := map[string]productenrich.CanonicalAttribute{}
 	addAttribute(attrs, "sku", sds.ProductSKU, trace)
+	addAttribute(attrs, "product_sku", sds.ProductSKU, trace)
 	addAttribute(attrs, "product_english_name", sds.ProductEnglishName, trace)
 	addAttribute(attrs, "material", firstNonEmptyString(sds.Material, sds.MaterialDescription), trace)
+	addAttribute(attrs, "material_description", sds.MaterialDescription, trace)
 	addAttribute(attrs, "production_process", sds.ProductionProcess, trace)
+	addAttribute(attrs, "product_performance", sds.ProductPerformance, trace)
 	addAttribute(attrs, "design_area", sds.DesignArea, trace)
 	addAttribute(attrs, "picture_request", sds.PictureRequest, trace)
 	addAttribute(attrs, "applicable_scenarios", sds.ApplicableScenarios, trace)
 	addAttribute(attrs, "washing_instructions", sds.WashingInstructions, trace)
+	addAttribute(attrs, "special_description", sds.SpecialDescription, trace)
+	addAttribute(attrs, "product_size", sds.ProductSize, trace)
+	addAttribute(attrs, "packaging_specification", sds.PackagingSpecification, trace)
+	addAttribute(attrs, "variant_sku", sds.VariantSKU, trace)
+	addAttribute(attrs, "variant_size", sds.VariantSize, trace)
+	addAttribute(attrs, "variant_color", sds.VariantColor, trace)
 	if sds.IsElectricity != nil {
 		addAttribute(attrs, "is_electricity", strconv.Itoa(*sds.IsElectricity), trace)
 	}
@@ -90,6 +99,11 @@ func studioSpecifications(sds *SDSSyncOptions) *productenrich.ProductSpecs {
 	addTechnicalSpec(specs.Technical, "color", sds.VariantColor)
 	addTechnicalSpec(specs.Technical, "material", firstNonEmptyString(sds.Material, sds.MaterialDescription))
 	addTechnicalSpec(specs.Technical, "production_process", sds.ProductionProcess)
+	addTechnicalSpec(specs.Technical, "product_performance", sds.ProductPerformance)
+	addTechnicalSpec(specs.Technical, "applicable_scenarios", sds.ApplicableScenarios)
+	addTechnicalSpec(specs.Technical, "special_description", sds.SpecialDescription)
+	addTechnicalSpec(specs.Technical, "product_size", sds.ProductSize)
+	addTechnicalSpec(specs.Technical, "packaging_specification", sds.PackagingSpecification)
 	addTechnicalSpec(specs.Technical, "design_area", sds.DesignArea)
 	addTechnicalSpec(specs.Technical, "picture_request", sds.PictureRequest)
 	if sds.ProductionCycle > 0 {

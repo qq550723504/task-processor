@@ -19,8 +19,25 @@ function titleCaseWords(value: string) {
     .join(" ");
 }
 
-export function presentTaskStatus(status?: string): TaskStatusPresentation {
+function normalizeTaskStatus(status?: string) {
   switch (status) {
+    case "queued":
+      return "pending";
+    case "running":
+      return "processing";
+    case "succeeded":
+      return "completed";
+    case "review_ready":
+      return "needs_review";
+    case "error":
+      return "failed";
+    default:
+      return status;
+  }
+}
+
+export function presentTaskStatus(status?: string): TaskStatusPresentation {
+  switch (normalizeTaskStatus(status)) {
     case "failed":
       return { label: "失败", title: "任务处理失败", tone: "danger" };
     case "needs_review":
@@ -49,19 +66,19 @@ export function presentPlatformStatus(
 ): StatusPresentation {
   switch (card.status) {
     case "review_ready":
-      return { label: "Ready for review", tone: "warning" };
+      return { label: "待检查", tone: "warning" };
     case "retry_needed":
-      return { label: "Retry needed", tone: "danger" };
+      return { label: "需要重试", tone: "danger" };
     case "failed":
-      return { label: "Failed", tone: "danger" };
+      return { label: "失败", tone: "danger" };
     case "processing":
     case "pending":
-      return { label: "In progress", tone: "neutral" };
+      return { label: "处理中", tone: "neutral" };
     case "completed":
-      return { label: "Completed", tone: "success" };
+      return { label: "已完成", tone: "success" };
     default:
       return {
-        label: card.needs_review ? "Needs review" : titleCaseWords(card.status ?? "unknown"),
+        label: card.needs_review ? "需处理" : titleCaseWords(card.status ?? "unknown"),
         tone: card.needs_review ? "warning" : "neutral",
       };
   }
@@ -72,18 +89,18 @@ export function presentQueueState(
 ): StatusPresentation {
   switch (item.state) {
     case "ready":
-      return { label: "Ready", tone: "success" };
+      return { label: "已就绪", tone: "success" };
     case "fallback":
-      return { label: "Fallback", tone: "warning" };
+      return { label: "使用兜底结果", tone: "warning" };
     case "failed":
-      return { label: "Failed", tone: "danger" };
+      return { label: "失败", tone: "danger" };
     case "pending":
-      return { label: "Pending", tone: "neutral" };
+      return { label: "等待中", tone: "neutral" };
     case "processing":
     case "running":
-      return { label: "In progress", tone: "warning" };
+      return { label: "处理中", tone: "warning" };
     case "missing":
-      return { label: "Missing", tone: "danger" };
+      return { label: "缺失", tone: "danger" };
     default:
       return {
         label: titleCaseWords(item.state ?? "unknown"),
@@ -97,16 +114,16 @@ export function presentQueueReviewStatus(
 ): StatusPresentation {
   switch (item.review_status) {
     case "pending":
-      return { label: "Pending review", tone: "warning" };
+      return { label: "待复核", tone: "warning" };
     case "approved":
-      return { label: "Approved", tone: "success" };
+      return { label: "已通过", tone: "success" };
     case "deferred":
-      return { label: "Deferred", tone: "neutral" };
+      return { label: "已延后", tone: "neutral" };
     case "rejected":
-      return { label: "Rejected", tone: "danger" };
+      return { label: "已驳回", tone: "danger" };
     default:
       return {
-        label: item.review_status ? titleCaseWords(item.review_status) : "Unreviewed",
+        label: item.review_status ? titleCaseWords(item.review_status) : "未复核",
         tone: "neutral",
       };
   }

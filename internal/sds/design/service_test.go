@@ -355,6 +355,70 @@ func TestBuildSaveDesignRequestPreservesPrintableLayerInputs(t *testing.T) {
 	}
 }
 
+func TestBuildSaveDesignRequestUsesVariantPageThumbnails(t *testing.T) {
+	t.Parallel()
+
+	primaryPage := &DesignProductPage{
+		Product: DesignProduct{ID: 101},
+		PSDs: []PSDDocument{
+			{ThumbnailURL: "https://cdn.sdspod.com/images/red-thumb.jpg"},
+		},
+	}
+	relatedPage := &DesignProductPage{
+		Product: DesignProduct{ID: 102},
+		PSDs: []PSDDocument{
+			{ThumbnailURL: "https://cdn.sdspod.com/images/green-thumb.jpg"},
+		},
+	}
+	result := &PrepareSyncDesignResult{
+		Page: primaryPage,
+		RelatedPages: map[int64]*DesignProductPage{
+			101: primaryPage,
+			102: relatedPage,
+		},
+		Material: &UploadedMaterial{
+			Material: &Material{
+				ID:       460264499,
+				ImageURL: "https://cdn.sdspod.com/imagesThumbs/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/material.png",
+			},
+		},
+		Request: &SyncDesignRequest{
+			ProductID:        101,
+			PrototypeGroupID: 15508,
+			DesignType:       "material",
+			Prototypes: []SyncDesignPrototype{
+				{
+					PrototypeID: "prototype-red",
+					ProductIDs:  []int64{101},
+					Images:      []string{"http://e.sdspod.com/builds?content=red-preview"},
+					Layers: []SyncDesignLayer{
+						{LayerID: "layer-red", ImgWidth: 1000, ImgHeight: 600},
+					},
+				},
+				{
+					PrototypeID: "prototype-green",
+					ProductIDs:  []int64{102},
+					Images:      []string{"http://e.sdspod.com/builds?content=green-preview"},
+					Layers: []SyncDesignLayer{
+						{LayerID: "layer-green", ImgWidth: 1000, ImgHeight: 600},
+					},
+				},
+			},
+		},
+	}
+
+	req := buildSaveDesignRequest(result)
+	if len(req.Prototypes) != 2 {
+		t.Fatalf("prototypes = %+v, want 2", req.Prototypes)
+	}
+	if got := req.Prototypes[0].Images; len(got) != 1 || got[0] != "https://cdn.sdspod.com/images/red-thumb.jpg" {
+		t.Fatalf("primary images = %+v", got)
+	}
+	if got := req.Prototypes[1].Images; len(got) != 1 || got[0] != "https://cdn.sdspod.com/images/green-thumb.jpg" {
+		t.Fatalf("related images = %+v", got)
+	}
+}
+
 func TestSelectFinishedProductImageURLsSkipsRejectedCandidate(t *testing.T) {
 	t.Parallel()
 
@@ -479,6 +543,20 @@ func TestRenderedImageURLsReadyWaitsForExpectedPSDCount(t *testing.T) {
 		"https://cdn.sdspod.com/out/scene.jpg",
 	}, expected) {
 		t.Fatal("all expected renders should be ready")
+	}
+}
+
+func TestRenderedImagePollAttemptsScalesForVariantTargets(t *testing.T) {
+	t.Parallel()
+
+	if got := renderedImagePollAttempts(1); got != maxRenderedImagePollAttempts {
+		t.Fatalf("single target attempts = %d, want %d", got, maxRenderedImagePollAttempts)
+	}
+	if got := renderedImagePollAttempts(3); got != maxRenderedImagePollAttempts+16 {
+		t.Fatalf("three target attempts = %d, want %d", got, maxRenderedImagePollAttempts+16)
+	}
+	if got := renderedImagePollAttempts(10); got != maxRenderedImagePollAttempts+maxRenderedImagePollExtra {
+		t.Fatalf("capped attempts = %d, want %d", got, maxRenderedImagePollAttempts+maxRenderedImagePollExtra)
 	}
 }
 

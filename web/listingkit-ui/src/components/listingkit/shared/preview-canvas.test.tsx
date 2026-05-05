@@ -23,4 +23,13 @@ describe("PreviewCanvas", () => {
       "http://127.0.0.1:9100/listingkit-assets/gallery-rendered-1.png",
     );
   });
+
+  it("renders localized empty copy when no preview is available", () => {
+    render(<PreviewCanvas />);
+
+    expect(screen.getByText("暂时没有可预览内容")).toBeInTheDocument();
+    expect(
+      screen.getByText("当前选中的分区还没有可直接展示的预览图。"),
+    ).toBeInTheDocument();
+  });
 });

@@ -31,14 +31,14 @@ describe("WorkspaceOverviewPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Previewable")).toBeInTheDocument();
+    expect(screen.getByText("可预览")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
-    expect(screen.getByText("Retryable")).toBeInTheDocument();
+    expect(screen.getByText("可重试")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("Deferred")).toBeInTheDocument();
+    expect(screen.getByText("已延后")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("Review detail previews")).toBeInTheDocument();
-    expect(screen.getByText("Use fallback review")).toBeInTheDocument();
-    expect(screen.getByText("Medium severity / act now")).toBeInTheDocument();
+    expect(screen.getByText("使用兜底结果继续检查")).toBeInTheDocument();
+    expect(screen.getByText("中优先级 / 立即处理")).toBeInTheDocument();
   });
 });

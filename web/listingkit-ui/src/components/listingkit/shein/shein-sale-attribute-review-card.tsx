@@ -5,6 +5,19 @@ import type {
   SheinSaleAttributeCandidateInfo,
 } from "@/lib/types/listingkit";
 
+function presentSaleReviewStatus(status?: string) {
+  switch (status) {
+    case "resolved":
+      return "已完成";
+    case "partial":
+      return "待补齐";
+    case "blocked":
+      return "有阻断";
+    default:
+      return status;
+  }
+}
+
 function SaleAttributeRow({
   scope,
   name,
@@ -108,7 +121,9 @@ export function SheinSaleAttributeReviewCard({
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
-          {current.status ? <span>状态 {current.status}</span> : null}
+          {current.status ? (
+            <span>状态 {presentSaleReviewStatus(current.status)}</span>
+          ) : null}
           {current.primary_attribute_id ? (
             <span>主规格 {current.primary_attribute_id}</span>
           ) : null}
@@ -182,8 +197,8 @@ export function SheinSaleAttributeReviewCard({
 
         {current.review_notes?.length ? (
           <div className="space-y-2">
-            {current.review_notes.map((note) => (
-              <p className="text-sm leading-6 text-zinc-700" key={note}>
+            {current.review_notes.map((note, index) => (
+              <p className="text-sm leading-6 text-zinc-700" key={`${index}-${note}`}>
                 {note}
               </p>
             ))}

@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/core/logger"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/ptr"
 	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -19,12 +21,14 @@ type templateAttributeBatchSelection struct {
 }
 
 type templateAttributeBatchChoice struct {
-	AttributeID      int      `json:"attribute_id,omitempty"`
-	AttributeValueID int      `json:"attribute_value_id,omitempty"`
-	Reasons          []string `json:"reasons,omitempty"`
+	AttributeID          int      `json:"attribute_id,omitempty"`
+	AttributeValueID     int      `json:"attribute_value_id,omitempty"`
+	AttributeExtraValue  string   `json:"attribute_extra_value,omitempty"`
+	TextValue            string   `json:"text_value,omitempty"`
+	Reasons              []string `json:"reasons,omitempty"`
 }
 
-func inferMissingRequiredDisplayAttributesBatch(
+func inferDisplayAttributesTemplateBatch(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
@@ -33,20 +37,24 @@ func inferMissingRequiredDisplayAttributesBatch(
 	if llm == nil || len(attributes) == 0 || len(inputs) == 0 {
 		return nil, nil
 	}
-	pending := collectBatchInferableDisplayAttributes(attributes, inputs, resolvedByID)
+	pending := collectTemplateBatchResolvableDisplayAttributes(attributes, inputs, resolvedByID)
 	if len(pending) == 0 {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	defer cancel()
 
-	response, err := llm.Generate(ctx, buildMissingDisplayAttributeBatchPrompt(pending, inputs))
+	log := logger.GetGlobalLogger("shein/attribute")
+	promptText := buildDisplayAttributeTemplateBatchPrompt(pending, inputs)
+	response, err := generateDisplayAttributeTemplateBatch(ctx, llm, promptText)
 	if err != nil {
+		log.WithError(err).WithField("pending_count", len(pending)).Warn("SHEIN 模板批量属性决策失败")
 		return nil, nil
 	}
 	response = jsonx.CleanLLMResponse(response)
 	if strings.TrimSpace(response) == "" {
+		log.WithField("pending_count", len(pending)).Warn("SHEIN 模板批量属性决策返回空响应")
 		return nil, nil
 	}
 
@@ -54,14 +62,14 @@ func inferMissingRequiredDisplayAttributesBatch(
 	if err := json.Unmarshal([]byte(response), &payload); err != nil {
 		var choices []templateAttributeBatchChoice
 		if arrayErr := json.Unmarshal([]byte(response), &choices); arrayErr != nil {
+			log.WithError(err).
+				WithField("pending_count", len(pending)).
+				WithField("response_preview", truncateDisplayAttributeBatchResponse(response, 600)).
+				Warn("SHEIN 模板批量属性决策响应解析失败")
 			return nil, nil
 		}
 		payload.Selections = choices
 	}
-	if len(payload.Selections) == 0 {
-		return nil, nil
-	}
-
 	byID := make(map[int]sheinattribute.AttributeInfo, len(pending))
 	for _, attr := range pending {
 		byID[attr.AttributeID] = attr
@@ -70,7 +78,7 @@ func inferMissingRequiredDisplayAttributesBatch(
 	resolved := make([]ResolvedAttribute, 0, len(payload.Selections))
 	notes := make([]string, 0, len(payload.Selections))
 	for _, choice := range payload.Selections {
-		if choice.AttributeID <= 0 || choice.AttributeValueID <= 0 {
+		if choice.AttributeID <= 0 {
 			notes = append(notes, choice.Reasons...)
 			continue
 		}
@@ -82,28 +90,85 @@ func inferMissingRequiredDisplayAttributesBatch(
 		if _, exists := resolvedByID[attr.AttributeID]; exists {
 			continue
 		}
+		if len(attr.AttributeValueInfoList) == 0 {
+			value := strings.TrimSpace(firstNonEmpty(choice.AttributeExtraValue, choice.TextValue))
+			if value == "" {
+				notes = append(notes, choice.Reasons...)
+				continue
+			}
+			match := ResolvedAttribute{
+				Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+				Value:               value,
+				AttributeID:         attr.AttributeID,
+				AttributeExtraValue: value,
+				AttributeType:       attr.AttributeType,
+				AttributeMode:       attr.AttributeMode,
+				DataDimension:       attr.DataDimension,
+				CascadeAttributeID:  attr.CascadeAttributeID,
+				MatchedBy:           "llm_attribute_template_batch",
+				Required:            isTemplateRequired(attr),
+				Important:           isTemplateImportant(attr),
+				SKCScope:            attr.SKCScope != nil && *attr.SKCScope,
+			}
+			resolved = append(resolved, match)
+			resolvedByID[match.AttributeID] = match
+			notes = append(notes, choice.Reasons...)
+			continue
+		}
+		if choice.AttributeValueID <= 0 {
+			notes = append(notes, choice.Reasons...)
+			continue
+		}
 		option, ok := findDisplayAttributeOptionByID(attr, choice.AttributeValueID)
 		if !ok {
 			notes = append(notes, choice.Reasons...)
 			continue
 		}
 		sourceValue := firstNonEmpty(option.AttributeValueEn, option.AttributeValue)
-		match := buildResolvedAttribute(attr, option, sourceValue, "llm_attribute_batch_inference")
+		match := buildResolvedAttribute(attr, option, sourceValue, "llm_attribute_template_batch")
 		resolved = append(resolved, match)
 		resolvedByID[match.AttributeID] = match
 		notes = append(notes, choice.Reasons...)
 	}
+	for _, attr := range pending {
+		if _, ok := resolvedByID[attr.AttributeID]; ok {
+			continue
+		}
+		if len(attr.AttributeValueInfoList) == 0 {
+			if evidence := describeDisplayAttributeEvidenceFields(inputs, 8); evidence != "" {
+				notes = append(notes, fmt.Sprintf(
+					"SHEIN 普通属性文本诊断: 属性 %q 当前可用证据字段为 [%s]",
+					firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+					evidence,
+				))
+			}
+			continue
+		}
+		if narrowed := describeDisplayAttributeCandidates(attr, "", "", inputs, len(attr.AttributeValueInfoList)); narrowed != "" {
+			notes = append(notes, fmt.Sprintf(
+				"SHEIN 普通属性候选诊断: 属性 %q 在模板批量决策阶段的候选集为 [%s]",
+				firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+				narrowed,
+			))
+		}
+	}
+	log.WithFields(map[string]any{
+		"pending_count":    len(pending),
+		"selection_count":  len(payload.Selections),
+		"resolved_count":   len(resolved),
+		"response_preview": truncateDisplayAttributeBatchResponse(response, 600),
+	}).Info("SHEIN 模板批量属性决策完成")
 	return resolved, dedupeStrings(notes)
 }
 
-func collectBatchInferableDisplayAttributes(
+func collectTemplateBatchResolvableDisplayAttributes(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
 ) []sheinattribute.AttributeInfo {
 	result := make([]sheinattribute.AttributeInfo, 0)
 	for _, attr := range attributes {
-		if !isTemplateRequired(attr) || len(attr.AttributeValueInfoList) == 0 {
+		if !isTemplateRequired(attr) && !isTemplateImportant(attr) && !hasExactDisplayAttributeInput(attr, inputs) {
 			continue
 		}
 		if !dependencyIsActiveWithInputs(attr, resolvedByID, inputs) {
@@ -117,7 +182,40 @@ func collectBatchInferableDisplayAttributes(
 	return result
 }
 
-func buildMissingDisplayAttributeBatchPrompt(attributes []sheinattribute.AttributeInfo, inputs []common.Attribute) string {
+func hasExactDisplayAttributeInput(attr sheinattribute.AttributeInfo, inputs []common.Attribute) bool {
+	for _, input := range inputs {
+		if matchesTemplateAttributeNameExactly(attr, normalizeText(input.Name)) {
+			return true
+		}
+	}
+	return false
+}
+
+func generateDisplayAttributeTemplateBatch(
+	ctx context.Context,
+	llm openaiclient.ChatCompleter,
+	promptText string,
+) (string, error) {
+	maxRetries := 0
+	timeout := 35 * time.Second
+	resp, err := llm.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
+		Messages: []openaiclient.ChatCompletionMessage{
+			{Role: "user", Content: promptText},
+		},
+		Temperature: ptr.Float32Ptr(0.1),
+		Timeout:     &timeout,
+		MaxRetries:  &maxRetries,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || len(resp.Choices) == 0 {
+		return "", fmt.Errorf("SHEIN 模板批量属性决策未返回有效 choice")
+	}
+	return resp.Choices[0].Message.Content, nil
+}
+
+func buildDisplayAttributeTemplateBatchPrompt(attributes []sheinattribute.AttributeInfo, inputs []common.Attribute) string {
 	var sourceBlock strings.Builder
 	for _, line := range buildAllDisplayAttributeContextLines(inputs) {
 		sourceBlock.WriteString("- ")
@@ -127,11 +225,17 @@ func buildMissingDisplayAttributeBatchPrompt(attributes []sheinattribute.Attribu
 	var attributeBlock strings.Builder
 	for _, attr := range attributes {
 		attributeBlock.WriteString(fmt.Sprintf(
-			"- attribute_id=%d name=%q type=%d\n",
+			"- attribute_id=%d name=%q type=%d required=%t important=%t\n",
 			attr.AttributeID,
 			firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
 			attr.AttributeType,
+			isTemplateRequired(attr),
+			isTemplateImportant(attr),
 		))
+		if len(attr.AttributeValueInfoList) == 0 {
+			attributeBlock.WriteString("  - text_value_allowed=true\n")
+			continue
+		}
 		for _, option := range attr.AttributeValueInfoList {
 			attributeBlock.WriteString(fmt.Sprintf(
 				"  - attribute_value_id=%d value=%q value_en=%q\n",
@@ -141,20 +245,18 @@ func buildMissingDisplayAttributeBatchPrompt(attributes []sheinattribute.Attribu
 			))
 		}
 	}
-	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeBatchInference, `You complete missing required SHEIN display attributes as a batch.
-Use full product context to make consistent choices across attributes.
-For each required attribute, choose the safest candidate attribute_value_id when product semantics support it and no source evidence contradicts it.
-Prefer broad or neutral candidates over 0 when the candidate list contains a generic fit.
-For element, pattern, decoration, or motif attributes, consider artwork, printing, production_process, design_area, and visual theme signals.
-For season attributes, choose a broad all-season or multi-season candidate when the product is not limited to a specific season.
-For style attributes, choose the safest everyday/neutral style candidate when the product has no niche style signal.
-Return JSON only: {"selections":[{"attribute_id":number,"attribute_value_id":number,"reasons":[string]}]}.
-Use attribute_value_id 0 only when every candidate would be misleading.
+	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeBatchInference, `You resolve a full batch of unresolved SHEIN display attributes for one live category template.
+Use full product context to make consistent choices across all attributes in one pass.
+For every listed template attribute, you must return exactly one selection entry.
+For enum attributes, select only from the provided attribute_value_id options. Prefer the best-supported candidate when the evidence is directionally clear. Use 0 only when the evidence is genuinely absent or conflicting.
+For text attributes, fill attribute_extra_value only when the value is explicitly supported by source evidence. Do not invent product model names or marketing copy.
+Return complete JSON only, without markdown or explanatory text:
+{"selections":[{"attribute_id":number,"attribute_value_id":number,"attribute_extra_value":string,"reasons":[string]}]}
 
 Source product attributes:
 {{.SourceAttributesBlock}}
 
-Missing required SHEIN attributes:
+Unresolved SHEIN template attributes:
 {{.AttributesBlock}}`, map[string]any{
 		"SourceAttributesBlock": sourceBlock.String(),
 		"AttributesBlock":       attributeBlock.String(),
@@ -168,4 +270,12 @@ func findDisplayAttributeOptionByID(attr sheinattribute.AttributeInfo, valueID i
 		}
 	}
 	return sheinattribute.AttributeValue{}, false
+}
+
+func truncateDisplayAttributeBatchResponse(response string, limit int) string {
+	response = strings.TrimSpace(response)
+	if limit <= 0 || len(response) <= limit {
+		return response
+	}
+	return response[:limit] + "..."
 }

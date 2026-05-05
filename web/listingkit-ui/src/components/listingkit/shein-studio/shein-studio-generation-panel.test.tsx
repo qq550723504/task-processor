@@ -107,4 +107,56 @@ describe("SheinStudioGenerationPanel", () => {
 
     expect(screen.queryByText("尺寸图也使用 SDS 渲染")).not.toBeInTheDocument();
   });
+
+  it("shows a single next-step callout when product selection is still missing", () => {
+    render(
+      <SheinStudioGenerationPanel
+        availableSdsImages={[]}
+        artworkModel="nanobanana"
+        createdTasks={[]}
+        creatingError=""
+        creatingMessage=""
+        generationError=""
+        imageStrategy="ai_generated"
+        isCreatingTasks={false}
+        isGenerating={false}
+        onCreateTasks={() => undefined}
+        onDeleteBatch={() => undefined}
+        onGenerate={() => undefined}
+        onLoadBatch={() => undefined}
+        onSaveBatch={() => undefined}
+        productImageCount="5"
+        productImagePrompt=""
+        productImagePrompts={[]}
+        prompt=""
+        promptInputRef={{ current: null }}
+        renderSizeImagesWithSds={true}
+        saveMessage=""
+        savedBatches={[]}
+        selectedSdsImages={[]}
+        selectedStyleCount={0}
+        selectionReady={false}
+        setArtworkModel={() => undefined}
+        setImageStrategy={() => undefined}
+        setProductImageCount={() => undefined}
+        setProductImagePrompt={() => undefined}
+        setProductImagePrompts={() => undefined}
+        setPrompt={() => undefined}
+        setRenderSizeImagesWithSds={() => undefined}
+        setSelectedSdsImages={() => undefined}
+        setSheinStoreId={() => undefined}
+        setStyleCount={() => undefined}
+        setTransparentBackground={() => undefined}
+        sheinStoreId="869"
+        styleCount="1"
+        transparentBackground={false}
+      />,
+    );
+
+    expect(screen.getByText("请先选择商品")).toBeInTheDocument();
+    expect(
+      screen.getByText("当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "先选择商品" })).toBeDisabled();
+  });
 });

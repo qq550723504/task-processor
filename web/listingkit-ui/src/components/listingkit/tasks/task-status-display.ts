@@ -11,6 +11,23 @@ function primaryTaskError(task?: ListingKitTaskResult | null) {
   return task.result?.child_tasks?.find((child) => child.error)?.error;
 }
 
+function isPendingTaskStatus(status?: string) {
+  return (
+    status === "pending" ||
+    status === "processing" ||
+    status === "queued" ||
+    status === "running"
+  );
+}
+
+function isCompletedTaskStatus(status?: string) {
+  return status === "completed" || status === "succeeded";
+}
+
+function isFailedTaskStatus(status?: string) {
+  return status === "failed" || status === "error";
+}
+
 export function shouldSuppressResolvedActionSummary(
   task: ListingKitTaskResult | null | undefined,
   options: { hasPreviewSvg: boolean; queueTotal: number },
@@ -25,24 +42,24 @@ export function shouldSuppressResolvedActionSummary(
 export function deriveTaskPreviewEmptyState(
   task?: ListingKitTaskResult | null,
 ): EmptyStateCopy | undefined {
-  if (!task?.status || task.status === "completed") {
+  if (!task?.status || isCompletedTaskStatus(task.status)) {
     return undefined;
   }
 
-  if (task.status === "failed") {
+  if (isFailedTaskStatus(task.status)) {
     return {
-      title: "Preview unavailable",
+      title: "预览暂不可用",
       description:
         primaryTaskError(task) ??
-        "The task failed before any previewable SVG sidecar was generated.",
+        "当前任务在生成可预览内容前就中断了，请先查看失败原因或返回重新创建任务。",
     };
   }
 
-  if (task.status === "pending" || task.status === "processing") {
+  if (isPendingTaskStatus(task.status)) {
     return {
-      title: "Preview pending",
+      title: "预览还在生成中",
       description:
-        "The task is still processing. Preview content will appear after generation finishes.",
+        "任务仍在处理中，生成完成后这里会自动显示预览内容。你也可以稍后从任务列表继续。",
     };
   }
 
@@ -52,24 +69,24 @@ export function deriveTaskPreviewEmptyState(
 export function deriveTaskQueueEmptyState(
   task?: ListingKitTaskResult | null,
 ): EmptyStateCopy | undefined {
-  if (!task?.status || task.status === "completed") {
+  if (!task?.status || isCompletedTaskStatus(task.status)) {
     return undefined;
   }
 
-  if (task.status === "failed") {
+  if (isFailedTaskStatus(task.status)) {
     return {
-      title: "No generation queue items",
+      title: "暂时没有可处理的队列项",
       description:
         primaryTaskError(task) ??
-        "The task failed before generation queue items were produced.",
+        "当前任务在生成队列项前就中断了，请先查看失败原因或返回重新创建任务。",
     };
   }
 
-  if (task.status === "pending" || task.status === "processing") {
+  if (isPendingTaskStatus(task.status)) {
     return {
-      title: "Generation queue pending",
+      title: "队列项还在准备中",
       description:
-        "The task is still processing. Queue items will appear after generation planning completes.",
+        "任务仍在处理中，生成规划完成后这里会自动出现队列项。你也可以稍后回到任务列表继续。",
     };
   }
 

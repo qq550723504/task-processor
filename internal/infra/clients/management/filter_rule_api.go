@@ -9,10 +9,16 @@ import (
 // FilterRuleAPIClient 筛选规则API客户端实现
 type FilterRuleAPIClient struct {
 	*ManagementAPIClient
+	localDataProvider *LocalDataProvider
 }
 
 // GetFilterRule 获取筛选规则
 func (m *FilterRuleAPIClient) GetFilterRule(req *api.FilterRuleReqDTO) (*[]api.FilterRuleRespDTO, error) {
+	if m.localDataProvider != nil {
+		if rules, err := m.localDataProvider.GetFilterRule(req); err != nil || rules != nil {
+			return rules, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/filter-rule/list?tenantId=%d&storeId=%d", m.baseURL, req.TenantID, req.StoreID)
 
 	var result APIResponse

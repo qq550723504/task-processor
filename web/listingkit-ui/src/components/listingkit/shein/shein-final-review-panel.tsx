@@ -112,6 +112,44 @@ function summaryStatusLabel(status: ReviewSummaryItem["status"]) {
   }
 }
 
+function FailureGuidance({
+  title,
+  detail,
+  impact,
+  nextStep,
+}: {
+  title: string;
+  detail: string;
+  impact: string;
+  nextStep: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+      <div className="space-y-3">
+        <p className="font-semibold text-rose-900">{title}</p>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+            发生了什么
+          </p>
+          <p className="leading-6">{detail}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+            可能影响
+          </p>
+          <p className="leading-6">{impact}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+            下一步怎么做
+          </p>
+          <p className="leading-6">{nextStep}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SheinFinalReviewPanel({
   shein,
   isSaving,
@@ -168,6 +206,27 @@ export function SheinFinalReviewPanel({
   const finalImages = (finalReview?.images ?? []).filter(
     (image) => image.final !== false && image.url,
   );
+  const attributeResolution = shein?.editor_context?.attributes?.current;
+  const finalAttributeCount = finalReview?.attributes?.length ?? 0;
+  const resolvedAttributeCount =
+    finalAttributeCount || attributeResolution?.resolved_count || 0;
+  const attributeBlocked = hasBlockingKey(allBlockingItems, [
+    "attributes",
+    "attribute_review",
+  ]);
+  const attributeResolvedByState =
+    !attributeBlocked &&
+    attributeResolution?.status === "resolved" &&
+    resolvedAttributeCount > 0;
+  const attributeDone = !attributeBlocked && (finalAttributeCount > 0 || attributeResolvedByState);
+  const attributeMessage =
+    finalAttributeCount > 0
+      ? `已确认 ${finalAttributeCount} 个普通属性`
+      : attributeResolvedByState && attributeResolution?.source === "manual_fallback_review"
+        ? `已按当前 SDS 属性确认 ${resolvedAttributeCount} 个普通属性`
+        : attributeResolvedByState
+          ? `已确认 ${resolvedAttributeCount} 个普通属性`
+          : "普通属性未展示已确认结果，建议检查必填属性。";
   const imageBlocked =
     hasBlockingKey(allBlockingItems, ["images", "preview_product"]) ||
     imageCounts.final === 0 ||
@@ -190,15 +249,8 @@ export function SheinFinalReviewPanel({
     {
       key: "attributes",
       title: "普通属性",
-      status: hasBlockingKey(allBlockingItems, ["attributes", "attribute_review"])
-        ? "blocked"
-        : (finalReview?.attributes?.length ?? 0) > 0
-          ? "done"
-          : "warning",
-      message:
-        (finalReview?.attributes?.length ?? 0) > 0
-          ? `已确认 ${finalReview?.attributes?.length ?? 0} 个普通属性`
-          : "普通属性未展示已确认结果，建议检查必填属性。",
+      status: attributeBlocked ? "blocked" : attributeDone ? "done" : "warning",
+      message: attributeMessage,
       actionLabel: "去确认属性",
     },
     {
@@ -508,7 +560,10 @@ export function SheinFinalReviewPanel({
           价格来自 SDS 人民币成本换算，提交前可人工覆盖单个 SKU 售价。
         </p>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-zinc-200">
+      <div
+        id="shein-final-review-pricing"
+        className="scroll-mt-6 overflow-hidden rounded-2xl border border-zinc-200"
+      >
         <div className="grid grid-cols-[1.5fr_0.7fr_0.7fr_0.8fr] bg-zinc-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
           <span>SKU</span>
           <span>成本</span>
@@ -544,9 +599,20 @@ export function SheinFinalReviewPanel({
       </div>
 
       {submitErrorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-          {submitErrorMessage}
-        </div>
+        <FailureGuidance
+          title={submitAction === "save_draft" ? "保存草稿失败" : "提交失败"}
+          detail={submitErrorMessage}
+          impact={
+            submitAction === "save_draft"
+              ? "本次不会把资料保存到 SHEIN 草稿箱，当前页面修改仍保留在工作台。"
+              : "本次不会把资料提交到 SHEIN，请先处理阻断项或上传问题后再重试。"
+          }
+          nextStep={
+            submitAction === "save_draft"
+              ? "先检查图片上传、最终资料和阻断项，再重新保存到 SHEIN 草稿箱。"
+              : "先修复图片、类目、属性或 SKU 阻断项，确认最终草稿后再重新提交。"
+          }
+        />
       ) : null}
       {saveMessage ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
@@ -554,9 +620,12 @@ export function SheinFinalReviewPanel({
         </div>
       ) : null}
       {saveErrorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-          {saveErrorMessage}
-        </div>
+        <FailureGuidance
+          title="最终草稿保存失败"
+          detail={saveErrorMessage}
+          impact="当前确认结果还没有写回最终草稿，本次提交仍会沿用上一次成功保存的版本。"
+          nextStep="先检查网络或字段完整性，确认价格、图片和 SKU 后重新保存最终草稿。"
+        />
       ) : null}
       {isPublishConfirming ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">

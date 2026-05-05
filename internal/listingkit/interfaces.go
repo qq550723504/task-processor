@@ -54,6 +54,11 @@ type Repository interface {
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
 }
 
+type CanonicalProductCacheRepository interface {
+	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*productenrich.CanonicalProduct, error)
+	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) error
+}
+
 type Assembler interface {
 	Assemble(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ListingKitResult
 }

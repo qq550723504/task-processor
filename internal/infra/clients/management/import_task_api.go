@@ -10,11 +10,17 @@ import (
 // ImportTaskAPIClient 导入任务API客户端实现
 type ImportTaskAPIClient struct {
 	*ManagementAPIClient
+	localDataProvider *LocalDataProvider
 }
 
 // GetPendingAndRetryTasks 获取待处理及待重试的任务列表
 func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, storeIds []int64) ([]api.ProductImportTaskRespDTO, error) {
 	logger.GetGlobalLogger("infra/clients").Warn("[GetPendingAndRetryTasks] legacy polling API is deprecated; prefer RabbitMQ-driven task dispatch")
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		if tasks, handled, err := m.localDataProvider.GetPendingAndRetryTasks(limit, userId, storeIds); err != nil || handled {
+			return tasks, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/import-task/list-pending-and-retry?limit=%d", m.baseURL, limit)
 
 	if userId > 0 {
@@ -68,6 +74,15 @@ func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, s
 
 // UpdateTaskStatus 更新任务状态
 func (m *ImportTaskAPIClient) UpdateTaskStatus(req *api.ProductImportTaskUpdateReqDTO) error {
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		handled, err := m.localDataProvider.UpdateImportTaskStatus(req)
+		if err != nil {
+			return fmt.Errorf("更新任务状态失败: %w", err)
+		}
+		if handled {
+			return nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/import-task/update-status", m.baseURL)
 
 	success, err := getTypedResult[bool](m.ManagementAPIClient, http.MethodPost, url, req)
