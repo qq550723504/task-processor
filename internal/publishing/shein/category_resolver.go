@@ -224,67 +224,6 @@ func formatCategoryTreeResolutionAPIError(err error) string {
 	return "SHEIN 类目树加载失败: " + strings.TrimSpace(err.Error())
 }
 
-func (r *categoryResolver) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
-	if r == nil || r.api == nil {
-		return nil
-	}
-	suggestQuery := buildCategorySuggestionQuery(req, canonical, pkg)
-	treeQuery := buildCategoryQuery(req, canonical, pkg)
-	if strings.TrimSpace(suggestQuery) == "" && strings.TrimSpace(treeQuery) == "" {
-		return nil
-	}
-	tryCandidate := func(selectedID int, source, query, reason string) *CategorySuggestion {
-		if selectedID <= 0 {
-			return nil
-		}
-		if pkg != nil && selectedID == pkg.CategoryID {
-			return nil
-		}
-		info, err := r.api.GetCategory(selectedID)
-		if err != nil || info == nil {
-			return nil
-		}
-		resolution := hydrateCategoryResolution(info, source, query)
-		if resolution == nil || resolution.CategoryID <= 0 {
-			return nil
-		}
-		suggestion := &CategorySuggestion{
-			Source:         resolution.Source,
-			Reason:         reason,
-			MatchedPath:    append([]string(nil), resolution.MatchedPath...),
-			CategoryID:     resolution.CategoryID,
-			CategoryIDList: append([]int(nil), resolution.CategoryIDList...),
-			ProductTypeID:  resolution.ProductTypeID,
-			TopCategoryID:  resolution.TopCategoryID,
-		}
-		if !shouldAcceptSuggestedCategoryWithSemanticVerifier(canonical, pkg, suggestion, r.semanticVerifier) {
-			return nil
-		}
-		return suggestion
-	}
-
-	if r.suggestFallback != nil && strings.TrimSpace(suggestQuery) != "" {
-		selectedID, err := r.suggestFallback.SelectCategoryID(buildCategorySuggestInput(req, canonical, pkg), r.api)
-		if err == nil {
-			if suggestion := tryCandidate(selectedID, "suggest_category_by_text", suggestQuery, "当前类目模板不适配销售属性结构，建议复核该候选类目"); suggestion != nil {
-				return suggestion
-			}
-		}
-	}
-	if r.treeFallback == nil || strings.TrimSpace(treeQuery) == "" {
-		return nil
-	}
-	tree, err := r.api.GetCategoryTree()
-	if err != nil || tree == nil {
-		return nil
-	}
-	selectedID, err := r.treeFallback.SelectCategoryID(treeQuery, tree)
-	if err != nil {
-		return nil
-	}
-	return tryCandidate(selectedID, "ai_category_tree", treeQuery, "当前类目模板不适配销售属性结构，建议复核该候选类目")
-}
-
 func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query string) *CategoryResolution {
 	if info == nil {
 		return &CategoryResolution{Status: "unresolved", Source: source, QueryText: query}

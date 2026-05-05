@@ -85,27 +85,6 @@ func TestAICategorySemanticVerifierAvoidsNoisyDescriptionWhenStructuredSignalsEx
 	}
 }
 
-func TestShouldAcceptSuggestedCategoryRejectsSemanticMismatch(t *testing.T) {
-	verifier := newAICategorySemanticVerifier(&stubCategorySemanticLLM{
-		response: `{"verdict":"incompatible","reason":"this product is a cushion, not apparel"}`,
-	})
-	accepted := shouldAcceptSuggestedCategoryWithSemanticVerifier(&productenrich.CanonicalProduct{
-		Title:       "Outdoor bench cushion for hanging chair",
-		Description: "Garden seat cushion for balcony and patio furniture",
-		Attributes: map[string]productenrich.CanonicalAttribute{
-			"产品类别": {Value: "椅垫"},
-			"空间":   {Value: "室外,阳台"},
-		},
-	}, &Package{}, &CategorySuggestion{
-		CategoryID:  9346,
-		MatchedPath: []string{"女士服装", "女士制服&特殊服饰", "女士装扮服饰&角色扮演服饰", "角色扮演服饰"},
-	}, verifier)
-
-	if accepted {
-		t.Fatal("expected semantic verifier to reject mismatched apparel category")
-	}
-}
-
 func TestBuildCategoryFamilyConflictSummaryUsesSemanticValidation(t *testing.T) {
 	recommend, reason := buildCategoryFamilyConflictSummary(&productenrich.CanonicalProduct{
 		Title: "Outdoor bench cushion for hanging chair",

@@ -57,16 +57,3 @@ func (r *managedCategoryResolver) buildAPI(storeID int64) (CategoryAPI, string) 
 	}
 	return sheincategory.NewClient(baseAPIClient), ""
 }
-
-func (r *managedCategoryResolver) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
-	if req == nil {
-		return nil
-	}
-	api, _ := r.buildAPI(req.SheinStoreID)
-	resolver := NewCategoryResolverWithSemanticVerifier(api, r.suggestFallback, r.treeFallback, r.semanticVerifier)
-	recommender, ok := resolver.(categoryRecommender)
-	if !ok {
-		return nil
-	}
-	return recommender.SuggestAlternative(req, canonical, pkg)
-}

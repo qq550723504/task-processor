@@ -51,11 +51,7 @@ func RefreshDerivedState(
 	if saleAttributeResolver != nil {
 		pkg.SaleAttributeResolution = saleAttributeResolver.Resolve(req, canonical, pkg)
 	}
-	if pkg.SaleAttributeResolution != nil && pkg.SaleAttributeResolution.RecommendCategoryReview && pkg.CategoryResolution != nil {
-		if recommender, ok := categoryResolver.(categoryRecommender); ok {
-			pkg.CategoryResolution.SuggestedCategory = recommender.SuggestAlternative(req, canonical, pkg)
-		}
-	} else if pkg.CategoryResolution != nil {
+	if pkg.CategoryResolution != nil {
 		pkg.CategoryResolution.SuggestedCategory = nil
 	}
 

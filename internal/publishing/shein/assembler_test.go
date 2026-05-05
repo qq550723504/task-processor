@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"strings"
 	"testing"
 
 	"task-processor/internal/productenrich"
@@ -19,12 +20,15 @@ type assemblerStubCategoryAPI struct {
 	info *sheincategory.CategoryInfo
 }
 
-type assemblerStubCategoryRecommender struct {
+type assemblerStubCategoryResolver struct {
 	resolution *CategoryResolution
-	suggestion *CategorySuggestion
 }
 
-func (s assemblerStubCategoryRecommender) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+type assemblerStubSaleAttributeResolver struct {
+	resolution *SaleAttributeResolution
+}
+
+func (s assemblerStubCategoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
 	if s.resolution == nil {
 		return &CategoryResolution{}
 	}
@@ -38,13 +42,12 @@ func (s assemblerStubCategoryRecommender) Resolve(req *BuildRequest, canonical *
 	return &cloned
 }
 
-func (s assemblerStubCategoryRecommender) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
-	if s.suggestion == nil {
-		return nil
+func (s assemblerStubSaleAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
+	if s.resolution == nil {
+		return &SaleAttributeResolution{}
 	}
-	cloned := *s.suggestion
-	cloned.MatchedPath = append([]string(nil), s.suggestion.MatchedPath...)
-	cloned.CategoryIDList = append([]int(nil), s.suggestion.CategoryIDList...)
+	cloned := *s.resolution
+	cloned.ReviewNotes = append([]string(nil), s.resolution.ReviewNotes...)
 	return &cloned
 }
 
@@ -442,19 +445,14 @@ func TestBuildVariantGroupsUsesSanitizedSKCValueAssignmentsForPromptLikeGroupNam
 	}
 }
 
-func TestAssemblerBuildTriggersCategoryReviewWhenCategoryFamilyConflicts(t *testing.T) {
+func TestAssemblerBuildDoesNotTriggerRuleBasedCategoryReview(t *testing.T) {
 	assembler := NewAssembler(AssemblerConfig{
-		CategoryResolver: assemblerStubCategoryRecommender{
+		CategoryResolver: assemblerStubCategoryResolver{
 			resolution: &CategoryResolution{
 				Status:      "resolved",
 				Source:      "target_category_hint",
 				CategoryID:  12143,
 				MatchedPath: []string{"家居&生活", "家庭用品", "鞋用品", "鞋配饰"},
-			},
-			suggestion: &CategorySuggestion{
-				Source:      "ai_category_tree",
-				CategoryID:  6001,
-				MatchedPath: []string{"Kitchen & Dining", "Drinkware", "Tumblers"},
 			},
 		},
 		SaleAttributeResolver: NewSaleAttributeResolver(stubAttributeAPI{
@@ -499,17 +497,53 @@ func TestAssemblerBuildTriggersCategoryReviewWhenCategoryFamilyConflicts(t *test
 	}
 
 	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, canonical, nil)
-	if pkg.SaleAttributeResolution == nil || !pkg.SaleAttributeResolution.RecommendCategoryReview {
-		t.Fatalf("expected recommend_category_review to be true: %+v", pkg.SaleAttributeResolution)
+	if pkg.SaleAttributeResolution == nil {
+		t.Fatal("expected sale attribute resolution")
 	}
-	if pkg.SaleAttributeResolution.CategoryReviewReason == "" {
-		t.Fatal("expected category review reason")
+	if pkg.SaleAttributeResolution.RecommendCategoryReview {
+		t.Fatalf("expected no rule-based category review: %+v", pkg.SaleAttributeResolution)
 	}
-	if pkg.CategoryResolution == nil || pkg.CategoryResolution.SuggestedCategory == nil {
-		t.Fatalf("expected suggested category, got %+v", pkg.CategoryResolution)
+	if pkg.CategoryResolution == nil {
+		t.Fatal("expected category resolution")
 	}
-	if pkg.CategoryResolution.SuggestedCategory.CategoryID != 6001 {
-		t.Fatalf("suggested category id = %d, want 6001", pkg.CategoryResolution.SuggestedCategory.CategoryID)
+	if pkg.CategoryResolution.SuggestedCategory != nil {
+		t.Fatalf("expected no suggested category without category review trigger, got %+v", pkg.CategoryResolution.SuggestedCategory)
+	}
+}
+
+func TestAssemblerBuildDoesNotRequestAlternativeCategoryOnSaleReview(t *testing.T) {
+	assembler := NewAssembler(AssemblerConfig{
+		CategoryResolver: assemblerStubCategoryResolver{
+			resolution: &CategoryResolution{
+				Status:      "resolved",
+				Source:      "target_category_hint",
+				CategoryID:  12143,
+				MatchedPath: []string{"家居&生活", "家庭用品", "鞋用品", "鞋配饰"},
+			},
+		},
+		SaleAttributeResolver: assemblerStubSaleAttributeResolver{
+			resolution: &SaleAttributeResolution{
+				Status:                  "partial",
+				CategoryID:              12143,
+				RecommendCategoryReview: true,
+				CategoryReviewReason:    "current category needs review",
+			},
+		},
+	})
+
+	canonical := testCanonicalProduct()
+	canonical.Images = []productenrich.CanonicalImage{{URL: "main.jpg"}}
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, canonical, nil)
+	if pkg.CategoryResolution == nil {
+		t.Fatal("expected category resolution")
+	}
+	if pkg.CategoryResolution.SuggestedCategory != nil {
+		t.Fatalf("expected no secondary category suggestion, got %+v", pkg.CategoryResolution.SuggestedCategory)
+	}
+	for _, note := range pkg.ReviewNotes {
+		if strings.Contains(note, "可尝试候选类目") {
+			t.Fatalf("expected no secondary category review note, got %v", pkg.ReviewNotes)
+		}
 	}
 }
 

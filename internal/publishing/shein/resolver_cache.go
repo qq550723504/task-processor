@@ -110,17 +110,6 @@ func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, cano
 	return r.clearCacheWithInfo(ResolutionCacheKindCategory, req, key, categoryResolutionCacheInfo(pkg))
 }
 
-func (r *cachedCategoryResolver) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
-	if r == nil || r.inner == nil {
-		return nil
-	}
-	recommender, ok := r.inner.(categoryRecommender)
-	if !ok {
-		return nil
-	}
-	return recommender.SuggestAlternative(req, canonical, pkg)
-}
-
 func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *AttributeResolution {
 	if r == nil || r.inner == nil {
 		return nil

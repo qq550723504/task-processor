@@ -142,14 +142,6 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 			}).Info("completed SHEIN sale attribute resolution")
 		}
 	}
-	if pkg.SaleAttributeResolution != nil && pkg.SaleAttributeResolution.RecommendCategoryReview && pkg.CategoryResolution != nil {
-		if recommender, ok := a.categoryResolver.(categoryRecommender); ok {
-			pkg.CategoryResolution.SuggestedCategory = recommender.SuggestAlternative(req, canonical, pkg)
-			if suggested := pkg.CategoryResolution.SuggestedCategory; suggested != nil && suggested.CategoryID > 0 {
-				pkg.ReviewNotes = append(pkg.ReviewNotes, "建议复核 SHEIN 类目，可尝试候选类目: "+strings.Join(suggested.MatchedPath, " > "))
-			}
-		}
-	}
 	NormalizeListingCopy(pkg, canonical, req.Language)
 	groups := buildVariantGroups(copy.SKCTitleBase, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
