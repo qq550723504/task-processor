@@ -256,14 +256,18 @@ export async function apiAsyncRequest<T>(
       }
       if (payload.status === "failed") {
         clearAsyncJobResumeEntry(resumeKey);
-        throw new ApiError(
+        const jobError = new ApiError(
           payload.error ?? "ListingKit async job failed",
           payload.upstream_status ?? 500,
           payload,
         );
+        throw jobError;
       }
       lastPollError = undefined;
     } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
       lastPollError = error instanceof Error ? error : new Error(String(error));
     }
   }

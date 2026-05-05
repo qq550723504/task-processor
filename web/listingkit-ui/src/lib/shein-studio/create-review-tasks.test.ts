@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeListingKitUploadFetchUrl,
   orderGeneratedProductImageUrls,
   sanitizeReviewTaskProductImageUrls,
 } from "@/lib/shein-studio/create-review-tasks";
@@ -74,5 +75,23 @@ describe("sanitizeReviewTaskProductImageUrls", () => {
         "hybrid",
       ),
     ).toEqual(["https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png"]);
+  });
+});
+
+describe("normalizeListingKitUploadFetchUrl", () => {
+  it("rewrites listingkit upload api urls to the frontend proxy path", () => {
+    expect(
+      normalizeListingKitUploadFetchUrl(
+        "http://localhost:8085/api/v1/listing-kits/uploads/files/20260505/demo.png?version=1",
+      ),
+    ).toBe("/api/listing-kits/uploads/files/20260505/demo.png?version=1");
+  });
+
+  it("leaves non-listingkit upload urls unchanged", () => {
+    expect(
+      normalizeListingKitUploadFetchUrl(
+        "https://oss.shuomiai.com/listingkit-assets/20260505/demo.png",
+      ),
+    ).toBe("https://oss.shuomiai.com/listingkit-assets/20260505/demo.png");
   });
 });

@@ -31,6 +31,23 @@ export function resolveListingKitProxyTimeoutMs(
   return PROXY_UPSTREAM_TIMEOUT_MS;
 }
 
+export function shouldProxyListingKitResponseAsBinary(
+  contentType: string | null,
+  path: string[],
+) {
+  const normalized = (contentType ?? "").toLowerCase();
+  if (path.length >= 3 && path[0] === "uploads" && path[1] === "files") {
+    return true;
+  }
+  return (
+    normalized.startsWith("image/") ||
+    normalized.startsWith("audio/") ||
+    normalized.startsWith("video/") ||
+    normalized === "application/octet-stream" ||
+    normalized.startsWith("application/pdf")
+  );
+}
+
 async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -182,6 +199,51 @@ async function proxyRequest(
     });
   }
 
+  const shouldReadAsBinary = shouldProxyListingKitResponseAsBinary(
+    contentTypeHeader,
+    path,
+  );
+
+  try {
+    if (shouldReadAsBinary) {
+      const body = await upstream.arrayBuffer();
+      const durationMs = Date.now() - startedAt;
+      const logFields = {
+        requestId,
+        method: request.method,
+        path: proxyPath,
+        status: upstream.status,
+        durationMs,
+      };
+      if (!upstream.ok || durationMs > 5_000) {
+        logRequestWarn("listingkit proxy response", logFields);
+      } else {
+        logRequestInfo("listingkit proxy response", logFields);
+      }
+      return new NextResponse(body, {
+        status: upstream.status,
+        headers: responseHeaders,
+      });
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "ListingKit upstream body read failed";
+    logRequestWarn("listingkit upstream body read failed", {
+      requestId,
+      method: request.method,
+      path: proxyPath,
+      status: 502,
+      durationMs: Date.now() - startedAt,
+      error: message,
+    });
+    return NextResponse.json(
+      {
+        error: "listingkit_upstream_body_unavailable",
+        message,
+      },
+      { status: 502 },
+    );
+  }
   let body: string;
   try {
     body = await upstream.text();

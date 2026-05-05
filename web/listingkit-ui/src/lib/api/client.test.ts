@@ -92,4 +92,48 @@ describe("apiAsyncRequest", () => {
       "/api/listing-kits/async-jobs?id=job-123",
     );
   });
+
+  it("fails immediately when async job status becomes failed", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-2", status: "running" }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-2",
+            status: "failed",
+            error: "upload to s3 failed",
+            upstream_status: 500,
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = apiAsyncRequest<{ images: Array<{ id: string }> }>(
+      "/studio/designs",
+      {
+        body: { prompt: "flag" },
+        timeoutMs: 20_000,
+      },
+    );
+
+    const assertion = expect(promise).rejects.toMatchObject({
+      message: "upload to s3 failed",
+      status: 500,
+    });
+
+    await vi.advanceTimersByTimeAsync(2_100);
+
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

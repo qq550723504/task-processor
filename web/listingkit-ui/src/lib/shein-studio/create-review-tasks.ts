@@ -78,6 +78,24 @@ export function sanitizeReviewTaskProductImageUrls(
   return sanitized;
 }
 
+export function normalizeListingKitUploadFetchUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const prefix = "/api/v1/listing-kits/uploads/files/";
+    if (!parsed.pathname.startsWith(prefix)) {
+      return url;
+    }
+
+    const proxiedPath = parsed.pathname.replace(
+      prefix,
+      "/api/listing-kits/uploads/files/",
+    );
+    return `${proxiedPath}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
 function buildStyleShortId(design: SheinStudioGeneratedDesign, index: number) {
   const source = design.id || `style-${index + 1}`;
   const token = source.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase();
@@ -149,7 +167,9 @@ async function buildDesignFile(design: SheinStudioGeneratedDesign, index: number
     throw new Error("Generated design image is missing.");
   }
 
-  const response = await fetch(src, { cache: "no-store" });
+  const response = await fetch(normalizeListingKitUploadFetchUrl(src), {
+    cache: "no-store",
+  });
   if (!response.ok) {
     throw new Error(`Load generated design failed: ${response.status}`);
   }
