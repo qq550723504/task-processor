@@ -45,6 +45,8 @@ type stubWorkflowAssetGenerator struct {
 	planErr        error
 	dispatchErr    error
 	dispatchResult *assetgeneration.Result
+	dispatchCalls  int
+	dispatchErrAt  map[int]error
 }
 
 func (s *stubWorkflowAssetGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
@@ -65,6 +67,12 @@ func (s *stubWorkflowAssetGenerator) Execute(ctx context.Context, req assetgener
 }
 
 func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
+	s.dispatchCalls++
+	if s.dispatchErrAt != nil {
+		if err := s.dispatchErrAt[s.dispatchCalls]; err != nil {
+			return nil, err
+		}
+	}
 	if s.dispatchErr != nil {
 		return nil, s.dispatchErr
 	}
@@ -448,6 +456,75 @@ func TestRunWorkflowRecordsAssetGenerationDispatchFailure(t *testing.T) {
 	}
 	if !hasWorkflowIssue(result.WorkflowIssues, "asset_generation_platform", WorkflowIssueSeverityWarning, "asset_generation_platform_dispatch_failed") {
 		t.Fatalf("workflow issues = %+v, want asset dispatch warning", result.WorkflowIssues)
+	}
+	if result.Summary == nil || result.Summary.WarningCount == 0 {
+		t.Fatalf("summary = %+v, want warning count", result.Summary)
+	}
+}
+
+func TestRunWorkflowRecordsDeferredAssetGenerationDispatchFailure(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "product-task-deferred-asset-dispatch", Request: &productenrich.GenerateRequest{ImageURLs: []string{"https://example.com/source.jpg"}, Text: "poster"}},
+		product: &productenrich.ProductJSON{
+			Title:      "Poster",
+			Category:   []string{"Home"},
+			Images:     []string{"https://example.com/source.jpg"},
+			Attributes: map[string]string{"material": "paper"},
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-deferred-asset-dispatch"},
+		result: &productimage.ImageProcessResult{
+			MainImage: &productimage.ImageAsset{URL: "https://cdn.example.com/main.jpg"},
+		},
+	}
+	assetGenerator := &stubWorkflowAssetGenerator{
+		planResult: &assetgeneration.Result{
+			Tasks: []assetgeneration.Task{{
+				TaskID:          "asset-task-1",
+				ID:              "asset-task-1",
+				Platform:        "amazon",
+				ExecutionStatus: "queued",
+				CanExecute:      true,
+			}},
+		},
+		dispatchErrAt: map[int]error{2: fmt.Errorf("renderer queue unavailable")},
+	}
+	svc := &service{
+		productSvc:          productSvc,
+		imageSvc:            imageSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRepo:           assetrepo.NewMemRepository(),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      assetGenerator,
+	}
+	task := &Task{
+		ID: "listingkit-task-deferred-asset-dispatch",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source.jpg"},
+			Text:      "poster",
+			Platforms: []string{"amazon"},
+			Country:   "US",
+			Language:  "en_US",
+			Options:   &GenerateOptions{ProcessImages: true},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if assetGenerator.dispatchCalls != 2 {
+		t.Fatalf("dispatch calls = %d, want 2", assetGenerator.dispatchCalls)
+	}
+	if !hasWorkflowStageStatus(result.WorkflowStages, "asset_generation_platform", WorkflowStageStatusDegraded) {
+		t.Fatalf("workflow stages = %+v, want degraded asset_generation_platform", result.WorkflowStages)
+	}
+	if !hasWorkflowIssue(result.WorkflowIssues, "asset_generation_platform", WorkflowIssueSeverityWarning, "asset_generation_platform_deferred_dispatch_failed") {
+		t.Fatalf("workflow issues = %+v, want deferred asset dispatch warning", result.WorkflowIssues)
 	}
 	if result.Summary == nil || result.Summary.WarningCount == 0 {
 		t.Fatalf("summary = %+v, want warning count", result.Summary)

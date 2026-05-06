@@ -320,12 +320,16 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		}
 		pendingTasks := collectPlatformGenerationTasks(final)
 		if enableAssetGeneration && s.assetGenerator != nil && len(pendingTasks) > 0 {
-			dispatchResult, _ := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+			deferredStage := newWorkflowRecorder(final).Start("asset_generation_platform", "")
+			dispatchResult, dispatchErr := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
 				Tasks:     pendingTasks,
 			})
+			if dispatchErr != nil {
+				deferredStage.Degrade("asset_generation_platform_deferred_dispatch_failed", "Deferred platform asset generation dispatch failed", dispatchErr.Error())
+			}
 			if dispatchResult != nil {
 				if len(dispatchResult.Assets) > 0 {
 					inventory.Records = append(inventory.Records, dispatchResult.Assets...)
@@ -339,6 +343,9 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 				}
 				attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, s.assetBundleBuilder)
 				persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
+			}
+			if dispatchErr == nil {
+				deferredStage.Complete()
 			}
 		}
 		decorateListingKitResultGeneration(final, persistedGenerationTasks)
