@@ -8,6 +8,7 @@ import {
 import {
   sheinLatestSubmissionSummary,
   sheinLatestSubmissionTitle,
+  sheinSubmitPhaseLabel,
 } from "@/lib/shein-studio/shein-submission-display";
 import type {
   SheinChecklistGroupItem,
@@ -102,25 +103,6 @@ function normalizedSubmissionStatus(submission?: SheinSubmissionReport | null) {
     return "failed";
   }
   return status;
-}
-
-function submitPhaseLabel(phase?: string | null) {
-  switch (phase) {
-    case "validate":
-      return "提交前检查";
-    case "prepare_product":
-      return "准备商品资料";
-    case "upload_images":
-      return "上传图片";
-    case "pre_validate":
-      return "SHEIN 预校验";
-    case "submit_remote":
-      return "提交 SHEIN";
-    case "persist_result":
-      return "保存提交结果";
-    default:
-      return phase ?? null;
-  }
 }
 
 function cacheSourceLabel(source?: string) {
@@ -409,7 +391,7 @@ export function SheinSubmitReadinessPanel({
   const latestSubmissionSummary = sheinLatestSubmissionSummary(submission);
   const isSavingDraft = isSubmitting && submitAction === "save_draft";
   const isPublishing = isSubmitting && submitAction !== "save_draft";
-  const backendSubmitPhase = submitPhaseLabel(submission?.current_phase);
+  const backendSubmitPhase = sheinSubmitPhaseLabel(submission?.current_phase);
   const backendSubmitAction = submission?.current_action as
     | "publish"
     | "save_draft"

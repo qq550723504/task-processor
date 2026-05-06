@@ -45,6 +45,36 @@ export function sheinSubmissionStatusLabel(status?: string | null) {
   }
 }
 
+export function sheinSubmitPhaseLabel(phase?: string | null) {
+  switch (phase) {
+    case "validate":
+      return "提交前检查";
+    case "prepare_product":
+      return "准备商品资料";
+    case "upload_images":
+      return "上传图片";
+    case "pre_validate":
+      return "SHEIN 预校验";
+    case "submit_remote":
+      return "提交 SHEIN";
+    case "persist_result":
+      return "保存提交结果";
+    default:
+      return phase ?? null;
+  }
+}
+
+function latestSubmissionRecord(submission?: SheinSubmissionReport | null) {
+  switch (submission?.last_action) {
+    case "save_draft":
+      return submission.save_draft;
+    case "publish":
+      return submission.publish;
+    default:
+      return null;
+  }
+}
+
 export function sheinLatestSubmissionTitle(
   submission?: SheinSubmissionReport | null,
 ) {
@@ -89,7 +119,13 @@ export function sheinLatestSubmissionSummary(
     return "商品资料已提交到 SHEIN 发布接口，请以 SHEIN 后台最终状态为准。";
   }
   if (title.includes("失败")) {
-    return "请根据待处理问题修复后再次提交。";
+    const record = latestSubmissionRecord(submission);
+    const details = [
+      record?.phase ? `失败阶段：${sheinSubmitPhaseLabel(record.phase)}` : null,
+      record?.request_id ? `Request ID: ${record.request_id}` : null,
+    ].filter(Boolean);
+    const suffix = "请根据待处理问题修复后再次提交。";
+    return details.length ? `${details.join("。")}。${suffix}` : suffix;
   }
   return submission?.last_result?.message ?? "";
 }
