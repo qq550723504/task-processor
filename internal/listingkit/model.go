@@ -401,6 +401,44 @@ type ChildTaskState struct {
 	Error  string `json:"error,omitempty"`
 }
 
+type WorkflowStageStatus string
+
+const (
+	WorkflowStageStatusPending   WorkflowStageStatus = "pending"
+	WorkflowStageStatusRunning   WorkflowStageStatus = "running"
+	WorkflowStageStatusCompleted WorkflowStageStatus = "completed"
+	WorkflowStageStatusSkipped   WorkflowStageStatus = "skipped"
+	WorkflowStageStatusDegraded  WorkflowStageStatus = "degraded"
+	WorkflowStageStatusFailed    WorkflowStageStatus = "failed"
+)
+
+type WorkflowIssueSeverity string
+
+const (
+	WorkflowIssueSeverityInfo     WorkflowIssueSeverity = "info"
+	WorkflowIssueSeverityWarning  WorkflowIssueSeverity = "warning"
+	WorkflowIssueSeverityReview   WorkflowIssueSeverity = "review"
+	WorkflowIssueSeverityBlocking WorkflowIssueSeverity = "blocking"
+)
+
+type WorkflowStage struct {
+	Kind       string              `json:"kind"`
+	Status     WorkflowStageStatus `json:"status"`
+	TaskID     string              `json:"task_id,omitempty"`
+	Error      string              `json:"error,omitempty"`
+	StartedAt  time.Time           `json:"started_at,omitempty"`
+	FinishedAt *time.Time          `json:"finished_at,omitempty"`
+	DurationMS int64               `json:"duration_ms,omitempty"`
+}
+
+type WorkflowIssue struct {
+	Code     string                `json:"code,omitempty"`
+	Severity WorkflowIssueSeverity `json:"severity"`
+	Stage    string                `json:"stage,omitempty"`
+	Message  string                `json:"message"`
+	Detail   string                `json:"detail,omitempty"`
+}
+
 type GenerationWorkQueueSummary struct {
 	TotalItems                      int                                  `json:"total_items"`
 	ReadyItems                      int                                  `json:"ready_items"`
@@ -938,16 +976,22 @@ type ListingKitResult struct {
 	RevisionHistoryTotal        int                              `json:"revision_history_total,omitempty"`
 	RevisionHistory             []ListingKitRevisionRecord       `json:"revision_history,omitempty"`
 	ChildTasks                  []ChildTaskState                 `json:"child_tasks,omitempty"`
+	WorkflowStages              []WorkflowStage                  `json:"workflow_stages,omitempty"`
+	WorkflowIssues              []WorkflowIssue                  `json:"workflow_issues,omitempty"`
 	CreatedAt                   time.Time                        `json:"created_at"`
 	UpdatedAt                   time.Time                        `json:"updated_at"`
 }
 
 type GenerationSummary struct {
-	SourceType   string   `json:"source_type,omitempty"`
-	ImageCount   int      `json:"image_count"`
-	VariantCount int      `json:"variant_count"`
-	NeedsReview  bool     `json:"needs_review"`
-	Warnings     []string `json:"warnings,omitempty"`
+	SourceType    string   `json:"source_type,omitempty"`
+	ImageCount    int      `json:"image_count"`
+	VariantCount  int      `json:"variant_count"`
+	NeedsReview   bool     `json:"needs_review"`
+	Warnings      []string `json:"warnings,omitempty"`
+	IssueCount    int      `json:"issue_count,omitempty"`
+	WarningCount  int      `json:"warning_count,omitempty"`
+	ReviewCount   int      `json:"review_count,omitempty"`
+	BlockingCount int      `json:"blocking_count,omitempty"`
 }
 
 type SDSSyncSummary struct {

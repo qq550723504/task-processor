@@ -33,4 +33,27 @@ describe("task fixes", () => {
       }),
     ).toBe("productUrl");
   });
+
+  it("extracts numbered fixes from blocking workflow issue details", () => {
+    const task = {
+      task_id: "task_456",
+      status: "failed",
+      result: {
+        workflow_issues: [
+          {
+            severity: "blocking",
+            stage: "product_enrich",
+            message: "Product enrichment failed",
+            detail: "1. 添加可访问的 1688 商品链接\n2. 补充更清晰的图片",
+          },
+        ],
+      },
+    } satisfies ListingKitTaskResult;
+
+    expect(extractTaskFixes(task)).toEqual([
+      "添加可访问的 1688 商品链接",
+      "补充更清晰的图片",
+    ]);
+    expect(inferTaskDraftFocus(task)).toBe("productUrl");
+  });
 });

@@ -35,6 +35,24 @@ export type ListingKitChildTask = {
   error?: string;
 };
 
+export type ListingKitWorkflowStage = {
+  kind?: string;
+  status?: "pending" | "running" | "completed" | "skipped" | "degraded" | "failed" | string;
+  task_id?: string;
+  error?: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+};
+
+export type ListingKitWorkflowIssue = {
+  code?: string;
+  severity?: "info" | "warning" | "review" | "blocking" | string;
+  stage?: string;
+  message?: string;
+  detail?: string;
+};
+
 export type SDSSyncSummary = {
   variant_id?: number;
   product_id?: number;
@@ -62,6 +80,8 @@ export type ListingKitTaskResultData = {
   };
   sds_sync?: SDSSyncSummary;
   child_tasks?: ListingKitChildTask[];
+  workflow_stages?: ListingKitWorkflowStage[];
+  workflow_issues?: ListingKitWorkflowIssue[];
   created_at?: string;
   updated_at?: string;
 };
