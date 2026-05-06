@@ -5,11 +5,19 @@ export type SubmitTaskRequest = {
   platform: "shein";
   action?: "publish" | "save_draft";
   confirmed_final?: boolean;
+  idempotency_key?: string;
 };
+
+function createSubmitIdempotencyKey() {
+  return globalThis.crypto?.randomUUID?.() ?? `submit-${Date.now()}`;
+}
 
 export function submitTask(taskId: string, body: SubmitTaskRequest) {
   return apiRequest<ListingKitPreview>(`/tasks/${taskId}/submit`, {
     method: "POST",
-    body,
+    body: {
+      ...body,
+      idempotency_key: body.idempotency_key ?? createSubmitIdempotencyKey(),
+    },
   });
 }

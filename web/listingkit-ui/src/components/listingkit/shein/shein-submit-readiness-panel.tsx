@@ -104,6 +104,25 @@ function normalizedSubmissionStatus(submission?: SheinSubmissionReport | null) {
   return status;
 }
 
+function submitPhaseLabel(phase?: string | null) {
+  switch (phase) {
+    case "validate":
+      return "提交前检查";
+    case "prepare_product":
+      return "准备商品资料";
+    case "upload_images":
+      return "上传图片";
+    case "pre_validate":
+      return "SHEIN 预校验";
+    case "submit_remote":
+      return "提交 SHEIN";
+    case "persist_result":
+      return "保存提交结果";
+    default:
+      return phase ?? null;
+  }
+}
+
 function cacheSourceLabel(source?: string) {
   switch (source) {
     case "manual_cache":
@@ -390,6 +409,13 @@ export function SheinSubmitReadinessPanel({
   const latestSubmissionSummary = sheinLatestSubmissionSummary(submission);
   const isSavingDraft = isSubmitting && submitAction === "save_draft";
   const isPublishing = isSubmitting && submitAction !== "save_draft";
+  const backendSubmitPhase = submitPhaseLabel(submission?.current_phase);
+  const backendSubmitAction = submission?.current_action as
+    | "publish"
+    | "save_draft"
+    | undefined;
+  const hasBackendSubmitAttempt = Boolean(submission?.current_phase);
+  const activeSubmitAction = submitAction ?? backendSubmitAction ?? null;
   const canRunSubmitActions = canSubmit === true && submitReady;
   const customerIssues = buildSheinCustomerIssues({
     submit_readiness: readiness ?? undefined,
@@ -521,10 +547,10 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        {isSubmitting || submitErrorMessage ? (
+        {isSubmitting || submitErrorMessage || hasBackendSubmitAttempt ? (
           <div
             className={`rounded-2xl border p-4 ${
-              isSubmitting
+              isSubmitting || hasBackendSubmitAttempt
                 ? "border-sky-200 bg-sky-50/70"
                 : "border-rose-200 bg-rose-50/70"
             }`}
@@ -532,37 +558,44 @@ export function SheinSubmitReadinessPanel({
             <div className="space-y-1">
               <p
                 className={`text-xs font-semibold uppercase tracking-[0.18em] ${
-                  isSubmitting ? "text-sky-700" : "text-rose-700"
+                  isSubmitting || hasBackendSubmitAttempt ? "text-sky-700" : "text-rose-700"
                 }`}
               >
                 当前提交
               </p>
               <p className="text-sm font-semibold text-zinc-950">
-                {isSubmitting
-                  ? isSavingDraft
+                {isSubmitting || hasBackendSubmitAttempt
+                  ? activeSubmitAction === "save_draft"
                     ? "正在保存到 SHEIN 草稿箱..."
-                    : "正在提交到 SHEIN..."
-                  : submitAction === "save_draft"
+                    : hasBackendSubmitAttempt
+                      ? "正在发布到 SHEIN"
+                      : "正在提交到 SHEIN..."
+                  : activeSubmitAction === "save_draft"
                     ? "保存草稿失败"
                     : "提交失败"}
               </p>
+              {backendSubmitPhase ? (
+                <p className="text-sm leading-6 text-zinc-700">
+                  当前阶段：{backendSubmitPhase}
+                </p>
+              ) : null}
               {submitErrorMessage ? (
                 <SubmitFailureGuidance
                   detail={submitErrorMessage}
                   impact={
-                    submitAction === "save_draft"
+                    activeSubmitAction === "save_draft"
                       ? "本次不会把资料保存到 SHEIN 草稿箱，请先处理图片上传或阻断项后再重试。"
                       : "本次不会把资料正式提交到 SHEIN，当前任务会停留在可修复状态。"
                   }
                   nextStep={
-                    submitAction === "save_draft"
+                    activeSubmitAction === "save_draft"
                       ? "先检查图片上传、最终资料和阻断项，再重新保存到 SHEIN 草稿箱。"
                       : "先回到工作台处理阻断项或图片上传问题，确认后再重新发布。"
                   }
                 />
               ) : (
                 <p className="text-sm leading-6 text-zinc-700">
-                  正在上传图片并{submitAction === "save_draft" ? "保存到 SHEIN 草稿箱" : "提交 SHEIN"}。
+                  正在上传图片并{activeSubmitAction === "save_draft" ? "保存到 SHEIN 草稿箱" : "提交 SHEIN"}。
                   完成或失败后会刷新最新提交记录。
                 </p>
               )}

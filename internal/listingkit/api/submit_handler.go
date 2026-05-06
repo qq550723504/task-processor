@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,6 +15,9 @@ func (h *handler) SubmitTask(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
+	}
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = strings.TrimSpace(c.GetHeader("Idempotency-Key"))
 	}
 
 	preview, err := h.service.SubmitTask(c.Request.Context(), c.Param("task_id"), &req)
