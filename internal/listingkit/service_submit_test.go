@@ -20,16 +20,22 @@ import (
 )
 
 type stubSubmitRepo struct {
-	task *Task
+	mu                    sync.Mutex
+	task                  *Task
+	savedSubmissionPhases []string
 }
 
 func (r *stubSubmitRepo) CreateTask(ctx context.Context, task *Task) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	copied := *task
 	r.task = &copied
 	return nil
 }
 
 func (r *stubSubmitRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.task == nil || r.task.ID != taskID {
 		return nil, ErrTaskNotFound
 	}
@@ -38,6 +44,8 @@ func (r *stubSubmitRepo) GetTask(ctx context.Context, taskID string) (*Task, err
 }
 
 func (r *stubSubmitRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.task == nil {
 		return []Task{}, 0, nil
 	}
@@ -60,12 +68,28 @@ func (r *stubSubmitRepo) IncrementRetryCount(ctx context.Context, taskID string)
 	return nil
 }
 func (r *stubSubmitRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.task == nil || r.task.ID != taskID {
 		return ErrTaskNotFound
 	}
 	r.task.Result = result
 	r.task.UpdatedAt = time.Now()
+	if result != nil && result.Shein != nil && result.Shein.Submission != nil {
+		r.savedSubmissionPhases = append(r.savedSubmissionPhases, result.Shein.Submission.CurrentPhase)
+	}
 	return nil
+}
+
+func (r *stubSubmitRepo) hasSavedSubmissionPhase(phase string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, saved := range r.savedSubmissionPhases {
+		if saved == phase {
+			return true
+		}
+	}
+	return false
 }
 
 type stubSubmitProductService struct{}
@@ -613,6 +637,42 @@ func TestSubmitTaskReplaysCompletedIdempotencyKeyWithoutPublishingAgain(t *testi
 	}
 	if saved.Result.Shein.Submission.AttemptCount != 1 {
 		t.Fatalf("attempt count = %d, want 1", saved.Result.Shein.Submission.AttemptCount)
+	}
+}
+
+func TestSubmitTaskPersistsSubmitRemotePhaseBeforePublishCall(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					if !repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseSubmitRemote) {
+						t.Fatalf("submit_remote phase was not persisted before publish call; saved phases = %+v", repo.savedSubmissionPhases)
+					}
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "phase-123"}); err != nil {
+		t.Fatalf("submit task: %v", err)
 	}
 }
 
