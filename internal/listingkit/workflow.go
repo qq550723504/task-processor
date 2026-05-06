@@ -265,7 +265,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 					}
 				}
 			}
-			if stage.kind() != "" && result.WorkflowStages[len(result.WorkflowStages)-1].Status == WorkflowStageStatusRunning {
+			if stage.IsRunning() {
 				stage.Complete()
 			}
 		}
@@ -841,6 +841,8 @@ func markChildTask(result *ListingKitResult, kind, taskID, status, errorMsg stri
 	if result == nil {
 		return
 	}
+	// Compatibility shim for legacy task payloads and older UI paths.
+	// New workflow state should be recorded through workflowRecorder stages/issues.
 	for i := range result.ChildTasks {
 		if result.ChildTasks[i].Kind == kind {
 			result.ChildTasks[i].TaskID = taskID
@@ -856,6 +858,8 @@ func appendWarning(result *ListingKitResult, warning string) {
 	if result == nil || result.Summary == nil || strings.TrimSpace(warning) == "" {
 		return
 	}
+	// Compatibility shim for legacy summary warnings. New warnings should be
+	// represented as workflow issues and surfaced through aggregate counts.
 	result.Summary.Warnings = append(result.Summary.Warnings, warning)
 }
 

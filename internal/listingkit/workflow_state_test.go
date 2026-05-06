@@ -63,3 +63,20 @@ func TestWorkflowRecorderMarksBlockingFailure(t *testing.T) {
 		t.Fatalf("summary = %+v, want blocking count and needs_review", result.Summary)
 	}
 }
+
+func TestWorkflowStageHandleReportsItsOwnRunningStatus(t *testing.T) {
+	result := &ListingKitResult{Summary: &GenerationSummary{}}
+	recorder := newWorkflowRecorder(result)
+
+	platformStage := recorder.Start("asset_generation_platform", "")
+	otherStage := recorder.Start("sds_design_sync", "")
+	otherStage.Complete()
+
+	if !platformStage.IsRunning() {
+		t.Fatalf("platform stage = %+v, want running even when it is not the latest stage", result.WorkflowStages[0])
+	}
+	platformStage.Complete()
+	if platformStage.IsRunning() {
+		t.Fatalf("platform stage = %+v, want not running after completion", result.WorkflowStages[0])
+	}
+}

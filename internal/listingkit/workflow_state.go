@@ -86,6 +86,13 @@ func (h *workflowStageHandle) SetTaskID(taskID string) {
 	h.recorder.result.WorkflowStages[h.index].TaskID = strings.TrimSpace(taskID)
 }
 
+func (h *workflowStageHandle) IsRunning() bool {
+	if h == nil || h.recorder == nil || h.recorder.result == nil || h.index < 0 || h.index >= len(h.recorder.result.WorkflowStages) {
+		return false
+	}
+	return h.recorder.result.WorkflowStages[h.index].Status == WorkflowStageStatusRunning
+}
+
 func (h *workflowStageHandle) Skip() {
 	h.finish(WorkflowStageStatusSkipped, "")
 }
