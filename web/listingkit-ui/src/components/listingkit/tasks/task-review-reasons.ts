@@ -6,6 +6,15 @@ function primaryTaskError(task?: ListingKitTaskResult | null) {
   return task.result?.child_tasks?.find((child) => child.error)?.error;
 }
 
+function workflowReviewReasonMessages(task?: ListingKitTaskResult | null) {
+  return (
+    task?.result?.workflow_issues
+      ?.filter((issue) => issue.severity === "review" || issue.severity === "blocking")
+      .map((issue) => issue.message ?? "")
+      .filter(Boolean) ?? []
+  );
+}
+
 function uniqueNormalizedReasons(values: string[]) {
   const seen = new Set<string>();
   return values
@@ -25,6 +34,11 @@ function normalizeReasonLine(value: string) {
 }
 
 export function extractTaskReviewReasons(task?: ListingKitTaskResult | null) {
+  const workflowReasons = uniqueNormalizedReasons(workflowReviewReasonMessages(task));
+  if (workflowReasons.length > 0) {
+    return workflowReasons;
+  }
+
   const structuredReasons = uniqueNormalizedReasons([
     ...(task?.review_reasons ?? []),
     ...(task?.result?.review_reasons ?? []),

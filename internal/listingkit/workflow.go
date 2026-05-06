@@ -34,6 +34,7 @@ func sdsDesignSyncTimeoutForVariantCount(targetCount int) time.Duration {
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
 	result := initResult(task)
+	recorder := newWorkflowRecorder(result)
 	enableAssetGeneration := shouldGenerateAssets(task.Request)
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/workflow",
@@ -42,17 +43,23 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 
 	var canonical *productenrich.CanonicalProduct
 	if shouldUseStudioCatalogCanonical(task) {
+		stage := recorder.Start("sds_catalog_product", "")
 		canonical = buildStudioFallbackCanonicalProduct(task)
 		if canonical == nil {
+			stage.Fail("sds_catalog_product_failed", "Failed to build SDS studio product", "")
+			recorder.FinalizeSummary()
 			return result, fmt.Errorf("failed to build SDS studio product")
 		}
 		markChildTask(result, "sds_catalog_product", "", string(TaskStatusCompleted), "")
+		stage.Complete()
 	} else {
 		if cached, ok, cacheErr := s.getCachedCanonicalProduct(ctx, task); cacheErr != nil {
 			log.WithError(cacheErr).Warn("canonical product cache lookup failed; running product enrich")
 		} else if ok {
+			stage := recorder.Start("product_enrich", "")
 			canonical = cached
 			markChildTask(result, "product_enrich", "", string(productenrich.TaskStatusCompleted), "")
+			stage.Complete()
 			log.WithFields(logrus.Fields{
 				"title": func() string {
 					if canonical == nil {
@@ -63,26 +70,36 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			}).Info("reused cached canonical product for listing kit workflow")
 		}
 		if canonical == nil {
+			stage := recorder.Start("product_enrich", "")
 			productTask, err := s.productSvc.CreateGenerateTask(productenrich.WithInlineTaskExecution(ctx), toProductGenerateRequest(task))
 			if err != nil {
 				markChildTask(result, "product_enrich", "", string(TaskStatusFailed), err.Error())
+				stage.Fail("product_task_creation_failed", "Product enrichment task creation failed", err.Error())
+				recorder.FinalizeSummary()
 				return result, fmt.Errorf("failed to create product task: %w", err)
 			}
+			stage.SetTaskID(productTask.ID)
 			markChildTask(result, "product_enrich", productTask.ID, string(productenrich.TaskStatusPending), "")
 
 			productJSON, err := s.productSvc.ProcessProduct(ctx, productTask)
 			if err != nil {
 				markChildTask(result, "product_enrich", productTask.ID, string(TaskStatusFailed), err.Error())
 				if !shouldUseStudioProductFallback(task) {
+					stage.Fail("product_enrich_failed", "Product enrichment failed", err.Error())
+					recorder.FinalizeSummary()
 					return result, fmt.Errorf("product enrichment failed: %w", err)
 				}
 				canonical = buildStudioFallbackCanonicalProduct(task)
 				if canonical == nil {
+					stage.Fail("product_enrich_failed", "Product enrichment failed", err.Error())
+					recorder.FinalizeSummary()
 					return result, fmt.Errorf("product enrichment failed: %w", err)
 				}
 				appendWarning(result, "product enrichment failed, studio fallback canonical product used: "+err.Error())
+				stage.Degrade("product_enrich_studio_fallback", "Product enrichment failed; studio fallback canonical product used", err.Error())
 			} else {
 				markChildTask(result, "product_enrich", productTask.ID, string(productenrich.TaskStatusCompleted), "")
+				stage.Complete()
 				canonical = productenrich.BuildCanonicalProduct(productTask.Request, productJSON)
 				if cacheErr := s.saveCanonicalProductCache(ctx, task, canonical); cacheErr != nil {
 					log.WithError(cacheErr).Warn("canonical product cache save failed")
@@ -121,28 +138,33 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 
 	var imageResult *productimage.ImageProcessResult
 	if shouldProcessImages(task.Request) && s.imageSvc != nil {
+		stage := recorder.Start("product_image", "")
 		imageTask, imageErr := s.imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), toImageProcessRequest(task))
 		if imageErr != nil {
 			markChildTask(result, "product_image", "", string(TaskStatusFailed), imageErr.Error())
 			appendWarning(result, "image processing skipped: "+imageErr.Error())
+			stage.Degrade("image_processing_skipped", "Image processing skipped", imageErr.Error())
 		} else {
+			stage.SetTaskID(imageTask.ID)
 			markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
 			imageResult, imageErr = s.imageSvc.ProcessImages(ctx, imageTask)
 			if imageErr != nil {
 				markChildTask(result, "product_image", imageTask.ID, string(TaskStatusFailed), imageErr.Error())
 				appendWarning(result, "image processing failed: "+imageErr.Error())
+				stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
 			} else {
 				markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusCompleted), "")
+				stage.Complete()
 				result.ImageAssets = imageResult
 				result.AssetBundle = asset.BuildBundle(canonical, imageResult)
 				result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
-				s.syncSDSDesign(ctx, task, result, imageResult)
+				s.syncSDSDesign(ctx, task, result, imageResult, recorder)
 			}
 		}
 	}
 	if imageResult == nil && shouldRunStudioInline(task.Request) && shouldRenderSheinSizeImagesWithSDS(task.Request) {
 		log.Info("starting remote SDS design sync for listing kit workflow")
-		s.syncSDSDesignFromRemote(ctx, task, result)
+		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
 		log.WithFields(logrus.Fields{
 			"sds_status": func() string {
 				if result.SDSSync == nil {
@@ -175,18 +197,30 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	var generationPlan *assetgeneration.Result
 	var persistedGenerationTasks []assetgeneration.Task
 	if inventory != nil {
+		inventoryStage := recorder.Start("asset_inventory", "")
 		if s.assetRepo != nil {
 			if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {
 				appendWarning(result, "asset inventory persistence failed: "+err.Error())
+				inventoryStage.Degrade("asset_inventory_persistence_failed", "Asset inventory persistence failed", err.Error())
+			} else {
+				inventoryStage.Complete()
 			}
+		} else {
+			inventoryStage.Skip()
 		}
 		if enableAssetGeneration && s.assetGenerator != nil && len(baseRecipes) > 0 {
-			execution, _ := s.assetGenerator.Execute(ctx, assetgeneration.Request{
+			stage := recorder.Start("asset_generation_baseline", "")
+			execution, execErr := s.assetGenerator.Execute(ctx, assetgeneration.Request{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
 				Recipes:   append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
 			})
+			if execErr != nil {
+				stage.Degrade("asset_generation_baseline_execute_failed", "Baseline asset generation failed", execErr.Error())
+			} else {
+				stage.Complete()
+			}
 			if execution != nil && len(execution.Assets) > 0 {
 				inventory.Records = append(inventory.Records, execution.Assets...)
 				inventory.Summary = rebuildInventorySummary(inventory)
@@ -197,19 +231,27 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			}
 		}
 		if enableAssetGeneration && s.assetGenerator != nil && s.assetRecipeResolver != nil {
-			generationPlan, _ = s.assetGenerator.Plan(ctx, assetgeneration.Request{
+			stage := recorder.Start("asset_generation_platform", "")
+			var planErr error
+			generationPlan, planErr = s.assetGenerator.Plan(ctx, assetgeneration.Request{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
 				Recipes:   flattenRecipes(recipesByPlatform),
 			})
+			if planErr != nil {
+				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
+			}
 			if generationPlan != nil && len(generationPlan.Tasks) > 0 {
-				dispatchResult, _ := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+				dispatchResult, dispatchErr := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 					TaskID:    task.ID,
 					Product:   result.CatalogProduct,
 					Inventory: inventory,
 					Tasks:     generationPlan.Tasks,
 				})
+				if dispatchErr != nil {
+					stage.Degrade("asset_generation_platform_dispatch_failed", "Platform asset generation dispatch failed", dispatchErr.Error())
+				}
 				if dispatchResult != nil {
 					generationPlan.Tasks = cloneGenerationTasks(dispatchResult.Tasks)
 					persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
@@ -223,6 +265,9 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 					}
 				}
 			}
+			if stage.IsRunning() {
+				stage.Complete()
+			}
 		}
 		result.AssetInventorySummary = inventory.Summary
 		if result.AssetInventorySummary != nil {
@@ -231,7 +276,9 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	}
 
 	log.Info("starting listing kit assembler")
+	assemblerStage := recorder.Start("assembler", "")
 	final := s.assembler.Assemble(task, canonical, imageResult)
+	assemblerStage.Complete()
 	log.WithFields(logrus.Fields{
 		"has_shein":   final != nil && final.Shein != nil,
 		"has_summary": final != nil && final.Summary != nil,
@@ -242,6 +289,8 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	final.AssetInventorySummary = result.AssetInventorySummary
 	final.SDSSync = result.SDSSync
 	final.ChildTasks = append([]ChildTaskState(nil), result.ChildTasks...)
+	final.WorkflowStages = append([]WorkflowStage(nil), result.WorkflowStages...)
+	final.WorkflowIssues = append([]WorkflowIssue(nil), result.WorkflowIssues...)
 	s.applyDefaultSheinPricing(final.Shein)
 	if shouldUseSDSOfficialImages(task.Request) {
 		if !applySelectedSDSImagesToShein(final.Shein, task.Request, task.Request.ImageURLs) {
@@ -256,7 +305,14 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		final.Summary = &GenerationSummary{}
 	}
 	final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, result.Summary.Warnings...))
+	sheinReviewStage := newWorkflowRecorder(final).Start("shein_review", "")
 	applySheinInspectionReviewToSummary(final)
+	if final.Summary != nil && final.Summary.NeedsReview {
+		for _, reason := range reviewReasonsFromResult(final) {
+			newWorkflowRecorder(final).AddIssue(WorkflowIssueSeverityReview, "shein_review", "shein_review_required", reason, "")
+		}
+	}
+	sheinReviewStage.Complete()
 	applySheinVariantImageCoverageGuard(task, final.Shein)
 	if inventory != nil {
 		if enableAssetGeneration {
@@ -264,12 +320,16 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		}
 		pendingTasks := collectPlatformGenerationTasks(final)
 		if enableAssetGeneration && s.assetGenerator != nil && len(pendingTasks) > 0 {
-			dispatchResult, _ := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+			deferredStage := newWorkflowRecorder(final).Start("asset_generation_platform", "")
+			dispatchResult, dispatchErr := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
 				Tasks:     pendingTasks,
 			})
+			if dispatchErr != nil {
+				deferredStage.Degrade("asset_generation_platform_deferred_dispatch_failed", "Deferred platform asset generation dispatch failed", dispatchErr.Error())
+			}
 			if dispatchResult != nil {
 				if len(dispatchResult.Assets) > 0 {
 					inventory.Records = append(inventory.Records, dispatchResult.Assets...)
@@ -284,14 +344,19 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 				attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, s.assetBundleBuilder)
 				persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
 			}
+			if dispatchErr == nil {
+				deferredStage.Complete()
+			}
 		}
 		decorateListingKitResultGeneration(final, persistedGenerationTasks)
 		if s.assetRepo != nil && len(persistedGenerationTasks) > 0 {
 			if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
 				appendWarning(final, "asset generation task persistence failed: "+err.Error())
+				newWorkflowRecorder(final).AddIssue(WorkflowIssueSeverityWarning, "asset_generation_platform", "asset_generation_task_persistence_failed", "Asset generation task persistence failed", err.Error())
 			}
 		}
 	}
+	newWorkflowRecorder(final).FinalizeSummary()
 	log.Info("synchronizing listing kit asset render previews")
 	syncAssetRenderPreviews(final)
 	log.WithFields(logrus.Fields{
@@ -301,7 +366,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			if final.Summary == nil {
 				return 0
 			}
-			return len(final.Summary.Warnings)
+			return final.Summary.WarningCount
 		}(),
 	}).Info("listing kit workflow finished assembling result")
 	return final, nil
@@ -384,12 +449,16 @@ func shouldSyncSDS(req *GenerateRequest) bool {
 		(req.Options.SDS.VariantID > 0 || len(req.Options.SDS.Variants) > 0)
 }
 
-func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *ListingKitResult, imageResult *productimage.ImageProcessResult) {
+func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *ListingKitResult, imageResult *productimage.ImageProcessResult, recorder *workflowRecorder) {
 	if s.sdsSyncSvc == nil || !shouldSyncSDS(task.Request) || imageResult == nil {
 		return
 	}
+	if recorder == nil {
+		recorder = newWorkflowRecorder(result)
+	}
 
 	options := task.Request.Options.SDS
+	stage := recorder.Start("sds_design_sync", "")
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
 
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
@@ -416,6 +485,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 		}
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds design sync failed: "+err.Error())
+		stage.Degrade("sds_design_sync_failed", "SDS design sync failed", err.Error())
 		return
 	}
 
@@ -426,19 +496,26 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 	}
 	if needsLocalSDSMockupFallback(result.SDSSync, options) {
 		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
+		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
 	}
 	if sdsRenderedLooksBlank(ctx, result.SDSSync, options) {
 		result.SDSSync.Status = "failed"
 		result.SDSSync.Error = "SDS render returned blank template"
 		result.SDSSync.MockupImageURLs = nil
 		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
+		stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
+		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+	stage.Complete()
 }
 
-func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult) {
+func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {
 	if s.sdsSyncSvc == nil || task == nil || task.Request == nil || !shouldRunStudioInline(task.Request) {
 		return
+	}
+	if recorder == nil {
+		recorder = newWorkflowRecorder(result)
 	}
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/sds_sync_remote",
@@ -453,7 +530,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	}
 	if len(options.Variants) > 0 {
 		log.WithField("variant_count", len(options.Variants)).Info("starting remote SDS variant design sync")
-		s.syncSDSDesignVariantsFromRemote(ctx, task, result, imageURL)
+		s.syncSDSDesignVariantsFromRemote(ctx, task, result, imageURL, recorder)
 		log.WithFields(logrus.Fields{
 			"sds_status": func() string {
 				if result.SDSSync == nil {
@@ -470,6 +547,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		}).Info("finished remote SDS variant design sync")
 		return
 	}
+	stage := recorder.Start("sds_design_sync", "")
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
 	log.WithFields(logrus.Fields{
 		"variant_id":         options.VariantID,
@@ -504,6 +582,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		}
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds template render failed: "+err.Error())
+		stage.Degrade("sds_template_render_failed", "SDS template render failed", err.Error())
 		log.WithError(err).Error("remote SDS design sync failed")
 		return
 	}
@@ -511,14 +590,18 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	result.SDSSync = buildSDSSyncSummary(options, syncResult.DesignResult)
 	if needsLocalSDSMockupFallback(result.SDSSync, options) {
 		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
+		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
 	}
 	if sdsRenderedLooksBlank(ctx, result.SDSSync, options) {
 		result.SDSSync.Status = "failed"
 		result.SDSSync.Error = "SDS render returned blank template"
 		result.SDSSync.MockupImageURLs = nil
 		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
+		stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
+		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+	stage.Complete()
 	log.WithFields(logrus.Fields{
 		"status":        result.SDSSync.Status,
 		"mockup_count":  len(result.SDSSync.MockupImageURLs),
@@ -526,8 +609,11 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	}).Info("remote SDS design sync completed")
 }
 
-func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string) {
+func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder) {
 	options := task.Request.Options.SDS
+	if recorder == nil {
+		recorder = newWorkflowRecorder(result)
+	}
 	representatives := representativeSDSVariantsByColor(options.Variants)
 	if len(representatives) == 0 {
 		return
@@ -536,6 +622,8 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 
 	summaries := make([]SDSSyncSummary, 0, len(representatives))
 	for _, variant := range representatives {
+		stage := recorder.Start("sds_design_sync", "")
+		stage.SetTaskID(strings.TrimSpace(variant.VariantSKU))
 		syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeoutForVariantCount(1))
 		syncResult, err := s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
 			Sync: sdsusecase.SyncInput{
@@ -555,6 +643,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 		})
 		cancel()
 		if err != nil {
+			stage.Degrade("sds_variant_render_failed", "SDS variant render failed", err.Error())
 			summaries = append(summaries, SDSSyncSummary{
 				VariantID:    variant.VariantID,
 				ProductID:    variant.VariantID,
@@ -567,6 +656,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 			continue
 		}
 		if syncResult == nil {
+			stage.Degrade("sds_variant_render_empty", "SDS variant render returned empty result", "")
 			summaries = append(summaries, SDSSyncSummary{
 				VariantID:    variant.VariantID,
 				ProductID:    variant.VariantID,
@@ -579,12 +669,14 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 			continue
 		}
 		summaries = append(summaries, buildSDSVariantSyncSummaries(options, []SDSSyncVariantOption{variant}, syncResult.DesignResult)...)
+		stage.Complete()
 	}
 
 	result.SDSSync = mergeSDSVariantSyncSummaries(options, summaries)
 	if result.SDSSync.Status == "failed" {
 		appendWarning(result, result.SDSSync.Error)
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), result.SDSSync.Error)
+		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_variant_render_failed", result.SDSSync.Error, "")
 		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
@@ -749,6 +841,8 @@ func markChildTask(result *ListingKitResult, kind, taskID, status, errorMsg stri
 	if result == nil {
 		return
 	}
+	// Compatibility shim for legacy task payloads and older UI paths.
+	// New workflow state should be recorded through workflowRecorder stages/issues.
 	for i := range result.ChildTasks {
 		if result.ChildTasks[i].Kind == kind {
 			result.ChildTasks[i].TaskID = taskID
@@ -764,6 +858,8 @@ func appendWarning(result *ListingKitResult, warning string) {
 	if result == nil || result.Summary == nil || strings.TrimSpace(warning) == "" {
 		return
 	}
+	// Compatibility shim for legacy summary warnings. New warnings should be
+	// represented as workflow issues and surfaced through aggregate counts.
 	result.Summary.Warnings = append(result.Summary.Warnings, warning)
 }
 

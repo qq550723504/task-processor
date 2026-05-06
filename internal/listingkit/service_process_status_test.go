@@ -155,6 +155,49 @@ func TestGetTaskResultReturnsStructuredReviewReasons(t *testing.T) {
 	}
 }
 
+func TestGetTaskResultPrefersWorkflowIssuesForReviewReasons(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	now := time.Now()
+	task := &Task{
+		ID:     "listingkit-review-reasons-workflow-1",
+		Status: TaskStatusNeedsReview,
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+		},
+		Result: &ListingKitResult{
+			TaskID:        "listingkit-review-reasons-workflow-1",
+			Status:        string(TaskStatusNeedsReview),
+			ReviewReasons: []string{"legacy review reason"},
+			WorkflowIssues: []WorkflowIssue{
+				{
+					Code:     "shein_review_required",
+					Severity: WorkflowIssueSeverityReview,
+					Stage:    "shein_review",
+					Message:  "structured workflow review reason",
+				},
+			},
+			Summary: &GenerationSummary{Warnings: []string{"legacy warning"}},
+		},
+		Error:     "legacy summary string",
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now,
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	svc := &service{repo: repo}
+	result, err := svc.GetTaskResult(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskResult() error = %v", err)
+	}
+	if got, want := result.ReviewReasons, []string{"structured workflow review reason"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("ReviewReasons = %#v, want %#v", got, want)
+	}
+}
+
 func TestGetTaskResultFallsBackToTaskErrorForReviewReasons(t *testing.T) {
 	t.Parallel()
 

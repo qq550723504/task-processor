@@ -6,6 +6,11 @@ import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-rev
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function primaryTaskError(task: ListingKitTaskResult) {
+  const blockingIssue = task.result?.workflow_issues?.find(
+    (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
+  );
+  if (blockingIssue?.detail) return blockingIssue.detail;
+  if (blockingIssue?.message) return blockingIssue.message;
   if (task.error) return task.error;
   const failedChild = task.result?.child_tasks?.find((child) => child.error);
   return failedChild?.error;
@@ -55,8 +60,12 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
   const Icon = tone.icon;
   const error = primaryTaskError(task);
   const reviewReasons = extractTaskReviewReasons(task);
+  const failedStages =
+    task.result?.workflow_stages?.filter((stage) => stage.status === "failed") ?? [];
   const failedChildren =
-    task.result?.child_tasks?.filter((child) => child.status === "failed") ?? [];
+    failedStages.length === 0
+      ? (task.result?.child_tasks?.filter((child) => child.status === "failed") ?? [])
+      : [];
   const createdAt = formatTaskDate(task.created_at);
   const updatedAt = formatTaskDate(task.result?.updated_at ?? task.completed_at);
   const taskIdentifier = task.task_id ?? task.result?.task_id;
@@ -137,7 +146,31 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
           </div>
         ) : null}
 
-        {failedChildren.length > 0 ? (
+        {failedStages.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              失败的流程阶段
+            </div>
+            <div className="space-y-2">
+              {failedStages.map((stage) => (
+                <div
+                  key={`${stage.kind}-${stage.task_id}-${stage.started_at}`}
+                  className="rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700"
+                >
+                  <div className="font-medium text-zinc-900">
+                    {stage.kind ?? "workflow_stage"}
+                  </div>
+                  {stage.task_id ? (
+                    <div className="mt-1 text-zinc-600">{stage.task_id}</div>
+                  ) : null}
+                  {stage.error ? (
+                    <div className="mt-1 text-zinc-600">{stage.error}</div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : failedChildren.length > 0 ? (
           <div className="space-y-2">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
               失败的子任务

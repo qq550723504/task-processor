@@ -30,9 +30,24 @@ function statusPresentation(status?: string) {
 }
 
 function firstWarning(task?: ListingKitTaskResult | null) {
+  const workflowIssue = task?.result?.workflow_issues?.find(
+    (issue) =>
+      issue.stage === "sds_design_sync" &&
+      (issue.severity === "warning" || issue.severity === "review" || issue.severity === "blocking") &&
+      issue.message,
+  );
+  if (workflowIssue?.message) {
+    return workflowIssue.message;
+  }
   return task?.result?.summary?.warnings?.find((warning) =>
     warning.toLowerCase().includes("sds"),
   );
+}
+
+function latestSDSWorkflowStage(task?: ListingKitTaskResult | null) {
+  const stages =
+    task?.result?.workflow_stages?.filter((stage) => stage.kind === "sds_design_sync") ?? [];
+  return stages[stages.length - 1];
 }
 
 export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }) {
@@ -44,6 +59,7 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
   const presentation = statusPresentation(sync.status);
   const Icon = presentation.icon;
   const warning = firstWarning(task);
+  const workflowStage = latestSDSWorkflowStage(task);
 
   return (
     <Card className="border-zinc-200 bg-white/90 p-5">
@@ -102,11 +118,13 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
           </div>
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-              Child task
+              Workflow stage
             </div>
             <div className="mt-2 text-sm font-medium text-zinc-900">
-              {task?.result?.child_tasks?.find((child) => child.kind === "sds_design_sync")
-                ?.status ?? "pending"}
+              {workflowStage?.status ??
+                task?.result?.child_tasks?.find((child) => child.kind === "sds_design_sync")
+                  ?.status ??
+                "pending"}
             </div>
           </div>
         </div>

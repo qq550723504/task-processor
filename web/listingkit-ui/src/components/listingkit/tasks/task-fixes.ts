@@ -2,6 +2,11 @@ import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 import type { TaskCreateDraft } from "@/components/listingkit/tasks/task-create-draft";
 
 function primaryTaskError(task: ListingKitTaskResult) {
+  const blockingIssue = task.result?.workflow_issues?.find(
+    (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
+  );
+  if (blockingIssue?.detail) return blockingIssue.detail;
+  if (blockingIssue?.message) return blockingIssue.message;
   if (task.error) return task.error;
   const failedChild = task.result?.child_tasks?.find((child) => child.error);
   return failedChild?.error;
