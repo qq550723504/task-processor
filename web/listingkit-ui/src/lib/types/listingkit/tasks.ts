@@ -76,6 +76,10 @@ export type ListingKitTaskResultData = {
     image_count?: number;
     variant_count?: number;
     needs_review?: boolean;
+    issue_count?: number;
+    warning_count?: number;
+    review_count?: number;
+    blocking_count?: number;
     warnings?: string[];
   };
   sds_sync?: SDSSyncSummary;

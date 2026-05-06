@@ -66,7 +66,10 @@ describe("TaskStatusPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Product enrichment failed")).toBeInTheDocument();
+    expect(screen.getAllByText("upstream timeout").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText("Product enrichment failed"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("失败的流程阶段")).toBeInTheDocument();
     expect(screen.getByText("product_enrich")).toBeInTheDocument();
     expect(screen.getByText("product-task-1")).toBeInTheDocument();

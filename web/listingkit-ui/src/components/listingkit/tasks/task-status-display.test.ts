@@ -53,6 +53,37 @@ describe("task-status-display", () => {
     });
   });
 
+  it("prioritizes blocking workflow issue details over legacy child task errors", () => {
+    const task = {
+      status: "failed",
+      result: {
+        child_tasks: [
+          {
+            kind: "product_enrich",
+            status: "failed",
+            error: "legacy product child task failed",
+          },
+        ],
+        workflow_issues: [
+          {
+            code: "product_enrich_failed",
+            severity: "blocking" as const,
+            stage: "product_enrich",
+            message: "Product enrichment failed",
+            detail: "structured enrichment failure detail",
+          },
+        ],
+      },
+    };
+
+    expect(deriveTaskPreviewEmptyState(task)?.description).toBe(
+      "structured enrichment failure detail",
+    );
+    expect(deriveTaskQueueEmptyState(task)?.description).toBe(
+      "structured enrichment failure detail",
+    );
+  });
+
   it("treats queued and running statuses as in-flight aliases", () => {
     expect(
       deriveTaskPreviewEmptyState({

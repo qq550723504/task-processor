@@ -7,6 +7,10 @@ type EmptyStateCopy = {
 
 function primaryTaskError(task?: ListingKitTaskResult | null) {
   if (!task) return undefined;
+  const blockingIssue = task.result?.workflow_issues?.find(
+    (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
+  );
+  if (blockingIssue) return blockingIssue.detail || blockingIssue.message;
   if (task.error) return task.error;
   return task.result?.child_tasks?.find((child) => child.error)?.error;
 }
