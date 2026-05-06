@@ -40,7 +40,7 @@ func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKi
 			if result == nil || result.Summary == nil {
 				return 0
 			}
-			return len(result.Summary.Warnings)
+			return result.Summary.WarningCount
 		}(),
 	}).Info("listing kit workflow returned result")
 

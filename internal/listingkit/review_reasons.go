@@ -30,10 +30,10 @@ func reviewReasonsFromResult(result *ListingKitResult) []string {
 	if result == nil {
 		return nil
 	}
-	if reasons := normalizeReviewReasons(result.ReviewReasons); len(reasons) > 0 {
+	if reasons := workflowIssueMessagesBySeverity(result, WorkflowIssueSeverityReview, WorkflowIssueSeverityBlocking); len(reasons) > 0 {
 		return reasons
 	}
-	if reasons := workflowIssueMessagesBySeverity(result, WorkflowIssueSeverityReview, WorkflowIssueSeverityBlocking); len(reasons) > 0 {
+	if reasons := normalizeReviewReasons(result.ReviewReasons); len(reasons) > 0 {
 		return reasons
 	}
 	if result.Summary == nil {

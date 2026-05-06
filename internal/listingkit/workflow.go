@@ -366,7 +366,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			if final.Summary == nil {
 				return 0
 			}
-			return len(final.Summary.Warnings)
+			return final.Summary.WarningCount
 		}(),
 	}).Info("listing kit workflow finished assembling result")
 	return final, nil
