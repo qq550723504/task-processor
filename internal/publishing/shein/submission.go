@@ -18,20 +18,29 @@ type SubmissionReport struct {
 	CurrentPhase      string              `json:"current_phase,omitempty"`
 	CurrentRequestID  string              `json:"current_request_id,omitempty"`
 	InFlightStartedAt *time.Time          `json:"in_flight_started_at,omitempty"`
+	LeaseExpiresAt    *time.Time          `json:"lease_expires_at,omitempty"`
+	RemoteStatus      string              `json:"remote_status,omitempty"`
+	RemoteCheckedAt   *time.Time          `json:"remote_checked_at,omitempty"`
 	AttemptCount      int                 `json:"attempt_count,omitempty"`
 }
 
 type SubmissionRecord struct {
-	Action      string              `json:"action,omitempty"`
-	Status      string              `json:"status,omitempty"`
-	Error       string              `json:"error,omitempty"`
-	SubmittedAt time.Time           `json:"submitted_at"`
-	Result      *SubmissionResponse `json:"result,omitempty"`
-	RequestID   string              `json:"request_id,omitempty"`
-	Phase       string              `json:"phase,omitempty"`
-	StartedAt   time.Time           `json:"started_at,omitempty"`
-	FinishedAt  *time.Time          `json:"finished_at,omitempty"`
-	Attempt     int                 `json:"attempt,omitempty"`
+	Action           string              `json:"action,omitempty"`
+	Status           string              `json:"status,omitempty"`
+	Error            string              `json:"error,omitempty"`
+	SubmittedAt      time.Time           `json:"submitted_at"`
+	Result           *SubmissionResponse `json:"result,omitempty"`
+	RequestID        string              `json:"request_id,omitempty"`
+	Phase            string              `json:"phase,omitempty"`
+	StartedAt        time.Time           `json:"started_at,omitempty"`
+	FinishedAt       *time.Time          `json:"finished_at,omitempty"`
+	Attempt          int                 `json:"attempt,omitempty"`
+	SupplierCode     string              `json:"supplier_code,omitempty"`
+	RemoteRecordID   string              `json:"remote_record_id,omitempty"`
+	RemoteState      int                 `json:"remote_state,omitempty"`
+	RemoteAuditState int                 `json:"remote_audit_state,omitempty"`
+	RemoteMessage    string              `json:"remote_message,omitempty"`
+	RemoteCheckedAt  *time.Time          `json:"remote_checked_at,omitempty"`
 }
 
 const (
@@ -41,11 +50,16 @@ const (
 	SubmissionPhasePreValidate    = "pre_validate"
 	SubmissionPhaseSubmitRemote   = "submit_remote"
 	SubmissionPhasePersistResult  = "persist_result"
+	SubmissionPhaseConfirmRemote  = "confirm_remote"
 
 	SubmissionStatusRunning = "running"
 	SubmissionStatusSuccess = "success"
 	SubmissionStatusFailed  = "failed"
 	SubmissionStatusBlocked = "blocked"
+
+	SubmissionRemoteStatusConfirmed = "confirmed"
+	SubmissionRemoteStatusPending   = "pending"
+	SubmissionRemoteStatusFailed    = "failed"
 )
 
 type SubmissionEvent struct {
@@ -53,10 +67,13 @@ type SubmissionEvent struct {
 	TaskID          string              `json:"task_id,omitempty"`
 	Platform        string              `json:"platform,omitempty"`
 	Action          string              `json:"action,omitempty"`
+	Phase           string              `json:"phase,omitempty"`
 	Status          string              `json:"status,omitempty"`
 	RequestID       string              `json:"request_id,omitempty"`
 	StartedAt       time.Time           `json:"started_at"`
 	FinishedAt      *time.Time          `json:"finished_at,omitempty"`
+	Detail          string              `json:"detail,omitempty"`
+	RemoteRecordID  string              `json:"remote_record_id,omitempty"`
 	ErrorMessage    string              `json:"error_message,omitempty"`
 	ValidationNotes []string            `json:"validation_notes,omitempty"`
 	Response        *SubmissionResponse `json:"response,omitempty"`

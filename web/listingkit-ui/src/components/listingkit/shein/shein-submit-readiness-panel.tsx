@@ -397,6 +397,10 @@ export function SheinSubmitReadinessPanel({
     | "save_draft"
     | undefined;
   const hasBackendSubmitAttempt = Boolean(submission?.current_phase);
+  const leaseExpiresAt = submission?.lease_expires_at
+    ? submission.lease_expires_at.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "")
+    : null;
+  const remoteStatus = submission?.remote_status;
   const activeSubmitAction = submitAction ?? backendSubmitAction ?? null;
   const canRunSubmitActions = canSubmit === true && submitReady;
   const customerIssues = buildSheinCustomerIssues({
@@ -561,6 +565,21 @@ export function SheinSubmitReadinessPanel({
                   当前阶段：{backendSubmitPhase}
                 </p>
               ) : null}
+              {submission?.current_request_id ? (
+                <p className="break-words text-xs leading-5 text-zinc-600">
+                  Request ID: {submission.current_request_id}
+                </p>
+              ) : null}
+              {leaseExpiresAt ? (
+                <p className="text-xs leading-5 text-zinc-600">
+                  Lease 到期：{leaseExpiresAt}
+                </p>
+              ) : null}
+              {submission?.current_phase === "confirm_remote" ? (
+                <p className="text-sm leading-6 text-zinc-700">
+                  远端可能已收到，正在按供方货号确认。
+                </p>
+              ) : null}
               {submitErrorMessage ? (
                 <SubmitFailureGuidance
                   detail={submitErrorMessage}
@@ -664,6 +683,14 @@ export function SheinSubmitReadinessPanel({
                 {latestSubmissionSummary ? (
                   <p className="text-sm leading-6 text-zinc-700">
                     {latestSubmissionSummary}
+                  </p>
+                ) : null}
+                {remoteStatus ? (
+                  <p className="text-xs leading-5 text-zinc-600">
+                    远端状态：{remoteStatus}
+                    {submission?.remote_checked_at
+                      ? ` · ${submission.remote_checked_at.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "")}`
+                      : ""}
                   </p>
                 ) : null}
                 {latestSubmissionMessage ? (

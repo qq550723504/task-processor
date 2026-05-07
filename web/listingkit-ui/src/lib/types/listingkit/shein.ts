@@ -447,6 +447,12 @@ export type SheinSubmissionRecord = {
   started_at?: string;
   finished_at?: string;
   attempt?: number;
+  supplier_code?: string;
+  remote_record_id?: string;
+  remote_state?: number;
+  remote_audit_state?: number;
+  remote_message?: string;
+  remote_checked_at?: string;
 };
 
 export type SheinSubmissionReport = {
@@ -461,6 +467,9 @@ export type SheinSubmissionReport = {
   current_phase?: string;
   current_request_id?: string;
   in_flight_started_at?: string;
+  lease_expires_at?: string;
+  remote_status?: "confirmed" | "pending" | "failed" | string;
+  remote_checked_at?: string;
   attempt_count?: number;
 };
 
@@ -469,10 +478,13 @@ export type SheinSubmissionEvent = {
   task_id?: string;
   platform?: string;
   action?: string;
+  phase?: string;
   status?: string;
   request_id?: string;
   started_at?: string;
   finished_at?: string;
+  detail?: string;
+  remote_record_id?: string;
   error_message?: string;
   validation_notes?: string[];
   response?: SheinSubmissionResponse;

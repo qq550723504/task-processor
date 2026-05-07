@@ -194,6 +194,25 @@ func (r *MemTaskRepository) SaveTaskResult(_ context.Context, taskID string, res
 	return nil
 }
 
+func (r *MemTaskRepository) MutateTaskResult(_ context.Context, taskID string, mutate listingkit.TaskResultMutation) (*listingkit.Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return nil, listingkit.ErrTaskNotFound
+	}
+	copied := *task
+	out := &copied
+	if mutate != nil {
+		if err := mutate(task); err != nil {
+			return out, err
+		}
+	}
+	task.UpdatedAt = time.Now()
+	copied = *task
+	return &copied, nil
+}
+
 func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
 	if fingerprint == "" {
 		return nil, nil

@@ -31,7 +31,16 @@ func (h *handler) SubmitTask(c *gin.Context) {
 		case errors.Is(err, listingkit.ErrSubmitInProgress):
 			status = http.StatusConflict
 		}
-		c.JSON(status, gin.H{"error": "submit_failed", "message": err.Error()})
+		body := gin.H{"error": "submit_failed", "message": err.Error()}
+		var inProgress *listingkit.SubmitInProgressError
+		if errors.As(err, &inProgress) {
+			body["current_phase"] = inProgress.Phase
+			body["current_request_id"] = inProgress.RequestID
+			if inProgress.LeaseExpiresAt != nil {
+				body["lease_expires_at"] = inProgress.LeaseExpiresAt
+			}
+		}
+		c.JSON(status, body)
 		return
 	}
 

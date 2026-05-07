@@ -59,6 +59,8 @@ export function sheinSubmitPhaseLabel(phase?: string | null) {
       return "提交 SHEIN";
     case "persist_result":
       return "保存提交结果";
+    case "confirm_remote":
+      return "确认远端记录";
     default:
       return phase ?? null;
   }
@@ -116,6 +118,15 @@ export function sheinLatestSubmissionSummary(
     return "商品资料已进入 SHEIN 草稿箱，不会直接上架。";
   }
   if (submission?.last_action === "publish" && title.includes("已提交")) {
+    if (submission.remote_status === "confirmed") {
+      return "商品资料已提交到 SHEIN，远端记录已确认。";
+    }
+    if (submission.remote_status === "pending") {
+      return "商品资料已提交到 SHEIN，远端记录暂未查询到，请稍后以 SHEIN 后台状态为准。";
+    }
+    if (submission.remote_status === "failed") {
+      return "商品资料已提交到 SHEIN，但远端状态确认失败，请以 SHEIN 后台最终状态为准。";
+    }
     return "商品资料已提交到 SHEIN 发布接口，请以 SHEIN 后台最终状态为准。";
   }
   if (title.includes("失败")) {

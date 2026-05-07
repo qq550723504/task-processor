@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -122,6 +123,46 @@ func TestSubmitTaskReturnsConflictWhenSubmitInProgress(t *testing.T) {
 
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", resp.Code)
+	}
+}
+
+func TestSubmitTaskConflictIncludesCurrentPhaseAndLease(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	leaseExpiresAt := time.Date(2026, 5, 7, 11, 0, 0, 0, time.UTC)
+	svc := &stubSubmitService{err: &listingkit.SubmitInProgressError{
+		Platform:       "shein",
+		Action:         "publish",
+		Phase:          "submit_remote",
+		RequestID:      "request-123",
+		LeaseExpiresAt: &leaseExpiresAt,
+	}}
+	h, err := NewHandler(svc)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/submit", h.SubmitTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/submit", strings.NewReader(`{"platform":"shein","action":"publish"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body["current_phase"] != "submit_remote" || body["current_request_id"] != "request-123" {
+		t.Fatalf("conflict body = %+v", body)
+	}
+	if body["lease_expires_at"] == "" {
+		t.Fatalf("lease_expires_at missing from body: %+v", body)
 	}
 }
 

@@ -20,9 +20,11 @@ import (
 )
 
 type stubSubmitRepo struct {
-	mu                    sync.Mutex
-	task                  *Task
-	savedSubmissionPhases []string
+	mu                              sync.Mutex
+	task                            *Task
+	savedSubmissionPhases           []string
+	failSaveWhenCurrentPhaseCleared bool
+	saveFailed                      bool
 }
 
 func (r *stubSubmitRepo) CreateTask(ctx context.Context, task *Task) error {
@@ -73,12 +75,34 @@ func (r *stubSubmitRepo) SaveTaskResult(ctx context.Context, taskID string, resu
 	if r.task == nil || r.task.ID != taskID {
 		return ErrTaskNotFound
 	}
+	if r.failSaveWhenCurrentPhaseCleared && !r.saveFailed && result != nil && result.Shein != nil && result.Shein.Submission != nil && result.Shein.Submission.CurrentPhase == "" {
+		r.saveFailed = true
+		return errors.New("save task result failed")
+	}
 	r.task.Result = result
 	r.task.UpdatedAt = time.Now()
 	if result != nil && result.Shein != nil && result.Shein.Submission != nil {
 		r.savedSubmissionPhases = append(r.savedSubmissionPhases, result.Shein.Submission.CurrentPhase)
 	}
 	return nil
+}
+
+func (r *stubSubmitRepo) MutateTaskResult(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.task == nil || r.task.ID != taskID {
+		return nil, ErrTaskNotFound
+	}
+	copied := *r.task
+	out := &copied
+	if mutate != nil {
+		if err := mutate(r.task); err != nil {
+			return out, err
+		}
+	}
+	r.task.UpdatedAt = time.Now()
+	copied = *r.task
+	return &copied, nil
 }
 
 func (r *stubSubmitRepo) hasSavedSubmissionPhase(phase string) bool {
@@ -230,6 +254,9 @@ type stubSheinProductAPI struct {
 	saveResponse    *sheinproduct.SheinResponse
 	saveErr         error
 	saveHook        func(*sheinproduct.Product)
+	recordResponse  *sheinproduct.RecordResponse
+	recordErr       error
+	recordHook      func(*sheinproduct.ProductRecordRequest)
 }
 
 func (s stubSheinProductAPI) GetProduct(productID string) (*sheinproduct.Product, error) {
@@ -260,7 +287,10 @@ func (s stubSheinProductAPI) ConfirmPublish(product *sheinproduct.Product) (bool
 	return false, "", errors.New("not implemented")
 }
 func (s stubSheinProductAPI) Record(request *sheinproduct.ProductRecordRequest) (*sheinproduct.RecordResponse, error) {
-	return nil, errors.New("not implemented")
+	if s.recordHook != nil {
+		s.recordHook(request)
+	}
+	return s.recordResponse, s.recordErr
 }
 func (s stubSheinProductAPI) ListProducts(pageNum, pageSize int, request *sheinproduct.ProductListRequest) (*sheinproduct.ProductListResponse, error) {
 	return nil, errors.New("not implemented")
@@ -285,6 +315,13 @@ func (s stubSheinProductAPI) OffShelf(request *sheinproduct.ShelfOperateRequest)
 }
 func (s stubSheinProductAPI) OnShelf(request *sheinproduct.ShelfOperateRequest) error {
 	return errors.New("not implemented")
+}
+
+func makeSheinRecordResponse(items ...sheinproduct.RecordItem) *sheinproduct.RecordResponse {
+	resp := &sheinproduct.RecordResponse{Code: "0", Msg: "success"}
+	resp.Info.Data = append(resp.Info.Data, items...)
+	resp.Info.Meta.Count = len(items)
+	return resp
 }
 
 func makeReadySheinTask() *Task {
@@ -592,6 +629,157 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var recordSupplierCodes []string
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordHook: func(request *sheinproduct.ProductRecordRequest) {
+					if request.SupplierCodeList != nil {
+						recordSupplierCodes = append(recordSupplierCodes, (*request.SupplierCodeList)...)
+					}
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-123",
+					SupplierCode: "SUP-submit-task-1",
+					State:        2,
+					AuditState:   3,
+				}),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "remote-123"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", got)
+	}
+	if preview.Shein.Submission.Publish.RemoteRecordID != "record-123" {
+		t.Fatalf("remote record id = %q, want record-123", preview.Shein.Submission.Publish.RemoteRecordID)
+	}
+	if len(recordSupplierCodes) != 1 || recordSupplierCodes[0] == "" {
+		t.Fatalf("record supplier codes = %+v, want one supplier code", recordSupplierCodes)
+	}
+	if !repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseConfirmRemote) {
+		t.Fatalf("confirm_remote phase was not persisted; saved phases = %+v", repo.savedSubmissionPhases)
+	}
+}
+
+func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordResponse: makeSheinRecordResponse(),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "pending-123"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusPending {
+		t.Fatalf("remote status = %q, want pending", got)
+	}
+	if preview.Shein.Submission.LastStatus != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("last status = %q, want success", preview.Shein.Submission.LastStatus)
+	}
+}
+
+func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{failSaveWhenCurrentPhaseCleared: true}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var publishCalls int32
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					atomic.AddInt32(&publishCalls, 1)
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-recovered",
+					SupplierCode: "SUP-submit-task-1",
+				}),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, firstErr := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "recover-123"})
+	if firstErr == nil || !strings.Contains(firstErr.Error(), "save task result failed") {
+		t.Fatalf("first submit err = %v, want save failure", firstErr)
+	}
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "recover-123"})
+	if err != nil {
+		t.Fatalf("recovery submit: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&publishCalls); got != 1 {
+		t.Fatalf("publish calls = %d, want 1", got)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	}
+	if preview.Shein.Submission.CurrentPhase != "" {
+		t.Fatalf("current phase = %q, want cleared", preview.Shein.Submission.CurrentPhase)
+	}
+}
+
 func TestSubmitTaskReplaysCompletedIdempotencyKeyWithoutPublishingAgain(t *testing.T) {
 	t.Parallel()
 
@@ -867,6 +1055,76 @@ func TestSubmitTaskSerializesConcurrentSameIdempotencyKey(t *testing.T) {
 		}
 	}
 
+	if got := atomic.LoadInt32(&publishCalls); got != 1 {
+		t.Fatalf("publish calls = %d, want 1", got)
+	}
+}
+
+func TestSubmitTaskBlocksConcurrentDifferentRequestAcrossServiceInstances(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var publishCalls int32
+	enteredPublish := make(chan struct{}, 1)
+	releasePublish := make(chan struct{})
+	productAPI := stubSheinProductAPI{
+		publishHook: func(product *sheinproduct.Product) {
+			atomic.AddInt32(&publishCalls, 1)
+			enteredPublish <- struct{}{}
+			<-releasePublish
+		},
+		publishResponse: &sheinproduct.SheinResponse{
+			Code: "0",
+			Msg:  "success",
+			Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+		},
+		recordResponse: makeSheinRecordResponse(),
+	}
+	newSvc := func() Service {
+		svc, err := NewService(&ServiceConfig{
+			Repository:             repo,
+			ProductService:         stubSubmitProductService{},
+			SheinProductAPIBuilder: stubSheinProductAPIBuilder{api: productAPI},
+			SheinImageAPIBuilder:   stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+		})
+		if err != nil {
+			t.Fatalf("new service: %v", err)
+		}
+		return svc
+	}
+	svc1 := newSvc()
+	svc2 := newSvc()
+	errs := make(chan error, 2)
+	go func() {
+		_, err := svc1.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "request-a"})
+		errs <- err
+	}()
+	select {
+	case <-enteredPublish:
+	case <-time.After(time.Second):
+		t.Fatal("first submit did not reach publish")
+	}
+	go func() {
+		_, err := svc2.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "request-b"})
+		errs <- err
+	}()
+	var conflict error
+	select {
+	case conflict = <-errs:
+	case <-time.After(time.Second):
+		t.Fatal("second submit did not return")
+	}
+	if !errors.Is(conflict, ErrSubmitInProgress) {
+		t.Fatalf("second submit err = %v, want ErrSubmitInProgress", conflict)
+	}
+	close(releasePublish)
+	if err := <-errs; err != nil {
+		t.Fatalf("first submit err: %v", err)
+	}
 	if got := atomic.LoadInt32(&publishCalls); got != 1 {
 		t.Fatalf("publish calls = %d, want 1", got)
 	}

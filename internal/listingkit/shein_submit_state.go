@@ -4,6 +4,7 @@ import (
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func beginSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string, startedAt time.Time) *sheinpub.SubmissionRecord {
@@ -16,6 +17,8 @@ func beginSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string,
 	report.CurrentPhase = phase
 	report.CurrentRequestID = requestID
 	report.InFlightStartedAt = &startedAt
+	leaseExpiresAt := startedAt.Add(sheinSubmitInFlightTTL)
+	report.LeaseExpiresAt = &leaseExpiresAt
 
 	record := &sheinpub.SubmissionRecord{
 		Action:      action,
@@ -38,6 +41,8 @@ func advanceSheinSubmitPhase(pkg *SheinPackage, action, requestID, phase string)
 	report.CurrentAction = action
 	report.CurrentPhase = phase
 	report.CurrentRequestID = requestID
+	leaseExpiresAt := time.Now().Add(sheinSubmitInFlightTTL)
+	report.LeaseExpiresAt = &leaseExpiresAt
 	record := sheinSubmissionRecordForAction(report, action)
 	if record == nil || record.RequestID != requestID {
 		return
@@ -132,10 +137,34 @@ func findActiveSheinSubmitAttempt(pkg *SheinPackage, action string, now time.Tim
 	if report.CurrentAction != action || report.CurrentRequestID == "" || report.CurrentPhase == "" || report.InFlightStartedAt == nil {
 		return nil
 	}
+	if report.LeaseExpiresAt != nil {
+		if now.After(*report.LeaseExpiresAt) {
+			return nil
+		}
+		return report
+	}
 	if now.Sub(*report.InFlightStartedAt) > sheinSubmitInFlightTTL {
 		return nil
 	}
 	return report
+}
+
+func sheinSubmitAttemptNeedsRemoteRecovery(report *sheinpub.SubmissionReport, action string, now time.Time) bool {
+	if report == nil || report.CurrentAction != action || report.CurrentRequestID == "" {
+		return false
+	}
+	switch report.CurrentPhase {
+	case sheinpub.SubmissionPhaseSubmitRemote, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionPhaseConfirmRemote:
+	default:
+		return false
+	}
+	if report.LeaseExpiresAt != nil {
+		return now.After(*report.LeaseExpiresAt)
+	}
+	if report.InFlightStartedAt == nil {
+		return true
+	}
+	return now.Sub(*report.InFlightStartedAt) > sheinSubmitInFlightTTL
 }
 
 func ensureSheinSubmissionReport(pkg *SheinPackage) *sheinpub.SubmissionReport {
@@ -170,4 +199,54 @@ func clearSheinSubmitInFlight(report *sheinpub.SubmissionReport, action, request
 	report.CurrentPhase = ""
 	report.CurrentRequestID = ""
 	report.InFlightStartedAt = nil
+	report.LeaseExpiresAt = nil
+}
+
+func setSheinSubmitSupplierCode(pkg *SheinPackage, action, requestID, supplierCode string) {
+	if pkg == nil || pkg.Submission == nil || supplierCode == "" {
+		return
+	}
+	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	if record == nil || record.RequestID != requestID {
+		return
+	}
+	record.SupplierCode = supplierCode
+}
+
+func setSheinSubmitRemoteResponse(pkg *SheinPackage, action, requestID, supplierCode string, response *sheinpub.SubmissionResponse) {
+	if pkg == nil || pkg.Submission == nil {
+		return
+	}
+	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	if record == nil || record.RequestID != requestID {
+		return
+	}
+	if supplierCode != "" {
+		record.SupplierCode = supplierCode
+	}
+	record.Result = response
+	pkg.Submission.LastResult = response
+}
+
+func setSheinSubmitRemoteRecord(pkg *SheinPackage, action, requestID, remoteStatus string, item *sheinproduct.RecordItem, checkedAt time.Time, message string) {
+	if pkg == nil {
+		return
+	}
+	report := ensureSheinSubmissionReport(pkg)
+	report.RemoteStatus = remoteStatus
+	report.RemoteCheckedAt = &checkedAt
+	record := sheinSubmissionRecordForAction(report, action)
+	if record == nil || record.RequestID != requestID {
+		return
+	}
+	record.RemoteCheckedAt = &checkedAt
+	record.RemoteMessage = message
+	if item != nil {
+		record.RemoteRecordID = item.RecordID
+		record.RemoteState = item.State
+		record.RemoteAuditState = item.AuditState
+		if record.SupplierCode == "" {
+			record.SupplierCode = item.SupplierCode
+		}
+	}
 }

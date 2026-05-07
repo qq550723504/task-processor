@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -136,6 +137,39 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 
 func (r *taskRepository) SaveTaskResult(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{"result": result})
+}
+
+func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mutate listingkit.TaskResultMutation) (*listingkit.Task, error) {
+	var out *listingkit.Task
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task listingkit.Task
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", taskID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return listingkit.ErrTaskNotFound
+			}
+			return err
+		}
+		copied := task
+		out = &copied
+		if mutate != nil {
+			if err := mutate(&task); err != nil {
+				return err
+			}
+		}
+		task.UpdatedAt = time.Now()
+		if err := tx.Model(&listingkit.Task{}).
+			Where("id = ?", taskID).
+			Updates(map[string]any{
+				"result":     task.Result,
+				"updated_at": gorm.Expr("NOW()"),
+			}).Error; err != nil {
+			return fmt.Errorf("failed to update task result: %w", err)
+		}
+		copied = task
+		out = &copied
+		return nil
+	})
+	return out, err
 }
 
 func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
