@@ -42,6 +42,14 @@ export function formatSheinSubmitError(
         : "提交前检查未通过，请先处理阻断项后再提交。";
     }
 
+    if (
+      error.status === 409 ||
+      (typeof payloadMessage === "string" &&
+        payloadMessage.includes("submit already in progress"))
+    ) {
+      return "已有 SHEIN 提交正在进行，请等待当前提交完成或刷新状态后再操作。";
+    }
+
     if (typeof payloadMessage === "string" && payloadMessage.trim()) {
       return payloadMessage;
     }

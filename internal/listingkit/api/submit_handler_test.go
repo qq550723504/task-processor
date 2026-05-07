@@ -17,6 +17,7 @@ import (
 type stubSubmitService struct {
 	preview *listingkit.ListingKitPreview
 	err     error
+	lastReq *listingkit.SubmitTaskRequest
 }
 
 func (s *stubSubmitService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
@@ -74,6 +75,7 @@ func (s *stubSubmitService) ValidateTaskRevision(ctx context.Context, taskID str
 	return nil, errors.New("not implemented")
 }
 func (s *stubSubmitService) SubmitTask(ctx context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
+	s.lastReq = req
 	return s.preview, s.err
 }
 
@@ -97,6 +99,29 @@ func TestSubmitTaskReturnsBadRequestWhenBlocked(t *testing.T) {
 
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.Code)
+	}
+}
+
+func TestSubmitTaskReturnsConflictWhenSubmitInProgress(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubSubmitService{err: listingkit.ErrSubmitInProgress}
+	h, err := NewHandler(svc)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/submit", h.SubmitTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/submit", strings.NewReader(`{"platform":"shein","action":"publish"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.Code)
 	}
 }
 
@@ -137,5 +162,35 @@ func TestSubmitTaskReturnsPreviewPayload(t *testing.T) {
 	}
 	if body.Shein == nil || body.Shein.Submission == nil || body.Shein.Submission.LastStatus != "success" {
 		t.Fatalf("submit preview = %+v", body.Shein)
+	}
+}
+
+func TestSubmitTaskMapsIdempotencyKeyHeader(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubSubmitService{preview: &listingkit.ListingKitPreview{TaskID: "task-1"}}
+	h, err := NewHandler(svc)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/submit", h.SubmitTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/submit", strings.NewReader(`{"platform":"shein","action":"publish"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "submit-123")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.Code)
+	}
+	if svc.lastReq == nil {
+		t.Fatal("expected submit request")
+	}
+	if svc.lastReq.IdempotencyKey != "submit-123" {
+		t.Fatalf("idempotency key = %q, want submit-123", svc.lastReq.IdempotencyKey)
 	}
 }

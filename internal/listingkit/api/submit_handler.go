@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +16,9 @@ func (h *handler) SubmitTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	}
 
 	preview, err := h.service.SubmitTask(c.Request.Context(), c.Param("task_id"), &req)
 	if err != nil {
@@ -24,6 +28,8 @@ func (h *handler) SubmitTask(c *gin.Context) {
 			status = http.StatusNotFound
 		case errors.Is(err, listingkit.ErrUnsupportedSubmitPlatform), errors.Is(err, listingkit.ErrSubmitBlocked):
 			status = http.StatusBadRequest
+		case errors.Is(err, listingkit.ErrSubmitInProgress):
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "submit_failed", "message": err.Error()})
 		return

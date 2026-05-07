@@ -7,13 +7,18 @@ import (
 )
 
 type SubmissionReport struct {
-	LastAction  string              `json:"last_action,omitempty"`
-	LastStatus  string              `json:"last_status,omitempty"`
-	LastError   string              `json:"last_error,omitempty"`
-	SubmittedAt *time.Time          `json:"submitted_at,omitempty"`
-	SaveDraft   *SubmissionRecord   `json:"save_draft,omitempty"`
-	Publish     *SubmissionRecord   `json:"publish,omitempty"`
-	LastResult  *SubmissionResponse `json:"last_result,omitempty"`
+	LastAction        string              `json:"last_action,omitempty"`
+	LastStatus        string              `json:"last_status,omitempty"`
+	LastError         string              `json:"last_error,omitempty"`
+	SubmittedAt       *time.Time          `json:"submitted_at,omitempty"`
+	SaveDraft         *SubmissionRecord   `json:"save_draft,omitempty"`
+	Publish           *SubmissionRecord   `json:"publish,omitempty"`
+	LastResult        *SubmissionResponse `json:"last_result,omitempty"`
+	CurrentAction     string              `json:"current_action,omitempty"`
+	CurrentPhase      string              `json:"current_phase,omitempty"`
+	CurrentRequestID  string              `json:"current_request_id,omitempty"`
+	InFlightStartedAt *time.Time          `json:"in_flight_started_at,omitempty"`
+	AttemptCount      int                 `json:"attempt_count,omitempty"`
 }
 
 type SubmissionRecord struct {
@@ -22,7 +27,26 @@ type SubmissionRecord struct {
 	Error       string              `json:"error,omitempty"`
 	SubmittedAt time.Time           `json:"submitted_at"`
 	Result      *SubmissionResponse `json:"result,omitempty"`
+	RequestID   string              `json:"request_id,omitempty"`
+	Phase       string              `json:"phase,omitempty"`
+	StartedAt   time.Time           `json:"started_at,omitempty"`
+	FinishedAt  *time.Time          `json:"finished_at,omitempty"`
+	Attempt     int                 `json:"attempt,omitempty"`
 }
+
+const (
+	SubmissionPhaseValidate       = "validate"
+	SubmissionPhasePrepareProduct = "prepare_product"
+	SubmissionPhaseUploadImages   = "upload_images"
+	SubmissionPhasePreValidate    = "pre_validate"
+	SubmissionPhaseSubmitRemote   = "submit_remote"
+	SubmissionPhasePersistResult  = "persist_result"
+
+	SubmissionStatusRunning = "running"
+	SubmissionStatusSuccess = "success"
+	SubmissionStatusFailed  = "failed"
+	SubmissionStatusBlocked = "blocked"
+)
 
 type SubmissionEvent struct {
 	ID              string              `json:"id,omitempty"`

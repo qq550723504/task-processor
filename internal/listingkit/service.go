@@ -45,6 +45,7 @@ type service struct {
 	assetGenerator             AssetGenerationService
 	taskSubmitter              TaskSubmitter
 	requestDefaults            generateRequestDefaults
+	sheinSubmitLocks           *submitLockManager
 	sheinSettingsMu            sync.RWMutex
 	sheinSettings              SheinSettings
 }
@@ -162,7 +163,8 @@ func NewService(config *ServiceConfig) (Service, error) {
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.SheinDefaultStoreID,
 		},
-		sheinSettings: defaultSettings,
+		sheinSubmitLocks: newSubmitLockManager(),
+		sheinSettings:    defaultSettings,
 	}, nil
 }
 

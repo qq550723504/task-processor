@@ -32,4 +32,14 @@ describe("formatSheinSubmitError", () => {
       }),
     ).toBe("提交前检查未通过：缺少尺寸图标记，请在 SHEIN data images 中标记一张尺寸图");
   });
+
+  it("rewrites in-flight submit conflicts into wait guidance", () => {
+    const error = new ApiError("ListingKit API request failed: 409", 409, {
+      message: "submit already in progress: shein publish is in submit_remote",
+    });
+
+    expect(formatSheinSubmitError(error)).toBe(
+      "已有 SHEIN 提交正在进行，请等待当前提交完成或刷新状态后再操作。",
+    );
+  });
 });

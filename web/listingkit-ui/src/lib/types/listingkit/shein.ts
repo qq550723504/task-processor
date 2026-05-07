@@ -442,6 +442,11 @@ export type SheinSubmissionRecord = {
   error?: string;
   submitted_at?: string;
   result?: SheinSubmissionResponse;
+  request_id?: string;
+  phase?: string;
+  started_at?: string;
+  finished_at?: string;
+  attempt?: number;
 };
 
 export type SheinSubmissionReport = {
@@ -452,6 +457,11 @@ export type SheinSubmissionReport = {
   save_draft?: SheinSubmissionRecord;
   publish?: SheinSubmissionRecord;
   last_result?: SheinSubmissionResponse;
+  current_action?: string;
+  current_phase?: string;
+  current_request_id?: string;
+  in_flight_started_at?: string;
+  attempt_count?: number;
 };
 
 export type SheinSubmissionEvent = {

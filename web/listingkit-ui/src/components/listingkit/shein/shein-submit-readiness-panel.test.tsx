@@ -238,6 +238,28 @@ describe("SheinSubmitReadinessPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders backend submit phase when an attempt is in flight", () => {
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "ready",
+        }}
+        submission={{
+          current_action: "publish",
+          current_phase: "upload_images",
+          current_request_id: "submit-123",
+        }}
+        canSubmit
+        onSubmit={vi.fn()}
+        onSaveDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("当前提交")).toBeInTheDocument();
+    expect(screen.getByText("正在发布到 SHEIN")).toBeInTheDocument();
+    expect(screen.getByText("当前阶段：上传图片")).toBeInTheDocument();
+  });
+
   it("keeps blocker repair entries visible in compact workspace mode", async () => {
     const user = userEvent.setup();
     const onSelectBlockingItem = vi.fn();
