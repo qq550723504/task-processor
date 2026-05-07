@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
@@ -225,20 +226,10 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 }
 
 func sheinSourceFactsReady(pkg *SheinPackage) (bool, string) {
-	if pkg == nil || pkg.Metadata == nil {
-		return true, "来源事实无需额外复核"
+	if pkg == nil {
+		return listingsubmission.SourceFactsReady(nil)
 	}
-	if strings.ToLower(strings.TrimSpace(pkg.Metadata["source_platform"])) != "1688" {
-		return true, "来源事实无需额外复核"
-	}
-	if strings.ToLower(strings.TrimSpace(pkg.Metadata["source_fact_review_required"])) != "true" {
-		return true, "1688 来源事实已具备抓取依据"
-	}
-	fields := strings.TrimSpace(pkg.Metadata["source_fact_review_fields"])
-	if fields == "" {
-		return false, "1688 来源商品包含缺少抓取依据的 LLM 推断字段，提交前必须复核"
-	}
-	return false, "1688 来源商品存在缺少抓取依据的 LLM 推断字段，提交前必须复核：" + fields
+	return listingsubmission.SourceFactsReady(pkg.Metadata)
 }
 
 func sheinFinalImagesReady(pkg *SheinPackage) (bool, string) {
