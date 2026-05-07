@@ -11,7 +11,6 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
-	sheinpublish "task-processor/internal/shein/publish"
 )
 
 const sheinSubmitInFlightTTL = listingsubmission.InFlightTTL
@@ -414,10 +413,7 @@ func (s *service) uploadSheinSubmitImages(task *Task, pkg *SheinPackage, submitP
 }
 
 func preValidateSheinSubmitProduct(submitProduct *sheinproduct.Product) error {
-	validator := sheinpublish.NewPublishProductValidator()
-	return validator.PreValidateProductData(nil, &sheinpublish.ValidationInput{
-		ProductData: submitProduct,
-	})
+	return sheinpub.PreValidateSubmitProduct(submitProduct)
 }
 
 func executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
