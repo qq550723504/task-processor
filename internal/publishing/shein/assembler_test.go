@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -28,7 +29,7 @@ type assemblerStubSaleAttributeResolver struct {
 	resolution *SaleAttributeResolution
 }
 
-func (s assemblerStubCategoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+func (s assemblerStubCategoryResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution {
 	if s.resolution == nil {
 		return &CategoryResolution{}
 	}
@@ -42,7 +43,7 @@ func (s assemblerStubCategoryResolver) Resolve(req *BuildRequest, canonical *pro
 	return &cloned
 }
 
-func (s assemblerStubSaleAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
+func (s assemblerStubSaleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
 	if s.resolution == nil {
 		return &SaleAttributeResolution{}
 	}
@@ -186,15 +187,15 @@ func TestSaleAttributeResolutionAppliesAssignmentsAcrossGroupedSKCs(t *testing.T
 
 func TestAssemblerBuildCreatesDefaultSKCWhenCanonicalVariantsMissing(t *testing.T) {
 	assembler := NewAssembler(AssemblerConfig{})
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:       "Minimal Product",
 		Description: "fallback variant",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"color": {Value: "Black"},
 			"size":  {Value: "One Size"},
 			"price": {Value: "19.9"},
 		},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
 	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", TargetCategoryHint: "4004"}, canonical, nil)
@@ -217,27 +218,27 @@ func TestAssemblerBuildCreatesDefaultSKCWhenCanonicalVariantsMissing(t *testing.
 
 func TestAssemblerBuildMarks1688LLMOnlyFactsForReview(t *testing.T) {
 	assembler := NewAssembler(AssemblerConfig{})
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:         "1688 Product",
 		Description:   "Scraped description",
 		SellingPoints: []string{"LLM-only waterproof claim"},
-		FieldTraces: map[string]productenrich.FieldTrace{
+		FieldTraces: map[string]canonical.FieldTrace{
 			"title": {
-				Sources: []productenrich.CanonicalSource{
-					{Type: productenrich.CanonicalSourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
-					{Type: productenrich.CanonicalSourceScrapedData, Detail: "scraped title"},
+				Sources: []canonical.Source{
+					{Type: canonical.SourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
+					{Type: canonical.SourceScrapedData, Detail: "scraped title"},
 				},
 			},
 			"selling_points": {
-				Sources: []productenrich.CanonicalSource{
-					{Type: productenrich.CanonicalSourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
-					{Type: productenrich.CanonicalSourceScrapedData, Detail: "normalized from product page: https://detail.1688.com/offer/123.html"},
-					{Type: productenrich.CanonicalSourceLLM, Detail: "LLM-generated product normalization"},
+				Sources: []canonical.Source{
+					{Type: canonical.SourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
+					{Type: canonical.SourceScrapedData, Detail: "normalized from product page: https://detail.1688.com/offer/123.html"},
+					{Type: canonical.SourceLLM, Detail: "LLM-generated product normalization"},
 				},
 				NeedsReview: true,
 			},
 		},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
 	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
@@ -265,9 +266,9 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 			RoundTo:      0.01,
 		},
 	})
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Priced Product",
-		Variants: []productenrich.CanonicalVariant{{
+		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
 			Price: &productenrich.PriceInfo{
 				Currency:  "USD",
@@ -277,7 +278,7 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 			Stock:     5,
 			IsDefault: true,
 		}},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
 	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
@@ -298,22 +299,22 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 }
 
 func TestBuildRequestSKCsPreferVariantSpecificDimensions(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Floor Mat",
 		Specifications: &productenrich.ProductSpecs{
 			Dimensions: &productenrich.Dimensions{Length: 99, Width: 88, Height: 7, Unit: "cm"},
 		},
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU:        "SKU-40",
-				Attributes: map[string]productenrich.CanonicalAttribute{"Color": {Value: "White"}, "Size": {Value: "40x60cm"}},
+				Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "40x60cm"}},
 				Dimensions: &productenrich.Dimensions{Length: 40, Width: 30, Height: 2, Unit: "cm"},
 				Stock:      5,
 				IsDefault:  true,
 			},
 			{
 				SKU:        "SKU-50",
-				Attributes: map[string]productenrich.CanonicalAttribute{"Color": {Value: "White"}, "Size": {Value: "50x80cm"}},
+				Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "50x80cm"}},
 				Dimensions: &productenrich.Dimensions{Length: 50, Width: 40, Height: 3, Unit: "cm"},
 				Stock:      5,
 			},
@@ -376,18 +377,18 @@ func TestAssemblerBuildCreatesGroupedSKCsWhenSaleAttributeResolverMapsSourceDime
 			},
 		}, nil),
 	})
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:       "Fallback Matrix Product",
 		Description: "fallback matrix",
 		VariantDimensions: []productenrich.ScrapedVariantDimension{
 			{Name: "color", Values: []string{"Red", "Blue"}},
 			{Name: "size", Values: []string{"42", "43"}},
 		},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"color": {Value: "Red, Blue"},
 			"size":  {Value: "42/43"},
 		},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
 	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", TargetCategoryHint: "4004"}, canonical, nil)
@@ -425,16 +426,16 @@ func TestAssemblerBuildDoesNotPropagatePromptTextIntoSKCNames(t *testing.T) {
 			},
 		}, nil),
 	})
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Flannel non-slip floor mat - Please design an image that can be printed on my non-slip floor mat. The image should include suitable English text and graphics, and the graphics and text should have a 3D visual effect. Please ensure it does not infringe on copyright. 3000 pixels * 2"},
 		},
 		VariantDimensions: []productenrich.ScrapedVariantDimension{{Name: "color", Values: []string{"Black"}}},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-BLACK", Attributes: map[string]productenrich.CanonicalAttribute{"color": {Value: "Black"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-BLACK", Attributes: map[string]canonical.Attribute{"color": {Value: "Black"}}},
 		},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
 	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
@@ -517,22 +518,22 @@ func TestAssemblerBuildDoesNotTriggerRuleBasedCategoryReview(t *testing.T) {
 		}, nil),
 	})
 
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "420ml stainless steel tumbler",
 		Description:  "Vacuum insulated drinkware cup",
 		CategoryPath: []string{"Drinkware", "Tumblers & Water Bottles"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"材质": {Value: "不锈钢"},
 			"容量": {Value: "420ml"},
 		},
 		VariantDimensions: []productenrich.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"裸粉", "黑色"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-PINK", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "裸粉"}}},
-			{SKU: "SKU-BLACK", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "黑色"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-PINK", Attributes: map[string]canonical.Attribute{"颜色": {Value: "裸粉"}}},
+			{SKU: "SKU-BLACK", Attributes: map[string]canonical.Attribute{"颜色": {Value: "黑色"}}},
 		},
-		Images: []productenrich.CanonicalImage{
+		Images: []canonical.Image{
 			{URL: "main.jpg"},
 		},
 	}
@@ -572,9 +573,9 @@ func TestAssemblerBuildDoesNotRequestAlternativeCategoryOnSaleReview(t *testing.
 		},
 	})
 
-	canonical := testCanonicalProduct()
-	canonical.Images = []productenrich.CanonicalImage{{URL: "main.jpg"}}
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, canonical, nil)
+	product := testCanonicalProduct()
+	product.Images = []canonical.Image{{URL: "main.jpg"}}
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, product, nil)
 	if pkg.CategoryResolution == nil {
 		t.Fatal("expected category resolution")
 	}
@@ -588,40 +589,40 @@ func TestAssemblerBuildDoesNotRequestAlternativeCategoryOnSaleReview(t *testing.
 	}
 }
 
-func testCanonicalProduct() *productenrich.CanonicalProduct {
-	return &productenrich.CanonicalProduct{
+func testCanonicalProduct() *canonical.Product {
+	return &canonical.Product{
 		Title: "Running Shoes",
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU: "SKU-RED-42",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"color": {Value: "Red"},
 					"size":  {Value: "42"},
 				},
 				Stock: 10,
-				Images: []productenrich.CanonicalImage{
+				Images: []canonical.Image{
 					{URL: "red-42.jpg"},
 				},
 			},
 			{
 				SKU: "SKU-RED-43",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"color": {Value: "Red"},
 					"size":  {Value: "43"},
 				},
 				Stock: 8,
-				Images: []productenrich.CanonicalImage{
+				Images: []canonical.Image{
 					{URL: "red-43.jpg"},
 				},
 			},
 			{
 				SKU: "SKU-BLUE-42",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"color": {Value: "Blue"},
 					"size":  {Value: "42"},
 				},
 				Stock: 6,
-				Images: []productenrich.CanonicalImage{
+				Images: []canonical.Image{
 					{URL: "blue-42.jpg"},
 				},
 			},

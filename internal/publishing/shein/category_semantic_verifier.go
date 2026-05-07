@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/productenrich"
 )
 
 type categorySemanticVerifier interface {
-	ValidateProductCategory(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) *CategorySemanticValidation
+	ValidateProductCategory(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation
 }
 
 type aiCategorySemanticVerifier struct {
@@ -27,7 +27,7 @@ func newAICategorySemanticVerifier(client openaiclient.ChatCompleter) categorySe
 	return &aiCategorySemanticVerifier{client: client}
 }
 
-func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
 	if v == nil || v.client == nil || len(categoryPath) == 0 {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *producte
 	}
 }
 
-func buildCategorySemanticValidationPrompt(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) string {
+func buildCategorySemanticValidationPrompt(canonical *canonical.Product, pkg *Package, categoryPath []string) string {
 	var builder strings.Builder
 	builder.WriteString("You validate whether a SHEIN category path matches the actual product semantics.\n")
 	builder.WriteString("Focus on what the product physically is, not on noisy or misleading title words.\n")
@@ -82,7 +82,7 @@ func buildCategorySemanticValidationPrompt(canonical *productenrich.CanonicalPro
 	return builder.String()
 }
 
-func buildCategorySemanticProductSummary(canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func buildCategorySemanticProductSummary(canonical *canonical.Product, pkg *Package) string {
 	lines := make([]string, 0, 8)
 	appendLine := func(label, value string) {
 		value = strings.TrimSpace(value)

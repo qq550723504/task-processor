@@ -3,7 +3,7 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 )
@@ -13,7 +13,7 @@ import (
 // images, or already patched pricing fields.
 func RefreshDerivedState(
 	req *BuildRequest,
-	canonical *productenrich.CanonicalProduct,
+	canonical *canonical.Product,
 	image *productimage.ImageProcessResult,
 	pkg *Package,
 	categoryResolver CategoryResolver,

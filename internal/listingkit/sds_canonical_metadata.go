@@ -3,28 +3,28 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
-func applySDSSyncMetadataToCanonical(canonical *productenrich.CanonicalProduct, summary *SDSSyncSummary, options *SDSSyncOptions) bool {
-	if canonical == nil {
+func applySDSSyncMetadataToCanonical(product *canonical.Product, summary *SDSSyncSummary, options *SDSSyncOptions) bool {
+	if product == nil {
 		return false
 	}
-	changed := applyStudioStyleDimension(canonical, options)
+	changed := applyStudioStyleDimension(product, options)
 	title := trustedSDSProductName(summary, options)
 	if title == "" {
 		return changed
 	}
-	if strings.TrimSpace(canonical.Title) == title {
+	if strings.TrimSpace(product.Title) == title {
 		return changed
 	}
-	canonical.Title = title
-	if canonical.FieldTraces == nil {
-		canonical.FieldTraces = map[string]productenrich.FieldTrace{}
+	product.Title = title
+	if product.FieldTraces == nil {
+		product.FieldTraces = map[string]canonical.FieldTrace{}
 	}
-	canonical.FieldTraces["title"] = productenrich.FieldTrace{
-		Sources: []productenrich.CanonicalSource{{
-			Type:   productenrich.CanonicalSourceDerived,
+	product.FieldTraces["title"] = canonical.FieldTrace{
+		Sources: []canonical.Source{{
+			Type:   canonical.SourceDerived,
 			Detail: "SDS design product detail",
 		}},
 		Confidence:  0.96,

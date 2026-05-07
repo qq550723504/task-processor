@@ -3,9 +3,9 @@ package shein
 import (
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
@@ -35,7 +35,7 @@ func NewManagedCategoryResolver(client *management.ClientManager, llmClient ...o
 	}
 }
 
-func (r *managedCategoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+func (r *managedCategoryResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution {
 	if req == nil {
 		return r.fallback.Resolve(req, canonical, pkg)
 	}

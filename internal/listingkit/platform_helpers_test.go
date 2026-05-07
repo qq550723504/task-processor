@@ -3,15 +3,15 @@ package listingkit
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestBuildPlatformVariantsFallsBackToDefaultVariant(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		Attributes: map[string]productenrich.CanonicalAttribute{
+	canonical := &canonical.Product{
+		Attributes: map[string]canonical.Attribute{
 			"color": {Value: "Black"},
 		},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
 	variants := buildPlatformVariants(canonical)

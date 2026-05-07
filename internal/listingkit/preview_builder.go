@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheinworkspace "task-processor/internal/workspace/shein"
@@ -96,7 +96,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	return preview, nil
 }
 
-func buildSheinSourceProductSummary(canonical *productenrich.CanonicalProduct) *SheinSourceProductSummary {
+func buildSheinSourceProductSummary(canonical *canonical.Product) *SheinSourceProductSummary {
 	if canonical == nil {
 		return nil
 	}
@@ -214,7 +214,7 @@ func buildAmazonPreviewPayload(pkg *AmazonPackage, assetBundle *asset.Bundle, re
 	}
 }
 
-func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *productenrich.CanonicalProduct, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
+func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *canonical.Product, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -259,7 +259,7 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *productenrich.Ca
 	}
 }
 
-func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *productenrich.CanonicalProduct, readiness *SheinSubmitReadiness) *SheinFinalReview {
+func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Product, readiness *SheinSubmitReadiness) *SheinFinalReview {
 	if pkg == nil {
 		return nil
 	}

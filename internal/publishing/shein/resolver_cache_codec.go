@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func firstResolutionCacheStore(stores []ResolutionCacheStore) ResolutionCacheStore {
@@ -72,7 +72,7 @@ func cacheEntrySource(entry *SheinResolutionCacheEntry) string {
 	return "history_cache"
 }
 
-func buildResolutionCacheEntry(kind string, req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, key string, resolution any, manual bool) *SheinResolutionCacheEntry {
+func buildResolutionCacheEntry(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution any, manual bool) *SheinResolutionCacheEntry {
 	data, err := json.Marshal(resolution)
 	if err != nil {
 		return nil
@@ -125,7 +125,7 @@ func normalizedResolutionSource(source string, fallback string) string {
 	}
 }
 
-func buildResolutionCacheSourceIdentity(kind string, canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func buildResolutionCacheSourceIdentity(kind string, canonical *canonical.Product, pkg *Package) string {
 	payload := map[string]any{
 		"kind":              kind,
 		"category_path":     normalizedSourceCategoryPath(canonical, pkg),

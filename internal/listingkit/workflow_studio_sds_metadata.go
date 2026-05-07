@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 )
 
@@ -31,11 +32,11 @@ func studioCategoryPath(sds *SDSSyncOptions) []string {
 	return result
 }
 
-func studioAttributes(sds *SDSSyncOptions, trace productenrich.FieldTrace) map[string]productenrich.CanonicalAttribute {
+func studioAttributes(sds *SDSSyncOptions, trace canonical.FieldTrace) map[string]canonical.Attribute {
 	if sds == nil {
 		return nil
 	}
-	attrs := map[string]productenrich.CanonicalAttribute{}
+	attrs := map[string]canonical.Attribute{}
 	addAttribute(attrs, "sku", sds.ProductSKU, trace)
 	addAttribute(attrs, "product_sku", sds.ProductSKU, trace)
 	addAttribute(attrs, "product_english_name", sds.ProductEnglishName, trace)
@@ -62,11 +63,11 @@ func studioAttributes(sds *SDSSyncOptions, trace productenrich.FieldTrace) map[s
 	return attrs
 }
 
-func addAttribute(attrs map[string]productenrich.CanonicalAttribute, key, value string, trace productenrich.FieldTrace) {
+func addAttribute(attrs map[string]canonical.Attribute, key, value string, trace canonical.FieldTrace) {
 	if strings.TrimSpace(value) == "" {
 		return
 	}
-	attrs[key] = productenrich.CanonicalAttribute{Value: strings.TrimSpace(value), Trace: trace}
+	attrs[key] = canonical.Attribute{Value: strings.TrimSpace(value), Trace: trace}
 }
 
 func studioSpecifications(sds *SDSSyncOptions) *productenrich.ProductSpecs {
@@ -125,19 +126,19 @@ func addTechnicalSpec(specs map[string]string, key, value string) {
 	specs[key] = strings.TrimSpace(value)
 }
 
-func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, trace productenrich.FieldTrace) []productenrich.CanonicalVariant {
+func studioVariants(sds *SDSSyncOptions, images []canonical.Image, trace canonical.FieldTrace) []canonical.Variant {
 	if sds == nil {
 		return nil
 	}
 	styleName := studioStyleName(sds)
 	if len(sds.Variants) > 0 {
-		variants := make([]productenrich.CanonicalVariant, 0, len(sds.Variants))
+		variants := make([]canonical.Variant, 0, len(sds.Variants))
 		baseSKUCounts := studioVariantBaseSKUCounts(sds)
 		seenSKUs := map[string]int{}
 		for index, item := range sds.Variants {
 			baseSKU := firstNonEmptyString(item.VariantSKU, sds.VariantSKU, sds.ProductSKU)
 			sku := buildStudioVariantSKU(baseSKU, sds.StyleID, studioVariantDiscriminator(item, index), baseSKUCounts[baseSKU] > 1, seenSKUs)
-			attrs := map[string]productenrich.CanonicalAttribute{}
+			attrs := map[string]canonical.Attribute{}
 			addAttribute(attrs, "Size", item.Size, trace)
 			addAttribute(attrs, "Color", item.Color, trace)
 			addAttribute(attrs, "source_sds_sku", item.VariantSKU, trace)
@@ -160,12 +161,12 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 			if item.Weight > 0 {
 				weight = &productenrich.Weight{Value: item.Weight, Unit: "g"}
 			}
-			variants = append(variants, productenrich.CanonicalVariant{
+			variants = append(variants, canonical.Variant{
 				SKU:        firstNonEmptyString(sku, "SDS-STUDIO-001"),
 				Attributes: attrs,
 				Price:      price,
 				Stock:      999,
-				Images:     append([]productenrich.CanonicalImage(nil), images...),
+				Images:     append([]canonical.Image(nil), images...),
 				Dimensions: dimensions,
 				Weight:     weight,
 				IsDefault:  index == 0,
@@ -179,7 +180,7 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 		return nil
 	}
 
-	attrs := map[string]productenrich.CanonicalAttribute{}
+	attrs := map[string]canonical.Attribute{}
 	addAttribute(attrs, "Size", sds.VariantSize, trace)
 	addAttribute(attrs, "Color", sds.VariantColor, trace)
 	addAttribute(attrs, "source_sds_sku", sds.VariantSKU, trace)
@@ -190,12 +191,12 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 		price = &productenrich.PriceInfo{Currency: "CNY", Amount: sds.VariantPrice, CostPrice: sds.VariantPrice}
 	}
 
-	return []productenrich.CanonicalVariant{{
+	return []canonical.Variant{{
 		SKU:        firstNonEmptyString(sku, "SDS-STUDIO-001"),
 		Attributes: attrs,
 		Price:      price,
 		Stock:      999,
-		Images:     append([]productenrich.CanonicalImage(nil), images...),
+		Images:     append([]canonical.Image(nil), images...),
 		IsDefault:  true,
 		Trace:      trace,
 	}}
@@ -214,17 +215,17 @@ func studioStyleName(sds *SDSSyncOptions) string {
 	return ""
 }
 
-func applyStudioStyleDimension(canonical *productenrich.CanonicalProduct, sds *SDSSyncOptions) bool {
-	if canonical == nil || len(canonical.Variants) == 0 {
+func applyStudioStyleDimension(product *canonical.Product, sds *SDSSyncOptions) bool {
+	if product == nil || len(product.Variants) == 0 {
 		return false
 	}
 	styleName := studioStyleName(sds)
 	if styleName == "" {
 		return false
 	}
-	trace := productenrich.FieldTrace{
-		Sources: []productenrich.CanonicalSource{{
-			Type:   productenrich.CanonicalSourceDerived,
+	trace := canonical.FieldTrace{
+		Sources: []canonical.Source{{
+			Type:   canonical.SourceDerived,
 			Detail: "SDS studio AI style dimension",
 		}},
 		Confidence:  0.94,
@@ -232,15 +233,15 @@ func applyStudioStyleDimension(canonical *productenrich.CanonicalProduct, sds *S
 		NeedsReview: false,
 	}
 	changed := false
-	for i := range canonical.Variants {
-		if canonical.Variants[i].Attributes == nil {
-			canonical.Variants[i].Attributes = map[string]productenrich.CanonicalAttribute{}
+	for i := range product.Variants {
+		if product.Variants[i].Attributes == nil {
+			product.Variants[i].Attributes = map[string]canonical.Attribute{}
 		}
-		current := strings.TrimSpace(canonical.Variants[i].Attributes[studioAIStyleAttributeKey].Value)
+		current := strings.TrimSpace(product.Variants[i].Attributes[studioAIStyleAttributeKey].Value)
 		if current == styleName {
 			continue
 		}
-		canonical.Variants[i].Attributes[studioAIStyleAttributeKey] = productenrich.CanonicalAttribute{
+		product.Variants[i].Attributes[studioAIStyleAttributeKey] = canonical.Attribute{
 			Value: styleName,
 			Trace: trace,
 		}

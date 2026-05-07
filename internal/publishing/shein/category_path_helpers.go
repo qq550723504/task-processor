@@ -3,10 +3,10 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
-func currentCategoryPath(canonical *productenrich.CanonicalProduct, current *Package) []string {
+func currentCategoryPath(canonical *canonical.Product, current *Package) []string {
 	if current != nil && current.CategoryResolution != nil && len(current.CategoryResolution.MatchedPath) > 0 {
 		return append([]string(nil), current.CategoryResolution.MatchedPath...)
 	}

@@ -3,9 +3,9 @@ package shein
 import (
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
@@ -23,7 +23,7 @@ func NewManagedSaleAttributeResolver(client *management.ClientManager, llm opena
 	}
 }
 
-func (r *managedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
+func (r *managedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
 	if req == nil {
 		return r.fallback.Resolve(req, canonical, pkg)
 	}

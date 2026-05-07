@@ -6,10 +6,10 @@ import (
 	"regexp"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
-	"task-processor/internal/productenrich"
 )
 
 type titleCandidate struct {
@@ -42,7 +42,7 @@ var (
 	titleCanvasNoisePattern = regexp.MustCompile(`(?i)([,;:，；：]\s*)?(?:\d{3,5}\s*(?:pixels?|px)|\d+\s*[x*]\s*\d+).*$`)
 )
 
-func resolveListingTitle(canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+func resolveListingTitle(canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
 	candidates := []titleCandidate{
 		{source: "product_english_name", value: lookupCanonicalAttribute(canonical, "product_english_name")},
 		{source: "english_name", value: lookupCanonicalAttribute(canonical, "english_name")},
@@ -77,7 +77,7 @@ func resolveListingTitle(canonical *productenrich.CanonicalProduct, fallbackTitl
 	return buildResolvedTitle(title, "structured_fallback", note, contaminated, canonical, fallbackTitle)
 }
 
-func enrichResolvedListingTitle(resolution titleResolution, canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+func enrichResolvedListingTitle(resolution titleResolution, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
 	if !shouldEnrichListingTitle(resolution.title) {
 		return resolution
 	}
@@ -99,7 +99,7 @@ func enrichResolvedListingTitle(resolution titleResolution, canonical *producten
 	return resolution
 }
 
-func buildResolvedTitle(title, source, note string, contaminated bool, canonical *productenrich.CanonicalProduct, fallbackTitle string) titleResolution {
+func buildResolvedTitle(title, source, note string, contaminated bool, canonical *canonical.Product, fallbackTitle string) titleResolution {
 	title = sanitizeResolvedTitle(title)
 	if title == "" || containsCJK(title) || isPromptLikeTitle(title) {
 		title = structuredFallbackTitle(canonical, fallbackTitle)
@@ -181,7 +181,7 @@ func isPromptLikeTitle(value string) bool {
 	}
 }
 
-func extractPromptTitleByRules(promptText string, canonical *productenrich.CanonicalProduct, fallbackTitle string) string {
+func extractPromptTitleByRules(promptText string, canonical *canonical.Product, fallbackTitle string) string {
 	value := cleanListingText(promptText)
 	value = titleCanvasNoisePattern.ReplaceAllString(value, "")
 	if strings.Contains(value, " - ") {
@@ -200,7 +200,7 @@ func extractPromptTitleByRules(promptText string, canonical *productenrich.Canon
 	return ""
 }
 
-func buildSKCBaseTitle(title string, canonical *productenrich.CanonicalProduct, fallbackTitle string) string {
+func buildSKCBaseTitle(title string, canonical *canonical.Product, fallbackTitle string) string {
 	base := sanitizeResolvedTitle(title)
 	if base == "" || isPromptLikeTitle(base) {
 		base = structuredFallbackTitle(canonical, fallbackTitle)
@@ -227,7 +227,7 @@ func trimShortTitle(value string, maxChars int, maxWords int) string {
 	return cleanListingText(truncated)
 }
 
-func collectListingTitlePromptSignals(canonical *productenrich.CanonicalProduct) []string {
+func collectListingTitlePromptSignals(canonical *canonical.Product) []string {
 	values := []string{
 		lookupVariantAttribute(canonical, "ai_style"),
 		lookupCanonicalAttribute(canonical, "picture_request"),
@@ -252,7 +252,7 @@ func collectListingTitlePromptSignals(canonical *productenrich.CanonicalProduct)
 	return result
 }
 
-func extractListingTitleAdditionWithLLM(baseTitle string, canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+func extractListingTitleAdditionWithLLM(baseTitle string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
 	if aiClient == nil {
 		return ""
 	}
@@ -332,7 +332,7 @@ func mergeListingTitleWithAddition(baseTitle string, addition string) string {
 	return trimShortTitle(cleanListingText(baseTitle+" with "+addition), 90, 12)
 }
 
-func extractPromptTitleWithLLM(promptText string, canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+func extractPromptTitleWithLLM(promptText string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
 	if aiClient == nil {
 		return ""
 	}
@@ -373,7 +373,7 @@ Rules:
 	return trimShortTitle(title, 80, 10)
 }
 
-func structuredFallbackTitle(canonical *productenrich.CanonicalProduct, fallbackTitle string) string {
+func structuredFallbackTitle(canonical *canonical.Product, fallbackTitle string) string {
 	candidates := []string{
 		firstEnglishCandidate(
 			lookupCanonicalAttribute(canonical, "product_english_name"),

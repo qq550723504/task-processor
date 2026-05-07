@@ -11,10 +11,10 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -268,7 +268,7 @@ func newDefaultAssetGenerationService() AssetGenerationService {
 	return assetgeneration.NewService(assetgeneration.Config{})
 }
 
-func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
+func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
 	task := &amazonlisting.Task{
 		ID: "listingkit-amazon-preview",
 		Request: &amazonlisting.GenerateRequest{

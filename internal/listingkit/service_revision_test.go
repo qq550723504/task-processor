@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -17,7 +17,7 @@ type stubApplyRevisionRepo struct {
 
 type stubRevisionSheinAttributeResolver struct{}
 
-func (stubRevisionSheinAttributeResolver) Resolve(req *sheinpub.BuildRequest, canonical *productenrich.CanonicalProduct, pkg *sheinpub.Package) *sheinpub.AttributeResolution {
+func (stubRevisionSheinAttributeResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.AttributeResolution {
 	return &sheinpub.AttributeResolution{
 		Status:        "resolved",
 		ResolvedCount: 1,
@@ -31,7 +31,7 @@ func (stubRevisionSheinAttributeResolver) Resolve(req *sheinpub.BuildRequest, ca
 
 type stubRevisionSheinSaleResolver struct{}
 
-func (stubRevisionSheinSaleResolver) Resolve(req *sheinpub.BuildRequest, canonical *productenrich.CanonicalProduct, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
+func (stubRevisionSheinSaleResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
 	valueID := 2493
 	return &sheinpub.SaleAttributeResolution{
 		Status:                  "resolved",
@@ -53,7 +53,7 @@ func (stubRevisionSheinSaleResolver) Resolve(req *sheinpub.BuildRequest, canonic
 
 type stubRevisionSheinSaleReviewResolver struct{}
 
-func (stubRevisionSheinSaleReviewResolver) Resolve(req *sheinpub.BuildRequest, canonical *productenrich.CanonicalProduct, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
+func (stubRevisionSheinSaleReviewResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
 	valueID := 2493
 	return &sheinpub.SaleAttributeResolution{
 		Status:                  "resolved",
@@ -295,14 +295,14 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 		Status: TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-category-refresh",
-			CanonicalProduct: &productenrich.CanonicalProduct{
+			CanonicalProduct: &canonical.Product{
 				Title: "420ml stainless steel tumbler",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"颜色": {Value: "黑色"},
 				},
-				Variants: []productenrich.CanonicalVariant{{
+				Variants: []canonical.Variant{{
 					SKU: "SKU-1",
-					Attributes: map[string]productenrich.CanonicalAttribute{
+					Attributes: map[string]canonical.Attribute{
 						"颜色": {Value: "黑色"},
 					},
 				}},
@@ -406,11 +406,11 @@ func TestApplyTaskRevisionKeepsManualCategoryReviewConfirmationAfterRefresh(t *t
 		Status: TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-category-confirm",
-			CanonicalProduct: &productenrich.CanonicalProduct{
+			CanonicalProduct: &canonical.Product{
 				Title: "pet bandana",
-				Variants: []productenrich.CanonicalVariant{{
+				Variants: []canonical.Variant{{
 					SKU: "SKU-1",
-					Attributes: map[string]productenrich.CanonicalAttribute{
+					Attributes: map[string]canonical.Attribute{
 						"Color": {Value: "Black"},
 					},
 				}},

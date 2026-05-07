@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/catalog"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -969,7 +969,7 @@ type ListingKitResult struct {
 	AssetGenerationOverview     *AssetGenerationOverview         `json:"asset_generation_overview,omitempty"`
 	ReviewSummary               *GenerationReviewSummary         `json:"review_summary,omitempty"`
 	ReviewRecords               []GenerationReviewRecord         `json:"review_records,omitempty"`
-	CanonicalProduct            *productenrich.CanonicalProduct  `json:"canonical_product,omitempty"`
+	CanonicalProduct            *canonical.Product               `json:"canonical_product,omitempty"`
 	ImageAssets                 *productimage.ImageProcessResult `json:"image_assets,omitempty"`
 	SDSSync                     *SDSSyncSummary                  `json:"sds_sync,omitempty"`
 	Amazon                      *AmazonPackage                   `json:"amazon,omitempty"`

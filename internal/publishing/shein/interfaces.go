@@ -1,7 +1,7 @@
 package shein
 
 import (
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
@@ -13,7 +13,7 @@ type CategoryAPI interface {
 }
 
 type CategoryResolver interface {
-	Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution
+	Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution
 }
 
 type AttributeAPI interface {
@@ -23,9 +23,9 @@ type AttributeAPI interface {
 }
 
 type AttributeResolver interface {
-	Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *AttributeResolution
+	Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution
 }
 
 type SaleAttributeResolver interface {
-	Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution
+	Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution
 }

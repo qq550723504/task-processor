@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 type cachedCategoryResolver struct {
@@ -27,18 +27,18 @@ type cachedSaleAttributeResolver struct {
 }
 
 type CategoryResolutionCache interface {
-	RememberCategoryResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, resolution *CategoryResolution)
-	ClearCategoryResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error
+	RememberCategoryResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *CategoryResolution)
+	ClearCategoryResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
 }
 
 type AttributeResolutionCache interface {
-	RememberAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, resolution *AttributeResolution)
-	ClearAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error
+	RememberAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution)
+	ClearAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
 }
 
 type SaleAttributeResolutionCache interface {
-	RememberSaleAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, resolution *SaleAttributeResolution)
-	ClearSaleAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error
+	RememberSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *SaleAttributeResolution)
+	ClearSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
 }
 
 func NewCachedCategoryResolver(inner CategoryResolver, stores ...ResolutionCacheStore) CategoryResolver {
@@ -62,7 +62,7 @@ func NewCachedSaleAttributeResolver(inner SaleAttributeResolver, stores ...Resol
 	return &cachedSaleAttributeResolver{inner: inner, store: firstResolutionCacheStore(stores)}
 }
 
-func (r *cachedCategoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+func (r *cachedCategoryResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution {
 	if r == nil || r.inner == nil {
 		return nil
 	}
@@ -89,7 +89,7 @@ func (r *cachedCategoryResolver) Resolve(req *BuildRequest, canonical *producten
 	return resolution
 }
 
-func (r *cachedCategoryResolver) RememberCategoryResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, resolution *CategoryResolution) {
+func (r *cachedCategoryResolver) RememberCategoryResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *CategoryResolution) {
 	if r == nil || resolution == nil {
 		return
 	}
@@ -102,7 +102,7 @@ func (r *cachedCategoryResolver) RememberCategoryResolution(req *BuildRequest, c
 	r.savePersistentCache(ResolutionCacheKindCategory, req, canonical, pkg, key, resolution, true)
 }
 
-func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error {
+func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error {
 	if r == nil {
 		return nil
 	}
@@ -110,7 +110,7 @@ func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, cano
 	return r.clearCacheWithInfo(ResolutionCacheKindCategory, req, key, categoryResolutionCacheInfo(pkg))
 }
 
-func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *AttributeResolution {
+func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
 	if r == nil || r.inner == nil {
 		return nil
 	}
@@ -137,7 +137,7 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *producte
 	return resolution
 }
 
-func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, resolution *AttributeResolution) {
+func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) {
 	if r == nil || resolution == nil {
 		return
 	}
@@ -160,7 +160,7 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	}
 }
 
-func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error {
+func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error {
 	if r == nil {
 		return nil
 	}
@@ -168,7 +168,7 @@ func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, ca
 	return r.clearCacheWithInfo(ResolutionCacheKindAttribute, req, key, attributeResolutionCacheInfo(pkg))
 }
 
-func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
+func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
 	if r == nil || r.inner == nil {
 		return nil
 	}
@@ -210,7 +210,7 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *prod
 	return resolution
 }
 
-func (r *cachedSaleAttributeResolver) RememberSaleAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, resolution *SaleAttributeResolution) {
+func (r *cachedSaleAttributeResolver) RememberSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *SaleAttributeResolution) {
 	if r == nil || resolution == nil {
 		return
 	}
@@ -223,7 +223,7 @@ func (r *cachedSaleAttributeResolver) RememberSaleAttributeResolution(req *Build
 	r.savePersistentCache(ResolutionCacheKindSaleAttribute, req, canonical, pkg, key, resolution, true)
 }
 
-func (r *cachedSaleAttributeResolver) ClearSaleAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error {
+func (r *cachedSaleAttributeResolver) ClearSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error {
 	if r == nil {
 		return nil
 	}
@@ -255,7 +255,7 @@ func (r *cachedSaleAttributeResolver) loadPersistentCache(kind string, req *Buil
 	return entry
 }
 
-func (r *cachedCategoryResolver) savePersistentCache(kind string, req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, key string, resolution any, manual bool) {
+func (r *cachedCategoryResolver) savePersistentCache(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution any, manual bool) {
 	if r == nil || r.store == nil {
 		return
 	}
@@ -280,7 +280,7 @@ func (r *cachedCategoryResolver) clearCacheWithInfo(kind string, req *BuildReque
 	return clearResolutionCacheEntries(&r.cache, r.store, kind, sheinStoreID(req), key, info)
 }
 
-func (r *cachedAttributeResolver) savePersistentCache(kind string, req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, key string, resolution any, manual bool) {
+func (r *cachedAttributeResolver) savePersistentCache(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution any, manual bool) {
 	if r == nil || r.store == nil {
 		return
 	}
@@ -305,7 +305,7 @@ func (r *cachedAttributeResolver) clearCacheWithInfo(kind string, req *BuildRequ
 	return clearResolutionCacheEntries(&r.cache, r.store, kind, sheinStoreID(req), key, info)
 }
 
-func (r *cachedSaleAttributeResolver) savePersistentCache(kind string, req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, key string, resolution any, manual bool) {
+func (r *cachedSaleAttributeResolver) savePersistentCache(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution any, manual bool) {
 	if r == nil || r.store == nil {
 		return
 	}

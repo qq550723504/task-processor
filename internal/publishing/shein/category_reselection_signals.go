@@ -3,10 +3,10 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
-func productSignalTokens(canonical *productenrich.CanonicalProduct, current *Package) []string {
+func productSignalTokens(canonical *canonical.Product, current *Package) []string {
 	var chunks []string
 	if canonical != nil {
 		chunks = append(chunks, canonical.Title, canonical.Description, canonical.Brand)

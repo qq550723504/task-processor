@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -132,7 +133,7 @@ type canonicalProductCacheAssembler struct {
 	calls int
 }
 
-func (a *canonicalProductCacheAssembler) Assemble(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ListingKitResult {
+func (a *canonicalProductCacheAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
 	a.calls++
 	return &ListingKitResult{
 		TaskID:           task.ID,
@@ -146,13 +147,13 @@ func (a *canonicalProductCacheAssembler) Assemble(task *Task, canonical *product
 type canonicalProductCacheTestRepo struct {
 	mu             sync.Mutex
 	tasks          map[string]*Task
-	canonicalCache map[string]*productenrich.CanonicalProduct
+	canonicalCache map[string]*canonical.Product
 }
 
 func newCanonicalProductCacheTestRepo() *canonicalProductCacheTestRepo {
 	return &canonicalProductCacheTestRepo{
 		tasks:          map[string]*Task{},
-		canonicalCache: map[string]*productenrich.CanonicalProduct{},
+		canonicalCache: map[string]*canonical.Product{},
 	}
 }
 
@@ -268,13 +269,13 @@ func (r *canonicalProductCacheTestRepo) SaveTaskResult(_ context.Context, taskID
 	return nil
 }
 
-func (r *canonicalProductCacheTestRepo) GetCanonicalProductCache(_ context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
+func (r *canonicalProductCacheTestRepo) GetCanonicalProductCache(_ context.Context, fingerprint string) (*canonical.Product, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return cloneCanonicalProductForCacheTest(r.canonicalCache[fingerprint]), nil
 }
 
-func (r *canonicalProductCacheTestRepo) SaveCanonicalProductCache(_ context.Context, fingerprint string, product *productenrich.CanonicalProduct, _ string) error {
+func (r *canonicalProductCacheTestRepo) SaveCanonicalProductCache(_ context.Context, fingerprint string, product *canonical.Product, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.canonicalCache[fingerprint] = cloneCanonicalProductForCacheTest(product)
@@ -289,12 +290,12 @@ func cloneCanonicalProductCacheTestTask(task *Task) *Task {
 	return &copied
 }
 
-func cloneCanonicalProductForCacheTest(product *productenrich.CanonicalProduct) *productenrich.CanonicalProduct {
+func cloneCanonicalProductForCacheTest(product *canonical.Product) *canonical.Product {
 	if product == nil {
 		return nil
 	}
 	raw, _ := json.Marshal(product)
-	var cloned productenrich.CanonicalProduct
+	var cloned canonical.Product
 	_ = json.Unmarshal(raw, &cloned)
 	return &cloned
 }

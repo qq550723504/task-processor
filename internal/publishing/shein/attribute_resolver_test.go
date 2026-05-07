@@ -5,17 +5,17 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type captureAttributeLLM struct {
-	responses []string
-	err       error
-	prompt    string
-	maxTokens int
+	responses    []string
+	err          error
+	prompt       string
+	maxTokens    int
 	maxTokensSet bool
 }
 
@@ -169,7 +169,7 @@ func TestAttributeResolverSkipsSaleScopeAttributes(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 1 {
 		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
 	}
@@ -211,7 +211,7 @@ func TestAttributeResolverMapsTemplateValueID(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 1 {
 		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
 	}
@@ -251,7 +251,7 @@ func TestAttributeResolverAcceptsBatchTextValueAlias(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.Status != "resolved" {
 		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
 	}
@@ -310,7 +310,7 @@ func TestAttributeResolverNormalizesMaterialValueSynonyms(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 2 {
 		t.Fatalf("resolved count = %d, want 2", resolution.ResolvedCount)
 	}
@@ -380,7 +380,7 @@ func TestAttributeResolverMarksMissingRequiredDisplayAttributesAsPending(t *test
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.Status != "partial" {
 		t.Fatalf("status = %q, want partial", resolution.Status)
 	}
@@ -429,7 +429,7 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 			CategoryID:        5229,
 			ProductAttributes: []common.Attribute{{Name: "Width (cm)", Value: "120"}},
 		}
-		resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+		resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 		if len(resolution.PendingAttributes) != 1 || resolution.PendingAttributes[0].Name != "Material" {
 			t.Fatalf("pending attributes = %#v, want only Material", resolution.PendingAttributes)
 		}
@@ -470,7 +470,7 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 			CategoryID:        5229,
 			ProductAttributes: []common.Attribute{{Name: "Material", Value: "棉"}},
 		}
-		resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+		resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 		if len(resolution.PendingAttributes) != 1 || resolution.PendingAttributes[0].Name != "Other Material" {
 			t.Fatalf("pending attributes = %#v, want only Other Material", resolution.PendingAttributes)
 		}
@@ -511,7 +511,7 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 			CategoryID:        5229,
 			ProductAttributes: []common.Attribute{{Name: "Material", Value: "麻"}},
 		}
-		resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+		resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 		if len(resolution.PendingAttributes) != 0 {
 			t.Fatalf("pending attributes = %#v, want none", resolution.PendingAttributes)
 		}
@@ -562,7 +562,7 @@ func TestAttributeResolverResolvesDependentAttributeAfterParentEvenWhenInputOrde
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if len(resolution.PendingAttributes) != 0 {
 		t.Fatalf("pending attributes = %#v, want none", resolution.PendingAttributes)
 	}
@@ -609,7 +609,7 @@ func TestAttributeResolverDoesNotRepeatPendingForMatchedAliasTemplate(t *testing
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if len(resolution.PendingAttributes) != 0 {
 		t.Fatalf("pending attributes = %#v, want none", resolution.PendingAttributes)
 	}
@@ -645,7 +645,7 @@ func TestAttributeResolverMatchesPolyesterAliases(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 1 {
 		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
 	}
@@ -680,7 +680,7 @@ func TestAttributeResolverDoesNotMatchPolyesterAliasesWithoutLLM(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 0 {
 		t.Fatalf("resolved count = %d, want 0; notes=%#v", resolution.ResolvedCount, resolution.ReviewNotes)
 	}
@@ -711,7 +711,7 @@ func TestAttributeResolverSkipsOptionalOccasionAliasFromSceneWithoutExactMatch(t
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 0 {
 		t.Fatalf("resolved count = %d, want 0 for optional alias-only field", resolution.ResolvedCount)
 	}
@@ -750,7 +750,7 @@ func TestAttributeResolverSkipsOptionalRoomAliasFromSpaceWithoutExactMatch(t *te
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 0 {
 		t.Fatalf("resolved count = %d, want 0 for optional alias-only field", resolution.ResolvedCount)
 	}
@@ -793,7 +793,7 @@ func TestAttributeResolverSkipsOtherMaterialPendingWhenParentUsesStandardValue(t
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	for _, attr := range resolution.PendingAttributes {
 		if attr.Name == "Other Material" {
 			t.Fatalf("pending attributes should skip Other Material when parent uses standard value: %#v", resolution.PendingAttributes)
@@ -828,7 +828,7 @@ func TestAttributeResolverSkipsOptionalAliasPromptExpansion(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 0 {
 		t.Fatalf("resolved count = %d, want 0 for optional alias-only field", resolution.ResolvedCount)
 	}
@@ -869,7 +869,7 @@ func TestAttributeResolverInfersMissingRequiredDisplayAttributeFromContext(t *te
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 1 {
 		t.Fatalf("resolved count = %d, want 1", resolution.ResolvedCount)
 	}
@@ -1048,7 +1048,7 @@ func TestAttributeResolverInfersImportantTextAttributeFromContext(t *testing.T) 
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 1 {
 		t.Fatalf("resolved count = %d, want 1; resolution=%+v", resolution.ResolvedCount, resolution)
 	}
@@ -1110,7 +1110,7 @@ func TestAttributeResolverDoesNotCountEnumeratedAttributeWithoutValueIDAsResolve
 		},
 	}
 
-	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	resolution := resolver.Resolve(&BuildRequest{}, &canonical.Product{}, pkg)
 	if resolution.ResolvedCount != 0 {
 		t.Fatalf("resolved count = %d, want 0", resolution.ResolvedCount)
 	}

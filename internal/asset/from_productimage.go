@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
-func BuildBundle(canonical *productenrich.CanonicalProduct, result *productimage.ImageProcessResult) *Bundle {
+func BuildBundle(canonical *canonical.Product, result *productimage.ImageProcessResult) *Bundle {
 	bundle := &Bundle{
 		Selection: &Selection{},
 	}

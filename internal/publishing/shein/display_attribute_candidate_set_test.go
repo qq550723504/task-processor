@@ -50,8 +50,8 @@ func TestBuildTemplateAttributeValueBatchMappingPromptNarrowsCandidates(t *testi
 	prompt := buildTemplateAttributeValueBatchMappingPrompt([]unresolvedDisplayAttributeValue{{
 		Source: common.Attribute{Name: "Material", Value: "Poly blend"},
 		Attr: sheinattribute.AttributeInfo{
-			AttributeID:          160,
-			AttributeNameEn:      "Material",
+			AttributeID:            160,
+			AttributeNameEn:        "Material",
 			AttributeValueInfoList: values,
 		},
 	}}, []common.Attribute{{Name: "Description", Value: "Polyester fabric wall clock"}})

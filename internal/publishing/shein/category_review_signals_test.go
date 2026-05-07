@@ -3,14 +3,14 @@ package shein
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestBuildCategoryFamilyConflictSummaryDoesNotUsePathRules(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "420ml 304 Stainless Steel Insulated Water Bottle with Dual-Drink Lid",
 		CategoryPath: []string{"Home & Kitchen", "Drinkware", "Water Bottles"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"材质": {Value: "不锈钢"},
 			"容量": {Value: "420ml"},
 		},
@@ -34,11 +34,11 @@ func TestBuildCategoryFamilyConflictSummaryDoesNotUsePathRules(t *testing.T) {
 }
 
 func TestBuildCategoryFamilyConflictSummaryDoesNotUseResolvedPathRules(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "420ml Stainless Steel Insulated Tumbler with Dual Drink Lid - Modern Minimalist Design",
 		Description:  "Drinkware tumbler water bottle with multiple colors and stainless steel body",
 		CategoryPath: []string{"Drinkware", "Tumblers & Water Bottles"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"材质": {Value: "不锈钢"},
 			"容量": {Value: "420ml"},
 			"颜色": {Value: "裸粉,抹茶绿,米色,黑色,奶油黄"},
@@ -67,10 +67,10 @@ func TestBuildCategoryFamilyConflictSummaryDoesNotUseResolvedPathRules(t *testin
 }
 
 func TestBuildCategoryFamilyConflictSummaryAcceptsDenimHatWorkCap(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:       "水洗牛仔帽",
 		Description: "Washed denim hat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"材质": {Value: "100%纯棉"},
 			"工艺": {Value: "烫画"},
 		},

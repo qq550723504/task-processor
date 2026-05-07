@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
 )
@@ -35,7 +35,7 @@ func NewCategoryResolverWithTreeFallback(api CategoryAPI, treeFallback categoryT
 	return NewCategoryResolverWithFallbacks(api, nil, treeFallback)
 }
 
-func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution {
 	suggestQuery := buildCategorySuggestionQuery(req, canonical, pkg)
 	treeQuery := buildCategoryQuery(req, canonical, pkg)
 	resolution := &CategoryResolution{
@@ -246,7 +246,7 @@ func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query s
 	return resolution
 }
 
-func (r *categoryResolver) semanticValidation(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+func (r *categoryResolver) semanticValidation(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
 	if r == nil || r.semanticVerifier == nil || len(categoryPath) == 0 {
 		return nil
 	}
@@ -307,7 +307,7 @@ func buildCategoryIDList(info *sheincategory.CategoryInfo) []int {
 	return idList
 }
 
-func resolveCategoryPath(canonical *productenrich.CanonicalProduct, pkg *Package) []string {
+func resolveCategoryPath(canonical *canonical.Product, pkg *Package) []string {
 	if pkg != nil && len(pkg.CategoryPath) > 0 {
 		return pkg.CategoryPath
 	}

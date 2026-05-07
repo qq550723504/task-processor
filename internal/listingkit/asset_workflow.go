@@ -5,7 +5,7 @@ import (
 	assetbundle "task-processor/internal/asset/bundle"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func buildInventorySummaryFromBundle(bundle *asset.Bundle) *asset.InventorySummary {
@@ -38,7 +38,7 @@ func rebuildInventorySummary(inventory *asset.Inventory) *asset.InventorySummary
 	return summary
 }
 
-func resolveRecipesForPlatforms(resolver AssetRecipeResolver, platforms []string, canonical *productenrich.CanonicalProduct) map[string][]assetrecipe.AssetRecipe {
+func resolveRecipesForPlatforms(resolver AssetRecipeResolver, platforms []string, canonical *canonical.Product) map[string][]assetrecipe.AssetRecipe {
 	if resolver == nil {
 		return nil
 	}
@@ -172,7 +172,7 @@ func rebuildBundleStats(items []asset.Asset) *asset.Stats {
 	return stats
 }
 
-func categoryPathOrNil(canonical *productenrich.CanonicalProduct) []string {
+func categoryPathOrNil(canonical *canonical.Product) []string {
 	if canonical == nil {
 		return nil
 	}

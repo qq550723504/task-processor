@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -13,7 +13,7 @@ type countingCategoryResolver struct {
 	out   *CategoryResolution
 }
 
-func (r *countingCategoryResolver) Resolve(_ *BuildRequest, _ *productenrich.CanonicalProduct, _ *Package) *CategoryResolution {
+func (r *countingCategoryResolver) Resolve(_ *BuildRequest, _ *canonical.Product, _ *Package) *CategoryResolution {
 	r.calls++
 	return cloneCategoryResolution(r.out)
 }
@@ -23,7 +23,7 @@ type countingAttributeResolver struct {
 	out   *AttributeResolution
 }
 
-func (r *countingAttributeResolver) Resolve(_ *BuildRequest, _ *productenrich.CanonicalProduct, _ *Package) *AttributeResolution {
+func (r *countingAttributeResolver) Resolve(_ *BuildRequest, _ *canonical.Product, _ *Package) *AttributeResolution {
 	r.calls++
 	return cloneAttributeResolution(r.out)
 }
@@ -33,7 +33,7 @@ type countingSaleAttributeResolver struct {
 	out   *SaleAttributeResolution
 }
 
-func (r *countingSaleAttributeResolver) Resolve(_ *BuildRequest, _ *productenrich.CanonicalProduct, _ *Package) *SaleAttributeResolution {
+func (r *countingSaleAttributeResolver) Resolve(_ *BuildRequest, _ *canonical.Product, _ *Package) *SaleAttributeResolution {
 	r.calls++
 	return cloneSaleAttributeResolution(r.out)
 }
@@ -50,7 +50,7 @@ func TestCachedCategoryResolverReusesStableSDSBaseProduct(t *testing.T) {
 	}
 	resolver := NewCachedCategoryResolver(inner)
 	req := &BuildRequest{SheinStoreID: 42}
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "Envelope Pillow Cover",
 		CategoryPath: []string{"美国本地直发", "生活用品", "抱枕套"},
 	}
@@ -79,7 +79,7 @@ func TestCachedCategoryResolverCanRememberManualResolutionForSourceCategory(t *t
 	resolver := NewCachedCategoryResolver(inner)
 	cache := resolver.(CategoryResolutionCache)
 	req := &BuildRequest{SheinStoreID: 42, TargetCategoryHint: "8218"}
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "Envelope Pillow Cover",
 		CategoryPath: []string{"美国本地直发", "生活用品", "抱枕套"},
 	}
@@ -458,11 +458,11 @@ func TestCachedSaleAttributeResolverSeparatesDifferentVariantMatrices(t *testing
 	pkg := &Package{CategoryID: 8218}
 
 	resolver.Resolve(req, saleCacheCanonical(), pkg)
-	resolver.Resolve(req, &productenrich.CanonicalProduct{
+	resolver.Resolve(req, &canonical.Product{
 		Title: "Envelope Pillow Cover",
-		Variants: []productenrich.CanonicalVariant{{
+		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
-			Attributes: map[string]productenrich.CanonicalAttribute{
+			Attributes: map[string]canonical.Attribute{
 				"Color": {Value: "Black"},
 			},
 		}},
@@ -507,11 +507,11 @@ func TestCachedSaleAttributeResolverRejectsPromptLikeManualCacheAndRecomputes(t 
 	resolver := NewCachedSaleAttributeResolver(inner)
 	cache := resolver.(SaleAttributeResolutionCache)
 	req := &BuildRequest{SheinStoreID: 42}
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non slip floor mat",
-		Variants: []productenrich.CanonicalVariant{{
+		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
-			Attributes: map[string]productenrich.CanonicalAttribute{
+			Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Please design an image with suitable text and graphics, 3000 pixels wide"},
 				"Size":     {Value: "40x60cm"},
 			},
@@ -554,12 +554,12 @@ func TestCachedSaleAttributeResolverRejectsPromptLikeManualCacheAndRecomputes(t 
 	}
 }
 
-func saleCacheCanonical() *productenrich.CanonicalProduct {
-	return &productenrich.CanonicalProduct{
+func saleCacheCanonical() *canonical.Product {
+	return &canonical.Product{
 		Title: "Envelope Pillow Cover",
-		Variants: []productenrich.CanonicalVariant{{
+		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
-			Attributes: map[string]productenrich.CanonicalAttribute{
+			Attributes: map[string]canonical.Attribute{
 				"Color": {Value: "White"},
 			},
 		}},

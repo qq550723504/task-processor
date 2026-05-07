@@ -3,11 +3,11 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
-func buildWalmartPackage(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *WalmartPackage {
+func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *WalmartPackage {
 	if canonical == nil {
 		return &WalmartPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}

@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/productenrich"
 )
 
 type taskRepository struct {
@@ -172,7 +172,7 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 	return out, err
 }
 
-func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
+func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error) {
 	if fingerprint == "" {
 		return nil, nil
 	}
@@ -186,7 +186,7 @@ func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerpri
 	return entry.CanonicalProduct()
 }
 
-func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) error {
+func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
 	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
 	if err != nil {
 		return err

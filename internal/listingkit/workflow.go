@@ -12,6 +12,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -41,7 +42,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		"task_id":   task.ID,
 	})
 
-	var canonical *productenrich.CanonicalProduct
+	var canonical *canonical.Product
 	if shouldUseStudioCatalogCanonical(task) {
 		stage := recorder.Start("sds_catalog_product", "")
 		canonical = buildStudioFallbackCanonicalProduct(task)

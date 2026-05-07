@@ -3,15 +3,15 @@ package asset
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
 func TestBuildInventoryBuildsPersistentAssetRecords(t *testing.T) {
 	t.Parallel()
 
-	bundle := BuildBundle(&productenrich.CanonicalProduct{
-		Images: []productenrich.CanonicalImage{
+	bundle := BuildBundle(&canonical.Product{
+		Images: []canonical.Image{
 			{URL: "https://example.com/source-1.jpg", Role: "primary"},
 			{URL: "https://example.com/source-2.jpg", Role: "gallery"},
 		},

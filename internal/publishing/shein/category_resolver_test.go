@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -56,7 +57,7 @@ func TestCategoryResolverReturnsPartialWhenSuggestCategoryFails(t *testing.T) {
 		},
 	}, nil)
 
-	resolution := resolver.Resolve(&BuildRequest{Text: "Sports Shoes"}, &productenrich.CanonicalProduct{}, &Package{
+	resolution := resolver.Resolve(&BuildRequest{Text: "Sports Shoes"}, &canonical.Product{}, &Package{
 		CategoryName: "Product",
 		CategoryPath: []string{"General", "Product"},
 	})
@@ -119,7 +120,7 @@ func TestCategoryResolverFallsBackToCategoryTreeSelection(t *testing.T) {
 		},
 	}, stubCategoryTreeFallback{selectedID: 8824})
 
-	resolution := resolver.Resolve(&BuildRequest{Text: "running shoes"}, &productenrich.CanonicalProduct{}, &Package{})
+	resolution := resolver.Resolve(&BuildRequest{Text: "running shoes"}, &canonical.Product{}, &Package{})
 	if resolution.Status != "resolved" {
 		t.Fatalf("status = %q, want resolved", resolution.Status)
 	}
@@ -153,7 +154,7 @@ func TestCategoryResolverHydratesSelectedCategoryFromTreeWhenDetailFails(t *test
 		}}},
 	}, stubCategoryTreeFallback{selectedID: 3105})
 
-	resolution := resolver.Resolve(&BuildRequest{Text: "wall clock"}, &productenrich.CanonicalProduct{}, &Package{})
+	resolution := resolver.Resolve(&BuildRequest{Text: "wall clock"}, &canonical.Product{}, &Package{})
 
 	if resolution.Status != "resolved" {
 		t.Fatalf("status = %q, want resolved", resolution.Status)
@@ -178,7 +179,7 @@ func TestCategoryResolverReturnsPartialWhenCategoryTreeLoadFails(t *testing.T) {
 		categoryTreeErr: errors.New("tree temporarily unavailable"),
 	}, stubCategoryTreeFallback{})
 
-	resolution := resolver.Resolve(&BuildRequest{Text: "running shoes"}, &productenrich.CanonicalProduct{}, &Package{})
+	resolution := resolver.Resolve(&BuildRequest{Text: "running shoes"}, &canonical.Product{}, &Package{})
 	if resolution.Status != "partial" {
 		t.Fatalf("status = %q, want partial", resolution.Status)
 	}
@@ -191,11 +192,11 @@ func TestCategoryResolverReturnsPartialWhenCategoryTreeLoadFails(t *testing.T) {
 }
 
 func TestBuildCategoryQueryIncludesStructuredOutdoorCushionSignals(t *testing.T) {
-	query := buildCategoryQuery(&BuildRequest{}, &productenrich.CanonicalProduct{
+	query := buildCategoryQuery(&BuildRequest{}, &canonical.Product{
 		Title:        "New Women's Summer Thin Ice Silk Pajamas",
 		Description:  "Outdoor garden bench cushion for hanging chair and balcony seating",
 		CategoryPath: []string{"Home", "Outdoor"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
@@ -221,10 +222,10 @@ func TestBuildCategoryQueryIncludesStructuredOutdoorCushionSignals(t *testing.T)
 }
 
 func TestBuildCategoryQuerySkipsWeakDescriptionWhenStrongSignalsExist(t *testing.T) {
-	query := buildCategoryQuery(&BuildRequest{Text: "iCOSS Smart Toilet Seat Bidet Attachment"}, &productenrich.CanonicalProduct{
+	query := buildCategoryQuery(&BuildRequest{Text: "iCOSS Smart Toilet Seat Bidet Attachment"}, &canonical.Product{
 		Title:       "Outdoor Bench Cushion",
 		Description: "iCOSS Smart Toilet Seat Bidet Attachment",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
@@ -249,7 +250,7 @@ func TestBuildCategoryQuerySkipsWeakDescriptionWhenStrongSignalsExist(t *testing
 }
 
 func TestBuildCategorySuggestionQueryUsesWeakTextWhenSignalsAreSparse(t *testing.T) {
-	query := buildCategorySuggestionQuery(&BuildRequest{Text: "stainless steel tumbler 420ml"}, &productenrich.CanonicalProduct{
+	query := buildCategorySuggestionQuery(&BuildRequest{Text: "stainless steel tumbler 420ml"}, &canonical.Product{
 		Title: "Travel Cup",
 	}, &Package{})
 
@@ -259,8 +260,8 @@ func TestBuildCategorySuggestionQueryUsesWeakTextWhenSignalsAreSparse(t *testing
 }
 
 func TestBuildCategorySuggestionQueryFallsBackToCompactAttributes(t *testing.T) {
-	query := buildCategorySuggestionQuery(&BuildRequest{}, &productenrich.CanonicalProduct{
-		Attributes: map[string]productenrich.CanonicalAttribute{
+	query := buildCategorySuggestionQuery(&BuildRequest{}, &canonical.Product{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"材质":   {Value: "涤纶"},
 			"用途":   {Value: "户外"},
@@ -273,7 +274,7 @@ func TestBuildCategorySuggestionQueryFallsBackToCompactAttributes(t *testing.T) 
 }
 
 func TestBuildCategorySuggestionQueryPrefersSourceCategoryLeafWhenTitleMissing(t *testing.T) {
-	query := buildCategorySuggestionQuery(&BuildRequest{Text: "some noisy request"}, &productenrich.CanonicalProduct{
+	query := buildCategorySuggestionQuery(&BuildRequest{Text: "some noisy request"}, &canonical.Product{
 		CategoryPath: []string{"家居饰品", "户外用品", "户外坐垫"},
 	}, &Package{})
 
@@ -283,10 +284,10 @@ func TestBuildCategorySuggestionQueryPrefersSourceCategoryLeafWhenTitleMissing(t
 }
 
 func TestBuildCategorySuggestInputIncludesStructuredSignals(t *testing.T) {
-	input := buildCategorySuggestInput(&BuildRequest{Text: "noisy request"}, &productenrich.CanonicalProduct{
+	input := buildCategorySuggestInput(&BuildRequest{Text: "noisy request"}, &canonical.Product{
 		Title:        "跨境亚马逊户外防水防晒长凳垫吊椅垫",
 		CategoryPath: []string{"家居饰品", "户外用品", "户外坐垫"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
@@ -308,11 +309,11 @@ func TestBuildCategorySuggestInputIncludesStructuredSignals(t *testing.T) {
 }
 
 func TestBuildCategoryFamilyConflictSummaryDetectsOutdoorCushionVsApparel(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "Outdoor bench cushion for hanging chair",
 		Description:  "Garden seat cushion for balcony and patio furniture",
 		CategoryPath: []string{"Outdoor", "Furniture", "Cushions"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},

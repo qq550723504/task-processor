@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 )
 
-func buildPlatformVariants(canonical *productenrich.CanonicalProduct) []PlatformVariant {
+func buildPlatformVariants(canonical *canonical.Product) []PlatformVariant {
 	variants := common.BuildVariants(canonical)
 	if len(variants) == 0 {
 		return nil
@@ -19,7 +19,7 @@ func buildPlatformVariants(canonical *productenrich.CanonicalProduct) []Platform
 	return append([]PlatformVariant(nil), variants...)
 }
 
-func buildPlatformImages(canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *PlatformImageSet {
+func buildPlatformImages(canonical *canonical.Product, image *productimage.ImageProcessResult) *PlatformImageSet {
 	return buildPlatformImagesFromAssetBundle(asset.BuildBundle(canonical, image))
 }
 
@@ -89,7 +89,7 @@ func findAssetURL(items []asset.Asset, id string) string {
 	return ""
 }
 
-func flattenAttributes(attributes map[string]productenrich.CanonicalAttribute) map[string]string {
+func flattenAttributes(attributes map[string]canonical.Attribute) map[string]string {
 	if len(attributes) == 0 {
 		return nil
 	}
@@ -100,7 +100,7 @@ func flattenAttributes(attributes map[string]productenrich.CanonicalAttribute) m
 	return result
 }
 
-func buildPlatformAttributes(attributes map[string]productenrich.CanonicalAttribute) []PlatformAttribute {
+func buildPlatformAttributes(attributes map[string]canonical.Attribute) []PlatformAttribute {
 	if len(attributes) == 0 {
 		return nil
 	}
@@ -114,7 +114,7 @@ func buildPlatformAttributes(attributes map[string]productenrich.CanonicalAttrib
 	return result
 }
 
-func collectReviewNotes(canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult, extras ...string) []string {
+func collectReviewNotes(canonical *canonical.Product, image *productimage.ImageProcessResult, extras ...string) []string {
 	notes := make([]string, 0, len(extras)+4)
 	if canonical != nil && canonical.NeedsReview {
 		notes = append(notes, "商品结构化结果存在低置信字段，建议人工复核标题、品牌、属性和变体")
@@ -126,7 +126,7 @@ func collectReviewNotes(canonical *productenrich.CanonicalProduct, image *produc
 	return uniqueStrings(notes)
 }
 
-func resolveBrand(canonical *productenrich.CanonicalProduct, req *GenerateRequest) string {
+func resolveBrand(canonical *canonical.Product, req *GenerateRequest) string {
 	if req != nil && strings.TrimSpace(req.BrandHint) != "" {
 		return strings.TrimSpace(req.BrandHint)
 	}

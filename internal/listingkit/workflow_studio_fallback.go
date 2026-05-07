@@ -3,7 +3,7 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func shouldUseStudioProductFallback(task *Task) bool {
@@ -26,7 +26,7 @@ func shouldUseStudioCatalogCanonical(task *Task) bool {
 			len(sds.CategoryPath) > 0)
 }
 
-func buildStudioFallbackCanonicalProduct(task *Task) *productenrich.CanonicalProduct {
+func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {
 	if task == nil || task.Request == nil {
 		return nil
 	}
@@ -45,41 +45,41 @@ func buildStudioFallbackCanonicalProduct(task *Task) *productenrich.CanonicalPro
 		title = "SDS studio product"
 	}
 
-	sources := []productenrich.CanonicalSource{
-		{Type: productenrich.CanonicalSourceUserImage, Detail: productenrichSummaryImageSources(task.Request.ImageURLs)},
+	sources := []canonical.Source{
+		{Type: canonical.SourceUserImage, Detail: productenrichSummaryImageSources(task.Request.ImageURLs)},
 	}
 	if strings.TrimSpace(task.Request.Text) != "" {
-		sources = append(sources, productenrich.CanonicalSource{
-			Type:   productenrich.CanonicalSourceUserText,
+		sources = append(sources, canonical.Source{
+			Type:   canonical.SourceUserText,
 			Detail: productenrichSummaryUserText(task.Request.Text),
 		})
 	}
-	sources = append(sources, productenrich.CanonicalSource{
-		Type:   productenrich.CanonicalSourceDerived,
+	sources = append(sources, canonical.Source{
+		Type:   canonical.SourceDerived,
 		Detail: "listingkit studio fallback canonical product from SDS detail",
 	})
 
-	trace := productenrich.FieldTrace{
+	trace := canonical.FieldTrace{
 		Sources:     sources,
 		Confidence:  0.86,
 		IsInferred:  true,
 		NeedsReview: false,
 	}
 
-	images := make([]productenrich.CanonicalImage, 0, len(task.Request.ImageURLs))
+	images := make([]canonical.Image, 0, len(task.Request.ImageURLs))
 	for index, imageURL := range task.Request.ImageURLs {
 		role := "gallery"
 		if index == 0 {
 			role = "primary"
 		}
-		images = append(images, productenrich.CanonicalImage{
+		images = append(images, canonical.Image{
 			URL:   imageURL,
 			Role:  role,
 			Trace: trace,
 		})
 	}
 
-	fieldTraces := map[string]productenrich.FieldTrace{
+	fieldTraces := map[string]canonical.FieldTrace{
 		"title":       trace,
 		"description": trace,
 	}
@@ -97,7 +97,7 @@ func buildStudioFallbackCanonicalProduct(task *Task) *productenrich.CanonicalPro
 		description = "SDS-backed studio design product."
 	}
 
-	return &productenrich.CanonicalProduct{
+	return &canonical.Product{
 		Title:          title,
 		Description:    description,
 		CategoryPath:   studioCategoryPath(sds),
