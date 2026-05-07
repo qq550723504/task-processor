@@ -1,6 +1,7 @@
 package taskstatus
 
 import (
+	"fmt"
 	"testing"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
@@ -9,11 +10,15 @@ import (
 
 type stubImportTaskClient struct {
 	lastReq *managementapi.ProductImportTaskUpdateReqDTO
+	err     error
 }
 
 func (s *stubImportTaskClient) UpdateTaskStatus(req *managementapi.ProductImportTaskUpdateReqDTO) error {
 	copied := *req
 	s.lastReq = &copied
+	if s.err != nil {
+		return s.err
+	}
 	return nil
 }
 
@@ -119,5 +124,23 @@ func TestServiceUpdateSyncWithInputPrefersExplicitReasonCodeAndStage(t *testing.
 	}
 	if client.lastReq.Stage != "custom_stage" {
 		t.Fatalf("Stage = %q, want custom_stage", client.lastReq.Stage)
+	}
+}
+
+func TestServiceTransitionSyncWithInputIgnoresConflictWhenConfigured(t *testing.T) {
+	client := &stubImportTaskClient{err: fmt.Errorf("更新任务状态失败: Management API error 409: ")}
+	service := NewService("test", func() ImportTaskStatusClient { return client })
+
+	err := service.TransitionSyncWithInput(model.TaskStatusProcessing, UpdateInput{
+		TaskID:         5,
+		Status:         model.TaskStatusTerminated,
+		ErrorMessage:   "already handled",
+		IgnoreConflict: true,
+	})
+	if err != nil {
+		t.Fatalf("TransitionSyncWithInput returned error: %v", err)
+	}
+	if client.lastReq == nil {
+		t.Fatal("TransitionSyncWithInput should still call UpdateTaskStatus")
 	}
 }

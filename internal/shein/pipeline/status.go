@@ -77,9 +77,10 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, task *model.
 	logger.GetGlobalLogger("shein/pipeline").WithFields(logFields).Info("submit task status update")
 
 	input := taskstatus.UpdateInput{
-		TaskID:       id,
-		Status:       status,
-		ErrorMessage: errorMsg,
+		TaskID:         id,
+		Status:         status,
+		ErrorMessage:   errorMsg,
+		IgnoreConflict: true,
 	}
 	if task != nil {
 		input.RetryCount = &task.RetryCount

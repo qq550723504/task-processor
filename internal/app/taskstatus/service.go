@@ -24,6 +24,7 @@ type UpdateInput struct {
 	ReasonCode            string
 	Stage                 string
 	ExpectedCurrentStatus *model.TaskStatus
+	IgnoreConflict        bool
 	RetryCount            *int
 	Priority              *int
 }
@@ -172,6 +173,14 @@ func (s *Service) updateSync(input UpdateInput) error {
 		if err := client.UpdateTaskStatus(req); err != nil {
 			lastErr = err
 			if isNonRetriableUpdateErr(err) {
+				if input.IgnoreConflict {
+					s.log.WithError(err).WithFields(logrus.Fields{
+						logger.FieldTaskID: input.TaskID,
+						logger.FieldStatus: input.Status.String(),
+						"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
+					}).Debug("task status update conflict ignored")
+					return nil
+				}
 				s.log.WithError(err).WithFields(logrus.Fields{
 					logger.FieldTaskID: input.TaskID,
 					logger.FieldStatus: input.Status.String(),
