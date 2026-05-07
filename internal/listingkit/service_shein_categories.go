@@ -33,6 +33,11 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 
 	apiClient := sheinclient.NewAPIClient(storeID, s.sheinManagementClient)
 	if !apiClient.HasCookies() {
+		if err := apiClient.ForceRefreshCookies(); err != nil {
+			return nil, fmt.Errorf("shein store cookies are unavailable for category search: %w", err)
+		}
+	}
+	if !apiClient.HasCookies() {
 		return nil, fmt.Errorf("shein store cookies are unavailable for category search")
 	}
 
