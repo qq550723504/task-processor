@@ -153,6 +153,30 @@ func attachProductEvidence(productJSON *ProductJSON, parsedInput *ParsedInput) {
 			Detail: `scraped description: "` + description + `"`,
 		})
 	}
+	if category := truncateEvidenceDetail(scraped.Category); category != "" {
+		productJSON.Evidence["category_path"] = append(productJSON.Evidence["category_path"], CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: `scraped category: "` + category + `"`,
+		})
+	}
+	if len(scraped.Images) > 0 {
+		productJSON.Evidence["images"] = append(productJSON.Evidence["images"], CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: "scraped images",
+		})
+	}
+	if len(scraped.VariantDimensions) > 0 {
+		productJSON.Evidence["variant_dimensions"] = append(productJSON.Evidence["variant_dimensions"], CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: "scraped variant dimensions",
+		})
+	}
+	if len(scraped.Variants) > 0 {
+		productJSON.Evidence["variants"] = append(productJSON.Evidence["variants"], CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: "scraped variants",
+		})
+	}
 	for key, value := range scraped.Specs {
 		key = strings.TrimSpace(key)
 		value = truncateEvidenceDetail(value)

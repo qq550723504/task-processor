@@ -147,7 +147,3 @@ func (s *stubSubmitService) UpdateSheinFinalDraft(ctx context.Context, taskID st
 func (s *stubSubmitService) GetSubmissionEvents(ctx context.Context, taskID string) (*listingkit.SheinSubmissionEventPage, error) {
 	return nil, errors.New("not implemented")
 }
-
-func (s *stubSubmitService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}

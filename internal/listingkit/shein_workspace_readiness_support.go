@@ -165,6 +165,17 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 				}),
 			},
 		}
+	case "source_facts":
+		return sheinReadinessGuidance{
+			reason: &SheinReadinessReason{
+				Code:     "source_fact_review_required",
+				Category: "source_integrity",
+				Summary:  "1688 来源商品存在缺少抓取依据的 LLM 推断字段，不能直接进入提交态。",
+			},
+			repairHints: []SheinRepairHint{
+				newHint("high", "editor.basics.source_facts", "basics", []string{"metadata.source_fact_review_fields"}, "shein.metadata", "先复核缺少抓取依据的字段，确认或补充来源后再提交。", nil),
+			},
+		}
 	default:
 		return sheinReadinessGuidance{}
 	}

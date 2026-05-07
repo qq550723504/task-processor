@@ -272,6 +272,9 @@ func cloneStrings(values []string) []string {
 func traceWithEvidence(product *ProductJSON, field string, base []CanonicalSource, inferred bool) FieldTrace {
 	trace := buildFieldTrace(base, inferred)
 	if product == nil || len(product.Evidence) == 0 {
+		if shouldReviewLLMOnlySourceFact(base, inferred, nil) {
+			trace.NeedsReview = true
+		}
 		return trace
 	}
 	extra := append([]CanonicalSource(nil), product.Evidence[field]...)
@@ -279,10 +282,39 @@ func traceWithEvidence(product *ProductJSON, field string, base []CanonicalSourc
 		extra = append(extra, product.Evidence["attributes.brand"]...)
 	}
 	if len(extra) == 0 {
+		extra = append(extra, evidenceWithPrefix(product.Evidence, field+".")...)
+	}
+	if len(extra) == 0 {
+		if shouldReviewLLMOnlySourceFact(base, inferred, nil) {
+			trace.NeedsReview = true
+		}
 		return trace
 	}
 	trace.Sources = append(trace.Sources, extra...)
+	if shouldReviewLLMOnlySourceFact(base, inferred, extra) {
+		trace.NeedsReview = true
+	}
 	return trace
+}
+
+func evidenceWithPrefix(evidence map[string][]CanonicalSource, prefix string) []CanonicalSource {
+	if len(evidence) == 0 || prefix == "" {
+		return nil
+	}
+	var sources []CanonicalSource
+	for key, items := range evidence {
+		if strings.HasPrefix(key, prefix) {
+			sources = append(sources, items...)
+		}
+	}
+	return sources
+}
+
+func shouldReviewLLMOnlySourceFact(base []CanonicalSource, inferred bool, fieldEvidence []CanonicalSource) bool {
+	return inferred &&
+		hasSourceType(base, CanonicalSourceProductURL) &&
+		hasSourceType(base, CanonicalSourceScrapedData) &&
+		!hasSourceType(fieldEvidence, CanonicalSourceScrapedData)
 }
 
 func summarizeUserText(text string) string {

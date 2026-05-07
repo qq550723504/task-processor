@@ -34,3 +34,36 @@ func TestAttachProductEvidenceFromScrapedData(t *testing.T) {
 		t.Fatalf("unexpected power spec evidence: %+v", product.Evidence["specifications.technical.power"])
 	}
 }
+
+func TestAttachProductEvidenceIncludesSourceBackedStructuralFields(t *testing.T) {
+	product := &ProductJSON{}
+	input := &ParsedInput{
+		ScrapedData: &ScrapedData{
+			Category: "家居饰品 > 户外用品",
+			Images:   []string{"https://example.com/source.jpg"},
+			VariantDimensions: []ScrapedVariantDimension{{
+				Name:   "颜色",
+				Values: []string{"黑色"},
+			}},
+			Variants: []ProductVariant{{
+				SKU:        "SRC-BLACK",
+				Attributes: map[string]string{"颜色": "黑色"},
+			}},
+		},
+	}
+
+	attachProductEvidence(product, input)
+
+	if len(product.Evidence["category_path"]) == 0 {
+		t.Fatal("expected category_path evidence from scraped data")
+	}
+	if len(product.Evidence["images"]) == 0 {
+		t.Fatal("expected images evidence from scraped data")
+	}
+	if len(product.Evidence["variant_dimensions"]) == 0 {
+		t.Fatal("expected variant_dimensions evidence from scraped data")
+	}
+	if len(product.Evidence["variants"]) == 0 {
+		t.Fatal("expected variants evidence from scraped data")
+	}
+}

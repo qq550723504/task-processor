@@ -94,3 +94,49 @@ func TestBuildCanonicalProduct_EmptyCriticalFieldsNeedReview(t *testing.T) {
 		t.Fatal("expected NeedsReview for empty title/description")
 	}
 }
+
+func TestBuildCanonicalProduct_MarksLLMOnly1688FactsForReview(t *testing.T) {
+	canonical := BuildCanonicalProduct(
+		&GenerateRequest{ProductURL: "https://detail.1688.com/offer/123.html"},
+		&ProductJSON{
+			Title:         "Scraped title",
+			Category:      []string{"Electronics", "Headphones"},
+			Description:   "Scraped description",
+			SellingPoints: []string{"LLM-only waterproof claim"},
+			SEOKeywords:   []string{"llm-only keyword"},
+			Specifications: &ProductSpecs{
+				Technical: map[string]string{"battery_life": "99 hours"},
+			},
+			Evidence: map[string][]CanonicalSource{
+				"title": {
+					{Type: CanonicalSourceScrapedData, Detail: "scraped title"},
+				},
+				"category_path": {
+					{Type: CanonicalSourceScrapedData, Detail: "scraped category"},
+				},
+				"description": {
+					{Type: CanonicalSourceScrapedData, Detail: "scraped description"},
+				},
+			},
+		},
+	)
+
+	if canonical == nil {
+		t.Fatal("canonical product should not be nil")
+	}
+	if canonical.FieldTraces["title"].NeedsReview {
+		t.Fatal("scraped title should not need review")
+	}
+	if !canonical.FieldTraces["selling_points"].NeedsReview {
+		t.Fatal("LLM-only 1688 selling points should need review")
+	}
+	if !canonical.FieldTraces["seo_keywords"].NeedsReview {
+		t.Fatal("LLM-only 1688 SEO keywords should need review")
+	}
+	if !canonical.FieldTraces["specifications"].NeedsReview {
+		t.Fatal("LLM-only 1688 specifications should need review")
+	}
+	if !canonical.NeedsReview {
+		t.Fatal("canonical should need review when 1688 facts are LLM-only")
+	}
+}

@@ -215,6 +215,47 @@ func TestAssemblerBuildCreatesDefaultSKCWhenCanonicalVariantsMissing(t *testing.
 	}
 }
 
+func TestAssemblerBuildMarks1688LLMOnlyFactsForReview(t *testing.T) {
+	assembler := NewAssembler(AssemblerConfig{})
+	canonical := &productenrich.CanonicalProduct{
+		Title:         "1688 Product",
+		Description:   "Scraped description",
+		SellingPoints: []string{"LLM-only waterproof claim"},
+		FieldTraces: map[string]productenrich.FieldTrace{
+			"title": {
+				Sources: []productenrich.CanonicalSource{
+					{Type: productenrich.CanonicalSourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
+					{Type: productenrich.CanonicalSourceScrapedData, Detail: "scraped title"},
+				},
+			},
+			"selling_points": {
+				Sources: []productenrich.CanonicalSource{
+					{Type: productenrich.CanonicalSourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
+					{Type: productenrich.CanonicalSourceScrapedData, Detail: "normalized from product page: https://detail.1688.com/offer/123.html"},
+					{Type: productenrich.CanonicalSourceLLM, Detail: "LLM-generated product normalization"},
+				},
+				NeedsReview: true,
+			},
+		},
+		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+	}
+
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
+
+	if pkg == nil || pkg.Metadata == nil {
+		t.Fatal("expected package metadata")
+	}
+	if pkg.Metadata["source_platform"] != "1688" {
+		t.Fatalf("source_platform = %q, want 1688", pkg.Metadata["source_platform"])
+	}
+	if pkg.Metadata["source_fact_review_required"] != "true" {
+		t.Fatalf("source_fact_review_required = %q, want true", pkg.Metadata["source_fact_review_required"])
+	}
+	if pkg.Metadata["source_fact_review_fields"] != "selling_points" {
+		t.Fatalf("source_fact_review_fields = %q, want selling_points", pkg.Metadata["source_fact_review_fields"])
+	}
+}
+
 func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 	assembler := NewAssembler(AssemblerConfig{
 		PricingPolicy: PricingPolicy{

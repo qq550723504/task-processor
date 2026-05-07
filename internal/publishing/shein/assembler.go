@@ -100,6 +100,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	if strings.TrimSpace(req.TargetCategoryHint) != "" {
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
 	}
+	attachSourceFactReviewMetadata(pkg, canonical)
 	if a.categoryResolver != nil {
 		log.WithFields(logrus.Fields{
 			"title":         canonical.Title,
@@ -156,6 +157,69 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		"sku_count":   countPackageSKUs(pkg.SkcList),
 	}).Info("built SHEIN preview package")
 	return pkg
+}
+
+func attachSourceFactReviewMetadata(pkg *Package, canonical *productenrich.CanonicalProduct) {
+	if pkg == nil || canonical == nil || !canonicalHas1688Source(canonical) {
+		return
+	}
+	fields := sourceFactReviewFields(canonical)
+	if len(fields) == 0 {
+		return
+	}
+	if pkg.Metadata == nil {
+		pkg.Metadata = map[string]string{}
+	}
+	pkg.Metadata["source_platform"] = "1688"
+	pkg.Metadata["source_fact_review_required"] = "true"
+	pkg.Metadata["source_fact_review_fields"] = strings.Join(fields, ",")
+}
+
+func canonicalHas1688Source(canonical *productenrich.CanonicalProduct) bool {
+	if canonical == nil {
+		return false
+	}
+	for _, trace := range canonical.FieldTraces {
+		for _, source := range trace.Sources {
+			if source.Type == productenrich.CanonicalSourceProductURL && strings.Contains(strings.ToLower(source.Detail), "detail.1688.com") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func sourceFactReviewFields(canonical *productenrich.CanonicalProduct) []string {
+	if canonical == nil {
+		return nil
+	}
+	criticalFields := []string{
+		"title",
+		"brand",
+		"category_path",
+		"description",
+		"selling_points",
+		"seo_keywords",
+		"specifications",
+	}
+	fields := make([]string, 0, len(criticalFields))
+	for _, field := range criticalFields {
+		trace, ok := canonical.FieldTraces[field]
+		if !ok || !trace.NeedsReview || !hasCanonicalSourceType(trace.Sources, productenrich.CanonicalSourceLLM) {
+			continue
+		}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
+func hasCanonicalSourceType(sources []productenrich.CanonicalSource, want productenrich.CanonicalSourceType) bool {
+	for _, source := range sources {
+		if source.Type == want {
+			return true
+		}
+	}
+	return false
 }
 
 func countPackageSKUs(skcs []SKCPackage) int {

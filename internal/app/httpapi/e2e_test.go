@@ -20,6 +20,7 @@ import (
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productimage"
@@ -143,10 +144,134 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NotEmpty(t, itemWithEvidence.Evidence[0].Detail)
 }
 
+func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+
+	cfg, err := config.LoadConfigFromFileWithoutValidation("../../../config/config-test.yaml")
+	require.NoError(t, err)
+	cfg.ProductImage.WorkDir = filepath.Join(t.TempDir(), "productimage")
+	cfg.ProductImage.Publisher.OutputDir = filepath.Join(t.TempDir(), "published")
+
+	imageServer := newE2EImageServer()
+	defer imageServer.Close()
+	imageURL := imageServer.URL + "/1688-product.png"
+
+	llmMgr := &e2eLLMManager{client: &e2eLLMClient{}}
+	understanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
+	require.NoError(t, err)
+
+	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, e2e1688WebScraper{imageURL: imageURL})
+	require.NoError(t, err)
+
+	deps := &runtimeDeps{
+		cfg:           cfg,
+		llmMgr:        llmMgr,
+		inputParser:   inputParser,
+		understanding: understanding,
+		imageWorkDir:  cfg.ProductImage.WorkDir,
+	}
+
+	productModule, err := buildProductModule(logger, deps)
+	require.NoError(t, err)
+	listingKitModule, err := buildListingKitModule(logger, deps)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pools := []worker.WorkerPool{productModule.pool, listingKitModule.pool}
+	for _, pool := range pools {
+		pool.Start(ctx)
+	}
+	defer func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stopCancel()
+		for _, pool := range pools {
+			pool.Stop(stopCtx)
+		}
+		for i := len(deps.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.closers[i]())
+		}
+	}()
+
+	routerServer := buildHTTPServer(0, productModule.handler, nil, nil, listingKitModule.handler, nil)
+	testServer := httptest.NewServer(routerServer.Handler)
+	defer testServer.Close()
+
+	taskID := createTaskViaAPI[map[string]any](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
+		"product_url": "https://detail.1688.com/offer/123456789.html",
+		"platforms":   []string{"shein"},
+		"country":     "US",
+		"language":    "en",
+		"options": map[string]any{
+			"process_images": false,
+		},
+	}, func(resp map[string]any) string {
+		taskID, _ := resp["task_id"].(string)
+		return taskID
+	})
+
+	task := waitForTaskResult[listingkit.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
+	require.NotEqual(t, listingkit.TaskStatusFailed, task.Status)
+	require.NotNil(t, task.Result)
+	require.NotNil(t, task.Result.CanonicalProduct)
+	require.Equal(t, "1688 蓝牙耳机源商品", task.Result.CanonicalProduct.Title)
+	require.NotEmpty(t, task.Result.CanonicalProduct.Images)
+	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), productenrich.CanonicalSourceProductURL)
+	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), productenrich.CanonicalSourceScrapedData)
+	require.NotNil(t, task.Result.Shein)
+	require.NotNil(t, task.Result.Shein.PreviewProduct)
+	require.NotEmpty(t, task.Result.Shein.PreviewProduct.SPUName)
+	require.Equal(t, "true", task.Result.Shein.Metadata["source_fact_review_required"])
+	require.NotEmpty(t, task.Result.Shein.Metadata["source_fact_review_fields"])
+	require.NotNil(t, task.Result.Shein.RequestDraft.ImageInfo)
+	require.NotEmpty(t, task.Result.Shein.RequestDraft.ImageInfo.Source)
+	require.NotEmpty(t, task.Result.Shein.RequestDraft.SKCList)
+}
+
 type e2eWebScraper struct{}
 
 func (e2eWebScraper) Scrape(_ context.Context, _ string) (*productenrich.ScrapedData, error) {
 	return &productenrich.ScrapedData{}, nil
+}
+
+type e2e1688WebScraper struct {
+	imageURL string
+}
+
+func (s e2e1688WebScraper) Scrape(_ context.Context, _ string) (*productenrich.ScrapedData, error) {
+	return &productenrich.ScrapedData{
+		Title:       "1688 蓝牙耳机源商品",
+		Category:    "消费电子 > 耳机",
+		Description: "1688 抓取描述：主动降噪蓝牙耳机，30 小时续航，适合跨境上架。",
+		Images:      []string{s.imageURL},
+		Price:       88,
+		Specs: map[string]string{
+			"brand":        "SoundPeak",
+			"material":     "ABS",
+			"connectivity": "Bluetooth 5.3",
+		},
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "color", Values: []string{"Black"}},
+		},
+		Variants: []productenrich.ProductVariant{{
+			SKU:        "1688-BT-BLACK",
+			Attributes: map[string]string{"color": "Black"},
+			Price:      &productenrich.PriceInfo{Currency: "CNY", Amount: 88, CostPrice: 88},
+			Stock:      50,
+			Images:     []string{s.imageURL},
+			IsDefault:  true,
+		}},
+	}, nil
+}
+
+func canonicalTraceSourceTypes(trace productenrich.FieldTrace) []productenrich.CanonicalSourceType {
+	types := make([]productenrich.CanonicalSourceType, 0, len(trace.Sources))
+	for _, source := range trace.Sources {
+		types = append(types, source.Type)
+	}
+	return types
 }
 
 type e2eLLMManager struct {

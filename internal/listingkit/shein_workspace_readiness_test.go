@@ -3,6 +3,7 @@ package listingkit
 import (
 	"testing"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -149,6 +150,97 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 	}
 	if len(readiness.WarningItems[0].RepairHints[0].Validation.AffectedSections) == 0 {
 		t.Fatalf("warning validation sections = %+v", readiness.WarningItems[0].RepairHints[0].Validation)
+	}
+}
+
+func TestBuildSheinSubmitReadinessBlocksLLMOnly1688Facts(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	colorValueID := 9001
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
+		ProductTypeID: &productTypeID,
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 501,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ImageInfo: &SheinImageDraft{
+				MainImage: "https://cdn.example.com/main.jpg",
+				Gallery:   []string{"https://cdn.example.com/gallery.jpg"},
+			},
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "material",
+				AttributeID: 7001,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				ImageInfo: &SheinImageDraft{
+					MainImage: "https://cdn.example.com/skc.jpg",
+				},
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "Black",
+					AttributeID:      501,
+					AttributeValueID: &colorValueID,
+				},
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+		FinalDraft: &sheinpub.FinalDraft{
+			Confirmed:    true,
+			MainImageURL: "https://cdn.example.com/main.jpg",
+			ImageRoleOverrides: map[string]string{
+				"https://cdn.example.com/skc.jpg":     "swatch",
+				"https://cdn.example.com/gallery.jpg": "size_map",
+			},
+		},
+		Metadata: map[string]string{
+			"source_platform":             "1688",
+			"source_fact_review_required": "true",
+			"source_fact_review_fields":   "selling_points,specifications",
+		},
+	})
+
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
+	}
+	var found bool
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "source_facts" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("blocking items = %+v, want source_facts blocker", readiness.BlockingItems)
 	}
 }
 
