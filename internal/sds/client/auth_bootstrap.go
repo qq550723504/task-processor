@@ -1,7 +1,9 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,6 +58,11 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 		return true, nil
 	}
 
+	if force {
+		if err := c.triggerLoginServiceForceLogin(ctx); err != nil {
+			return appliedAny, err
+		}
+	}
 	loginServiceMaterial, err := c.loadLoginServiceBootstrap(ctx)
 	if err != nil {
 		return appliedAny, err
@@ -78,6 +85,70 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 	}
 
 	return appliedAny, nil
+}
+
+func (c *Client) triggerLoginServiceForceLogin(ctx context.Context) error {
+	cfg := c.config.AuthBootstrap
+	baseURL := strings.TrimSpace(cfg.LoginServiceBaseURL)
+	tenantID := strings.TrimSpace(cfg.LoginServiceTenantID)
+	identifier := strings.TrimSpace(cfg.LoginServiceIdentifier)
+	if baseURL == "" || tenantID == "" || identifier == "" {
+		return nil
+	}
+
+	requestCtx := ctx
+	if requestCtx == nil {
+		requestCtx = context.Background()
+	}
+	requestCtx, cancel := context.WithTimeout(requestCtx, 2*time.Minute)
+	defer cancel()
+
+	endpoint := strings.TrimRight(baseURL, "/") + path.Join("/", "api/platforms/sds/login")
+	payload, err := json.Marshal(map[string]any{
+		"tenant_id":         tenantID,
+		"identifier":        identifier,
+		"headless":          true,
+		"force_login":       true,
+		"keep_browser_open": false,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal login service force login request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("build login service force login request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if sharedKey := strings.TrimSpace(cfg.LoginServiceSharedKey); sharedKey != "" {
+		req.Header.Set("X-Login-Shared-Key", sharedKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("force SDS login service auth refresh: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read SDS login service force login response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("login service force login status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var payloadResp struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := jsonx.UnmarshalBytes(body, &payloadResp, "parse login service force login"); err != nil {
+		return err
+	}
+	if !payloadResp.Success {
+		return fmt.Errorf("login service force login failed: %s", strings.TrimSpace(payloadResp.Message))
+	}
+
+	return nil
 }
 
 func (c *Client) hasUsableAuthState() bool {

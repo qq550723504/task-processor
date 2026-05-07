@@ -100,6 +100,7 @@ func (c *Client) SetCookies(cookies []*http.Cookie) {
 	}
 
 	c.cookies = filtered
+	c.httpClient.ClearCookies()
 	c.httpClient.SetCommonCookies(filtered...)
 }
 
