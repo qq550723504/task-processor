@@ -188,12 +188,35 @@ func buildTaskListItem(task *Task) TaskListItem {
 			item.SheinLatestSubmissionStatus = task.Result.Shein.Submission.LastStatus
 			item.SheinLatestSubmissionError = task.Result.Shein.Submission.LastError
 		}
+		applySheinSubmissionRemoteSummary(&item, task.Result.Shein)
 	}
 	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
 		completedAt := task.UpdatedAt
 		item.CompletedAt = &completedAt
 	}
 	return item
+}
+
+func applySheinSubmissionRemoteSummary(item *TaskListItem, pkg *SheinPackage) {
+	if item == nil || pkg == nil || pkg.Submission == nil {
+		return
+	}
+	submission := pkg.Submission
+	item.SheinSubmissionRemoteStatus = submission.RemoteStatus
+	item.SheinSubmissionRemoteCheckedAt = submission.RemoteCheckedAt
+	record := sheinSubmissionRecordForAction(submission, submission.LastAction)
+	if record == nil && submission.Publish != nil {
+		record = submission.Publish
+	}
+	if record == nil && submission.SaveDraft != nil {
+		record = submission.SaveDraft
+	}
+	if record != nil {
+		item.SheinSubmissionRemoteRecordID = record.RemoteRecordID
+		if item.SheinSubmissionRemoteCheckedAt == nil {
+			item.SheinSubmissionRemoteCheckedAt = record.RemoteCheckedAt
+		}
+	}
 }
 
 func deriveSheinWorkflowStatus(pkg *SheinPackage) string {

@@ -120,6 +120,9 @@ export type ListingKitTaskListItem = {
   shein_workflow_status?: string;
   shein_latest_submission_status?: string;
   shein_latest_submission_error?: string;
+  shein_submission_remote_status?: string;
+  shein_submission_remote_checked_at?: string;
+  shein_submission_remote_record_id?: string;
   error?: string;
   created_at?: string;
   updated_at?: string;

@@ -43,6 +43,9 @@ describe("TaskListPage", () => {
             image_count: 4,
             shein_workflow_status: "draft_saved",
             shein_latest_submission_status: "success",
+            shein_submission_remote_status: "confirmed",
+            shein_submission_remote_record_id: "record-123",
+            shein_submission_remote_checked_at: "2026-04-27T10:03:00Z",
             created_at: "2026-04-27T10:00:00Z",
           },
         ],
@@ -62,7 +65,9 @@ describe("TaskListPage", () => {
     expect(screen.getByRole("option", { name: "草稿已保存" })).toBeInTheDocument();
     expect(screen.getAllByText("已完成").length).toBeGreaterThan(0);
     expect(screen.getAllByText("草稿已保存").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("远端已确认").length).toBeGreaterThan(0);
     expect(screen.getByText("最近提交：成功")).toBeInTheDocument();
+    expect(screen.getByText(/SHEIN 远端：远端已确认 · record-123/)).toBeInTheDocument();
   });
 
   it("renders latest SHEIN failure summary in Chinese", () => {

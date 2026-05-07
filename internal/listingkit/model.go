@@ -280,21 +280,24 @@ type TaskListQuery struct {
 }
 
 type TaskListItem struct {
-	TaskID                      string     `json:"task_id"`
-	Status                      TaskStatus `json:"status"`
-	Platforms                   []string   `json:"platforms,omitempty"`
-	Title                       string     `json:"title,omitempty"`
-	ImageCount                  int        `json:"image_count"`
-	ProductName                 string     `json:"product_name,omitempty"`
-	VariantLabel                string     `json:"variant_label,omitempty"`
-	SDSSyncStatus               string     `json:"sds_sync_status,omitempty"`
-	SheinWorkflowStatus         string     `json:"shein_workflow_status,omitempty"`
-	SheinLatestSubmissionStatus string     `json:"shein_latest_submission_status,omitempty"`
-	SheinLatestSubmissionError  string     `json:"shein_latest_submission_error,omitempty"`
-	Error                       string     `json:"error,omitempty"`
-	CreatedAt                   time.Time  `json:"created_at"`
-	UpdatedAt                   time.Time  `json:"updated_at"`
-	CompletedAt                 *time.Time `json:"completed_at,omitempty"`
+	TaskID                         string     `json:"task_id"`
+	Status                         TaskStatus `json:"status"`
+	Platforms                      []string   `json:"platforms,omitempty"`
+	Title                          string     `json:"title,omitempty"`
+	ImageCount                     int        `json:"image_count"`
+	ProductName                    string     `json:"product_name,omitempty"`
+	VariantLabel                   string     `json:"variant_label,omitempty"`
+	SDSSyncStatus                  string     `json:"sds_sync_status,omitempty"`
+	SheinWorkflowStatus            string     `json:"shein_workflow_status,omitempty"`
+	SheinLatestSubmissionStatus    string     `json:"shein_latest_submission_status,omitempty"`
+	SheinLatestSubmissionError     string     `json:"shein_latest_submission_error,omitempty"`
+	SheinSubmissionRemoteStatus    string     `json:"shein_submission_remote_status,omitempty"`
+	SheinSubmissionRemoteCheckedAt *time.Time `json:"shein_submission_remote_checked_at,omitempty"`
+	SheinSubmissionRemoteRecordID  string     `json:"shein_submission_remote_record_id,omitempty"`
+	Error                          string     `json:"error,omitempty"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
+	CompletedAt                    *time.Time `json:"completed_at,omitempty"`
 }
 
 type TaskListPage struct {

@@ -45,6 +45,19 @@ export function sheinSubmissionStatusLabel(status?: string | null) {
   }
 }
 
+export function sheinSubmissionRemoteStatusLabel(status?: string | null) {
+  switch (status) {
+    case "confirmed":
+      return "远端已确认";
+    case "pending":
+      return "待 SHEIN 确认";
+    case "failed":
+      return "确认失败";
+    default:
+      return status?.replaceAll("_", " ") ?? "远端未确认";
+  }
+}
+
 export function sheinSubmitPhaseLabel(phase?: string | null) {
   switch (phase) {
     case "validate":

@@ -1,7 +1,10 @@
 import Link from "next/link";
 
 import { Card } from "@/components/shared/card";
-import { sheinWorkflowStatusLabel } from "@/lib/shein-studio/shein-submission-display";
+import {
+  sheinSubmissionRemoteStatusLabel,
+  sheinWorkflowStatusLabel,
+} from "@/lib/shein-studio/shein-submission-display";
 import type { ListingKitTaskListItem } from "@/lib/types/listingkit/tasks";
 
 type ListingKitHomeTaskCardProps = {
@@ -82,6 +85,11 @@ export function ListingKitHomeTaskCard({
           {task.shein_workflow_status ? (
             <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-700">
               {sheinWorkflowStatusLabel(task.shein_workflow_status)}
+            </span>
+          ) : null}
+          {task.shein_submission_remote_status ? (
+            <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+              {sheinSubmissionRemoteStatusLabel(task.shein_submission_remote_status)}
             </span>
           ) : null}
         </div>

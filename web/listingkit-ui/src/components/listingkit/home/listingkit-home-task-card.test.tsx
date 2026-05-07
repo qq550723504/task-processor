@@ -51,6 +51,18 @@ describe("ListingKitHomeTaskCard", () => {
     expect(screen.getByText("草稿已保存")).toBeInTheDocument();
   });
 
+  it("shows the SHEIN remote submission status badge when present", () => {
+    render(
+      <ListingKitHomeTaskCard
+        task={makeTask({
+          shein_submission_remote_status: "pending",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("待 SHEIN 确认")).toBeInTheDocument();
+  });
+
   it("uses the SHEIN workspace query for resumable mixed-platform tasks", () => {
     render(
       <ListingKitHomeTaskCard

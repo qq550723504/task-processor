@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { SheinSettingsCard } from "@/components/listingkit/shein/shein-settings-card";
 import { useListingKitTasks } from "@/lib/query/use-task-list";
 import {
+  sheinSubmissionRemoteStatusLabel,
   sheinSubmissionStatusLabel,
   sheinWorkflowStatusLabel,
 } from "@/lib/shein-studio/shein-submission-display";
@@ -241,6 +242,9 @@ export function TaskListPage() {
 
 function TaskRow({ task }: { task: ListingKitTaskListItem }) {
   const workspaceHref = `/listing-kits/${task.task_id}/workspace?platform=${task.platforms?.[0] ?? "shein"}`;
+  const remoteCheckedAt = task.shein_submission_remote_checked_at
+    ? formatDate(task.shein_submission_remote_checked_at)
+    : null;
 
   return (
     <Card className="group border-white/70 bg-white/88 p-5 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
@@ -258,6 +262,11 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
             {task.shein_workflow_status ? (
               <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-700">
                 {sheinWorkflowStatusLabel(task.shein_workflow_status)}
+              </span>
+            ) : null}
+            {task.shein_submission_remote_status ? (
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                {sheinSubmissionRemoteStatusLabel(task.shein_submission_remote_status)}
               </span>
             ) : null}
             {(task.platforms ?? []).map((platform) => (
@@ -286,6 +295,13 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
           ) : task.shein_latest_submission_status ? (
             <p className="mt-2 text-sm text-zinc-500">
               最近提交：{sheinSubmissionStatusLabel(task.shein_latest_submission_status)}
+            </p>
+          ) : null}
+          {task.shein_submission_remote_status ? (
+            <p className="mt-1 text-sm text-zinc-500">
+              SHEIN 远端：{sheinSubmissionRemoteStatusLabel(task.shein_submission_remote_status)}
+              {task.shein_submission_remote_record_id ? ` · ${task.shein_submission_remote_record_id}` : ""}
+              {remoteCheckedAt ? ` · ${remoteCheckedAt}` : ""}
             </p>
           ) : null}
         </div>

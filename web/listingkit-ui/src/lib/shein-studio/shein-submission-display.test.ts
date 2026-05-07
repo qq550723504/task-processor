@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   sheinLatestSubmissionSummary,
+  sheinSubmissionRemoteStatusLabel,
   sheinSubmitPhaseLabel,
 } from "@/lib/shein-studio/shein-submission-display";
 
@@ -43,5 +44,11 @@ describe("shein-submission-display", () => {
         remote_status: "pending",
       }),
     ).toBe("商品资料已提交到 SHEIN，远端记录暂未查询到，请稍后以 SHEIN 后台状态为准。");
+  });
+
+  it("labels remote submission statuses", () => {
+    expect(sheinSubmissionRemoteStatusLabel("confirmed")).toBe("远端已确认");
+    expect(sheinSubmissionRemoteStatusLabel("pending")).toBe("待 SHEIN 确认");
+    expect(sheinSubmissionRemoteStatusLabel("failed")).toBe("确认失败");
   });
 });
