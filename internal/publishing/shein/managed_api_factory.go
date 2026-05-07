@@ -43,6 +43,11 @@ func (f *managedAPIFactory) BuildBaseClient(storeID int64) (*sheinclient.BaseAPI
 
 	apiClient := sheinclient.NewAPIClient(storeID, f.client)
 	if !apiClient.HasCookies() {
+		if err := apiClient.ForceRefreshCookies(); err == nil && apiClient.HasCookies() {
+			managedBaseAPICache.Delete(cacheKey)
+		}
+	}
+	if !apiClient.HasCookies() {
 		note := "SHEIN 店铺 cookie 不可用，已降级为离线解析"
 		managedBaseAPICache.Store(cacheKey, managedBaseAPICacheEntry{
 			note:      note,
@@ -57,6 +62,7 @@ func (f *managedAPIFactory) BuildBaseClient(storeID int64) (*sheinclient.BaseAPI
 		storeID,
 		apiClient.GetHTTPClient(),
 	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
 	managedBaseAPICache.Store(cacheKey, managedBaseAPICacheEntry{
 		baseAPI:   baseAPI,
 		expiresAt: time.Now().Add(5 * time.Minute),

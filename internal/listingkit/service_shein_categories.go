@@ -42,6 +42,7 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 		storeID,
 		apiClient.GetHTTPClient(),
 	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
 	categoryAPI := sheincategory.NewClient(baseAPI)
 	tree, err := categoryAPI.GetCategoryTree()
 	if err != nil {

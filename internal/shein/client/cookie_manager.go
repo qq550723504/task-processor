@@ -2,8 +2,13 @@
 package client
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path"
 	"strings"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/jsonx"
@@ -215,6 +220,139 @@ func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, er
 func (cm *CookieManager) RefreshCookies() ([]*http.Cookie, error) {
 	cm.logger.Info("刷新Cookie")
 	return cm.LoadCookies()
+}
+
+func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
+	tenantID := cm.resolvedTenantID
+	if tenantID <= 0 {
+		tenantID = cm.resolveTenantID()
+	}
+	if tenantID <= 0 {
+		return nil, fmt.Errorf("无法确定 SHEIN 店铺 %d 的 tenant_id，无法自动重新登录", cm.storeID)
+	}
+
+	if err := cm.triggerLoginServiceForceLogin(tenantID); err != nil {
+		return nil, err
+	}
+	cm.resolvedTenantID = tenantID
+
+	if cm.managementClient != nil {
+		cookieStr, refreshedTenantID, err := cm.managementClient.GetSheinCookie(cm.storeID)
+		if err != nil {
+			return nil, fmt.Errorf("重新登录后读取 SHEIN Cookie 失败: %w", err)
+		}
+		if refreshedTenantID > 0 {
+			cm.resolvedTenantID = refreshedTenantID
+		}
+		if strings.TrimSpace(cookieStr) != "" {
+			cookies, parseErr := cm.parseCookieString(cookieStr)
+			if parseErr != nil {
+				return nil, fmt.Errorf("解析重新登录后的 SHEIN Cookie 失败: %w", parseErr)
+			}
+			return cookies, nil
+		}
+	}
+
+	return cm.LoadCookies()
+}
+
+func (cm *CookieManager) resolveTenantID() int64 {
+	if cm.managementClient == nil {
+		return 0
+	}
+	storeClient := cm.managementClient.GetStoreClient()
+	if storeClient == nil {
+		return 0
+	}
+	store, err := storeClient.GetStore(cm.storeID)
+	if err != nil || store == nil {
+		return 0
+	}
+	return store.TenantID
+}
+
+func (cm *CookieManager) triggerLoginServiceForceLogin(tenantID int64) error {
+	cfg := loadSheinLoginServiceConfig()
+	if cfg.baseURL == "" {
+		return fmt.Errorf("SHEIN login service base URL is not configured")
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"tenant_id":         fmt.Sprintf("%d", tenantID),
+		"identifier":        fmt.Sprintf("%d", cm.storeID),
+		"headless":          true,
+		"force_login":       true,
+		"keep_browser_open": false,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal SHEIN login service force login request: %w", err)
+	}
+
+	endpoint := strings.TrimRight(cfg.baseURL, "/") + path.Join("/", "api/platforms/shein/login")
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("build SHEIN login service force login request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.sharedKey != "" {
+		req.Header.Set("X-Login-Shared-Key", cfg.sharedKey)
+	}
+
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("force SHEIN login service auth refresh: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read SHEIN login service force login response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("SHEIN login service force login status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var result struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := jsonx.UnmarshalBytes(body, &result, "parse SHEIN login service force login"); err != nil {
+		return err
+	}
+	if !result.Success {
+		return fmt.Errorf("SHEIN login service force login failed: %s", strings.TrimSpace(result.Message))
+	}
+	return nil
+}
+
+type sheinLoginServiceConfig struct {
+	baseURL   string
+	sharedKey string
+}
+
+func loadSheinLoginServiceConfig() sheinLoginServiceConfig {
+	return sheinLoginServiceConfig{
+		baseURL: firstNonEmptyEnv(
+			"TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_BASE_URL",
+			"TASK_PROCESSOR_LOGIN_SERVICE_BASE_URL",
+			"TASK_PROCESSOR_SDS_LOGIN_SERVICE_BASE_URL",
+		),
+		sharedKey: firstNonEmptyEnv(
+			"TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_SHARED_KEY",
+			"TASK_PROCESSOR_LOGIN_SERVICE_SHARED_KEY",
+			"TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY",
+		),
+	}
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		value := strings.TrimSpace(strings.Trim(os.Getenv(key), `"'`))
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // TestConnection 测试管理系统连接和认证状态

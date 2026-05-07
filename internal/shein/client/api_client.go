@@ -85,7 +85,7 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 // SetCookies 设置Cookie（参考TEMU实现）
 func (c *APIClient) SetCookies(cookies []*http.Cookie) {
 	c.cookies = cookies
-	// 使用req包的SetCommonCookies来设置全局Cookie
+	c.httpClient.ClearCookies()
 	c.httpClient.SetCommonCookies(cookies...)
 
 	c.logger.WithField("cookieNum", len(cookies)).Info("设置Cookie")
@@ -106,6 +106,20 @@ func (c *APIClient) ReloadCookies() error {
 		c.logger.Info("未找到Cookie数据")
 	}
 
+	return nil
+}
+
+func (c *APIClient) ForceRefreshCookies() error {
+	cookies, err := c.cookieManager.ForceRefreshCookies()
+	if err != nil {
+		c.logger.WithError(err).Error("强制刷新Cookie失败")
+		return fmt.Errorf("强制刷新Cookie失败: %w", err)
+	}
+	if len(cookies) == 0 {
+		return fmt.Errorf("强制刷新Cookie后仍未找到Cookie数据")
+	}
+	c.SetCookies(cookies)
+	c.logger.Info("成功强制刷新Cookie")
 	return nil
 }
 

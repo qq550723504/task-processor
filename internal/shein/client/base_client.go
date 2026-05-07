@@ -1,10 +1,13 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
+	"sync"
 
 	"task-processor/internal/shein/api"
 
@@ -13,11 +16,13 @@ import (
 
 // BaseAPIClient 基础API客户端实现
 type BaseAPIClient struct {
-	baseUrl    string
-	tenantID   int64
-	shopID     int64
-	shopType   string // 添加shopType字段
-	httpClient *req.Client
+	baseUrl     string
+	tenantID    int64
+	shopID      int64
+	shopType    string // 添加shopType字段
+	httpClient  *req.Client
+	refreshMu   sync.Mutex
+	refreshAuth func() error
 }
 
 // NewBaseAPIClient 创建新的基础API客户端
@@ -28,6 +33,10 @@ func NewBaseAPIClient(baseUrl string, tenantID, shopID int64, httpClient *req.Cl
 		shopID:     shopID,
 		httpClient: httpClient,
 	}
+}
+
+func (b *BaseAPIClient) SetAuthRefreshFunc(refresh func() error) {
+	b.refreshAuth = refresh
 }
 
 // createHeaders 创建基础请求头
@@ -130,6 +139,38 @@ func (b *BaseAPIClient) APIRequest(method, url string, requestBody any, result a
 
 // apiRequest 统一的API请求方法
 func (b *BaseAPIClient) apiRequest(method, url string, requestBody any, result any) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		resp, err := b.sendAPIRequest(method, url, requestBody, result)
+		if err != nil {
+			if attempt == 0 && b.isAuthFailureError(err) {
+				if refreshErr := b.refreshAuthentication(); refreshErr != nil {
+					return fmt.Errorf("%w; refresh shein auth failed: %v", err, refreshErr)
+				}
+				continue
+			}
+			return err
+		}
+
+		if attempt == 0 && b.responseIndicatesAuthExpired(resp, result) {
+			if refreshErr := b.refreshAuthentication(); refreshErr != nil {
+				code, msg := extractResponseCodeMsg(result)
+				return &api.AuthenticationExpiredError{
+					TenantID: b.tenantID,
+					ShopID:   b.shopID,
+					Code:     code,
+					Message:  fmt.Sprintf("%s; refresh shein auth failed: %v", msg, refreshErr),
+				}
+			}
+			continue
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("SHEIN API request retry exhausted")
+}
+
+func (b *BaseAPIClient) sendAPIRequest(method, url string, requestBody any, result any) (*req.Response, error) {
 	// 创建请求头
 	headers := b.createHeaders(url)
 
@@ -157,12 +198,12 @@ func (b *BaseAPIClient) apiRequest(method, url string, requestBody any, result a
 	case http.MethodDelete:
 		resp, err = request.SetBody(requestBody).SetSuccessResult(result).Delete(url)
 	default:
-		return fmt.Errorf("不支持的HTTP方法: %s", method)
+		return nil, fmt.Errorf("不支持的HTTP方法: %s", method)
 	}
 
 	// 处理请求错误
 	if err != nil {
-		return fmt.Errorf("API调用失败: %w", err)
+		return resp, fmt.Errorf("API调用失败: %w", err)
 	}
 
 	// 检查响应状态码
@@ -175,9 +216,9 @@ func (b *BaseAPIClient) apiRequest(method, url string, requestBody any, result a
 				if tempResult.Code == "20302" && strings.Contains(tempResult.Msg, "子系统登录重定向") {
 					// 这是认证过期响应，需要解析到result中让ProcessAPIResponse处理
 					if unmarshalErr := resp.UnmarshalJson(result); unmarshalErr != nil {
-						return fmt.Errorf("解析认证过期响应失败: %w", unmarshalErr)
+						return resp, fmt.Errorf("解析认证过期响应失败: %w", unmarshalErr)
 					}
-					return nil // 让ProcessAPIResponse处理认证过期逻辑
+					return resp, nil
 				}
 			}
 		}
@@ -188,14 +229,120 @@ func (b *BaseAPIClient) apiRequest(method, url string, requestBody any, result a
 			errorMessage = http.StatusText(resp.StatusCode)
 		}
 
-		return &api.APIError{
+		return resp, &api.APIError{
 			StatusCode: resp.StatusCode,
 			Message:    errorMessage,
 			URL:        url,
 		}
 	}
 
-	return nil
+	return resp, nil
+}
+
+func (b *BaseAPIClient) refreshAuthentication() error {
+	if b == nil || b.refreshAuth == nil {
+		return fmt.Errorf("shein auth refresh is not configured")
+	}
+	b.refreshMu.Lock()
+	defer b.refreshMu.Unlock()
+	return b.refreshAuth()
+}
+
+func (b *BaseAPIClient) isAuthFailureError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, ok := api.IsAuthenticationExpired(err); ok {
+		return true
+	}
+	var apiErr *api.APIError
+	if !strings.Contains(fmt.Sprintf("%T", err), "APIError") {
+		if !strings.Contains(strings.ToLower(err.Error()), "unauthorized") &&
+			!strings.Contains(strings.ToLower(err.Error()), "forbidden") &&
+			!strings.Contains(err.Error(), "无权限") &&
+			!strings.Contains(err.Error(), "未登录") {
+			return false
+		}
+	}
+	if ok := errors.As(err, &apiErr); ok {
+		if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden || apiErr.StatusCode == http.StatusFound {
+			return true
+		}
+		return isSheinAuthFailurePayload("", apiErr.Message)
+	}
+	return true
+}
+
+func (b *BaseAPIClient) responseIndicatesAuthExpired(resp *req.Response, result any) bool {
+	code, msg := extractResponseCodeMsg(result)
+	if isSheinAuthFailurePayload(code, msg) {
+		return true
+	}
+	if resp == nil {
+		return false
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusFound {
+		return true
+	}
+	return isSheinAuthFailurePayload("", resp.String())
+}
+
+func isSheinAuthFailurePayload(code, msg string) bool {
+	normalizedCode := strings.TrimSpace(code)
+	normalizedMsg := strings.ToLower(strings.TrimSpace(msg))
+	if normalizedCode == "20302" || normalizedCode == "401" || normalizedCode == "403" {
+		return true
+	}
+	indicators := []string{
+		"子系统登录重定向",
+		"认证已过期",
+		"未登录",
+		"无权限",
+		"unauthorized",
+		"forbidden",
+		"permission",
+	}
+	for _, indicator := range indicators {
+		if strings.Contains(normalizedMsg, strings.ToLower(indicator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractResponseCodeMsg(result any) (string, string) {
+	if result == nil {
+		return "", ""
+	}
+	value := reflect.ValueOf(result)
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return "", ""
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return "", ""
+	}
+	code := fieldString(value, "Code")
+	msg := fieldString(value, "Msg")
+	if code != "" || msg != "" {
+		return code, msg
+	}
+	if embedded := value.FieldByName("APIResponse"); embedded.IsValid() {
+		if embedded.Kind() == reflect.Struct {
+			return fieldString(embedded, "Code"), fieldString(embedded, "Msg")
+		}
+	}
+	return "", ""
+}
+
+func fieldString(value reflect.Value, name string) string {
+	field := value.FieldByName(name)
+	if !field.IsValid() || field.Kind() != reflect.String {
+		return ""
+	}
+	return field.String()
 }
 
 // ProcessAPIResponse 处理API响应的通用方法（保留向后兼容性）
