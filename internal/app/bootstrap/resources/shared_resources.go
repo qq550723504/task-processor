@@ -134,7 +134,7 @@ func newConfiguredManagementClient(cfg *config.Config, logger *logrus.Logger) *m
 		managementClient.SetLocalDataProvider(provider)
 	}
 
-	cookieRedis := cfg.Platforms.Shein.CookieRedis
+	cookieRedis := cfg.EffectiveSheinCookieRedis()
 	if strings.TrimSpace(cookieRedis.Host) != "" {
 		if err := managementClient.SetSheinCookieRedisConfig(&cookieRedis); err != nil {
 			logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")

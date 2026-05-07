@@ -1,10 +1,23 @@
 package config
 
+import "strings"
+
 // PlatformsConfig 平台配置
 type PlatformsConfig struct {
 	Temu        PlatformConfig    `yaml:"temu"`        // TEMU平台配置
 	Shein       PlatformConfig    `yaml:"shein"`       // SHEIN平台配置
 	Alibaba1688 Alibaba1688Config `yaml:"alibaba1688"` // 1688平台配置
+}
+
+func (c *Config) EffectiveSheinCookieRedis() RedisConfig {
+	if c == nil {
+		return RedisConfig{}
+	}
+	cookieRedis := c.Platforms.Shein.CookieRedis
+	if strings.TrimSpace(cookieRedis.Host) == "" && c.Redis != nil {
+		cookieRedis = *c.Redis
+	}
+	return cookieRedis
 }
 
 // PlatformConfig 单个平台的完整配置

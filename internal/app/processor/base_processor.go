@@ -45,7 +45,7 @@ func NewBaseProcessor(ctx context.Context, cfg *BaseProcessorConfig) *BaseProces
 		} else if provider != nil {
 			managementClient.SetLocalDataProvider(provider)
 		}
-		cookieRedis := cfg.Config.Platforms.Shein.CookieRedis
+		cookieRedis := cfg.Config.EffectiveSheinCookieRedis()
 		if strings.TrimSpace(cookieRedis.Host) != "" {
 			if err := managementClient.SetSheinCookieRedisConfig(&cookieRedis); err != nil {
 				cfg.Logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
