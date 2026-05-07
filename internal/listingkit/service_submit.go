@@ -12,6 +12,8 @@ import (
 	sheinpublish "task-processor/internal/shein/publish"
 )
 
+const sheinSubmitInFlightTTL = 15 * time.Minute
+
 func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {
 	platform := "shein"
 	action := "publish"
@@ -48,6 +50,12 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	}
 	if findSheinSubmissionRecordByRequestID(pkg, action, requestID) != nil {
 		return buildListingKitPreview(task, "shein")
+	}
+	if active := findActiveSheinSubmitAttempt(pkg, action, startedAt); active != nil {
+		if active.CurrentRequestID == requestID {
+			return buildListingKitPreview(task, "shein")
+		}
+		return nil, fmt.Errorf("%w: %s %s is in %s", ErrSubmitInProgress, "shein", action, active.CurrentPhase)
 	}
 	beginSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt)
 	if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseValidate); err != nil {

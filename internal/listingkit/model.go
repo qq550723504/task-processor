@@ -23,6 +23,7 @@ var ErrGenerationTaskNotRetryable = errors.New("generation task is not retryable
 var ErrGenerationActionNotFound = errors.New("generation action not found")
 var ErrUnsupportedSubmitPlatform = errors.New("unsupported submit platform")
 var ErrSubmitBlocked = errors.New("submit blocked by readiness")
+var ErrSubmitInProgress = errors.New("submit already in progress")
 var ErrInvalidSheinResolutionCacheKind = errors.New("invalid shein resolution cache kind")
 var ErrInvalidSheinCategorySearchQuery = errors.New("invalid shein category search query")
 

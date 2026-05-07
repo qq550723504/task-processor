@@ -124,6 +124,20 @@ func findSheinSubmissionRecordByRequestID(pkg *SheinPackage, action, requestID s
 	return record
 }
 
+func findActiveSheinSubmitAttempt(pkg *SheinPackage, action string, now time.Time) *sheinpub.SubmissionReport {
+	if pkg == nil || pkg.Submission == nil {
+		return nil
+	}
+	report := pkg.Submission
+	if report.CurrentAction != action || report.CurrentRequestID == "" || report.CurrentPhase == "" || report.InFlightStartedAt == nil {
+		return nil
+	}
+	if now.Sub(*report.InFlightStartedAt) > sheinSubmitInFlightTTL {
+		return nil
+	}
+	return report
+}
+
 func ensureSheinSubmissionReport(pkg *SheinPackage) *sheinpub.SubmissionReport {
 	if pkg.Submission == nil {
 		pkg.Submission = &sheinpub.SubmissionReport{}

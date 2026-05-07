@@ -28,6 +28,8 @@ func (h *handler) SubmitTask(c *gin.Context) {
 			status = http.StatusNotFound
 		case errors.Is(err, listingkit.ErrUnsupportedSubmitPlatform), errors.Is(err, listingkit.ErrSubmitBlocked):
 			status = http.StatusBadRequest
+		case errors.Is(err, listingkit.ErrSubmitInProgress):
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "submit_failed", "message": err.Error()})
 		return

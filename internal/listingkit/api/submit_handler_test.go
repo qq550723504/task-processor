@@ -102,6 +102,29 @@ func TestSubmitTaskReturnsBadRequestWhenBlocked(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskReturnsConflictWhenSubmitInProgress(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubSubmitService{err: listingkit.ErrSubmitInProgress}
+	h, err := NewHandler(svc)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/submit", h.SubmitTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/submit", strings.NewReader(`{"platform":"shein","action":"publish"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.Code)
+	}
+}
+
 func TestSubmitTaskReturnsPreviewPayload(t *testing.T) {
 	t.Parallel()
 
