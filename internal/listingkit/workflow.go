@@ -13,24 +13,18 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog"
 	"task-processor/internal/catalog/canonical"
+	listingworkflow "task-processor/internal/listingkit/workflow"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
-const sdsDesignSyncTimeout = 130 * time.Second
-const sdsDesignSyncExtraPollCap = 24
+const sdsDesignSyncTimeout = listingworkflow.SDSDesignSyncTimeout
+const sdsDesignSyncExtraPollCap = listingworkflow.SDSDesignSyncExtraPollCap
 
 func sdsDesignSyncTimeoutForVariantCount(targetCount int) time.Duration {
-	if targetCount <= 1 {
-		return sdsDesignSyncTimeout
-	}
-	extraPolls := (targetCount - 1) * 8
-	if extraPolls > sdsDesignSyncExtraPollCap {
-		extraPolls = sdsDesignSyncExtraPollCap
-	}
-	return sdsDesignSyncTimeout + time.Duration(extraPolls)*5*time.Second
+	return listingworkflow.SDSDesignSyncTimeoutForVariantCount(targetCount)
 }
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
