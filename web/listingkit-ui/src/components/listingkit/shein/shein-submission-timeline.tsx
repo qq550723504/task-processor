@@ -4,6 +4,7 @@ import {
   sheinSubmissionStatusLabel,
   sheinSubmitPhaseLabel,
 } from "@/lib/shein-studio/shein-submission-display";
+import { Button } from "@/components/shared/button";
 
 function formatTime(value?: string) {
   if (!value) return "";
@@ -97,8 +98,14 @@ function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; inde
 
 export function SheinSubmissionTimeline({
   events,
+  canRefresh,
+  isRefreshing,
+  onRefresh,
 }: {
   events?: SheinSubmissionEvent[];
+  canRefresh?: boolean;
+  isRefreshing?: boolean;
+  onRefresh?: (() => void) | null;
 }) {
   if (!events?.length) {
     return null;
@@ -108,13 +115,25 @@ export function SheinSubmissionTimeline({
 
   return (
     <section className="space-y-3 rounded-[1.5rem] border border-zinc-200 bg-white p-4 shadow-sm">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
-          提交记录
-        </p>
-        <h3 className="mt-1 text-sm font-semibold text-zinc-950">
-          SHEIN 提交时间线
-        </h3>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
+            提交记录
+          </p>
+          <h3 className="mt-1 text-sm font-semibold text-zinc-950">
+            SHEIN 提交时间线
+          </h3>
+        </div>
+        {canRefresh && onRefresh ? (
+          <Button
+            className="h-8 px-3 text-xs"
+            disabled={isRefreshing}
+            tone="secondary"
+            onClick={onRefresh}
+          >
+            {isRefreshing ? "刷新中..." : "刷新状态"}
+          </Button>
+        ) : null}
       </div>
       <div className="space-y-2">
         {(primaryEvents.length ? primaryEvents : events).slice(0, 8).map((event, index) => (

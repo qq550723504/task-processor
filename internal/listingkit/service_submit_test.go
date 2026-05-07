@@ -726,6 +726,78 @@ func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T)
 	}
 }
 
+func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction:  "publish",
+		LastStatus:  sheinpub.SubmissionStatusSuccess,
+		SubmittedAt: &now,
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			Status:       sheinpub.SubmissionStatusSuccess,
+			SubmittedAt:  now,
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+			FinishedAt:   &now,
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var publishCalls int32
+	var recordCalls int32
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					atomic.AddInt32(&publishCalls, 1)
+				},
+				recordHook: func(request *sheinproduct.ProductRecordRequest) {
+					atomic.AddInt32(&recordCalls, 1)
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-refreshed",
+					SupplierCode: "SKC-1",
+					State:        4,
+					AuditState:   5,
+				}),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.RefreshSubmissionStatus(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("refresh submission status: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&publishCalls); got != 0 {
+		t.Fatalf("publish calls = %d, want 0", got)
+	}
+	if got := atomic.LoadInt32(&recordCalls); got != 1 {
+		t.Fatalf("record calls = %d, want 1", got)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	}
+	if preview.Shein.Submission.Publish.RemoteRecordID != "record-refreshed" {
+		t.Fatalf("remote record id = %q, want record-refreshed", preview.Shein.Submission.Publish.RemoteRecordID)
+	}
+	if len(preview.Shein.SubmissionEvents) == 0 || preview.Shein.SubmissionEvents[0].Phase != sheinpub.SubmissionPhaseConfirmRemote {
+		t.Fatalf("submission events = %+v, want confirm_remote event", preview.Shein.SubmissionEvents)
+	}
+}
+
 func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	t.Parallel()
 

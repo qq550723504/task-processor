@@ -243,6 +243,59 @@ func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, acti
 	return buildListingKitPreview(task, "shein")
 }
 
+func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error) {
+	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":refresh_submission_status")
+	defer unlockSubmit()
+
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.Result == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	pkg := task.Result.Shein
+	if pkg == nil || pkg.Submission == nil {
+		return nil, fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
+	}
+	report := pkg.Submission
+	action := strings.TrimSpace(report.LastAction)
+	if action == "" {
+		if report.Publish != nil {
+			action = "publish"
+		} else if report.SaveDraft != nil {
+			action = "save_draft"
+		}
+	}
+	record := sheinSubmissionRecordForAction(report, action)
+	if record == nil {
+		return nil, fmt.Errorf("%w: shein submission record is not available", ErrSubmitBlocked)
+	}
+	supplierCode := strings.TrimSpace(record.SupplierCode)
+	if supplierCode == "" {
+		supplierCode = sheinSubmitSupplierCode(nil, pkg)
+	}
+	if supplierCode == "" {
+		return nil, fmt.Errorf("%w: shein supplier code is not available", ErrSubmitBlocked)
+	}
+	productAPI, err := s.buildSheinSubmitProductAPI(task)
+	if err != nil {
+		return nil, err
+	}
+	requestID := strings.TrimSpace(record.RequestID)
+	startedAt := time.Now()
+	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, startedAt, "刷新 SHEIN 远端提交状态", nil))
+	event := s.confirmSheinSubmitRemote(ctx, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
+	if event != nil {
+		appendSheinSubmissionEvent(pkg, *event)
+	}
+	task.Result.UpdatedAt = time.Now()
+	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
+		return nil, err
+	}
+	return buildListingKitPreview(task, "shein")
+}
+
 func sheinProductAttributesReadyForSubmit(attrs []sheinproduct.ProductAttribute) bool {
 	if len(attrs) == 0 {
 		return false

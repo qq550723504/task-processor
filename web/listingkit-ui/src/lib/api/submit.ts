@@ -21,3 +21,12 @@ export function submitTask(taskId: string, body: SubmitTaskRequest) {
     },
   });
 }
+
+export function refreshSubmissionStatus(taskId: string) {
+  return apiRequest<ListingKitPreview>(
+    `/tasks/${taskId}/submission-status/refresh`,
+    {
+      method: "POST",
+    },
+  );
+}

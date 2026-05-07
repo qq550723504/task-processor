@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { vi } from "vitest";
 
 import { SheinSubmissionTimeline } from "@/components/listingkit/shein/shein-submission-timeline";
 
@@ -76,6 +77,28 @@ describe("SheinSubmissionTimeline", () => {
     expect(screen.getByText("Record record-9")).toBeInTheDocument();
     expect(screen.getByText("SHEIN remote record confirmed")).toBeInTheDocument();
     expect(screen.getByText("高级日志（1）")).toBeInTheDocument();
+  });
+
+  it("shows a refresh status action when available", () => {
+    const onRefresh = vi.fn();
+    render(
+      <SheinSubmissionTimeline
+        canRefresh
+        events={[
+          {
+            id: "event-1",
+            action: "publish",
+            status: "success",
+            started_at: "2026-04-27T10:00:00Z",
+          },
+        ]}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    screen.getByRole("button", { name: "刷新状态" }).click();
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("renders nothing without events", () => {

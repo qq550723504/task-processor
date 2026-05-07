@@ -252,6 +252,10 @@ func (s *stubListingKitHandler) SubmitTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "submitted"})
 }
 
+func (s *stubListingKitHandler) RefreshSubmissionStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "refreshed"})
+}
+
 func (s *stubListingKitHandler) GetSheinSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
 }

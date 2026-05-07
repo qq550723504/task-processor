@@ -46,3 +46,19 @@ func (h *handler) SubmitTask(c *gin.Context) {
 
 	c.JSON(http.StatusOK, preview)
 }
+
+func (h *handler) RefreshSubmissionStatus(c *gin.Context) {
+	preview, err := h.service.RefreshSubmissionStatus(c.Request.Context(), c.Param("task_id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, listingkit.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable):
+			status = http.StatusNotFound
+		case errors.Is(err, listingkit.ErrUnsupportedSubmitPlatform), errors.Is(err, listingkit.ErrSubmitBlocked):
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": "submission_status_refresh_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, preview)
+}

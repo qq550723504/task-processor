@@ -79,6 +79,9 @@ func (s *stubSubmitService) SubmitTask(ctx context.Context, taskID string, req *
 	s.lastReq = req
 	return s.preview, s.err
 }
+func (s *stubSubmitService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
+	return s.preview, s.err
+}
 
 func TestSubmitTaskReturnsBadRequestWhenBlocked(t *testing.T) {
 	t.Parallel()
@@ -233,5 +236,43 @@ func TestSubmitTaskMapsIdempotencyKeyHeader(t *testing.T) {
 	}
 	if svc.lastReq.IdempotencyKey != "submit-123" {
 		t.Fatalf("idempotency key = %q, want submit-123", svc.lastReq.IdempotencyKey)
+	}
+}
+
+func TestRefreshSubmissionStatusReturnsPreviewPayload(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubSubmitService{
+		preview: &listingkit.ListingKitPreview{
+			TaskID: "task-1",
+			Shein: &listingkit.SheinPreviewPayload{
+				Submission: &listingkit.SheinSubmissionReport{
+					RemoteStatus: "confirmed",
+				},
+			},
+		},
+	}
+	h, err := NewHandler(svc)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/submission-status/refresh", h.RefreshSubmissionStatus)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/submission-status/refresh", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.Code)
+	}
+	var body listingkit.ListingKitPreview
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.Shein == nil || body.Shein.Submission == nil || body.Shein.Submission.RemoteStatus != "confirmed" {
+		t.Fatalf("refresh preview = %+v", body.Shein)
 	}
 }

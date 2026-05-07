@@ -63,7 +63,10 @@ import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
 import { useApplyRevision } from "@/lib/query/use-apply-revision";
-import { useSubmitTask } from "@/lib/query/use-submit-task";
+import {
+  useRefreshSubmissionStatus,
+  useSubmitTask,
+} from "@/lib/query/use-submit-task";
 import { useUpdateSheinFinalDraft } from "@/lib/query/use-shein-final-draft";
 import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
 import type {
@@ -227,6 +230,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const action = useExecuteAction(taskId, baseQuery);
   const applyRevision = useApplyRevision(taskId);
   const submitTask = useSubmitTask(taskId);
+  const refreshSubmissionStatus = useRefreshSubmissionStatus(taskId);
   const updateSheinFinalDraft = useUpdateSheinFinalDraft(taskId);
   const clearSheinResolutionCache = useClearSheinResolutionCache(taskId);
 
@@ -1053,6 +1057,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             </div>
             <SheinSubmissionTimeline
               events={preview.data?.shein?.submission_events}
+              canRefresh={Boolean(preview.data?.shein?.submission?.last_action)}
+              isRefreshing={refreshSubmissionStatus.isPending}
+              onRefresh={() => refreshSubmissionStatus.mutate()}
             />
           </aside>
         </section>
@@ -1181,6 +1188,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           {selectedPlatform === "shein" ? (
             <SheinSubmissionTimeline
               events={preview.data?.shein?.submission_events}
+              canRefresh={Boolean(preview.data?.shein?.submission?.last_action)}
+              isRefreshing={refreshSubmissionStatus.isPending}
+              onRefresh={() => refreshSubmissionStatus.mutate()}
             />
           ) : null}
           <ScenePresetPanel summary={focusedScenePreset} />

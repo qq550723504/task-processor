@@ -28,6 +28,10 @@ func (s *stubGenerationTaskService) GetSubmissionEvents(ctx context.Context, tas
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubGenerationTaskService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubHistoryDetailService) GetSheinSettings(ctx context.Context) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -45,6 +49,10 @@ func (s *stubHistoryDetailService) UpdateSheinFinalDraft(ctx context.Context, ta
 }
 
 func (s *stubHistoryDetailService) GetSubmissionEvents(ctx context.Context, taskID string) (*listingkit.SheinSubmissionEventPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -68,6 +76,10 @@ func (s *stubHistoryService) GetSubmissionEvents(ctx context.Context, taskID str
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubHistoryService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubRevisionService) GetSheinSettings(ctx context.Context) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -85,6 +97,10 @@ func (s *stubRevisionService) UpdateSheinFinalDraft(ctx context.Context, taskID 
 }
 
 func (s *stubRevisionService) GetSubmissionEvents(ctx context.Context, taskID string) (*listingkit.SheinSubmissionEventPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -108,6 +124,10 @@ func (s *stubRevisionValidateService) GetSubmissionEvents(ctx context.Context, t
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubRevisionValidateService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubSubmitService) GetSheinSettings(ctx context.Context) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -125,5 +145,9 @@ func (s *stubSubmitService) UpdateSheinFinalDraft(ctx context.Context, taskID st
 }
 
 func (s *stubSubmitService) GetSubmissionEvents(ctx context.Context, taskID string) (*listingkit.SheinSubmissionEventPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubSubmitService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }
