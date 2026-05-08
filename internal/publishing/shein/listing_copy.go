@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 )
 
 type listingCopy struct {
@@ -16,7 +16,7 @@ type listingCopy struct {
 	TitleDiagnostics *TitleDiagnostics
 }
 
-func buildSheinListingCopy(canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
+func buildSheinListingCopy(canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
 	titleResolution := resolveListingTitle(canonical, fallbackTitle, aiClient)
 	titleResolution = enrichResolvedListingTitle(titleResolution, canonical, fallbackTitle, aiClient)
 	title := titleResolution.title
@@ -37,7 +37,7 @@ func buildSheinListingCopy(canonical *productenrich.CanonicalProduct, fallbackTi
 	}
 }
 
-func NormalizeListingCopy(pkg *Package, canonical *productenrich.CanonicalProduct, language string) bool {
+func NormalizeListingCopy(pkg *Package, canonical *canonical.Product, language string) bool {
 	if pkg == nil {
 		return false
 	}
@@ -76,7 +76,7 @@ func firstEnglishCandidate(values ...string) string {
 	return ""
 }
 
-func synthesizeEnglishTitle(canonical *productenrich.CanonicalProduct, fallbackTitle string) string {
+func synthesizeEnglishTitle(canonical *canonical.Product, fallbackTitle string) string {
 	productType := inferEnglishProductType(canonical, fallbackTitle)
 	style := lookupVariantAttribute(canonical, "ai_style")
 	size := firstNonEmpty(
@@ -106,7 +106,7 @@ func synthesizeEnglishTitle(canonical *productenrich.CanonicalProduct, fallbackT
 	return strings.Join(uniqueNonEmpty(parts), " ")
 }
 
-func synthesizeEnglishDescription(canonical *productenrich.CanonicalProduct, title string) string {
+func synthesizeEnglishDescription(canonical *canonical.Product, title string) string {
 	productType := inferEnglishProductType(canonical, title)
 	material := normalizeEnglishMaterial(firstNonEmpty(
 		lookupCanonicalAttribute(canonical, "material"),
@@ -132,7 +132,7 @@ func synthesizeEnglishDescription(canonical *productenrich.CanonicalProduct, tit
 	return strings.Join(sentences, " ")
 }
 
-func inferEnglishProductType(canonical *productenrich.CanonicalProduct, fallback string) string {
+func inferEnglishProductType(canonical *canonical.Product, fallback string) string {
 	signals := []string{
 		lookupCanonicalAttribute(canonical, "product_english_name"),
 		lookupCanonicalAttribute(canonical, "english_name"),
@@ -175,7 +175,7 @@ func normalizeEnglishMaterial(value string) string {
 	}
 }
 
-func lookupCanonicalAttribute(canonical *productenrich.CanonicalProduct, key string) string {
+func lookupCanonicalAttribute(canonical *canonical.Product, key string) string {
 	if canonical == nil || len(canonical.Attributes) == 0 {
 		return ""
 	}
@@ -188,7 +188,7 @@ func lookupCanonicalAttribute(canonical *productenrich.CanonicalProduct, key str
 	return ""
 }
 
-func lookupVariantAttribute(canonical *productenrich.CanonicalProduct, key string) string {
+func lookupVariantAttribute(canonical *canonical.Product, key string) string {
 	if canonical == nil || len(canonical.Variants) == 0 {
 		return ""
 	}
@@ -203,7 +203,7 @@ func lookupVariantAttribute(canonical *productenrich.CanonicalProduct, key strin
 	return ""
 }
 
-func lookupTechnicalSpec(canonical *productenrich.CanonicalProduct, key string) string {
+func lookupTechnicalSpec(canonical *canonical.Product, key string) string {
 	if canonical == nil || canonical.Specifications == nil || len(canonical.Specifications.Technical) == 0 {
 		return ""
 	}
@@ -216,7 +216,7 @@ func lookupTechnicalSpec(canonical *productenrich.CanonicalProduct, key string) 
 	return ""
 }
 
-func canonicalDescription(canonical *productenrich.CanonicalProduct) string {
+func canonicalDescription(canonical *canonical.Product) string {
 	if canonical == nil {
 		return ""
 	}

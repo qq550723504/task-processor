@@ -3,19 +3,19 @@ package amazonlisting
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestBuildReviewItemsFromCanonicalIncludesTraceEvidence(t *testing.T) {
-	product := &productenrich.CanonicalProduct{
+	product := &canonical.Product{
 		Title:       "Demo Product",
 		Description: "Demo description",
-		FieldTraces: map[string]productenrich.FieldTrace{
+		FieldTraces: map[string]canonical.FieldTrace{
 			"title": {
-				Sources: []productenrich.CanonicalSource{
-					{Type: productenrich.CanonicalSourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
-					{Type: productenrich.CanonicalSourceScrapedData, Detail: "scraped_title"},
-					{Type: productenrich.CanonicalSourceLLM, Detail: "productenrich_product_json"},
+				Sources: []canonical.Source{
+					{Type: canonical.SourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
+					{Type: canonical.SourceScrapedData, Detail: "scraped_title"},
+					{Type: canonical.SourceLLM, Detail: "productenrich_product_json"},
 				},
 				Confidence:  0.62,
 				IsInferred:  true,

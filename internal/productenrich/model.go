@@ -1,10 +1,10 @@
-// package productenrich 定义产品JSON生成的领域模型
 package productenrich
 
 import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"task-processor/internal/catalog/canonical"
 	"time"
 )
 
@@ -60,33 +60,16 @@ type ProductJSON struct {
 }
 
 // ProductSpecs 产品规格信息
-type ProductSpecs struct {
-	Dimensions *Dimensions       `json:"dimensions,omitempty"`
-	Weight     *Weight           `json:"weight,omitempty"`
-	Package    *PackageInfo      `json:"package,omitempty"`
-	Technical  map[string]string `json:"technical,omitempty"`
-}
+type ProductSpecs = canonical.ProductSpecs
 
 // Dimensions 尺寸信息
-type Dimensions struct {
-	Length float64 `json:"length"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
-	Unit   string  `json:"unit"`
-}
+type Dimensions = canonical.Dimensions
 
 // Weight 重量信息
-type Weight struct {
-	Value float64 `json:"value"`
-	Unit  string  `json:"unit"`
-}
+type Weight = canonical.Weight
 
 // PackageInfo 包装信息
-type PackageInfo struct {
-	Dimensions *Dimensions `json:"dimensions,omitempty"`
-	Weight     *Weight     `json:"weight,omitempty"`
-	Quantity   int         `json:"quantity"`
-}
+type PackageInfo = canonical.PackageInfo
 
 // ProductVariant 产品变体（SKU）
 type ProductVariant struct {
@@ -100,13 +83,7 @@ type ProductVariant struct {
 }
 
 // PriceInfo 价格信息
-type PriceInfo struct {
-	Currency     string  `json:"currency"`
-	Amount       float64 `json:"amount"`
-	CompareAt    float64 `json:"compare_at,omitempty"`
-	CostPrice    float64 `json:"cost_price,omitempty"`
-	WholesaleMin int     `json:"wholesale_min,omitempty"`
-}
+type PriceInfo = canonical.PriceInfo
 
 // ParsedInput 解析后的输入数据
 type ParsedInput struct {
@@ -128,10 +105,7 @@ type ScrapedData struct {
 }
 
 // ScrapedVariantDimension 表示抓取侧提供的销售属性维度和值。
-type ScrapedVariantDimension struct {
-	Name   string   `json:"name"`
-	Values []string `json:"values"`
-}
+type ScrapedVariantDimension = canonical.ScrapedVariantDimension
 
 // ProductAnalysis 产品分析结果
 type ProductAnalysis struct {

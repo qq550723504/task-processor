@@ -200,7 +200,7 @@ func buildDisplayAttributeFieldSelectionBatchPrompt(
 			contextBlock += "- " + line + "\n"
 		}
 	}
-	return renderSheinDisplayAttributePrompt("shein.display_attribute.field_selection_batch", `You map multiple source product attributes to SHEIN display attribute fields from the current category template.
+	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeFieldSelectionBatch, `You map multiple source product attributes to SHEIN display attribute fields from the current category template.
 Choose at most one template attribute per source_index and do not assign the same attribute_id to multiple sources.
 Only choose an attribute_id when the semantic match is safe. Skip uncertain mappings.
 Return JSON only with key selections, where each item is {"source_index":number,"attribute_id":number,"reasons":[string]}.

@@ -1,22 +1,16 @@
 package listingkit
 
-import "strings"
+import listinggeneration "task-processor/internal/listingkit/generation"
 
 func buildGenerationReviewReadDeltaToken(session *GenerationReviewSession) string {
 	return buildGenerationReviewDeltaToken(session)
 }
 
 func isGenerationReviewReadNotModified(query *GenerationQueueQuery, currentToken string) bool {
-	if query == nil || strings.TrimSpace(currentToken) == "" {
+	if query == nil {
 		return false
 	}
-	if token := strings.TrimSpace(query.DeltaToken); token != "" && token == currentToken {
-		return true
-	}
-	if token := strings.TrimSpace(query.IfMatch); token != "" && token == currentToken {
-		return true
-	}
-	return false
+	return listinggeneration.IsReadNotModified(query.DeltaToken, query.IfMatch, currentToken)
 }
 
 func buildGenerationReviewSessionBaseQuery(query *GenerationQueueQuery) *GenerationQueueQuery {

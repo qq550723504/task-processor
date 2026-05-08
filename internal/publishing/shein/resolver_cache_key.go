@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -20,7 +20,7 @@ func shortResolutionCacheKey(key string) string {
 	return key[:12]
 }
 
-func categoryResolverCacheKey(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func categoryResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
 	payload := map[string]any{
 		"version":          2,
 		"store_id":         sheinStoreID(req),
@@ -44,7 +44,7 @@ func attributeResolverCacheKey(req *BuildRequest, pkg *Package) string {
 	return hashCachePayload(payload)
 }
 
-func saleAttributeResolverCacheKey(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func saleAttributeResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
 	if categoryID(pkg) == 0 {
 		return ""
 	}
@@ -73,7 +73,7 @@ func shouldCacheSaleAttributeResolution(resolution *SaleAttributeResolution) boo
 	return resolution.PrimaryAttributeID > 0 || resolution.SecondaryAttributeID > 0 || len(resolution.SKCAttributes) > 0 || len(resolution.SKUAttributes) > 0
 }
 
-func normalizedSourceDimensions(canonical *productenrich.CanonicalProduct) []string {
+func normalizedSourceDimensions(canonical *canonical.Product) []string {
 	dimensions := buildSourceVariantDimensions(canonical, common.BuildVariants(canonical))
 	if len(dimensions) == 0 {
 		return nil
@@ -98,7 +98,7 @@ func normalizedSourceDimensions(canonical *productenrich.CanonicalProduct) []str
 	return result
 }
 
-func normalizedSourceCategoryPath(canonical *productenrich.CanonicalProduct, pkg *Package) []string {
+func normalizedSourceCategoryPath(canonical *canonical.Product, pkg *Package) []string {
 	var path []string
 	if canonical != nil && len(canonical.CategoryPath) > 0 {
 		path = canonical.CategoryPath
@@ -115,7 +115,7 @@ func normalizedSourceCategoryPath(canonical *productenrich.CanonicalProduct, pkg
 	return result
 }
 
-func stableProductIdentity(canonical *productenrich.CanonicalProduct, pkg *Package) []string {
+func stableProductIdentity(canonical *canonical.Product, pkg *Package) []string {
 	values := make([]string, 0, 6)
 	if canonical != nil {
 		values = append(values, canonical.Title)

@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 func buildGenerationReviewTarget(platform, slot, capability string) *GenerationReviewTarget {
 	actionKey := reviewActionKeyForCapability(capability)
 	sectionKey := generationReviewSectionKey(capability)
@@ -25,62 +27,17 @@ func buildGenerationReviewTarget(platform, slot, capability string) *GenerationR
 }
 
 func generationReviewFocusKey(platform, slot, capability string) string {
-	out := platform
-	if slot != "" {
-		if out != "" {
-			out += ":"
-		}
-		out += slot
-	}
-	if capability != "" {
-		if out != "" {
-			out += ":"
-		}
-		out += capability
-	}
-	return out
+	return listinggeneration.ReviewFocusKey(platform, slot, capability)
 }
 
 func reviewActionKeyForCapability(capability string) string {
-	if spec := previewCapabilityActionSpecForKey(capabilityActionKey(capability)); spec != nil {
-		return spec.ActionKey
-	}
-	switch capability {
-	case "detail_preview":
-		return assetGenerationActionReviewDetailPreviews
-	case "measurement_preview":
-		return assetGenerationActionReviewMeasurementPreviews
-	case "badge_preview":
-		return assetGenerationActionReviewBadgePreviews
-	case "copy_preview":
-		return assetGenerationActionReviewCopyPreviews
-	case "subject_preview":
-		return assetGenerationActionReviewSubjectPreviews
-	default:
-		return assetGenerationActionReviewReadyAssets
-	}
+	return listinggeneration.ReviewActionKeyForCapability(capability)
 }
 
 func capabilityActionKey(capability string) string {
-	switch capability {
-	case "detail_preview":
-		return assetGenerationActionReviewDetailPreviews
-	case "measurement_preview":
-		return assetGenerationActionReviewMeasurementPreviews
-	case "badge_preview":
-		return assetGenerationActionReviewBadgePreviews
-	case "copy_preview":
-		return assetGenerationActionReviewCopyPreviews
-	case "subject_preview":
-		return assetGenerationActionReviewSubjectPreviews
-	default:
-		return ""
-	}
+	return listinggeneration.CapabilityActionKey(capability)
 }
 
 func reviewActionLabelForCapability(capability string) string {
-	if spec := previewCapabilityActionSpecForKey(capabilityActionKey(capability)); spec != nil {
-		return spec.Label
-	}
-	return "Review Previews"
+	return listinggeneration.ReviewActionLabelForCapability(capability)
 }

@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"task-processor/internal/amazonlisting"
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -48,7 +48,7 @@ func (s *scriptedListingKitLLM) GetDefaultModel() string {
 	return "test"
 }
 
-func (stubAmazonDraftBuilder) Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
+func (stubAmazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
 	return &amazonlisting.AmazonListingDraft{
 		Marketplace: "amazon",
 		Title:       canonical.Title,
@@ -102,38 +102,38 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 		},
 	}
 
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:         "Wireless Earbuds",
 		Brand:         "Acme",
 		CategoryPath:  []string{"Electronics", "Headphones"},
 		Description:   "Noise cancelling earbuds",
 		SellingPoints: []string{"ANC", "Bluetooth 5.3"},
-		Specifications: &productenrich.ProductSpecs{
-			Dimensions: &productenrich.Dimensions{
+		Specifications: &canonical.ProductSpecs{
+			Dimensions: &canonical.Dimensions{
 				Length: 12.5,
 				Width:  8.2,
 				Height: 4.1,
 				Unit:   "cm",
 			},
-			Weight: &productenrich.Weight{
+			Weight: &canonical.Weight{
 				Value: 0.35,
 				Unit:  "kg",
 			},
 		},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"color": {Value: "Black"},
 		},
-		Images: []productenrich.CanonicalImage{
+		Images: []canonical.Image{
 			{URL: "https://example.com/source-main.jpg"},
 			{URL: "https://example.com/source-2.jpg"},
 		},
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU: "SKU-1",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"color": {Value: "Black"},
 				},
-				Price: &productenrich.PriceInfo{
+				Price: &canonical.PriceInfo{
 					Currency:  "USD",
 					Amount:    29.99,
 					CostPrice: 10.50,
@@ -335,24 +335,24 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 		},
 	}
 
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "Wireless Earbuds",
 		CategoryPath: []string{"Electronics", "Headphones"},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"color": {Value: "Black"},
 			"size":  {Value: "M"},
 		},
-		Images: []productenrich.CanonicalImage{
+		Images: []canonical.Image{
 			{URL: "https://example.com/source-main.jpg"},
 		},
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU: "SKU-1",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"color": {Value: "Black"},
 					"size":  {Value: "M"},
 				},
-				Price: &productenrich.PriceInfo{
+				Price: &canonical.PriceInfo{
 					Currency: "USD",
 					Amount:   29.99,
 				},
@@ -443,8 +443,8 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 func TestBuildPlatformImagesFallsBackToCanonicalImages(t *testing.T) {
 	t.Parallel()
 
-	canonical := &productenrich.CanonicalProduct{
-		Images: []productenrich.CanonicalImage{
+	canonical := &canonical.Product{
+		Images: []canonical.Image{
 			{URL: "https://example.com/1.jpg"},
 			{URL: "https://example.com/2.jpg"},
 		},
@@ -472,7 +472,7 @@ func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 		Language:  "en_US",
 		Platforms: []string{"shein"},
 	}
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title:        "Wireless Earbuds",
 		CategoryPath: []string{"Electronics", "Headphones"},
 	}
@@ -503,7 +503,7 @@ func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 		Language:  "en_US",
 		Platforms: []string{"shein"},
 	}
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Wireless Earbuds",
 	}
 	pkg := &SheinPackage{
@@ -535,7 +535,7 @@ func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) 
 		Language:  "en_US",
 		Platforms: []string{"shein"},
 	}
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Wireless Earbuds",
 	}
 	pkg := &SheinPackage{

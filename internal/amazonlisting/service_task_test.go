@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestCreateGenerateTask_RejectsTextOnlyRequest(t *testing.T) {
@@ -150,12 +150,12 @@ func TestReviewTask_ApplyEditsClearsMatchingReviewItems(t *testing.T) {
 			Images:       &AmazonImageBundle{MainImage: "https://example.com/main.jpg", WhiteBgImage: "https://example.com/white.jpg", GalleryImages: []string{"https://example.com/gallery.jpg"}},
 			Pricing:      &AmazonPricingDraft{Currency: "USD"},
 			Variants:     []AmazonVariantDraft{{SKU: "SKU-1", IsDefault: true}},
-			CanonicalProduct: &productenrich.CanonicalProduct{
+			CanonicalProduct: &canonical.Product{
 				Title:        "Short title",
 				Description:  "This is a sufficiently long description for review edits test.",
 				CategoryPath: []string{"Home", "Kitchen"},
-				Attributes:   map[string]productenrich.CanonicalAttribute{"brand": {Value: "", Trace: productenrich.FieldTrace{NeedsReview: true}}},
-				FieldTraces:  map[string]productenrich.FieldTrace{"brand": {NeedsReview: true}},
+				Attributes:   map[string]canonical.Attribute{"brand": {Value: "", Trace: canonical.FieldTrace{NeedsReview: true}}},
+				FieldTraces:  map[string]canonical.FieldTrace{"brand": {NeedsReview: true}},
 				NeedsReview:  true,
 			},
 			ReviewItems: []AmazonReviewItem{
@@ -230,9 +230,9 @@ func TestReviewTask_ApplyEditsCanCompleteTask(t *testing.T) {
 			Images:       &AmazonImageBundle{},
 			Pricing:      &AmazonPricingDraft{},
 			Variants:     []AmazonVariantDraft{{SKU: "SKU-1", IsDefault: true}},
-			CanonicalProduct: &productenrich.CanonicalProduct{
-				Attributes:  map[string]productenrich.CanonicalAttribute{},
-				FieldTraces: map[string]productenrich.FieldTrace{},
+			CanonicalProduct: &canonical.Product{
+				Attributes:  map[string]canonical.Attribute{},
+				FieldTraces: map[string]canonical.FieldTrace{},
 				NeedsReview: true,
 			},
 			ReviewItems: []AmazonReviewItem{
@@ -318,16 +318,16 @@ func TestReviewTask_ApplyAttributeEditUpdatesCanonicalAndClearsAttributeReviewIt
 			Variants: []AmazonVariantDraft{
 				{SKU: "SKU-1", IsDefault: true},
 			},
-			CanonicalProduct: &productenrich.CanonicalProduct{
+			CanonicalProduct: &canonical.Product{
 				Title:        "SoundPeak Headphones",
 				Brand:        "SoundPeak",
 				Description:  "Noise cancelling bluetooth headphones with long battery life.",
 				CategoryPath: []string{"Electronics", "Headphones"},
-				Attributes: map[string]productenrich.CanonicalAttribute{
-					"material": {Value: "unknown", Trace: productenrich.FieldTrace{NeedsReview: true, Confidence: 0.4}},
-					"brand":    {Value: "SoundPeak", Trace: productenrich.FieldTrace{Confidence: 1}},
+				Attributes: map[string]canonical.Attribute{
+					"material": {Value: "unknown", Trace: canonical.FieldTrace{NeedsReview: true, Confidence: 0.4}},
+					"brand":    {Value: "SoundPeak", Trace: canonical.FieldTrace{Confidence: 1}},
 				},
-				FieldTraces: map[string]productenrich.FieldTrace{
+				FieldTraces: map[string]canonical.FieldTrace{
 					"title":         {Confidence: 1},
 					"brand":         {Confidence: 1},
 					"description":   {Confidence: 1},
@@ -421,18 +421,18 @@ func TestReviewTask_ApplySpecificationEditsUpdateCanonicalAndDraft(t *testing.T)
 			Dimensions: &AmazonDimensions{},
 			Weight:     &AmazonWeight{},
 			Variants:   []AmazonVariantDraft{{SKU: "SKU-1", IsDefault: true}},
-			CanonicalProduct: &productenrich.CanonicalProduct{
+			CanonicalProduct: &canonical.Product{
 				Title:        "SoundPeak Headphones",
 				Brand:        "SoundPeak",
 				Description:  "Noise cancelling bluetooth headphones with long battery life.",
 				CategoryPath: []string{"Electronics", "Headphones"},
-				Attributes: map[string]productenrich.CanonicalAttribute{
-					"brand": {Value: "SoundPeak", Trace: productenrich.FieldTrace{Confidence: 1}},
+				Attributes: map[string]canonical.Attribute{
+					"brand": {Value: "SoundPeak", Trace: canonical.FieldTrace{Confidence: 1}},
 				},
-				Specifications: &productenrich.ProductSpecs{
+				Specifications: &canonical.ProductSpecs{
 					Technical: map[string]string{"material": "unknown"},
 				},
-				FieldTraces: map[string]productenrich.FieldTrace{
+				FieldTraces: map[string]canonical.FieldTrace{
 					"title":          {Confidence: 1},
 					"brand":          {Confidence: 1},
 					"description":    {Confidence: 1},
@@ -551,26 +551,26 @@ func TestReviewTask_ApplyPackageAndVariantEditsUpdateCanonicalAndDraft(t *testin
 					IsDefault: false,
 				},
 			},
-			CanonicalProduct: &productenrich.CanonicalProduct{
+			CanonicalProduct: &canonical.Product{
 				Title:        "SoundPeak Headphones",
 				Brand:        "SoundPeak",
 				Description:  "Noise cancelling bluetooth headphones with long battery life.",
 				CategoryPath: []string{"Electronics", "Headphones"},
-				Attributes: map[string]productenrich.CanonicalAttribute{
-					"brand": {Value: "SoundPeak", Trace: productenrich.FieldTrace{Confidence: 1}},
+				Attributes: map[string]canonical.Attribute{
+					"brand": {Value: "SoundPeak", Trace: canonical.FieldTrace{Confidence: 1}},
 				},
-				Specifications: &productenrich.ProductSpecs{
-					Package: &productenrich.PackageInfo{},
+				Specifications: &canonical.ProductSpecs{
+					Package: &canonical.PackageInfo{},
 				},
-				Variants: []productenrich.CanonicalVariant{
+				Variants: []canonical.Variant{
 					{
-						Attributes: map[string]productenrich.CanonicalAttribute{
-							"color": {Value: "unknown", Trace: productenrich.FieldTrace{NeedsReview: true, Confidence: 0.4}},
+						Attributes: map[string]canonical.Attribute{
+							"color": {Value: "unknown", Trace: canonical.FieldTrace{NeedsReview: true, Confidence: 0.4}},
 						},
-						Trace: productenrich.FieldTrace{NeedsReview: true, Confidence: 0.4},
+						Trace: canonical.FieldTrace{NeedsReview: true, Confidence: 0.4},
 					},
 				},
-				FieldTraces: map[string]productenrich.FieldTrace{
+				FieldTraces: map[string]canonical.FieldTrace{
 					"title":          {Confidence: 1},
 					"brand":          {Confidence: 1},
 					"description":    {Confidence: 1},

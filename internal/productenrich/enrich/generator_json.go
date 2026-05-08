@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 
 	"github.com/sirupsen/logrus"
@@ -40,7 +41,7 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *productenric
 		}
 	}
 	if len(productJSON.VariantDimensions) == 0 && analysis.ScrapedData != nil && len(analysis.ScrapedData.VariantDimensions) > 0 {
-		productJSON.VariantDimensions = append([]productenrich.ScrapedVariantDimension(nil), analysis.ScrapedData.VariantDimensions...)
+		productJSON.VariantDimensions = append([]canonical.ScrapedVariantDimension(nil), analysis.ScrapedData.VariantDimensions...)
 	}
 	applySourceBackedAttributes(productJSON, analysis)
 
@@ -129,7 +130,7 @@ func (g *jsonGenerator) fallbackFromAnalysis(analysis *productenrich.ProductAnal
 			}
 		}
 		if len(result.VariantDimensions) == 0 && len(analysis.ScrapedData.VariantDimensions) > 0 {
-			result.VariantDimensions = append([]productenrich.ScrapedVariantDimension(nil), analysis.ScrapedData.VariantDimensions...)
+			result.VariantDimensions = append([]canonical.ScrapedVariantDimension(nil), analysis.ScrapedData.VariantDimensions...)
 		}
 		for k, v := range analysis.ScrapedData.Specs {
 			if _, exists := result.Attributes[k]; !exists {

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/productenrich"
 )
 
 type MemTaskRepository struct {
@@ -213,7 +213,7 @@ func (r *MemTaskRepository) MutateTaskResult(_ context.Context, taskID string, m
 	return &copied, nil
 }
 
-func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerprint string) (*productenrich.CanonicalProduct, error) {
+func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerprint string) (*canonical.Product, error) {
 	if fingerprint == "" {
 		return nil, nil
 	}
@@ -229,7 +229,7 @@ func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerpr
 	return entry.CanonicalProduct()
 }
 
-func (r *MemTaskRepository) SaveCanonicalProductCache(_ context.Context, fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) error {
+func (r *MemTaskRepository) SaveCanonicalProductCache(_ context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
 	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
 	if err != nil {
 		return err

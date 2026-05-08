@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 )
 
 type stubTitleAIClient struct {
@@ -34,9 +34,9 @@ func (s stubTitleAIClient) GetDefaultModel() string {
 }
 
 func TestBuildSheinListingCopyKeepsStructuredEnglishTitle(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Flannel Non-slip Floor Mat"},
 		},
 	}
@@ -51,9 +51,9 @@ func TestBuildSheinListingCopyKeepsStructuredEnglishTitle(t *testing.T) {
 }
 
 func TestBuildSheinListingCopySanitizesPromptLikeTitleWithRules(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Flannel non-slip floor mat - Please design an image that can be printed on my non-slip floor mat. The image should include suitable English text and graphics, and the graphics and text should have a 3D visual effect. Please ensure it does not infringe on copyright. 3000 pixels * 2"},
 		},
 	}
@@ -71,9 +71,9 @@ func TestBuildSheinListingCopySanitizesPromptLikeTitleWithRules(t *testing.T) {
 }
 
 func TestBuildSheinListingCopyUsesLLMWhenRuleExtractionCannotRecover(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Please design an image for my floor mat with floral artwork and inspirational text, 3000 pixels"},
 		},
 	}
@@ -90,9 +90,9 @@ func TestBuildSheinListingCopyUsesLLMWhenRuleExtractionCannotRecover(t *testing.
 }
 
 func TestBuildSheinListingCopyFallsBackWhenLLMReturnsPromptLikeTitle(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Please design an image for my floor mat with floral artwork and inspirational text, 3000 pixels"},
 			"material":             {Value: "polyester"},
 		},
@@ -113,14 +113,14 @@ func TestBuildSheinListingCopyFallsBackWhenLLMReturnsPromptLikeTitle(t *testing.
 }
 
 func TestBuildSheinListingCopyEnrichesShortStructuredTitleWithLLMAddition(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Door curtain",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Door curtain"},
 			"picture_request":      {Value: "Please design a door curtain print with a rock style graphic theme and dramatic lettering, 2277 x 4500px"},
 		},
-		Variants: []productenrich.CanonicalVariant{{
-			Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{{
+			Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Please design a door curtain print with a rock style graphic theme and dramatic lettering, 2277 x 4500px"},
 			},
 		}},
@@ -141,9 +141,9 @@ func TestBuildSheinListingCopyEnrichesShortStructuredTitleWithLLMAddition(t *tes
 }
 
 func TestBuildSheinListingCopyKeepsLongStructuredTitleWithoutLLMAddition(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Flannel Non-slip Floor Mat"},
 			"picture_request":      {Value: "Please design a floral print with inspirational words, 3000 pixels"},
 		},
@@ -158,14 +158,14 @@ func TestBuildSheinListingCopyKeepsLongStructuredTitleWithoutLLMAddition(t *test
 }
 
 func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Door curtain",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Door curtain"},
 			"picture_request":      {Value: "2277 px * 4500 px"},
 		},
-		Variants: []productenrich.CanonicalVariant{{
-			Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{{
+			Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "帮我设计一个印在门帘上的图案，图案要有英文跟图案，元素多样，图片有3d视觉效果，摇滚风格，2277 × 4500px"},
 			},
 		}},

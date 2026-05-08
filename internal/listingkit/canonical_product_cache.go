@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 )
 
@@ -27,9 +28,9 @@ func (CanonicalProductCacheEntry) TableName() string {
 	return "listing_kit_canonical_product_cache"
 }
 
-type CanonicalProductCachePayload productenrich.CanonicalProduct
+type CanonicalProductCachePayload canonical.Product
 
-func NewCanonicalProductCacheEntry(fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) (*CanonicalProductCacheEntry, error) {
+func NewCanonicalProductCacheEntry(fingerprint string, product *canonical.Product, sourceTaskID string) (*CanonicalProductCacheEntry, error) {
 	if strings.TrimSpace(fingerprint) == "" {
 		return nil, fmt.Errorf("fingerprint cannot be empty")
 	}
@@ -44,14 +45,14 @@ func NewCanonicalProductCacheEntry(fingerprint string, product *productenrich.Ca
 	}, nil
 }
 
-func (e *CanonicalProductCacheEntry) CanonicalProduct() (*productenrich.CanonicalProduct, error) {
+func (e *CanonicalProductCacheEntry) CanonicalProduct() (*canonical.Product, error) {
 	if e == nil || e.Product == nil {
 		return nil, nil
 	}
 	return e.Product.CanonicalProduct()
 }
 
-func newCanonicalProductCachePayload(product *productenrich.CanonicalProduct) (*CanonicalProductCachePayload, error) {
+func newCanonicalProductCachePayload(product *canonical.Product) (*CanonicalProductCachePayload, error) {
 	if product == nil {
 		return nil, fmt.Errorf("canonical product cannot be nil")
 	}
@@ -83,7 +84,7 @@ func (p *CanonicalProductCachePayload) Scan(value any) error {
 	return json.Unmarshal(b, p)
 }
 
-func (p *CanonicalProductCachePayload) CanonicalProduct() (*productenrich.CanonicalProduct, error) {
+func (p *CanonicalProductCachePayload) CanonicalProduct() (*canonical.Product, error) {
 	if p == nil {
 		return nil, nil
 	}
@@ -91,7 +92,7 @@ func (p *CanonicalProductCachePayload) CanonicalProduct() (*productenrich.Canoni
 	if err != nil {
 		return nil, err
 	}
-	var product productenrich.CanonicalProduct
+	var product canonical.Product
 	if err := json.Unmarshal(raw, &product); err != nil {
 		return nil, err
 	}
@@ -142,7 +143,7 @@ func normalizedFingerprintStrings(values []string) []string {
 	return out
 }
 
-func (s *service) getCachedCanonicalProduct(ctx context.Context, task *Task) (*productenrich.CanonicalProduct, bool, error) {
+func (s *service) getCachedCanonicalProduct(ctx context.Context, task *Task) (*canonical.Product, bool, error) {
 	cacheRepo, ok := s.repo.(CanonicalProductCacheRepository)
 	if !ok {
 		return nil, false, nil
@@ -161,7 +162,7 @@ func (s *service) getCachedCanonicalProduct(ctx context.Context, task *Task) (*p
 	return product, true, nil
 }
 
-func (s *service) saveCanonicalProductCache(ctx context.Context, task *Task, product *productenrich.CanonicalProduct) error {
+func (s *service) saveCanonicalProductCache(ctx context.Context, task *Task, product *canonical.Product) error {
 	cacheRepo, ok := s.repo.(CanonicalProductCacheRepository)
 	if !ok || product == nil {
 		return nil

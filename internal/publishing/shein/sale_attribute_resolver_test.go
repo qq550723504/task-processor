@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
@@ -38,22 +38,22 @@ func (s *stubSequentialSaleLLM) GetDefaultModel() string {
 }
 
 func TestSaleAttributeResolverKeepsChosenSourceDimensionOrder(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"红色", "蓝色"}},
 			{Name: "尺码", Values: []string{"42", "43"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU: "SKU-RED-42",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"颜色": {Value: "红色"},
 					"尺码": {Value: "42"},
 				},
 			},
 			{
 				SKU: "SKU-BLUE-43",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"颜色": {Value: "蓝色"},
 					"尺码": {Value: "43"},
 				},
@@ -126,14 +126,14 @@ func TestSaleAttributeResolverKeepsChosenSourceDimensionOrder(t *testing.T) {
 }
 
 func TestSaleAttributeResolverDoesNotMapMismatchedSourceToFirstTemplateAttribute(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"白色"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU: "SKU-WHITE",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"颜色": {Value: "白色"},
 				},
 			},
@@ -185,13 +185,13 @@ func TestSaleAttributeResolverDoesNotMapMismatchedSourceToFirstTemplateAttribute
 }
 
 func TestSaleAttributeResolverPrefersPrimaryLabeledAttributeOverEarlierSecondaryAttribute(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
 			{Name: "颜色", Values: []string{"白色"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-WHITE", Attributes: map[string]productenrich.CanonicalAttribute{"ai_style": {Value: "Blue Dog Graphic"}, "颜色": {Value: "白色"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE", Attributes: map[string]canonical.Attribute{"ai_style": {Value: "Blue Dog Graphic"}, "颜色": {Value: "白色"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 3105, SpuName: "Wall Clock"}
@@ -244,13 +244,13 @@ func TestSaleAttributeResolverPrefersPrimaryLabeledAttributeOverEarlierSecondary
 }
 
 func TestSaleAttributeResolverPrefersCustomFirstTemplateSaleAttribute(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
 			{Name: "颜色", Values: []string{"白色"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-WHITE", Attributes: map[string]productenrich.CanonicalAttribute{"ai_style": {Value: "Blue Dog Graphic"}, "颜色": {Value: "白色"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE", Attributes: map[string]canonical.Attribute{"ai_style": {Value: "Blue Dog Graphic"}, "颜色": {Value: "白色"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 3105, SpuName: "Wall Clock"}
@@ -313,13 +313,13 @@ func TestSaleAttributeResolverPrefersCustomFirstTemplateSaleAttribute(t *testing
 }
 
 func TestSaleAttributeResolverKeepsFirstStyleTemplateWhenFixedValuesDoNotFit(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
 			{Name: "颜色", Values: []string{"白色"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-WHITE", Attributes: map[string]productenrich.CanonicalAttribute{"ai_style": {Value: "Blue Dog Graphic"}, "颜色": {Value: "白色"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE", Attributes: map[string]canonical.Attribute{"ai_style": {Value: "Blue Dog Graphic"}, "颜色": {Value: "白色"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 3105, SpuName: "Wall Clock"}
@@ -381,14 +381,14 @@ func TestSaleAttributeResolverKeepsFirstStyleTemplateWhenFixedValuesDoNotFit(t *
 }
 
 func TestSaleAttributeResolverUsesAIStyleForPrimaryStyleTypeWithoutMisusingColor(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
 			{Name: "Color", Values: []string{"White"}},
 			{Name: "Size", Values: []string{"10x10in"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-WHITE", Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Blue Dog Graphic"},
 				"Color":    {Value: "White"},
 				"Size":     {Value: "10x10in"},
@@ -470,18 +470,106 @@ func TestSaleAttributeResolverUsesAIStyleForPrimaryStyleTypeWithoutMisusingColor
 	}
 }
 
+func TestSaleAttributeResolverUsesLLMToMapColorAsRequiredStyleSurrogate(t *testing.T) {
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "ai_style", Values: []string{"Please design a lazy mood floor mat artwork with text and 3D effect"}},
+			{Name: "Color", Values: []string{"White"}},
+			{Name: "Size", Values: []string{"40x60cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{
+				"ai_style": {Value: "Please design a lazy mood floor mat artwork with text and 3D effect"},
+				"Color":    {Value: "White"},
+				"Size":     {Value: "40x60cm"},
+			}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	llm := &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"ai_style","secondary_source_dimension":"Size","reasons":["source fallback"]}`,
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","primary_attribute_id":1001184,"secondary_attribute_id":87,"reasons":["Style Type is required by the platform; Color is the safest stable SDS grouping surrogate."]}`,
+	}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "现代款", AttributeValueEn: "Modern"},
+						},
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeID != 1001184 {
+				t.Fatalf("custom validation attribute id = %d, want Style Type", attributeID)
+			}
+			if attributeValue != "White" {
+				t.Fatalf("custom validation value = %q, want SDS color", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
+	}
+	if resolution.Source != "llm_sale_attribute_mapping" {
+		t.Fatalf("source = %q, want llm_sale_attribute_mapping", resolution.Source)
+	}
+	if resolution.PrimaryAttributeID != 1001184 || resolution.PrimarySourceDimension != "Color" {
+		t.Fatalf("primary = %d/%q, want Style Type from Color", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
+	}
+	if resolution.SecondaryAttributeID != 87 || resolution.SecondarySourceDimension != "Size" {
+		t.Fatalf("secondary = %d/%q, want Size", resolution.SecondaryAttributeID, resolution.SecondarySourceDimension)
+	}
+	if assignment := resolution.skcValueAssignments[normalizeText("White")]; assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9001 {
+		t.Fatalf("color assignment = %+v, want custom value 9001", assignment)
+	}
+}
+
 func TestSaleAttributeResolverSanitizesPromptLikeStyleTypeValueWithRules(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"}},
 			{Name: "Size", Values: []string{"40x60cm", "50x80cm"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-40", Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{
+			{SKU: "SKU-40", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"},
 				"Size":     {Value: "40x60cm"},
 			}},
-			{SKU: "SKU-50", Attributes: map[string]productenrich.CanonicalAttribute{
+			{SKU: "SKU-50", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"},
 				"Size":     {Value: "50x80cm"},
 			}},
@@ -552,17 +640,17 @@ func TestSaleAttributeResolverSanitizesPromptLikeStyleTypeValueWithRules(t *test
 }
 
 func TestSaleAttributeResolverUsesLLMToSanitizePromptLikeStyleTypeValue(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."}},
 			{Name: "Size", Values: []string{"10x10in", "12x12in"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-10", Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{
+			{SKU: "SKU-10", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."},
 				"Size":     {Value: "10x10in"},
 			}},
-			{SKU: "SKU-12", Attributes: map[string]productenrich.CanonicalAttribute{
+			{SKU: "SKU-12", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."},
 				"Size":     {Value: "12x12in"},
 			}},
@@ -628,17 +716,17 @@ func TestSaleAttributeResolverUsesLLMToSanitizePromptLikeStyleTypeValue(t *testi
 }
 
 func TestSaleAttributeResolverRequiresManualReviewWhenLLMReturnsPromptLikeText(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."}},
 			{Name: "Size", Values: []string{"One size", "Travel size"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-1", Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{
+			{SKU: "SKU-1", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."},
 				"Size":     {Value: "One size"},
 			}},
-			{SKU: "SKU-2", Attributes: map[string]productenrich.CanonicalAttribute{
+			{SKU: "SKU-2", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."},
 				"Size":     {Value: "Travel size"},
 			}},
@@ -688,14 +776,14 @@ func TestSaleAttributeResolverRequiresManualReviewWhenLLMReturnsPromptLikeText(t
 }
 
 func TestSaleAttributeResolverKeepsClothingColorPrimaryOverAIStyle(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
 			{Name: "Color", Values: []string{"White"}},
 			{Name: "Size", Values: []string{"M"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-WHITE-M", Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-M", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "Blue Dog Graphic"},
 				"Color":    {Value: "White"},
 				"Size":     {Value: "M"},
@@ -744,16 +832,16 @@ func TestSaleAttributeResolverKeepsClothingColorPrimaryOverAIStyle(t *testing.T)
 }
 
 func TestSaleAttributeResolverPromotesRequiredMultiValueColorOverEarlierStyleType(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Denim cap graphic"}},
 			{Name: "Color", Values: []string{"Washed Black", "Sand colored", "Carbon Gray"}},
 			{Name: "Size", Values: []string{"One size"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-BLK", Attributes: map[string]productenrich.CanonicalAttribute{"ai_style": {Value: "Denim cap graphic"}, "Color": {Value: "Washed Black"}, "Size": {Value: "One size"}}},
-			{SKU: "SKU-SAND", Attributes: map[string]productenrich.CanonicalAttribute{"ai_style": {Value: "Denim cap graphic"}, "Color": {Value: "Sand colored"}, "Size": {Value: "One size"}}},
-			{SKU: "SKU-GRY", Attributes: map[string]productenrich.CanonicalAttribute{"ai_style": {Value: "Denim cap graphic"}, "Color": {Value: "Carbon Gray"}, "Size": {Value: "One size"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-BLK", Attributes: map[string]canonical.Attribute{"ai_style": {Value: "Denim cap graphic"}, "Color": {Value: "Washed Black"}, "Size": {Value: "One size"}}},
+			{SKU: "SKU-SAND", Attributes: map[string]canonical.Attribute{"ai_style": {Value: "Denim cap graphic"}, "Color": {Value: "Sand colored"}, "Size": {Value: "One size"}}},
+			{SKU: "SKU-GRY", Attributes: map[string]canonical.Attribute{"ai_style": {Value: "Denim cap graphic"}, "Color": {Value: "Carbon Gray"}, "Size": {Value: "One size"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 1772, SpuName: "Washed denim hat"}
@@ -805,14 +893,14 @@ func TestSaleAttributeResolverPromotesRequiredMultiValueColorOverEarlierStyleTyp
 }
 
 func TestSaleAttributeResolverPromotesImportantSingleColorOverEarlierAIStyleType(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"National flag graphic"}},
 			{Name: "Color", Values: []string{"Black"}},
 			{Name: "Size", Values: []string{"One size"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-BLK", Attributes: map[string]productenrich.CanonicalAttribute{
+		Variants: []canonical.Variant{
+			{SKU: "SKU-BLK", Attributes: map[string]canonical.Attribute{
 				"ai_style": {Value: "National flag graphic"},
 				"Color":    {Value: "Black"},
 				"Size":     {Value: "One size"},
@@ -876,13 +964,13 @@ func TestSaleAttributeResolverPromotesImportantSingleColorOverEarlierAIStyleType
 }
 
 func TestSaleAttributeResolverSkipsTechnicalSourceDimensions(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "source_sds_sku", Values: []string{"MG17701062001"}},
 			{Name: "颜色", Values: []string{"白色"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-WHITE", Attributes: map[string]productenrich.CanonicalAttribute{"source_sds_sku": {Value: "MG17701062001"}, "颜色": {Value: "白色"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE", Attributes: map[string]canonical.Attribute{"source_sds_sku": {Value: "MG17701062001"}, "颜色": {Value: "白色"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 3105}
@@ -939,20 +1027,20 @@ func TestTechnicalSaleSourceDimensionRecognizesNormalizedNames(t *testing.T) {
 }
 
 func TestSaleAttributeResolverMarksPartialWhenValueAssignmentsDoNotResolve(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"一桌四椅套装", "月亮椅-矮椅"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
+		Variants: []canonical.Variant{
 			{
 				SKU: "SKU-SET",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"颜色": {Value: "一桌四椅套装"},
 				},
 			},
 			{
 				SKU: "SKU-CHAIR",
-				Attributes: map[string]productenrich.CanonicalAttribute{
+				Attributes: map[string]canonical.Attribute{
 					"颜色": {Value: "月亮椅-矮椅"},
 				},
 			},
@@ -993,13 +1081,13 @@ func TestSaleAttributeResolverMarksPartialWhenValueAssignmentsDoNotResolve(t *te
 }
 
 func TestSaleAttributeResolverRejectsTemplateCandidateWithZeroValueFit(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"一桌四椅套装", "月亮椅-矮椅", "月亮椅-高椅", "超轻折叠桌"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-1", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "一桌四椅套装"}}},
-			{SKU: "SKU-2", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "月亮椅-矮椅"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-1", Attributes: map[string]canonical.Attribute{"颜色": {Value: "一桌四椅套装"}}},
+			{SKU: "SKU-2", Attributes: map[string]canonical.Attribute{"颜色": {Value: "月亮椅-矮椅"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 12143}
@@ -1065,14 +1153,14 @@ func TestSaleAttributeResolverRejectsTemplateCandidateWithZeroValueFit(t *testin
 }
 
 func TestSaleAttributeResolverAllowsGenericSecondaryCandidateWithZeroValueFitForCustomValues(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "Color", Values: []string{"white"}},
 			{Name: "Size", Values: []string{`30"×40"`, `40"×50"`}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-30", Attributes: map[string]productenrich.CanonicalAttribute{"Color": {Value: "white"}, "Size": {Value: `30"×40"`}}},
-			{SKU: "SKU-40", Attributes: map[string]productenrich.CanonicalAttribute{"Color": {Value: "white"}, "Size": {Value: `40"×50"`}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-30", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: `30"×40"`}}},
+			{SKU: "SKU-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: `40"×50"`}}},
 		},
 	}
 	pkg := &Package{CategoryID: 3086, SpuName: "Blanket cover"}
@@ -1164,13 +1252,13 @@ func TestSaleAttributeResolverAllowsGenericSecondaryCandidateWithZeroValueFitFor
 }
 
 func TestSaleAttributeResolverDoesNotSelectMismatchedStyleCandidateWhenColorHasZeroFit(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"月亮椅-高椅", "月亮椅-矮椅"}},
 		},
-		Variants: []productenrich.CanonicalVariant{
-			{SKU: "SKU-HIGH", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "月亮椅-高椅"}}},
-			{SKU: "SKU-LOW", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "月亮椅-矮椅"}}},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-HIGH", Attributes: map[string]canonical.Attribute{"颜色": {Value: "月亮椅-高椅"}}},
+			{SKU: "SKU-LOW", Attributes: map[string]canonical.Attribute{"颜色": {Value: "月亮椅-矮椅"}}},
 		},
 	}
 	pkg := &Package{CategoryID: 12143}

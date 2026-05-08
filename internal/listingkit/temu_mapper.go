@@ -3,11 +3,11 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
-func buildTemuPackage(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *TemuPackage {
+func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *TemuPackage {
 	if canonical == nil {
 		return &TemuPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}
@@ -62,7 +62,7 @@ func buildTemuSKCs(variants []PlatformVariant, images *PlatformImageSet) []TemuS
 	return result
 }
 
-func buildTemuBatchSKUInfo(variants []PlatformVariant, canonical *productenrich.CanonicalProduct) *TemuBatchSKUInfo {
+func buildTemuBatchSKUInfo(variants []PlatformVariant, canonical *canonical.Product) *TemuBatchSKUInfo {
 	if len(variants) == 0 {
 		return nil
 	}

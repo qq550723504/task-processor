@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/alibaba1688"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
@@ -72,19 +73,19 @@ func build1688Description(product *alibaba1688model.Product1688) string {
 	return sb.String()
 }
 
-func build1688VariantDimensions(values []alibaba1688model.VariationValue) []productenrich.ScrapedVariantDimension {
+func build1688VariantDimensions(values []alibaba1688model.VariationValue) []canonical.ScrapedVariantDimension {
 	if len(values) == 0 {
 		return nil
 	}
 
-	dimensions := make([]productenrich.ScrapedVariantDimension, 0, len(values))
+	dimensions := make([]canonical.ScrapedVariantDimension, 0, len(values))
 	for _, item := range values {
 		name := strings.TrimSpace(item.VariantName)
 		if name == "" {
 			continue
 		}
 
-		dimension := productenrich.ScrapedVariantDimension{Name: name}
+		dimension := canonical.ScrapedVariantDimension{Name: name}
 		seen := make(map[string]struct{}, len(item.Values))
 		for _, raw := range item.Values {
 			value := strings.TrimSpace(raw)
@@ -124,7 +125,7 @@ func build1688ScrapedVariants(product *alibaba1688model.Product1688) []producten
 		}
 		converted.SKU = buildScrapedVariantSKU(idx, converted.Attributes)
 		if variant.Price > 0 {
-			converted.Price = &productenrich.PriceInfo{
+			converted.Price = &canonical.PriceInfo{
 				Currency:  default1688Currency(product.Currency),
 				Amount:    variant.Price,
 				CostPrice: variant.Price,

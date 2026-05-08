@@ -10,6 +10,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/prompt"
 )
 
 type sourceDimensionSelection struct {
@@ -59,16 +60,19 @@ func selectSourceDimensionsWithLLM(dimensions []SourceVariantDimension, client o
 }
 
 func buildSourceDimensionSelectionPrompt(dimensions []SourceVariantDimension) string {
-	var builder strings.Builder
-	builder.WriteString("You are choosing source sales dimensions for SHEIN draft grouping.\n")
-	builder.WriteString("Choose exactly one primary_source_dimension for SKC grouping and optionally one secondary_source_dimension for SKU grouping.\n")
-	builder.WriteString("Do not rename source dimensions. Prefer the most product-defining dimension as primary.\n")
-	builder.WriteString("Return JSON only with keys primary_source_dimension, secondary_source_dimension, reasons.\n\n")
-	builder.WriteString("Source dimensions:\n")
+	var dimensionBuilder strings.Builder
 	for _, dimension := range dimensions {
-		builder.WriteString(fmt.Sprintf("- name=%q distinct=%d values=%q\n", dimension.Name, dimension.DistinctCount, strings.Join(dimension.Values, " | ")))
+		dimensionBuilder.WriteString(fmt.Sprintf("- name=%q distinct=%d values=%q\n", dimension.Name, dimension.DistinctCount, strings.Join(dimension.Values, " | ")))
 	}
-	return builder.String()
+	return renderSheinSaleAttributePrompt(prompt.KSheinSaleAttributeSourceDimension, `You are choosing source sales dimensions for SHEIN draft grouping.
+Choose exactly one primary_source_dimension for SKC grouping and optionally one secondary_source_dimension for SKU grouping.
+Do not rename source dimensions. Prefer the most product-defining dimension as primary.
+Return JSON only with keys primary_source_dimension, secondary_source_dimension, reasons.
+
+Source dimensions:
+{{.SourceDimensionsBlock}}`, map[string]any{
+		"SourceDimensionsBlock": dimensionBuilder.String(),
+	})
 }
 
 func selectSourceDimensionsFallback(dimensions []SourceVariantDimension) *sourceDimensionSelection {

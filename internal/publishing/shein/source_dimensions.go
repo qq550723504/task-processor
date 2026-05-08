@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -15,7 +15,7 @@ type SourceVariantDimension struct {
 	SampleValue   string   `json:"sample_value,omitempty"`
 }
 
-func buildSourceVariantDimensions(canonical *productenrich.CanonicalProduct, variants []common.Variant) []SourceVariantDimension {
+func buildSourceVariantDimensions(canonical *canonical.Product, variants []common.Variant) []SourceVariantDimension {
 	if len(variants) == 0 {
 		return nil
 	}

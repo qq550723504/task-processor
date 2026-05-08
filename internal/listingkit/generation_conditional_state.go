@@ -1,26 +1,22 @@
 package listingkit
 
-import "strings"
+import listinggeneration "task-processor/internal/listingkit/generation"
 
 func buildGenerationConditionalState(deltaToken string, notModified bool, noChanges bool) *GenerationConditionalState {
-	token := strings.TrimSpace(deltaToken)
-	if token == "" && !notModified && !noChanges {
+	state := listinggeneration.BuildConditionalState(deltaToken, notModified, noChanges)
+	if state == nil {
 		return nil
 	}
 	return &GenerationConditionalState{
-		DeltaToken:  token,
-		ETag:        buildGenerationConditionalETag(token),
-		NotModified: notModified,
-		NoChanges:   noChanges,
+		DeltaToken:  state.DeltaToken,
+		ETag:        state.ETag,
+		NotModified: state.NotModified,
+		NoChanges:   state.NoChanges,
 	}
 }
 
 func buildGenerationConditionalETag(deltaToken string) string {
-	token := strings.TrimSpace(deltaToken)
-	if token == "" {
-		return ""
-	}
-	return `"` + token + `"`
+	return listinggeneration.ConditionalETag(deltaToken)
 }
 
 func applyGenerationConditionalStateToQueuePage(page *GenerationQueuePage) *GenerationQueuePage {

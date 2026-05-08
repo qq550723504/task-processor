@@ -10,6 +10,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/prompt"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
@@ -173,20 +174,25 @@ func extractSaleAttributeValueWithLLM(attributeName string, sourceDimension stri
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
-	var builder strings.Builder
-	builder.WriteString("You extract a short e-commerce sale attribute value from a noisy image-generation prompt.\n")
-	builder.WriteString("Return JSON only with shape {\"value\":\"...\",\"reasons\":[\"...\"]}.\n")
-	builder.WriteString("Rules:\n")
-	builder.WriteString("1. Output one short English attribute value only.\n")
-	builder.WriteString("2. Do not output sentences, commands, copyright notes, size/canvas instructions, or punctuation-heavy text.\n")
-	builder.WriteString("3. Prefer 2-6 words and under 50 characters.\n")
-	builder.WriteString("4. Keep theme/style semantics when obvious, but do not invent detailed marketing copy.\n\n")
-	builder.WriteString(fmt.Sprintf("Attribute name: %q\n", attributeName))
-	builder.WriteString(fmt.Sprintf("Source dimension: %q\n", sourceDimension))
-	builder.WriteString(fmt.Sprintf("Product title: %q\n", cleanListingText(productTitle)))
-	builder.WriteString(fmt.Sprintf("Prompt-like source value: %q\n", cleanListingText(sourceValue)))
+	promptText := renderSheinSaleAttributePrompt(prompt.KSheinSaleAttributePromptValueExtraction, `You extract a short e-commerce sale attribute value from a noisy image-generation prompt.
+Return JSON only with shape {"value":"...","reasons":["..."]}.
+Rules:
+1. Output one short English attribute value only.
+2. Do not output sentences, commands, copyright notes, size/canvas instructions, or punctuation-heavy text.
+3. Prefer 2-6 words and under 50 characters.
+4. Keep theme/style semantics when obvious, but do not invent detailed marketing copy.
 
-	response, err := llm.Generate(ctx, builder.String())
+Attribute name: {{.AttributeName}}
+Source dimension: {{.SourceDimension}}
+Product title: {{.ProductTitle}}
+Prompt-like source value: {{.SourceValue}}`, map[string]any{
+		"AttributeName":   fmt.Sprintf("%q", attributeName),
+		"SourceDimension": fmt.Sprintf("%q", sourceDimension),
+		"ProductTitle":    fmt.Sprintf("%q", cleanListingText(productTitle)),
+		"SourceValue":     fmt.Sprintf("%q", cleanListingText(sourceValue)),
+	})
+
+	response, err := llm.Generate(ctx, promptText)
 	if err != nil {
 		return ""
 	}

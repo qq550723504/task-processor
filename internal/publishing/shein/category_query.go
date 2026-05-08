@@ -3,16 +3,16 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheincategoryselector "task-processor/internal/shein/category"
 )
 
-func buildCategoryQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func buildCategoryQuery(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
 	return buildRichCategoryQuery(req, canonical, pkg, true)
 }
 
-func buildCategorySuggestionQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func buildCategorySuggestionQuery(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
 	for _, candidate := range []string{
 		firstNonGenericTitle(canonicalTitle(canonical), packageTitle(pkg)),
 		categoryLeafSeed(canonical, pkg),
@@ -26,7 +26,7 @@ func buildCategorySuggestionQuery(req *BuildRequest, canonical *productenrich.Ca
 	return ""
 }
 
-func buildCategorySuggestInput(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) sheincategoryselector.CoreItemInput {
+func buildCategorySuggestInput(req *BuildRequest, canonical *canonical.Product, pkg *Package) sheincategoryselector.CoreItemInput {
 	input := sheincategoryselector.CoreItemInput{
 		Title:        firstNonGenericTitle(canonicalTitle(canonical), packageTitle(pkg), reqText(req)),
 		ProductType:  extractCategoryProductType(canonical, pkg),
@@ -39,7 +39,7 @@ func buildCategorySuggestInput(req *BuildRequest, canonical *productenrich.Canon
 	return input
 }
 
-func buildRichCategoryQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, includeHint bool) string {
+func buildRichCategoryQuery(req *BuildRequest, canonical *canonical.Product, pkg *Package, includeHint bool) string {
 	strongSignals := make([]string, 0, 12)
 	contextSignals := make([]string, 0, 8)
 	weakSignals := make([]string, 0, 4)
@@ -123,7 +123,7 @@ func normalizeCategoryQueryPart(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
-func canonicalTitle(canonical *productenrich.CanonicalProduct) string {
+func canonicalTitle(canonical *canonical.Product) string {
 	if canonical == nil {
 		return ""
 	}
@@ -155,14 +155,14 @@ func firstNonGenericTitle(values ...string) string {
 	return ""
 }
 
-func categoryLeafSeed(canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func categoryLeafSeed(canonical *canonical.Product, pkg *Package) string {
 	if seed := compactCategorySeed(categoryPathFromCanonical(canonical)); seed != "" {
 		return seed
 	}
 	return compactCategorySeed(categoryPathFromPackage(pkg))
 }
 
-func categoryPathFromCanonical(canonical *productenrich.CanonicalProduct) []string {
+func categoryPathFromCanonical(canonical *canonical.Product) []string {
 	if canonical == nil {
 		return nil
 	}
@@ -203,7 +203,7 @@ func compactCategorySeed(path []string) string {
 	return strings.Join(filtered[len(filtered)-2:], " ")
 }
 
-func buildCompactCategoryAttributeSeed(canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func buildCompactCategoryAttributeSeed(canonical *canonical.Product, pkg *Package) string {
 	parts := make([]string, 0, 3)
 	appendPart := func(value string) {
 		value = normalizeCategoryQueryPart(value)
@@ -241,7 +241,7 @@ func buildCompactCategoryAttributeSeed(canonical *productenrich.CanonicalProduct
 	return strings.Join(common.UniqueStrings(parts), " ")
 }
 
-func extractCategoryProductType(canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func extractCategoryProductType(canonical *canonical.Product, pkg *Package) string {
 	for _, key := range []string{"产品类别", "category", "品类"} {
 		if canonical != nil {
 			if attr, ok := canonical.Attributes[key]; ok {
@@ -259,7 +259,7 @@ func extractCategoryProductType(canonical *productenrich.CanonicalProduct, pkg *
 	return ""
 }
 
-func extractCategorySuggestAttributes(canonical *productenrich.CanonicalProduct, pkg *Package) map[string]string {
+func extractCategorySuggestAttributes(canonical *canonical.Product, pkg *Package) map[string]string {
 	result := map[string]string{}
 	appendAttr := func(key, value string) {
 		value = normalizeCategoryQueryPart(value)

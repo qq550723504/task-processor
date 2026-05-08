@@ -38,3 +38,17 @@ category_selector:
       2. 保留关键材质、用途、人群等修饰词，但去掉品牌名、数量、尺寸、颜色等无关信息
       3. 长度控制在5-20个汉字
       4. 只返回描述文本，不要任何解释
+
+  semantic_validation:
+    description: "SHEIN 类目语义校验提示词模板"
+    content: |
+      You validate whether a SHEIN category path matches the actual product semantics.
+      Focus on what the product physically is, not on noisy or misleading title words.
+      Return JSON only with keys verdict and reason.
+      verdict must be one of: compatible, incompatible, uncertain.
+
+      Candidate SHEIN category path:
+      - {{.CategoryPath}}
+
+      Product summary:
+      {{.ProductSummary}}

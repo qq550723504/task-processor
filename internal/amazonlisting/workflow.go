@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
 
 type WorkflowArtifacts struct {
 	ProductTask      *productenrich.Task
-	CanonicalProduct *productenrich.CanonicalProduct
+	CanonicalProduct *canonical.Product
 	ImageTask        *productimage.Task
 	ImageResult      *productimage.ImageProcessResult
 	Draft            *AmazonListingDraft
@@ -112,7 +113,7 @@ func (w *listingWorkflow) Run(ctx context.Context, task *Task) (*WorkflowArtifac
 	return artifacts, nil
 }
 
-func (w *listingWorkflow) ensureProductArtifacts(ctx context.Context, task *Task, artifacts *WorkflowArtifacts) (*productenrich.Task, *productenrich.CanonicalProduct, error) {
+func (w *listingWorkflow) ensureProductArtifacts(ctx context.Context, task *Task, artifacts *WorkflowArtifacts) (*productenrich.Task, *canonical.Product, error) {
 	if task != nil && task.Result != nil && task.Result.ProductTaskID != "" {
 		taskResult, err := w.productService.GetTaskResult(ctx, task.Result.ProductTaskID)
 		if err == nil && taskResult != nil && taskResult.Status == productenrich.TaskStatusCompleted && taskResult.ProductJSON != nil {

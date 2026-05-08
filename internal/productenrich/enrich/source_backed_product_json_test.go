@@ -3,6 +3,7 @@ package enrich
 import (
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 )
 
@@ -27,7 +28,7 @@ func TestApplySourceBackedAttributesOverridesCoreFieldsFromScrapedData(t *testin
 				"产品类别": "椅垫",
 				"材质":   "涤纶",
 			},
-			VariantDimensions: []productenrich.ScrapedVariantDimension{{
+			VariantDimensions: []canonical.ScrapedVariantDimension{{
 				Name:   "颜色",
 				Values: []string{"深蓝", "黑色"},
 			}},

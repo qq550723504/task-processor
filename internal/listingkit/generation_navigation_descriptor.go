@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 func buildGenerationNavigationDescriptor(target *GenerationReviewNavigationTarget) *GenerationNavigationDescriptor {
 	if target == nil {
 		return nil
@@ -19,29 +21,11 @@ func buildGenerationNavigationDescriptor(target *GenerationReviewNavigationTarge
 }
 
 func buildGenerationNavigationRefreshScope(target *GenerationReviewNavigationTarget) string {
-	switch buildGenerationNavigationTargetResourceKind(target) {
-	case "generation_action":
-		return "mutation"
-	case "review_preview":
-		return "focused_read"
-	case "generation_queue":
-		return "collection_read"
-	default:
-		return "panel_read"
-	}
+	return listinggeneration.NavigationRefreshScope(buildGenerationNavigationTargetResourceKind(target))
 }
 
 func buildGenerationNavigationInvalidates(target *GenerationReviewNavigationTarget) []string {
-	switch buildGenerationNavigationTargetResourceKind(target) {
-	case "generation_action":
-		return []string{"review_session", "review_preview", "generation_queue"}
-	case "review_preview":
-		return []string{"review_preview"}
-	case "generation_queue":
-		return []string{"generation_queue"}
-	default:
-		return []string{"review_session"}
-	}
+	return listinggeneration.NavigationInvalidates(buildGenerationNavigationTargetResourceKind(target))
 }
 
 func buildGenerationNavigationFollowUpReads(target *GenerationReviewNavigationTarget) []GenerationNavigationFollowUpRead {
@@ -115,71 +99,31 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 }
 
 func buildGenerationNavigationDispatchStrategy(target *GenerationReviewNavigationTarget, readCount int) string {
-	switch buildGenerationNavigationTargetResourceKind(target) {
-	case "generation_action":
-		return "mutation_then_refresh"
-	case "generation_queue", "review_preview", "review_session":
-		if readCount <= 1 {
-			return "single_read"
-		}
-		return "fanout_read"
-	default:
-		if readCount <= 1 {
-			return "single_read"
-		}
-		return "fanout_read"
-	}
+	return listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), readCount)
 }
 
 func buildGenerationNavigationDispatchStopOnNotModified(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return readCount <= 1 && buildGenerationNavigationTargetResourceKind(target) != "generation_action"
+	return listinggeneration.NavigationDispatchStopOnNotModified(buildGenerationNavigationTargetResourceKind(target), readCount)
 }
 
 func buildGenerationNavigationDispatchStopOnFirstSuccess(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return readCount <= 1 && buildGenerationNavigationTargetResourceKind(target) != "generation_action"
+	return listinggeneration.NavigationDispatchStopOnFirstSuccess(buildGenerationNavigationTargetResourceKind(target), readCount)
 }
 
 func buildGenerationNavigationDispatchStopOnError(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return readCount <= 1
+	return listinggeneration.NavigationDispatchStopOnError(readCount)
 }
 
 func buildGenerationNavigationDispatchFallbackStrategy(target *GenerationReviewNavigationTarget, readCount int) string {
-	switch buildGenerationNavigationTargetResourceKind(target) {
-	case "generation_action":
-		return "prefer_action_then_refresh_results"
-	case "review_preview", "review_session":
-		if readCount > 1 {
-			return "prefer_preview_then_session_then_queue"
-		}
-		return "prefer_primary_only"
-	case "generation_queue":
-		return "prefer_queue_then_session"
-	default:
-		return "prefer_primary_only"
-	}
+	return listinggeneration.NavigationDispatchFallbackStrategy(buildGenerationNavigationTargetResourceKind(target), readCount)
 }
 
 func buildGenerationNavigationDispatchMaxParallelism(target *GenerationReviewNavigationTarget, readCount int) int {
-	switch buildGenerationNavigationDispatchStrategy(target, readCount) {
-	case "mutation_then_refresh":
-		return 2
-	case "fanout_read":
-		return 3
-	default:
-		return 1
-	}
+	return listinggeneration.NavigationDispatchMaxParallelism(buildGenerationNavigationDispatchStrategy(target, readCount))
 }
 
 func buildGenerationNavigationDispatchStepCachePreference(target *GenerationReviewNavigationTarget, stepKind string) string {
-	if generationNavigationTargetRevalidateAfterAction(target) {
-		return "revalidate"
-	}
-	switch stepKind {
-	case "session", "preview":
-		return "stale_while_revalidate"
-	default:
-		return "revalidate"
-	}
+	return listinggeneration.NavigationDispatchStepCachePreference(generationNavigationTargetRevalidateAfterAction(target), stepKind)
 }
 
 func generationNavigationDispatchBaseQuery(target *GenerationReviewNavigationTarget) *GenerationQueueQuery {

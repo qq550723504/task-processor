@@ -3,46 +3,46 @@ package catalog
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestBuildProductBuildsCatalogSnapshot(t *testing.T) {
 	t.Parallel()
 
-	product := BuildProduct(&productenrich.CanonicalProduct{
+	product := BuildProduct(&canonical.Product{
 		Title:         "Wireless Earbuds",
 		Brand:         "Acme",
 		CategoryPath:  []string{"Electronics", "Audio"},
 		Description:   "ANC earbuds",
 		SellingPoints: []string{"ANC", "Bluetooth"},
 		SEOKeywords:   []string{"earbuds"},
-		FieldTraces: map[string]productenrich.FieldTrace{
+		FieldTraces: map[string]canonical.FieldTrace{
 			"title": {
-				Sources: []productenrich.CanonicalSource{{Type: productenrich.CanonicalSourceUserText, Detail: "user text"}},
+				Sources: []canonical.Source{{Type: canonical.SourceUserText, Detail: "user text"}},
 			},
 		},
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"color": {
 				Value: "Black",
-				Trace: productenrich.FieldTrace{
+				Trace: canonical.FieldTrace{
 					NeedsReview: true,
-					Sources: []productenrich.CanonicalSource{{
-						Type:   productenrich.CanonicalSourceUserImage,
+					Sources: []canonical.Source{{
+						Type:   canonical.SourceUserImage,
 						Detail: "uploaded image",
 					}},
 				},
 			},
 		},
-		Images: []productenrich.CanonicalImage{{
+		Images: []canonical.Image{{
 			URL:  "https://example.com/1.jpg",
 			Role: "primary",
 		}},
-		Variants: []productenrich.CanonicalVariant{{
+		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
-			Attributes: map[string]productenrich.CanonicalAttribute{
+			Attributes: map[string]canonical.Attribute{
 				"size": {Value: "M"},
 			},
-			Price: &productenrich.PriceInfo{
+			Price: &canonical.PriceInfo{
 				Currency: "USD",
 				Amount:   29.9,
 			},

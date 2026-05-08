@@ -10,6 +10,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
@@ -55,16 +56,16 @@ type Repository interface {
 }
 
 type CanonicalProductCacheRepository interface {
-	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*productenrich.CanonicalProduct, error)
-	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *productenrich.CanonicalProduct, sourceTaskID string) error
+	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error)
+	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error
 }
 
 type Assembler interface {
-	Assemble(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ListingKitResult
+	Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult
 }
 
 type AmazonDraftBuilder interface {
-	Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
+	Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
 }
 
 type Service interface {

@@ -1,6 +1,6 @@
 package listingkit
 
-import "strings"
+import listinggeneration "task-processor/internal/listingkit/generation"
 
 func buildAssetGenerationActionImpact(queue *GenerationWorkQueue, query *GenerationQueueQuery) *AssetGenerationActionImpact {
 	if queue == nil {
@@ -10,42 +10,21 @@ func buildAssetGenerationActionImpact(queue *GenerationWorkQueue, query *Generat
 	if query != nil {
 		items = filterGenerationQueueItems(items, query)
 	}
-	impact := &AssetGenerationActionImpact{
-		MatchedItems: len(items),
-	}
-	platforms := make([]string, 0, len(items))
-	grades := make([]string, 0, len(items))
-	states := make([]string, 0, len(items))
+	impactItems := make([]listinggeneration.ActionImpactItem, 0, len(items))
 	for _, item := range items {
-		if item.Retryable {
-			impact.RetryableItems++
-		}
-		platforms = append(platforms, item.Platform)
-		grades = append(grades, item.QualityGrade)
-		states = append(states, item.State)
+		impactItems = append(impactItems, listinggeneration.ActionImpactItem{
+			Platform:     item.Platform,
+			QualityGrade: item.QualityGrade,
+			State:        item.State,
+			Retryable:    item.Retryable,
+		})
 	}
-	impact.Platforms = uniqueStrings(platforms)
-	impact.QualityGrades = uniqueNormalizedStrings(grades)
-	impact.States = uniqueNormalizedStrings(states)
-	return impact
-}
-
-func uniqueNormalizedStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
+	impact := listinggeneration.BuildActionImpact(impactItems)
+	return &AssetGenerationActionImpact{
+		MatchedItems:   impact.MatchedItems,
+		RetryableItems: impact.RetryableItems,
+		Platforms:      impact.Platforms,
+		QualityGrades:  impact.QualityGrades,
+		States:         impact.States,
 	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
 }

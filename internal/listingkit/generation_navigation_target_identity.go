@@ -1,6 +1,10 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+
+	listinggeneration "task-processor/internal/listingkit/generation"
+)
 
 func applyIdentityToNavigationTarget(target *GenerationReviewNavigationTarget) *GenerationReviewNavigationTarget {
 	if target == nil {
@@ -60,31 +64,14 @@ func buildGenerationNavigationTargetCachePolicy(target *GenerationReviewNavigati
 	if target == nil {
 		return ""
 	}
-	switch buildGenerationNavigationTargetResourceKind(target) {
-	case "generation_action":
-		return "network_only"
-	case "generation_queue":
-		return "revalidate"
-	case "review_preview", "review_session":
-		return "stale_while_revalidate"
-	default:
-		return "revalidate"
-	}
+	return listinggeneration.NavigationCachePolicy(buildGenerationNavigationTargetResourceKind(target))
 }
 
 func generationNavigationTargetRevalidateAfterAction(target *GenerationReviewNavigationTarget) bool {
 	if target == nil {
 		return false
 	}
-	switch buildGenerationNavigationTargetResourceKind(target) {
-	case "generation_action", "generation_queue", "review_session", "review_preview":
-		if buildGenerationNavigationTargetResourceKind(target) == "generation_action" {
-			return true
-		}
-		return false
-	default:
-		return false
-	}
+	return listinggeneration.NavigationRevalidateAfterAction(buildGenerationNavigationTargetResourceKind(target))
 }
 
 func primaryGenerationNavigationTargetQuery(target *GenerationReviewNavigationTarget) *GenerationQueueQuery {

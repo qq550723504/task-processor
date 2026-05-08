@@ -3,10 +3,10 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
-func buildCategoryFamilyConflictSummary(canonical *productenrich.CanonicalProduct, pkg *Package) (bool, string) {
+func buildCategoryFamilyConflictSummary(canonical *canonical.Product, pkg *Package) (bool, string) {
 	if pkg != nil && pkg.CategoryResolution != nil && semanticRejectsCategory(pkg.CategoryResolution.SemanticValidation) {
 		reason := strings.TrimSpace(pkg.CategoryResolution.SemanticValidation.Reason)
 		if reason == "" {
@@ -17,7 +17,7 @@ func buildCategoryFamilyConflictSummary(canonical *productenrich.CanonicalProduc
 	return false, ""
 }
 
-func buildCategoryFamilyConflictReviewNotes(canonical *productenrich.CanonicalProduct, pkg *Package) []string {
+func buildCategoryFamilyConflictReviewNotes(canonical *canonical.Product, pkg *Package) []string {
 	recommend, reason := buildCategoryFamilyConflictSummary(canonical, pkg)
 	if !recommend {
 		return nil

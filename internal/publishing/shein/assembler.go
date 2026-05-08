@@ -5,8 +5,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 )
@@ -20,7 +20,7 @@ type AssemblerConfig struct {
 }
 
 type Assembler interface {
-	Build(req *BuildRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *Package
+	Build(req *BuildRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *Package
 }
 
 type assembler struct {
@@ -41,20 +41,20 @@ func NewAssembler(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *Package {
-	if canonical == nil {
+func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *productimage.ImageProcessResult) *Package {
+	if product == nil {
 		return &Package{ReviewNotes: []string{"canonical product is empty"}}
 	}
 	log := sheinLogger("shein/assembler")
 
-	images := common.BuildImages(canonical, image)
-	spuName := common.WithBrandHint(canonical.Title, req.BrandHint)
-	copy := buildSheinListingCopy(canonical, spuName, a.titleOptimizer)
-	brand := common.ResolveBrand(req.BrandHint, canonical)
-	variants := common.BuildVariants(canonical)
-	productAttributes := common.BuildAttributes(canonical.Attributes)
+	images := common.BuildImages(product, image)
+	spuName := common.WithBrandHint(product.Title, req.BrandHint)
+	copy := buildSheinListingCopy(product, spuName, a.titleOptimizer)
+	brand := common.ResolveBrand(req.BrandHint, product)
+	variants := common.BuildVariants(product)
+	productAttributes := common.BuildAttributes(product.Attributes)
 	siteList := common.DefaultSites(req.Country)
-	categoryName := common.LastCategory(canonical.CategoryPath)
+	categoryName := common.LastCategory(product.CategoryPath)
 
 	pkg := &Package{
 		SpuName:           spuName,
@@ -63,10 +63,10 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		ProductNameMulti:  copy.Title,
 		TitleDiagnostics:  copy.TitleDiagnostics,
 		CategoryName:      categoryName,
-		CategoryPath:      append([]string(nil), canonical.CategoryPath...),
+		CategoryPath:      append([]string(nil), product.CategoryPath...),
 		Description:       copy.Description,
-		SellingPoints:     append([]string(nil), canonical.SellingPoints...),
-		Attributes:        common.FlattenAttributes(canonical.Attributes),
+		SellingPoints:     append([]string(nil), product.SellingPoints...),
+		Attributes:        common.FlattenAttributes(product.Attributes),
 		ProductAttributes: productAttributes,
 		SiteList:          siteList,
 		Images:            images,
@@ -100,13 +100,13 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	if strings.TrimSpace(req.TargetCategoryHint) != "" {
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
 	}
-	attachSourceFactReviewMetadata(pkg, canonical)
+	attachSourceFactReviewMetadata(pkg, product)
 	if a.categoryResolver != nil {
 		log.WithFields(logrus.Fields{
-			"title":         canonical.Title,
-			"category_path": strings.Join(canonical.CategoryPath, " > "),
+			"title":         product.Title,
+			"category_path": strings.Join(product.CategoryPath, " > "),
 		}).Info("starting SHEIN category resolution")
-		pkg.CategoryResolution = a.categoryResolver.Resolve(req, canonical, pkg)
+		pkg.CategoryResolution = a.categoryResolver.Resolve(req, product, pkg)
 		ApplyCategoryResolution(pkg, pkg.CategoryResolution)
 		if pkg.CategoryResolution != nil {
 			log.WithFields(logrus.Fields{
@@ -119,7 +119,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	}
 	if a.attributeResolver != nil {
 		log.WithField("category_id", pkg.CategoryID).Info("starting SHEIN display attribute resolution")
-		pkg.AttributeResolution = a.attributeResolver.Resolve(req, canonical, pkg)
+		pkg.AttributeResolution = a.attributeResolver.Resolve(req, product, pkg)
 		ApplyAttributeResolution(pkg, pkg.AttributeResolution)
 		if pkg.AttributeResolution != nil {
 			log.WithFields(logrus.Fields{
@@ -133,7 +133,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	}
 	if a.saleAttributeResolver != nil {
 		log.WithField("category_id", pkg.CategoryID).Info("starting SHEIN sale attribute resolution")
-		pkg.SaleAttributeResolution = a.saleAttributeResolver.Resolve(req, canonical, pkg)
+		pkg.SaleAttributeResolution = a.saleAttributeResolver.Resolve(req, product, pkg)
 		if pkg.SaleAttributeResolution != nil {
 			log.WithFields(logrus.Fields{
 				"status":                 pkg.SaleAttributeResolution.Status,
@@ -143,12 +143,12 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 			}).Info("completed SHEIN sale attribute resolution")
 		}
 	}
-	NormalizeListingCopy(pkg, canonical, req.Language)
+	NormalizeListingCopy(pkg, product, req.Language)
 	groups := buildVariantGroups(copy.SKCTitleBase, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)
 	pkg.RequestDraft.SupplierCode = supplierCode
-	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, canonical, a.pricingPolicy)
+	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, product, a.pricingPolicy)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	pkg.PreviewProduct = BuildPreviewProduct(pkg)
 	log.WithFields(logrus.Fields{
@@ -159,7 +159,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	return pkg
 }
 
-func attachSourceFactReviewMetadata(pkg *Package, canonical *productenrich.CanonicalProduct) {
+func attachSourceFactReviewMetadata(pkg *Package, canonical *canonical.Product) {
 	if pkg == nil || canonical == nil || !canonicalHas1688Source(canonical) {
 		return
 	}
@@ -175,13 +175,13 @@ func attachSourceFactReviewMetadata(pkg *Package, canonical *productenrich.Canon
 	pkg.Metadata["source_fact_review_fields"] = strings.Join(fields, ",")
 }
 
-func canonicalHas1688Source(canonical *productenrich.CanonicalProduct) bool {
-	if canonical == nil {
+func canonicalHas1688Source(product *canonical.Product) bool {
+	if product == nil {
 		return false
 	}
-	for _, trace := range canonical.FieldTraces {
+	for _, trace := range product.FieldTraces {
 		for _, source := range trace.Sources {
-			if source.Type == productenrich.CanonicalSourceProductURL && strings.Contains(strings.ToLower(source.Detail), "detail.1688.com") {
+			if source.Type == canonical.SourceProductURL && strings.Contains(strings.ToLower(source.Detail), "detail.1688.com") {
 				return true
 			}
 		}
@@ -189,8 +189,8 @@ func canonicalHas1688Source(canonical *productenrich.CanonicalProduct) bool {
 	return false
 }
 
-func sourceFactReviewFields(canonical *productenrich.CanonicalProduct) []string {
-	if canonical == nil {
+func sourceFactReviewFields(product *canonical.Product) []string {
+	if product == nil {
 		return nil
 	}
 	criticalFields := []string{
@@ -204,8 +204,8 @@ func sourceFactReviewFields(canonical *productenrich.CanonicalProduct) []string 
 	}
 	fields := make([]string, 0, len(criticalFields))
 	for _, field := range criticalFields {
-		trace, ok := canonical.FieldTraces[field]
-		if !ok || !trace.NeedsReview || !hasCanonicalSourceType(trace.Sources, productenrich.CanonicalSourceLLM) {
+		trace, ok := product.FieldTraces[field]
+		if !ok || !trace.NeedsReview || !hasCanonicalSourceType(trace.Sources, canonical.SourceLLM) {
 			continue
 		}
 		fields = append(fields, field)
@@ -213,7 +213,7 @@ func sourceFactReviewFields(canonical *productenrich.CanonicalProduct) []string 
 	return fields
 }
 
-func hasCanonicalSourceType(sources []productenrich.CanonicalSource, want productenrich.CanonicalSourceType) bool {
+func hasCanonicalSourceType(sources []canonical.Source, want canonical.SourceType) bool {
 	for _, source := range sources {
 		if source.Type == want {
 			return true
@@ -248,7 +248,7 @@ func buildSKCs(groups []variantGroup) []SKCPackage {
 	return result
 }
 
-func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList []common.Site, canonical *productenrich.CanonicalProduct, pricingPolicy PricingPolicy) []SKCRequestDraft {
+func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList []common.Site, canonical *canonical.Product, pricingPolicy PricingPolicy) []SKCRequestDraft {
 	if len(groups) == 0 {
 		return nil
 	}
@@ -277,7 +277,7 @@ func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList [
 	return result
 }
 
-func buildSKUDraft(variant common.Variant, canonical *productenrich.CanonicalProduct, mainImage string, siteList []common.Site, pricingPolicy PricingPolicy) SKUDraft {
+func buildSKUDraft(variant common.Variant, canonical *canonical.Product, mainImage string, siteList []common.Site, pricingPolicy PricingPolicy) SKUDraft {
 	draft := SKUDraft{
 		SupplierSKU: variant.SKU,
 		Attributes:  common.CloneMap(variant.Attributes),

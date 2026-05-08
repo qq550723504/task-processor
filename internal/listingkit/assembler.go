@@ -3,8 +3,8 @@ package listingkit
 import (
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -46,7 +46,7 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Assemble(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ListingKitResult {
+func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
 	now := time.Now()
 	result := initResult(task)
 	result.UpdatedAt = now
@@ -95,7 +95,7 @@ func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {
 	}
 }
 
-func buildSummary(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *GenerationSummary {
+func buildSummary(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *GenerationSummary {
 	summary := &GenerationSummary{}
 	if task != nil && task.Request != nil {
 		summary.SourceType = detectSourceType(task.Request)

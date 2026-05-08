@@ -3,13 +3,13 @@ package shein
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
 type refreshDerivedStubAttributeResolver struct{}
 
-func (refreshDerivedStubAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *AttributeResolution {
+func (refreshDerivedStubAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
 	return &AttributeResolution{
 		Status: "resolved",
 		ResolvedAttributes: []ResolvedAttribute{{
@@ -22,7 +22,7 @@ func (refreshDerivedStubAttributeResolver) Resolve(req *BuildRequest, canonical 
 
 type refreshDerivedStubSaleResolver struct{}
 
-func (refreshDerivedStubSaleResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
+func (refreshDerivedStubSaleResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
 	valueID := 2493
 	return &SaleAttributeResolution{
 		Status:                  "resolved",
@@ -38,14 +38,14 @@ func (refreshDerivedStubSaleResolver) Resolve(req *BuildRequest, canonical *prod
 func TestRefreshDerivedStateRecomputesSaleAttributesAndClearsSuggestion(t *testing.T) {
 	t.Parallel()
 
-	canonical := &productenrich.CanonicalProduct{
+	canonical := &canonical.Product{
 		Title: "Bottle",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"颜色": {Value: "黑色"},
 		},
-		Variants: []productenrich.CanonicalVariant{{
+		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
-			Attributes: map[string]productenrich.CanonicalAttribute{
+			Attributes: map[string]canonical.Attribute{
 				"颜色": {Value: "黑色"},
 			},
 		}},

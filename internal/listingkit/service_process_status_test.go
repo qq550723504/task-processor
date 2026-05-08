@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -14,7 +15,7 @@ type stubProcessStatusAssembler struct {
 	result *ListingKitResult
 }
 
-func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ListingKitResult {
+func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
 	if a.result == nil {
 		return &ListingKitResult{Summary: &GenerationSummary{}}
 	}

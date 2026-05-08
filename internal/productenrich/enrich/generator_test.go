@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 
@@ -12,13 +13,13 @@ import (
 )
 
 type mockVariantGenerator struct {
-	specs    *productenrich.ProductSpecs
+	specs    *canonical.ProductSpecs
 	variants []productenrich.ProductVariant
 	specsErr error
 	varErr   error
 }
 
-func (m *mockVariantGenerator) GenerateSpecs(_ context.Context, _ *productenrich.ProductAnalysis) (*productenrich.ProductSpecs, error) {
+func (m *mockVariantGenerator) GenerateSpecs(_ context.Context, _ *productenrich.ProductAnalysis) (*canonical.ProductSpecs, error) {
 	return m.specs, m.specsErr
 }
 
@@ -26,11 +27,11 @@ func (m *mockVariantGenerator) GenerateVariants(_ context.Context, _ *productenr
 	return m.variants, m.varErr
 }
 
-func (m *mockVariantGenerator) ExtractDimensions(_ context.Context, _ string) (*productenrich.Dimensions, error) {
+func (m *mockVariantGenerator) ExtractDimensions(_ context.Context, _ string) (*canonical.Dimensions, error) {
 	return nil, nil
 }
 
-func (m *mockVariantGenerator) ExtractWeight(_ context.Context, _ string) (*productenrich.Weight, error) {
+func (m *mockVariantGenerator) ExtractWeight(_ context.Context, _ string) (*canonical.Weight, error) {
 	return nil, nil
 }
 
@@ -65,7 +66,7 @@ func TestGenerateJSON_FullStrategy_WithVariants(t *testing.T) {
 	resp := `{"title":"Widget","category":["Electronics"],"selling_points":["fast"],"seo_keywords":["widget"],"description":"A widget."}`
 	g := newTestJSONGenerator(t, resp, nil)
 
-	specs := &productenrich.ProductSpecs{Technical: map[string]string{"color": "red"}}
+	specs := &canonical.ProductSpecs{Technical: map[string]string{"color": "red"}}
 	variants := []productenrich.ProductVariant{{SKU: "W-RED", IsDefault: true}}
 	vg := &mockVariantGenerator{specs: specs, variants: variants}
 
@@ -87,7 +88,7 @@ func TestGenerateJSON_PreservesScrapedVariantDimensions(t *testing.T) {
 
 	analysis := &productenrich.ProductAnalysis{
 		ScrapedData: &productenrich.ScrapedData{
-			VariantDimensions: []productenrich.ScrapedVariantDimension{
+			VariantDimensions: []canonical.ScrapedVariantDimension{
 				{Name: "颜色", Values: []string{"黑灰色", "卡其色"}},
 				{Name: "尺码", Values: []string{"41", "42"}},
 			},
@@ -110,7 +111,7 @@ func TestGenerateJSON_BasicStrategy_SkipVariants(t *testing.T) {
 	resp := `{"title":"Widget","category":["Electronics"],"selling_points":["fast"],"seo_keywords":["widget"],"description":"A widget."}`
 	g := newTestJSONGenerator(t, resp, nil)
 
-	specs := &productenrich.ProductSpecs{Technical: map[string]string{"size": "M"}}
+	specs := &canonical.ProductSpecs{Technical: map[string]string{"size": "M"}}
 	variants := []productenrich.ProductVariant{{SKU: "W-M"}}
 	vg := &mockVariantGenerator{specs: specs, variants: variants}
 

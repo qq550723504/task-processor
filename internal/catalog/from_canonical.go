@@ -5,33 +5,33 @@ import (
 	"sort"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
-func BuildProduct(canonical *productenrich.CanonicalProduct) *Product {
-	if canonical == nil {
+func BuildProduct(product *canonical.Product) *Product {
+	if product == nil {
 		return nil
 	}
 
-	product := &Product{
-		Title:          canonical.Title,
-		Brand:          canonical.Brand,
-		CategoryPath:   cloneStrings(canonical.CategoryPath),
-		Description:    canonical.Description,
-		SellingPoints:  cloneStrings(canonical.SellingPoints),
-		SEOKeywords:    cloneStrings(canonical.SEOKeywords),
-		Attributes:     buildAttributes(canonical.Attributes),
-		Specifications: buildSpecifications(canonical.Specifications),
-		Variants:       buildVariants(canonical.Variants),
-		Images:         buildImages(canonical.Images),
-		Review:         buildReviewState(canonical),
-		Sources:        collectSources(canonical),
+	catalogProduct := &Product{
+		Title:          product.Title,
+		Brand:          product.Brand,
+		CategoryPath:   cloneStrings(product.CategoryPath),
+		Description:    product.Description,
+		SellingPoints:  cloneStrings(product.SellingPoints),
+		SEOKeywords:    cloneStrings(product.SEOKeywords),
+		Attributes:     buildAttributes(product.Attributes),
+		Specifications: buildSpecifications(product.Specifications),
+		Variants:       buildVariants(product.Variants),
+		Images:         buildImages(product.Images),
+		Review:         buildReviewState(product),
+		Sources:        collectSources(product),
 	}
 
-	return product
+	return catalogProduct
 }
 
-func buildAttributes(attrs map[string]productenrich.CanonicalAttribute) []Attribute {
+func buildAttributes(attrs map[string]canonical.Attribute) []Attribute {
 	if len(attrs) == 0 {
 		return nil
 	}
@@ -53,7 +53,7 @@ func buildAttributes(attrs map[string]productenrich.CanonicalAttribute) []Attrib
 	return items
 }
 
-func buildVariants(variants []productenrich.CanonicalVariant) []Variant {
+func buildVariants(variants []canonical.Variant) []Variant {
 	if len(variants) == 0 {
 		return nil
 	}
@@ -73,7 +73,7 @@ func buildVariants(variants []productenrich.CanonicalVariant) []Variant {
 	return items
 }
 
-func buildImages(images []productenrich.CanonicalImage) []Image {
+func buildImages(images []canonical.Image) []Image {
 	if len(images) == 0 {
 		return nil
 	}
@@ -88,7 +88,7 @@ func buildImages(images []productenrich.CanonicalImage) []Image {
 	return items
 }
 
-func buildPrice(price *productenrich.PriceInfo) *Price {
+func buildPrice(price *canonical.PriceInfo) *Price {
 	if price == nil {
 		return nil
 	}
@@ -101,7 +101,7 @@ func buildPrice(price *productenrich.PriceInfo) *Price {
 	}
 }
 
-func buildSpecifications(specs *productenrich.ProductSpecs) *Specifications {
+func buildSpecifications(specs *canonical.ProductSpecs) *Specifications {
 	if specs == nil {
 		return nil
 	}
@@ -117,7 +117,7 @@ func buildSpecifications(specs *productenrich.ProductSpecs) *Specifications {
 	}
 }
 
-func buildDimensions(dim *productenrich.Dimensions) *Dimensions {
+func buildDimensions(dim *canonical.Dimensions) *Dimensions {
 	if dim == nil {
 		return nil
 	}
@@ -129,7 +129,7 @@ func buildDimensions(dim *productenrich.Dimensions) *Dimensions {
 	}
 }
 
-func buildWeight(weight *productenrich.Weight) *Weight {
+func buildWeight(weight *canonical.Weight) *Weight {
 	if weight == nil {
 		return nil
 	}
@@ -139,7 +139,7 @@ func buildWeight(weight *productenrich.Weight) *Weight {
 	}
 }
 
-func buildPackage(pkg *productenrich.PackageInfo) *PackageInfo {
+func buildPackage(pkg *canonical.PackageInfo) *PackageInfo {
 	if pkg == nil {
 		return nil
 	}
@@ -150,7 +150,7 @@ func buildPackage(pkg *productenrich.PackageInfo) *PackageInfo {
 	}
 }
 
-func buildTrace(trace productenrich.FieldTrace) Trace {
+func buildTrace(trace canonical.FieldTrace) Trace {
 	sources := make([]SourceRecord, 0, len(trace.Sources))
 	for _, source := range trace.Sources {
 		sources = append(sources, SourceRecord{
@@ -166,24 +166,24 @@ func buildTrace(trace productenrich.FieldTrace) Trace {
 	}
 }
 
-func buildReviewState(canonical *productenrich.CanonicalProduct) *ReviewState {
-	reasons := collectReviewReasons(canonical)
+func buildReviewState(product *canonical.Product) *ReviewState {
+	reasons := collectReviewReasons(product)
 	return &ReviewState{
-		NeedsReview: canonical.NeedsReview || len(reasons) > 0,
+		NeedsReview: product.NeedsReview || len(reasons) > 0,
 		Reasons:     reasons,
 	}
 }
 
-func collectReviewReasons(canonical *productenrich.CanonicalProduct) []string {
-	if canonical == nil {
+func collectReviewReasons(product *canonical.Product) []string {
+	if product == nil {
 		return []string{"缺少商品事实数据"}
 	}
 
 	reasons := make([]string, 0)
-	if strings.TrimSpace(canonical.Title) == "" {
+	if strings.TrimSpace(product.Title) == "" {
 		reasons = append(reasons, "缺少商品标题")
 	}
-	if strings.TrimSpace(canonical.Description) == "" {
+	if strings.TrimSpace(product.Description) == "" {
 		reasons = append(reasons, "缺少商品描述")
 	}
 
@@ -196,13 +196,13 @@ func collectReviewReasons(canonical *productenrich.CanonicalProduct) []string {
 		"seo_keywords":   "SEO关键词",
 		"specifications": "规格参数",
 	}
-	keys := make([]string, 0, len(canonical.FieldTraces))
-	for key := range canonical.FieldTraces {
+	keys := make([]string, 0, len(product.FieldTraces))
+	for key := range product.FieldTraces {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		trace := canonical.FieldTraces[key]
+		trace := product.FieldTraces[key]
 		if !trace.NeedsReview {
 			continue
 		}
@@ -213,12 +213,12 @@ func collectReviewReasons(canonical *productenrich.CanonicalProduct) []string {
 		reasons = append(reasons, fmt.Sprintf("%s待人工确认", label))
 	}
 
-	for key, attr := range canonical.Attributes {
+	for key, attr := range product.Attributes {
 		if attr.Trace.NeedsReview {
 			reasons = append(reasons, fmt.Sprintf("属性待确认: %s", key))
 		}
 	}
-	for _, variant := range canonical.Variants {
+	for _, variant := range product.Variants {
 		if variant.Trace.NeedsReview {
 			reasons = append(reasons, fmt.Sprintf("变体待确认: %s", firstNonEmpty(variant.SKU, "未命名SKU")))
 			continue
@@ -234,12 +234,12 @@ func collectReviewReasons(canonical *productenrich.CanonicalProduct) []string {
 	return uniqueStrings(reasons)
 }
 
-func collectSources(canonical *productenrich.CanonicalProduct) []SourceRecord {
-	if canonical == nil {
+func collectSources(product *canonical.Product) []SourceRecord {
+	if product == nil {
 		return nil
 	}
 	items := make([]SourceRecord, 0)
-	appendTraceSources := func(trace productenrich.FieldTrace) {
+	appendTraceSources := func(trace canonical.FieldTrace) {
 		for _, source := range trace.Sources {
 			items = append(items, SourceRecord{
 				Type:   string(source.Type),
@@ -248,16 +248,16 @@ func collectSources(canonical *productenrich.CanonicalProduct) []SourceRecord {
 		}
 	}
 
-	for _, trace := range canonical.FieldTraces {
+	for _, trace := range product.FieldTraces {
 		appendTraceSources(trace)
 	}
-	for _, attr := range canonical.Attributes {
+	for _, attr := range product.Attributes {
 		appendTraceSources(attr.Trace)
 	}
-	for _, image := range canonical.Images {
+	for _, image := range product.Images {
 		appendTraceSources(image.Trace)
 	}
-	for _, variant := range canonical.Variants {
+	for _, variant := range product.Variants {
 		appendTraceSources(variant.Trace)
 		for _, attr := range variant.Attributes {
 			appendTraceSources(attr.Trace)

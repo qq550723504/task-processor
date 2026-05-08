@@ -11,7 +11,7 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -817,7 +817,7 @@ func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-match-1",
 			Platforms:        []string{"amazon"},
-			CanonicalProduct: &productenrich.CanonicalProduct{CategoryPath: []string{"Electronics", "Audio"}},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
 			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon: &AmazonPackage{
 				ImageBundle: &common.PublishImageBundle{
@@ -1431,7 +1431,7 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-1",
 			Platforms:        []string{"amazon"},
-			CanonicalProduct: &productenrich.CanonicalProduct{CategoryPath: []string{"Electronics", "Audio"}},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
 			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			AssetBundle: &asset.Bundle{
 				Assets: []asset.Asset{
@@ -1641,7 +1641,7 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-plan-missing-1",
 			Platforms:        []string{"shein"},
-			CanonicalProduct: &productenrich.CanonicalProduct{CategoryPath: []string{"Home", "Cushions"}},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Home", "Cushions"}},
 			CatalogProduct:   &catalog.Product{Title: "Bench Cushion", CategoryPath: []string{"Home", "Cushions"}},
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
 				Platform: "shein",

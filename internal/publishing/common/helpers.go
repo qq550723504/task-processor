@@ -6,19 +6,19 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
-func BuildVariants(canonical *productenrich.CanonicalProduct) []Variant {
-	if canonical == nil {
+func BuildVariants(product *canonical.Product) []Variant {
+	if product == nil {
 		return nil
 	}
-	if len(canonical.Variants) == 0 {
-		return buildFallbackVariant(canonical)
+	if len(product.Variants) == 0 {
+		return buildFallbackVariant(product)
 	}
-	result := make([]Variant, 0, len(canonical.Variants))
-	for _, variant := range canonical.Variants {
+	result := make([]Variant, 0, len(product.Variants))
+	for _, variant := range product.Variants {
 		attributes := make(map[string]string, len(variant.Attributes))
 		for key, value := range variant.Attributes {
 			attributes[key] = value.Value
@@ -47,8 +47,8 @@ func BuildVariants(canonical *productenrich.CanonicalProduct) []Variant {
 	return result
 }
 
-func BuildImages(canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ImageSet {
-	return BuildImagesFromBundle(asset.BuildBundle(canonical, image))
+func BuildImages(product *canonical.Product, image *productimage.ImageProcessResult) *ImageSet {
+	return BuildImagesFromBundle(asset.BuildBundle(product, image))
 }
 
 func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
@@ -85,7 +85,7 @@ func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
 	return set
 }
 
-func FlattenAttributes(attributes map[string]productenrich.CanonicalAttribute) map[string]string {
+func FlattenAttributes(attributes map[string]canonical.Attribute) map[string]string {
 	if len(attributes) == 0 {
 		return nil
 	}
@@ -96,7 +96,7 @@ func FlattenAttributes(attributes map[string]productenrich.CanonicalAttribute) m
 	return result
 }
 
-func BuildAttributes(attributes map[string]productenrich.CanonicalAttribute) []Attribute {
+func BuildAttributes(attributes map[string]canonical.Attribute) []Attribute {
 	if len(attributes) == 0 {
 		return nil
 	}
@@ -107,9 +107,9 @@ func BuildAttributes(attributes map[string]productenrich.CanonicalAttribute) []A
 	return result
 }
 
-func CollectReviewNotes(canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult, extras ...string) []string {
+func CollectReviewNotes(product *canonical.Product, image *productimage.ImageProcessResult, extras ...string) []string {
 	notes := make([]string, 0, len(extras)+4)
-	if canonical != nil && canonical.NeedsReview {
+	if product != nil && product.NeedsReview {
 		notes = append(notes, "商品结构化结果存在低置信字段，建议人工复核标题、品牌、属性和变体")
 	}
 	if image != nil && image.Review != nil && image.Review.NeedsReview {
@@ -119,14 +119,14 @@ func CollectReviewNotes(canonical *productenrich.CanonicalProduct, image *produc
 	return UniqueStrings(notes)
 }
 
-func ResolveBrand(brandHint string, canonical *productenrich.CanonicalProduct) string {
+func ResolveBrand(brandHint string, product *canonical.Product) string {
 	if strings.TrimSpace(brandHint) != "" {
 		return strings.TrimSpace(brandHint)
 	}
-	if canonical == nil {
+	if product == nil {
 		return ""
 	}
-	return canonical.Brand
+	return product.Brand
 }
 
 func WithBrandHint(title, brandHint string) string {

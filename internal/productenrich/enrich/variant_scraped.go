@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 )
 
@@ -55,8 +56,8 @@ func normalizeVariantAttributes(attributes map[string]string) map[string]string 
 	return normalized
 }
 
-func normalizeVariantPrice(price *productenrich.PriceInfo, fallback float64) *productenrich.PriceInfo {
-	var normalized productenrich.PriceInfo
+func normalizeVariantPrice(price *canonical.PriceInfo, fallback float64) *canonical.PriceInfo {
+	var normalized canonical.PriceInfo
 	if price != nil {
 		normalized = *price
 	}

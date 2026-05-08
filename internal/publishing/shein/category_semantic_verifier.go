@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/prompt"
 )
 
 type categorySemanticVerifier interface {
-	ValidateProductCategory(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) *CategorySemanticValidation
+	ValidateProductCategory(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation
 }
 
 type aiCategorySemanticVerifier struct {
@@ -27,7 +28,7 @@ func newAICategorySemanticVerifier(client openaiclient.ChatCompleter) categorySe
 	return &aiCategorySemanticVerifier{client: client}
 }
 
-func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
 	if v == nil || v.client == nil || len(categoryPath) == 0 {
 		return nil
 	}
@@ -67,22 +68,23 @@ func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *producte
 	}
 }
 
-func buildCategorySemanticValidationPrompt(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) string {
-	var builder strings.Builder
-	builder.WriteString("You validate whether a SHEIN category path matches the actual product semantics.\n")
-	builder.WriteString("Focus on what the product physically is, not on noisy or misleading title words.\n")
-	builder.WriteString("Return JSON only with keys verdict and reason.\n")
-	builder.WriteString("verdict must be one of: compatible, incompatible, uncertain.\n\n")
-	builder.WriteString("Candidate SHEIN category path:\n")
-	builder.WriteString("- ")
-	builder.WriteString(strings.Join(categoryPath, " > "))
-	builder.WriteString("\n\n")
-	builder.WriteString("Product summary:\n")
-	builder.WriteString(buildCategorySemanticProductSummary(canonical, pkg))
-	return builder.String()
+func buildCategorySemanticValidationPrompt(canonical *canonical.Product, pkg *Package, categoryPath []string) string {
+	return renderSheinDisplayAttributePrompt(prompt.KSheinCategorySelectorSemanticValidation, `You validate whether a SHEIN category path matches the actual product semantics.
+Focus on what the product physically is, not on noisy or misleading title words.
+Return JSON only with keys verdict and reason.
+verdict must be one of: compatible, incompatible, uncertain.
+
+Candidate SHEIN category path:
+- {{.CategoryPath}}
+
+Product summary:
+{{.ProductSummary}}`, map[string]any{
+		"CategoryPath":   strings.Join(categoryPath, " > "),
+		"ProductSummary": buildCategorySemanticProductSummary(canonical, pkg),
+	})
 }
 
-func buildCategorySemanticProductSummary(canonical *productenrich.CanonicalProduct, pkg *Package) string {
+func buildCategorySemanticProductSummary(canonical *canonical.Product, pkg *Package) string {
 	lines := make([]string, 0, 8)
 	appendLine := func(label, value string) {
 		value = strings.TrimSpace(value)

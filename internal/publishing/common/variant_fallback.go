@@ -5,28 +5,28 @@ import (
 	"regexp"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 const defaultVariantSKU = "DEFAULT-001"
 
-func buildFallbackVariant(canonical *productenrich.CanonicalProduct) []Variant {
-	if canonical == nil {
+func buildFallbackVariant(product *canonical.Product) []Variant {
+	if product == nil {
 		return nil
 	}
 
-	attributes := flattenCanonicalAttributes(canonical.Attributes)
+	attributes := flattenCanonicalAttributes(product.Attributes)
 	colorKey, colorValues := resolveVariantAttributeOptions(attributes, []string{"color", "colour", "颜色"})
 	sizeKey, sizeValues := resolveVariantAttributeOptions(attributes, []string{"size", "尺寸", "尺码"})
 
 	var price *Price
-	if guessed := inferVariantPriceFromAttributes(canonical.Attributes); guessed != nil {
+	if guessed := inferVariantPriceFromAttributes(product.Attributes); guessed != nil {
 		price = guessed
 	}
 
 	var imageURL string
-	if len(canonical.Images) > 0 {
-		imageURL = strings.TrimSpace(canonical.Images[0].URL)
+	if len(product.Images) > 0 {
+		imageURL = strings.TrimSpace(product.Images[0].URL)
 	}
 
 	if len(colorValues) == 0 {
@@ -73,7 +73,7 @@ func buildFallbackVariant(canonical *productenrich.CanonicalProduct) []Variant {
 	return variants
 }
 
-func inferVariantPriceFromAttributes(attributes map[string]productenrich.CanonicalAttribute) *Price {
+func inferVariantPriceFromAttributes(attributes map[string]canonical.Attribute) *Price {
 	if len(attributes) == 0 {
 		return nil
 	}
@@ -94,7 +94,7 @@ func inferVariantPriceFromAttributes(attributes map[string]productenrich.Canonic
 	}
 }
 
-func flattenCanonicalAttributes(attributes map[string]productenrich.CanonicalAttribute) map[string]string {
+func flattenCanonicalAttributes(attributes map[string]canonical.Attribute) map[string]string {
 	if len(attributes) == 0 {
 		return nil
 	}
@@ -209,7 +209,7 @@ func clonePrice(price *Price) *Price {
 	return &cloned
 }
 
-func firstAttributeValue(attributes map[string]productenrich.CanonicalAttribute, keys ...string) string {
+func firstAttributeValue(attributes map[string]canonical.Attribute, keys ...string) string {
 	for _, key := range keys {
 		if value, ok := attributes[key]; ok && strings.TrimSpace(value.Value) != "" {
 			return strings.TrimSpace(value.Value)

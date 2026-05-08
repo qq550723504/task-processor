@@ -5,8 +5,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
@@ -20,7 +20,7 @@ func NewAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) Attr
 	return &attributeResolver{api: api, llm: llm}
 }
 
-func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *AttributeResolution {
+func (r *attributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
 	resolution := &AttributeResolution{Status: "unresolved", Source: "fallback", CategoryID: categoryID(pkg)}
 	log := sheinLogger("shein/attribute")
 	if resolution.CategoryID == 0 {

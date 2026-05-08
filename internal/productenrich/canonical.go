@@ -3,70 +3,27 @@ package productenrich
 import (
 	"strconv"
 	"strings"
+
+	"task-processor/internal/catalog/canonical"
 )
 
-type CanonicalSourceType string
+type CanonicalSourceType = canonical.SourceType
 
 const (
-	CanonicalSourceUserText    CanonicalSourceType = "user_text"
-	CanonicalSourceUserImage   CanonicalSourceType = "user_image"
-	CanonicalSourceProductURL  CanonicalSourceType = "product_url"
-	CanonicalSourceScrapedData CanonicalSourceType = "scraped_data"
-	CanonicalSourceLLM         CanonicalSourceType = "llm"
-	CanonicalSourceDerived     CanonicalSourceType = "derived"
+	CanonicalSourceUserText    = canonical.SourceUserText
+	CanonicalSourceUserImage   = canonical.SourceUserImage
+	CanonicalSourceProductURL  = canonical.SourceProductURL
+	CanonicalSourceScrapedData = canonical.SourceScrapedData
+	CanonicalSourceLLM         = canonical.SourceLLM
+	CanonicalSourceDerived     = canonical.SourceDerived
 )
 
-type CanonicalSource struct {
-	Type   CanonicalSourceType `json:"type"`
-	Detail string              `json:"detail,omitempty"`
-}
-
-type FieldTrace struct {
-	Sources     []CanonicalSource `json:"sources,omitempty"`
-	Confidence  float64           `json:"confidence,omitempty"`
-	IsInferred  bool              `json:"is_inferred,omitempty"`
-	NeedsReview bool              `json:"needs_review,omitempty"`
-}
-
-type CanonicalAttribute struct {
-	Value string     `json:"value"`
-	Trace FieldTrace `json:"trace"`
-}
-
-type CanonicalImage struct {
-	URL   string     `json:"url"`
-	Role  string     `json:"role,omitempty"`
-	Trace FieldTrace `json:"trace"`
-}
-
-type CanonicalVariant struct {
-	SKU        string                        `json:"sku"`
-	Attributes map[string]CanonicalAttribute `json:"attributes,omitempty"`
-	Price      *PriceInfo                    `json:"price,omitempty"`
-	Stock      int                           `json:"stock,omitempty"`
-	Images     []CanonicalImage              `json:"images,omitempty"`
-	Dimensions *Dimensions                   `json:"dimensions,omitempty"`
-	Weight     *Weight                       `json:"weight,omitempty"`
-	Barcode    string                        `json:"barcode,omitempty"`
-	IsDefault  bool                          `json:"is_default,omitempty"`
-	Trace      FieldTrace                    `json:"trace"`
-}
-
-type CanonicalProduct struct {
-	Title             string                        `json:"title,omitempty"`
-	Brand             string                        `json:"brand,omitempty"`
-	CategoryPath      []string                      `json:"category_path,omitempty"`
-	Description       string                        `json:"description,omitempty"`
-	SellingPoints     []string                      `json:"selling_points,omitempty"`
-	SEOKeywords       []string                      `json:"seo_keywords,omitempty"`
-	Attributes        map[string]CanonicalAttribute `json:"attributes,omitempty"`
-	Specifications    *ProductSpecs                 `json:"specifications,omitempty"`
-	VariantDimensions []ScrapedVariantDimension     `json:"variant_dimensions,omitempty"`
-	Variants          []CanonicalVariant            `json:"variants,omitempty"`
-	Images            []CanonicalImage              `json:"images,omitempty"`
-	FieldTraces       map[string]FieldTrace         `json:"field_traces,omitempty"`
-	NeedsReview       bool                          `json:"needs_review,omitempty"`
-}
+type CanonicalSource = canonical.Source
+type FieldTrace = canonical.FieldTrace
+type CanonicalAttribute = canonical.Attribute
+type CanonicalImage = canonical.Image
+type CanonicalVariant = canonical.Variant
+type CanonicalProduct = canonical.Product
 
 // BuildCanonicalProduct lifts the current ProductJSON output into a platform-neutral
 // product model with basic provenance metadata so downstream packages can start
@@ -174,32 +131,7 @@ func inferBaseSources(req *GenerateRequest) []CanonicalSource {
 }
 
 func buildFieldTrace(base []CanonicalSource, inferred bool) FieldTrace {
-	sources := append([]CanonicalSource(nil), base...)
-	if inferred {
-		sources = append(sources, CanonicalSource{Type: CanonicalSourceLLM, Detail: "LLM-generated product normalization"})
-	}
-
-	confidence := 0.6
-	if hasSourceType(base, CanonicalSourceProductURL) {
-		confidence = 0.9
-	} else if hasSourceType(base, CanonicalSourceUserText) && hasSourceType(base, CanonicalSourceUserImage) {
-		confidence = 0.82
-	} else if hasSourceType(base, CanonicalSourceUserText) || hasSourceType(base, CanonicalSourceUserImage) {
-		confidence = 0.72
-	}
-	if inferred {
-		confidence -= 0.08
-	}
-	if confidence < 0.1 {
-		confidence = 0.1
-	}
-
-	return FieldTrace{
-		Sources:     sources,
-		Confidence:  confidence,
-		IsInferred:  inferred,
-		NeedsReview: confidence < 0.75,
-	}
+	return canonical.BuildFieldTrace(base, inferred)
 }
 
 func traceForAttribute(product *ProductJSON, key string, base []CanonicalSource) FieldTrace {
@@ -232,18 +164,7 @@ func traceForBrand(product *ProductJSON, base []CanonicalSource) FieldTrace {
 }
 
 func canonicalNeedsReview(product *CanonicalProduct) bool {
-	if product == nil {
-		return true
-	}
-	if strings.TrimSpace(product.Title) == "" || strings.TrimSpace(product.Description) == "" {
-		return true
-	}
-	for _, trace := range product.FieldTraces {
-		if trace.NeedsReview {
-			return true
-		}
-	}
-	return false
+	return canonical.ProductNeedsReview(product)
 }
 
 func inferImageRole(idx int) string {
@@ -254,12 +175,7 @@ func inferImageRole(idx int) string {
 }
 
 func hasSourceType(sources []CanonicalSource, want CanonicalSourceType) bool {
-	for _, source := range sources {
-		if source.Type == want {
-			return true
-		}
-	}
-	return false
+	return canonical.HasSourceType(sources, want)
 }
 
 func cloneStrings(values []string) []string {
@@ -311,10 +227,7 @@ func evidenceWithPrefix(evidence map[string][]CanonicalSource, prefix string) []
 }
 
 func shouldReviewLLMOnlySourceFact(base []CanonicalSource, inferred bool, fieldEvidence []CanonicalSource) bool {
-	return inferred &&
-		hasSourceType(base, CanonicalSourceProductURL) &&
-		hasSourceType(base, CanonicalSourceScrapedData) &&
-		!hasSourceType(fieldEvidence, CanonicalSourceScrapedData)
+	return canonical.ShouldReviewLLMOnlySourceFact(base, inferred, fieldEvidence)
 }
 
 func summarizeUserText(text string) string {

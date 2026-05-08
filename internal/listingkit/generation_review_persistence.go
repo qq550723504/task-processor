@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	listinggeneration "task-processor/internal/listingkit/generation"
 	"task-processor/internal/listingkit/reviewstore"
 )
 
@@ -99,34 +100,15 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 }
 
 func isPersistedGenerationReviewAction(actionKey string) bool {
-	switch strings.TrimSpace(actionKey) {
-	case "approve_section_review", "defer_section_review":
-		return true
-	default:
-		return false
-	}
+	return listinggeneration.IsPersistedReviewAction(actionKey)
 }
 
 func generationReviewDecisionFromAction(actionKey string) GenerationReviewDecision {
-	switch strings.TrimSpace(actionKey) {
-	case "approve_section_review":
-		return GenerationReviewDecisionApprove
-	case "defer_section_review":
-		return GenerationReviewDecisionDefer
-	default:
-		return ""
-	}
+	return GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
 }
 
 func generationReviewStatusFromDecision(decision GenerationReviewDecision) string {
-	switch decision {
-	case GenerationReviewDecisionApprove:
-		return "approved"
-	case GenerationReviewDecisionDefer:
-		return "deferred"
-	default:
-		return "pending"
-	}
+	return listinggeneration.ReviewStatusFromDecision(string(decision))
 }
 
 func generationReviewWorkflowMessage(actionKey, platform, slot, capability string) string {

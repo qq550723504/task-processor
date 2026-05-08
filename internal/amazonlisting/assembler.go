@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
@@ -14,7 +14,7 @@ func NewAssembler() Assembler {
 	return &assembler{}
 }
 
-func (a *assembler) Assemble(task *Task, product *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *AmazonListingDraft {
+func (a *assembler) Assemble(task *Task, product *canonical.Product, image *productimage.ImageProcessResult) *AmazonListingDraft {
 	now := time.Now()
 	draft := &AmazonListingDraft{
 		TaskID:       task.ID,

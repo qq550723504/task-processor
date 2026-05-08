@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
-	sheinpublish "task-processor/internal/shein/publish"
 )
 
-const sheinSubmitInFlightTTL = 15 * time.Minute
+const sheinSubmitInFlightTTL = listingsubmission.InFlightTTL
 
 var (
 	errSheinSubmitReplayExisting = errors.New("shein submit replay existing")
@@ -413,10 +413,7 @@ func (s *service) uploadSheinSubmitImages(task *Task, pkg *SheinPackage, submitP
 }
 
 func preValidateSheinSubmitProduct(submitProduct *sheinproduct.Product) error {
-	validator := sheinpublish.NewPublishProductValidator()
-	return validator.PreValidateProductData(nil, &sheinpublish.ValidationInput{
-		ProductData: submitProduct,
-	})
+	return sheinpub.PreValidateSubmitProduct(submitProduct)
 }
 
 func executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
@@ -583,23 +580,7 @@ func buildSheinSubmitResponseError(action string, result *sheinpub.SubmissionRes
 }
 
 func applySheinSubmissionRecord(pkg *sheinpub.Package, record *sheinpub.SubmissionRecord) {
-	if pkg == nil || record == nil {
-		return
-	}
-	if pkg.Submission == nil {
-		pkg.Submission = &sheinpub.SubmissionReport{}
-	}
-	pkg.Submission.LastAction = record.Action
-	pkg.Submission.LastStatus = record.Status
-	pkg.Submission.LastError = record.Error
-	pkg.Submission.SubmittedAt = &record.SubmittedAt
-	pkg.Submission.LastResult = record.Result
-	switch record.Action {
-	case "save_draft":
-		pkg.Submission.SaveDraft = record
-	case "publish":
-		pkg.Submission.Publish = record
-	}
+	listingsubmission.ApplyRecord(pkg, record)
 }
 
 func buildSheinSubmissionEvent(taskID, action string, record *sheinpub.SubmissionRecord, response *sheinpub.SubmissionResponse, submitErr error, startedAt time.Time) sheinpub.SubmissionEvent {

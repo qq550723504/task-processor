@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 )
 
 type stubCategorySemanticLLM struct {
@@ -34,10 +34,10 @@ func (s *stubCategorySemanticLLM) GetDefaultModel() string { return "stub" }
 func TestAICategorySemanticVerifierBuildsStructuredPrompt(t *testing.T) {
 	llm := &stubCategorySemanticLLM{response: `{"verdict":"compatible","reason":"chair cushion semantics match home furnishing"}`}
 	verifier := newAICategorySemanticVerifier(llm)
-	validation := verifier.ValidateProductCategory(&productenrich.CanonicalProduct{
+	validation := verifier.ValidateProductCategory(&canonical.Product{
 		Title:       "New Women's Summer Thin Ice Silk Pajamas",
 		Description: "Outdoor garden bench cushion for hanging chair and balcony seating",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
@@ -62,15 +62,15 @@ func TestAICategorySemanticVerifierBuildsStructuredPrompt(t *testing.T) {
 func TestAICategorySemanticVerifierAvoidsNoisyDescriptionWhenStructuredSignalsExist(t *testing.T) {
 	llm := &stubCategorySemanticLLM{response: `{"verdict":"compatible","reason":"structured signals clearly indicate an outdoor cushion"}`}
 	verifier := newAICategorySemanticVerifier(llm)
-	_ = verifier.ValidateProductCategory(&productenrich.CanonicalProduct{
+	_ = verifier.ValidateProductCategory(&canonical.Product{
 		Title:       "Outdoor Bench Cushion",
 		Description: "iCOSS Smart Toilet Seat Bidet Attachment",
-		Attributes: map[string]productenrich.CanonicalAttribute{
+		Attributes: map[string]canonical.Attribute{
 			"产品类别": {Value: "椅垫"},
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "尺寸", Values: []string{"150*100*10CM"}},
 		},
 	}, &Package{
@@ -86,7 +86,7 @@ func TestAICategorySemanticVerifierAvoidsNoisyDescriptionWhenStructuredSignalsEx
 }
 
 func TestBuildCategoryFamilyConflictSummaryUsesSemanticValidation(t *testing.T) {
-	recommend, reason := buildCategoryFamilyConflictSummary(&productenrich.CanonicalProduct{
+	recommend, reason := buildCategoryFamilyConflictSummary(&canonical.Product{
 		Title: "Outdoor bench cushion for hanging chair",
 	}, &Package{
 		CategoryPath: []string{"女士服装", "女士制服&特殊服饰", "女士装扮服饰&角色扮演服饰", "角色扮演服饰"},
@@ -107,7 +107,7 @@ func TestBuildCategoryFamilyConflictSummaryUsesSemanticValidation(t *testing.T) 
 }
 
 func TestBuildCategoryFamilyConflictSummaryTrustsCompatibleSemanticValidation(t *testing.T) {
-	recommend, reason := buildCategoryFamilyConflictSummary(&productenrich.CanonicalProduct{
+	recommend, reason := buildCategoryFamilyConflictSummary(&canonical.Product{
 		Title: "Washed denim hat",
 	}, &Package{
 		CategoryPath: []string{"服饰装饰品", "女士配饰", "女士帽子", "女士棒球帽"},

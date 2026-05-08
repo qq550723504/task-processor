@@ -3,7 +3,7 @@ package listingkit
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestStudioAttributesAndSpecificationsIncludeRichSDSFields(t *testing.T) {
@@ -21,7 +21,7 @@ func TestStudioAttributesAndSpecificationsIncludeRichSDSFields(t *testing.T) {
 		VariantColor:           "White",
 	}
 
-	attrs := studioAttributes(sds, productenrich.FieldTrace{})
+	attrs := studioAttributes(sds, canonical.FieldTrace{})
 	if attrs["material_description"].Value != "优选复合板材质" {
 		t.Fatalf("material_description = %+v", attrs["material_description"])
 	}
@@ -60,7 +60,7 @@ func TestStudioVariantsAddsVariantDiscriminatorWhenVariantSKUMissing(t *testing.
 		},
 	}
 
-	variants := studioVariants(sds, nil, productenrich.FieldTrace{})
+	variants := studioVariants(sds, nil, canonical.FieldTrace{})
 	if len(variants) != 2 {
 		t.Fatalf("variant count = %d, want 2", len(variants))
 	}
@@ -85,7 +85,7 @@ func TestStudioVariantsDeduplicatesRepeatedBaseSKU(t *testing.T) {
 		},
 	}
 
-	variants := studioVariants(sds, nil, productenrich.FieldTrace{})
+	variants := studioVariants(sds, nil, canonical.FieldTrace{})
 	if len(variants) != 2 {
 		t.Fatalf("variant count = %d, want 2", len(variants))
 	}
@@ -110,7 +110,7 @@ func TestStudioVariantsPreservesDistinctVariantSKUs(t *testing.T) {
 		},
 	}
 
-	variants := studioVariants(sds, nil, productenrich.FieldTrace{})
+	variants := studioVariants(sds, nil, canonical.FieldTrace{})
 	if len(variants) != 2 {
 		t.Fatalf("variant count = %d, want 2", len(variants))
 	}
@@ -132,7 +132,7 @@ func TestStudioVariantsPreserveVariantDimensionsAndWeight(t *testing.T) {
 		},
 	}
 
-	variants := studioVariants(sds, nil, productenrich.FieldTrace{})
+	variants := studioVariants(sds, nil, canonical.FieldTrace{})
 	if len(variants) != 2 {
 		t.Fatalf("variant count = %d, want 2", len(variants))
 	}
