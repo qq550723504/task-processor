@@ -9,6 +9,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/prompt"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
@@ -81,27 +82,36 @@ func matchSaleAttributeValuesWithLLM(
 }
 
 func buildSaleAttributeValueBatchMappingPrompt(attr sheinattribute.AttributeInfo, sourceDimension string, sourceValues []string) string {
-	var builder strings.Builder
-	builder.WriteString("You map source sales values to one existing SHEIN template attribute value.\n")
-	builder.WriteString("Work only inside the provided candidate list from SHEIN. Do not invent a new value.\n")
-	builder.WriteString("For each source_value, choose one candidate attribute_value_id only when the semantic match is safe.\n")
-	builder.WriteString("If none is safe, set attribute_value_id to 0.\n")
-	builder.WriteString("Ignore packaging words, material words, feature words, weight notes, and decorative prefixes when the actual color/size/style meaning is still clear.\n")
-	builder.WriteString("Return JSON only with shape {\"matches\":[{\"source_value\":\"...\",\"attribute_value_id\":123,\"reasons\":[\"...\"]}],\"reasons\":[\"...\"]}.\n\n")
-	builder.WriteString(fmt.Sprintf("Source dimension: %q\n", sourceDimension))
-	builder.WriteString(fmt.Sprintf("SHEIN template attribute: %q\n", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)))
-	builder.WriteString("Source values:\n")
+	var sourceValueBuilder strings.Builder
 	for _, sourceValue := range sourceValues {
-		builder.WriteString(fmt.Sprintf("- %q\n", sourceValue))
+		sourceValueBuilder.WriteString(fmt.Sprintf("- %q\n", sourceValue))
 	}
-	builder.WriteString("\nCandidates:\n")
+	var candidateBuilder strings.Builder
 	for _, option := range attr.AttributeValueInfoList {
-		builder.WriteString(fmt.Sprintf(
+		candidateBuilder.WriteString(fmt.Sprintf(
 			"- attribute_value_id=%d value=%q value_en=%q\n",
 			option.AttributeValueID,
 			option.AttributeValue,
 			option.AttributeValueEn,
 		))
 	}
-	return builder.String()
+	return renderSheinSaleAttributePrompt(prompt.KSheinSaleAttributeValueBatchMapping, `You map source sales values to one existing SHEIN template attribute value.
+Work only inside the provided candidate list from SHEIN. Do not invent a new value.
+For each source_value, choose one candidate attribute_value_id only when the semantic match is safe.
+If none is safe, set attribute_value_id to 0.
+Ignore packaging words, material words, feature words, weight notes, and decorative prefixes when the actual color/size/style meaning is still clear.
+Return JSON only with shape {"matches":[{"source_value":"...","attribute_value_id":123,"reasons":["..."]}],"reasons":["..."]}.
+
+Source dimension: {{.SourceDimension}}
+SHEIN template attribute: {{.TemplateAttribute}}
+Source values:
+{{.SourceValuesBlock}}
+
+Candidates:
+{{.CandidatesBlock}}`, map[string]any{
+		"SourceDimension":   fmt.Sprintf("%q", sourceDimension),
+		"TemplateAttribute": fmt.Sprintf("%q", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)),
+		"SourceValuesBlock": sourceValueBuilder.String(),
+		"CandidatesBlock":   candidateBuilder.String(),
+	})
 }

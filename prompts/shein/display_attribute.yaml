@@ -12,6 +12,19 @@ display_attribute:
       {{.AdditionalContextBlock}}Candidate SHEIN display attributes:
       {{.CandidatesBlock}}
 
+  field_selection_batch:
+    description: "SHEIN 展示属性字段批量选择提示词模板"
+    content: |
+      You map multiple source product attributes to SHEIN display attribute fields from the current category template.
+      Choose at most one template attribute per source_index and do not assign the same attribute_id to multiple sources.
+      Only choose an attribute_id when the semantic match is safe. Skip uncertain mappings.
+      Return JSON only with key selections, where each item is {"source_index":number,"attribute_id":number,"reasons":[string]}.
+
+      Source attributes:
+      {{.SourcesBlock}}
+      {{.AdditionalContextBlock}}Candidate SHEIN display attributes:
+      {{.CandidatesBlock}}
+
   value_mapping:
     description: "SHEIN 展示属性枚举值映射提示词模板"
     content: |
@@ -25,6 +38,21 @@ display_attribute:
       {{.SourceSegmentsBlock}}{{.AdditionalContextBlock}}SHEIN template attribute: {{.TemplateAttribute}}
       Candidates:
       {{.CandidatesBlock}}
+
+  value_mapping_batch:
+    description: "SHEIN 展示属性枚举值批量映射提示词模板"
+    content: |
+      You map multiple source product attribute values to existing SHEIN template attribute values as a batch.
+      Work only inside each attribute's provided candidate list. Do not invent new values.
+      For each attribute_id, choose one candidate attribute_value_id only when the semantic match is safe.
+      If none is safe, set attribute_value_id to 0.
+      Return JSON only with shape {"selections":[{"attribute_id":number,"attribute_value_id":number,"reasons":[string]}],"reasons":[string]}.
+
+      Additional source context:
+      {{.AdditionalContextBlock}}
+
+      Attribute mapping tasks:
+      {{.AttributeTasksBlock}}
 
   missing_text:
     description: "SHEIN 缺失文本展示属性推断提示词模板"
@@ -62,18 +90,31 @@ display_attribute:
   batch_inference:
     description: "SHEIN 批量补全缺失展示属性提示词模板"
     content: |
-      You complete missing required SHEIN display attributes as a batch.
-      Use full product context to make consistent choices across attributes.
-      For each required attribute, choose the safest candidate attribute_value_id when product semantics support it and no source evidence contradicts it.
-      Prefer broad or neutral candidates over 0 when the candidate list contains a generic fit.
-      For element, pattern, decoration, or motif attributes, consider artwork, printing, production_process, design_area, and visual theme signals.
-      For season attributes, choose a broad all-season or multi-season candidate when the product is not limited to a specific season.
-      For style attributes, choose the safest everyday/neutral style candidate when the product has no niche style signal.
-      Return JSON only: {"selections":[{"attribute_id":number,"attribute_value_id":number,"reasons":[string]}]}.
-      Use attribute_value_id 0 only when every candidate would be misleading.
+      You resolve a full batch of unresolved SHEIN display attributes for one live category template.
+      Use full product context to make consistent choices across all attributes in one pass.
+      For every listed template attribute, you must return exactly one selection entry.
+      For enum attributes, select only from the provided attribute_value_id options. Prefer the best-supported candidate when the evidence is directionally clear. Use 0 only when the evidence is genuinely absent or conflicting.
+      For text attributes, fill attribute_extra_value only when the value is explicitly supported by source evidence. Do not invent product model names or marketing copy.
+      Return complete JSON only, without markdown or explanatory text:
+      {"selections":[{"attribute_id":number,"attribute_value_id":number,"attribute_extra_value":string,"reasons":[string]}]}
 
       Source product attributes:
       {{.SourceAttributesBlock}}
 
-      Missing required SHEIN attributes:
+      Unresolved SHEIN template attributes:
       {{.AttributesBlock}}
+
+  required_repair:
+    description: "SHEIN 必填展示属性修复提示词模板"
+    content: |
+      You are repairing one unresolved required SHEIN display attribute.
+      The attribute is required by the live SHEIN template, so choose one candidate unless every candidate directly contradicts the source product.
+      Use only the provided SHEIN candidate IDs. Do not invent values.
+      Return 0 only if selecting any candidate would create a false product claim.
+      Return JSON only with keys attribute_value_id and reasons.
+
+      Required SHEIN template attribute: {{.TemplateAttribute}}
+      Template metadata: attribute_id={{.AttributeID}} type={{.AttributeType}}
+      Source product attributes:
+      {{.SourceAttributesBlock}}Candidates:
+      {{.CandidatesBlock}}

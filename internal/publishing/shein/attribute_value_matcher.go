@@ -352,7 +352,7 @@ func buildTemplateAttributeValueBatchMappingPrompt(
 		contextBlock.WriteString("\n")
 	}
 
-	return renderSheinDisplayAttributePrompt("shein.display_attribute.value_mapping_batch", `You map multiple source product attribute values to existing SHEIN template attribute values as a batch.
+	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeValueMappingBatch, `You map multiple source product attribute values to existing SHEIN template attribute values as a batch.
 Work only inside each attribute's provided candidate list. Do not invent new values.
 For each attribute_id, choose one candidate attribute_value_id only when the semantic match is safe.
 If none is safe, set attribute_value_id to 0.

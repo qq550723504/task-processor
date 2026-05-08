@@ -1,0 +1,62 @@
+sale_attribute:
+  source_dimension:
+    description: "SHEIN 销售属性源维度预选提示词模板"
+    content: |
+      You are choosing source sales dimensions for SHEIN draft grouping.
+      Choose exactly one primary_source_dimension for SKC grouping and optionally one secondary_source_dimension for SKU grouping.
+      Do not rename source dimensions. Prefer the most product-defining dimension as primary.
+      Return JSON only with keys primary_source_dimension, secondary_source_dimension, reasons.
+
+      Source dimensions:
+      {{.SourceDimensionsBlock}}
+
+  mapping:
+    description: "SHEIN 销售属性源维度映射提示词模板"
+    content: |
+      You map source sales dimensions to SHEIN sale attributes.
+      Choose at most one primary_source_dimension for SKC grouping and at most one secondary_source_dimension for SKU grouping.
+      Keep source dimension names unchanged. Prefer required or SKC-scope SHEIN attributes.
+      When the platform-required primary SHEIN attribute has no exact same-name source dimension, choose the source dimension whose values are the safest stable variant grouping surrogate for that target attribute.
+      Avoid long image-generation prompts, technical ids, and size-only dimensions for primary style/design grouping when another source dimension is available.
+      If there is no safe secondary mapping, leave secondary_source_dimension empty.
+      Return JSON only with keys primary_source_dimension, secondary_source_dimension, primary_attribute_id, secondary_attribute_id, reasons.
+
+      Source dimensions:
+      {{.SourceDimensionsBlock}}
+
+      SHEIN sale attribute templates:
+      {{.TemplatesBlock}}
+
+  value_batch_mapping:
+    description: "SHEIN 销售属性枚举值批量映射提示词模板"
+    content: |
+      You map source sales values to one existing SHEIN template attribute value.
+      Work only inside the provided candidate list from SHEIN. Do not invent a new value.
+      For each source_value, choose one candidate attribute_value_id only when the semantic match is safe.
+      If none is safe, set attribute_value_id to 0.
+      Ignore packaging words, material words, feature words, weight notes, and decorative prefixes when the actual color/size/style meaning is still clear.
+      Return JSON only with shape {"matches":[{"source_value":"...","attribute_value_id":123,"reasons":["..."]}],"reasons":["..."]}.
+
+      Source dimension: {{.SourceDimension}}
+      SHEIN template attribute: {{.TemplateAttribute}}
+      Source values:
+      {{.SourceValuesBlock}}
+
+      Candidates:
+      {{.CandidatesBlock}}
+
+  prompt_value_extraction:
+    description: "从图片生成提示词中提取安全销售属性值的提示词模板"
+    content: |
+      You extract a short e-commerce sale attribute value from a noisy image-generation prompt.
+      Return JSON only with shape {"value":"...","reasons":["..."]}.
+      Rules:
+      1. Output one short English attribute value only.
+      2. Do not output sentences, commands, copyright notes, size/canvas instructions, or punctuation-heavy text.
+      3. Prefer 2-6 words and under 50 characters.
+      4. Keep theme/style semantics when obvious, but do not invent detailed marketing copy.
+
+      Attribute name: {{.AttributeName}}
+      Source dimension: {{.SourceDimension}}
+      Product title: {{.ProductTitle}}
+      Prompt-like source value: {{.SourceValue}}
