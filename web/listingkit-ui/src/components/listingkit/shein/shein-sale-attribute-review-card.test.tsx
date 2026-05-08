@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein/shein-sale-attribute-review-card";
 
@@ -70,5 +71,46 @@ describe("SheinSaleAttributeReviewCard", () => {
     expect(screen.getAllByText("模板值拟合度 1/2").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("SKU 维度覆盖 1/1").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("尺码模板候选仍待确认")).toBeInTheDocument();
+  });
+
+  it("allows confirming partial current sale attributes", async () => {
+    const onConfirm = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_attribute_id: 1001184,
+              secondary_attribute_id: 87,
+              skc_attributes: [
+                {
+                  scope: "skc",
+                  name: "Style Type",
+                  value: "White",
+                  attribute_id: 1001184,
+                },
+              ],
+              sku_attributes: [
+                {
+                  scope: "sku",
+                  name: "Size",
+                  value: "90x180cm",
+                  attribute_id: 87,
+                  attribute_value_id: 417,
+                },
+              ],
+            },
+          },
+        }}
+        onConfirmCurrentSaleAttributes={onConfirm}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "确认当前规格" }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

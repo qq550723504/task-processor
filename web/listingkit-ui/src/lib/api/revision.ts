@@ -21,8 +21,30 @@ export type ApplyRevisionRequest = {
       source?: string;
     };
     sale_attribute_resolution?: {
+      status?: string;
+      source?: string;
       recommend_category_review?: boolean;
       category_review_reason?: string;
+      primary_attribute_id?: number;
+      secondary_attribute_id?: number;
+      skc_attributes?: Array<{
+        scope?: string;
+        name?: string;
+        value?: string;
+        attribute_id?: number;
+        attribute_value_id?: number;
+        matched_by?: string;
+      }>;
+      sku_attributes?: Array<{
+        scope?: string;
+        name?: string;
+        value?: string;
+        attribute_id?: number;
+        attribute_value_id?: number;
+        matched_by?: string;
+      }>;
+      selection_summary?: string[];
+      review_notes?: string[];
     };
     attribute_resolution?: {
       status?: string;

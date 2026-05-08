@@ -297,8 +297,16 @@ export type SheinInspectionSaleAttributePayload = {
 };
 
 export type SheinRevisionSaleAttributePatch = {
+  status?: string;
+  source?: string;
   recommend_category_review?: boolean;
   category_review_reason?: string;
+  primary_attribute_id?: number;
+  secondary_attribute_id?: number;
+  skc_attributes?: SheinResolvedSaleAttribute[];
+  sku_attributes?: SheinResolvedSaleAttribute[];
+  selection_summary?: string[];
+  review_notes?: string[];
 };
 
 export type SheinEditorContext = {

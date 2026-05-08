@@ -1,4 +1,5 @@
 import { Card } from "@/components/shared/card";
+import { Button } from "@/components/shared/button";
 import type {
   SheinEditorContext,
   SheinResolvedSaleAttribute,
@@ -55,8 +56,12 @@ function SaleAttributeRow({
 
 export function SheinSaleAttributeReviewCard({
   editorContext,
+  isApplying,
+  onConfirmCurrentSaleAttributes,
 }: {
   editorContext?: SheinEditorContext | null;
+  isApplying?: boolean;
+  onConfirmCurrentSaleAttributes?: (() => void) | null;
 }) {
   const current = editorContext?.sale_attributes?.current;
   if (!current) {
@@ -107,17 +112,34 @@ export function SheinSaleAttributeReviewCard({
     current.status === "blocked" ||
     unresolvedCandidates.length > 0 ||
     current.recommend_category_review;
+  const canConfirm =
+    Boolean(onConfirmCurrentSaleAttributes) &&
+    isPartial &&
+    Boolean(current.primary_attribute_id) &&
+    (skcAttributes.length > 0 || skuAttributes.length > 0);
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
       <div className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            SHEIN 销售属性确认
-          </p>
-          <p className="mt-1 text-sm leading-6 text-zinc-700">
-            检查主规格、其他规格和 SDS 变体值是否完整映射到 SHEIN 销售属性。
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              SHEIN 销售属性确认
+            </p>
+            <p className="mt-1 text-sm leading-6 text-zinc-700">
+              检查主规格、其他规格和 SDS 变体值是否完整映射到 SHEIN 销售属性。
+            </p>
+          </div>
+          {canConfirm ? (
+            <Button
+              className="h-9 shrink-0 px-3 text-xs"
+              disabled={isApplying}
+              tone="secondary"
+              onClick={() => onConfirmCurrentSaleAttributes?.()}
+            >
+              确认当前规格
+            </Button>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">

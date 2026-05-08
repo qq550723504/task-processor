@@ -622,6 +622,35 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     });
   };
 
+  const handleConfirmCurrentSheinSaleAttributes = () => {
+    const current = preview.data?.shein?.editor_context?.sale_attributes?.current;
+    if (!current?.primary_attribute_id) {
+      return;
+    }
+
+    applyRevision.mutate({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Confirm current SHEIN sale attributes",
+      shein: {
+        sale_attribute_resolution: {
+          status: "resolved",
+          source: "manual_review",
+          recommend_category_review: false,
+          category_review_reason: "",
+          primary_attribute_id: current.primary_attribute_id,
+          secondary_attribute_id: current.secondary_attribute_id,
+          skc_attributes: current.skc_attributes ?? [],
+          sku_attributes: current.sku_attributes ?? [],
+          selection_summary: current.selection_summary ?? [],
+          review_notes: [
+            "SHEIN 销售属性已按当前主规格和其他规格人工确认。",
+          ],
+        },
+      },
+    });
+  };
+
   const canSelectSheinBlockingItem = (item: SheinReadinessItem) =>
     canSelectSheinReadinessItem(item);
 
@@ -885,6 +914,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             <div id="shein-sale-attribute-review-card" className="min-w-0">
               <SheinSaleAttributeReviewCard
                 editorContext={preview.data?.shein?.editor_context}
+                isApplying={applyRevision.isPending}
+                onConfirmCurrentSaleAttributes={handleConfirmCurrentSheinSaleAttributes}
               />
             </div>
           ) : null}
