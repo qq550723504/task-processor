@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -37,6 +40,30 @@ func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 	}, nil)
 }
 
+func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
+	assertNoBannedSelectorsOutside(t, filepath.Join("..", "internal"), filepath.Join("..", "internal", "productenrich"), map[string]struct{}{
+		"CanonicalProduct":           {},
+		"CanonicalVariant":           {},
+		"CanonicalImage":             {},
+		"CanonicalAttribute":         {},
+		"CanonicalSource":            {},
+		"CanonicalSourceType":        {},
+		"FieldTrace":                 {},
+		"ProductSpecs":               {},
+		"Dimensions":                 {},
+		"Weight":                     {},
+		"PackageInfo":                {},
+		"PriceInfo":                  {},
+		"ScrapedVariantDimension":    {},
+		"CanonicalSourceUserText":    {},
+		"CanonicalSourceUserImage":   {},
+		"CanonicalSourceProductURL":  {},
+		"CanonicalSourceScrapedData": {},
+		"CanonicalSourceLLM":         {},
+		"CanonicalSourceDerived":     {},
+	})
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
@@ -60,6 +87,51 @@ func assertNoBannedImports(t *testing.T, root string, bannedImports []string, al
 				t.Errorf("%s imports legacy SHEIN runtime package %s", path, banned)
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertNoBannedSelectorsOutside(t *testing.T, root, allowedRoot string, bannedSelectors map[string]struct{}) {
+	t.Helper()
+
+	root = filepath.Clean(root)
+	allowedRoot = filepath.Clean(allowedRoot)
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		path = filepath.Clean(path)
+		if entry.IsDir() {
+			if path == allowedRoot {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if !ok || ident.Name != "productenrich" {
+				return true
+			}
+			if _, banned := bannedSelectors[selector.Sel.Name]; banned {
+				t.Errorf("%s uses productenrich.%s compatibility alias; import internal/catalog/canonical directly", fset.Position(selector.Pos()), selector.Sel.Name)
+			}
+			return true
+		})
 		return nil
 	})
 	if err != nil {
