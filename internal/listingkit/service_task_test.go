@@ -41,3 +41,35 @@ func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {
 		t.Fatalf("remote record id = %q, want record-123", item.SheinSubmissionRemoteRecordID)
 	}
 }
+
+func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID: "task-rendered-count",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/input.png"},
+		},
+		Status: TaskStatusCompleted,
+		Result: &ListingKitResult{
+			SDSSync: &SDSSyncSummary{
+				Status: "completed",
+				MockupImageURLs: []string{
+					"https://cdn.example.com/mockup-1.png",
+					"https://cdn.example.com/mockup-2.png",
+					"https://cdn.example.com/mockup-3.png",
+				},
+				VariantResults: []SDSSyncSummary{{
+					Status:          "completed",
+					MockupImageURLs: []string{"https://cdn.example.com/mockup-4.png"},
+				}},
+			},
+		},
+	}
+
+	item := buildTaskListItem(task)
+
+	if item.ImageCount != 4 {
+		t.Fatalf("image count = %d, want rendered image count 4", item.ImageCount)
+	}
+}

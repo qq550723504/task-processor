@@ -184,7 +184,7 @@ func TestSaleAttributeResolverDoesNotMapMismatchedSourceToFirstTemplateAttribute
 	}
 }
 
-func TestSaleAttributeResolverPrefersPrimaryLabeledAttributeOverEarlierSecondaryAttribute(t *testing.T) {
+func TestSaleAttributeResolverDoesNotUseAIStyleWhenNoStructuredDimensionMatches(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
@@ -235,15 +235,20 @@ func TestSaleAttributeResolverPrefersPrimaryLabeledAttributeOverEarlierSecondary
 	}, nil)
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if resolution.PrimaryAttributeID != 301 {
-		t.Fatalf("primary attribute id = %d, want primary labeled attribute 301", resolution.PrimaryAttributeID)
+	if resolution.PrimaryAttributeID != 0 {
+		t.Fatalf("primary attribute id = %d, want unresolved without prompt-derived ai_style", resolution.PrimaryAttributeID)
 	}
-	if len(resolution.SKCAttributes) == 0 || resolution.SKCAttributes[0].AttributeID != 301 {
-		t.Fatalf("skc attributes = %+v, want primary labeled attribute selected", resolution.SKCAttributes)
+	if resolution.Status != "partial" {
+		t.Fatalf("status = %q, want partial", resolution.Status)
+	}
+	for _, dimension := range resolution.SourceDimensions {
+		if isAIStyleSourceDimension(dimension.Name) {
+			t.Fatalf("source dimensions include ai_style: %+v", resolution.SourceDimensions)
+		}
 	}
 }
 
-func TestSaleAttributeResolverPrefersCustomFirstTemplateSaleAttribute(t *testing.T) {
+func TestSaleAttributeResolverPrefersStructuredColorOverAIStyleFallback(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
@@ -297,22 +302,21 @@ func TestSaleAttributeResolverPrefersCustomFirstTemplateSaleAttribute(t *testing
 	}, nil)
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if resolution.PrimaryAttributeID != 301 {
-		t.Fatalf("primary attribute id = %d, want custom first template sale attribute 301", resolution.PrimaryAttributeID)
+	if resolution.PrimaryAttributeID != 27 {
+		t.Fatalf("primary attribute id = %d, want Color 27", resolution.PrimaryAttributeID)
 	}
-	if len(resolution.SKCAttributes) == 0 || resolution.SKCAttributes[0].Name != "Style" {
-		t.Fatalf("skc attributes = %+v, want Style selected", resolution.SKCAttributes)
+	if resolution.PrimarySourceDimension != "颜色" {
+		t.Fatalf("primary source dimension = %q, want 颜色", resolution.PrimarySourceDimension)
 	}
-	assignment := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic")]
-	if assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9001 {
-		t.Fatalf("custom assignment = %+v, want value id 9001", assignment)
+	if len(resolution.SKCAttributes) == 0 || resolution.SKCAttributes[0].Name != "Color" {
+		t.Fatalf("skc attributes = %+v, want Color selected", resolution.SKCAttributes)
 	}
 	if resolution.Status != "resolved" {
 		t.Fatalf("status = %q, want resolved", resolution.Status)
 	}
 }
 
-func TestSaleAttributeResolverKeepsFirstStyleTemplateWhenFixedValuesDoNotFit(t *testing.T) {
+func TestSaleAttributeResolverDoesNotKeepStyleTemplateFromAIStyleWhenFixedValuesDoNotFit(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
@@ -369,18 +373,18 @@ func TestSaleAttributeResolverKeepsFirstStyleTemplateWhenFixedValuesDoNotFit(t *
 	}, nil)
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if resolution.PrimaryAttributeID != 301 {
-		t.Fatalf("primary attribute id = %d, want first Style template 301 even when fixed values do not fit", resolution.PrimaryAttributeID)
+	if resolution.PrimaryAttributeID != 27 {
+		t.Fatalf("primary attribute id = %d, want structured Color 27", resolution.PrimaryAttributeID)
 	}
-	if len(resolution.Candidates) == 0 || resolution.Candidates[0].Name != "Style" || resolution.Candidates[0].SelectedScope != "skc" {
-		t.Fatalf("first candidate = %+v, want selected Style", resolution.Candidates)
+	if resolution.PrimarySourceDimension != "颜色" {
+		t.Fatalf("primary source dimension = %q, want 颜色", resolution.PrimarySourceDimension)
 	}
 	if resolution.Status != "resolved" {
 		t.Fatalf("status = %q, want resolved", resolution.Status)
 	}
 }
 
-func TestSaleAttributeResolverUsesAIStyleForPrimaryStyleTypeWithoutMisusingColor(t *testing.T) {
+func TestSaleAttributeResolverUsesStructuredColorInsteadOfAIStyleForPrimary(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic"}},
@@ -459,14 +463,14 @@ func TestSaleAttributeResolverUsesAIStyleForPrimaryStyleTypeWithoutMisusingColor
 	}, nil)
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if resolution.PrimaryAttributeID != 1001184 {
-		t.Fatalf("primary attribute id = %d, want Style Type 1001184", resolution.PrimaryAttributeID)
+	if resolution.PrimaryAttributeID != 27 {
+		t.Fatalf("primary attribute id = %d, want Color 27", resolution.PrimaryAttributeID)
 	}
-	if resolution.PrimarySourceDimension != "ai_style" {
-		t.Fatalf("primary source dimension = %q, want ai_style", resolution.PrimarySourceDimension)
+	if resolution.PrimarySourceDimension != "Color" {
+		t.Fatalf("primary source dimension = %q, want Color", resolution.PrimarySourceDimension)
 	}
-	if assignment := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic")]; assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9001 {
-		t.Fatalf("ai_style assignment = %+v, want custom value 9001", assignment)
+	if _, ok := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic")]; ok {
+		t.Fatalf("ai_style assignment should not be created: %+v", resolution.skcValueAssignments)
 	}
 }
 
@@ -558,7 +562,7 @@ func TestSaleAttributeResolverUsesLLMToMapColorAsRequiredStyleSurrogate(t *testi
 	}
 }
 
-func TestSaleAttributeResolverSanitizesPromptLikeStyleTypeValueWithRules(t *testing.T) {
+func TestSaleAttributeResolverIgnoresPromptLikeAIStyleValue(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"}},
@@ -628,18 +632,18 @@ func TestSaleAttributeResolverSanitizesPromptLikeStyleTypeValueWithRules(t *test
 	}, nil)
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if resolution.PrimaryAttributeID != 1001184 {
-		t.Fatalf("primary attribute id = %d, want Style Type 1001184", resolution.PrimaryAttributeID)
+	if resolution.PrimarySourceDimension == "ai_style" {
+		t.Fatalf("primary source dimension = ai_style, want prompt-derived style ignored")
 	}
-	if !resolution.ValueSanitized || resolution.ValueSanitizationSource != "rule_trimmed" {
-		t.Fatalf("sanitization = (%v, %q), want rule_trimmed", resolution.ValueSanitized, resolution.ValueSanitizationSource)
+	if resolution.ValueSanitized || resolution.ValuePromptContaminated {
+		t.Fatalf("prompt value state = sanitized:%v contaminated:%v, want ignored prompt with no sale value extraction", resolution.ValueSanitized, resolution.ValuePromptContaminated)
 	}
-	if assignment := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2")]; assignment.Value != "Blue Dog Graphic" {
-		t.Fatalf("sanitized ai_style assignment = %+v, want value Blue Dog Graphic", assignment)
+	if _, ok := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2")]; ok {
+		t.Fatalf("ai_style assignment should not be created: %+v", resolution.skcValueAssignments)
 	}
 }
 
-func TestSaleAttributeResolverUsesLLMToSanitizePromptLikeStyleTypeValue(t *testing.T) {
+func TestSaleAttributeResolverDoesNotUseLLMToExtractPromptLikeAIStyleValue(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."}},
@@ -707,15 +711,15 @@ func TestSaleAttributeResolverUsesLLMToSanitizePromptLikeStyleTypeValue(t *testi
 	}, llm)
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if !resolution.ValueSanitized || resolution.ValueSanitizationSource != "llm_extracted" {
-		t.Fatalf("sanitization = (%v, %q), want llm_extracted", resolution.ValueSanitized, resolution.ValueSanitizationSource)
+	if resolution.ValueSanitized || resolution.ValuePromptContaminated {
+		t.Fatalf("prompt value state = sanitized:%v contaminated:%v, want prompt ignored", resolution.ValueSanitized, resolution.ValuePromptContaminated)
 	}
-	if assignment := resolution.skcValueAssignments[normalizeText("Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide.")]; assignment.Value != "Mystic Graphic" {
-		t.Fatalf("llm-sanitized assignment = %+v, want value Mystic Graphic", assignment)
+	if _, ok := resolution.skcValueAssignments[normalizeText("Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide.")]; ok {
+		t.Fatalf("ai_style assignment should not be created: %+v", resolution.skcValueAssignments)
 	}
 }
 
-func TestSaleAttributeResolverRequiresManualReviewWhenLLMReturnsPromptLikeText(t *testing.T) {
+func TestSaleAttributeResolverDoesNotRequireManualReviewForIgnoredPromptLikeAIStyle(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "ai_style", Values: []string{"Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."}},
@@ -767,11 +771,11 @@ func TestSaleAttributeResolverRequiresManualReviewWhenLLMReturnsPromptLikeText(t
 	if resolution.Status != "partial" {
 		t.Fatalf("status = %q, want partial", resolution.Status)
 	}
-	if !resolution.ValuePromptContaminated {
-		t.Fatalf("value_prompt_contaminated = false, want true")
+	if resolution.ValuePromptContaminated {
+		t.Fatalf("value_prompt_contaminated = true, want ignored prompt-like ai_style")
 	}
-	if !strings.Contains(resolution.ValueResolutionNote, "manual review required") {
-		t.Fatalf("value resolution note = %q, want manual review hint", resolution.ValueResolutionNote)
+	if strings.Contains(resolution.ValueResolutionNote, "manual review required") {
+		t.Fatalf("value resolution note = %q, want no prompt extraction review", resolution.ValueResolutionNote)
 	}
 }
 
@@ -887,8 +891,8 @@ func TestSaleAttributeResolverPromotesRequiredMultiValueColorOverEarlierStyleTyp
 	if resolution.PrimarySourceDimension != "Color" {
 		t.Fatalf("primary source dimension = %q, want Color", resolution.PrimarySourceDimension)
 	}
-	if resolution.SecondaryAttributeID != 1001184 {
-		t.Fatalf("secondary attribute id = %d, want Style Type 1001184", resolution.SecondaryAttributeID)
+	if resolution.SecondaryAttributeID == 1001184 {
+		t.Fatalf("secondary attribute id = Style Type 1001184, want prompt-derived ai_style ignored")
 	}
 }
 

@@ -131,7 +131,7 @@ func canUseCustomSaleAttributeCandidate(dimension SourceVariantDimension, attr s
 	if sourceDimensionMatchesSaleTemplate(dimension.Name, attr) {
 		return true
 	}
-	return isAIStyleSourceDimension(dimension.Name) && !hasSourceDimensionForSaleTemplate(sourceDimensionNames, attr)
+	return false
 }
 
 func canUseTemplateValueSaleAttributeCandidate(dimension SourceVariantDimension, attr sheinattribute.AttributeInfo, sourceDimensionNames []string) bool {
@@ -141,7 +141,7 @@ func canUseTemplateValueSaleAttributeCandidate(dimension SourceVariantDimension,
 	if sourceDimensionMatchesSaleTemplate(dimension.Name, attr) {
 		return true
 	}
-	return isAIStyleSourceDimension(dimension.Name) && !hasSourceDimensionForSaleTemplate(sourceDimensionNames, attr)
+	return false
 }
 
 func sourceDimensionMatchesSaleTemplate(name string, attr sheinattribute.AttributeInfo) bool {

@@ -49,7 +49,7 @@ func saleAttributeResolverCacheKey(req *BuildRequest, canonical *canonical.Produ
 		return ""
 	}
 	payload := map[string]any{
-		"version":           9,
+		"version":           10,
 		"store_id":          sheinStoreID(req),
 		"category_id":       categoryID(pkg),
 		"category_id_list":  append([]int(nil), pkg.CategoryIDList...),
@@ -74,7 +74,7 @@ func shouldCacheSaleAttributeResolution(resolution *SaleAttributeResolution) boo
 }
 
 func normalizedSourceDimensions(canonical *canonical.Product) []string {
-	dimensions := buildSourceVariantDimensions(canonical, common.BuildVariants(canonical))
+	dimensions := saleAttributeSourceDimensions(buildSourceVariantDimensions(canonical, common.BuildVariants(canonical)))
 	if len(dimensions) == 0 {
 		return nil
 	}

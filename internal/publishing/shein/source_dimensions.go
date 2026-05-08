@@ -60,6 +60,20 @@ func buildSourceVariantDimensions(canonical *canonical.Product, variants []commo
 	return dimensions
 }
 
+func saleAttributeSourceDimensions(dimensions []SourceVariantDimension) []SourceVariantDimension {
+	if len(dimensions) == 0 {
+		return nil
+	}
+	result := make([]SourceVariantDimension, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		if isAIStyleSourceDimension(dimension.Name) {
+			continue
+		}
+		result = append(result, dimension)
+	}
+	return result
+}
+
 func collectVariantAttributeKeys(variants []common.Variant) []string {
 	seen := make(map[string]struct{})
 	keys := make([]string, 0)

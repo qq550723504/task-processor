@@ -26,7 +26,7 @@ func NewSaleAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) 
 func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
 	resolution := &SaleAttributeResolution{Status: "unresolved", Source: "fallback", CategoryID: categoryID(pkg)}
 	log := sheinLogger("shein/sale_attribute")
-	sourceDimensions := buildSourceVariantDimensions(canonical, common.BuildVariants(canonical))
+	sourceDimensions := saleAttributeSourceDimensions(buildSourceVariantDimensions(canonical, common.BuildVariants(canonical)))
 	resolution.SourceDimensions = append([]SourceVariantDimension(nil), sourceDimensions...)
 	if sourceSelection := selectSourceDimensions(sourceDimensions, r.llm); sourceSelection != nil {
 		resolution.PrimarySourceDimension = sourceSelection.PrimarySourceDimension
@@ -89,7 +89,7 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 	var primaryCandidate, secondaryCandidate *saleAttributeCandidate
 	primaryCandidate, secondaryCandidate = selectPrimarySecondaryCandidates(candidates)
 	blockPromptDerivedAIStyleFallback := false
-	if shouldSelectSaleAttributeMappingWithLLM(primaryCandidate, sourceDimensions) {
+	if shouldSelectSaleAttributeMappingWithLLM(primaryCandidate, sourceDimensions, saleAttributes) {
 		mappingDimensions := saleAttributeMappingSourceDimensions(sourceDimensions)
 		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, mappingDimensions, saleAttributes); err == nil && selection != nil {
 			llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(candidates, selection, sourceDimensions, saleAttributes)
@@ -381,11 +381,14 @@ func buildLLMSelectedSaleAttributeCandidate(
 	return newSaleAttributeCandidate(*dimension, sourceOrder, templateOrder, match, distinct, distinct)
 }
 
-func shouldSelectSaleAttributeMappingWithLLM(primary *saleAttributeCandidate, dimensions []SourceVariantDimension) bool {
+func shouldSelectSaleAttributeMappingWithLLM(primary *saleAttributeCandidate, dimensions []SourceVariantDimension, attributes []sheinattribute.AttributeInfo) bool {
 	if len(dimensions) == 0 {
 		return false
 	}
 	if primary == nil {
+		return true
+	}
+	if selectedCandidateMissesPrimarySaleTemplate(primary, attributes) && hasAlternativePrimarySaleSourceDimension(dimensions, "") {
 		return true
 	}
 	return isWeakPrimarySaleAttributeCandidate(*primary) && hasAlternativePrimarySaleSourceDimension(dimensions, primary.SourceName)
@@ -401,7 +404,23 @@ func shouldUseLLMSaleAttributeMapping(current, selected *saleAttributeCandidate)
 	if normalizeText(current.SourceName) == normalizeText(selected.SourceName) && current.AttributeID == selected.AttributeID {
 		return false
 	}
+	if selected.SKCScope || selected.Required || selected.Important {
+		return true
+	}
 	return isWeakPrimarySaleAttributeCandidate(*current)
+}
+
+func selectedCandidateMissesPrimarySaleTemplate(primary *saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) bool {
+	if primary == nil || len(attributes) == 0 {
+		return false
+	}
+	for _, attr := range attributes {
+		if !isPrimarySaleTemplateAttribute(attr) {
+			continue
+		}
+		return primary.AttributeID != attr.AttributeID
+	}
+	return false
 }
 
 func isWeakPrimarySaleAttributeCandidate(candidate saleAttributeCandidate) bool {
