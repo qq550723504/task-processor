@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, ImageIcon, RefreshCw } from "lucide-react";
+import { ExternalLink, ImageIcon, RefreshCw, Send } from "lucide-react";
 
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
+import {
+  buildSheinStudioGalleryHandoff,
+  saveSheinStudioGalleryHandoff,
+} from "@/lib/shein-studio/gallery-handoff";
 import type {
   SheinStyleGalleryItem,
   SheinStyleGalleryResponse,
@@ -38,6 +43,13 @@ function sourceTone(source: string) {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
   return "border-zinc-200 bg-zinc-50 text-zinc-600";
+}
+
+export function formatImageDimensions(width?: number, height?: number) {
+  if (!width || !height) {
+    return "";
+  }
+  return `${width} x ${height}px`;
 }
 
 export function SheinStyleGalleryPage({ initialGallery }: GalleryPageProps) {
@@ -114,6 +126,21 @@ function MetricCard({ label, value }: { label: string; value: number }) {
 }
 
 function GalleryCard({ item }: { item: SheinStyleGalleryItem }) {
+  const [dimensions, setDimensions] = useState<{
+    label: string;
+    width?: number;
+    height?: number;
+  }>({ label: "" });
+
+  function handleUseForSheinTask() {
+    saveSheinStudioGalleryHandoff(
+      buildSheinStudioGalleryHandoff(item, {
+        width: dimensions.width,
+        height: dimensions.height,
+      }),
+    );
+  }
+
   return (
     <Card className="group overflow-hidden border-white/70 bg-white/90 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
       <a href={item.imageUrl} target="_blank" rel="noreferrer" className="block">
@@ -124,7 +151,20 @@ function GalleryCard({ item }: { item: SheinStyleGalleryItem }) {
             alt={item.title}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
             loading="lazy"
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              setDimensions({
+                label: formatImageDimensions(image.naturalWidth, image.naturalHeight),
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+              });
+            }}
           />
+          {dimensions.label ? (
+            <span className="absolute bottom-2 left-2 rounded-full bg-zinc-950/75 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
+              {dimensions.label}
+            </span>
+          ) : null}
         </div>
       </a>
       <div className="space-y-3 p-4">
@@ -146,6 +186,7 @@ function GalleryCard({ item }: { item: SheinStyleGalleryItem }) {
         </div>
         <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
           <span>{formatDate(item.updatedAt ?? item.createdAt)}</span>
+          {dimensions.label ? <span className="shrink-0">{dimensions.label}</span> : null}
           {item.taskId ? (
             <Link
               href={`/listing-kits/${item.taskId}/workspace?platform=shein`}
@@ -156,6 +197,15 @@ function GalleryCard({ item }: { item: SheinStyleGalleryItem }) {
             </Link>
           ) : null}
         </div>
+        <Link
+          href="/listing-kits/shein"
+          prefetch={false}
+          onClick={handleUseForSheinTask}
+          className="inline-flex h-9 w-full items-center justify-center rounded-xl bg-zinc-950 px-3 text-sm font-medium text-white transition hover:bg-zinc-800"
+        >
+          <Send className="mr-2 h-4 w-4" />
+          生成 SHEIN 任务
+        </Link>
       </div>
     </Card>
   );

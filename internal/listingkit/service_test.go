@@ -124,6 +124,24 @@ func TestValidateRequest(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "shein studio gallery ratio mismatch",
+			req: &GenerateRequest{
+				Text:      "demo",
+				Platforms: []string{"shein"},
+				Options: &GenerateOptions{
+					SheinStudio: &SheinStudioOptions{
+						SourceDesignWidth:  1400,
+						SourceDesignHeight: 1000,
+					},
+					SDS: &SDSSyncOptions{
+						PrintableWidth:  1000,
+						PrintableHeight: 1000,
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

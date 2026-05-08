@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinStudioWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench";
+import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handoff";
 
 const generateSheinStudioDesigns = vi.fn();
 const createSheinReviewTasks = vi.fn();
@@ -134,6 +135,7 @@ const selection = {
 describe("SheinStudioWorkbench", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.localStorage.clear();
     lastGenerationPanelProps = null;
     generateSheinStudioDesigns.mockReset();
     createSheinReviewTasks.mockReset();
@@ -340,6 +342,49 @@ describe("SheinStudioWorkbench", () => {
       screen.getByText(
         "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("imports a gallery handoff into review after SDS selection is available", async () => {
+    saveSheinStudioGalleryHandoff({
+      createdAt: new Date().toISOString(),
+      height: 1000,
+      id: "gallery-style-1",
+      imageUrl: "https://example.com/gallery-style.png",
+      prompt: "retro cherries",
+      source: "studio_saved",
+      title: "Gallery style",
+      width: 1000,
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+  });
+
+  it("blocks task creation when an imported gallery image ratio mismatches the SDS ratio", async () => {
+    saveSheinStudioGalleryHandoff({
+      createdAt: new Date().toISOString(),
+      height: 1000,
+      id: "gallery-style-1",
+      imageUrl: "https://example.com/gallery-style.png",
+      source: "studio_saved",
+      title: "Gallery style",
+      width: 1400,
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+
+    expect(createSheinReviewTasks).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("图库图片比例与 SDS 款式比例差异过大，请换图或更换 SDS 款式。"),
     ).toBeInTheDocument();
   });
 });

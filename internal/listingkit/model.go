@@ -63,6 +63,8 @@ type SheinStudioOptions struct {
 	StyleID                 string                        `json:"style_id,omitempty"`
 	StyleName               string                        `json:"style_name,omitempty"`
 	SourceDesignURLs        []string                      `json:"source_design_urls,omitempty"`
+	SourceDesignWidth       int                           `json:"source_design_width,omitempty"`
+	SourceDesignHeight      int                           `json:"source_design_height,omitempty"`
 	ProductImageURLs        []string                      `json:"product_image_urls,omitempty"`
 	SelectedSDSImages       []SheinStudioSelectedSDSImage `json:"selected_sds_images,omitempty"`
 	VariantProductImages    []SheinStudioVariantImageSet  `json:"variant_product_images,omitempty"`
@@ -164,6 +166,8 @@ type SDSSyncOptions struct {
 	BlankDesignURL         string                 `json:"blank_design_url,omitempty"`
 	TemplateImageURL       string                 `json:"template_image_url,omitempty"`
 	MaskImageURL           string                 `json:"mask_image_url,omitempty"`
+	PrintableWidth         int                    `json:"printable_width,omitempty"`
+	PrintableHeight        int                    `json:"printable_height,omitempty"`
 	MockupImageURLs        []string               `json:"mockup_image_urls,omitempty"`
 	StyleID                string                 `json:"style_id,omitempty"`
 	StyleName              string                 `json:"style_name,omitempty"`

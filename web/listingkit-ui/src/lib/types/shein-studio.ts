@@ -5,6 +5,8 @@ export type SheinStudioGeneratedDesign = {
   dataUrl?: string;
   imageUrl?: string;
   productImageUrls?: string[];
+  sourceWidth?: number;
+  sourceHeight?: number;
   revisedPrompt?: string;
   role?: string;
   roleLabel?: string;

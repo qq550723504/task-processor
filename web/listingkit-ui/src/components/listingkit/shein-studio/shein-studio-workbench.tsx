@@ -20,6 +20,12 @@ import {
   parsePositiveInt,
 } from "@/lib/shein-studio/create-review-tasks";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
+import {
+  consumeSheinStudioGalleryHandoff,
+  evaluateSDSRatioMatch,
+  galleryHandoffToDesign,
+  type SDSRatioMatch,
+} from "@/lib/shein-studio/gallery-handoff";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
@@ -56,6 +62,24 @@ import {
 } from "@/lib/utils/shein-studio-batches";
 
 const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
+
+function evaluateImportedGalleryDesigns(
+  designs: SheinStudioGeneratedDesign[],
+  selection?: SDSProductVariantSelection,
+): SDSRatioMatch | null {
+  const imported = designs.find(
+    (design) => design.role === "gallery" && design.sourceWidth && design.sourceHeight,
+  );
+  if (!imported) {
+    return null;
+  }
+  return evaluateSDSRatioMatch({
+    sourceWidth: imported.sourceWidth,
+    sourceHeight: imported.sourceHeight,
+    targetWidth: selection?.printableWidth,
+    targetHeight: selection?.printableHeight,
+  });
+}
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -96,6 +120,7 @@ export function SheinStudioWorkbench({
   const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string>("");
   const [createdTasks, setCreatedTasks] = useState<SheinStudioCreatedTask[]>([]);
+  const [galleryRatioCheck, setGalleryRatioCheck] = useState<SDSRatioMatch | null>(null);
   const [hydratedSelection, setHydratedSelection] = useState(selection);
   const [savedBatches, setSavedBatches] = useState<SheinStudioSavedBatch[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
@@ -156,6 +181,8 @@ export function SheinStudioWorkbench({
   const availableSdsImages = buildSelectableSDSImages(activeSelection);
   const createActionDisabledReason = !activeSelection?.variantId
     ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。"
+    : galleryRatioCheck?.status === "blocking"
+      ? galleryRatioCheck.message
     : selectedIds.length === 0
       ? "请至少批准 1 个款式后再生成 SHEIN 资料。"
       : undefined;
@@ -204,8 +231,31 @@ export function SheinStudioWorkbench({
           return;
         }
 
+        let nextEffectiveDesignCount = 0;
+        let nextEffectiveCreatedTaskCount = 0;
+        let importedGalleryDesign = false;
+
         if (draft || !hasLocalWorkflowStateRef.current) {
-          setPrompt(draft?.prompt ?? "");
+          const galleryHandoff = activeSelectionRef.current
+            ? consumeSheinStudioGalleryHandoff()
+            : null;
+          const galleryDesign = galleryHandoff
+            ? galleryHandoffToDesign(galleryHandoff)
+            : null;
+          const draftDesigns = draft?.designs ?? [];
+          const nextDesigns =
+            galleryDesign && !draftDesigns.some((design) => design.id === galleryDesign.id)
+              ? [...draftDesigns, galleryDesign]
+              : draftDesigns;
+          const draftSelectedIds = draft?.selectedIds ?? [];
+          const nextSelectedIds =
+            galleryDesign && !draftSelectedIds.includes(galleryDesign.id)
+              ? [...draftSelectedIds, galleryDesign.id]
+              : draftSelectedIds;
+          const nextPrompt = draft?.prompt || galleryHandoff?.prompt || galleryHandoff?.title || "";
+          const nextCreatedTasks = draft?.createdTasks ?? [];
+
+          setPrompt(nextPrompt);
           setStyleCount(draft?.styleCount ?? "1");
           setVariationIntensity(
             draft?.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
@@ -223,17 +273,26 @@ export function SheinStudioWorkbench({
           hasCustomizedSdsSelectionRef.current =
             (draft?.selectedSdsImages?.length ?? 0) > 0;
           setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
-          setDesigns(draft?.designs ?? []);
-          setSelectedIds(draft?.selectedIds ?? []);
-          setCreatedTasks(draft?.createdTasks ?? []);
+          setDesigns(nextDesigns);
+          setSelectedIds(nextSelectedIds);
+          setCreatedTasks(nextCreatedTasks);
+          setGalleryRatioCheck(
+            evaluateImportedGalleryDesigns(nextDesigns, activeSelectionRef.current),
+          );
+          nextEffectiveDesignCount = nextDesigns.length;
+          nextEffectiveCreatedTaskCount = nextCreatedTasks.length;
+          if (galleryDesign) {
+            hasLocalWorkflowStateRef.current = true;
+            importedGalleryDesign = true;
+          }
         }
         setSavedBatches(batches);
-        if (draft) {
+        if (draft || importedGalleryDesign) {
           setEffectiveStep(
             resolveSheinStudioEffectiveStep({
               activeStep: activeStepRef.current,
-              createdTaskCount: draft.createdTasks.length,
-              designCount: draft.designs.length,
+              createdTaskCount: nextEffectiveCreatedTaskCount,
+              designCount: nextEffectiveDesignCount,
             }),
           );
         }
@@ -765,6 +824,12 @@ export function SheinStudioWorkbench({
       setCreatingError("请至少批准 1 个款式后再创建 SHEIN 任务。");
       return;
     }
+    const latestRatioCheck = evaluateImportedGalleryDesigns(approved, activeSelection);
+    setGalleryRatioCheck(latestRatioCheck);
+    if (latestRatioCheck?.status === "blocking") {
+      setCreatingError(latestRatioCheck.message);
+      return;
+    }
 
     setCreatingError("");
     setCreatingMessage("正在开始生成 SHEIN 资料...");
@@ -827,6 +892,18 @@ export function SheinStudioWorkbench({
       {draftWarning ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
           {draftWarning}
+        </div>
+      ) : null}
+
+      {galleryRatioCheck && galleryRatioCheck.status !== "pass" ? (
+        <div
+          className={
+            galleryRatioCheck.status === "blocking"
+              ? "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-900"
+              : "rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
+          }
+        >
+          {galleryRatioCheck.message}
         </div>
       ) : null}
 

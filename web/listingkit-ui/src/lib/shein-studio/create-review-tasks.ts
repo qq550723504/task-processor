@@ -334,6 +334,8 @@ export async function createSheinReviewTasks(input: {
           style_id: styleId,
           style_name: styleName,
           source_design_urls: styleImageURLs,
+          source_design_width: approved[index].sourceWidth,
+          source_design_height: approved[index].sourceHeight,
           product_image_urls: productImageURLs,
           selected_sds_images: selectedSdsImages.map((item) => ({
             image_url: item.imageUrl,
@@ -357,6 +359,8 @@ export async function createSheinReviewTasks(input: {
           blank_design_url: selection.blankDesignUrl ?? sdsMetadata.blank_design_url,
           template_image_url: selection.templateImageUrl ?? sdsMetadata.template_image_url,
           mask_image_url: selection.maskImageUrl ?? sdsMetadata.mask_image_url,
+          printable_width: selection.printableWidth,
+          printable_height: selection.printableHeight,
           design_type: "material",
           fit_level: 1,
           resize_mode: 0,
