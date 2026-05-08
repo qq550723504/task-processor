@@ -253,7 +253,7 @@ func (s e2e1688WebScraper) Scrape(_ context.Context, _ string) (*productenrich.S
 			"material":     "ABS",
 			"connectivity": "Bluetooth 5.3",
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "color", Values: []string{"Black"}},
 		},
 		Variants: []productenrich.ProductVariant{{
