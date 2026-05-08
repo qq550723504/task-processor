@@ -1,15 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 func buildRenderPreviewCapabilitiesForSlot(slot AssetRenderPreviewSlot) []string {
-	item := GenerationWorkQueueItem{
-		RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...),
-	}
-	capabilities := buildRenderPreviewCapabilities(item)
-	if len(capabilities) > 0 {
-		return capabilities
-	}
-	if slot.PreviewSVG == "" && slot.AssetURL != "" {
-		return []string{"subject_preview"}
-	}
-	return nil
+	return listinggeneration.RenderPreviewCapabilitiesForSlot(slot.LayerTypes, slot.PreviewSVG, slot.AssetURL)
 }
