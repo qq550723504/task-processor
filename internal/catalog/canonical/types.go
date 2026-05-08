@@ -1,5 +1,3 @@
-// Package canonical defines the platform-neutral product contract shared by
-// enrichment, listing workflows, and marketplace publishers.
 package canonical
 
 import "strings"

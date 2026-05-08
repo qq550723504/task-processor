@@ -1,4 +1,3 @@
-// package productenrich 定义产品JSON生成的领域模型
 package productenrich
 
 import (
