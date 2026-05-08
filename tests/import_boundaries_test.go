@@ -31,6 +31,12 @@ func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
 	}, nil)
 }
 
+func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "catalog"), []string{
+		`"task-processor/internal/productenrich"`,
+	}, nil)
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 

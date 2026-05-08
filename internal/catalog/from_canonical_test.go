@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
 )
 
 func TestBuildProductBuildsCatalogSnapshot(t *testing.T) {
@@ -43,7 +42,7 @@ func TestBuildProductBuildsCatalogSnapshot(t *testing.T) {
 			Attributes: map[string]canonical.Attribute{
 				"size": {Value: "M"},
 			},
-			Price: &productenrich.PriceInfo{
+			Price: &canonical.PriceInfo{
 				Currency: "USD",
 				Amount:   29.9,
 			},
