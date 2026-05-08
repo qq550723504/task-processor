@@ -27,20 +27,7 @@ func buildGenerationReviewTarget(platform, slot, capability string) *GenerationR
 }
 
 func generationReviewFocusKey(platform, slot, capability string) string {
-	out := platform
-	if slot != "" {
-		if out != "" {
-			out += ":"
-		}
-		out += slot
-	}
-	if capability != "" {
-		if out != "" {
-			out += ":"
-		}
-		out += capability
-	}
-	return out
+	return listinggeneration.ReviewFocusKey(platform, slot, capability)
 }
 
 func reviewActionKeyForCapability(capability string) string {

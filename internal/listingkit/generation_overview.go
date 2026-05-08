@@ -345,19 +345,5 @@ func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilte
 }
 
 func actionInteractionMode(actionKey string) string {
-	if listinggeneration.PreviewCapabilityActionSpecForKey(actionKey) != nil {
-		return "review_only"
-	}
-	switch actionKey {
-	case "generate_missing_assets", "retry_failed_generation", "upgrade_fallback_assets", "retry_provisional_slots":
-		return "retryable"
-	case "retry_section_generation":
-		return "retryable"
-	case "review_missing_slots", "inspect_failed_renderer_tasks":
-		return "queue_only"
-	case "review_ready_assets", "continue_publish_review", "defer_section_review", "approve_section_review":
-		return "review_only"
-	default:
-		return "queue_only"
-	}
+	return listinggeneration.ActionInteractionMode(actionKey)
 }
