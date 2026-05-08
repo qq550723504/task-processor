@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
@@ -316,15 +316,15 @@ func ensureCanonicalProduct(task *Task) {
 	task.Result.CanonicalProduct = canonicalProductFromDraft(task.Result)
 }
 
-func applyCanonicalEdits(product *productenrich.CanonicalProduct, edits []DraftFieldEdit) error {
+func applyCanonicalEdits(product *canonical.Product, edits []DraftFieldEdit) error {
 	if product == nil {
 		return nil
 	}
 	if product.FieldTraces == nil {
-		product.FieldTraces = map[string]productenrich.FieldTrace{}
+		product.FieldTraces = map[string]canonical.FieldTrace{}
 	}
 	if product.Attributes == nil {
-		product.Attributes = map[string]productenrich.CanonicalAttribute{}
+		product.Attributes = map[string]canonical.Attribute{}
 	}
 	for _, edit := range edits {
 		field := strings.TrimSpace(edit.Field)
@@ -339,7 +339,7 @@ func applyCanonicalEdits(product *productenrich.CanonicalProduct, edits []DraftF
 			if key == "" {
 				return fmt.Errorf("unsupported edit field: %s", field)
 			}
-			product.Attributes[key] = productenrich.CanonicalAttribute{
+			product.Attributes[key] = canonical.Attribute{
 				Value: strings.TrimSpace(edit.StringValue),
 				Trace: manualFieldTrace(),
 			}
@@ -365,7 +365,7 @@ func applyCanonicalEdits(product *productenrich.CanonicalProduct, edits []DraftF
 		case "brand":
 			product.Brand = strings.TrimSpace(edit.StringValue)
 			if product.Brand != "" {
-				product.Attributes["brand"] = productenrich.CanonicalAttribute{
+				product.Attributes["brand"] = canonical.Attribute{
 					Value: product.Brand,
 					Trace: manualFieldTrace(),
 				}
@@ -481,7 +481,7 @@ func applyCanonicalEdits(product *productenrich.CanonicalProduct, edits []DraftF
 	return nil
 }
 
-func syncDraftFromCanonical(draft *AmazonListingDraft, product *productenrich.CanonicalProduct) {
+func syncDraftFromCanonical(draft *AmazonListingDraft, product *canonical.Product) {
 	if draft == nil || product == nil {
 		return
 	}
@@ -582,24 +582,24 @@ func syncDraftFromCanonical(draft *AmazonListingDraft, product *productenrich.Ca
 	}
 }
 
-func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.CanonicalProduct {
+func canonicalProductFromDraft(draft *AmazonListingDraft) *canonical.Product {
 	if draft == nil {
 		return nil
 	}
-	product := &productenrich.CanonicalProduct{
+	product := &canonical.Product{
 		Title:         draft.Title,
 		Brand:         draft.Brand,
 		CategoryPath:  append([]string(nil), draft.CategoryPath...),
 		Description:   draft.Description,
 		SellingPoints: append([]string(nil), draft.BulletPoints...),
 		SEOKeywords:   append([]string(nil), draft.SearchTerms...),
-		Attributes:    map[string]productenrich.CanonicalAttribute{},
-		FieldTraces:   map[string]productenrich.FieldTrace{},
+		Attributes:    map[string]canonical.Attribute{},
+		FieldTraces:   map[string]canonical.FieldTrace{},
 	}
 	if draft.Dimensions != nil || draft.Weight != nil {
-		product.Specifications = &productenrich.ProductSpecs{}
+		product.Specifications = &canonical.ProductSpecs{}
 		if draft.Dimensions != nil {
-			product.Specifications.Dimensions = &productenrich.Dimensions{
+			product.Specifications.Dimensions = &canonical.Dimensions{
 				Length: draft.Dimensions.Length,
 				Width:  draft.Dimensions.Width,
 				Height: draft.Dimensions.Height,
@@ -607,7 +607,7 @@ func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.Canonic
 			}
 		}
 		if draft.Weight != nil {
-			product.Specifications.Weight = &productenrich.Weight{
+			product.Specifications.Weight = &canonical.Weight{
 				Value: draft.Weight.Value,
 				Unit:  draft.Weight.Unit,
 			}
@@ -615,11 +615,11 @@ func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.Canonic
 	}
 	if draft.Package != nil {
 		ensureCanonicalSpecifications(product)
-		product.Specifications.Package = &productenrich.PackageInfo{
+		product.Specifications.Package = &canonical.PackageInfo{
 			Quantity: draft.Package.Quantity,
 		}
 		if draft.Package.Dimensions != nil {
-			product.Specifications.Package.Dimensions = &productenrich.Dimensions{
+			product.Specifications.Package.Dimensions = &canonical.Dimensions{
 				Length: draft.Package.Dimensions.Length,
 				Width:  draft.Package.Dimensions.Width,
 				Height: draft.Package.Dimensions.Height,
@@ -627,37 +627,37 @@ func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.Canonic
 			}
 		}
 		if draft.Package.Weight != nil {
-			product.Specifications.Package.Weight = &productenrich.Weight{
+			product.Specifications.Package.Weight = &canonical.Weight{
 				Value: draft.Package.Weight.Value,
 				Unit:  draft.Package.Weight.Unit,
 			}
 		}
 	}
 	for key, value := range draft.Attributes {
-		product.Attributes[key] = productenrich.CanonicalAttribute{
+		product.Attributes[key] = canonical.Attribute{
 			Value: value,
 			Trace: manualFieldTrace(),
 		}
 	}
 	if len(draft.Variants) > 0 {
-		product.Variants = make([]productenrich.CanonicalVariant, 0, len(draft.Variants))
+		product.Variants = make([]canonical.Variant, 0, len(draft.Variants))
 		for _, variant := range draft.Variants {
-			converted := productenrich.CanonicalVariant{
+			converted := canonical.Variant{
 				SKU:        variant.SKU,
-				Attributes: map[string]productenrich.CanonicalAttribute{},
+				Attributes: map[string]canonical.Attribute{},
 				Stock:      variant.Inventory,
 				Barcode:    variant.Barcode,
 				IsDefault:  variant.IsDefault,
 				Trace:      manualFieldTrace(),
 			}
 			for key, value := range variant.Attributes {
-				converted.Attributes[key] = productenrich.CanonicalAttribute{
+				converted.Attributes[key] = canonical.Attribute{
 					Value: value,
 					Trace: manualFieldTrace(),
 				}
 			}
 			if variant.Price != nil {
-				converted.Price = &productenrich.PriceInfo{
+				converted.Price = &canonical.PriceInfo{
 					Currency: variant.Price.Currency,
 					Amount:   variant.Price.Amount,
 				}
@@ -666,7 +666,7 @@ func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.Canonic
 				}
 			}
 			if strings.TrimSpace(variant.MainImage) != "" {
-				converted.Images = []productenrich.CanonicalImage{{
+				converted.Images = []canonical.Image{{
 					URL:   strings.TrimSpace(variant.MainImage),
 					Role:  "variant",
 					Trace: manualFieldTrace(),
@@ -688,7 +688,7 @@ func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.Canonic
 	return product
 }
 
-func refreshCanonicalReviewItems(items []AmazonReviewItem, product *productenrich.CanonicalProduct) []AmazonReviewItem {
+func refreshCanonicalReviewItems(items []AmazonReviewItem, product *canonical.Product) []AmazonReviewItem {
 	if product == nil {
 		return items
 	}
@@ -713,10 +713,10 @@ func refreshCanonicalReviewItems(items []AmazonReviewItem, product *productenric
 	return dedupeReviewItems(append(filtered, buildReviewItemsFromCanonical(product)...))
 }
 
-func manualFieldTrace() productenrich.FieldTrace {
-	return productenrich.FieldTrace{
-		Sources: []productenrich.CanonicalSource{
-			{Type: productenrich.CanonicalSourceDerived, Detail: "manual_review_edit"},
+func manualFieldTrace() canonical.FieldTrace {
+	return canonical.FieldTrace{
+		Sources: []canonical.Source{
+			{Type: canonical.SourceDerived, Detail: "manual_review_edit"},
 		},
 		Confidence:  1,
 		IsInferred:  false,
@@ -724,7 +724,7 @@ func manualFieldTrace() productenrich.FieldTrace {
 	}
 }
 
-func canonicalProductNeedsReview(product *productenrich.CanonicalProduct) bool {
+func canonicalProductNeedsReview(product *canonical.Product) bool {
 	if product == nil {
 		return true
 	}
@@ -821,41 +821,41 @@ func ensureDraftPackageWeight(draft *AmazonListingDraft) {
 	}
 }
 
-func ensureCanonicalSpecifications(product *productenrich.CanonicalProduct) {
+func ensureCanonicalSpecifications(product *canonical.Product) {
 	if product.Specifications == nil {
-		product.Specifications = &productenrich.ProductSpecs{}
+		product.Specifications = &canonical.ProductSpecs{}
 	}
 }
 
-func ensureCanonicalDimensions(specs *productenrich.ProductSpecs) {
+func ensureCanonicalDimensions(specs *canonical.ProductSpecs) {
 	if specs.Dimensions == nil {
-		specs.Dimensions = &productenrich.Dimensions{}
+		specs.Dimensions = &canonical.Dimensions{}
 	}
 }
 
-func ensureCanonicalWeight(specs *productenrich.ProductSpecs) {
+func ensureCanonicalWeight(specs *canonical.ProductSpecs) {
 	if specs.Weight == nil {
-		specs.Weight = &productenrich.Weight{}
+		specs.Weight = &canonical.Weight{}
 	}
 }
 
-func ensureCanonicalPackage(specs *productenrich.ProductSpecs) {
+func ensureCanonicalPackage(specs *canonical.ProductSpecs) {
 	if specs.Package == nil {
-		specs.Package = &productenrich.PackageInfo{}
+		specs.Package = &canonical.PackageInfo{}
 	}
 }
 
-func ensureCanonicalPackageDimensions(specs *productenrich.ProductSpecs) {
+func ensureCanonicalPackageDimensions(specs *canonical.ProductSpecs) {
 	ensureCanonicalPackage(specs)
 	if specs.Package.Dimensions == nil {
-		specs.Package.Dimensions = &productenrich.Dimensions{}
+		specs.Package.Dimensions = &canonical.Dimensions{}
 	}
 }
 
-func ensureCanonicalPackageWeight(specs *productenrich.ProductSpecs) {
+func ensureCanonicalPackageWeight(specs *canonical.ProductSpecs) {
 	ensureCanonicalPackage(specs)
 	if specs.Package.Weight == nil {
-		specs.Package.Weight = &productenrich.Weight{}
+		specs.Package.Weight = &canonical.Weight{}
 	}
 }
 
@@ -930,16 +930,16 @@ func applyVariantDraftEdit(draft *AmazonListingDraft, index int, subfield string
 	return nil
 }
 
-func applyVariantCanonicalEdit(product *productenrich.CanonicalProduct, index int, subfield string, edit DraftFieldEdit) error {
+func applyVariantCanonicalEdit(product *canonical.Product, index int, subfield string, edit DraftFieldEdit) error {
 	for len(product.Variants) <= index {
-		product.Variants = append(product.Variants, productenrich.CanonicalVariant{
-			Attributes: map[string]productenrich.CanonicalAttribute{},
+		product.Variants = append(product.Variants, canonical.Variant{
+			Attributes: map[string]canonical.Attribute{},
 			Trace:      manualFieldTrace(),
 		})
 	}
 	variant := &product.Variants[index]
 	if variant.Attributes == nil {
-		variant.Attributes = map[string]productenrich.CanonicalAttribute{}
+		variant.Attributes = map[string]canonical.Attribute{}
 	}
 	variant.Trace = manualFieldTrace()
 	switch {
@@ -963,9 +963,9 @@ func applyVariantCanonicalEdit(product *productenrich.CanonicalProduct, index in
 		if url == "" {
 			variant.Images = nil
 		} else if len(variant.Images) == 0 {
-			variant.Images = []productenrich.CanonicalImage{{URL: url, Role: "variant", Trace: manualFieldTrace()}}
+			variant.Images = []canonical.Image{{URL: url, Role: "variant", Trace: manualFieldTrace()}}
 		} else {
-			variant.Images[0] = productenrich.CanonicalImage{URL: url, Role: "variant", Trace: manualFieldTrace()}
+			variant.Images[0] = canonical.Image{URL: url, Role: "variant", Trace: manualFieldTrace()}
 		}
 	case subfield == "price.amount":
 		if edit.NumberValue == nil {
@@ -990,7 +990,7 @@ func applyVariantCanonicalEdit(product *productenrich.CanonicalProduct, index in
 		if key == "" {
 			return fmt.Errorf("unsupported edit field: variants[%d].%s", index, subfield)
 		}
-		variant.Attributes[key] = productenrich.CanonicalAttribute{
+		variant.Attributes[key] = canonical.Attribute{
 			Value: strings.TrimSpace(edit.StringValue),
 			Trace: manualFieldTrace(),
 		}
@@ -1018,9 +1018,9 @@ func ensureDraftVariantCostPrice(variant *AmazonVariantDraft) {
 	}
 }
 
-func ensureCanonicalVariantPrice(variant *productenrich.CanonicalVariant) {
+func ensureCanonicalVariantPrice(variant *canonical.Variant) {
 	if variant.Price == nil {
-		variant.Price = &productenrich.PriceInfo{}
+		variant.Price = &canonical.PriceInfo{}
 	}
 }
 

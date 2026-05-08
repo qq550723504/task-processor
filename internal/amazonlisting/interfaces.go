@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	amazonapi "task-processor/internal/amazon/api"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -44,7 +45,7 @@ type Repository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, product *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *AmazonListingDraft
+	Assemble(task *Task, product *canonical.Product, image *productimage.ImageProcessResult) *AmazonListingDraft
 }
 
 type ValidationReport struct {

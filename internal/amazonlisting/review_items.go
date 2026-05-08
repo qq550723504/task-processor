@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
-func buildReviewItemsFromCanonical(product *productenrich.CanonicalProduct) []AmazonReviewItem {
+func buildReviewItemsFromCanonical(product *canonical.Product) []AmazonReviewItem {
 	if product == nil {
 		return nil
 	}
@@ -187,7 +187,7 @@ func reviewRecommendationForField(field string) string {
 	}
 }
 
-func reviewSourceFromTrace(trace productenrich.FieldTrace) string {
+func reviewSourceFromTrace(trace canonical.FieldTrace) string {
 	if len(trace.Sources) == 0 {
 		return "unknown"
 	}
@@ -198,7 +198,7 @@ func reviewSourceFromTrace(trace productenrich.FieldTrace) string {
 	return strings.Join(parts, ",")
 }
 
-func reviewEvidenceFromTrace(trace productenrich.FieldTrace) []AmazonReviewEvidence {
+func reviewEvidenceFromTrace(trace canonical.FieldTrace) []AmazonReviewEvidence {
 	if len(trace.Sources) == 0 {
 		return nil
 	}
@@ -212,7 +212,7 @@ func reviewEvidenceFromTrace(trace productenrich.FieldTrace) []AmazonReviewEvide
 	return evidence
 }
 
-func buildFieldEvidence(product *productenrich.CanonicalProduct, field string, trace productenrich.FieldTrace) []AmazonReviewEvidence {
+func buildFieldEvidence(product *canonical.Product, field string, trace canonical.FieldTrace) []AmazonReviewEvidence {
 	evidence := reviewEvidenceFromTrace(trace)
 	if snippet := fieldValueEvidence(product, field); snippet != "" {
 		evidence = append(evidence, AmazonReviewEvidence{
@@ -223,7 +223,7 @@ func buildFieldEvidence(product *productenrich.CanonicalProduct, field string, t
 	return evidence
 }
 
-func fieldValueEvidence(product *productenrich.CanonicalProduct, field string) string {
+func fieldValueEvidence(product *canonical.Product, field string) string {
 	value := strings.TrimSpace(canonicalFieldValue(product, field))
 	if value == "" {
 		return ""
@@ -234,7 +234,7 @@ func fieldValueEvidence(product *productenrich.CanonicalProduct, field string) s
 	return field + ` = "` + value + `"`
 }
 
-func canonicalFieldValue(product *productenrich.CanonicalProduct, field string) string {
+func canonicalFieldValue(product *canonical.Product, field string) string {
 	if product == nil {
 		return ""
 	}

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
@@ -16,7 +16,7 @@ func TestAssemblerUsesTargetCategoryHintPath(t *testing.T) {
 			Country:            "US",
 			TargetCategoryHint: "Electronics > Headphones",
 		},
-	}, &productenrich.CanonicalProduct{
+	}, &canonical.Product{
 		Title:        "Wireless Headphones",
 		Description:  "Over-ear wireless headphones with long battery life.",
 		CategoryPath: []string{"Consumer Goods", "Audio"},
@@ -39,7 +39,7 @@ func TestAssemblerKeepsProductCategoryWhenTargetCategoryHintMissing(t *testing.T
 			Marketplace: "amazon",
 			Country:     "US",
 		},
-	}, &productenrich.CanonicalProduct{
+	}, &canonical.Product{
 		Title:        "Ceramic Mug",
 		Description:  "A ceramic mug for coffee and tea.",
 		CategoryPath: []string{"Home & Kitchen", "Drinkware"},
@@ -62,7 +62,7 @@ func TestAssemblerCarriesImageIPRiskIntoListingIPRisk(t *testing.T) {
 			Marketplace: "amazon",
 			Country:     "US",
 		},
-	}, &productenrich.CanonicalProduct{
+	}, &canonical.Product{
 		Title:       "Ceramic Mug",
 		Description: "A ceramic mug for coffee and tea.",
 	}, &productimage.ImageProcessResult{

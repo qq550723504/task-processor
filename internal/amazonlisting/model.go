@@ -7,7 +7,7 @@ import (
 	"time"
 
 	amazonapi "task-processor/internal/amazon/api"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 var ErrTaskNotFound = errors.New("task not found")
@@ -136,43 +136,43 @@ type WorkbenchActionBox struct {
 }
 
 type AmazonListingDraft struct {
-	TaskID             string                          `json:"task_id"`
-	Status             string                          `json:"status"`
-	Marketplace        string                          `json:"marketplace"`
-	Country            string                          `json:"country,omitempty"`
-	Language           string                          `json:"language,omitempty"`
-	Source             AmazonSourceTrace               `json:"source"`
-	ProductType        string                          `json:"product_type,omitempty"`
-	CategoryPath       []string                        `json:"category_path,omitempty"`
-	BrowseNode         string                          `json:"browse_node,omitempty"`
-	Brand              string                          `json:"brand,omitempty"`
-	Title              string                          `json:"title,omitempty"`
-	BulletPoints       []string                        `json:"bullet_points,omitempty"`
-	Description        string                          `json:"description,omitempty"`
-	SearchTerms        []string                        `json:"search_terms,omitempty"`
-	Attributes         map[string]string               `json:"attributes,omitempty"`
-	RequiredAttributes map[string]string               `json:"required_attributes,omitempty"`
-	Dimensions         *AmazonDimensions               `json:"dimensions,omitempty"`
-	Weight             *AmazonWeight                   `json:"weight,omitempty"`
-	Package            *AmazonPackageInfo              `json:"package,omitempty"`
-	Variants           []AmazonVariantDraft            `json:"variants,omitempty"`
-	Images             *AmazonImageBundle              `json:"images,omitempty"`
-	Pricing            *AmazonPricingDraft             `json:"pricing,omitempty"`
-	Compliance         *AmazonComplianceReport         `json:"compliance,omitempty"`
-	IPRisk             *IPRiskReport                   `json:"ip_risk,omitempty"`
-	ListingIPRisk      *IPRiskReport                   `json:"listing_ip_risk,omitempty"`
-	Review             *AmazonReviewReport             `json:"review,omitempty"`
-	Export             *AmazonListingExport            `json:"export,omitempty"`
-	Submission         *AmazonSubmissionReport         `json:"submission,omitempty"`
-	LastAmazonIssues   []AmazonIssue                   `json:"last_amazon_issues,omitempty"`
-	FixHistory         []AmazonFixRecord               `json:"fix_history,omitempty"`
-	ProductTaskID      string                          `json:"product_task_id,omitempty"`
-	ProductImageTaskID string                          `json:"product_image_task_id,omitempty"`
-	CanonicalProduct   *productenrich.CanonicalProduct `json:"canonical_product,omitempty"`
-	ChildTasks         []ChildTaskState                `json:"child_tasks,omitempty"`
-	ReviewItems        []AmazonReviewItem              `json:"review_items,omitempty"`
-	CreatedAt          time.Time                       `json:"created_at"`
-	UpdatedAt          time.Time                       `json:"updated_at"`
+	TaskID             string                  `json:"task_id"`
+	Status             string                  `json:"status"`
+	Marketplace        string                  `json:"marketplace"`
+	Country            string                  `json:"country,omitempty"`
+	Language           string                  `json:"language,omitempty"`
+	Source             AmazonSourceTrace       `json:"source"`
+	ProductType        string                  `json:"product_type,omitempty"`
+	CategoryPath       []string                `json:"category_path,omitempty"`
+	BrowseNode         string                  `json:"browse_node,omitempty"`
+	Brand              string                  `json:"brand,omitempty"`
+	Title              string                  `json:"title,omitempty"`
+	BulletPoints       []string                `json:"bullet_points,omitempty"`
+	Description        string                  `json:"description,omitempty"`
+	SearchTerms        []string                `json:"search_terms,omitempty"`
+	Attributes         map[string]string       `json:"attributes,omitempty"`
+	RequiredAttributes map[string]string       `json:"required_attributes,omitempty"`
+	Dimensions         *AmazonDimensions       `json:"dimensions,omitempty"`
+	Weight             *AmazonWeight           `json:"weight,omitempty"`
+	Package            *AmazonPackageInfo      `json:"package,omitempty"`
+	Variants           []AmazonVariantDraft    `json:"variants,omitempty"`
+	Images             *AmazonImageBundle      `json:"images,omitempty"`
+	Pricing            *AmazonPricingDraft     `json:"pricing,omitempty"`
+	Compliance         *AmazonComplianceReport `json:"compliance,omitempty"`
+	IPRisk             *IPRiskReport           `json:"ip_risk,omitempty"`
+	ListingIPRisk      *IPRiskReport           `json:"listing_ip_risk,omitempty"`
+	Review             *AmazonReviewReport     `json:"review,omitempty"`
+	Export             *AmazonListingExport    `json:"export,omitempty"`
+	Submission         *AmazonSubmissionReport `json:"submission,omitempty"`
+	LastAmazonIssues   []AmazonIssue           `json:"last_amazon_issues,omitempty"`
+	FixHistory         []AmazonFixRecord       `json:"fix_history,omitempty"`
+	ProductTaskID      string                  `json:"product_task_id,omitempty"`
+	ProductImageTaskID string                  `json:"product_image_task_id,omitempty"`
+	CanonicalProduct   *canonical.Product      `json:"canonical_product,omitempty"`
+	ChildTasks         []ChildTaskState        `json:"child_tasks,omitempty"`
+	ReviewItems        []AmazonReviewItem      `json:"review_items,omitempty"`
+	CreatedAt          time.Time               `json:"created_at"`
+	UpdatedAt          time.Time               `json:"updated_at"`
 }
 
 type AmazonSourceTrace struct {
