@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
 )
 
 const studioAIStyleAttributeKey = "ai_style"
@@ -70,21 +69,21 @@ func addAttribute(attrs map[string]canonical.Attribute, key, value string, trace
 	attrs[key] = canonical.Attribute{Value: strings.TrimSpace(value), Trace: trace}
 }
 
-func studioSpecifications(sds *SDSSyncOptions) *productenrich.ProductSpecs {
+func studioSpecifications(sds *SDSSyncOptions) *canonical.ProductSpecs {
 	if sds == nil {
 		return nil
 	}
-	specs := &productenrich.ProductSpecs{Technical: map[string]string{}}
+	specs := &canonical.ProductSpecs{Technical: map[string]string{}}
 	if sds.VariantWeight > 0 {
-		specs.Weight = &productenrich.Weight{Value: sds.VariantWeight, Unit: "g"}
+		specs.Weight = &canonical.Weight{Value: sds.VariantWeight, Unit: "g"}
 	}
 	if len(sds.Variants) > 0 {
 		for _, variant := range sds.Variants {
 			if specs.Weight == nil && variant.Weight > 0 {
-				specs.Weight = &productenrich.Weight{Value: variant.Weight, Unit: "g"}
+				specs.Weight = &canonical.Weight{Value: variant.Weight, Unit: "g"}
 			}
 			if specs.Dimensions == nil && variant.BoxLength > 0 && variant.BoxWidth > 0 && variant.BoxHeight > 0 {
-				specs.Dimensions = &productenrich.Dimensions{
+				specs.Dimensions = &canonical.Dimensions{
 					Length: variant.BoxLength,
 					Width:  variant.BoxWidth,
 					Height: variant.BoxHeight,
@@ -144,22 +143,22 @@ func studioVariants(sds *SDSSyncOptions, images []canonical.Image, trace canonic
 			addAttribute(attrs, "source_sds_sku", item.VariantSKU, trace)
 			addAttribute(attrs, studioAIStyleAttributeKey, styleName, trace)
 
-			var price *productenrich.PriceInfo
+			var price *canonical.PriceInfo
 			if item.Price > 0 {
-				price = &productenrich.PriceInfo{Currency: "CNY", Amount: item.Price, CostPrice: item.Price}
+				price = &canonical.PriceInfo{Currency: "CNY", Amount: item.Price, CostPrice: item.Price}
 			}
-			var dimensions *productenrich.Dimensions
+			var dimensions *canonical.Dimensions
 			if item.BoxLength > 0 && item.BoxWidth > 0 && item.BoxHeight > 0 {
-				dimensions = &productenrich.Dimensions{
+				dimensions = &canonical.Dimensions{
 					Length: item.BoxLength,
 					Width:  item.BoxWidth,
 					Height: item.BoxHeight,
 					Unit:   "cm",
 				}
 			}
-			var weight *productenrich.Weight
+			var weight *canonical.Weight
 			if item.Weight > 0 {
-				weight = &productenrich.Weight{Value: item.Weight, Unit: "g"}
+				weight = &canonical.Weight{Value: item.Weight, Unit: "g"}
 			}
 			variants = append(variants, canonical.Variant{
 				SKU:        firstNonEmptyString(sku, "SDS-STUDIO-001"),
@@ -186,9 +185,9 @@ func studioVariants(sds *SDSSyncOptions, images []canonical.Image, trace canonic
 	addAttribute(attrs, "source_sds_sku", sds.VariantSKU, trace)
 	addAttribute(attrs, studioAIStyleAttributeKey, styleName, trace)
 
-	var price *productenrich.PriceInfo
+	var price *canonical.PriceInfo
 	if sds.VariantPrice > 0 {
-		price = &productenrich.PriceInfo{Currency: "CNY", Amount: sds.VariantPrice, CostPrice: sds.VariantPrice}
+		price = &canonical.PriceInfo{Currency: "CNY", Amount: sds.VariantPrice, CostPrice: sds.VariantPrice}
 	}
 
 	return []canonical.Variant{{

@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -109,14 +108,14 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 		CategoryPath:  []string{"Electronics", "Headphones"},
 		Description:   "Noise cancelling earbuds",
 		SellingPoints: []string{"ANC", "Bluetooth 5.3"},
-		Specifications: &productenrich.ProductSpecs{
-			Dimensions: &productenrich.Dimensions{
+		Specifications: &canonical.ProductSpecs{
+			Dimensions: &canonical.Dimensions{
 				Length: 12.5,
 				Width:  8.2,
 				Height: 4.1,
 				Unit:   "cm",
 			},
-			Weight: &productenrich.Weight{
+			Weight: &canonical.Weight{
 				Value: 0.35,
 				Unit:  "kg",
 			},
@@ -134,7 +133,7 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 				Attributes: map[string]canonical.Attribute{
 					"color": {Value: "Black"},
 				},
-				Price: &productenrich.PriceInfo{
+				Price: &canonical.PriceInfo{
 					Currency:  "USD",
 					Amount:    29.99,
 					CostPrice: 10.50,
@@ -353,7 +352,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 					"color": {Value: "Black"},
 					"size":  {Value: "M"},
 				},
-				Price: &productenrich.PriceInfo{
+				Price: &canonical.PriceInfo{
 					Currency: "USD",
 					Amount:   29.99,
 				},
