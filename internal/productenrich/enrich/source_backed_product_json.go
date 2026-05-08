@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 )
 
@@ -40,7 +41,7 @@ func applySourceBackedCoreFields(result *productenrich.ProductJSON, analysis *pr
 		result.Images = append([]string(nil), scraped.Images...)
 	}
 	if len(scraped.VariantDimensions) > 0 {
-		result.VariantDimensions = append([]productenrich.ScrapedVariantDimension(nil), scraped.VariantDimensions...)
+		result.VariantDimensions = append([]canonical.ScrapedVariantDimension(nil), scraped.VariantDimensions...)
 	}
 	if len(scraped.Variants) > 0 {
 		result.Variants = append([]productenrich.ProductVariant(nil), scraped.Variants...)

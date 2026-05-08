@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
 	productenrich "task-processor/internal/productenrich"
@@ -24,7 +25,7 @@ func NewVariantGenerator(llmManager productenrich.LLMManager) (productenrich.Var
 	return &variantGenerator{llmManager: llmManager}, nil
 }
 
-func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *productenrich.ProductAnalysis) (*productenrich.ProductSpecs, error) {
+func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *productenrich.ProductAnalysis) (*canonical.ProductSpecs, error) {
 	if analysis == nil {
 		return nil, fmt.Errorf("analysis cannot be nil")
 	}
@@ -69,7 +70,7 @@ Prefer values from scraped 1688 specs when available. Return JSON only.`
 		return nil, fmt.Errorf("failed to generate specs: %w", err)
 	}
 
-	var specs productenrich.ProductSpecs
+	var specs canonical.ProductSpecs
 	if err := json.Unmarshal([]byte(jsonx.CleanLLMResponse(response)), &specs); err != nil {
 		logrus.WithError(err).Warn("failed to parse specs JSON")
 		return v.fallbackSpecsFromScraped(analysis), nil
@@ -146,7 +147,7 @@ Rules:
 	return variants, nil
 }
 
-func (v *variantGenerator) ExtractDimensions(ctx context.Context, text string) (*productenrich.Dimensions, error) {
+func (v *variantGenerator) ExtractDimensions(ctx context.Context, text string) (*canonical.Dimensions, error) {
 	if text == "" {
 		return nil, fmt.Errorf("text cannot be empty")
 	}
@@ -160,14 +161,14 @@ Return JSON:
 
 Return null if unavailable.`, text))
 
-	var dimensions productenrich.Dimensions
+	var dimensions canonical.Dimensions
 	if err := v.extractWithLLM(ctx, prompt, &dimensions); err != nil {
 		return nil, err
 	}
 	return &dimensions, nil
 }
 
-func (v *variantGenerator) ExtractWeight(ctx context.Context, text string) (*productenrich.Weight, error) {
+func (v *variantGenerator) ExtractWeight(ctx context.Context, text string) (*canonical.Weight, error) {
 	if text == "" {
 		return nil, fmt.Errorf("text cannot be empty")
 	}
@@ -181,7 +182,7 @@ Return JSON:
 
 Return null if unavailable.`, text))
 
-	var weight productenrich.Weight
+	var weight canonical.Weight
 	if err := v.extractWithLLM(ctx, prompt, &weight); err != nil {
 		return nil, err
 	}
@@ -211,12 +212,12 @@ func (v *variantGenerator) extractWithLLM(ctx context.Context, prompt string, de
 	return nil
 }
 
-func (v *variantGenerator) fallbackSpecsFromScraped(analysis *productenrich.ProductAnalysis) *productenrich.ProductSpecs {
+func (v *variantGenerator) fallbackSpecsFromScraped(analysis *productenrich.ProductAnalysis) *canonical.ProductSpecs {
 	if analysis == nil || analysis.ScrapedData == nil {
 		return nil
 	}
 	if len(analysis.ScrapedData.Specs) > 0 {
-		specs := &productenrich.ProductSpecs{}
+		specs := &canonical.ProductSpecs{}
 		specs.Technical = make(map[string]string, len(analysis.ScrapedData.Specs))
 		for k, val := range analysis.ScrapedData.Specs {
 			specs.Technical[k] = val
@@ -240,7 +241,7 @@ func (v *variantGenerator) fallbackVariantsFromScraped(analysis *productenrich.P
 		IsDefault:  true,
 	}
 	if analysis != nil && analysis.ScrapedData != nil && analysis.ScrapedData.Price > 0 {
-		variant.Price = &productenrich.PriceInfo{
+		variant.Price = &canonical.PriceInfo{
 			Currency:  "CNY",
 			Amount:    analysis.ScrapedData.Price,
 			CostPrice: analysis.ScrapedData.Price,
@@ -249,7 +250,7 @@ func (v *variantGenerator) fallbackVariantsFromScraped(analysis *productenrich.P
 	return []productenrich.ProductVariant{variant}
 }
 
-func mergeTechnicalSpecs(specs productenrich.ProductSpecs, scraped map[string]string) productenrich.ProductSpecs {
+func mergeTechnicalSpecs(specs canonical.ProductSpecs, scraped map[string]string) canonical.ProductSpecs {
 	if len(scraped) == 0 {
 		return specs
 	}
@@ -270,7 +271,7 @@ func applyScrapedPriceToVariants(variants []productenrich.ProductVariant, scrape
 	}
 	for i := range variants {
 		if variants[i].Price == nil {
-			variants[i].Price = &productenrich.PriceInfo{}
+			variants[i].Price = &canonical.PriceInfo{}
 		}
 		if variants[i].Price.Amount <= 0 {
 			variants[i].Price.Amount = scraped.Price
