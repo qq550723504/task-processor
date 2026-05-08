@@ -470,6 +470,94 @@ func TestSaleAttributeResolverUsesAIStyleForPrimaryStyleTypeWithoutMisusingColor
 	}
 }
 
+func TestSaleAttributeResolverUsesLLMToMapColorAsRequiredStyleSurrogate(t *testing.T) {
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "ai_style", Values: []string{"Please design a lazy mood floor mat artwork with text and 3D effect"}},
+			{Name: "Color", Values: []string{"White"}},
+			{Name: "Size", Values: []string{"40x60cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{
+				"ai_style": {Value: "Please design a lazy mood floor mat artwork with text and 3D effect"},
+				"Color":    {Value: "White"},
+				"Size":     {Value: "40x60cm"},
+			}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	llm := &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"ai_style","secondary_source_dimension":"Size","reasons":["source fallback"]}`,
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","primary_attribute_id":1001184,"secondary_attribute_id":87,"reasons":["Style Type is required by the platform; Color is the safest stable SDS grouping surrogate."]}`,
+	}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "现代款", AttributeValueEn: "Modern"},
+						},
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeID != 1001184 {
+				t.Fatalf("custom validation attribute id = %d, want Style Type", attributeID)
+			}
+			if attributeValue != "White" {
+				t.Fatalf("custom validation value = %q, want SDS color", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
+	}
+	if resolution.Source != "llm_sale_attribute_mapping" {
+		t.Fatalf("source = %q, want llm_sale_attribute_mapping", resolution.Source)
+	}
+	if resolution.PrimaryAttributeID != 1001184 || resolution.PrimarySourceDimension != "Color" {
+		t.Fatalf("primary = %d/%q, want Style Type from Color", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
+	}
+	if resolution.SecondaryAttributeID != 87 || resolution.SecondarySourceDimension != "Size" {
+		t.Fatalf("secondary = %d/%q, want Size", resolution.SecondaryAttributeID, resolution.SecondarySourceDimension)
+	}
+	if assignment := resolution.skcValueAssignments[normalizeText("White")]; assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9001 {
+		t.Fatalf("color assignment = %+v, want custom value 9001", assignment)
+	}
+}
+
 func TestSaleAttributeResolverSanitizesPromptLikeStyleTypeValueWithRules(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{

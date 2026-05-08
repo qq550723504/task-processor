@@ -88,10 +88,12 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 	candidates := buildSaleAttributeCandidates(sourceDimensions, saleAttributes)
 	var primaryCandidate, secondaryCandidate *saleAttributeCandidate
 	primaryCandidate, secondaryCandidate = selectPrimarySecondaryCandidates(candidates)
-	if primaryCandidate == nil {
+	if shouldSelectSaleAttributeMappingWithLLM(primaryCandidate, sourceDimensions) {
 		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, sourceDimensions, saleAttributes); err == nil && selection != nil {
-			primaryCandidate, secondaryCandidate = matchSelectedCandidates(candidates, selection)
-			if primaryCandidate != nil {
+			llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(candidates, selection, sourceDimensions, saleAttributes)
+			if shouldUseLLMSaleAttributeMapping(primaryCandidate, llmPrimary) {
+				candidates = augmentedCandidates
+				primaryCandidate, secondaryCandidate = llmPrimary, llmSecondary
 				resolution.Source = "llm_sale_attribute_mapping"
 				resolution.ReviewNotes = append(resolution.ReviewNotes, selection.Reasons...)
 			}
@@ -273,9 +275,14 @@ func isPrimarySaleTemplateAttribute(attr sheinattribute.AttributeInfo) bool {
 	return attr.AttributeLabel == 1 || (attr.SKCScope != nil && *attr.SKCScope)
 }
 
-func matchSelectedCandidates(candidates []saleAttributeCandidate, selection *saleAttributeMappingSelection) (*saleAttributeCandidate, *saleAttributeCandidate) {
-	if selection == nil || len(candidates) == 0 {
-		return nil, nil
+func matchSelectedCandidates(
+	candidates []saleAttributeCandidate,
+	selection *saleAttributeMappingSelection,
+	dimensions []SourceVariantDimension,
+	attributes []sheinattribute.AttributeInfo,
+) (*saleAttributeCandidate, *saleAttributeCandidate, []saleAttributeCandidate) {
+	if selection == nil {
+		return nil, nil, candidates
 	}
 	lookup := func(sourceName string, attributeID int) *saleAttributeCandidate {
 		sourceName = normalizeText(sourceName)
@@ -296,10 +303,110 @@ func matchSelectedCandidates(candidates []saleAttributeCandidate, selection *sal
 	}
 	primary := lookup(selection.PrimarySourceDimension, selection.PrimaryAttributeID)
 	secondary := lookup(selection.SecondarySourceDimension, selection.SecondaryAttributeID)
+	if primary == nil {
+		if candidate, ok := buildLLMSelectedSaleAttributeCandidate(selection.PrimarySourceDimension, selection.PrimaryAttributeID, dimensions, attributes); ok {
+			candidates = append(candidates, candidate)
+			primary = &candidates[len(candidates)-1]
+		}
+	}
+	if secondary == nil {
+		if candidate, ok := buildLLMSelectedSaleAttributeCandidate(selection.SecondarySourceDimension, selection.SecondaryAttributeID, dimensions, attributes); ok {
+			candidates = append(candidates, candidate)
+			secondary = &candidates[len(candidates)-1]
+		}
+	}
 	if primary != nil && secondary != nil && primary.SourceName == secondary.SourceName {
 		secondary = nil
 	}
-	return primary, secondary
+	return primary, secondary, candidates
+}
+
+func buildLLMSelectedSaleAttributeCandidate(
+	sourceName string,
+	attributeID int,
+	dimensions []SourceVariantDimension,
+	attributes []sheinattribute.AttributeInfo,
+) (saleAttributeCandidate, bool) {
+	sourceName = strings.TrimSpace(sourceName)
+	if sourceName == "" || attributeID <= 0 {
+		return saleAttributeCandidate{}, false
+	}
+	var dimension *SourceVariantDimension
+	sourceOrder := 0
+	for i := range dimensions {
+		if normalizeText(dimensions[i].Name) != normalizeText(sourceName) {
+			continue
+		}
+		dimension = &dimensions[i]
+		sourceOrder = i
+		break
+	}
+	if dimension == nil || isTechnicalSaleSourceDimension(dimension.Name) {
+		return saleAttributeCandidate{}, false
+	}
+	var attr *sheinattribute.AttributeInfo
+	templateOrder := 0
+	for i := range attributes {
+		if attributes[i].AttributeID != attributeID {
+			continue
+		}
+		attr = &attributes[i]
+		templateOrder = i
+		break
+	}
+	if attr == nil {
+		return saleAttributeCandidate{}, false
+	}
+	match := buildTemplateAttributeMatch(*attr, dimension.SampleValue)
+	match.MatchedBy = "llm_sale_attribute_mapping"
+	distinct := len(uniqueNormalizedValues(dimension.Values))
+	return newSaleAttributeCandidate(*dimension, sourceOrder, templateOrder, match, distinct, distinct)
+}
+
+func shouldSelectSaleAttributeMappingWithLLM(primary *saleAttributeCandidate, dimensions []SourceVariantDimension) bool {
+	if len(dimensions) == 0 {
+		return false
+	}
+	if primary == nil {
+		return true
+	}
+	return isWeakPrimarySaleAttributeCandidate(*primary) && hasAlternativePrimarySaleSourceDimension(dimensions, primary.SourceName)
+}
+
+func shouldUseLLMSaleAttributeMapping(current, selected *saleAttributeCandidate) bool {
+	if selected == nil {
+		return false
+	}
+	if current == nil {
+		return true
+	}
+	if normalizeText(current.SourceName) == normalizeText(selected.SourceName) && current.AttributeID == selected.AttributeID {
+		return false
+	}
+	return isWeakPrimarySaleAttributeCandidate(*current)
+}
+
+func isWeakPrimarySaleAttributeCandidate(candidate saleAttributeCandidate) bool {
+	if isAIStyleSourceDimension(candidate.SourceName) {
+		return true
+	}
+	return candidate.ValueFitCount == 0
+}
+
+func hasAlternativePrimarySaleSourceDimension(dimensions []SourceVariantDimension, currentName string) bool {
+	for _, dimension := range dimensions {
+		if normalizeText(dimension.Name) == normalizeText(currentName) {
+			continue
+		}
+		if isTechnicalSaleSourceDimension(dimension.Name) || isAIStyleSourceDimension(dimension.Name) || isGenericSecondaryName(dimension.Name) {
+			continue
+		}
+		if len(uniqueNormalizedValues(dimension.Values)) == 0 {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func selectPrimarySecondaryCandidates(candidates []saleAttributeCandidate) (*saleAttributeCandidate, *saleAttributeCandidate) {

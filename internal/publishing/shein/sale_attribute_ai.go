@@ -53,7 +53,9 @@ func buildSaleAttributeMappingPrompt(sourceDimensions []SourceVariantDimension, 
 	var builder strings.Builder
 	builder.WriteString("You map source sales dimensions to SHEIN sale attributes.\n")
 	builder.WriteString("Choose at most one primary_source_dimension for SKC grouping and at most one secondary_source_dimension for SKU grouping.\n")
-	builder.WriteString("Keep source dimension names unchanged. Prefer required or SKC-scope SHEIN attributes when they match the source meaning.\n")
+	builder.WriteString("Keep source dimension names unchanged. Prefer required or SKC-scope SHEIN attributes.\n")
+	builder.WriteString("When the platform-required primary SHEIN attribute has no exact same-name source dimension, choose the source dimension whose values are the safest stable variant grouping surrogate for that target attribute.\n")
+	builder.WriteString("Avoid long image-generation prompts, technical ids, and size-only dimensions for primary style/design grouping when another source dimension is available.\n")
 	builder.WriteString("If there is no safe secondary mapping, leave secondary_source_dimension empty.\n")
 	builder.WriteString("Return JSON only with keys primary_source_dimension, secondary_source_dimension, primary_attribute_id, secondary_attribute_id, reasons.\n\n")
 
