@@ -65,6 +65,15 @@ function byKey(key?: string | null): IssueTemplate | null {
   if (!normalized) {
     return null;
   }
+  if (normalized.includes("cookie") || normalized.includes("login")) {
+    return {
+      category: "提交接口问题",
+      title: "SHEIN 店铺需要重新登录",
+      message:
+        "当前店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+      actionLabel: "查看处理提示",
+    };
+  }
   if (normalized.includes("image") || normalized.includes("preview_product")) {
     return {
       category: "图片问题",
@@ -120,6 +129,19 @@ function byKey(key?: string | null): IssueTemplate | null {
 function byText(rawText: string): IssueTemplate {
   const text = rawText.toLowerCase();
 
+  if (
+    rawText.includes("店铺 cookie") ||
+    rawText.includes("cookie 不可用") ||
+    text.includes("cookies are unavailable")
+  ) {
+    return {
+      category: "提交接口问题",
+      title: "SHEIN 店铺需要重新登录",
+      message:
+        "当前店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+      actionLabel: "查看处理提示",
+    };
+  }
   if (text.includes("spu_name")) {
     return {
       category: "提交接口问题",

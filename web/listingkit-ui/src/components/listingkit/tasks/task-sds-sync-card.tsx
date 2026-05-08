@@ -44,6 +44,15 @@ function firstWarning(task?: ListingKitTaskResult | null) {
   );
 }
 
+function sdsAuthIssue(task?: ListingKitTaskResult | null) {
+  return task?.result?.workflow_issues?.find(
+    (issue) =>
+      issue.stage === "sds_design_sync" &&
+      issue.code === "sds_auth_required" &&
+      issue.message,
+  );
+}
+
 function latestSDSWorkflowStage(task?: ListingKitTaskResult | null) {
   const stages =
     task?.result?.workflow_stages?.filter((stage) => stage.kind === "sds_design_sync") ?? [];
@@ -59,6 +68,7 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
   const presentation = statusPresentation(sync.status);
   const Icon = presentation.icon;
   const warning = firstWarning(task);
+  const authIssue = sdsAuthIssue(task);
   const workflowStage = latestSDSWorkflowStage(task);
 
   return (
@@ -129,7 +139,15 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
           </div>
         </div>
 
-        {sync.error ? (
+        {authIssue?.message ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-900">
+            <div className="font-semibold">SDS 登录状态需要处理</div>
+            <div>{authIssue.message}</div>
+            {authIssue.detail ? (
+              <div className="mt-1 break-all font-mono text-xs text-red-800">{authIssue.detail}</div>
+            ) : null}
+          </div>
+        ) : sync.error ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
             {sync.error}
           </div>

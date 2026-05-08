@@ -91,6 +91,83 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 	}
 }
 
+func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	productTask := &productenrich.Task{
+		ID:      "product-task-cookie-1",
+		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+	}
+	productService := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:      "Travel Bag",
+			Category:   []string{"bags"},
+			Attributes: map[string]string{"color": "black"},
+		},
+	}
+	cookieNote := "SHEIN 店铺 cookie 不可用，已降级为离线解析"
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: productService,
+		Assembler: &stubProcessStatusAssembler{
+			result: &ListingKitResult{
+				TaskID: "listingkit-cookie-blocking-1",
+				Shein: &SheinPackage{
+					ReviewNotes: []string{cookieNote},
+				},
+				Summary: &GenerationSummary{NeedsReview: true, Warnings: []string{cookieNote}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task := &Task{
+		ID:        "listingkit-cookie-blocking-1",
+		Status:    TaskStatusPending,
+		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessListingKit(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if result.Status != string(TaskStatusNeedsReview) {
+		t.Fatalf("result status = %q, want %q", result.Status, TaskStatusNeedsReview)
+	}
+	var cookieIssue *WorkflowIssue
+	for i := range result.WorkflowIssues {
+		if result.WorkflowIssues[i].Code == sheinCookieUnavailableIssueCode {
+			cookieIssue = &result.WorkflowIssues[i]
+			break
+		}
+	}
+	if cookieIssue == nil {
+		t.Fatalf("workflow issues = %+v, want %s", result.WorkflowIssues, sheinCookieUnavailableIssueCode)
+	}
+	if cookieIssue.Severity != WorkflowIssueSeverityBlocking {
+		t.Fatalf("cookie issue severity = %q, want blocking", cookieIssue.Severity)
+	}
+	if cookieIssue.Message != sheinCookieUnavailableMessage || cookieIssue.Detail != cookieNote {
+		t.Fatalf("cookie issue = %+v, want message/detail from cookie note", cookieIssue)
+	}
+	if result.Summary == nil || result.Summary.BlockingCount != 1 || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want one blocking review issue", result.Summary)
+	}
+	if got, want := result.ReviewReasons, []string{sheinCookieUnavailableMessage}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("review reasons = %#v, want %#v", got, want)
+	}
+}
+
 func TestGetTaskResultTreatsNeedsReviewAsTerminal(t *testing.T) {
 	t.Parallel()
 

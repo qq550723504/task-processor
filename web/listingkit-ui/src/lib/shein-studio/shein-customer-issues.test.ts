@@ -71,6 +71,27 @@ describe("buildSheinCustomerIssues", () => {
     });
   });
 
+  it("maps SHEIN cookie blockers to store login guidance", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        blocking_items: [
+          {
+            key: "shein_cookie_unavailable",
+            label: "SHEIN 店铺登录",
+            message: "SHEIN 店铺 cookie 不可用，当前无法在线获取类目、属性和销售属性模板。",
+          },
+        ],
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "提交接口问题",
+      title: "SHEIN 店铺需要重新登录",
+      severity: "blocking",
+    });
+    expect(issues[0]?.actionKey).toBeUndefined();
+  });
+
   it("keeps unknown errors as raw other issues", () => {
     const issues = buildSheinCustomerIssues({
       submission: {

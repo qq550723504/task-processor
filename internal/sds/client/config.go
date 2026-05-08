@@ -70,9 +70,12 @@ type AuthBootstrapConfig struct {
 }
 
 func (c AuthBootstrapConfig) HasSource() bool {
+	hasLoginService := strings.TrimSpace(c.LoginServiceBaseURL) != "" &&
+		strings.TrimSpace(c.LoginServiceTenantID) != "" &&
+		strings.TrimSpace(c.LoginServiceIdentifier) != ""
 	return strings.TrimSpace(c.StaticAccessToken) != "" ||
 		strings.TrimSpace(c.StaticCookie) != "" ||
-		strings.TrimSpace(c.LoginServiceBaseURL) != "" ||
+		hasLoginService ||
 		strings.TrimSpace(c.LoginUsername) != "" ||
 		strings.TrimSpace(c.LoginPassword) != "" ||
 		c.ManagementStoreID > 0

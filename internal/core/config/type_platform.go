@@ -4,9 +4,10 @@ import "strings"
 
 // PlatformsConfig 平台配置
 type PlatformsConfig struct {
-	Temu        PlatformConfig    `yaml:"temu"`        // TEMU平台配置
-	Shein       PlatformConfig    `yaml:"shein"`       // SHEIN平台配置
-	Alibaba1688 Alibaba1688Config `yaml:"alibaba1688"` // 1688平台配置
+	Temu        PlatformConfig    `mapstructure:"temu" yaml:"temu"`               // TEMU平台配置
+	Shein       PlatformConfig    `mapstructure:"shein" yaml:"shein"`             // SHEIN平台配置
+	SDS         SDSPlatformConfig `mapstructure:"sds" yaml:"sds"`                 // SDS平台配置
+	Alibaba1688 Alibaba1688Config `mapstructure:"alibaba1688" yaml:"alibaba1688"` // 1688平台配置
 }
 
 func (c *Config) EffectiveSheinCookieRedis() RedisConfig {
@@ -22,18 +23,19 @@ func (c *Config) EffectiveSheinCookieRedis() RedisConfig {
 
 // PlatformConfig 单个平台的完整配置
 type PlatformConfig struct {
-	Enabled              bool                 `yaml:"enabled"`              // 是否启用该平台处理器（上架任务处理）
-	SchedulerEnabled     bool                 `yaml:"schedulerEnabled"`     // 是否启用调度任务（核价、同步等）
-	FetchMode            string               `yaml:"fetchMode"`            // 商品抓取模式：auto/local/distributed/remote-api
-	CookieRedis          RedisConfig          `yaml:"cookieRedis"`          // 登录程序写入的 Cookie Redis 配置
-	AutoPricing          AutoPricingConfig    `yaml:"autoPricing"`          // 自动核价配置
-	ListingPricing       ListingPricingConfig `yaml:"listingPricing"`       // ListingKit 上架资料定价配置
-	ProductSync          ScheduledTaskConfig  `yaml:"productSync"`          // 产品同步配置
-	InventorySync        ScheduledTaskConfig  `yaml:"inventorySync"`        // 库存同步配置
-	ActivityRegistration ScheduledTaskConfig  `yaml:"activityRegistration"` // 活动报名配置
-	SyncProduct          SyncProductConfig    `yaml:"sync"`                 // 旧版产品同步配置，仅保留兼容
-	Monitor              MonitorConfig        `yaml:"monitor"`              // 产品监控配置
-	ConfigPaths          PlatformConfigPaths  `yaml:"configPaths"`          // 业务配置文件路径（统一管理）
+	Enabled              bool                 `yaml:"enabled"`                                  // 是否启用该平台处理器（上架任务处理）
+	SchedulerEnabled     bool                 `yaml:"schedulerEnabled"`                         // 是否启用调度任务（核价、同步等）
+	FetchMode            string               `yaml:"fetchMode"`                                // 商品抓取模式：auto/local/distributed/remote-api
+	CookieRedis          RedisConfig          `yaml:"cookieRedis"`                              // 登录程序写入的 Cookie Redis 配置
+	AutoPricing          AutoPricingConfig    `yaml:"autoPricing"`                              // 自动核价配置
+	ListingPricing       ListingPricingConfig `yaml:"listingPricing"`                           // ListingKit 上架资料定价配置
+	ProductSync          ScheduledTaskConfig  `yaml:"productSync"`                              // 产品同步配置
+	InventorySync        ScheduledTaskConfig  `yaml:"inventorySync"`                            // 库存同步配置
+	ActivityRegistration ScheduledTaskConfig  `yaml:"activityRegistration"`                     // 活动报名配置
+	SyncProduct          SyncProductConfig    `yaml:"sync"`                                     // 旧版产品同步配置，仅保留兼容
+	Monitor              MonitorConfig        `yaml:"monitor"`                                  // 产品监控配置
+	ConfigPaths          PlatformConfigPaths  `yaml:"configPaths"`                              // 业务配置文件路径（统一管理）
+	LoginService         LoginServiceConfig   `mapstructure:"loginService" yaml:"loginService"` // 统一登录服务配置
 }
 
 // PlatformConfigPaths 平台业务配置文件路径
@@ -42,6 +44,22 @@ type PlatformConfigPaths struct {
 	ProhibitedItems  string `yaml:"prohibitedItems"`  // 违禁品配置文件路径
 	AttributeMapping string `yaml:"attributeMapping"` // 属性映射配置文件路径
 }
+
+type SDSPlatformConfig struct {
+	LoginService SDSLoginServiceConfig `mapstructure:"loginService" yaml:"loginService"` // SDS 统一登录服务配置
+}
+
+type LoginServiceConfig struct {
+	BaseURL      string `mapstructure:"baseURL" yaml:"baseURL"`           // login 服务地址，例如 http://login:8000
+	SharedKey    string `mapstructure:"sharedKey" yaml:"sharedKey"`       // 与 login 服务 LOGIN_INTERNAL_SHARED_KEY 对齐
+	TenantID     string `mapstructure:"tenantID" yaml:"tenantID"`         // 平台账号租户
+	Identifier   string `mapstructure:"identifier" yaml:"identifier"`     // 平台账号标识，通常是 listing_store.id
+	MerchantName string `mapstructure:"merchantName" yaml:"merchantName"` // SDS 商户号
+	Username     string `mapstructure:"username" yaml:"username"`         // SDS 登录用户名
+	Password     string `mapstructure:"password" yaml:"password"`         // SDS 登录密码
+}
+
+type SDSLoginServiceConfig = LoginServiceConfig
 
 // AutoPricingConfig 自动定价配置
 type AutoPricingConfig struct {

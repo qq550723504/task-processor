@@ -65,7 +65,7 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		sdsHTTPClient, err := sdsclient.New(liveConfig)
 		if err != nil {
 			return nil, nil, err

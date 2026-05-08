@@ -62,6 +62,95 @@ func TestBuildSheinSubmitReadinessBlockedWhenCoreFieldsMissing(t *testing.T) {
 	}
 }
 
+func TestBuildSheinSubmitReadinessBlocksWhenSheinCookieUnavailable(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	colorValueID := 9001
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:      "resolved",
+			CategoryID:  3001,
+			ReviewNotes: []string{"SHEIN 店铺 cookie 不可用，已降级为离线解析"},
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 27,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "material",
+				AttributeID: 7001,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "Black",
+					AttributeID:      27,
+					AttributeValueID: &colorValueID,
+				},
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+					BasePrice:   "10.00",
+					SitePriceList: []SheinSitePrice{{
+						SubSite:   "us",
+						BasePrice: "10.00",
+					}},
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		FinalDraft: &sheinpub.FinalDraft{
+			Confirmed:       true,
+			MainImageURL:    "https://cdn.example.com/main.jpg",
+			SubmitMode:      "publish",
+			FinalImageOrder: []string{"https://cdn.example.com/main.jpg"},
+			ImageRoleOverrides: map[string]string{
+				"https://cdn.example.com/main.jpg": "swatch",
+			},
+		},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			MainImageURL: "https://cdn.example.com/main.jpg",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	var blocker *SheinReadinessItem
+	for i := range readiness.BlockingItems {
+		if readiness.BlockingItems[i].Key == sheinCookieUnavailableIssueCode {
+			blocker = &readiness.BlockingItems[i]
+			break
+		}
+	}
+	if blocker == nil {
+		t.Fatalf("blocking items = %+v, want cookie blocker", readiness.BlockingItems)
+	}
+	if blocker.Label != "SHEIN 店铺登录" {
+		t.Fatalf("cookie blocker = %+v, want SHEIN store login label", blocker)
+	}
+}
+
 func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T) {
 	t.Parallel()
 

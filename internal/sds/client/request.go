@@ -40,6 +40,9 @@ func (c *Client) Do(
 					continue
 				}
 			}
+			if !c.shouldRetryWithFreshAuth(path) {
+				c.ClearAuthState()
+			}
 			return resp, authErr
 		}
 		return resp, err

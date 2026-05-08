@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
@@ -102,4 +103,25 @@ func TestSDSCatalogUnavailable(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestSDSCatalogAuthRequiredReturnsUnauthorized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &stubSDSCatalogTemplateService{
+		listFn: func(params sdstemplate.ListParams) (*sdstemplate.ListResponse, error) {
+			return nil, &sdsclient.AuthRequiredError{Op: "GET /products", StatusCode: 400, Message: "用户未登录"}
+		},
+	}
+	router := gin.New()
+	RegisterRoutes(router, nil, nil, nil, nil, nil, newSDSCatalogHandler(stub))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	require.Equal(t, "sds_auth_required", payload["error"])
+	require.Contains(t, payload["message"], "SDS 登录状态已失效")
 }

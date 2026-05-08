@@ -17,13 +17,7 @@ func shouldUseStudioCatalogCanonical(task *Task) bool {
 	if !shouldUseStudioProductFallback(task) || task.Request.Options == nil {
 		return false
 	}
-	sds := task.Request.Options.SDS
-	return sds != nil &&
-		!task.Request.Options.ProcessImages &&
-		(strings.TrimSpace(sds.ProductName) != "" ||
-			strings.TrimSpace(sds.ProductSKU) != "" ||
-			strings.TrimSpace(sds.VariantSKU) != "" ||
-			len(sds.CategoryPath) > 0)
+	return shouldUseSDSCatalogSource(task.Request)
 }
 
 func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {

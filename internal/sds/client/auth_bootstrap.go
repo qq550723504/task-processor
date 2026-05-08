@@ -59,13 +59,22 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 	}
 
 	if force {
-		if err := c.triggerLoginServiceForceLogin(ctx); err != nil {
+		if err := c.triggerLoginServiceLogin(ctx, true); err != nil {
 			return appliedAny, err
 		}
 	}
 	loginServiceMaterial, err := c.loadLoginServiceBootstrap(ctx)
 	if err != nil {
 		return appliedAny, err
+	}
+	if loginServiceMaterial == nil && !force && c.hasLoginServiceBootstrap() {
+		if err := c.triggerLoginServiceLogin(ctx, false); err != nil {
+			return appliedAny, err
+		}
+		loginServiceMaterial, err = c.loadLoginServiceBootstrap(ctx)
+		if err != nil {
+			return appliedAny, err
+		}
 	}
 	if loginServiceMaterial != nil {
 		if c.applyBootstrapMaterial(loginServiceMaterial) {
@@ -87,14 +96,24 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 	return appliedAny, nil
 }
 
-func (c *Client) triggerLoginServiceForceLogin(ctx context.Context) error {
+func (c *Client) hasLoginServiceBootstrap() bool {
+	if c == nil || c.config == nil {
+		return false
+	}
+	cfg := c.config.AuthBootstrap
+	return strings.TrimSpace(cfg.LoginServiceBaseURL) != "" &&
+		strings.TrimSpace(cfg.LoginServiceTenantID) != "" &&
+		strings.TrimSpace(cfg.LoginServiceIdentifier) != ""
+}
+
+func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error {
+	if !c.hasLoginServiceBootstrap() {
+		return nil
+	}
 	cfg := c.config.AuthBootstrap
 	baseURL := strings.TrimSpace(cfg.LoginServiceBaseURL)
 	tenantID := strings.TrimSpace(cfg.LoginServiceTenantID)
 	identifier := strings.TrimSpace(cfg.LoginServiceIdentifier)
-	if baseURL == "" || tenantID == "" || identifier == "" {
-		return nil
-	}
 
 	requestCtx := ctx
 	if requestCtx == nil {
@@ -104,19 +123,26 @@ func (c *Client) triggerLoginServiceForceLogin(ctx context.Context) error {
 	defer cancel()
 
 	endpoint := strings.TrimRight(baseURL, "/") + path.Join("/", "api/platforms/sds/login")
-	payload, err := json.Marshal(map[string]any{
+	payloadMap := map[string]any{
 		"tenant_id":         tenantID,
 		"identifier":        identifier,
 		"headless":          true,
-		"force_login":       true,
+		"force_login":       force,
 		"keep_browser_open": false,
-	})
+	}
+	if c.hasLoginServiceManualCredentials() {
+		endpoint = strings.TrimRight(baseURL, "/") + path.Join("/", "api/platforms/sds/manual-login")
+		payloadMap["merchant_name"] = strings.TrimSpace(cfg.LoginMerchantName)
+		payloadMap["username"] = strings.TrimSpace(cfg.LoginUsername)
+		payloadMap["password"] = strings.TrimSpace(cfg.LoginPassword)
+	}
+	payload, err := json.Marshal(payloadMap)
 	if err != nil {
-		return fmt.Errorf("marshal login service force login request: %w", err)
+		return fmt.Errorf("marshal login service login request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("build login service force login request: %w", err)
+		return fmt.Errorf("build login service login request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if sharedKey := strings.TrimSpace(cfg.LoginServiceSharedKey); sharedKey != "" {
@@ -125,16 +151,16 @@ func (c *Client) triggerLoginServiceForceLogin(ctx context.Context) error {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("force SDS login service auth refresh: %w", err)
+		return fmt.Errorf("call SDS login service auth refresh: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read SDS login service force login response: %w", err)
+		return fmt.Errorf("read SDS login service login response: %w", err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("login service force login status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("login service login status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var payloadResp struct {
@@ -145,10 +171,20 @@ func (c *Client) triggerLoginServiceForceLogin(ctx context.Context) error {
 		return err
 	}
 	if !payloadResp.Success {
-		return fmt.Errorf("login service force login failed: %s", strings.TrimSpace(payloadResp.Message))
+		return fmt.Errorf("login service login failed: %s", strings.TrimSpace(payloadResp.Message))
 	}
 
 	return nil
+}
+
+func (c *Client) hasLoginServiceManualCredentials() bool {
+	if c == nil || c.config == nil {
+		return false
+	}
+	cfg := c.config.AuthBootstrap
+	return strings.TrimSpace(cfg.LoginMerchantName) != "" &&
+		strings.TrimSpace(cfg.LoginUsername) != "" &&
+		strings.TrimSpace(cfg.LoginPassword) != ""
 }
 
 func (c *Client) hasUsableAuthState() bool {
@@ -331,6 +367,9 @@ func (c *Client) loadLoginServiceBootstrap(ctx context.Context) (*bootstrapMater
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read SDS login service auth state: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
+		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("login service auth state status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))

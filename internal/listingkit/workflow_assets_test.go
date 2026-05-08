@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
+	sdsclient "task-processor/internal/sds/client"
 	sdsdesign "task-processor/internal/sds/design"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
@@ -356,6 +357,74 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 	}
 	if result.Amazon == nil {
 		t.Fatal("expected assembler result despite image processing failure")
+	}
+}
+
+func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "unexpected-product-task"},
+		product: &productenrich.ProductJSON{
+			Title: "Unexpected enrich result",
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-sds-catalog"},
+		result: &productimage.ImageProcessResult{
+			MainImage: &productimage.ImageAsset{
+				URL:       "https://cdn.example.com/sds-main.jpg",
+				SourceURL: "https://cdn.example.com/sds-source.jpg",
+			},
+		},
+	}
+	svc := &service{
+		productSvc: productSvc,
+		imageSvc:   imageSvc,
+		assembler:  NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+	}
+
+	task := &Task{
+		ID: "listingkit-task-sds-catalog",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/sds-source.jpg"},
+			Text:      "SDS supplied title",
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: true,
+				SDS: &SDSSyncOptions{
+					VariantID:       212095,
+					ParentProductID: 212094,
+					ProductName:     "SDS Clock",
+					ProductSKU:      "MG17701061",
+					VariantSKU:      "MG17701061001",
+					CategoryPath:    []string{"Home", "Decor", "Clock"},
+				},
+			},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if productSvc.lastReq != nil {
+		t.Fatalf("product enrich request = %+v, want skipped for SDS catalog task", productSvc.lastReq)
+	}
+	if result.CanonicalProduct == nil || result.CanonicalProduct.Title != "SDS Clock" {
+		t.Fatalf("canonical product = %+v, want SDS catalog title", result.CanonicalProduct)
+	}
+	if !hasWorkflowStageStatus(result.WorkflowStages, "sds_catalog_product", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, want completed sds_catalog_product", result.WorkflowStages)
+	}
+	if hasWorkflowStageStatus(result.WorkflowStages, "product_enrich", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, product_enrich should not run", result.WorkflowStages)
+	}
+	if imageSvc.lastReq != nil {
+		t.Fatalf("image processing request = %+v, want skipped for SDS catalog task", imageSvc.lastReq)
+	}
+	if hasWorkflowStageStatus(result.WorkflowStages, "product_image", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, product_image should not run", result.WorkflowStages)
 	}
 }
 
@@ -845,6 +914,75 @@ func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
 	}
 	if result.ImageAssets == nil {
 		t.Fatal("expected main workflow to continue despite sds sync failure")
+	}
+}
+
+func TestRunWorkflowMarksSDSAuthRequiredAsBlockingIssue(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "product-task-sds-auth"},
+		product: &productenrich.ProductJSON{
+			Title:      "Sports Towel",
+			Category:   []string{"Sports"},
+			Images:     []string{"https://example.com/source-sds-auth.jpg"},
+			Attributes: map[string]string{"brand": "DemoBrand"},
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-sds-auth"},
+		result: &productimage.ImageProcessResult{
+			MainImage: &productimage.ImageAsset{URL: "https://cdn.example.com/main-sds-auth.jpg"},
+		},
+	}
+	sdsSvc := &stubWorkflowSDSSyncService{
+		err: &sdsclient.AuthRequiredError{
+			Op:         "POST /ps/design/add_and_design",
+			StatusCode: 400,
+			Message:    "用户未登录",
+		},
+	}
+
+	svc := &service{
+		productSvc:          productSvc,
+		imageSvc:            imageSvc,
+		sdsSyncSvc:          sdsSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRepo:           assetrepo.NewMemRepository(),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	task := &Task{
+		ID: "listingkit-task-sds-auth",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source-sds-auth.jpg"},
+			Text:      "sports towel",
+			Platforms: []string{"amazon"},
+			Country:   "US",
+			Language:  "en_US",
+			Options: &GenerateOptions{
+				ProcessImages: true,
+				SDS: &SDSSyncOptions{
+					VariantID: 89766,
+				},
+			},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "failed" {
+		t.Fatalf("sds sync = %+v", result.SDSSync)
+	}
+	if !hasWorkflowIssue(result.WorkflowIssues, "sds_design_sync", WorkflowIssueSeverityBlocking, sdsAuthRequiredIssueCode) {
+		t.Fatalf("workflow issues = %+v, want SDS auth blocking issue", result.WorkflowIssues)
+	}
+	if result.Summary == nil || result.Summary.BlockingCount != 1 || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want blocking needs review", result.Summary)
 	}
 }
 

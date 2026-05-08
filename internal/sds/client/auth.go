@@ -83,6 +83,22 @@ func (c *Client) SaveAuthState() error {
 	return c.authStore.Save(c.authState)
 }
 
+func (c *Client) ClearAuthState() {
+	c.authState = nil
+	c.applyAuthHeaders()
+	c.SetCookies(nil)
+	if c.authStore != nil {
+		if err := c.authStore.Clear(); err != nil {
+			c.logger.WithError(err).Warn("clear stale SDS auth state failed")
+		}
+	}
+	if c.sessionStore != nil {
+		if err := c.sessionStore.Clear(); err != nil {
+			c.logger.WithError(err).Warn("clear stale SDS cookies failed")
+		}
+	}
+}
+
 // Login 使用 SDS 登录接口换取 access-token。
 func (c *Client) Login(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
 	if strings.TrimSpace(req.Username) == "" {

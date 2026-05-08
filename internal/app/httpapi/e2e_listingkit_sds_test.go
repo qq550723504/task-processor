@@ -95,7 +95,7 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return &stubE2ESDSSyncService{}, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 

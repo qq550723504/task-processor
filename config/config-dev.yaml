@@ -102,6 +102,17 @@ platforms:
   shein:
     enabled: true            # 是否启用SHEIN处理器（处理上架任务·）
     schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    # SHEIN 登录态刷新配置；cookie 失效时调用 login 服务重新登录并回写 Redis
+    loginService:
+      baseURL: "http://localhost:8000"
+      sharedKey: ""
+      tenantID: "1"
+      identifier: "2"
+    cookieRedis:
+      host: "localhost"
+      port: 6379
+      password: ""
+      db: 9
     # 自动核价配置
     autoPricing:
       enabled: false        # 启用自动核价
@@ -129,6 +140,14 @@ platforms:
     activityRegistration:
       enabled: false        # 启用活动报名
       interval: 86400        # 执行间隔（秒），默认24小时
+
+  # SDS 登录态刷新配置；cookie/token 失效时会调用 login 服务自动恢复后重试
+  sds:
+    loginService:
+      baseURL: "http://localhost:8000"
+      sharedKey: ""
+      tenantID: "1"
+      identifier: "869"
 
   # 1688 平台配置
   alibaba1688:
@@ -358,9 +377,9 @@ productimage:
     timeout: 60
   publisher:
     enabled: true
-    provider: "s3"
+    provider: "local"
     outputDir: "./tmp/productimage-published"
-    publicBase: "https://oss.shuomiai.com/listingkit-assets"
+    publicBase: ""
     s3:
       bucket: "listingkit-assets"
       region: "us-east-1"

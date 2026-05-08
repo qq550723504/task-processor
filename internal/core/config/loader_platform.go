@@ -58,9 +58,22 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 			PriceChangeThreshold: v.GetFloat64(prefix + ".monitor.priceChangeThreshold"),
 			StockChangeThreshold: v.GetInt(prefix + ".monitor.stockChangeThreshold"),
 		},
+		LoginService: BuildLoginServiceConfig(v, prefix+".loginService"),
 	}
 
 	return normalizePlatformConfig(cfg)
+}
+
+func BuildLoginServiceConfig(v *viper.Viper, prefix string) LoginServiceConfig {
+	return LoginServiceConfig{
+		BaseURL:      v.GetString(prefix + ".baseURL"),
+		SharedKey:    v.GetString(prefix + ".sharedKey"),
+		TenantID:     v.GetString(prefix + ".tenantID"),
+		Identifier:   v.GetString(prefix + ".identifier"),
+		MerchantName: v.GetString(prefix + ".merchantName"),
+		Username:     v.GetString(prefix + ".username"),
+		Password:     v.GetString(prefix + ".password"),
+	}
 }
 
 func normalizePlatformConfig(cfg PlatformConfig) PlatformConfig {

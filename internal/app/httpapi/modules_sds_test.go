@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
@@ -65,7 +66,7 @@ func TestBuildSDSSyncServiceReturnsNilWithoutAuthState(t *testing.T) {
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return nil, nil, nil
 	}
 
@@ -83,7 +84,7 @@ func TestBuildSDSSyncServiceReturnsNilOnFactoryError(t *testing.T) {
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return nil, nil, fmt.Errorf("boom")
 	}
 
@@ -102,7 +103,7 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
 	expected := &stubHTTPAPISDSSyncService{}
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return expected, &sdsclient.AuthState{AccessToken: "token"}, nil
 	}
 
@@ -111,5 +112,51 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)
+	}
+}
+
+func TestBuildSDSClientConfigUsesLoginServiceFromConfig(t *testing.T) {
+	cfg := &config.Config{
+		Management: config.ManagementConfig{
+			TenantID: "286",
+			StoreIDs: []int64{869},
+		},
+		Platforms: config.PlatformsConfig{
+			SDS: config.SDSPlatformConfig{
+				LoginService: config.SDSLoginServiceConfig{
+					BaseURL:      "http://login:8000",
+					SharedKey:    "shared-key",
+					MerchantName: "merchant",
+					Username:     "tester",
+					Password:     "secret",
+				},
+			},
+		},
+	}
+
+	clientCfg := buildSDSClientConfig(cfg)
+	if clientCfg.AuthBootstrap.LoginServiceBaseURL != "http://login:8000" {
+		t.Fatalf("base URL = %q", clientCfg.AuthBootstrap.LoginServiceBaseURL)
+	}
+	if clientCfg.AuthBootstrap.LoginServiceSharedKey != "shared-key" {
+		t.Fatalf("shared key = %q", clientCfg.AuthBootstrap.LoginServiceSharedKey)
+	}
+	if clientCfg.AuthBootstrap.LoginServiceTenantID != "286" {
+		t.Fatalf("tenant = %q", clientCfg.AuthBootstrap.LoginServiceTenantID)
+	}
+	if clientCfg.AuthBootstrap.LoginServiceIdentifier != "869" {
+		t.Fatalf("identifier = %q", clientCfg.AuthBootstrap.LoginServiceIdentifier)
+	}
+	if !clientCfg.AuthBootstrap.HasSource() {
+		t.Fatal("expected login service config to be a refresh source")
+	}
+	if clientCfg.AuthBootstrap.LoginMerchantName != "merchant" {
+		t.Fatalf("merchant name = %q", clientCfg.AuthBootstrap.LoginMerchantName)
+	}
+	if clientCfg.AuthBootstrap.LoginUsername != "tester" {
+		t.Fatalf("username = %q", clientCfg.AuthBootstrap.LoginUsername)
+	}
+	if clientCfg.AuthBootstrap.LoginPassword != "secret" {
+		t.Fatalf("password = %q", clientCfg.AuthBootstrap.LoginPassword)
 	}
 }

@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
+	"sync"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/jsonx"
 	"time"
@@ -43,7 +45,7 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
 
 	if cm.managementClient != nil {
-		cookieStr, tenantID, err := cm.managementClient.GetSheinCookie(cm.storeID)
+		cookieStr, tenantID, err := cm.loadCookieJSONFromRedis()
 		if err != nil {
 			cm.logger.WithError(err).Warn("从 login Redis 读取 SHEIN Cookie 失败，将回退到 management store api")
 		} else if strings.TrimSpace(cookieStr) != "" {
@@ -223,10 +225,7 @@ func (cm *CookieManager) RefreshCookies() ([]*http.Cookie, error) {
 }
 
 func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
-	tenantID := cm.resolvedTenantID
-	if tenantID <= 0 {
-		tenantID = cm.resolveTenantID()
-	}
+	tenantID := cm.forceLoginTenantID()
 	if tenantID <= 0 {
 		return nil, fmt.Errorf("无法确定 SHEIN 店铺 %d 的 tenant_id，无法自动重新登录", cm.storeID)
 	}
@@ -237,7 +236,7 @@ func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 	cm.resolvedTenantID = tenantID
 
 	if cm.managementClient != nil {
-		cookieStr, refreshedTenantID, err := cm.managementClient.GetSheinCookie(cm.storeID)
+		cookieStr, refreshedTenantID, err := cm.loadCookieJSONFromRedis()
 		if err != nil {
 			return nil, fmt.Errorf("重新登录后读取 SHEIN Cookie 失败: %w", err)
 		}
@@ -254,6 +253,69 @@ func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 	}
 
 	return cm.LoadCookies()
+}
+
+func (cm *CookieManager) loadCookieJSONFromRedis() (string, int64, error) {
+	if cm.managementClient == nil {
+		return "", 0, nil
+	}
+	for _, storeID := range cm.cookieLookupStoreIDs() {
+		cookieStr, tenantID, err := cm.managementClient.GetSheinCookie(storeID)
+		if err != nil {
+			return "", 0, err
+		}
+		if strings.TrimSpace(cookieStr) != "" {
+			return cookieStr, tenantID, nil
+		}
+	}
+	return "", 0, nil
+}
+
+func (cm *CookieManager) cookieLookupStoreIDs() []int64 {
+	ids := make([]int64, 0, 2)
+	if configured := cm.configuredLoginStoreID(); configured > 0 {
+		ids = append(ids, configured)
+	}
+	if cm.storeID > 0 && cm.storeID != idsFirst(ids) {
+		ids = append(ids, cm.storeID)
+	}
+	return ids
+}
+
+func idsFirst(ids []int64) int64 {
+	if len(ids) == 0 {
+		return 0
+	}
+	return ids[0]
+}
+
+func (cm *CookieManager) configuredLoginStoreID() int64 {
+	identifier := strings.TrimSpace(loadSheinLoginServiceConfig().identifier)
+	if identifier == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(identifier, 10, 64)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func (cm *CookieManager) forceLoginTenantID() int64 {
+	if tenantID, err := strconv.ParseInt(strings.TrimSpace(loadSheinLoginServiceConfig().tenantID), 10, 64); err == nil && tenantID > 0 {
+		return tenantID
+	}
+	if cm.resolvedTenantID > 0 {
+		return cm.resolvedTenantID
+	}
+	return cm.resolveTenantID()
+}
+
+func (cm *CookieManager) forceLoginIdentifier() string {
+	if identifier := strings.TrimSpace(loadSheinLoginServiceConfig().identifier); identifier != "" {
+		return identifier
+	}
+	return fmt.Sprintf("%d", cm.storeID)
 }
 
 func (cm *CookieManager) resolveTenantID() int64 {
@@ -279,7 +341,7 @@ func (cm *CookieManager) triggerLoginServiceForceLogin(tenantID int64) error {
 
 	payload, err := json.Marshal(map[string]any{
 		"tenant_id":         fmt.Sprintf("%d", tenantID),
-		"identifier":        fmt.Sprintf("%d", cm.storeID),
+		"identifier":        cm.forceLoginIdentifier(),
 		"headless":          true,
 		"force_login":       true,
 		"keep_browser_open": false,
@@ -326,12 +388,36 @@ func (cm *CookieManager) triggerLoginServiceForceLogin(tenantID int64) error {
 }
 
 type sheinLoginServiceConfig struct {
-	baseURL   string
-	sharedKey string
+	baseURL    string
+	sharedKey  string
+	tenantID   string
+	identifier string
+}
+
+var sheinLoginServiceConfigMu sync.RWMutex
+var sheinLoginServiceConfigOverride sheinLoginServiceConfig
+
+func ConfigureLoginService(baseURL string, sharedKey string, account ...string) {
+	sheinLoginServiceConfigMu.Lock()
+	defer sheinLoginServiceConfigMu.Unlock()
+	tenantID := ""
+	identifier := ""
+	if len(account) > 0 {
+		tenantID = account[0]
+	}
+	if len(account) > 1 {
+		identifier = account[1]
+	}
+	sheinLoginServiceConfigOverride = sheinLoginServiceConfig{
+		baseURL:    strings.TrimSpace(baseURL),
+		sharedKey:  strings.TrimSpace(sharedKey),
+		tenantID:   strings.TrimSpace(tenantID),
+		identifier: strings.TrimSpace(identifier),
+	}
 }
 
 func loadSheinLoginServiceConfig() sheinLoginServiceConfig {
-	return sheinLoginServiceConfig{
+	cfg := sheinLoginServiceConfig{
 		baseURL: firstNonEmptyEnv(
 			"TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_BASE_URL",
 			"TASK_PROCESSOR_LOGIN_SERVICE_BASE_URL",
@@ -342,7 +428,32 @@ func loadSheinLoginServiceConfig() sheinLoginServiceConfig {
 			"TASK_PROCESSOR_LOGIN_SERVICE_SHARED_KEY",
 			"TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY",
 		),
+		tenantID: firstNonEmptyEnv(
+			"TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_TENANT_ID",
+			"TASK_PROCESSOR_LOGIN_SERVICE_TENANT_ID",
+		),
+		identifier: firstNonEmptyEnv(
+			"TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER",
+			"TASK_PROCESSOR_LOGIN_SERVICE_IDENTIFIER",
+		),
 	}
+
+	sheinLoginServiceConfigMu.RLock()
+	override := sheinLoginServiceConfigOverride
+	sheinLoginServiceConfigMu.RUnlock()
+	if override.baseURL != "" {
+		cfg.baseURL = override.baseURL
+	}
+	if override.sharedKey != "" {
+		cfg.sharedKey = override.sharedKey
+	}
+	if override.tenantID != "" {
+		cfg.tenantID = override.tenantID
+	}
+	if override.identifier != "" {
+		cfg.identifier = override.identifier
+	}
+	return cfg
 }
 
 func firstNonEmptyEnv(keys ...string) string {

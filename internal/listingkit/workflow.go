@@ -302,11 +302,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, result.Summary.Warnings...))
 	sheinReviewStage := newWorkflowRecorder(final).Start("shein_review", "")
 	applySheinInspectionReviewToSummary(final)
-	if final.Summary != nil && final.Summary.NeedsReview {
-		for _, reason := range reviewReasonsFromResult(final) {
-			newWorkflowRecorder(final).AddIssue(WorkflowIssueSeverityReview, "shein_review", "shein_review_required", reason, "")
-		}
-	}
+	addSheinReviewWorkflowIssues(final)
 	sheinReviewStage.Complete()
 	applySheinVariantImageCoverageGuard(task, final.Shein)
 	if inventory != nil {
@@ -429,12 +425,30 @@ func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
 }
 
 func shouldProcessImages(req *GenerateRequest) bool {
+	if shouldUseSDSCatalogSource(req) {
+		return false
+	}
 	return req != nil && req.Options != nil && req.Options.ProcessImages &&
 		(len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != "")
 }
 
 func shouldGenerateAssets(req *GenerateRequest) bool {
+	if shouldUseSDSCatalogSource(req) {
+		return false
+	}
 	return req != nil && req.Options != nil && req.Options.ProcessImages
+}
+
+func shouldUseSDSCatalogSource(req *GenerateRequest) bool {
+	if req == nil || req.Options == nil || req.Options.SDS == nil {
+		return false
+	}
+	sds := req.Options.SDS
+	return shouldSyncSDS(req) &&
+		(strings.TrimSpace(sds.ProductName) != "" ||
+			strings.TrimSpace(sds.ProductSKU) != "" ||
+			strings.TrimSpace(sds.VariantSKU) != "" ||
+			len(sds.CategoryPath) > 0)
 }
 
 func shouldSyncSDS(req *GenerateRequest) bool {
@@ -480,7 +494,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 		}
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds design sync failed: "+err.Error())
-		stage.Degrade("sds_design_sync_failed", "SDS design sync failed", err.Error())
+		finishSDSStageWithError(stage, recorder, "sds_design_sync_failed", "SDS design sync failed", err)
 		return
 	}
 
@@ -577,7 +591,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		}
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds template render failed: "+err.Error())
-		stage.Degrade("sds_template_render_failed", "SDS template render failed", err.Error())
+		finishSDSStageWithError(stage, recorder, "sds_template_render_failed", "SDS template render failed", err)
 		log.WithError(err).Error("remote SDS design sync failed")
 		return
 	}
@@ -638,7 +652,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 		})
 		cancel()
 		if err != nil {
-			stage.Degrade("sds_variant_render_failed", "SDS variant render failed", err.Error())
+			finishSDSStageWithError(stage, recorder, "sds_variant_render_failed", "SDS variant render failed", err)
 			summaries = append(summaries, SDSSyncSummary{
 				VariantID:    variant.VariantID,
 				ProductID:    variant.VariantID,

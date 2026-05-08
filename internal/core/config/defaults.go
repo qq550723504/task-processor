@@ -166,7 +166,18 @@ func setRabbitMQDefaults(v *viper.Viper, defaults *Config) {
 func setPlatformDefaults(v *viper.Viper, defaults *Config) {
 	setTemuDefaults(v, &defaults.Platforms.Temu)
 	setSheinDefaults(v, &defaults.Platforms.Shein)
+	setSDSDefaults(v, &defaults.Platforms.SDS)
 	setAlibaba1688Defaults(v, &defaults.Platforms.Alibaba1688)
+}
+
+func setSDSDefaults(v *viper.Viper, p *SDSPlatformConfig) {
+	v.SetDefault("platforms.sds.loginService.baseURL", p.LoginService.BaseURL)
+	v.SetDefault("platforms.sds.loginService.sharedKey", p.LoginService.SharedKey)
+	v.SetDefault("platforms.sds.loginService.tenantID", p.LoginService.TenantID)
+	v.SetDefault("platforms.sds.loginService.identifier", p.LoginService.Identifier)
+	v.SetDefault("platforms.sds.loginService.merchantName", p.LoginService.MerchantName)
+	v.SetDefault("platforms.sds.loginService.username", p.LoginService.Username)
+	v.SetDefault("platforms.sds.loginService.password", p.LoginService.Password)
 }
 
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
@@ -222,6 +233,13 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.cookieRedis.password", p.CookieRedis.Password)
 	v.SetDefault("platforms.shein.cookieRedis.db", p.CookieRedis.DB)
 	v.SetDefault("platforms.shein.cookieRedis.pool_size", p.CookieRedis.PoolSize)
+	v.SetDefault("platforms.shein.loginService.baseURL", p.LoginService.BaseURL)
+	v.SetDefault("platforms.shein.loginService.sharedKey", p.LoginService.SharedKey)
+	v.SetDefault("platforms.shein.loginService.tenantID", p.LoginService.TenantID)
+	v.SetDefault("platforms.shein.loginService.identifier", p.LoginService.Identifier)
+	v.SetDefault("platforms.shein.loginService.merchantName", p.LoginService.MerchantName)
+	v.SetDefault("platforms.shein.loginService.username", p.LoginService.Username)
+	v.SetDefault("platforms.shein.loginService.password", p.LoginService.Password)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

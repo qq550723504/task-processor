@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,11 +35,15 @@ import (
 	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
+	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/taskrpcapi"
 )
 
-var newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
-	sdsHTTPClient, err := sdsclient.New(sdsclient.DefaultConfig())
+var newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	if cfg == nil {
+		cfg = sdsclient.DefaultConfig()
+	}
+	sdsHTTPClient, err := sdsclient.New(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -64,6 +69,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
+	configureSheinLoginService(deps.cfg)
 
 	productModule, err := buildProductModule(logger, deps)
 	if err != nil {
@@ -97,7 +103,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	sdsCatalogHandler := buildSDSCatalogHandler(logger)
+	sdsCatalogHandler := buildSDSCatalogHandler(logger, deps.cfg)
 
 	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
@@ -115,13 +121,60 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	}, nil
 }
 
-func buildSDSCatalogHandler(logger *logrus.Logger) sdsCatalogRouteHandler {
-	sdsHTTPClient, err := sdsclient.New(sdsclient.DefaultConfig())
+func buildSDSCatalogHandler(logger *logrus.Logger, cfg *config.Config) sdsCatalogRouteHandler {
+	sdsHTTPClient, err := sdsclient.New(buildSDSClientConfig(cfg))
 	if err != nil {
 		logger.WithError(err).Warn("failed to initialize SDS catalog client")
 		return newSDSCatalogHandler(nil)
 	}
 	return newSDSCatalogHandler(sdstemplate.NewService(sdsHTTPClient))
+}
+
+func buildSDSClientConfig(cfg *config.Config) *sdsclient.Config {
+	clientCfg := sdsclient.DefaultConfig()
+	if cfg == nil {
+		return clientCfg
+	}
+	loginService := cfg.Platforms.SDS.LoginService
+	if value := strings.TrimSpace(loginService.BaseURL); value != "" {
+		clientCfg.AuthBootstrap.LoginServiceBaseURL = value
+	}
+	if value := strings.TrimSpace(loginService.SharedKey); value != "" {
+		clientCfg.AuthBootstrap.LoginServiceSharedKey = value
+	}
+	if value := strings.TrimSpace(loginService.TenantID); value != "" {
+		clientCfg.AuthBootstrap.LoginServiceTenantID = value
+	} else if value := strings.TrimSpace(cfg.Management.TenantID); value != "" {
+		clientCfg.AuthBootstrap.LoginServiceTenantID = value
+	}
+	if value := strings.TrimSpace(loginService.Identifier); value != "" {
+		clientCfg.AuthBootstrap.LoginServiceIdentifier = value
+	} else if len(cfg.Management.StoreIDs) > 0 && cfg.Management.StoreIDs[0] > 0 {
+		clientCfg.AuthBootstrap.LoginServiceIdentifier = strconv.FormatInt(cfg.Management.StoreIDs[0], 10)
+	}
+	if value := strings.TrimSpace(loginService.MerchantName); value != "" {
+		clientCfg.AuthBootstrap.LoginMerchantName = value
+	}
+	if value := strings.TrimSpace(loginService.Username); value != "" {
+		clientCfg.AuthBootstrap.LoginUsername = value
+	}
+	if value := strings.TrimSpace(loginService.Password); value != "" {
+		clientCfg.AuthBootstrap.LoginPassword = value
+	}
+	return clientCfg
+}
+
+func configureSheinLoginService(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	loginService := cfg.Platforms.Shein.LoginService
+	tenantID := strings.TrimSpace(loginService.TenantID)
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(cfg.Management.TenantID)
+	}
+	identifier := strings.TrimSpace(loginService.Identifier)
+	sheinclient.ConfigureLoginService(loginService.BaseURL, loginService.SharedKey, tenantID, identifier)
 }
 
 func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {
@@ -687,7 +740,7 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 		return nil
 	}
 
-	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.imageService)
+	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.imageService, buildSDSClientConfig(deps.cfg))
 	if err != nil {
 		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
 		return nil

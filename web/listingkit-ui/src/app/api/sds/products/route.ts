@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { fetchSDSJSON } from "@/app/api/sds/shared";
+import { fetchSDSJSON, sdsAPIErrorPayload } from "@/app/api/sds/shared";
 import type { SDSProductListResponse } from "@/lib/types/sds";
 
 export const dynamic = "force-dynamic";
@@ -57,12 +57,7 @@ export async function GET(request: NextRequest) {
     const payload = await fetchSDSJSON<SDSProductListResponse>("/products", query);
     return NextResponse.json(payload);
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: "sds_product_query_failed",
-        message: error instanceof Error ? error.message : "unknown SDS error",
-      },
-      { status: 502 },
-    );
+    const payload = sdsAPIErrorPayload(error, "sds_product_query_failed");
+    return NextResponse.json(payload.body, { status: payload.status });
   }
 }

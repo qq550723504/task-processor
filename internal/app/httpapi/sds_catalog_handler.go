@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
@@ -295,10 +297,30 @@ func sdsListParamsFromQuery(c *gin.Context) sdstemplate.ListParams {
 
 func respondSDS(c *gin.Context, payload any, err error, code string) {
 	if err != nil {
+		if isSDSHTTPAuthRequired(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "sds_auth_required",
+				"message": "SDS 登录状态已失效，请重新登录或刷新授权后重试。",
+				"detail":  err.Error(),
+			})
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": code, "message": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, payload)
+}
+
+func isSDSHTTPAuthRequired(err error) bool {
+	if err == nil {
+		return false
+	}
+	var authErr *sdsclient.AuthRequiredError
+	if errors.As(err, &authErr) {
+		return true
+	}
+	var captchaErr *sdsclient.CaptchaRequiredError
+	return errors.As(err, &captchaErr)
 }
 
 func paginateSDSProducts(items []sdstemplate.ProductSummary, page int, size int) []sdstemplate.ProductSummary {

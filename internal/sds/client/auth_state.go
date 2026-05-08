@@ -74,3 +74,14 @@ func (s *AuthStateStore) Save(state *AuthState) error {
 
 	return nil
 }
+
+// Clear 删除本地鉴权状态。
+func (s *AuthStateStore) Clear() error {
+	if s.filePath == "" {
+		return fmt.Errorf("auth file path is empty")
+	}
+	if err := os.Remove(s.filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove auth file: %w", err)
+	}
+	return nil
+}

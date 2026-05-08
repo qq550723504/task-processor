@@ -25,6 +25,8 @@ import {
 } from "@/components/listingkit/tasks/task-source-tabs";
 import { useCreateTask } from "@/lib/query/use-create-task";
 import { useUploadImages } from "@/lib/query/use-upload-images";
+import { loadSDSListingKitMetadata } from "@/lib/sds/product-metadata";
+import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
 const platformOptions = [
   { value: "amazon", label: "Amazon" },
@@ -147,6 +149,17 @@ function parseOptionalNumber(input: string) {
   return parsed;
 }
 
+function parseSelectedVariantIds(input: string | null) {
+  if (!input?.trim()) {
+    return undefined;
+  }
+  const ids = input
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return ids.length > 0 ? ids : undefined;
+}
+
 function buildSDSOptions(values: FormValues) {
   if (!values.sdsEnabled) {
     return undefined;
@@ -238,6 +251,7 @@ export function TaskCreateForm({
   variant?: "default" | "sds";
 }) {
   const router = useRouter();
+  const liveSearchParams = useLiveSearchParams();
   const createTask = useCreateTask();
   const uploadImages = useUploadImages();
   const textRef = useRef<HTMLInputElement | null>(null);
@@ -245,6 +259,7 @@ export function TaskCreateForm({
   const productUrlRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastAppliedSceneDefaultsRef = useRef<ReturnType<typeof getPlatformSceneDefaults>>(null);
+  const lastAppliedSDSQueryKeyRef = useRef<string | null>(null);
   const [activeSourceTab, setActiveSourceTab] = useState<TaskSourceTab>(() =>
     inferInitialSourceTab({ initialValues, initialFocus }),
   );
@@ -399,6 +414,47 @@ export function TaskCreateForm({
     control,
     name: "customSceneHint",
   });
+
+  useEffect(() => {
+    if (variant !== "sds") {
+      return;
+    }
+
+    const nextVariantId = liveSearchParams.get("variantId") ?? "";
+    const nextParentProductId = liveSearchParams.get("parentProductId") ?? "";
+    const nextPrototypeGroupId = liveSearchParams.get("prototypeGroupId") ?? "";
+    const nextLayerId = liveSearchParams.get("layerId") ?? "";
+    const hasSDSSelection = Boolean(
+      nextVariantId || nextParentProductId || nextPrototypeGroupId || nextLayerId,
+    );
+    const shouldClearSelection =
+      liveSearchParams.get("step") === "select" && !hasSDSSelection;
+
+    if (!hasSDSSelection && !shouldClearSelection) {
+      return;
+    }
+
+    const key = [
+      shouldClearSelection ? "clear" : "set",
+      nextVariantId,
+      nextParentProductId,
+      nextPrototypeGroupId,
+      nextLayerId,
+    ].join("|");
+    if (lastAppliedSDSQueryKeyRef.current === key) {
+      return;
+    }
+    lastAppliedSDSQueryKeyRef.current = key;
+
+    setValue("sdsVariantId", nextVariantId, { shouldValidate: true });
+    setValue("sdsParentProductId", nextParentProductId, { shouldValidate: true });
+    setValue("sdsPrototypeGroupId", nextPrototypeGroupId, { shouldValidate: true });
+    setValue("sdsLayerId", nextLayerId, { shouldValidate: true });
+    setValue("sdsEnabled", true, { shouldValidate: true });
+    setSDSEnabled(true);
+    setShowAdvancedSettings(true);
+  }, [liveSearchParams, setValue, variant]);
+
   const helperText = useMemo(
     () => "可以直接粘贴公网图片链接、上传本地图片，或改用商品链接开始。",
     [],
@@ -560,11 +616,28 @@ export function TaskCreateForm({
             });
             return;
           }
+          const sdsMetadata =
+            sdsOptions && sdsOptions.variant_id && sdsOptions.parent_product_id
+              ? await loadSDSListingKitMetadata({
+                  parentProductId: sdsOptions.parent_product_id,
+                  variantId: sdsOptions.variant_id,
+                  selectedVariantIds: parseSelectedVariantIds(
+                    liveSearchParams.get("variantIds"),
+                  ),
+                })
+              : {};
+          const enrichedSDSOptions = sdsOptions
+            ? {
+                ...sdsMetadata,
+                ...sdsOptions,
+              }
+            : undefined;
           const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
           const options = {
-            ...(sceneOptions || sdsOptions ? { process_images: true } : {}),
+            ...(sceneOptions ? { process_images: true } : {}),
+            ...(enrichedSDSOptions && !sceneOptions ? { process_images: false } : {}),
             ...(sceneOptions ? { scene: sceneOptions } : {}),
-            ...(sdsOptions ? { sds: sdsOptions } : {}),
+            ...(enrichedSDSOptions ? { sds: enrichedSDSOptions } : {}),
           };
           const request = {
             text: draft.text,

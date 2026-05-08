@@ -37,6 +37,16 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 	}
 
 	addCheck(
+		sheinCookieUnavailableIssueCode,
+		"SHEIN 店铺登录",
+		!sheinCookieUnavailable(pkg),
+		"SHEIN 店铺 cookie 不可用，当前无法在线获取类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+		[]string{"shein.review_notes", "shein.category_resolution.review_notes", "shein.attribute_resolution.review_notes", "shein.sale_attribute_resolution.review_notes"},
+		"重新登录 SHEIN 店铺",
+		false,
+	)
+
+	addCheck(
 		"category",
 		"类目骨架",
 		validation.categoryReady,

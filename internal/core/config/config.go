@@ -471,6 +471,33 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_REDIS_POOL_SIZE",
 			Deprecated: []string{"REDIS_POOL_SIZE"},
 		},
+		"platforms.shein.cookieRedis.host": {
+			Primary: "TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST",
+		},
+		"platforms.shein.cookieRedis.port": {
+			Primary: "TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT",
+		},
+		"platforms.shein.cookieRedis.password": {
+			Primary: "TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PASSWORD",
+		},
+		"platforms.shein.cookieRedis.db": {
+			Primary: "TASK_PROCESSOR_SHEIN_COOKIE_REDIS_DB",
+		},
+		"platforms.shein.cookieRedis.pool_size": {
+			Primary: "TASK_PROCESSOR_SHEIN_COOKIE_REDIS_POOL_SIZE",
+		},
+		"platforms.shein.loginService.baseURL": {
+			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_BASE_URL",
+		},
+		"platforms.shein.loginService.sharedKey": {
+			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_SHARED_KEY",
+		},
+		"platforms.shein.loginService.tenantID": {
+			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_TENANT_ID",
+		},
+		"platforms.shein.loginService.identifier": {
+			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER",
+		},
 	}
 }
 

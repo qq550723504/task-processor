@@ -46,6 +46,9 @@ func BuildConfig(v *viper.Viper) *Config {
 		Platforms: PlatformsConfig{
 			Temu:  BuildPlatformConfig(v, "platforms.temu"),
 			Shein: BuildPlatformConfig(v, "platforms.shein"),
+			SDS: SDSPlatformConfig{
+				LoginService: BuildLoginServiceConfig(v, "platforms.sds.loginService"),
+			},
 			Alibaba1688: Alibaba1688Config{
 				Enabled:  v.GetBool("platforms.alibaba1688.enabled"),
 				Timeout:  v.GetInt("platforms.alibaba1688.timeout"),

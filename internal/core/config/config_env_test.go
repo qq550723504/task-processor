@@ -109,6 +109,20 @@ func TestNewViper_BindsRedisEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "legacy-pass", v.GetString("redis.password"))
 }
 
+func TestNewViper_BindsSheinCookieRedisEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST", "login-redis.example")
+	t.Setenv("TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT", "6379")
+	t.Setenv("TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PASSWORD", "cookie-pass")
+	t.Setenv("TASK_PROCESSOR_SHEIN_COOKIE_REDIS_DB", "9")
+
+	v := newViper()
+
+	assert.Equal(t, "login-redis.example", v.GetString("platforms.shein.cookieRedis.host"))
+	assert.Equal(t, 6379, v.GetInt("platforms.shein.cookieRedis.port"))
+	assert.Equal(t, "cookie-pass", v.GetString("platforms.shein.cookieRedis.password"))
+	assert.Equal(t, 9, v.GetInt("platforms.shein.cookieRedis.db"))
+}
+
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://legacy")
 	t.Setenv("OPENAI_API_KEY", "legacy")

@@ -85,6 +85,10 @@ platforms:
     enabled: true            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
     fetchMode: "local"       # SHEIN 上架服务直接走本地浏览器抓取，不依赖爬虫 API / 分布式队列
+    # SHEIN 登录态刷新配置；线上 k8s 通过集群内 login Service 调用登录 API
+    loginService:
+      baseURL: "http://login:8000"
+      sharedKey: ""
     # 自动核价配置
     autoPricing:
       enabled: true        # 启用自动核价
@@ -102,6 +106,14 @@ platforms:
     activityRegistration:
       enabled: false        # 启用活动报名
       interval: 86400        # 执行间隔（秒），默认24小时
+
+  # SDS 登录态刷新配置；线上 k8s 通过集群内 login Service 调用登录 API
+  sds:
+    loginService:
+      baseURL: "http://login:8000"
+      sharedKey: ""
+      tenantID: "1"
+      identifier: "869"
 
   # 1688 平台配置
   alibaba1688:

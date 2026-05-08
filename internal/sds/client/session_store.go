@@ -90,6 +90,17 @@ func (s *SessionStore) Save(cookies []*http.Cookie) error {
 	return nil
 }
 
+// Clear 删除本地 Cookie 状态。
+func (s *SessionStore) Clear() error {
+	if s.filePath == "" {
+		return fmt.Errorf("cookie file path is empty")
+	}
+	if err := os.Remove(s.filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove cookie file: %w", err)
+	}
+	return nil
+}
+
 // ParseCookieHeader 将 `a=1; b=2` 形式的 Cookie Header 转成 http.Cookie。
 func ParseCookieHeader(raw, domain string) []*http.Cookie {
 	if strings.TrimSpace(raw) == "" {
