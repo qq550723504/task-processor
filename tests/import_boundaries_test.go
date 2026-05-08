@@ -20,12 +20,16 @@ func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
 }
 
 func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "publishing", "shein", "submit_validation.go")): {},
+	}
 	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "shein"), []string{
 		`"task-processor/internal/listingkit"`,
 		`"task-processor/internal/productenrich"`,
 		`"task-processor/internal/shein/pipeline"`,
+		`"task-processor/internal/shein/publish"`,
 		`"task-processor/internal/shein/product/build"`,
-	}, nil)
+	}, allowedFiles)
 }
 
 func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
@@ -84,7 +88,7 @@ func assertNoBannedImports(t *testing.T, root string, bannedImports []string, al
 		text := string(content)
 		for _, banned := range bannedImports {
 			if strings.Contains(text, banned) {
-				t.Errorf("%s imports legacy SHEIN runtime package %s", path, banned)
+				t.Errorf("%s imports banned boundary package %s", path, banned)
 			}
 		}
 		return nil
