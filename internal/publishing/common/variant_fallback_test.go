@@ -3,20 +3,20 @@ package common
 import (
 	"testing"
 
-	"task-processor/internal/productenrich"
+	"task-processor/internal/catalog/canonical"
 )
 
 func TestBuildVariantsFallsBackToColorAndSizeMatrix(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		Attributes: map[string]productenrich.CanonicalAttribute{
+	product := &canonical.Product{
+		Attributes: map[string]canonical.Attribute{
 			"color": {Value: "Red, Blue"},
 			"size":  {Value: "42/43"},
 			"price": {Value: "19.9"},
 		},
-		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	variants := BuildVariants(canonical)
+	variants := BuildVariants(product)
 	if len(variants) != 4 {
 		t.Fatalf("variant count = %d, want 4", len(variants))
 	}
@@ -35,13 +35,13 @@ func TestBuildVariantsFallsBackToColorAndSizeMatrix(t *testing.T) {
 }
 
 func TestBuildVariantsFallsBackToSingleDefaultVariant(t *testing.T) {
-	canonical := &productenrich.CanonicalProduct{
-		Attributes: map[string]productenrich.CanonicalAttribute{
+	product := &canonical.Product{
+		Attributes: map[string]canonical.Attribute{
 			"material": {Value: "Cotton"},
 		},
 	}
 
-	variants := BuildVariants(canonical)
+	variants := BuildVariants(product)
 	if len(variants) != 1 {
 		t.Fatalf("variant count = %d, want 1", len(variants))
 	}

@@ -24,6 +24,12 @@ func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	}, nil)
 }
 
+func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
+		`"task-processor/internal/productenrich"`,
+	}, nil)
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
