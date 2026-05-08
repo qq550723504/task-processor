@@ -266,7 +266,6 @@ func sheinPackageImageCount(pkg *SheinPackage) int {
 	if pkg.Images != nil {
 		urls = append(urls, pkg.Images.MainImage, pkg.Images.WhiteBgImage)
 		urls = append(urls, pkg.Images.Gallery...)
-		urls = append(urls, pkg.Images.SourceImages...)
 	}
 	if pkg.ImageBundle != nil {
 		if pkg.ImageBundle.Main != nil {
@@ -288,7 +287,6 @@ func appendImageDraftURLs(urls []string, info *sheinpub.ImageDraft) []string {
 	}
 	urls = append(urls, info.MainImage, info.WhiteBg)
 	urls = append(urls, info.Gallery...)
-	urls = append(urls, info.Source...)
 	return urls
 }
 

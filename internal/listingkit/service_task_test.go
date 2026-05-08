@@ -73,3 +73,35 @@ func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
 		t.Fatalf("image count = %d, want rendered image count 4", item.ImageCount)
 	}
 }
+
+func TestBuildTaskListItemDoesNotCountSourceImagesAsRenderedImages(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID: "task-rendered-count-with-source",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/input.png"},
+		},
+		Status: TaskStatusCompleted,
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{
+				RequestDraft: &sheinpub.RequestDraft{
+					ImageInfo: &sheinpub.ImageDraft{
+						MainImage: "https://cdn.example.com/main.png",
+						Gallery: []string{
+							"https://cdn.example.com/gallery-1.png",
+							"https://cdn.example.com/gallery-2.png",
+						},
+						Source: []string{"https://cdn.example.com/input.png"},
+					},
+				},
+			},
+		},
+	}
+
+	item := buildTaskListItem(task)
+
+	if item.ImageCount != 3 {
+		t.Fatalf("image count = %d, want rendered SHEIN image count 3", item.ImageCount)
+	}
+}
