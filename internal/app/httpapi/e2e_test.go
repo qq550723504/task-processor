@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/amazonlisting"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
@@ -218,8 +219,8 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	require.NotNil(t, task.Result.CanonicalProduct)
 	require.Equal(t, "1688 蓝牙耳机源商品", task.Result.CanonicalProduct.Title)
 	require.NotEmpty(t, task.Result.CanonicalProduct.Images)
-	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), productenrich.CanonicalSourceProductURL)
-	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), productenrich.CanonicalSourceScrapedData)
+	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), canonical.SourceProductURL)
+	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), canonical.SourceScrapedData)
 	require.NotNil(t, task.Result.Shein)
 	require.NotNil(t, task.Result.Shein.PreviewProduct)
 	require.NotEmpty(t, task.Result.Shein.PreviewProduct.SPUName)
@@ -258,7 +259,7 @@ func (s e2e1688WebScraper) Scrape(_ context.Context, _ string) (*productenrich.S
 		Variants: []productenrich.ProductVariant{{
 			SKU:        "1688-BT-BLACK",
 			Attributes: map[string]string{"color": "Black"},
-			Price:      &productenrich.PriceInfo{Currency: "CNY", Amount: 88, CostPrice: 88},
+			Price:      &canonical.PriceInfo{Currency: "CNY", Amount: 88, CostPrice: 88},
 			Stock:      50,
 			Images:     []string{s.imageURL},
 			IsDefault:  true,
@@ -266,8 +267,8 @@ func (s e2e1688WebScraper) Scrape(_ context.Context, _ string) (*productenrich.S
 	}, nil
 }
 
-func canonicalTraceSourceTypes(trace productenrich.FieldTrace) []productenrich.CanonicalSourceType {
-	types := make([]productenrich.CanonicalSourceType, 0, len(trace.Sources))
+func canonicalTraceSourceTypes(trace canonical.FieldTrace) []canonical.SourceType {
+	types := make([]canonical.SourceType, 0, len(trace.Sources))
 	for _, source := range trace.Sources {
 		types = append(types, source.Type)
 	}
