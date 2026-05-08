@@ -1,6 +1,10 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+
+	listinggeneration "task-processor/internal/listingkit/generation"
+)
 
 type AssetGenerationOverview struct {
 	PrimaryAction             string                             `json:"primary_action,omitempty"`
@@ -289,7 +293,7 @@ func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilte
 	if filters == nil {
 		filters = &AssetGenerationRecommendedFilters{}
 	}
-	if spec := previewCapabilityActionSpecForKey(actionKey); spec != nil {
+	if spec := listinggeneration.PreviewCapabilityActionSpecForKey(actionKey); spec != nil {
 		filters.ExecutionQuality = ""
 		filters.RetryableOnly = false
 		filters.RenderPreviewAvailable = true
@@ -341,7 +345,7 @@ func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilte
 }
 
 func actionInteractionMode(actionKey string) string {
-	if previewCapabilityActionSpecForKey(actionKey) != nil {
+	if listinggeneration.PreviewCapabilityActionSpecForKey(actionKey) != nil {
 		return "review_only"
 	}
 	switch actionKey {
