@@ -8,7 +8,6 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
 )
 
 type stubCategorySemanticLLM struct {
@@ -71,7 +70,7 @@ func TestAICategorySemanticVerifierAvoidsNoisyDescriptionWhenStructuredSignalsEx
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "尺寸", Values: []string{"150*100*10CM"}},
 		},
 	}, &Package{

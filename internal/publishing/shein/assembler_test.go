@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -270,7 +269,7 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 		Title: "Priced Product",
 		Variants: []canonical.Variant{{
 			SKU: "SKU-1",
-			Price: &productenrich.PriceInfo{
+			Price: &canonical.PriceInfo{
 				Currency:  "USD",
 				Amount:    12,
 				CostPrice: 8,
@@ -301,21 +300,21 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 func TestBuildRequestSKCsPreferVariantSpecificDimensions(t *testing.T) {
 	canonical := &canonical.Product{
 		Title: "Floor Mat",
-		Specifications: &productenrich.ProductSpecs{
-			Dimensions: &productenrich.Dimensions{Length: 99, Width: 88, Height: 7, Unit: "cm"},
+		Specifications: &canonical.ProductSpecs{
+			Dimensions: &canonical.Dimensions{Length: 99, Width: 88, Height: 7, Unit: "cm"},
 		},
 		Variants: []canonical.Variant{
 			{
 				SKU:        "SKU-40",
 				Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "40x60cm"}},
-				Dimensions: &productenrich.Dimensions{Length: 40, Width: 30, Height: 2, Unit: "cm"},
+				Dimensions: &canonical.Dimensions{Length: 40, Width: 30, Height: 2, Unit: "cm"},
 				Stock:      5,
 				IsDefault:  true,
 			},
 			{
 				SKU:        "SKU-50",
 				Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "50x80cm"}},
-				Dimensions: &productenrich.Dimensions{Length: 50, Width: 40, Height: 3, Unit: "cm"},
+				Dimensions: &canonical.Dimensions{Length: 50, Width: 40, Height: 3, Unit: "cm"},
 				Stock:      5,
 			},
 		},
@@ -380,7 +379,7 @@ func TestAssemblerBuildCreatesGroupedSKCsWhenSaleAttributeResolverMapsSourceDime
 	canonical := &canonical.Product{
 		Title:       "Fallback Matrix Product",
 		Description: "fallback matrix",
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "color", Values: []string{"Red", "Blue"}},
 			{Name: "size", Values: []string{"42", "43"}},
 		},
@@ -431,7 +430,7 @@ func TestAssemblerBuildDoesNotPropagatePromptTextIntoSKCNames(t *testing.T) {
 		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Flannel non-slip floor mat - Please design an image that can be printed on my non-slip floor mat. The image should include suitable English text and graphics, and the graphics and text should have a 3D visual effect. Please ensure it does not infringe on copyright. 3000 pixels * 2"},
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{{Name: "color", Values: []string{"Black"}}},
+		VariantDimensions: []canonical.ScrapedVariantDimension{{Name: "color", Values: []string{"Black"}}},
 		Variants: []canonical.Variant{
 			{SKU: "SKU-BLACK", Attributes: map[string]canonical.Attribute{"color": {Value: "Black"}}},
 		},
@@ -526,7 +525,7 @@ func TestAssemblerBuildDoesNotTriggerRuleBasedCategoryReview(t *testing.T) {
 			"材质": {Value: "不锈钢"},
 			"容量": {Value: "420ml"},
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"裸粉", "黑色"}},
 		},
 		Variants: []canonical.Variant{

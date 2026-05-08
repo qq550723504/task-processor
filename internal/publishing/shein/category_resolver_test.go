@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
 	sheincategoryselector "task-processor/internal/shein/category"
@@ -201,7 +200,7 @@ func TestBuildCategoryQueryIncludesStructuredOutdoorCushionSignals(t *testing.T)
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "颜色", Values: []string{"深蓝", "米黄"}},
 		},
 	}, &Package{
@@ -230,7 +229,7 @@ func TestBuildCategoryQuerySkipsWeakDescriptionWhenStrongSignalsExist(t *testing
 			"空间":   {Value: "室外,阳台"},
 			"材质":   {Value: "涤纶"},
 		},
-		VariantDimensions: []productenrich.ScrapedVariantDimension{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
 			{Name: "尺寸", Values: []string{"150*100*10CM"}},
 		},
 	}, &Package{
