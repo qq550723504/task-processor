@@ -1,9 +1,8 @@
 package listingkit
 
 import (
-	"strings"
-
 	"task-processor/internal/asset"
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 type GenerationScenePresetSummary struct {
@@ -32,41 +31,25 @@ func buildGenerationScenePresetSummary(bundle *asset.Bundle, assetID string) *Ge
 }
 
 func buildGenerationScenePresetSummaryFromMetadata(metadata map[string]string) *GenerationScenePresetSummary {
-	if len(metadata) == 0 {
+	summary := listinggeneration.ScenePresetSummaryFromMetadata(metadata)
+	if summary == nil {
 		return nil
 	}
-	summary := &GenerationScenePresetSummary{
-		PromptKey:       strings.TrimSpace(metadata["prompt_key"]),
-		DefaultsSource:  strings.TrimSpace(metadata["scene_defaults_source"]),
-		SceneCategory:   strings.TrimSpace(metadata["scene_category"]),
-		SceneStyle:      strings.TrimSpace(metadata["scene_style"]),
-		BackgroundTone:  strings.TrimSpace(metadata["background_tone"]),
-		Composition:     strings.TrimSpace(metadata["composition"]),
-		PropsLevel:      strings.TrimSpace(metadata["props_level"]),
-		AudienceHint:    strings.TrimSpace(metadata["audience_hint"]),
-		CustomSceneHint: strings.TrimSpace(metadata["custom_scene_hint"]),
+	return &GenerationScenePresetSummary{
+		PromptKey:       summary.PromptKey,
+		DefaultsSource:  summary.DefaultsSource,
+		SceneCategory:   summary.SceneCategory,
+		SceneStyle:      summary.SceneStyle,
+		BackgroundTone:  summary.BackgroundTone,
+		Composition:     summary.Composition,
+		PropsLevel:      summary.PropsLevel,
+		AudienceHint:    summary.AudienceHint,
+		CustomSceneHint: summary.CustomSceneHint,
 	}
-	if !hasGenerationScenePresetSummary(summary) {
-		return nil
-	}
-	return summary
 }
 
 func hasGenerationScenePresetSummary(summary *GenerationScenePresetSummary) bool {
-	if summary == nil {
-		return false
-	}
-	if strings.HasPrefix(summary.PromptKey, "productimage.scene.") {
-		return true
-	}
-	return summary.DefaultsSource != "" ||
-		summary.SceneCategory != "" ||
-		summary.SceneStyle != "" ||
-		summary.BackgroundTone != "" ||
-		summary.Composition != "" ||
-		summary.PropsLevel != "" ||
-		summary.AudienceHint != "" ||
-		summary.CustomSceneHint != ""
+	return listinggeneration.HasScenePresetSummary(toGenerationScenePresetSummary(summary))
 }
 
 func cloneGenerationScenePresetSummary(summary *GenerationScenePresetSummary) *GenerationScenePresetSummary {
@@ -75,4 +58,21 @@ func cloneGenerationScenePresetSummary(summary *GenerationScenePresetSummary) *G
 	}
 	cloned := *summary
 	return &cloned
+}
+
+func toGenerationScenePresetSummary(summary *GenerationScenePresetSummary) *listinggeneration.ScenePresetSummary {
+	if summary == nil {
+		return nil
+	}
+	return &listinggeneration.ScenePresetSummary{
+		PromptKey:       summary.PromptKey,
+		DefaultsSource:  summary.DefaultsSource,
+		SceneCategory:   summary.SceneCategory,
+		SceneStyle:      summary.SceneStyle,
+		BackgroundTone:  summary.BackgroundTone,
+		Composition:     summary.Composition,
+		PropsLevel:      summary.PropsLevel,
+		AudienceHint:    summary.AudienceHint,
+		CustomSceneHint: summary.CustomSceneHint,
+	}
 }
