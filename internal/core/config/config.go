@@ -498,6 +498,18 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.shein.loginService.identifier": {
 			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER",
 		},
+		"platforms.sds.loginService.baseURL": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_BASE_URL",
+		},
+		"platforms.sds.loginService.sharedKey": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY",
+		},
+		"platforms.sds.loginService.tenantID": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_TENANT_ID",
+		},
+		"platforms.sds.loginService.identifier": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_IDENTIFIER",
+		},
 	}
 }
 

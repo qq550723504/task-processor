@@ -61,7 +61,7 @@ func prepareSaleAttributeSourceValue(
 	if original == "" {
 		return saleAttributeValuePreparation{}
 	}
-	if !isPromptLikeSaleAttributeValue(original) {
+	if !shouldExtractSaleAttributeSourceValue(sourceDimension, original) {
 		return saleAttributeValuePreparation{
 			Original:           original,
 			Effective:          original,
@@ -122,6 +122,20 @@ func isPromptLikeSaleAttributeValue(value string) bool {
 	default:
 		return false
 	}
+}
+
+func shouldExtractSaleAttributeSourceValue(sourceDimension string, value string) bool {
+	value = cleanListingText(value)
+	if value == "" {
+		return false
+	}
+	if isPromptLikeSaleAttributeValue(value) {
+		return true
+	}
+	if !isAIStyleSourceDimension(sourceDimension) {
+		return false
+	}
+	return containsCJK(value) || !looksLikeCompactSaleAttributeValue(value)
 }
 
 func trimPromptLikeSaleAttributeValue(sourceValue string) string {
@@ -299,18 +313,18 @@ func saleAttributeResolutionHasPromptLikeValues(resolution *SaleAttributeResolut
 		return "", false
 	}
 	for _, attr := range resolution.SKCAttributes {
-		if isPromptLikeSaleAttributeValue(attr.Value) {
-			return "cached primary sale attribute value is prompt-like", true
+		if saleAttributeValueUnsafeForCache(attr.Value) {
+			return "cached primary sale attribute value is not a safe short value", true
 		}
 	}
 	for _, attr := range resolution.SKUAttributes {
-		if isPromptLikeSaleAttributeValue(attr.Value) {
-			return "cached secondary sale attribute value is prompt-like", true
+		if saleAttributeValueUnsafeForCache(attr.Value) {
+			return "cached secondary sale attribute value is not a safe short value", true
 		}
 	}
 	for _, attr := range resolution.SKCValueAssignments {
-		if isPromptLikeSaleAttributeValue(attr.Value) {
-			return "cached primary sale attribute value assignment is prompt-like", true
+		if saleAttributeValueUnsafeForCache(attr.Value) {
+			return "cached primary sale attribute value assignment is not a safe short value", true
 		}
 	}
 	for sourceValue := range resolution.SKCValueAssignments {
@@ -319,8 +333,8 @@ func saleAttributeResolutionHasPromptLikeValues(resolution *SaleAttributeResolut
 		}
 	}
 	for _, attr := range resolution.SKUValueAssignments {
-		if isPromptLikeSaleAttributeValue(attr.Value) {
-			return "cached secondary sale attribute value assignment is prompt-like", true
+		if saleAttributeValueUnsafeForCache(attr.Value) {
+			return "cached secondary sale attribute value assignment is not a safe short value", true
 		}
 	}
 	for sourceValue := range resolution.SKUValueAssignments {
@@ -329,4 +343,12 @@ func saleAttributeResolutionHasPromptLikeValues(resolution *SaleAttributeResolut
 		}
 	}
 	return "", false
+}
+
+func saleAttributeValueUnsafeForCache(value string) bool {
+	value = cleanListingText(value)
+	if value == "" {
+		return false
+	}
+	return containsCJK(value) || isPromptLikeSaleAttributeValue(value) || !looksLikeCompactSaleAttributeValue(value)
 }

@@ -88,8 +88,10 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 	candidates := buildSaleAttributeCandidates(sourceDimensions, saleAttributes)
 	var primaryCandidate, secondaryCandidate *saleAttributeCandidate
 	primaryCandidate, secondaryCandidate = selectPrimarySecondaryCandidates(candidates)
+	blockPromptDerivedAIStyleFallback := false
 	if shouldSelectSaleAttributeMappingWithLLM(primaryCandidate, sourceDimensions) {
-		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, sourceDimensions, saleAttributes); err == nil && selection != nil {
+		mappingDimensions := saleAttributeMappingSourceDimensions(sourceDimensions)
+		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, mappingDimensions, saleAttributes); err == nil && selection != nil {
 			llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(candidates, selection, sourceDimensions, saleAttributes)
 			if shouldUseLLMSaleAttributeMapping(primaryCandidate, llmPrimary) {
 				candidates = augmentedCandidates
@@ -99,12 +101,28 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 			}
 		}
 	}
+	if shouldBlockPromptDerivedAIStylePrimary(primaryCandidate, sourceDimensions) && resolution.Source != "llm_sale_attribute_mapping" {
+		blockPromptDerivedAIStyleFallback = true
+		primaryCandidate = nil
+		secondaryCandidate = nil
+		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN Style Type 不能使用用户设计提示词作为销售属性来源，需使用 SDS 稳定销售维度重新映射")
+		if surrogatePrimary, surrogateSecondary, augmentedCandidates, ok := selectStableSaleAttributeSurrogate(candidates, sourceDimensions, saleAttributes); ok {
+			candidates = augmentedCandidates
+			primaryCandidate = surrogatePrimary
+			secondaryCandidate = surrogateSecondary
+			blockPromptDerivedAIStyleFallback = false
+			resolution.Source = "sds_stable_sale_attribute_surrogate"
+			resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 主销售属性使用 SDS 颜色维度作为稳定款式替代来源")
+		}
+	}
 	if primaryCandidate == nil {
-		primaryCandidate, secondaryCandidate = selectCandidatesBySourceDimensions(
-			candidates,
-			resolution.PrimarySourceDimension,
-			resolution.SecondarySourceDimension,
-		)
+		if !blockPromptDerivedAIStyleFallback {
+			primaryCandidate, secondaryCandidate = selectCandidatesBySourceDimensions(
+				candidates,
+				resolution.PrimarySourceDimension,
+				resolution.SecondarySourceDimension,
+			)
+		}
 	}
 	if primaryCandidate == nil && len(candidates) > 0 {
 		resolution.ReviewNotes = append(resolution.ReviewNotes, buildNoFitCandidateReviewNotes(candidates)...)
@@ -391,6 +409,114 @@ func isWeakPrimarySaleAttributeCandidate(candidate saleAttributeCandidate) bool 
 		return true
 	}
 	return candidate.ValueFitCount == 0
+}
+
+func shouldBlockPromptDerivedAIStylePrimary(candidate *saleAttributeCandidate, dimensions []SourceVariantDimension) bool {
+	if candidate == nil || !isAIStyleSourceDimension(candidate.SourceName) {
+		return false
+	}
+	if !shouldExtractSaleAttributeSourceValue(candidate.SourceName, candidate.SampleValue) {
+		return false
+	}
+	return hasAlternativePrimarySaleSourceDimension(dimensions, candidate.SourceName)
+}
+
+func saleAttributeMappingSourceDimensions(dimensions []SourceVariantDimension) []SourceVariantDimension {
+	if len(dimensions) == 0 || !hasAlternativePrimarySaleSourceDimension(dimensions, "ai_style") {
+		return dimensions
+	}
+	filtered := make([]SourceVariantDimension, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		if isAIStyleSourceDimension(dimension.Name) && sourceDimensionRequiresExternalSaleAttributeExtraction(dimension) {
+			continue
+		}
+		filtered = append(filtered, dimension)
+	}
+	if len(filtered) == 0 {
+		return dimensions
+	}
+	return filtered
+}
+
+func selectStableSaleAttributeSurrogate(
+	candidates []saleAttributeCandidate,
+	dimensions []SourceVariantDimension,
+	attributes []sheinattribute.AttributeInfo,
+) (*saleAttributeCandidate, *saleAttributeCandidate, []saleAttributeCandidate, bool) {
+	source, ok := selectStableStyleSurrogateDimension(dimensions)
+	if !ok {
+		return nil, nil, candidates, false
+	}
+	primaryAttr, ok := selectPrimarySaleTemplateForSurrogate(attributes)
+	if !ok {
+		return nil, nil, candidates, false
+	}
+	primary, ok := buildLLMSelectedSaleAttributeCandidate(source.Name, primaryAttr.AttributeID, dimensions, attributes)
+	if !ok {
+		return nil, nil, candidates, false
+	}
+	candidates = append(candidates, primary)
+	primaryPtr := &candidates[len(candidates)-1]
+
+	var secondaryPtr *saleAttributeCandidate
+	if secondary, ok := buildStableSecondarySaleAttributeCandidate(source.Name, dimensions, attributes); ok {
+		candidates = append(candidates, secondary)
+		secondaryPtr = &candidates[len(candidates)-1]
+	}
+	return primaryPtr, secondaryPtr, candidates, true
+}
+
+func selectStableStyleSurrogateDimension(dimensions []SourceVariantDimension) (SourceVariantDimension, bool) {
+	for _, dimension := range dimensions {
+		if isColorSourceDimension(dimension.Name) && len(uniqueNormalizedValues(dimension.Values)) > 0 {
+			return dimension, true
+		}
+	}
+	for _, dimension := range dimensions {
+		if isAIStyleSourceDimension(dimension.Name) || isTechnicalSaleSourceDimension(dimension.Name) || isGenericSecondaryName(dimension.Name) {
+			continue
+		}
+		if len(uniqueNormalizedValues(dimension.Values)) > 0 {
+			return dimension, true
+		}
+	}
+	return SourceVariantDimension{}, false
+}
+
+func selectPrimarySaleTemplateForSurrogate(attributes []sheinattribute.AttributeInfo) (sheinattribute.AttributeInfo, bool) {
+	for _, attr := range attributes {
+		if isPrimarySaleTemplateAttribute(attr) {
+			return attr, true
+		}
+	}
+	return sheinattribute.AttributeInfo{}, false
+}
+
+func buildStableSecondarySaleAttributeCandidate(
+	primarySourceName string,
+	dimensions []SourceVariantDimension,
+	attributes []sheinattribute.AttributeInfo,
+) (saleAttributeCandidate, bool) {
+	for _, dimension := range dimensions {
+		if normalizeText(dimension.Name) == normalizeText(primarySourceName) || !isGenericSecondaryName(dimension.Name) {
+			continue
+		}
+		for _, attr := range attributes {
+			if sourceDimensionMatchesSaleTemplate(dimension.Name, attr) {
+				return buildLLMSelectedSaleAttributeCandidate(dimension.Name, attr.AttributeID, dimensions, attributes)
+			}
+		}
+	}
+	return saleAttributeCandidate{}, false
+}
+
+func isColorSourceDimension(name string) bool {
+	switch normalizeText(name) {
+	case "color", "colour", "颜色", "顏色":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasAlternativePrimarySaleSourceDimension(dimensions []SourceVariantDimension, currentName string) bool {

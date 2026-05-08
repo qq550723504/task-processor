@@ -53,7 +53,13 @@ func selectSaleAttributeMappingWithLLM(
 func buildSaleAttributeMappingPrompt(sourceDimensions []SourceVariantDimension, templates []sheinattribute.AttributeInfo) string {
 	var sourceBuilder strings.Builder
 	for _, dimension := range sourceDimensions {
-		sourceBuilder.WriteString(fmt.Sprintf("- name=%q values=%q distinct=%d\n", dimension.Name, strings.Join(dimension.Values, " | "), dimension.DistinctCount))
+		sourceBuilder.WriteString(fmt.Sprintf(
+			"- name=%q values=%q distinct=%d requires_external_extraction=%t\n",
+			dimension.Name,
+			strings.Join(dimension.Values, " | "),
+			dimension.DistinctCount,
+			sourceDimensionRequiresExternalSaleAttributeExtraction(dimension),
+		))
 	}
 
 	var templateBuilder strings.Builder
@@ -73,6 +79,7 @@ Choose at most one primary_source_dimension for SKC grouping and at most one sec
 Keep source dimension names unchanged. Prefer required or SKC-scope SHEIN attributes.
 When the platform-required primary SHEIN attribute has no exact same-name source dimension, choose the source dimension whose values are the safest stable variant grouping surrogate for that target attribute.
 Avoid long image-generation prompts, technical ids, and size-only dimensions for primary style/design grouping when another source dimension is available.
+If ai_style requires external extraction and Color is available, do not choose ai_style for Style or Style Type; choose Color as the stable SDS surrogate.
 If there is no safe secondary mapping, leave secondary_source_dimension empty.
 Return JSON only with keys primary_source_dimension, secondary_source_dimension, primary_attribute_id, secondary_attribute_id, reasons.
 
@@ -84,6 +91,15 @@ SHEIN sale attribute templates:
 		"SourceDimensionsBlock": sourceBuilder.String(),
 		"TemplatesBlock":        templateBuilder.String(),
 	})
+}
+
+func sourceDimensionRequiresExternalSaleAttributeExtraction(dimension SourceVariantDimension) bool {
+	for _, value := range dimension.Values {
+		if shouldExtractSaleAttributeSourceValue(dimension.Name, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func buildTemplateSampleValues(template sheinattribute.AttributeInfo) string {

@@ -123,6 +123,20 @@ func TestNewViper_BindsSheinCookieRedisEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, 9, v.GetInt("platforms.shein.cookieRedis.db"))
 }
 
+func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_BASE_URL", "http://login.svc:8000")
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY", "sds-key")
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_TENANT_ID", "manual")
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_IDENTIFIER", "default")
+
+	v := newViper()
+
+	assert.Equal(t, "http://login.svc:8000", v.GetString("platforms.sds.loginService.baseURL"))
+	assert.Equal(t, "sds-key", v.GetString("platforms.sds.loginService.sharedKey"))
+	assert.Equal(t, "manual", v.GetString("platforms.sds.loginService.tenantID"))
+	assert.Equal(t, "default", v.GetString("platforms.sds.loginService.identifier"))
+}
+
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://legacy")
 	t.Setenv("OPENAI_API_KEY", "legacy")
