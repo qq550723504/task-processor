@@ -46,6 +46,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	if task.Status != TaskStatusPending {
 		return nil
 	}
+	ctx = WithTenantID(ctx, task.TenantID)
 	if _, err := p.service.ProcessListingKit(ctx, task); err != nil {
 		if errors.Is(err, ErrTaskNotPending) {
 			return nil

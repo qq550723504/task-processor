@@ -38,6 +38,7 @@ const (
 )
 
 type GenerateRequest struct {
+	TenantID           string           `json:"tenant_id,omitempty"`
 	ImageURLs          []string         `json:"image_urls,omitempty"`
 	Text               string           `json:"text,omitempty"`
 	ProductURL         string           `json:"product_url,omitempty"`
@@ -252,6 +253,7 @@ type SheinCategorySearchResult struct {
 
 type Task struct {
 	ID         string            `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID   string            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
 	Request    *GenerateRequest  `json:"request" gorm:"type:text"`
 	Status     TaskStatus        `json:"status" gorm:"type:varchar(20);index"`
 	Result     *ListingKitResult `json:"result,omitempty" gorm:"type:text"`
@@ -263,6 +265,7 @@ type Task struct {
 
 type TaskResult struct {
 	TaskID        string            `json:"task_id"`
+	TenantID      string            `json:"tenant_id,omitempty"`
 	Status        TaskStatus        `json:"status"`
 	Result        *ListingKitResult `json:"result,omitempty"`
 	Error         string            `json:"error,omitempty"`
@@ -272,6 +275,7 @@ type TaskResult struct {
 }
 
 type TaskListQuery struct {
+	TenantID            string `form:"tenant_id" json:"tenant_id,omitempty"`
 	Status              string `form:"status" json:"status,omitempty"`
 	Platform            string `form:"platform" json:"platform,omitempty"`
 	SheinWorkflowStatus string `form:"shein_workflow_status" json:"shein_workflow_status,omitempty"`
@@ -281,6 +285,7 @@ type TaskListQuery struct {
 
 type TaskListItem struct {
 	TaskID                         string     `json:"task_id"`
+	TenantID                       string     `json:"tenant_id,omitempty"`
 	Status                         TaskStatus `json:"status"`
 	Platforms                      []string   `json:"platforms,omitempty"`
 	Title                          string     `json:"title,omitempty"`

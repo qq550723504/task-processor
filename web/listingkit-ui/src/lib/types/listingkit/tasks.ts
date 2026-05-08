@@ -66,6 +66,7 @@ export type SDSSyncSummary = {
 
 export type ListingKitTaskResultData = {
   task_id?: string;
+  tenant_id?: string;
   status?: string;
   review_reasons?: string[];
   platforms?: string[];
@@ -92,6 +93,7 @@ export type ListingKitTaskResultData = {
 
 export type ListingKitTaskResult = {
   task_id?: string;
+  tenant_id?: string;
   status?: string;
   result?: ListingKitTaskResultData;
   error?: string;
@@ -101,6 +103,7 @@ export type ListingKitTaskResult = {
 };
 
 export type ListingKitTaskListQuery = {
+  tenant_id?: string;
   status?: string;
   platform?: string;
   shein_workflow_status?: string;
@@ -110,6 +113,7 @@ export type ListingKitTaskListQuery = {
 
 export type ListingKitTaskListItem = {
   task_id: string;
+  tenant_id?: string;
   status?: string;
   platforms?: string[];
   title?: string;
@@ -137,6 +141,7 @@ export type ListingKitTaskListPage = {
 };
 
 export type CreateListingKitTaskRequest = {
+  tenant_id?: string;
   image_urls?: string[];
   text?: string;
   product_url?: string;
@@ -235,6 +240,7 @@ export type CreateListingKitTaskRequest = {
 
 export type CreateListingKitTaskResponse = {
   task_id: string;
+  tenant_id?: string;
   status?: string;
   created_at?: string;
 };

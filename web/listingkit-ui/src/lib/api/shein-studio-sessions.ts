@@ -24,6 +24,7 @@ export type StudioSessionStatus =
 type StudioSessionDetailResponse = {
   session?: {
     id: string;
+    tenant_id?: string;
     status?: StudioSessionStatus;
     selection?: Record<string, unknown>;
     prompt?: string;
@@ -46,6 +47,7 @@ type StudioSessionDetailResponse = {
   };
   designs?: Array<{
     id: string;
+    tenant_id?: string;
     image_url?: string;
     revised_prompt?: string;
     review_note?: string;

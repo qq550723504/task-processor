@@ -16,7 +16,7 @@ func (h *handler) ApplyTaskRevision(c *gin.Context) {
 		return
 	}
 
-	preview, err := h.service.ApplyTaskRevision(c.Request.Context(), c.Param("task_id"), &req)
+	preview, err := h.service.ApplyTaskRevision(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		var validationErr *listingkit.RevisionValidationError

@@ -10,7 +10,7 @@ import (
 )
 
 func (h *handler) GetTaskPreview(c *gin.Context) {
-	preview, err := h.service.GetTaskPreview(c.Request.Context(), c.Param("task_id"), c.Query("platform"))
+	preview, err := h.service.GetTaskPreview(requestContext(c), c.Param("task_id"), c.Query("platform"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

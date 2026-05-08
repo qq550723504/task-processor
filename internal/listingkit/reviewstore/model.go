@@ -8,10 +8,11 @@ import (
 
 type ReviewRecord struct {
 	ID              uint      `gorm:"primaryKey" json:"-"`
-	TaskID          string    `gorm:"index:idx_listingkit_review_lookup,priority:1;type:varchar(64);not null"`
-	Platform        string    `gorm:"index:idx_listingkit_review_lookup,priority:2;type:varchar(32);not null"`
-	Slot            string    `gorm:"index:idx_listingkit_review_lookup,priority:3;type:varchar(64);not null"`
-	Capability      string    `gorm:"index:idx_listingkit_review_lookup,priority:4;type:varchar(64);not null"`
+	TenantID        string    `gorm:"index:idx_listingkit_review_lookup,priority:1;type:varchar(64)"`
+	TaskID          string    `gorm:"index:idx_listingkit_review_lookup,priority:2;type:varchar(64);not null"`
+	Platform        string    `gorm:"index:idx_listingkit_review_lookup,priority:3;type:varchar(32);not null"`
+	Slot            string    `gorm:"index:idx_listingkit_review_lookup,priority:4;type:varchar(64);not null"`
+	Capability      string    `gorm:"index:idx_listingkit_review_lookup,priority:5;type:varchar(64);not null"`
 	Decision        string    `gorm:"type:varchar(32);not null"`
 	Status          string    `gorm:"type:varchar(32);not null"`
 	Message         string    `gorm:"type:text"`

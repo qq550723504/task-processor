@@ -27,7 +27,8 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	task, err := h.service.CreateGenerateTask(c.Request.Context(), &req)
+	req.TenantID = requestTenantID(c, req.TenantID)
+	task, err := h.service.CreateGenerateTask(requestContext(c, req.TenantID), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
@@ -36,7 +37,7 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 		c.JSON(status, gin.H{"error": "task_creation_failed", "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "status": task.Status, "created_at": task.CreatedAt})
+	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "tenant_id": task.TenantID, "status": task.Status, "created_at": task.CreatedAt})
 }
 
 func (h *handler) ListTasks(c *gin.Context) {
@@ -45,7 +46,8 @@ func (h *handler) ListTasks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	page, err := h.service.ListTasks(c.Request.Context(), &query)
+	query.TenantID = requestTenantID(c, query.TenantID)
+	page, err := h.service.ListTasks(requestContext(c, query.TenantID), &query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "task_list_failed", "message": err.Error()})
 		return
@@ -54,7 +56,7 @@ func (h *handler) ListTasks(c *gin.Context) {
 }
 
 func (h *handler) GetTaskResult(c *gin.Context) {
-	result, err := h.service.GetTaskResult(c.Request.Context(), c.Param("task_id"))
+	result, err := h.service.GetTaskResult(requestContext(c), c.Param("task_id"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) {

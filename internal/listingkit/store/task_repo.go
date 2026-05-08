@@ -11,6 +11,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/tenantctx"
 )
 
 type taskRepository struct {
@@ -22,12 +23,21 @@ func NewTaskRepository(db *gorm.DB) listingkit.Repository {
 }
 
 func (r *taskRepository) CreateTask(ctx context.Context, task *listingkit.Task) error {
+	if task != nil {
+		if task.TenantID == "" {
+			task.TenantID = tenantctx.TenantIDFromContext(ctx)
+		}
+		if task.Request != nil && task.Request.TenantID == "" {
+			task.Request.TenantID = task.TenantID
+		}
+	}
 	return r.db.WithContext(ctx).Create(task).Error
 }
 
 func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingkit.Task, error) {
 	var task listingkit.Task
-	if err := r.db.WithContext(ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+	db := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id")
+	if err := db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, listingkit.ErrTaskNotFound
 		}
@@ -38,7 +48,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingki
 
 func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, int64, error) {
 	page, pageSize := normalizeTaskListPage(query)
-	db := r.db.WithContext(ctx).Model(&listingkit.Task{})
+	db := applyTenantScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx, "tenant_id")
 	if query != nil && query.Status != "" {
 		db = db.Where("status = ?", query.Status)
 	}
@@ -80,6 +90,7 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	result := r.db.WithContext(ctx).
 		Model(&listingkit.Task{}).
+		Scopes(tenantScope(ctx, "tenant_id")).
 		Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
 		Updates(map[string]any{
 			"status":     listingkit.TaskStatusProcessing,
@@ -132,7 +143,7 @@ func (r *taskRepository) PrepareRetry(ctx context.Context, taskID string) error 
 }
 
 func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
-	return r.db.WithContext(ctx).Model(&listingkit.Task{}).Where("id = ?", taskID).UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1)).Error
+	return r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(tenantScope(ctx, "tenant_id")).Where("id = ?", taskID).UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1)).Error
 }
 
 func (r *taskRepository) SaveTaskResult(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
@@ -143,7 +154,7 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 	var out *listingkit.Task
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var task listingkit.Task
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", taskID).First(&task).Error; err != nil {
+		if err := applyTenantScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx, "tenant_id").Where("id = ?", taskID).First(&task).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return listingkit.ErrTaskNotFound
 			}
@@ -158,6 +169,7 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 		}
 		task.UpdatedAt = time.Now()
 		if err := tx.Model(&listingkit.Task{}).
+			Scopes(tenantScope(ctx, "tenant_id")).
 			Where("id = ?", taskID).
 			Updates(map[string]any{
 				"result":     task.Result,
@@ -177,7 +189,8 @@ func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerpri
 		return nil, nil
 	}
 	var entry listingkit.CanonicalProductCacheEntry
-	if err := r.db.WithContext(ctx).Where("fingerprint = ?", fingerprint).First(&entry).Error; err != nil {
+	db := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id")
+	if err := db.Where("fingerprint = ?", storedCanonicalFingerprint(ctx, fingerprint)).First(&entry).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -191,11 +204,14 @@ func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerpr
 	if err != nil {
 		return err
 	}
+	entry.TenantID = tenantctx.TenantIDFromContext(ctx)
+	entry.Fingerprint = storedCanonicalFingerprint(ctx, fingerprint)
 	return r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "fingerprint"}},
 			DoUpdates: clause.Assignments(map[string]any{
 				"product":        entry.Product,
+				"tenant_id":      entry.TenantID,
 				"source_task_id": sourceTaskID,
 				"updated_at":     gorm.Expr("NOW()"),
 			}),
@@ -205,7 +221,7 @@ func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerpr
 
 func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, updates map[string]any) error {
 	updates["updated_at"] = gorm.Expr("NOW()")
-	result := r.db.WithContext(ctx).Model(&listingkit.Task{}).Where("id = ?", taskID).Updates(updates)
+	result := r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(tenantScope(ctx, "tenant_id")).Where("id = ?", taskID).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update task: %w", result.Error)
 	}
@@ -213,4 +229,29 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return listingkit.ErrTaskNotFound
 	}
 	return nil
+}
+
+func tenantScope(ctx context.Context, column string) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return applyTenantScope(db, ctx, column)
+	}
+}
+
+func applyTenantScope(db *gorm.DB, ctx context.Context, column string) *gorm.DB {
+	tenantID, ok := tenantctx.TenantScopeFromContext(ctx)
+	if !ok {
+		return db
+	}
+	if tenantID == tenantctx.DefaultTenantID {
+		return db.Where("("+column+" = ? OR "+column+" = '' OR "+column+" IS NULL)", tenantID)
+	}
+	return db.Where(column+" = ?", tenantID)
+}
+
+func storedCanonicalFingerprint(ctx context.Context, fingerprint string) string {
+	tenantID := tenantctx.TenantIDFromContext(ctx)
+	if tenantID == tenantctx.DefaultTenantID {
+		return fingerprint
+	}
+	return tenantID + ":" + fingerprint
 }

@@ -48,7 +48,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 		})
 	}
 
-	response, err := h.service.UploadImages(c.Request.Context(), request)
+	response, err := h.service.UploadImages(requestContext(c), request)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
@@ -64,7 +64,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 
 func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 	key := strings.TrimPrefix(c.Param("key"), "/")
-	file, err := h.service.GetUploadedImage(c.Request.Context(), key)
+	file, err := h.service.GetUploadedImage(requestContext(c), key)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {

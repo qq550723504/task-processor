@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/tenantctx"
 )
 
 type MemTaskRepository struct {
@@ -23,32 +24,41 @@ func NewMemTaskRepository() listingkit.Repository {
 	}
 }
 
-func (r *MemTaskRepository) CreateTask(_ context.Context, task *listingkit.Task) error {
+func (r *MemTaskRepository) CreateTask(ctx context.Context, task *listingkit.Task) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if task.TenantID == "" {
+		task.TenantID = tenantctx.TenantIDFromContext(ctx)
+	}
+	if task.Request != nil && task.Request.TenantID == "" {
+		task.Request.TenantID = task.TenantID
+	}
 	copied := *task
 	r.tasks[task.ID] = &copied
 	return nil
 }
 
-func (r *MemTaskRepository) GetTask(_ context.Context, taskID string) (*listingkit.Task, error) {
+func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*listingkit.Task, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return nil, listingkit.ErrTaskNotFound
 	}
 	copied := *task
 	return &copied, nil
 }
 
-func (r *MemTaskRepository) ListTasks(_ context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, int64, error) {
+func (r *MemTaskRepository) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	page, pageSize := normalizeTaskListPage(query)
 	items := make([]listingkit.Task, 0, len(r.tasks))
 	for _, task := range r.tasks {
+		if !matchesTenantScope(ctx, task.TenantID) {
+			continue
+		}
 		if query != nil && query.Status != "" && string(task.Status) != query.Status {
 			continue
 		}
@@ -74,11 +84,11 @@ func (r *MemTaskRepository) ListTasks(_ context.Context, query *listingkit.TaskL
 	return items[start:end], total, nil
 }
 
-func (r *MemTaskRepository) MarkProcessing(_ context.Context, taskID string) error {
+func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return listingkit.ErrTaskNotFound
 	}
 	if task.Status != listingkit.TaskStatusPending {
@@ -144,11 +154,11 @@ func (r *MemTaskRepository) MarkNeedsReview(ctx context.Context, taskID string, 
 	return nil
 }
 
-func (r *MemTaskRepository) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
+func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return listingkit.ErrTaskNotFound
 	}
 	task.Status = listingkit.TaskStatusFailed
@@ -157,11 +167,11 @@ func (r *MemTaskRepository) MarkFailed(_ context.Context, taskID string, errorMs
 	return nil
 }
 
-func (r *MemTaskRepository) PrepareRetry(_ context.Context, taskID string) error {
+func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return listingkit.ErrTaskNotFound
 	}
 	task.Status = listingkit.TaskStatusPending
@@ -170,11 +180,11 @@ func (r *MemTaskRepository) PrepareRetry(_ context.Context, taskID string) error
 	return nil
 }
 
-func (r *MemTaskRepository) IncrementRetryCount(_ context.Context, taskID string) error {
+func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return listingkit.ErrTaskNotFound
 	}
 	task.RetryCount++
@@ -182,11 +192,11 @@ func (r *MemTaskRepository) IncrementRetryCount(_ context.Context, taskID string
 	return nil
 }
 
-func (r *MemTaskRepository) SaveTaskResult(_ context.Context, taskID string, result *listingkit.ListingKitResult) error {
+func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return listingkit.ErrTaskNotFound
 	}
 	task.Result = result
@@ -194,11 +204,11 @@ func (r *MemTaskRepository) SaveTaskResult(_ context.Context, taskID string, res
 	return nil
 }
 
-func (r *MemTaskRepository) MutateTaskResult(_ context.Context, taskID string, mutate listingkit.TaskResultMutation) (*listingkit.Task, error) {
+func (r *MemTaskRepository) MutateTaskResult(ctx context.Context, taskID string, mutate listingkit.TaskResultMutation) (*listingkit.Task, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return nil, listingkit.ErrTaskNotFound
 	}
 	copied := *task
@@ -213,7 +223,7 @@ func (r *MemTaskRepository) MutateTaskResult(_ context.Context, taskID string, m
 	return &copied, nil
 }
 
-func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerprint string) (*canonical.Product, error) {
+func (r *MemTaskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error) {
 	if fingerprint == "" {
 		return nil, nil
 	}
@@ -222,23 +232,36 @@ func (r *MemTaskRepository) GetCanonicalProductCache(_ context.Context, fingerpr
 	if r.canonicalProduct == nil {
 		return nil, nil
 	}
-	entry := r.canonicalProduct[fingerprint]
+	entry := r.canonicalProduct[canonicalCacheKey(ctx, fingerprint)]
 	if entry == nil {
 		return nil, nil
 	}
 	return entry.CanonicalProduct()
 }
 
-func (r *MemTaskRepository) SaveCanonicalProductCache(_ context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
+func (r *MemTaskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
 	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
 	if err != nil {
 		return err
 	}
+	entry.TenantID = tenantctx.TenantIDFromContext(ctx)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.canonicalProduct == nil {
 		r.canonicalProduct = make(map[string]*listingkit.CanonicalProductCacheEntry)
 	}
-	r.canonicalProduct[fingerprint] = entry
+	r.canonicalProduct[canonicalCacheKey(ctx, fingerprint)] = entry
 	return nil
+}
+
+func matchesTenantScope(ctx context.Context, recordTenantID string) bool {
+	tenantID, ok := tenantctx.TenantScopeFromContext(ctx)
+	if !ok {
+		return true
+	}
+	return tenantctx.MatchesTenant(recordTenantID, tenantID)
+}
+
+func canonicalCacheKey(ctx context.Context, fingerprint string) string {
+	return tenantctx.TenantIDFromContext(ctx) + ":" + fingerprint
 }

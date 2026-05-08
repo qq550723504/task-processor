@@ -147,6 +147,7 @@ func (value *SheinStudioCreatedTaskList) Scan(input any) error {
 
 type SheinStudioSession struct {
 	ID                      string                            `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID                string                            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
 	UserID                  string                            `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	SelectionKey            string                            `json:"selection_key" gorm:"type:varchar(255);index"`
 	Status                  SheinStudioSessionStatus          `json:"status" gorm:"type:varchar(32);index"`
@@ -182,6 +183,7 @@ type SheinStudioSession struct {
 
 type SheinStudioDesign struct {
 	ID               string                `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID         string                `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
 	SessionID        string                `json:"session_id" gorm:"type:varchar(64);index:idx_shein_studio_design_session_sort,priority:1"`
 	ImageURL         string                `json:"image_url" gorm:"type:text"`
 	ProductImageURLs SheinStudioStringList `json:"product_image_urls,omitempty" gorm:"type:text"`
@@ -201,6 +203,7 @@ type SheinStudioSessionDetail struct {
 }
 
 type SheinStudioSessionGalleryItem struct {
+	TenantID      string `json:"tenant_id,omitempty"`
 	SessionID     string `json:"session_id"`
 	DesignID      string `json:"design_id"`
 	ImageURL      string `json:"image_url"`

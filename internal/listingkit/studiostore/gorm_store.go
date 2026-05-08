@@ -8,11 +8,12 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/tenantctx"
 )
 
 func (r *GormRepository) FindLatestSessionBySelectionKey(ctx context.Context, selectionKey string) (*listingkit.SheinStudioSession, error) {
 	var session listingkit.SheinStudioSession
-	err := r.db.WithContext(ctx).
+	err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").
 		Where("selection_key = ?", selectionKey).
 		Order("updated_at DESC").
 		First(&session).Error
@@ -26,12 +27,15 @@ func (r *GormRepository) FindLatestSessionBySelectionKey(ctx context.Context, se
 }
 
 func (r *GormRepository) CreateSession(ctx context.Context, session *listingkit.SheinStudioSession) error {
+	if session != nil && session.TenantID == "" {
+		session.TenantID = tenantctx.TenantIDFromContext(ctx)
+	}
 	return r.db.WithContext(ctx).Create(session).Error
 }
 
 func (r *GormRepository) GetSession(ctx context.Context, sessionID string) (*listingkit.SheinStudioSession, error) {
 	var session listingkit.SheinStudioSession
-	err := r.db.WithContext(ctx).Where("id = ?", sessionID).First(&session).Error
+	err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").Where("id = ?", sessionID).First(&session).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -42,12 +46,21 @@ func (r *GormRepository) GetSession(ctx context.Context, sessionID string) (*lis
 }
 
 func (r *GormRepository) UpdateSession(ctx context.Context, session *listingkit.SheinStudioSession) error {
+	if session != nil && session.TenantID == "" {
+		session.TenantID = tenantctx.TenantIDFromContext(ctx)
+	}
 	return r.db.WithContext(ctx).Save(session).Error
 }
 
 func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []listingkit.SheinStudioDesign) error {
+	tenantID := tenantctx.TenantIDFromContext(ctx)
+	for i := range designs {
+		if designs[i].TenantID == "" {
+			designs[i].TenantID = tenantID
+		}
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
+		if err := applyTenantScope(tx, ctx, "tenant_id").Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
 			return err
 		}
 		if len(designs) > 0 {
@@ -56,6 +69,7 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 			}
 		}
 		return tx.Model(&listingkit.SheinStudioSession{}).
+			Scopes(func(db *gorm.DB) *gorm.DB { return applyTenantScope(db, ctx, "tenant_id") }).
 			Where("id = ?", sessionID).
 			Updates(map[string]any{
 				"approved_design_ids": listingkit.SheinStudioStringList(approvedIDs),
@@ -66,7 +80,7 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 
 func (r *GormRepository) ListSessionDesigns(ctx context.Context, sessionID string) ([]listingkit.SheinStudioDesign, error) {
 	var designs []listingkit.SheinStudioDesign
-	if err := r.db.WithContext(ctx).
+	if err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").
 		Where("session_id = ?", sessionID).
 		Order("sort_order ASC, created_at ASC").
 		Find(&designs).Error; err != nil {
@@ -82,6 +96,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 
 	rows := make([]struct {
 		SessionID     string
+		TenantID      string
 		DesignID      string
 		ImageURL      string
 		Prompt        string
@@ -97,6 +112,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 		Table("shein_studio_designs AS d").
 		Select([]string{
 			"d.session_id AS session_id",
+			"d.tenant_id AS tenant_id",
 			"d.id AS design_id",
 			"d.image_url AS image_url",
 			"s.prompt AS prompt",
@@ -108,6 +124,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.revised_prompt AS revised_prompt",
 		}).
 		Joins("JOIN shein_studio_sessions AS s ON s.id = d.session_id").
+		Scopes(func(db *gorm.DB) *gorm.DB { return applyTenantScope(db, ctx, "s.tenant_id") }).
 		Order("d.updated_at DESC").
 		Limit(limit).
 		Scan(&rows).Error; err != nil {
@@ -120,6 +137,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 		_ = selection.Scan(row.SelectionJSON)
 		items = append(items, listingkit.SheinStudioSessionGalleryItem{
 			SessionID:     row.SessionID,
+			TenantID:      row.TenantID,
 			DesignID:      row.DesignID,
 			ImageURL:      row.ImageURL,
 			Prompt:        row.Prompt,
@@ -132,4 +150,15 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 		})
 	}
 	return items, nil
+}
+
+func applyTenantScope(db *gorm.DB, ctx context.Context, column string) *gorm.DB {
+	tenantID, ok := tenantctx.TenantScopeFromContext(ctx)
+	if !ok {
+		return db
+	}
+	if tenantID == tenantctx.DefaultTenantID {
+		return db.Where("("+column+" = ? OR "+column+" = '' OR "+column+" IS NULL)", tenantID)
+	}
+	return db.Where(column+" = ?", tenantID)
 }

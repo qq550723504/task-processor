@@ -15,7 +15,7 @@ func (h *handler) ValidateTaskRevision(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.ValidateTaskRevision(c.Request.Context(), c.Param("task_id"), &req)
+	result, err := h.service.ValidateTaskRevision(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err == listingkit.ErrTaskNotFound || err == listingkit.ErrTaskResultUnavailable || err == listingkit.ErrRevisionHistoryRecordNotFound {

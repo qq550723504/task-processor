@@ -11,7 +11,7 @@ import (
 
 func (h *handler) SearchSheinCategories(c *gin.Context) {
 	result, err := h.service.SearchSheinCategories(
-		c.Request.Context(),
+		requestContext(c),
 		c.Param("task_id"),
 		c.Query("query"),
 	)

@@ -17,6 +17,7 @@ import (
 const canonicalProductCacheFingerprintVersion = "listingkit:canonical_product:v1:"
 
 type CanonicalProductCacheEntry struct {
+	TenantID     string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
 	Fingerprint  string                        `json:"fingerprint" gorm:"primaryKey;type:varchar(128)"`
 	Product      *CanonicalProductCachePayload `json:"product" gorm:"type:text"`
 	SourceTaskID string                        `json:"source_task_id,omitempty" gorm:"type:varchar(36);index"`

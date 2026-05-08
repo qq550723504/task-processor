@@ -16,7 +16,7 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.GenerateStudioProductImages(c.Request.Context(), &req)
+	response, err := h.service.GenerateStudioProductImages(requestContext(c), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {

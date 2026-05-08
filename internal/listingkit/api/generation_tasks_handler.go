@@ -16,7 +16,7 @@ func (h *handler) GetTaskGenerationTasks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	page, err := h.service.GetTaskGenerationTasks(c.Request.Context(), c.Param("task_id"), &query)
+	page, err := h.service.GetTaskGenerationTasks(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) {
@@ -41,7 +41,7 @@ func (h *handler) GetTaskGenerationQueue(c *gin.Context) {
 		query.RenderPreviewAvailablePresent = true
 	}
 	applyGenerationConditionalReadHeaders(c, &query)
-	page, err := h.service.GetTaskGenerationQueue(c.Request.Context(), c.Param("task_id"), &query)
+	page, err := h.service.GetTaskGenerationQueue(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) {
@@ -60,7 +60,7 @@ func (h *handler) GetTaskGenerationReviewSession(c *gin.Context) {
 		return
 	}
 	applyGenerationConditionalReadHeaders(c, &query)
-	result, err := h.service.GetTaskGenerationReviewSession(c.Request.Context(), c.Param("task_id"), &query)
+	result, err := h.service.GetTaskGenerationReviewSession(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) {
@@ -79,7 +79,7 @@ func (h *handler) GetTaskGenerationReviewPreview(c *gin.Context) {
 		return
 	}
 	applyGenerationConditionalReadHeaders(c, &query)
-	result, err := h.service.GetTaskGenerationReviewPreview(c.Request.Context(), c.Param("task_id"), &query)
+	result, err := h.service.GetTaskGenerationReviewPreview(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) {
@@ -97,7 +97,7 @@ func (h *handler) RetryTaskGenerationTasks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	page, err := h.service.RetryTaskGenerationTasks(c.Request.Context(), c.Param("task_id"), &req)
+	page, err := h.service.RetryTaskGenerationTasks(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
@@ -118,7 +118,7 @@ func (h *handler) ExecuteTaskGenerationAction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	result, err := h.service.ExecuteTaskGenerationAction(c.Request.Context(), c.Param("task_id"), &req)
+	result, err := h.service.ExecuteTaskGenerationAction(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

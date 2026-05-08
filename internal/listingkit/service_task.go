@@ -15,6 +15,10 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 	if req == nil {
 		return nil, fmt.Errorf("request cannot be nil")
 	}
+	if req.TenantID == "" {
+		req.TenantID = TenantIDFromContext(ctx)
+	}
+	ctx = WithTenantID(ctx, req.TenantID)
 	applyGenerateRequestDefaults(req, s.requestDefaults)
 	if err := validateRequest(req); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
@@ -22,6 +26,7 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 
 	task := &Task{
 		ID:         uuid.New().String(),
+		TenantID:   TenantIDFromContext(ctx),
 		Request:    req,
 		Status:     TaskStatusPending,
 		CreatedAt:  time.Now(),
@@ -90,6 +95,7 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	}
 	result := &TaskResult{
 		TaskID:        task.ID,
+		TenantID:      task.TenantID,
 		Status:        task.Status,
 		Result:        resultPayload,
 		Error:         task.Error,
@@ -104,6 +110,9 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 
 func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {
 	normalized := normalizeTaskListQuery(query)
+	if normalized.TenantID != "" {
+		ctx = WithTenantID(ctx, normalized.TenantID)
+	}
 	tasks, total, err := s.repo.ListTasks(ctx, normalized)
 	if err != nil {
 		return nil, err
@@ -151,6 +160,7 @@ func buildTaskListItem(task *Task) TaskListItem {
 	}
 	item := TaskListItem{
 		TaskID:     task.ID,
+		TenantID:   task.TenantID,
 		Status:     task.Status,
 		Error:      task.Error,
 		CreatedAt:  task.CreatedAt,
