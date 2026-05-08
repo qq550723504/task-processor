@@ -148,7 +148,7 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 		}
 	}
 
-	apiClient := client.NewAPIClient(taskCtx.Task.StoreID, managementClient)
+	apiClient := client.NewAPIClientWithStoreInfo(taskCtx.Task.StoreID, managementClient, storeInfo)
 	baseAPIClient := client.NewBaseAPIClient(
 		apiClient.GetBaseURL(),
 		apiClient.GetTenantID(),

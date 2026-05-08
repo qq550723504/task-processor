@@ -119,14 +119,8 @@ func (cm *ClientManager) createClient(shopID int64, storeInfo *management_api.St
 		}
 	}
 
-	// 确定baseURL
-	baseURL := "https://sellerhub.shein.com"
-	if storeInfo != nil && storeInfo.LoginUrl == "sso.geiwohuo.com" {
-		baseURL = "https://sso.geiwohuo.com"
-	}
-
-	cm.logger.Infof("🔧 创建客户端: 店铺=%d, baseURL=%s", shopID, baseURL)
-
 	// 创建本地的APIClient而不是使用shein_api包
-	return NewAPIClient(shopID, cm.managementClient), nil
+	client := NewAPIClientWithStoreInfo(shopID, cm.managementClient, storeInfo)
+	cm.logger.Infof("🔧 创建客户端: 店铺=%d, baseURL=%s", shopID, client.GetBaseURL())
+	return client, nil
 }
