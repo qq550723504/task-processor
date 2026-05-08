@@ -165,6 +165,8 @@ export type CreateListingKitTaskRequest = {
       style_id?: string;
       style_name?: string;
       source_design_urls?: string[];
+      source_design_width?: number;
+      source_design_height?: number;
       product_image_urls?: string[];
       selected_sds_images?: Array<{
         image_url?: string;
@@ -212,6 +214,8 @@ export type CreateListingKitTaskRequest = {
       blank_design_url?: string;
       template_image_url?: string;
       mask_image_url?: string;
+      printable_width?: number;
+      printable_height?: number;
       mockup_image_urls?: string[];
       style_id?: string;
       style_name?: string;
