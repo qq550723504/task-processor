@@ -44,6 +44,16 @@ func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 	}, nil)
 }
 
+func TestListingKitSubdomainsDoNotImportRootFacade(t *testing.T) {
+	for _, subdomain := range []string{"generation", "submission", "workflow", "workspace"} {
+		t.Run(subdomain, func(t *testing.T) {
+			assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit", subdomain), []string{
+				`"task-processor/internal/listingkit"`,
+			}, nil)
+		})
+	}
+}
+
 func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	assertNoBannedSelectorsOutside(t, filepath.Join("..", "internal"), filepath.Join("..", "internal", "productenrich"), map[string]struct{}{
 		"CanonicalProduct":           {},
