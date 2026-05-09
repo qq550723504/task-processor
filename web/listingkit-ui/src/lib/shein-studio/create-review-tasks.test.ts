@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_SHEIN_STORE_ID,
   normalizeListingKitUploadFetchUrl,
   orderGeneratedProductImageUrls,
   sanitizeReviewTaskProductImageUrls,
 } from "@/lib/shein-studio/create-review-tasks";
+import { DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY } from "@/lib/shein-studio/storage-shared";
+
+describe("SHEIN studio defaults", () => {
+  it("defaults SDS source tasks to official SDS rendering for submit images", () => {
+    expect(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY).toBe("sds_official");
+    expect(DEFAULT_SHEIN_STORE_ID).toBe("869");
+  });
+});
 
 describe("orderGeneratedProductImageUrls", () => {
   it("keeps the main white-background image first when present", () => {

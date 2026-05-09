@@ -152,3 +152,66 @@ func TestStudioVariantsPreserveVariantDimensionsAndWeight(t *testing.T) {
 		t.Fatalf("weights = %+v / %+v", variants[0].Weight, variants[1].Weight)
 	}
 }
+
+func TestApplySDSSyncMetadataToCanonicalPromotesRenderedMockupsToCanonicalImages(t *testing.T) {
+	trace := canonical.FieldTrace{}
+	product := &canonical.Product{
+		Title: "Source clock",
+		Images: []canonical.Image{
+			{URL: "https://example.com/source-design.png", Role: "primary", Trace: trace},
+		},
+		Variants: []canonical.Variant{
+			{
+				SKU: "MG17701061001-STYLE",
+				Attributes: map[string]canonical.Attribute{
+					"source_sds_sku": {Value: "MG17701061001", Trace: trace},
+				},
+				Images: []canonical.Image{{URL: "https://example.com/source-design.png", Role: "primary", Trace: trace}},
+			},
+			{
+				SKU: "MG17701061002-STYLE",
+				Attributes: map[string]canonical.Attribute{
+					"source_sds_sku": {Value: "MG17701061002", Trace: trace},
+				},
+				Images: []canonical.Image{{URL: "https://example.com/source-design.png", Role: "primary", Trace: trace}},
+			},
+		},
+	}
+
+	changed := applySDSSyncMetadataToCanonical(product, &SDSSyncSummary{
+		ProductName: "Rendered clock",
+		VariantResults: []SDSSyncSummary{
+			{
+				VariantSKU:      "MG17701061001",
+				VariantColor:    "Black",
+				Status:          "completed",
+				MockupImageURLs: []string{"https://cdn.sdspod.com/out/black-main.jpg", "https://cdn.sdspod.com/out/black-side.jpg"},
+			},
+			{
+				VariantSKU:      "MG17701061002",
+				VariantColor:    "White",
+				Status:          "completed",
+				MockupImageURLs: []string{"https://cdn.sdspod.com/out/white-main.jpg", "https://cdn.sdspod.com/out/white-side.jpg"},
+			},
+		},
+	}, nil)
+
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+	if got := product.Images; len(got) != 4 ||
+		got[0].URL != "https://cdn.sdspod.com/out/black-main.jpg" ||
+		got[0].Role != "primary" ||
+		got[3].URL != "https://cdn.sdspod.com/out/white-side.jpg" {
+		t.Fatalf("canonical images = %+v", got)
+	}
+	if got := product.Variants[0].Images; len(got) != 2 || got[0].URL != "https://cdn.sdspod.com/out/black-main.jpg" {
+		t.Fatalf("black variant images = %+v", got)
+	}
+	if got := product.Variants[1].Images; len(got) != 2 || got[0].URL != "https://cdn.sdspod.com/out/white-main.jpg" {
+		t.Fatalf("white variant images = %+v", got)
+	}
+	if got := product.FieldTraces["images"]; got.Sources[0].Detail != "SDS rendered mockup images" {
+		t.Fatalf("images trace = %+v", got)
+	}
+}

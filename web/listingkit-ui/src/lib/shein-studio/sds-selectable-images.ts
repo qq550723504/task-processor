@@ -17,19 +17,11 @@ export function buildSelectableSDSImages(
 
   const images: SheinStudioSelectableSDSImage[] = [];
   const seen = new Set<string>();
+  const hasMultipleVariants = (selection.variants?.length ?? 0) > 1;
 
-  addSelectableImages(images, seen, selection.mockupImageUrls, {
-    color: undefined,
-    kind: "mockup",
-    labelPrefix: "当前款式",
-    variantSku: undefined,
-  });
-  addSelectableImages(images, seen, selection.sizeReferenceImageUrls, {
-    color: undefined,
-    kind: "size_reference",
-    labelPrefix: "当前款式尺寸图",
-    variantSku: undefined,
-  });
+  if (!hasMultipleVariants) {
+    addCurrentSelectionImages(images, seen, selection);
+  }
 
   for (const variant of selection.variants ?? []) {
     addSelectableImages(images, seen, variant.mockupImageUrls, {
@@ -44,6 +36,10 @@ export function buildSelectableSDSImages(
       labelPrefix: `${variant.color?.trim() || variant.size?.trim() || "变体"}尺寸图`,
       variantSku: variant.variantSku,
     });
+  }
+
+  if (hasMultipleVariants) {
+    addCurrentSelectionImages(images, seen, selection);
   }
 
   return images;
@@ -83,13 +79,16 @@ export function buildDefaultSelectedSDSImages(
   },
 ): SheinStudioSelectedSDSImage[] {
   const includeSizeReferenceImages = options?.includeSizeReferenceImages ?? true;
-  const mainImage = images.find((item) => item.kind === "mockup");
+  const mockups = images.filter((item) => item.kind === "mockup");
+  const variantMockups = firstMockupPerVariant(mockups);
+  const selectedMockups =
+    variantMockups.length > 1 ? variantMockups : mockups.slice(0, 1);
   const galleryImages = includeSizeReferenceImages
     ? images.filter((item) => item.kind === "size_reference")
     : [];
 
   return normalizeSelectedSDSImages(
-    [mainImage, ...galleryImages]
+    [...selectedMockups, ...galleryImages]
       .filter((item): item is SheinStudioSelectableSDSImage => Boolean(item))
       .map((item) => ({
         imageUrl: item.imageUrl,
@@ -97,6 +96,43 @@ export function buildDefaultSelectedSDSImages(
         color: item.color,
       })),
   );
+}
+
+function addCurrentSelectionImages(
+  target: SheinStudioSelectableSDSImage[],
+  seen: Set<string>,
+  selection: SDSProductVariantSelection,
+) {
+  addSelectableImages(target, seen, selection.mockupImageUrls, {
+    color: undefined,
+    kind: "mockup",
+    labelPrefix: "当前款式",
+    variantSku: undefined,
+  });
+  addSelectableImages(target, seen, selection.sizeReferenceImageUrls, {
+    color: undefined,
+    kind: "size_reference",
+    labelPrefix: "当前款式尺寸图",
+    variantSku: undefined,
+  });
+}
+
+function firstMockupPerVariant(
+  images: SheinStudioSelectableSDSImage[],
+): SheinStudioSelectableSDSImage[] {
+  const byVariant = new Map<string, SheinStudioSelectableSDSImage>();
+  for (const image of images) {
+    const key = variantImageKey(image);
+    if (!key || byVariant.has(key)) {
+      continue;
+    }
+    byVariant.set(key, image);
+  }
+  return Array.from(byVariant.values());
+}
+
+function variantImageKey(image: SheinStudioSelectableSDSImage) {
+  return image.variantSku?.trim() || image.color?.trim() || "";
 }
 
 function addSelectableImages(

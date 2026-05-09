@@ -195,7 +195,7 @@ export async function createSheinReviewTasks(input: {
 }) {
   const {
     designs,
-    imageStrategy = "ai_generated",
+    imageStrategy = "sds_official",
     onProgress,
     selectedSdsImages = [],
     productImageCount,

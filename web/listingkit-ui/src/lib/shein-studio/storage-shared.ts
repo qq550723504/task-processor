@@ -15,7 +15,7 @@ import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-im
 
 export const MAX_SHEIN_STUDIO_BATCHES = 12;
 export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
-  "ai_generated";
+  "sds_official";
 export const DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT = "5";
 export const DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL: SheinStudioArtworkModel =
   "nanobanana";

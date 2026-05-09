@@ -151,6 +151,90 @@ func TestBuildSheinSubmitReadinessBlocksWhenSheinCookieUnavailable(t *testing.T)
 	}
 }
 
+func TestBuildSheinSubmitReadinessAllowsSingleVariantMainImageWithoutSizeMap(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	colorValueID := 9001
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Decor", "Wall Clock"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.sdspod.com/out/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 1001184,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ImageInfo: &SheinImageDraft{
+				MainImage: "https://cdn.sdspod.com/out/main.jpg",
+				Gallery:   []string{"https://cdn.sdspod.com/out/gallery.jpg"},
+			},
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "material",
+				AttributeID: 7001,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Scope:            "skc",
+					Name:             "Style Type",
+					Value:            "White",
+					AttributeID:      1001184,
+					AttributeValueID: &colorValueID,
+				},
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+					BasePrice:   "22.50",
+					SitePriceList: []SheinSitePrice{{
+						SubSite:   "us",
+						BasePrice: "22.50",
+					}},
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		FinalDraft: &sheinpub.FinalDraft{
+			Confirmed:       true,
+			MainImageURL:    "https://cdn.sdspod.com/out/main.jpg",
+			SubmitMode:      "publish",
+			FinalImageOrder: []string{"https://cdn.sdspod.com/out/main.jpg", "https://cdn.sdspod.com/out/gallery.jpg"},
+		},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+	})
+
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if !readiness.Ready {
+		t.Fatalf("ready = false, want true; blocking items=%+v", readiness.BlockingItems)
+	}
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "final_images" {
+			t.Fatalf("final_images blocked = %+v, want single variant main image accepted", item)
+		}
+	}
+}
+
 func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T) {
 	t.Parallel()
 

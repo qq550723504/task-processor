@@ -71,6 +71,49 @@ describe("buildSelectableSDSImages", () => {
       }),
     ]);
   });
+
+  it("preserves variant metadata when global mockups duplicate multi-variant images", () => {
+    const items = buildSelectableSDSImages({
+      productId: 1,
+      parentProductId: 1,
+      variantId: 2,
+      prototypeGroupId: 3,
+      layerId: "layer-1",
+      productName: "tee",
+      variantLabel: "M / black",
+      mockupImageUrls: [
+        "https://example.com/black-main.jpg",
+        "https://example.com/white-main.jpg",
+      ],
+      variants: [
+        {
+          variantId: 2,
+          color: "Black",
+          variantSku: "SKU-BLK",
+          mockupImageUrls: ["https://example.com/black-main.jpg"],
+        },
+        {
+          variantId: 3,
+          color: "White",
+          variantSku: "SKU-WHT",
+          mockupImageUrls: ["https://example.com/white-main.jpg"],
+        },
+      ],
+    });
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        imageUrl: "https://example.com/black-main.jpg",
+        color: "Black",
+        variantSku: "SKU-BLK",
+      }),
+      expect.objectContaining({
+        imageUrl: "https://example.com/white-main.jpg",
+        color: "White",
+        variantSku: "SKU-WHT",
+      }),
+    ]);
+  });
 });
 
 describe("buildDefaultSelectedSDSImages", () => {
@@ -126,6 +169,53 @@ describe("buildDefaultSelectedSDSImages", () => {
         imageUrl: "https://example.com/global-main.jpg",
         color: undefined,
         variantSku: undefined,
+      },
+    ]);
+  });
+
+  it("selects one mockup per variant by default for multi-variant products", () => {
+    const items = buildSelectableSDSImages({
+      productId: 1,
+      parentProductId: 1,
+      variantId: 2,
+      prototypeGroupId: 3,
+      layerId: "layer-1",
+      productName: "tee",
+      variantLabel: "M / black",
+      variants: [
+        {
+          variantId: 2,
+          color: "Black",
+          variantSku: "SKU-BLK",
+          mockupImageUrls: [
+            "https://example.com/black-main.jpg",
+            "https://example.com/black-side.jpg",
+          ],
+        },
+        {
+          variantId: 3,
+          color: "White",
+          variantSku: "SKU-WHT",
+          mockupImageUrls: [
+            "https://example.com/white-main.jpg",
+            "https://example.com/white-side.jpg",
+          ],
+        },
+      ],
+    });
+
+    expect(
+      buildDefaultSelectedSDSImages(items, { includeSizeReferenceImages: false }),
+    ).toEqual([
+      {
+        imageUrl: "https://example.com/black-main.jpg",
+        color: "Black",
+        variantSku: "SKU-BLK",
+      },
+      {
+        imageUrl: "https://example.com/white-main.jpg",
+        color: "White",
+        variantSku: "SKU-WHT",
       },
     ]);
   });

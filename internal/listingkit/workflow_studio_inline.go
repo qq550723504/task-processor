@@ -15,3 +15,16 @@ func shouldRunStudioInline(req *GenerateRequest) bool {
 	}
 	return req.Platforms[0] == "shein"
 }
+
+func shouldRunRemoteSDSDesignSync(req *GenerateRequest) bool {
+	if req == nil || req.Options == nil {
+		return false
+	}
+	if req.Options.ProcessImages {
+		return false
+	}
+	if !shouldSyncSDS(req) || !shouldRenderSheinSizeImagesWithSDS(req) {
+		return false
+	}
+	return len(req.ImageURLs) > 0
+}

@@ -270,10 +270,7 @@ func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, str
 	if !sheinHasSwatchRole(pkg) {
 		return false, "缺少色块图标记，请在 SHEIN data images 中标记一张色块图"
 	}
-	if !sheinHasSizeMapRoleOrFlag(pkg) {
-		return false, "缺少尺寸图标记，请在 SHEIN data images 中标记一张尺寸图"
-	}
-	return true, "最终图片已具备主图、图库、色块图、SKC 图和尺寸图"
+	return true, "最终图片已具备主图、图库和可用的色块/SKC 图；尺寸图未选择时不阻断提交"
 }
 
 func sheinHasFinalGalleryImage(pkg *SheinPackage) bool {
@@ -301,6 +298,9 @@ func sheinHasSKCImage(pkg *SheinPackage) bool {
 			}
 		}
 	}
+	if sheinHasSingleSKC(pkg) && sheinHasFinalMainImage(pkg) {
+		return true
+	}
 	return false
 }
 
@@ -320,38 +320,33 @@ func sheinHasSwatchRole(pkg *SheinPackage) bool {
 	return sheinHasSKCImage(pkg)
 }
 
-func sheinHasSizeMapRoleOrFlag(pkg *SheinPackage) bool {
+func sheinHasSingleSKC(pkg *SheinPackage) bool {
 	if pkg == nil {
 		return false
 	}
-	if pkg.FinalDraft == nil {
-		return true
+	count := 0
+	if pkg.RequestDraft != nil && len(pkg.RequestDraft.SKCList) > 0 {
+		count = len(pkg.RequestDraft.SKCList)
+	} else if len(pkg.SkcList) > 0 {
+		count = len(pkg.SkcList)
+	} else if pkg.PreviewProduct != nil && len(pkg.PreviewProduct.SKCList) > 0 {
+		count = len(pkg.PreviewProduct.SKCList)
 	}
-	for _, role := range pkg.FinalDraft.ImageRoleOverrides {
-		if strings.ToLower(strings.TrimSpace(role)) == "size_map" {
-			return true
-		}
-	}
-	hasSizeFlag := func(info *sheinproduct.ImageInfo) bool {
-		if info == nil {
-			return false
-		}
-		for _, image := range info.ImageInfoList {
-			if image.SizeImgFlag && strings.TrimSpace(image.ImageURL) != "" {
-				return true
-			}
-		}
+	return count == 1
+}
+
+func sheinHasFinalMainImage(pkg *SheinPackage) bool {
+	if pkg == nil {
 		return false
 	}
-	if pkg.PreviewProduct != nil {
-		if hasSizeFlag(pkg.PreviewProduct.ImageInfo) {
-			return true
-		}
-		for i := range pkg.PreviewProduct.SKCList {
-			if hasSizeFlag(&pkg.PreviewProduct.SKCList[i].ImageInfo) {
-				return true
-			}
-		}
+	if pkg.FinalDraft != nil && strings.TrimSpace(pkg.FinalDraft.MainImageURL) != "" {
+		return true
+	}
+	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil && strings.TrimSpace(pkg.RequestDraft.ImageInfo.MainImage) != "" {
+		return true
+	}
+	if pkg.Images != nil && strings.TrimSpace(pkg.Images.MainImage) != "" {
+		return true
 	}
 	return false
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, LoaderCircle, ShieldAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Images, LoaderCircle, ShieldAlert } from "lucide-react";
 
 import { Card } from "@/components/shared/card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -64,16 +64,7 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
 
         <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
           <Card className="overflow-hidden">
-            <div className="aspect-square bg-zinc-50">
-              {detail.data.summary.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={detail.data.summary.imageUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
-                  No image
-                </div>
-              )}
-            </div>
+            <CanonicalImages product={product} />
             <div className="p-4 text-sm text-zinc-600">
               <div className="break-all font-mono text-xs text-zinc-400">{detail.data.taskId}</div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -102,6 +93,83 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
       </div>
     </div>
   );
+}
+
+function CanonicalImages({ product }: { product: CanonicalProduct }) {
+  const images = uniqueCanonicalImages(product);
+  const primaryImage = images[0];
+
+  return (
+    <div>
+      <div className="aspect-square bg-zinc-50">
+        {primaryImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={primaryImage.url}
+            alt={primaryImage.alt || product.title || ""}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
+            No image
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-zinc-200 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center text-sm font-semibold text-zinc-950">
+            <Images className="mr-2 h-4 w-4 text-teal-700" />
+            图片
+          </div>
+          <span className="text-xs text-zinc-500">{images.length} 张</span>
+        </div>
+        {images.length > 0 ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {images.map((image, index) => (
+              <a
+                key={`${image.url}-${index}`}
+                href={image.url}
+                target="_blank"
+                rel="noreferrer"
+                className="group overflow-hidden rounded-md border border-zinc-200 bg-zinc-50"
+                title={image.url}
+              >
+                <div className="aspect-square">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={image.url}
+                    alt={image.alt || product.title || ""}
+                    className="h-full w-full object-cover transition group-hover:scale-105"
+                  />
+                </div>
+                <div className="truncate border-t border-zinc-200 px-2 py-1 text-[11px] text-zinc-500">
+                  {image.role || `图片 ${index + 1}`}
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function uniqueCanonicalImages(product: CanonicalProduct) {
+  const seen = new Set<string>();
+  return (product.images ?? [])
+    .map((image) => ({
+      url: image.url?.trim() ?? "",
+      alt: image.alt,
+      role: image.role,
+    }))
+    .filter((image) => {
+      if (!image.url || seen.has(image.url)) {
+        return false;
+      }
+      seen.add(image.url);
+      return true;
+    });
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

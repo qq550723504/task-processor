@@ -8,9 +8,11 @@ type ImageRole = "main" | "gallery" | "swatch" | "size_map" | "skc";
 
 export function SheinDataImageGallery({
   images,
+  mockupImages = [],
   selectedUrl,
   onSelect,
   finalImages,
+  variantCount,
   onSaveImageControls,
   onRegenerate,
   isRegenerating = false,
@@ -20,6 +22,7 @@ export function SheinDataImageGallery({
   saveErrorMessage,
 }: {
   images: SheinPreviewImage[];
+  mockupImages?: SheinPreviewImage[];
   selectedUrl?: string;
   onSelect: (image: SheinPreviewImage) => void;
   finalImages?: Array<{
@@ -29,6 +32,7 @@ export function SheinDataImageGallery({
     swatch?: boolean;
     size_map?: boolean;
   }>;
+  variantCount?: number;
   onSaveImageControls?: (payload: {
     main_image_url?: string;
     final_image_order?: string[];
@@ -108,6 +112,8 @@ export function SheinDataImageGallery({
       skc: 0,
     } satisfies Record<ImageRole, number>,
   );
+  const singleVariantUsesMainImage =
+    (variantCount ?? 0) === 1 && roleCounts.main > 0;
   const canSaveImageControls = Boolean(mainUrl) && visibleImages.length > 0 && !isSavingControls;
   const saveDisabledReason = !visibleImages.length
     ? "至少保留一张最终提交图片"
@@ -131,12 +137,15 @@ export function SheinDataImageGallery({
     setRoleOverrides(suggested.roles);
   };
 
+  const activeImageCanRegenerate = activeImage
+    ? images.some((image) => image.url === activeImage.url)
+    : false;
   const canRegenerate =
-    Boolean(onRegenerate && activeImage) &&
+    Boolean(onRegenerate && activeImage && activeImageCanRegenerate) &&
     regenerationPrompt.trim().length > 0 &&
     !isRegenerating;
 
-  if (images.length === 0) {
+  if (images.length === 0 && mockupImages.length === 0) {
     return null;
   }
 
@@ -157,7 +166,13 @@ export function SheinDataImageGallery({
           </span>
         </div>
 
-        {onSaveImageControls ? (
+        {images.length === 0 ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+            暂未生成 SHEIN 成品图。下方 SDS mockup 仅作为渲染参考，不会自动进入最终提交图包。
+          </p>
+        ) : null}
+
+        {onSaveImageControls && images.length > 0 ? (
           <div className="grid gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-xs sm:grid-cols-5">
             <ImageRoleStatus
               count={roleCounts.main}
@@ -166,6 +181,7 @@ export function SheinDataImageGallery({
             />
             <ImageRoleStatus
               count={roleCounts.swatch}
+              fallbackReady={singleVariantUsesMainImage}
               label="色块图"
             />
             <ImageRoleStatus
@@ -174,6 +190,7 @@ export function SheinDataImageGallery({
             />
             <ImageRoleStatus
               count={roleCounts.skc}
+              fallbackReady={singleVariantUsesMainImage}
               label="SKC 图"
             />
             <ImageRoleStatus
@@ -183,6 +200,7 @@ export function SheinDataImageGallery({
           </div>
         ) : null}
 
+        {visibleImages.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {visibleImages.map((image, index) => {
             const active = image.url === selectedUrl;
@@ -246,7 +264,61 @@ export function SheinDataImageGallery({
             );
           })}
         </div>
-        {onSaveImageControls ? (
+        ) : null}
+
+        {mockupImages.length > 0 ? (
+          <div className="space-y-3 border-t border-zinc-100 pt-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  SDS Mockup 渲染参考
+                </p>
+                <p className="mt-1 text-sm leading-6 text-zinc-600">
+                  这里展示 SDS 官方渲染返回的 mockup。它们只用于对照成品效果，不参与 SHEIN 最终提交图片排序。
+                </p>
+              </div>
+              <span className="text-xs font-medium text-zinc-500">
+                参考图 {mockupImages.length} 张
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {mockupImages.map((image) => (
+                <button
+                  className="group min-w-0 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-2 text-left transition hover:border-zinc-400"
+                  key={`${image.id}-${image.url}`}
+                  onClick={() => {
+                    onSelect(image);
+                    setActiveImage(image);
+                    setRegenerationPrompt("");
+                  }}
+                  type="button"
+                >
+                  <div className="relative aspect-square overflow-hidden rounded-xl bg-white">
+                    {/* The URLs come from SDS payloads and may not be known to Next image config. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      alt={image.label}
+                      className="h-full w-full object-contain transition group-hover:scale-[1.02]"
+                      src={toImageProxyUrl(image.url)}
+                    />
+                    <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-800">
+                      Mockup
+                    </span>
+                  </div>
+                  <div className="mt-2 min-w-0">
+                    <p className="truncate text-xs font-semibold text-zinc-900">
+                      {image.label}
+                    </p>
+                    <p className="mt-1 truncate text-[11px] text-zinc-500">
+                      {image.url}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {onSaveImageControls && images.length > 0 ? (
           <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-100 pt-4">
             {deletedUrls.length ? (
               <button className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700" onClick={() => setDeletedUrls([])} type="button">
@@ -344,7 +416,7 @@ export function SheinDataImageGallery({
                   src={toImageProxyUrl(activeImage.url)}
                 />
               </div>
-              {onRegenerate ? (
+              {onRegenerate && activeImageCanRegenerate ? (
                 <form
                   className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
                   onSubmit={async (event) => {
@@ -482,14 +554,16 @@ function hasSavedImageRole(
 
 function ImageRoleStatus({
   count,
+  fallbackReady = false,
   label,
   required = false,
 }: {
   count: number;
+  fallbackReady?: boolean;
   label: string;
   required?: boolean;
 }) {
-  const ready = count > 0;
+  const ready = count > 0 || fallbackReady;
   return (
     <div
       className={[
@@ -503,7 +577,13 @@ function ImageRoleStatus({
     >
       <div className="font-semibold">{label}</div>
       <div className="mt-1 text-[11px]">
-        {ready ? `${count} 张已设置` : required ? "需要设置" : "未设置"}
+        {count > 0
+          ? `${count} 张已设置`
+          : fallbackReady
+            ? "默认使用首图"
+            : required
+              ? "需要设置"
+              : "未设置"}
       </div>
     </div>
   );

@@ -2334,7 +2334,7 @@ func TestSubmitTaskSaveDraftAllowsMissingStrictPublishImageRoles(t *testing.T) {
 	}
 }
 
-func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
+func TestSubmitTaskPublishAllowsMissingSizeMapRole(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -2367,6 +2367,11 @@ func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalled = true
 				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true},
+				},
 			},
 		},
 		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
@@ -2376,8 +2381,8 @@ func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
 	}
 
 	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
-	if err == nil || !errors.Is(err, ErrSubmitBlocked) {
-		t.Fatalf("publish err = %v, want readiness block", err)
+	if err != nil {
+		t.Fatalf("publish err = %v, want missing size map to be non-blocking", err)
 	}
 	readiness := buildSheinSubmitReadinessForAction(task.Result.Shein, "publish")
 	foundSizeMapBlocker := false
@@ -2389,11 +2394,11 @@ func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
 			}
 		}
 	}
-	if !foundSizeMapBlocker {
-		t.Fatalf("publish readiness = %+v, want size map blocker", readiness)
+	if foundSizeMapBlocker {
+		t.Fatalf("publish readiness = %+v, want no size map blocker", readiness)
 	}
-	if publishCalled {
-		t.Fatal("publish should not be called when strict image roles are missing")
+	if !publishCalled {
+		t.Fatal("publish should be called when only size map is missing")
 	}
 }
 

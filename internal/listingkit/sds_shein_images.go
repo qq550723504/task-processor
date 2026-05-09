@@ -42,7 +42,7 @@ func applySelectedSDSImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, 
 		for skcIndex := range pkg.RequestDraft.SKCList {
 			skcImages := resolveSDSImagesForSKC(pkg, skcIndex, bySKU, byColor)
 			if skcImages == nil {
-				skcImages = defaultImages
+				continue
 			}
 			pkg.RequestDraft.SKCList[skcIndex].ImageInfo = sheinpub.BuildImageDraft(skcImages)
 			for skuIndex := range pkg.RequestDraft.SKCList[skcIndex].SKUList {
@@ -65,28 +65,35 @@ func applySelectedSDSImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, 
 	return true
 }
 
+func applySDSOfficialImagesToShein(pkg *sheinpub.Package, _ *GenerateRequest, summary *SDSSyncSummary, options *SDSSyncOptions) bool {
+	return applySDSTemplateImagesToSheinWithResult(pkg, summary, nil, options)
+}
+
 func applySDSTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options ...*SDSSyncOptions) {
-	if pkg == nil || summary == nil {
-		return
-	}
 	var sdsOptions *SDSSyncOptions
 	if len(options) > 0 {
 		sdsOptions = options[0]
 	}
-	if len(summary.VariantResults) > 0 || hasSDSVariantOptionMockups(sdsOptions) {
-		applySDSVariantTemplateImagesToShein(pkg, summary, sourceImages, sdsOptions)
-		return
+	_ = applySDSTemplateImagesToSheinWithResult(pkg, summary, sourceImages, sdsOptions)
+}
+
+func applySDSTemplateImagesToSheinWithResult(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) bool {
+	if pkg == nil || summary == nil {
+		return false
+	}
+	if len(summary.VariantResults) > 0 {
+		return applySDSVariantTemplateImagesToShein(pkg, summary, sourceImages, options)
 	}
 	if summary.Status == "failed" {
-		return
+		return false
 	}
 	if len(summary.MockupImageURLs) == 0 {
-		return
+		return false
 	}
 
 	images := imageSetFromSDSMockups(summary.MockupImageURLs, sourceImages)
 	if images == nil {
-		return
+		return false
 	}
 	pkg.Images = images
 
@@ -103,16 +110,12 @@ func applySDSTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummar
 		pkg.SkcList[skcIndex].MainImageURL = images.MainImage
 	}
 	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	return true
 }
 
-func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) {
+func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) bool {
 	byColor := map[string]*common.ImageSet{}
 	bySKU := map[string]*common.ImageSet{}
-	if options != nil {
-		for _, item := range options.Variants {
-			registerSDSVariantImageSet(bySKU, byColor, item.VariantSKU, item.Color, imageSetFromSDSVariantOption(item, sourceImages), false)
-		}
-	}
 	for i := range summary.VariantResults {
 		item := &summary.VariantResults[i]
 		if len(item.MockupImageURLs) == 0 || item.Status == "failed" {
@@ -122,7 +125,7 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 		registerSDSVariantImageSet(bySKU, byColor, item.VariantSKU, item.VariantColor, images, true)
 	}
 	if len(byColor) == 0 && len(bySKU) == 0 {
-		return
+		return false
 	}
 
 	defaultImages := byColor[normalizeSDSColorKey(summary.VariantColor)]
@@ -157,7 +160,7 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 		defaultImages = firstSDSImageSet(bySKU)
 	}
 	if defaultImages == nil {
-		return
+		return false
 	}
 
 	pkg.Images = defaultImages
@@ -166,7 +169,7 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 		for skcIndex := range pkg.RequestDraft.SKCList {
 			skcImages := resolveSDSImagesForSKC(pkg, skcIndex, bySKU, byColor)
 			if skcImages == nil {
-				skcImages = defaultImages
+				continue
 			}
 			pkg.RequestDraft.SKCList[skcIndex].ImageInfo = sheinpub.BuildImageDraft(skcImages)
 			for skuIndex := range pkg.RequestDraft.SKCList[skcIndex].SKUList {
@@ -186,6 +189,7 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 		pkg.SkcList[skcIndex].MainImageURL = images.MainImage
 	}
 	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	return true
 }
 
 func hasSDSVariantOptionMockups(options *SDSSyncOptions) bool {
@@ -242,6 +246,11 @@ func resolveSDSImagesForSKC(pkg *sheinpub.Package, index int, bySKU map[string]*
 	}
 	if index < len(pkg.RequestDraft.SKCList) {
 		skc := &pkg.RequestDraft.SKCList[index]
+		for _, value := range sdsSKUCandidatesFromRequestSKC(skc) {
+			if images := lookupSDSImagesBySKU(bySKU, value); images != nil {
+				return images
+			}
+		}
 		for _, value := range []string{
 			skcSaleAttributeValue(skc.SaleAttribute),
 			skcColorFromDraft(skc),
@@ -252,24 +261,68 @@ func resolveSDSImagesForSKC(pkg *sheinpub.Package, index int, bySKU map[string]*
 		}
 	}
 	if index < len(pkg.SkcList) {
-		attrs := pkg.SkcList[index].Attributes
+		skc := &pkg.SkcList[index]
+		for _, value := range sdsSKUCandidatesFromPackageSKC(skc) {
+			if images := lookupSDSImagesBySKU(bySKU, value); images != nil {
+				return images
+			}
+		}
+		attrs := skc.Attributes
 		for _, value := range []string{
 			attrs["Color"],
 			attrs["color"],
-			pkg.SkcList[index].SaleName,
-			pkg.SkcList[index].SkcName,
+			skc.SaleName,
+			skc.SkcName,
 		} {
 			if images := byColor[normalizeSDSColorKey(value)]; images != nil {
 				return images
 			}
 		}
-		for _, sku := range pkg.SkcList[index].SKUs {
-			if images := bySKU[normalizeSDSColorKey(sku.SKU)]; images != nil {
-				return images
-			}
-		}
 	}
 	return nil
+}
+
+func lookupSDSImagesBySKU(bySKU map[string]*common.ImageSet, value string) *common.ImageSet {
+	if images := bySKU[normalizeSDSColorKey(value)]; images != nil {
+		return images
+	}
+	return nil
+}
+
+func sdsSKUCandidatesFromRequestSKC(skc *sheinpub.SKCRequestDraft) []string {
+	if skc == nil {
+		return nil
+	}
+	values := []string{
+		sourceSDSSKUFromSupplierSKU(skc.SupplierCode),
+		skc.SupplierCode,
+	}
+	for _, sku := range skc.SKUList {
+		values = append(values,
+			sku.Attributes["source_sds_sku"],
+			sourceSDSSKUFromSupplierSKU(sku.SupplierSKU),
+			sku.SupplierSKU,
+		)
+	}
+	return values
+}
+
+func sdsSKUCandidatesFromPackageSKC(skc *sheinpub.SKCPackage) []string {
+	if skc == nil {
+		return nil
+	}
+	values := []string{
+		sourceSDSSKUFromSupplierSKU(skc.SupplierCode),
+		skc.SupplierCode,
+	}
+	for _, sku := range skc.SKUs {
+		values = append(values,
+			sku.Attributes["source_sds_sku"],
+			sourceSDSSKUFromSupplierSKU(sku.SKU),
+			sku.SKU,
+		)
+	}
+	return values
 }
 
 func resolveSDSImagesForSKU(sku *sheinpub.SKUDraft, bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet) *common.ImageSet {

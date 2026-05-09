@@ -228,10 +228,9 @@ export function SheinFinalReviewPanel({
           ? `已确认 ${resolvedAttributeCount} 个普通属性`
           : "普通属性未展示已确认结果，建议检查必填属性。";
   const imageBlocked =
-    hasBlockingKey(allBlockingItems, ["images", "preview_product"]) ||
+    hasBlockingKey(allBlockingItems, ["images", "final_images", "preview_product"]) ||
     imageCounts.final === 0 ||
-    imageCounts.main === 0 ||
-    imageCounts.swatch === 0;
+    imageCounts.main === 0;
   const summaryItems: ReviewSummaryItem[] = [
     {
       key: "category",
@@ -457,7 +456,7 @@ export function SheinFinalReviewPanel({
               图片结构明细
             </p>
             <p className="mt-1 text-sm leading-6 text-zinc-600">
-              这里按提交前角色展示最终图片。色块来源会在提交时生成纯色色块图后上传 SHEIN。
+              这里按提交前角色展示最终图片。单变体可直接使用首图作为色块和 SKC 图来源；色块来源会在提交时生成纯色色块图后上传 SHEIN。
             </p>
           </div>
           {imageBlocked ? (
@@ -503,7 +502,7 @@ export function SheinFinalReviewPanel({
               缺主图
             </div>
           ) : null}
-          {imageCounts.swatch === 0 ? (
+          {imageBlocked && imageCounts.swatch === 0 ? (
             <div className="rounded-xl bg-amber-50 px-3 py-2 text-amber-800">
               缺色块来源图
             </div>

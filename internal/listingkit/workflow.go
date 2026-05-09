@@ -157,7 +157,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			}
 		}
 	}
-	if imageResult == nil && shouldRunStudioInline(task.Request) && shouldRenderSheinSizeImagesWithSDS(task.Request) {
+	if imageResult == nil && shouldRunRemoteSDSDesignSync(task.Request) {
 		log.Info("starting remote SDS design sync for listing kit workflow")
 		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
 		log.WithFields(logrus.Fields{
@@ -288,9 +288,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	final.WorkflowIssues = append([]WorkflowIssue(nil), result.WorkflowIssues...)
 	s.applyDefaultSheinPricing(final.Shein)
 	if shouldUseSDSOfficialImages(task.Request) {
-		if !applySelectedSDSImagesToShein(final.Shein, task.Request, task.Request.ImageURLs) {
-			applySDSTemplateImagesToShein(final.Shein, final.SDSSync, task.Request.ImageURLs, sdsOptions)
-		}
+		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSSync, sdsOptions)
 		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSSync))
 	}
 	if shouldUseSheinStudioAIImages(task.Request) {
@@ -520,7 +518,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 }
 
 func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {
-	if s.sdsSyncSvc == nil || task == nil || task.Request == nil || !shouldRunStudioInline(task.Request) {
+	if s.sdsSyncSvc == nil || task == nil || task.Request == nil || !shouldRunRemoteSDSDesignSync(task.Request) {
 		return
 	}
 	if recorder == nil {

@@ -103,6 +103,54 @@ func (f categorySuggestFallbackFunc) SelectCategoryID(input sheincategoryselecto
 	return f(input, api)
 }
 
+type stubCategorySemanticVerifier struct {
+	validation *CategorySemanticValidation
+}
+
+func (s stubCategorySemanticVerifier) ValidateProductCategory(_ *canonical.Product, _ *Package, _ []string) *CategorySemanticValidation {
+	return s.validation
+}
+
+func TestCategoryResolverDoesNotAcceptSuggestedCategoryWhenSemanticValidationIsUnavailable(t *testing.T) {
+	resolver := NewCategoryResolverWithSemanticVerifier(stubCategoryAPI{
+		categoryInfoByID: map[int]*sheincategory.CategoryInfo{
+			2696: {
+				CategoryID:             2696,
+				LevelOneCategoryID:     1,
+				LevelOneCategoryName:   "宠物用品",
+				LevelTwoCategoryID:     2,
+				LevelTwoCategoryName:   "宠物健康护理",
+				LevelThreeCategoryID:   3,
+				LevelThreeCategoryName: "宠物急救",
+				LevelFourCategoryID:    intPointer(2696),
+				LevelFourCategoryName:  stringPointer("宠物绷带"),
+				ProductTypeID:          9001,
+			},
+		},
+	}, stubCategorySuggestFallback{selectedID: 2696}, nil, stubCategorySemanticVerifier{})
+
+	resolution := resolver.Resolve(&BuildRequest{Text: "格子宠物三角巾"}, &canonical.Product{
+		Title:        "格子宠物三角巾",
+		CategoryPath: []string{"美国本地直发", "宠物用品", "宠物方巾"},
+	}, &Package{})
+
+	if resolution.Status != "partial" {
+		t.Fatalf("status = %q, want partial", resolution.Status)
+	}
+	if resolution.CategoryID != 0 {
+		t.Fatalf("category_id = %d, want 0 until semantic validation succeeds", resolution.CategoryID)
+	}
+	if resolution.SuggestedCategory == nil {
+		t.Fatal("expected suggested category to be preserved for manual review")
+	}
+	if resolution.SuggestedCategory.CategoryID != 2696 {
+		t.Fatalf("suggested category_id = %d, want 2696", resolution.SuggestedCategory.CategoryID)
+	}
+	if !containsReviewNote(resolution.ReviewNotes, "语义校验未完成") {
+		t.Fatalf("review notes = %v, want semantic validation unavailable note", resolution.ReviewNotes)
+	}
+}
+
 func TestCategoryResolverFallsBackToCategoryTreeSelection(t *testing.T) {
 	resolver := NewCategoryResolverWithTreeFallback(stubCategoryAPI{
 		suggestResponse: &sheincategory.SuggestCategoryResponse{},

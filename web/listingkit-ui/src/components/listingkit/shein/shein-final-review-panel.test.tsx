@@ -35,7 +35,6 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("还差 1 个阻断项，修复后才能提交。")).toBeInTheDocument();
     expect(screen.getByText("普通属性")).toBeInTheDocument();
     expect(screen.getByText("图片资料")).toBeInTheDocument();
-    expect(screen.getByText("主图、色块图或最终提交图片不完整，请先检查图片角色。")).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "去确认属性" })[0]);
     expect(onSelectBlockingItem).toHaveBeenCalledWith(
@@ -43,8 +42,7 @@ describe("SheinFinalReviewPanel", () => {
     );
   });
 
-  it("shows image role summary and image repair action", async () => {
-    const user = userEvent.setup();
+  it("shows image role summary without blocking on missing swatch or size map", () => {
     const onSelectBlockingItem = vi.fn();
 
     render(
@@ -66,11 +64,35 @@ describe("SheinFinalReviewPanel", () => {
     expect(
       screen.getByText("最终图片 2 张 · 主图 1 张 · 色块图 0 张 · SKC 图 0 张 · 尺寸图 0 张 · 图库 1 张"),
     ).toBeInTheDocument();
+    expect(screen.getByText("图片结构完整")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "去检查图片" })).not.toBeInTheDocument();
+    expect(onSelectBlockingItem).not.toHaveBeenCalled();
+  });
 
-    await user.click(screen.getAllByRole("button", { name: "去检查图片" })[0]);
-    expect(onSelectBlockingItem).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "images" }),
+  it("does not locally block single-variant final images when swatch and size map are not selected", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            confirmed: false,
+            category_id: 123,
+            attributes: [{ name: "Material", value: "MDF" }],
+            sale_attributes: [{ name: "Style Type", value: "White" }],
+            skus: [{ supplier_sku: "SKU-1" }],
+            images: [
+              { url: "https://cdn.sdspod.com/out/main.jpg", role: "main", main: true, final: true },
+              { url: "https://cdn.sdspod.com/out/gallery.jpg", role: "gallery", final: true },
+            ],
+          },
+        }}
+      />,
     );
+
+    expect(screen.getByText("图片结构完整")).toBeInTheDocument();
+    expect(screen.queryByText("图片资料需处理")).not.toBeInTheDocument();
+    expect(screen.queryByText("缺色块来源图")).not.toBeInTheDocument();
+    expect(screen.queryByText("缺尺寸图")).not.toBeInTheDocument();
   });
 
   it("requires final draft confirmation before publish when ready", () => {

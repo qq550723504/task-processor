@@ -70,21 +70,28 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
 				hydrated := hydrateCategoryResolution(info, "suggest_category_by_text", suggestQuery)
 				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
-				if !semanticRejectsCategory(hydrated.SemanticValidation) {
+				if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 					return hydrated
 				}
 				resolution.Status = "partial"
+				resolution.Source = "suggest_category_by_text"
 				resolution.QueryText = suggestQuery
-				resolution.ReviewNotes = append(resolution.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+				resolution.SuggestedCategory = categorySuggestionFromResolution(hydrated, semanticCategoryReviewNote(hydrated.SemanticValidation))
+				resolution.ReviewNotes = append(resolution.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 			} else {
 				if tree, treeErr := r.api.GetCategoryTree(); treeErr == nil {
 					if hydrated := hydrateCategoryResolutionFromTree(tree, selectedID, "suggest_category_by_text", suggestQuery); hydrated != nil {
 						hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
-						if !semanticRejectsCategory(hydrated.SemanticValidation) {
+						if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 							return hydrated
 						}
 						hydrated.Status = "partial"
-						hydrated.ReviewNotes = append(hydrated.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+						hydrated.SuggestedCategory = categorySuggestionFromResolution(hydrated, semanticCategoryReviewNote(hydrated.SemanticValidation))
+						hydrated.CategoryID = 0
+						hydrated.CategoryIDList = nil
+						hydrated.ProductTypeID = 0
+						hydrated.TopCategoryID = 0
+						hydrated.ReviewNotes = append(hydrated.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 						return hydrated
 					}
 				}
@@ -118,20 +125,26 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
 				hydrated := hydrateCategoryResolution(info, "ai_category_tree", treeQuery)
 				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
-				if !semanticRejectsCategory(hydrated.SemanticValidation) {
+				if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 					return hydrated
 				}
 				resolution.Status = "partial"
 				resolution.QueryText = treeQuery
-				resolution.ReviewNotes = append(resolution.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+				resolution.SuggestedCategory = categorySuggestionFromResolution(hydrated, semanticCategoryReviewNote(hydrated.SemanticValidation))
+				resolution.ReviewNotes = append(resolution.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 			}
 			if hydrated := hydrateCategoryResolutionFromTree(tree, selectedID, "ai_category_tree", treeQuery); hydrated != nil {
 				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
-				if !semanticRejectsCategory(hydrated.SemanticValidation) {
+				if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 					return hydrated
 				}
 				hydrated.Status = "partial"
-				hydrated.ReviewNotes = append(hydrated.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+				hydrated.SuggestedCategory = categorySuggestionFromResolution(hydrated, semanticCategoryReviewNote(hydrated.SemanticValidation))
+				hydrated.CategoryID = 0
+				hydrated.CategoryIDList = nil
+				hydrated.ProductTypeID = 0
+				hydrated.TopCategoryID = 0
+				hydrated.ReviewNotes = append(hydrated.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 				return hydrated
 			}
 			resolution.Source = "ai_category_tree"
@@ -259,6 +272,45 @@ func semanticRejectsCategory(validation *CategorySemanticValidation) bool {
 
 func semanticAcceptsCategory(validation *CategorySemanticValidation) bool {
 	return validation != nil && strings.EqualFold(strings.TrimSpace(validation.Verdict), "compatible")
+}
+
+func (r *categoryResolver) acceptsAutomatedCategory(validation *CategorySemanticValidation) bool {
+	if r == nil || r.semanticVerifier == nil {
+		return !semanticRejectsCategory(validation)
+	}
+	return semanticAcceptsCategory(validation)
+}
+
+func semanticCategoryReviewNote(validation *CategorySemanticValidation) string {
+	if validation == nil {
+		return "SHEIN 类目语义校验未完成，候选类目需人工确认"
+	}
+	if semanticRejectsCategory(validation) {
+		return buildSemanticCategoryReviewNote(validation)
+	}
+	reason := strings.TrimSpace(validation.Reason)
+	if reason == "" {
+		reason = "AI 未能确认当前类目路径与商品语义完全匹配"
+	}
+	if len(validation.ComparedPath) == 0 {
+		return reason
+	}
+	return reason + "（候选类目: " + strings.Join(validation.ComparedPath, " > ") + "）"
+}
+
+func categorySuggestionFromResolution(resolution *CategoryResolution, reason string) *CategorySuggestion {
+	if resolution == nil {
+		return nil
+	}
+	return &CategorySuggestion{
+		Source:         resolution.Source,
+		Reason:         strings.TrimSpace(reason),
+		MatchedPath:    append([]string(nil), resolution.MatchedPath...),
+		CategoryID:     resolution.CategoryID,
+		CategoryIDList: append([]int(nil), resolution.CategoryIDList...),
+		ProductTypeID:  resolution.ProductTypeID,
+		TopCategoryID:  resolution.TopCategoryID,
+	}
 }
 
 func buildSemanticCategoryReviewNote(validation *CategorySemanticValidation) string {

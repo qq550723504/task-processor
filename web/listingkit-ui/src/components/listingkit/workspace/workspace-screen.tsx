@@ -24,7 +24,7 @@ import { SheinSubmitReadinessPanel } from "@/components/listingkit/shein/shein-s
 import { SheinSubmissionTimeline } from "@/components/listingkit/shein/shein-submission-timeline";
 import { SheinSourceProductPanel } from "@/components/listingkit/shein/shein-source-product-panel";
 import {
-  collectSheinPreviewImages,
+  collectSheinPreviewImageGroups,
   type SheinPreviewImage,
 } from "@/components/listingkit/shein/shein-preview-image";
 import {
@@ -277,17 +277,24 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     selectedSlot: sessionData?.selected_slot,
     focusedPreview,
   });
-  const sheinImages = useMemo(
+  const sheinImageGroups = useMemo(
     () =>
-      collectSheinPreviewImages(
+      collectSheinPreviewImageGroups(
         preview.data?.shein,
         taskResult.data?.result?.sds_sync,
       ),
     [preview.data?.shein, taskResult.data?.result?.sds_sync],
   );
+  const sheinImages = sheinImageGroups.productImages;
+  const sheinMockupImages = sheinImageGroups.mockupImages;
+  const sheinVariantCount =
+    preview.data?.shein?.final_review?.skus?.length ??
+    preview.data?.overview?.variant_count;
+  const sheinDisplayImages =
+    sheinImages.length > 0 ? sheinImages : sheinMockupImages;
   const selectedSheinImage =
-    sheinImages.find((image) => image.url === selectedSheinImageUrl) ??
-    sheinImages[0];
+    sheinDisplayImages.find((image) => image.url === selectedSheinImageUrl) ??
+    sheinDisplayImages[0];
   const sheinFallbackPreview =
     selectedPlatform === "shein" && !focusedPreview?.asset_url && !focusedPreview?.preview_svg
       ? {
@@ -332,8 +339,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       key: "preview",
       label: "检查图片",
       description: sheinImages.length
-        ? `已准备 ${sheinImages.length} 张 SHEIN 资料图，先确认图片再进入资料提交。`
-        : "检查 SDS 官方渲染图是否已经进入 SHEIN 资料。",
+        ? `已准备 ${sheinImages.length} 张 SHEIN 成品图，SDS mockup 会单独作为渲染参考展示。`
+        : "检查 SHEIN 成品图是否已经生成；SDS mockup 仅作为渲染参考。",
       href: "#shein-preview-images",
       state: sheinPreviewBlocked || !sheinImages.length ? "blocked" : "done",
       actionLabel: "查看图片",
@@ -1007,7 +1014,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             <div id="shein-preview-images" className="scroll-mt-6">
               <SheinDataImageGallery
                 images={sheinImages}
+                mockupImages={sheinMockupImages}
                 finalImages={preview.data?.shein?.final_review?.images}
+                variantCount={sheinVariantCount}
                 isSavingControls={updateSheinFinalDraft.isPending}
                 saveErrorMessage={sheinFinalDraftError}
                 saveMessage={sheinFinalDraftMessage}
@@ -1117,7 +1126,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             <div id="shein-preview-images" className="scroll-mt-6">
                 <SheinDataImageGallery
                   images={sheinImages}
+                  mockupImages={sheinMockupImages}
                   finalImages={preview.data?.shein?.final_review?.images}
+                  variantCount={sheinVariantCount}
                   isSavingControls={updateSheinFinalDraft.isPending}
                   saveErrorMessage={sheinFinalDraftError}
                   saveMessage={sheinFinalDraftMessage}

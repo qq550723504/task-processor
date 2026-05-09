@@ -1,4 +1,7 @@
-import { collectSheinPreviewImages } from "@/components/listingkit/shein/shein-preview-image";
+import {
+  collectSheinPreviewImageGroups,
+  collectSheinPreviewImages,
+} from "@/components/listingkit/shein/shein-preview-image";
 import type { SheinPreviewPayload } from "@/lib/types/listingkit";
 
 describe("collectSheinPreviewImages", () => {
@@ -33,6 +36,93 @@ describe("collectSheinPreviewImages", () => {
       "https://cdn.sdspod.com/out/request-main.jpg",
     ]);
     expect(images[0]?.label).toBe("Preview product image 1");
+  });
+
+  it("uses final review images as the authoritative submit image list", () => {
+    const shein: SheinPreviewPayload = {
+      final_review: {
+        images: [
+          { url: "https://cdn.sdspod.com/out/final-main.jpg", role: "main" },
+          { url: "https://cdn.sdspod.com/out/final-gallery.jpg", role: "gallery" },
+        ],
+      },
+      preview_product: {
+        image_info: {
+          image_info_list: [
+            { image_url: "http://local/stale-ai-main.png" },
+            { image_url: "http://local/stale-ai-gallery.png" },
+          ],
+        },
+      },
+    };
+
+    const groups = collectSheinPreviewImageGroups(shein, {
+      mockup_image_urls: [
+        "https://cdn.sdspod.com/out/final-main.jpg",
+        "https://cdn.sdspod.com/out/final-gallery.jpg",
+      ],
+    });
+
+    expect(groups.productImages.map((image) => image.url)).toEqual([
+      "https://cdn.sdspod.com/out/final-main.jpg",
+      "https://cdn.sdspod.com/out/final-gallery.jpg",
+    ]);
+    expect(groups.mockupImages).toEqual([]);
+  });
+
+  it("separates SHEIN product images from SDS mockup renderings", () => {
+    const shein: SheinPreviewPayload = {
+      preview_product: {
+        image_info: {
+          image_info_list: [
+            { image_url: "http://local/product-main.png" },
+            { image_url: "http://local/product-gallery.png" },
+          ],
+        },
+      },
+    };
+
+    const groups = collectSheinPreviewImageGroups(shein, {
+      mockup_image_urls: [
+        "https://cdn.sdspod.com/out/mockup-main.jpg",
+        "https://cdn.sdspod.com/out/mockup-gallery.jpg",
+      ],
+    });
+
+    expect(groups.productImages.map((image) => image.url)).toEqual([
+      "http://local/product-main.png",
+      "http://local/product-gallery.png",
+    ]);
+    expect(groups.mockupImages.map((image) => image.url)).toEqual([
+      "https://cdn.sdspod.com/out/mockup-main.jpg",
+      "https://cdn.sdspod.com/out/mockup-gallery.jpg",
+    ]);
+  });
+
+  it("does not repeat SDS mockups in the reference group once they are final product images", () => {
+    const shein: SheinPreviewPayload = {
+      preview_product: {
+        image_info: {
+          image_info_list: [
+            { image_url: "https://cdn.sdspod.com/out/mockup-main.jpg" },
+            { image_url: "https://cdn.sdspod.com/out/mockup-gallery.jpg" },
+          ],
+        },
+      },
+    };
+
+    const groups = collectSheinPreviewImageGroups(shein, {
+      mockup_image_urls: [
+        "https://cdn.sdspod.com/out/mockup-main.jpg",
+        "https://cdn.sdspod.com/out/mockup-gallery.jpg",
+      ],
+    });
+
+    expect(groups.productImages.map((image) => image.url)).toEqual([
+      "https://cdn.sdspod.com/out/mockup-main.jpg",
+      "https://cdn.sdspod.com/out/mockup-gallery.jpg",
+    ]);
+    expect(groups.mockupImages).toEqual([]);
   });
 
   it("uses SDS mockups when SHEIN preview payload is not available yet", () => {

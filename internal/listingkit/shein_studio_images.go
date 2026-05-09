@@ -255,6 +255,11 @@ func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []She
 }
 
 func findVariantImageSetForSKC(skc sheinpub.SKCRequestDraft, byColor map[string]SheinStudioVariantImageSet, bySKU map[string]SheinStudioVariantImageSet) (SheinStudioVariantImageSet, bool) {
+	for _, candidate := range variantImageSKUCandidatesFromRequestSKC(skc) {
+		if item, ok := bySKU[normalizeVariantImageKey(candidate)]; ok {
+			return item, true
+		}
+	}
 	for _, candidate := range []string{
 		skc.SaleName,
 		skc.SkcName,
@@ -265,29 +270,55 @@ func findVariantImageSetForSKC(skc sheinpub.SKCRequestDraft, byColor map[string]
 		}
 	}
 	for _, sku := range skc.SKUList {
-		if item, ok := bySKU[normalizeVariantImageKey(sku.Attributes["source_sds_sku"])]; ok {
-			return item, true
-		}
 		if item, ok := byColor[normalizeVariantImageKey(sku.Attributes["Color"])]; ok {
 			return item, true
 		}
-	}
-	if item, ok := bySKU[normalizeVariantImageKey(strings.Split(skc.SupplierCode, "-")[0])]; ok {
-		return item, true
 	}
 	return SheinStudioVariantImageSet{}, false
 }
 
 func findVariantImageSetForSKCPackage(skc sheinpub.SKCPackage, byColor map[string]SheinStudioVariantImageSet, bySKU map[string]SheinStudioVariantImageSet) (SheinStudioVariantImageSet, bool) {
+	for _, candidate := range variantImageSKUCandidatesFromPackageSKC(skc) {
+		if item, ok := bySKU[normalizeVariantImageKey(candidate)]; ok {
+			return item, true
+		}
+	}
 	for _, candidate := range []string{skc.SaleName, skc.SkcName, skc.Attributes["Color"]} {
 		if item, ok := byColor[normalizeVariantImageKey(candidate)]; ok {
 			return item, true
 		}
 	}
-	if item, ok := bySKU[normalizeVariantImageKey(strings.Split(skc.SupplierCode, "-")[0])]; ok {
-		return item, true
-	}
 	return SheinStudioVariantImageSet{}, false
+}
+
+func variantImageSKUCandidatesFromRequestSKC(skc sheinpub.SKCRequestDraft) []string {
+	values := []string{
+		sourceSDSSKUFromSupplierSKU(skc.SupplierCode),
+		skc.SupplierCode,
+	}
+	for _, sku := range skc.SKUList {
+		values = append(values,
+			sku.Attributes["source_sds_sku"],
+			sourceSDSSKUFromSupplierSKU(sku.SupplierSKU),
+			sku.SupplierSKU,
+		)
+	}
+	return values
+}
+
+func variantImageSKUCandidatesFromPackageSKC(skc sheinpub.SKCPackage) []string {
+	values := []string{
+		sourceSDSSKUFromSupplierSKU(skc.SupplierCode),
+		skc.SupplierCode,
+	}
+	for _, sku := range skc.SKUs {
+		values = append(values,
+			sku.Attributes["source_sds_sku"],
+			sourceSDSSKUFromSupplierSKU(sku.SKU),
+			sku.SKU,
+		)
+	}
+	return values
 }
 
 func saleAttributeValue(attr *sheinpub.ResolvedSaleAttribute) string {
