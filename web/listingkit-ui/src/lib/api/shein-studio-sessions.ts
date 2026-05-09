@@ -49,7 +49,11 @@ type StudioSessionDetailResponse = {
     id: string;
     tenant_id?: string;
     image_url?: string;
+    prompt?: string;
     revised_prompt?: string;
+    image_model?: string;
+    transparent_background?: boolean;
+    variation_intensity?: SheinStudioVariationIntensity;
     review_note?: string;
     role?: string;
     role_label?: string;
@@ -177,7 +181,11 @@ export async function replaceSheinStudioSessionDesigns(
       designs: input.designs.map((design) => ({
         id: design.id,
         image_url: design.imageUrl ?? design.dataUrl,
+        prompt: design.prompt,
         revised_prompt: design.revisedPrompt,
+        image_model: design.imageModel,
+        transparent_background: design.transparentBackground,
+        variation_intensity: design.variationIntensity,
         review_note: design.reviewNote,
         role: design.role,
         role_label: design.roleLabel,
@@ -222,7 +230,13 @@ export function mapStudioSessionDetailToDraft(
       detail.designs?.map((design) => ({
         id: design.id,
         imageUrl: design.image_url,
+        prompt: design.prompt ?? detail.session?.prompt,
         revisedPrompt: design.revised_prompt,
+        imageModel: design.image_model ?? detail.session?.artwork_model,
+        transparentBackground:
+          design.transparent_background ?? detail.session?.transparent_background,
+        variationIntensity:
+          design.variation_intensity ?? detail.session?.variation_intensity,
         reviewNote: design.review_note,
         role: design.role,
         roleLabel: design.role_label,

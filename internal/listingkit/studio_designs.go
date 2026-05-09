@@ -82,9 +82,13 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 				return
 			}
 			images[idx] = StudioGeneratedImage{
-				ID:            uuid.NewString(),
-				ImageURL:      imageURL,
-				RevisedPrompt: revisedPrompt,
+				ID:                    uuid.NewString(),
+				ImageURL:              imageURL,
+				Prompt:                theme,
+				RevisedPrompt:         revisedPrompt,
+				ImageModel:            model,
+				TransparentBackground: response.TransparentBackground,
+				VariationIntensity:    req.VariationIntensity,
 			}
 		}()
 	}

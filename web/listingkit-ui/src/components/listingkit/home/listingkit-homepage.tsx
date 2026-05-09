@@ -11,7 +11,7 @@ export function ListingKitHomepage() {
 
   return (
     <div className="flex flex-1 overflow-hidden rounded-lg bg-zinc-50 px-4 py-4 sm:px-6 sm:py-6">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 lg:gap-8">
+      <div className="flex w-full flex-col gap-6 lg:gap-8">
         <ListingKitHomeHero />
         <div className="space-y-4">
           <div className="space-y-1">

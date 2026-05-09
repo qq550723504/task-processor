@@ -17,6 +17,9 @@ export type StyleGalleryItem = {
   taskId?: string;
   taskStatus?: string;
   prompt?: string;
+  imageModel?: string;
+  transparentBackground?: boolean;
+  variationIntensity?: string;
   productName?: string;
   variantLabel?: string;
   createdAt?: string;

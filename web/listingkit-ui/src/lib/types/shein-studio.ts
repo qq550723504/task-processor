@@ -4,10 +4,14 @@ export type SheinStudioGeneratedDesign = {
   id: string;
   dataUrl?: string;
   imageUrl?: string;
+  prompt?: string;
   productImageUrls?: string[];
   sourceWidth?: number;
   sourceHeight?: number;
   revisedPrompt?: string;
+  imageModel?: SheinStudioArtworkModel | string;
+  transparentBackground?: boolean;
+  variationIntensity?: SheinStudioVariationIntensity;
   role?: string;
   roleLabel?: string;
   reviewNote?: string;
@@ -60,6 +64,8 @@ export type SheinStudioGenerateResponse = {
   prompt: string;
   printableWidth?: number;
   printableHeight?: number;
+  imageModel?: SheinStudioArtworkModel | string;
+  transparentBackground?: boolean;
   images: SheinStudioGeneratedDesign[];
 };
 

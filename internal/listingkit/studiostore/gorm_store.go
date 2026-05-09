@@ -95,17 +95,20 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 	}
 
 	rows := make([]struct {
-		SessionID     string
-		TenantID      string
-		DesignID      string
-		ImageURL      string
-		Prompt        string
-		SelectionJSON string
-		Status        string
-		CreatedAt     time.Time
-		UpdatedAt     time.Time
-		ReviewNote    string
-		RevisedPrompt string
+		SessionID             string
+		TenantID              string
+		DesignID              string
+		ImageURL              string
+		Prompt                string
+		SelectionJSON         string
+		Status                string
+		CreatedAt             time.Time
+		UpdatedAt             time.Time
+		ReviewNote            string
+		RevisedPrompt         string
+		ImageModel            string
+		TransparentBackground bool
+		VariationIntensity    string
 	}, 0, limit)
 
 	if err := r.db.WithContext(ctx).
@@ -122,6 +125,9 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.updated_at AS updated_at",
 			"d.review_note AS review_note",
 			"d.revised_prompt AS revised_prompt",
+			"d.image_model AS image_model",
+			"d.transparent_background AS transparent_background",
+			"d.variation_intensity AS variation_intensity",
 		}).
 		Joins("JOIN shein_studio_sessions AS s ON s.id = d.session_id").
 		Scopes(func(db *gorm.DB) *gorm.DB { return applyTenantScope(db, ctx, "s.tenant_id") }).
@@ -136,17 +142,20 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 		var selection listingkit.SheinStudioSelectionSnapshot
 		_ = selection.Scan(row.SelectionJSON)
 		items = append(items, listingkit.SheinStudioSessionGalleryItem{
-			SessionID:     row.SessionID,
-			TenantID:      row.TenantID,
-			DesignID:      row.DesignID,
-			ImageURL:      row.ImageURL,
-			Prompt:        row.Prompt,
-			ProductName:   selection.ProductName,
-			Status:        row.Status,
-			CreatedAt:     row.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:     row.UpdatedAt.UTC().Format(time.RFC3339),
-			ReviewNote:    row.ReviewNote,
-			RevisedPrompt: row.RevisedPrompt,
+			SessionID:             row.SessionID,
+			TenantID:              row.TenantID,
+			DesignID:              row.DesignID,
+			ImageURL:              row.ImageURL,
+			Prompt:                row.Prompt,
+			ProductName:           selection.ProductName,
+			Status:                row.Status,
+			CreatedAt:             row.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:             row.UpdatedAt.UTC().Format(time.RFC3339),
+			ReviewNote:            row.ReviewNote,
+			RevisedPrompt:         row.RevisedPrompt,
+			ImageModel:            row.ImageModel,
+			TransparentBackground: row.TransparentBackground,
+			VariationIntensity:    row.VariationIntensity,
 		})
 	}
 	return items, nil

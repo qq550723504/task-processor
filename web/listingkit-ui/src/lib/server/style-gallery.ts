@@ -125,7 +125,10 @@ async function listStoredStudioItems(): Promise<StyleGalleryItem[]> {
           sourceLabel: "AI style",
           originalUrl: imageUrl,
           fileName: design.id,
-          prompt: group.prompt,
+          prompt: design.prompt ?? group.prompt,
+          imageModel: design.imageModel,
+          transparentBackground: design.transparentBackground,
+          variationIntensity: design.variationIntensity,
           productName: group.productName,
           createdAt: group.updatedAt,
           updatedAt: group.updatedAt,
@@ -154,6 +157,9 @@ async function listDatabaseStudioItems(): Promise<StyleGalleryItem[]> {
         design_id?: string;
         image_url?: string;
         prompt?: string;
+        image_model?: string;
+        transparent_background?: boolean;
+        variation_intensity?: string;
         product_name?: string;
         status?: string;
         created_at?: string;
@@ -172,6 +178,9 @@ async function listDatabaseStudioItems(): Promise<StyleGalleryItem[]> {
         originalUrl: item.image_url,
         fileName: item.design_id,
         prompt: item.prompt,
+        imageModel: item.image_model,
+        transparentBackground: item.transparent_background,
+        variationIntensity: item.variation_intensity,
         productName: item.product_name,
         taskStatus: item.status,
         createdAt: item.created_at,

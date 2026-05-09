@@ -39,4 +39,24 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByText("/listing-kits/sds")).toBeInTheDocument();
     expect(screen.getByText("workspace content")).toBeInTheDocument();
   });
+
+  it("places the navigation and main content on the same layout rail", () => {
+    render(
+      <ListingKitAppShell>
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
+
+    const headerRail = screen.getByRole("banner").parentElement;
+    const mainRail = screen.getByRole("main");
+
+    expect(headerRail).toHaveClass("max-w-[1600px]");
+    expect(headerRail).toHaveClass("px-4");
+    expect(headerRail).toHaveClass("sm:px-6");
+    expect(headerRail).toHaveClass("lg:px-8");
+    expect(mainRail).toHaveClass("max-w-[1600px]");
+    expect(mainRail).toHaveClass("px-4");
+    expect(mainRail).toHaveClass("sm:px-6");
+    expect(mainRail).toHaveClass("lg:px-8");
+  });
 });

@@ -16,12 +16,21 @@ export async function generateSheinStudioDesigns(
     prompt: string;
     printable_width?: number;
     printable_height?: number;
+    image_model?: string;
+    transparent_background?: boolean;
     images?: Array<{
       id: string;
       image_url?: string;
       imageUrl?: string;
+      prompt?: string;
       revised_prompt?: string;
       revisedPrompt?: string;
+      image_model?: string;
+      imageModel?: string;
+      transparent_background?: boolean;
+      transparentBackground?: boolean;
+      variation_intensity?: SheinStudioGenerateRequest["variationIntensity"];
+      variationIntensity?: SheinStudioGenerateRequest["variationIntensity"];
       role?: string;
       role_label?: string;
       roleLabel?: string;
@@ -47,10 +56,22 @@ export async function generateSheinStudioDesigns(
     prompt: payload.prompt,
     printableWidth: payload.printable_width,
     printableHeight: payload.printable_height,
+    imageModel: payload.image_model,
+    transparentBackground: payload.transparent_background,
     images: (payload.images ?? []).map((image) => ({
       id: image.id,
       imageUrl: image.imageUrl ?? image.image_url,
+      prompt: image.prompt ?? payload.prompt ?? body.prompt,
       revisedPrompt: image.revisedPrompt ?? image.revised_prompt,
+      imageModel: image.imageModel ?? image.image_model ?? payload.image_model ?? body.imageModel,
+      transparentBackground:
+        image.transparentBackground ??
+        image.transparent_background ??
+        payload.transparent_background ??
+        body.transparentBackground ??
+        false,
+      variationIntensity:
+        image.variationIntensity ?? image.variation_intensity ?? body.variationIntensity,
     })),
   } satisfies SheinStudioGenerateResponse;
 }

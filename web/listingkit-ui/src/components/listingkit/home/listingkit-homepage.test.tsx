@@ -60,4 +60,10 @@ describe("Home", () => {
     ).toHaveAttribute("href", "/listing-kits/task-1/workspace?platform=shein");
     expect(screen.getAllByText("Botanical clock").length).toBeGreaterThan(0);
   });
+
+  it("uses the app shell content rail without a second centered max width", () => {
+    const { container } = render(<Home />);
+
+    expect(container.querySelector(".max-w-7xl")).not.toBeInTheDocument();
+  });
 });

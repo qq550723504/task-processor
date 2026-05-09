@@ -16,6 +16,8 @@ const NAV_ITEMS = [
   { label: "任务列表", href: "/listing-kits", match: "exact" },
 ] as const;
 
+const APP_RAIL_CLASS = "mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8";
+
 function isActiveNavItem(
   pathname: string,
   item: (typeof NAV_ITEMS)[number],
@@ -35,50 +37,52 @@ export function ListingKitAppShell({
 
   return (
     <div className="min-h-full">
-      <header className="mx-auto mb-4 w-full max-w-[1600px] rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase text-zinc-500">
-              ListingKit
-            </p>
-            <p className="mt-1 text-sm font-medium text-zinc-950">
-              源信息 -&gt; Canonical Product -&gt; 平台资料
-            </p>
-            <p className="text-sm text-zinc-500">
-              当前页面
-              <span className="ml-2 rounded-full bg-zinc-100 px-2.5 py-1 font-mono text-xs text-zinc-700">
-                {pathname}
-              </span>
-            </p>
+      <div className={APP_RAIL_CLASS}>
+        <header className="mb-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase text-zinc-500">
+                ListingKit
+              </p>
+              <p className="mt-1 text-sm font-medium text-zinc-950">
+                源信息 -&gt; Canonical Product -&gt; 平台资料
+              </p>
+              <p className="text-sm text-zinc-500">
+                当前页面
+                <span className="ml-2 rounded-full bg-zinc-100 px-2.5 py-1 font-mono text-xs text-zinc-700">
+                  {pathname}
+                </span>
+              </p>
+            </div>
+
+            <nav
+              aria-label="ListingKit 主导航"
+              className="flex flex-wrap items-center gap-2"
+            >
+              {NAV_ITEMS.map((item) => {
+                const active = isActiveNavItem(pathname, item);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={[
+                      "inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition",
+                      active
+                        ? "border-zinc-950 bg-zinc-950 text-white"
+                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:text-zinc-950",
+                    ].join(" ")}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
           </div>
-
-          <nav
-            aria-label="ListingKit 主导航"
-            className="flex flex-wrap items-center gap-2"
-          >
-            {NAV_ITEMS.map((item) => {
-              const active = isActiveNavItem(pathname, item);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={[
-                    "inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition",
-                    active
-                      ? "border-zinc-950 bg-zinc-950 text-white"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:text-zinc-950",
-                  ].join(" ")}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-4 py-2 sm:px-6 lg:px-8">
+        </header>
+      </div>
+      <main className={`${APP_RAIL_CLASS} flex min-h-screen flex-col py-2`}>
         {children}
       </main>
     </div>

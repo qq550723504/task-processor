@@ -183,16 +183,20 @@ func (s *service) ReplaceStudioSessionDesigns(ctx context.Context, sessionID str
 		}
 		_, approved := approvedSet[designID]
 		designs = append(designs, SheinStudioDesign{
-			ID:               designID,
-			SessionID:        sessionID,
-			ImageURL:         design.ImageURL,
-			ProductImageURLs: append(SheinStudioStringList(nil), design.ProductImageURLs...),
-			RevisedPrompt:    design.RevisedPrompt,
-			Role:             design.Role,
-			RoleLabel:        design.RoleLabel,
-			ReviewNote:       design.ReviewNote,
-			SortOrder:        index,
-			Approved:         approved,
+			ID:                    designID,
+			SessionID:             sessionID,
+			ImageURL:              design.ImageURL,
+			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
+			Prompt:                design.Prompt,
+			RevisedPrompt:         design.RevisedPrompt,
+			ImageModel:            design.ImageModel,
+			TransparentBackground: design.TransparentBackground,
+			VariationIntensity:    design.VariationIntensity,
+			Role:                  design.Role,
+			RoleLabel:             design.RoleLabel,
+			ReviewNote:            design.ReviewNote,
+			SortOrder:             index,
+			Approved:              approved,
 		})
 	}
 

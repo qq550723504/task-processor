@@ -54,16 +54,20 @@ func (r *studioSessionRepoStub) ReplaceDesigns(_ context.Context, sessionID stri
 	for _, design := range designs {
 		_, isApproved := approved[design.ID]
 		next = append(next, SheinStudioDesign{
-			ID:               design.ID,
-			SessionID:        sessionID,
-			ImageURL:         design.ImageURL,
-			ProductImageURLs: append(SheinStudioStringList(nil), design.ProductImageURLs...),
-			RevisedPrompt:    design.RevisedPrompt,
-			Role:             design.Role,
-			RoleLabel:        design.RoleLabel,
-			ReviewNote:       design.ReviewNote,
-			SortOrder:        design.SortOrder,
-			Approved:         isApproved,
+			ID:                    design.ID,
+			SessionID:             sessionID,
+			ImageURL:              design.ImageURL,
+			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
+			Prompt:                design.Prompt,
+			RevisedPrompt:         design.RevisedPrompt,
+			ImageModel:            design.ImageModel,
+			TransparentBackground: design.TransparentBackground,
+			VariationIntensity:    design.VariationIntensity,
+			Role:                  design.Role,
+			RoleLabel:             design.RoleLabel,
+			ReviewNote:            design.ReviewNote,
+			SortOrder:             design.SortOrder,
+			Approved:              isApproved,
 		})
 	}
 	r.designs[sessionID] = next
@@ -143,7 +147,15 @@ func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
 		Status:            &status,
 		ApprovedDesignIDs: []string{"design-1"},
 		Designs: []SheinStudioDesign{
-			{ID: "design-1", ImageURL: "https://oss.example.com/design-1.png", RevisedPrompt: "rev-1"},
+			{
+				ID:                    "design-1",
+				ImageURL:              "https://oss.example.com/design-1.png",
+				Prompt:                "retro cherries",
+				RevisedPrompt:         "rev-1",
+				ImageModel:            "gpt-image-2",
+				TransparentBackground: true,
+				VariationIntensity:    "light",
+			},
 			{ID: "design-2", ImageURL: "https://oss.example.com/design-2.png", RevisedPrompt: "rev-2"},
 		},
 	})
@@ -155,6 +167,12 @@ func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
 	}
 	if !replaced.Designs[0].Approved || replaced.Designs[1].Approved {
 		t.Fatalf("approved flags = %#v, want [true false]", replaced.Designs)
+	}
+	if replaced.Designs[0].Prompt != "retro cherries" ||
+		replaced.Designs[0].ImageModel != "gpt-image-2" ||
+		!replaced.Designs[0].TransparentBackground ||
+		replaced.Designs[0].VariationIntensity != "light" {
+		t.Fatalf("design generation metadata = %#v, want prompt/model/background/variation preserved", replaced.Designs[0])
 	}
 
 	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)

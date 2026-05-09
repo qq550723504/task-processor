@@ -106,11 +106,15 @@ type StudioProductImageResponse struct {
 }
 
 type StudioGeneratedImage struct {
-	ID            string `json:"id"`
-	ImageURL      string `json:"image_url"`
-	RevisedPrompt string `json:"revised_prompt,omitempty"`
-	Role          string `json:"role,omitempty"`
-	RoleLabel     string `json:"role_label,omitempty"`
+	ID                    string `json:"id"`
+	ImageURL              string `json:"image_url"`
+	Prompt                string `json:"prompt,omitempty"`
+	RevisedPrompt         string `json:"revised_prompt,omitempty"`
+	ImageModel            string `json:"image_model,omitempty"`
+	TransparentBackground bool   `json:"transparent_background,omitempty"`
+	VariationIntensity    string `json:"variation_intensity,omitempty"`
+	Role                  string `json:"role,omitempty"`
+	RoleLabel             string `json:"role_label,omitempty"`
 }
 
 type StudioDesignRequest struct {

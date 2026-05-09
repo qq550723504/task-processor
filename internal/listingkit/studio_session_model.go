@@ -182,19 +182,23 @@ type SheinStudioSession struct {
 }
 
 type SheinStudioDesign struct {
-	ID               string                `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	TenantID         string                `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	SessionID        string                `json:"session_id" gorm:"type:varchar(64);index:idx_shein_studio_design_session_sort,priority:1"`
-	ImageURL         string                `json:"image_url" gorm:"type:text"`
-	ProductImageURLs SheinStudioStringList `json:"product_image_urls,omitempty" gorm:"type:text"`
-	RevisedPrompt    string                `json:"revised_prompt,omitempty" gorm:"type:text"`
-	Role             string                `json:"role,omitempty" gorm:"type:varchar(64)"`
-	RoleLabel        string                `json:"role_label,omitempty" gorm:"type:varchar(128)"`
-	ReviewNote       string                `json:"review_note,omitempty" gorm:"type:text"`
-	SortOrder        int                   `json:"sort_order" gorm:"index:idx_shein_studio_design_session_sort,priority:2"`
-	Approved         bool                  `json:"approved"`
-	CreatedAt        time.Time             `json:"created_at"`
-	UpdatedAt        time.Time             `json:"updated_at"`
+	ID                    string                `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID              string                `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	SessionID             string                `json:"session_id" gorm:"type:varchar(64);index:idx_shein_studio_design_session_sort,priority:1"`
+	ImageURL              string                `json:"image_url" gorm:"type:text"`
+	ProductImageURLs      SheinStudioStringList `json:"product_image_urls,omitempty" gorm:"type:text"`
+	Prompt                string                `json:"prompt,omitempty" gorm:"type:text"`
+	RevisedPrompt         string                `json:"revised_prompt,omitempty" gorm:"type:text"`
+	ImageModel            string                `json:"image_model,omitempty" gorm:"type:varchar(64)"`
+	TransparentBackground bool                  `json:"transparent_background,omitempty"`
+	VariationIntensity    string                `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
+	Role                  string                `json:"role,omitempty" gorm:"type:varchar(64)"`
+	RoleLabel             string                `json:"role_label,omitempty" gorm:"type:varchar(128)"`
+	ReviewNote            string                `json:"review_note,omitempty" gorm:"type:text"`
+	SortOrder             int                   `json:"sort_order" gorm:"index:idx_shein_studio_design_session_sort,priority:2"`
+	Approved              bool                  `json:"approved"`
+	CreatedAt             time.Time             `json:"created_at"`
+	UpdatedAt             time.Time             `json:"updated_at"`
 }
 
 type SheinStudioSessionDetail struct {
@@ -203,15 +207,18 @@ type SheinStudioSessionDetail struct {
 }
 
 type SheinStudioSessionGalleryItem struct {
-	TenantID      string `json:"tenant_id,omitempty"`
-	SessionID     string `json:"session_id"`
-	DesignID      string `json:"design_id"`
-	ImageURL      string `json:"image_url"`
-	Prompt        string `json:"prompt,omitempty"`
-	ProductName   string `json:"product_name,omitempty"`
-	Status        string `json:"status,omitempty"`
-	CreatedAt     string `json:"created_at,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	ReviewNote    string `json:"review_note,omitempty"`
-	RevisedPrompt string `json:"revised_prompt,omitempty"`
+	TenantID              string `json:"tenant_id,omitempty"`
+	SessionID             string `json:"session_id"`
+	DesignID              string `json:"design_id"`
+	ImageURL              string `json:"image_url"`
+	Prompt                string `json:"prompt,omitempty"`
+	ProductName           string `json:"product_name,omitempty"`
+	Status                string `json:"status,omitempty"`
+	CreatedAt             string `json:"created_at,omitempty"`
+	UpdatedAt             string `json:"updated_at,omitempty"`
+	ReviewNote            string `json:"review_note,omitempty"`
+	RevisedPrompt         string `json:"revised_prompt,omitempty"`
+	ImageModel            string `json:"image_model,omitempty"`
+	TransparentBackground bool   `json:"transparent_background,omitempty"`
+	VariationIntensity    string `json:"variation_intensity,omitempty"`
 }
