@@ -1,0 +1,285 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shein-proxy-sync
+  namespace: task-processor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shein-proxy-sync
+  namespace: task-processor
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["shein-listing-secret"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shein-proxy-sync
+  namespace: task-processor
+subjects:
+  - kind: ServiceAccount
+    name: shein-proxy-sync
+    namespace: task-processor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shein-proxy-sync
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shein-proxy-sync
+  namespace: yudao-cloud
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["login-config"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["login", "postgresql"]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shein-proxy-sync
+  namespace: yudao-cloud
+subjects:
+  - kind: ServiceAccount
+    name: shein-proxy-sync
+    namespace: task-processor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shein-proxy-sync
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shein-proxy-sync
+  namespace: task-processor
+data:
+  sync-shein-store-proxies.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    TASK_NAMESPACE="${TASK_NAMESPACE:-task-processor}"
+    LOGIN_NAMESPACE="${LOGIN_NAMESPACE:-yudao-cloud}"
+    LOGIN_CONFIG_SECRET="${LOGIN_CONFIG_SECRET:-login-config}"
+    DATABASE_SECRET="${DATABASE_SECRET:-shein-listing-secret}"
+    POSTGRES_NAMESPACE="${POSTGRES_NAMESPACE:-yudao-cloud}"
+    POSTGRES_TARGET="${POSTGRES_TARGET:-deploy/postgresql}"
+    LISTEN_IP="${LISTEN_IP:-10.42.0.1}"
+    START="${START:-4}"
+    END="${END:-254}"
+    PORT_BASE="${PORT_BASE:-31000}"
+
+    decode_secret() {
+      local namespace="$1"
+      local secret="$2"
+      local key="$3"
+      kubectl -n "$namespace" get secret "$secret" -o "jsonpath={.data.${key}}" | base64 -d
+    }
+
+    sql_escape() {
+      sed "s/'/''/g" <<<"$1"
+    }
+
+    trim() {
+      local value="$1"
+      value="${value//$'\r'/}"
+      value="${value#"${value%%[![:space:]]*}"}"
+      value="${value%"${value##*[![:space:]]}"}"
+      printf '%s' "$value"
+    }
+
+    db_name="$(decode_secret "$TASK_NAMESPACE" "$DATABASE_SECRET" TASK_PROCESSOR_DATABASE_NAME)"
+    db_user="$(decode_secret "$TASK_NAMESPACE" "$DATABASE_SECRET" TASK_PROCESSOR_DATABASE_USER)"
+    db_password="$(decode_secret "$TASK_NAMESPACE" "$DATABASE_SECRET" TASK_PROCESSOR_DATABASE_PASSWORD)"
+
+    config_path="/tmp/login-config.yaml"
+    updated_config_path="/tmp/login-config-updated.yaml"
+    kubectl -n "$LOGIN_NAMESPACE" get secret "$LOGIN_CONFIG_SECRET" -o 'jsonpath={.data.config\.yaml}' | base64 -d > "$config_path"
+
+    declare -A shop_map
+    declare -A used_proxy
+    in_map=0
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^[[:space:]]{4}shop_proxy_map: ]]; then
+        in_map=1
+        continue
+      fi
+      if (( in_map )); then
+        if [[ "$line" =~ ^[[:space:]]{6}([^:]+:[^:]+):[[:space:]]*(.+)$ ]]; then
+          key="${BASH_REMATCH[1]}"
+          proxy="${BASH_REMATCH[2]}"
+          shop_map["$key"]="$proxy"
+          used_proxy["$proxy"]=1
+          continue
+        fi
+        if [[ ! "$line" =~ ^[[:space:]]{6} && -n "${line//[[:space:]]/}" ]]; then
+          in_map=0
+        fi
+      fi
+    done < "$config_path"
+
+    store_query="
+    select tenant_id, id, coalesce(name, ''), coalesce(proxy, '')
+    from listing_store
+    where lower(platform) = 'shein'
+      and enable_auto_listing = true
+    order by tenant_id, id;
+    "
+
+    stores_path="/tmp/shein-stores.tsv"
+    kubectl -n "$POSTGRES_NAMESPACE" exec "$POSTGRES_TARGET" -- \
+      env PGPASSWORD="$db_password" psql -U "$db_user" -d "$db_name" -At -F $'\t' -c "$store_query" > "$stores_path"
+
+    assigned_lines_path="/tmp/assigned-map-lines.txt"
+    : > "$assigned_lines_path"
+    assigned_count=0
+    update_count=0
+    values=""
+    value_sep=""
+
+    next_proxy() {
+      local last proxy
+      for ((last=START; last<=END; last++)); do
+        proxy="http://${LISTEN_IP}:$((PORT_BASE + last))"
+        if [[ -z "${used_proxy[$proxy]+x}" ]]; then
+          echo "$proxy"
+          return 0
+        fi
+      done
+      return 1
+    }
+
+    while IFS=$'\t' read -r tenant_id store_id store_name store_proxy || [[ -n "${tenant_id:-}" ]]; do
+      [[ -n "${tenant_id:-}" && -n "${store_id:-}" ]] || continue
+      key="${tenant_id}:${store_id}"
+      proxy="${shop_map[$key]:-}"
+      if [[ -z "$proxy" ]]; then
+        proxy="$(next_proxy)" || {
+          echo "proxy pool exhausted" >&2
+          exit 1
+        }
+        shop_map["$key"]="$proxy"
+        used_proxy["$proxy"]=1
+        printf '      %s: %s\n' "$key" "$proxy" >> "$assigned_lines_path"
+        assigned_count=$((assigned_count + 1))
+        echo "assigned ${key} ${store_name} -> ${proxy}"
+      fi
+      proxy="$(trim "$proxy")"
+      store_proxy="$(trim "${store_proxy:-}")"
+      if [[ "${store_proxy:-}" != "$proxy" ]]; then
+        escaped_proxy="$(sql_escape "$proxy")"
+        values+="${value_sep}(${store_id}, ${tenant_id}, '${escaped_proxy}')"
+        value_sep=","
+        update_count=$((update_count + 1))
+      fi
+    done < "$stores_path"
+
+    if (( assigned_count == 0 && update_count == 0 )); then
+      echo "SHEIN proxy sync: no changes"
+      exit 0
+    fi
+
+    if (( assigned_count > 0 )); then
+      awk -v add_file="$assigned_lines_path" '
+        BEGIN {
+          while ((getline line < add_file) > 0) {
+            adds[++add_count] = line
+          }
+        }
+        function insert_adds() {
+          if (!inserted) {
+            for (i = 1; i <= add_count; i++) print adds[i]
+            inserted = 1
+          }
+        }
+        {
+          if (in_map && $0 !~ /^      / && $0 !~ /^[[:space:]]*$/) {
+            insert_adds()
+            in_map = 0
+          }
+          print
+          if ($0 ~ /^    shop_proxy_map:/) {
+            in_map = 1
+          }
+        }
+        END {
+          if (in_map) insert_adds()
+        }
+      ' "$config_path" > "$updated_config_path"
+
+      kubectl -n "$LOGIN_NAMESPACE" create secret generic "$LOGIN_CONFIG_SECRET" \
+        --from-file=config.yaml="$updated_config_path" \
+        --dry-run=client -o yaml | kubectl -n "$LOGIN_NAMESPACE" apply -f -
+    fi
+
+    if (( update_count > 0 )); then
+      sql_path="/tmp/sync-shein-store-proxies.sql"
+      cat > "$sql_path" <<SQL
+    update listing_store as s
+    set proxy = v.proxy
+    from (values ${values}) as v(id, tenant_id, proxy)
+    where s.id = v.id
+      and s.tenant_id = v.tenant_id
+      and lower(s.platform) = 'shein'
+      and coalesce(s.proxy, '') is distinct from v.proxy;
+    SQL
+      kubectl -n "$POSTGRES_NAMESPACE" exec -i "$POSTGRES_TARGET" -- \
+        env PGPASSWORD="$db_password" psql -U "$db_user" -d "$db_name" < "$sql_path"
+    fi
+
+    if (( assigned_count > 0 )); then
+      kubectl -n "$LOGIN_NAMESPACE" rollout restart deploy/login
+      kubectl -n "$LOGIN_NAMESPACE" rollout status deploy/login --timeout=300s
+    fi
+
+    echo "SHEIN proxy sync finished: assigned=${assigned_count} updates=${update_count}"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: shein-proxy-sync
+  namespace: task-processor
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: shein-proxy-sync
+          restartPolicy: Never
+          containers:
+            - name: sync
+              image: bitnami/kubectl:latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - /scripts/sync-shein-store-proxies.sh
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: scripts
+              configMap:
+                name: shein-proxy-sync
+                defaultMode: 0755
