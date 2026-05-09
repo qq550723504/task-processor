@@ -1,4 +1,4 @@
-export type SheinStyleGallerySource =
+export type StyleGallerySource =
   | "studio_saved"
   | "studio_legacy"
   | "published_input"
@@ -6,11 +6,11 @@ export type SheinStyleGallerySource =
   | "task_mockup"
   | "task_shein";
 
-export type SheinStyleGalleryItem = {
+export type StyleGalleryItem = {
   id: string;
   title: string;
   imageUrl: string;
-  source: SheinStyleGallerySource;
+  source: StyleGallerySource;
   sourceLabel: string;
   originalUrl?: string;
   fileName?: string;
@@ -23,10 +23,10 @@ export type SheinStyleGalleryItem = {
   updatedAt?: string;
 };
 
-export type SheinStyleGalleryResponse = {
+export type StyleGalleryResponse = {
   generatedAt: string;
   total: number;
-  items: SheinStyleGalleryItem[];
+  items: StyleGalleryItem[];
   summary: {
     studioSaved: number;
     studioLegacy: number;

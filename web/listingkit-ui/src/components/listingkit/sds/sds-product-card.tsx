@@ -6,7 +6,7 @@ import type { SDSProductSummary } from "@/lib/types/sds";
 function ProductThumb({ imageUrl }: { imageUrl?: string }) {
   if (!imageUrl) {
     return (
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-100 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
         SDS
       </div>
     );
@@ -14,7 +14,7 @@ function ProductThumb({ imageUrl }: { imageUrl?: string }) {
 
   return (
     <div
-      className="h-16 w-16 rounded-2xl bg-zinc-100 bg-cover bg-center"
+      className="h-16 w-16 rounded-md bg-zinc-100 bg-cover bg-center"
       style={{ backgroundImage: `url(${imageUrl})` }}
     />
   );
@@ -35,9 +35,9 @@ export function SDSProductCard({
 }: SDSProductCardProps) {
   return (
     <div
-      className={`rounded-[1.5rem] border px-4 py-4 shadow-sm transition ${
+      className={`rounded-lg border px-4 py-4 shadow-sm transition ${
         isSelected
-          ? "border-emerald-800 bg-[linear-gradient(135deg,_#052e2b,_#115e59)] text-white"
+          ? "border-emerald-700 bg-emerald-950 text-white"
           : "border-zinc-200 bg-white text-zinc-900 hover:-translate-y-0.5 hover:border-zinc-400 hover:shadow-md"
       }`}
     >
@@ -47,7 +47,7 @@ export function SDSProductCard({
           <div className="flex flex-wrap gap-2">
             {product.on_sale_status === 2 ? (
               <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
                   isSelected ? "bg-white/12 text-white" : "bg-emerald-50 text-emerald-700"
                 }`}
               >
@@ -56,7 +56,7 @@ export function SDSProductCard({
             ) : null}
             {product.hotSellStatus === 1 ? (
               <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
                   isSelected ? "bg-rose-400/20 text-rose-50" : "bg-rose-50 text-rose-700"
                 }`}
               >
@@ -65,7 +65,7 @@ export function SDSProductCard({
             ) : null}
             {product.issuingBayArea?.name ? (
               <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
                   isSelected ? "bg-white/12 text-white" : "bg-zinc-100 text-zinc-700"
                 }`}
               >
@@ -88,7 +88,7 @@ export function SDSProductCard({
           <div className="flex gap-3 pt-1">
             {isVariantSelected ? (
               <span
-                className={`inline-flex items-center rounded-full px-3 text-xs font-semibold uppercase tracking-[0.16em] ${
+                className={`inline-flex items-center rounded-md px-3 text-xs font-semibold uppercase tracking-[0.12em] ${
                   isSelected ? "bg-white/12 text-white" : "bg-emerald-50 text-emerald-700"
                 }`}
               >

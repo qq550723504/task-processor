@@ -1,57 +1,86 @@
 import Link from "next/link";
 
+const SOURCE_CHIPS = ["1688 链接", "图片素材", "商品文案", "SDS 商品"];
+
+const WORKFLOW_STEPS = [
+  {
+    step: "01",
+    title: "输入源信息",
+    description: "接收 1688、用户提供的商品资料、图片或 SDS 商品数据。",
+  },
+  {
+    step: "02",
+    title: "生成 Canonical Product",
+    description: "沉淀统一的标题、类目、属性、规格、变体、图片和价格基础信息。",
+  },
+  {
+    step: "03",
+    title: "生成平台资料",
+    description: "基于标准商品事实生成 SHEIN 等平台所需的上架资料包。",
+  },
+  {
+    step: "04",
+    title: "审核 / 上架",
+    description: "处理阻断项、人工确认项和提交结果，最终保存草稿或发布。",
+  },
+];
+
 export function ListingKitHomeHero() {
   return (
-    <section className="grid gap-6 overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.94),rgba(248,246,240,0.9))] p-8 shadow-[0_28px_100px_rgba(39,39,42,0.12)] lg:grid-cols-[1.15fr_0.85fr]">
-      <div className="space-y-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
-          ListingKit
-        </p>
-        <div className="space-y-3">
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-zinc-950 sm:text-5xl">
-            SHEIN 上架工作台
-          </h1>
-          <p className="max-w-2xl text-sm leading-7 text-zinc-600 sm:text-base">
-            直接进入 SHEIN 工作台继续做图、补资料和提交，同时保留通用
-            ListingKit 入口与最近任务恢复能力。
+    <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="grid gap-7 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
+        <div className="space-y-5">
+          <p className="text-[11px] font-semibold uppercase text-teal-700">
+            ListingKit
           </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/listing-kits/shein"
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-zinc-800"
-          >
-            进入 SHEIN 工作台
-          </Link>
-          <Link
-            href="/listing-kits/new"
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
-          >
-            开始新的 ListingKit 任务
-          </Link>
-        </div>
-      </div>
-
-      <div className="relative overflow-hidden rounded-[1.75rem] border border-zinc-200/60 bg-[linear-gradient(160deg,rgba(24,24,27,0.98),rgba(17,94,89,0.95))] p-6 text-white">
-        <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.3),transparent_60%)]" />
-        <div className="relative space-y-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-200">
-            Workflow Focus
-          </p>
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-              <p className="text-base font-semibold text-white">聚焦 SHEIN 上架主链路</p>
-              <p className="mt-1 text-sm leading-6 text-zinc-200">
-                从选品、款式图、商品图到资料提交，入口集中，切换更少。
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-              <p className="text-base font-semibold text-white">最近任务直接继续</p>
-              <p className="mt-1 text-sm leading-6 text-zinc-200">
-                保留最近任务入口，回到当前工作区，不用重新找 task 或页面。
-              </p>
-            </div>
+          <div className="space-y-3">
+            <h1 className="max-w-3xl text-3xl font-semibold text-zinc-950 sm:text-5xl">
+              从商品源信息生成多平台上架资料
+            </h1>
+            <p className="max-w-2xl text-sm leading-7 text-zinc-600 sm:text-base">
+              ListingKit 的主流程是先把 1688、图片、文案或 SDS 商品资料整理成
+              canonical product，再按平台模板生成可审核、可提交的上架资料。
+            </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {SOURCE_CHIPS.map((chip) => (
+              <span
+                key={chip}
+                className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700"
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/listing-kits/new"
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-zinc-800"
+            >
+              开始生成商品资料
+            </Link>
+            <Link
+              href="/listing-kits/canonical-products"
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-white px-5 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+            >
+              查看 Canonical Products
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {WORKFLOW_STEPS.map((item) => (
+            <div
+              key={item.step}
+              className="rounded-lg border border-zinc-200 bg-zinc-50 p-4"
+            >
+              <p className="text-xs font-semibold text-teal-700">{item.step}</p>
+              <div className="mt-3 space-y-1.5">
+                <p className="text-base font-semibold text-zinc-950">{item.title}</p>
+                <p className="text-sm leading-6 text-zinc-600">{item.description}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>

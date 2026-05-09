@@ -275,13 +275,13 @@ export function TaskCreateForm({
     ),
   );
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(() =>
-    variant === "sds" ||
     Boolean(
-      initialValues?.sdsEnabled ||
-        initialValues?.sdsVariantId ||
-        initialValues?.sdsParentProductId ||
-        initialValues?.sdsPrototypeGroupId ||
-        initialValues?.sdsLayerId ||
+      (variant !== "sds" &&
+        (initialValues?.sdsEnabled ||
+          initialValues?.sdsVariantId ||
+          initialValues?.sdsParentProductId ||
+          initialValues?.sdsPrototypeGroupId ||
+          initialValues?.sdsLayerId)) ||
         initialValues?.sceneCategory ||
         initialValues?.sceneStyle ||
         initialValues?.backgroundTone ||
@@ -567,7 +567,7 @@ export function TaskCreateForm({
     <Card
       className={
         variant === "sds"
-          ? "mx-auto max-w-7xl rounded-[2rem] border-white/70 bg-white/78 p-8 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur"
+          ? "rounded-lg border-zinc-200 bg-white p-5 shadow-sm"
           : "mx-auto max-w-3xl p-8"
       }
     >
@@ -665,7 +665,7 @@ export function TaskCreateForm({
           <h1
             className={
               variant === "sds"
-                ? "font-serif text-4xl tracking-[-0.04em] text-zinc-950"
+                ? "text-xl font-semibold tracking-tight text-zinc-950"
                 : "text-3xl font-semibold tracking-tight text-zinc-950"
             }
           >
@@ -756,7 +756,9 @@ export function TaskCreateForm({
             </div>
             <textarea
               aria-label="图片链接"
-              className="min-h-40 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className={`w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 ${
+                variant === "sds" ? "min-h-28" : "min-h-40"
+              }`}
               placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg"}
               {...imageUrlsRegistration}
               ref={(element) => {
@@ -813,7 +815,8 @@ export function TaskCreateForm({
               >
                 <input
                   aria-label={platform.label}
-                  className="h-4 w-4 rounded border-zinc-300"
+                  className="h-4 w-4 rounded border-zinc-300 accent-zinc-950"
+                  defaultChecked={selectedPlatforms?.includes(platform.value)}
                   type="checkbox"
                   value={platform.value}
                   {...register("platforms")}

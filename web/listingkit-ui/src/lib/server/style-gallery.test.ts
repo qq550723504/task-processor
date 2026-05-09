@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isAIGeneratedGallerySource } from "./shein-style-gallery";
+import { isAIGeneratedGallerySource } from "./style-gallery";
 
 describe("isAIGeneratedGallerySource", () => {
   it("keeps only AI generated style image sources", () => {

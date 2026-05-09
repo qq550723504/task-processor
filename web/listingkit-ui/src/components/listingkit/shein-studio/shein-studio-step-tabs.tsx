@@ -37,12 +37,15 @@ const steps: Array<{
 export function SheinStudioStepTabs({
   activeStep,
   hasSelection,
+  layout = "studio",
 }: {
   activeStep: SheinStudioStepKey;
   hasSelection: boolean;
+  layout?: "compact" | "studio";
 }) {
   const pathname = usePathname();
   const searchParams = useLiveSearchParams();
+  const compact = layout === "compact";
 
   function hrefForStep(step: SheinStudioStepKey) {
     const params = sanitizedNavigationSearchParams(searchParams);
@@ -51,7 +54,13 @@ export function SheinStudioStepTabs({
   }
 
   return (
-    <nav className="grid gap-3 rounded-[1.75rem] border border-white/70 bg-white/82 p-3 shadow-sm backdrop-blur md:grid-cols-4">
+    <nav
+      className={
+        compact
+          ? "grid gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm md:grid-cols-4"
+          : "grid gap-3 rounded-[1.75rem] border border-white/70 bg-white/82 p-3 shadow-sm backdrop-blur md:grid-cols-4"
+      }
+    >
       {steps.map((step) => {
         const active = step.key === activeStep;
         const locked = step.key !== "select" && !hasSelection;
@@ -61,7 +70,9 @@ export function SheinStudioStepTabs({
             aria-disabled={locked}
             aria-current={active ? "step" : undefined}
             className={[
-              "rounded-[1.25rem] border px-4 py-3 transition",
+              compact
+                ? "rounded-lg border px-3 py-2 transition"
+                : "rounded-[1.25rem] border px-4 py-3 transition",
               active
                 ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
                 : "border-zinc-200 bg-white text-zinc-900 hover:border-zinc-400",
@@ -79,7 +90,7 @@ export function SheinStudioStepTabs({
             <div className="text-sm font-semibold">{step.label}</div>
             <div
               className={[
-                "mt-1 text-xs leading-5",
+                compact ? "mt-0.5 text-xs leading-5" : "mt-1 text-xs leading-5",
                 active ? "text-zinc-300" : "text-zinc-500",
               ].join(" ")}
             >

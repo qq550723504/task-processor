@@ -7,10 +7,10 @@ import {
 } from "@/app/api/listing-kits/proxy-url";
 import { readSheinStudioStorage } from "@/lib/server/shein-studio-storage";
 import type {
-  SheinStyleGalleryItem,
-  SheinStyleGalleryResponse,
-  SheinStyleGallerySource,
-} from "@/lib/types/shein-style-gallery";
+  StyleGalleryItem,
+  StyleGalleryResponse,
+  StyleGallerySource,
+} from "@/lib/types/style-gallery";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
@@ -27,7 +27,7 @@ export function getGalleryImageRoots() {
   };
 }
 
-export async function buildSheinStyleGallery(): Promise<SheinStyleGalleryResponse> {
+export async function buildStyleGallery(): Promise<StyleGalleryResponse> {
   const [databaseItems, storedItems, legacyItems, publishedItems] = await Promise.all([
     listDatabaseStudioItems(),
     listStoredStudioItems(),
@@ -53,7 +53,7 @@ export async function buildSheinStyleGallery(): Promise<SheinStyleGalleryRespons
   };
 }
 
-export function isAIGeneratedGallerySource(source: SheinStyleGallerySource) {
+export function isAIGeneratedGallerySource(source: StyleGallerySource) {
   return source === "studio_saved" || source === "studio_legacy" || source === "published_input";
 }
 
@@ -73,14 +73,14 @@ export function resolveGalleryImagePath(source: string, segments: string[]) {
   return target;
 }
 
-async function listLegacyStudioItems(): Promise<SheinStyleGalleryItem[]> {
+async function listLegacyStudioItems(): Promise<StyleGalleryItem[]> {
   const root = getGalleryImageRoots().legacy;
   const files = await safeListFiles(root);
 
   return files.map((file) => ({
     id: `legacy:${file.name}`,
     title: "Generated style",
-    imageUrl: `/api/shein-studio/gallery/image/legacy/${encodeURIComponent(file.name)}`,
+    imageUrl: `/api/style-gallery/image/legacy/${encodeURIComponent(file.name)}`,
     source: "studio_legacy",
     sourceLabel: "Studio legacy",
     fileName: file.name,
@@ -89,7 +89,7 @@ async function listLegacyStudioItems(): Promise<SheinStyleGalleryItem[]> {
   }));
 }
 
-async function listStoredStudioItems(): Promise<SheinStyleGalleryItem[]> {
+async function listStoredStudioItems(): Promise<StyleGalleryItem[]> {
   const storage = await readSheinStudioStorage();
   const groups = [
     storage.draft
@@ -129,13 +129,13 @@ async function listStoredStudioItems(): Promise<SheinStyleGalleryItem[]> {
           productName: group.productName,
           createdAt: group.updatedAt,
           updatedAt: group.updatedAt,
-        } satisfies SheinStyleGalleryItem,
+        } satisfies StyleGalleryItem,
       ];
     }),
   );
 }
 
-async function listDatabaseStudioItems(): Promise<SheinStyleGalleryItem[]> {
+async function listDatabaseStudioItems(): Promise<StyleGalleryItem[]> {
   try {
     const url = buildListingKitProxyUrl(getListingKitUpstreamBase(), ["studio", "sessions", "gallery"], "limit=240");
     const response = await fetch(url, {
@@ -176,20 +176,20 @@ async function listDatabaseStudioItems(): Promise<SheinStyleGalleryItem[]> {
         taskStatus: item.status,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
-      } satisfies SheinStyleGalleryItem));
+      } satisfies StyleGalleryItem));
   } catch {
     return [];
   }
 }
 
-async function listPublishedInputItems(): Promise<SheinStyleGalleryItem[]> {
+async function listPublishedInputItems(): Promise<StyleGalleryItem[]> {
   const root = getGalleryImageRoots().published;
   const files = await safeListFiles(root, 2);
 
   return files.map((file) => ({
     id: `published:${file.relativePath}`,
     title: "Published input",
-    imageUrl: `/api/shein-studio/gallery/image/published/${file.relativePath
+    imageUrl: `/api/style-gallery/image/published/${file.relativePath
       .split(/[\\/]/)
       .map(encodeURIComponent)
       .join("/")}`,
@@ -236,7 +236,7 @@ async function listImageFiles(root: string, current: string, depth: number): Pro
   return files.flat();
 }
 
-function dedupeItems(items: SheinStyleGalleryItem[]) {
+function dedupeItems(items: StyleGalleryItem[]) {
   const seen = new Set<string>();
   return items.filter((item) => {
     const key = item.imageUrl;
@@ -248,7 +248,7 @@ function dedupeItems(items: SheinStyleGalleryItem[]) {
   });
 }
 
-function compareGalleryItems(a: SheinStyleGalleryItem, b: SheinStyleGalleryItem) {
+function compareGalleryItems(a: StyleGalleryItem, b: StyleGalleryItem) {
   const left = Date.parse(a.updatedAt ?? a.createdAt ?? "");
   const right = Date.parse(b.updatedAt ?? b.createdAt ?? "");
   return (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left);

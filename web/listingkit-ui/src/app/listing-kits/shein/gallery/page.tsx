@@ -1,9 +1,5 @@
-import { SheinStyleGalleryPage } from "@/components/listingkit/shein-studio/shein-style-gallery-page";
-import { buildSheinStyleGallery } from "@/lib/server/shein-style-gallery";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function ListingKitSheinGalleryRoute() {
-  const gallery = await buildSheinStyleGallery();
-  return <SheinStyleGalleryPage initialGallery={gallery} />;
+export default function ListingKitSheinGalleryRoute() {
+  redirect("/listing-kits/style-gallery");
 }

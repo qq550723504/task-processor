@@ -178,50 +178,35 @@ export function SDSProductBrowser({
   const pickerOpen = Boolean(pickerProductId);
 
   return (
-    <Card className="w-full max-w-7xl overflow-hidden rounded-[2rem] border-white/70 bg-white/75 p-0 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur">
-      <div className="space-y-6 p-6 lg:p-8">
-        <div className="grid gap-5 rounded-[1.75rem] border border-zinc-200/80 bg-[linear-gradient(135deg,_rgba(250,250,249,0.98),_rgba(244,244,245,0.92))] px-5 py-5 lg:grid-cols-[1.2fr_0.8fr] lg:px-6">
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700">
-            SDS 商品库
-          </p>
-            <h2 className="font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950">
-              先选择 SDS 底版商品，再锁定具体子 SKU。
+    <Card className="min-w-0 w-full overflow-hidden rounded-lg border-zinc-200 bg-white p-0 shadow-sm">
+      <div className="space-y-4 p-4 lg:p-5">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+              1. SDS 商品库
+            </p>
+            <h2 className="text-xl font-semibold tracking-tight text-zinc-950">
+              选择底版商品和子 SKU
             </h2>
-            <p className="max-w-2xl text-sm leading-7 text-zinc-600">
-              可以按发货地、分类、重量、生产周期和 SKU 搜索筛选商品。选择变体后，下方生成设置会自动带入模板信息。
+            <p className="max-w-2xl text-sm leading-6 text-zinc-600">
+              按发货地、分类、重量、生产周期和 SKU 搜索。选择变体后会进入下一步生成流程。
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                当前发货地
-              </div>
-              <div className="mt-2 text-lg font-semibold text-zinc-950">
-                {activeShipmentAreaLabel}
-              </div>
-            </div>
-            <div className="rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                商品数量
-              </div>
-              <div className="mt-2 text-lg font-semibold text-zinc-950">
-                {products.data?.totalCount ?? 0}
-              </div>
-            </div>
-            <div className="rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                已选变体
-              </div>
-              <div className="mt-2 text-lg font-semibold text-zinc-950">
-                {selectedVariantId > 0 ? selectedVariantId : "未选择"}
-              </div>
-            </div>
+          <div className="flex flex-wrap gap-2 text-sm">
+            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-700">
+              {activeShipmentAreaLabel}
+            </span>
+            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-700">
+              {products.data?.totalCount ?? 0} 个商品
+            </span>
+            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-700">
+              变体 {selectedVariantId > 0 ? selectedVariantId : "未选择"}
+            </span>
           </div>
         </div>
 
         <form
-          className="flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-zinc-200/80 bg-white px-4 py-4 shadow-sm"
+          className="grid gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 shadow-sm md:grid-cols-2 xl:grid-cols-6"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             const formData = new FormData(event.currentTarget);
@@ -229,7 +214,7 @@ export function SDSProductBrowser({
           }}
         >
           <select
-            className="h-12 min-w-[180px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[200px]"
+            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
             disabled={shipmentAreas.isLoading || availableShipmentAreas.length === 0}
             defaultValue={shipmentArea}
             key={shipmentArea}
@@ -263,7 +248,7 @@ export function SDSProductBrowser({
             ))}
           </select>
           <select
-            className="h-12 min-w-[180px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[220px]"
+            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
             disabled={categories.isLoading}
             key={`${shipmentArea}:${categoryId ?? 0}`}
             name="categoryId"
@@ -297,7 +282,7 @@ export function SDSProductBrowser({
             ))}
           </select>
           <select
-            className="h-12 min-w-[160px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[180px]"
+            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
             defaultValue={sortValue}
             key={`sort:${sortValue || "default"}`}
             name="sort"
@@ -313,7 +298,7 @@ export function SDSProductBrowser({
             <option value="min_price:desc">价格从高到低</option>
           </select>
           <select
-            className="h-12 min-w-[150px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[170px]"
+            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
             defaultValue={weightBand}
             key={`weight:${weightBand || "all"}`}
             name="weightBand"
@@ -331,7 +316,7 @@ export function SDSProductBrowser({
             ))}
           </select>
           <select
-            className="h-12 min-w-[150px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[190px]"
+            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
             defaultValue={cycleBand}
             key={`cycle:${cycleBand || "all"}`}
             name="cycleBand"
@@ -349,20 +334,20 @@ export function SDSProductBrowser({
             ))}
           </select>
           <input
-            className="h-12 min-w-[220px] flex-[2_1_280px] rounded-2xl border border-zinc-200 bg-zinc-50 px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
+            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:col-span-2 xl:col-span-5"
             defaultValue={queryKeyword}
             key={queryKeyword}
             name="keyword"
             placeholder="按商品名或 SKU 搜索"
           />
-          <div className="shrink-0">
+          <div>
             <Button type="submit">搜索</Button>
           </div>
         </form>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           <button
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
               onSaleOnly
                 ? "border-emerald-800 bg-emerald-900 text-white"
                 : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
@@ -378,7 +363,7 @@ export function SDSProductBrowser({
             只看在售
           </button>
           <button
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
               hotSellOnly
                 ? "border-rose-800 bg-rose-900 text-white"
                 : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
@@ -446,7 +431,7 @@ export function SDSProductBrowser({
             </div>
           ) : (
             <>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {(products.data?.items ?? []).map((product) => {
                   const isSelected =
                     selectedProductId === product.id || pickerProductId === product.id;

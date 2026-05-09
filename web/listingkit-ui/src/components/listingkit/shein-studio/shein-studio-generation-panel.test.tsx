@@ -28,6 +28,7 @@ vi.mock("next/image", () => ({
 function renderPanel(options?: {
   imageStrategy?: "ai_generated" | "sds_official" | "hybrid";
   availableSdsImages?: SheinStudioSelectableSDSImage[];
+  styleCount?: string;
 }) {
   return render(
     <SheinStudioGenerationPanel
@@ -68,7 +69,7 @@ function renderPanel(options?: {
       setStyleCount={() => undefined}
       setTransparentBackground={() => undefined}
       sheinStoreId="869"
-      styleCount="1"
+      styleCount={options?.styleCount ?? "1"}
       transparentBackground={false}
     />,
   );
@@ -158,5 +159,17 @@ describe("SheinStudioGenerationPanel", () => {
       screen.getByText("当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "先选择商品" })).toBeDisabled();
+  });
+
+  it("hides variation intensity when generating one style", () => {
+    renderPanel({ styleCount: "1" });
+
+    expect(screen.queryByText("变化强度")).not.toBeInTheDocument();
+  });
+
+  it("shows variation intensity when generating multiple styles", () => {
+    renderPanel({ styleCount: "2" });
+
+    expect(screen.getByText("变化强度")).toBeInTheDocument();
   });
 });

@@ -18,16 +18,24 @@ import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
 export function SheinStudioPageShell({
   activeStep,
+  description = "按步骤选择 SDS 商品、生成款式图、审核图片，然后创建 SHEIN 资料确认任务。",
+  eyebrow = "SHEIN 工作室",
   initialKeyword,
   initialPage,
   initialShipmentArea,
+  layout = "studio",
   selection,
+  title = "从 SDS 商品生成 SHEIN 上架任务",
 }: {
   activeStep?: SheinStudioStepKey;
+  description?: string;
+  eyebrow?: string;
   initialKeyword?: string;
   initialPage?: number;
   initialShipmentArea?: string;
+  layout?: "compact" | "studio";
   selection?: SDSProductVariantSelection;
+  title?: string;
 } = {}) {
   const searchParams = useLiveSearchParams();
   const liveKeyword = searchParams.get("keyword") ?? initialKeyword ?? "";
@@ -48,6 +56,7 @@ export function SheinStudioPageShell({
     liveSelection?.variants?.map((variant) => variant.variantId).join(",") ??
     "";
   const workbenchKey = `${liveSelection?.variantId ?? 0}:${liveSelection?.prototypeGroupId ?? 0}:${liveSelection?.layerId ?? ""}:${selectedVariantKey}`;
+  const compact = layout === "compact";
   const stepCopy = {
     select: {
       title: "先选择要处理的 SDS 商品",
@@ -72,44 +81,89 @@ export function SheinStudioPageShell({
   }[visibleStep];
 
   return (
-    <div className="relative isolate flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(251,146,60,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.14),_transparent_24%),linear-gradient(180deg,_#fffdf9_0%,_#f7f3ee_46%,_#efebe4_100%)]">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(24,24,27,0.032)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.032)_1px,transparent_1px)] bg-[size:30px_30px] opacity-40" />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-10 lg:px-10">
-        <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/72 px-5 py-5 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur md:grid-cols-[1.25fr_0.75fr] lg:px-6">
+    <div
+      className={
+        compact
+          ? "flex-1 overflow-hidden bg-zinc-50"
+          : "relative isolate flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(251,146,60,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.14),_transparent_24%),linear-gradient(180deg,_#fffdf9_0%,_#f7f3ee_46%,_#efebe4_100%)]"
+      }
+    >
+      {compact ? null : (
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(24,24,27,0.032)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.032)_1px,transparent_1px)] bg-[size:30px_30px] opacity-40" />
+      )}
+      <div
+        className={
+          compact
+            ? "mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-5 px-5 py-6 lg:px-8"
+            : "relative mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-10 lg:px-10"
+        }
+      >
+        <section
+          className={
+            compact
+              ? "grid gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(28rem,auto)] lg:items-center"
+              : "grid gap-5 rounded-[2rem] border border-white/70 bg-white/72 px-5 py-5 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur md:grid-cols-[1.25fr_0.75fr] lg:px-6"
+          }
+        >
           <div className="space-y-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-rose-700">
-              SHEIN 工作室
+            <p
+              className={
+                compact
+                  ? "text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700"
+                  : "text-[11px] font-semibold uppercase tracking-[0.34em] text-rose-700"
+              }
+            >
+              {eyebrow}
             </p>
-            <div className="space-y-2">
-              <h1 className="max-w-3xl font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950 md:text-4xl">
-                从 SDS 商品生成 SHEIN 上架任务
+            <div className={compact ? "space-y-1" : "space-y-2"}>
+              <h1
+                className={
+                  compact
+                    ? "text-2xl font-semibold tracking-tight text-zinc-950"
+                    : "max-w-3xl font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950 md:text-4xl"
+                }
+              >
+                {title}
               </h1>
               <p className="max-w-2xl text-sm leading-7 text-zinc-600 md:text-base">
-                按步骤选择 SDS 商品、生成款式图、审核图片，然后创建 SHEIN
-                资料确认任务。
+                {description}
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/listing-kits/shein/gallery"
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
-                prefetch={false}
-              >
-                查看款式图库
-              </Link>
-              <Link
-                href="/listing-kits?platform=shein"
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
-                prefetch={false}
-              >
-                查看 SHEIN 任务
-              </Link>
-            </div>
+            {compact ? null : (
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/listing-kits/style-gallery"
+                  className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+                  prefetch={false}
+                >
+                  查看款式图库
+                </Link>
+                <Link
+                  href="/listing-kits?platform=shein"
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+                  prefetch={false}
+                >
+                  查看 SHEIN 任务
+                </Link>
+              </div>
+            )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-            <MetricCard label="发货地" value={liveShipmentArea} dark />
+          <div
+            className={
+              compact
+                ? "grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[430px]"
+                : "grid gap-3 sm:grid-cols-3 md:grid-cols-1"
+            }
+          >
             <MetricCard
+              compact={compact}
+              label="发货地"
+              value={liveShipmentArea}
+              dark
+            />
+            <MetricCard
+              compact={compact}
               label="变体数"
               value={
                 liveSelection?.selectedVariantIds?.length
@@ -122,6 +176,7 @@ export function SheinStudioPageShell({
               }
             />
             <MetricCard
+              compact={compact}
               label="印刷区域"
               value={
                 liveSelection?.printableWidth && liveSelection?.printableHeight
@@ -135,19 +190,22 @@ export function SheinStudioPageShell({
         <SheinStudioStepTabs
           activeStep={visibleStep}
           hasSelection={hasSelection}
+          layout={layout}
         />
 
-        <section className="rounded-[1.75rem] border border-white/70 bg-white/78 p-5 shadow-[0_18px_60px_rgba(24,24,27,0.06)] backdrop-blur">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-            当前步骤
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-zinc-950">
-            {stepCopy.title}
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-7 text-zinc-600">
-            {stepCopy.description}
-          </p>
-        </section>
+        {compact ? null : (
+          <section className="rounded-[1.75rem] border border-white/70 bg-white/78 p-5 shadow-[0_18px_60px_rgba(24,24,27,0.06)] backdrop-blur">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              当前步骤
+            </p>
+            <h2 className="mt-2 text-lg font-semibold text-zinc-950">
+              {stepCopy.title}
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-zinc-600">
+              {stepCopy.description}
+            </p>
+          </section>
+        )}
 
         <div className="space-y-6">
           {visibleStep === "select" ? (
@@ -174,12 +232,23 @@ export function SheinStudioPageShell({
 function MetricCard({
   label,
   value,
+  compact = false,
   dark = false,
 }: {
   label: string;
   value: string;
+  compact?: boolean;
   dark?: boolean;
 }) {
+  if (compact) {
+    return (
+      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+        <div className="text-xs text-zinc-500">{label}</div>
+        <div className="mt-1 font-semibold text-zinc-950">{value}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={
