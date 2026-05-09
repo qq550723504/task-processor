@@ -87,6 +87,7 @@ export type ListingKitTaskResultData = {
   child_tasks?: ListingKitChildTask[];
   workflow_stages?: ListingKitWorkflowStage[];
   workflow_issues?: ListingKitWorkflowIssue[];
+  canonical_product?: CanonicalProduct;
   created_at?: string;
   updated_at?: string;
 };
@@ -251,4 +252,53 @@ export type CreateListingKitTaskResponse = {
 
 export type UploadImagesResponse = {
   image_urls?: string[];
+};
+
+export type CanonicalFieldTrace = {
+  sources?: Array<{
+    type?: string;
+    detail?: string;
+    value?: string;
+  }>;
+  confidence?: number;
+  needs_review?: boolean;
+  review_reason?: string;
+};
+
+export type CanonicalAttribute = {
+  value?: string;
+  unit?: string;
+  trace?: CanonicalFieldTrace;
+};
+
+export type CanonicalProduct = {
+  title?: string;
+  brand?: string;
+  description?: string;
+  category_path?: string[];
+  images?: Array<{
+    url?: string;
+    alt?: string;
+    role?: string;
+  }>;
+  attributes?: Record<string, CanonicalAttribute>;
+  specifications?: {
+    dimensions?: Record<string, unknown>;
+    weight?: Record<string, unknown>;
+    package?: Record<string, unknown>;
+    technical?: Record<string, string>;
+    [key: string]: unknown;
+  };
+  variants?: Array<{
+    sku?: string;
+    title?: string;
+    price?: Record<string, unknown>;
+    stock?: number;
+    attributes?: Record<string, CanonicalAttribute>;
+    images?: Array<{ url?: string; alt?: string; role?: string }>;
+    [key: string]: unknown;
+  }>;
+  field_traces?: Record<string, CanonicalFieldTrace>;
+  needs_review?: boolean;
+  [key: string]: unknown;
 };

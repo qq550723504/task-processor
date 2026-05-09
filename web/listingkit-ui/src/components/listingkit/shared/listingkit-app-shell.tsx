@@ -24,6 +24,12 @@ export function ListingKitAppShell({
             >
               返回首页
             </Link>
+            <Link
+              href="/listing-kits/canonical-products"
+              className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+            >
+              Canonical Products
+            </Link>
             <p className="text-sm text-zinc-500">
               当前页面
               <span className="ml-2 rounded-full bg-zinc-100 px-2.5 py-1 font-mono text-xs text-zinc-700">
