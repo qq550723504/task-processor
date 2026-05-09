@@ -37,6 +37,15 @@ func (s *stubSequentialSaleLLM) GetDefaultModel() string {
 	return "test"
 }
 
+func containsReviewNote(notes []string, needle string) bool {
+	for _, note := range notes {
+		if strings.Contains(note, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSaleAttributeResolverKeepsChosenSourceDimensionOrder(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
@@ -460,14 +469,20 @@ func TestSaleAttributeResolverUsesStructuredColorInsteadOfAIStyleForPrimary(t *t
 			}}
 			return resp, nil
 		},
-	}, nil)
+	}, &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","reasons":["structured color is the stable SDS sale dimension"]}`,
+		`{"primary_source_dimension":"Color","primary_attribute_id":1001184,"reasons":["SHEIN marks Style Type as the main sale attribute; map SDS Color as its stable surrogate."]}`,
+	}})
 
 	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
-	if resolution.PrimaryAttributeID != 27 {
-		t.Fatalf("primary attribute id = %d, want Color 27", resolution.PrimaryAttributeID)
+	if resolution.PrimaryAttributeID != 1001184 {
+		t.Fatalf("primary attribute id = %d, want Style Type 1001184", resolution.PrimaryAttributeID)
 	}
 	if resolution.PrimarySourceDimension != "Color" {
 		t.Fatalf("primary source dimension = %q, want Color", resolution.PrimarySourceDimension)
+	}
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
 	}
 	if _, ok := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic")]; ok {
 		t.Fatalf("ai_style assignment should not be created: %+v", resolution.skcValueAssignments)
@@ -559,6 +574,249 @@ func TestSaleAttributeResolverUsesLLMToMapColorAsRequiredStyleSurrogate(t *testi
 	}
 	if assignment := resolution.skcValueAssignments[normalizeText("White")]; assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9001 {
 		t.Fatalf("color assignment = %+v, want custom value 9001", assignment)
+	}
+}
+
+func TestSaleAttributeResolverUsesTemplateAttributeIDOrderForLLMMapping(t *testing.T) {
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"white"}},
+			{Name: "Size", Values: []string{"40x60cm", "50x80cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "40x60cm"}}},
+			{SKU: "SKU-WHITE-50", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "50x80cm"}}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	llm := &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"Size","secondary_source_dimension":"Color","reasons":["fallback source ordering"]}`,
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","primary_attribute_id":1001184,"secondary_attribute_id":87,"reasons":["Use the SHEIN attribute_id order and map a structured SDS dimension to the first template."]}`,
+	}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeID: []int{1001184, 87},
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeStatus:   3,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+							{AttributeValueID: 11115576, AttributeValue: "50x80cm", AttributeValueEn: "50x80cm"},
+						},
+					},
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "简约款", AttributeValueEn: "Minimal"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeID != 1001184 {
+				t.Fatalf("custom validation attribute id = %d, want first template", attributeID)
+			}
+			if attributeValue != "white" {
+				t.Fatalf("custom validation value = %q, want LLM-selected source value", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.PrimaryAttributeID != 1001184 || resolution.PrimarySourceDimension != "Color" {
+		t.Fatalf("primary = %d/%q, want first SHEIN attribute_id order mapped by LLM", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
+	}
+	if resolution.SecondaryAttributeID != 87 || resolution.SecondarySourceDimension != "Size" {
+		t.Fatalf("secondary = %d/%q, want second SHEIN attribute_id order", resolution.SecondaryAttributeID, resolution.SecondarySourceDimension)
+	}
+	if resolution.Source != "llm_sale_attribute_mapping" {
+		t.Fatalf("source = %q, want llm_sale_attribute_mapping", resolution.Source)
+	}
+}
+
+func TestSaleAttributeResolverBlocksNonFirstTemplateAsPrimary(t *testing.T) {
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"white"}},
+			{Name: "Size", Values: []string{"40x60cm", "50x80cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "40x60cm"}}},
+			{SKU: "SKU-WHITE-50", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "50x80cm"}}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	llm := &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"Size","secondary_source_dimension":"Color","reasons":["source fallback"]}`,
+		`{"primary_source_dimension":"Size","secondary_source_dimension":"Color","primary_attribute_id":87,"secondary_attribute_id":27,"reasons":["wrongly preferred the most variant-distinguishing source"]}`,
+	}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeID: []int{1001184, 87, 27},
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+							{AttributeValueID: 11115576, AttributeValue: "50x80cm", AttributeValueEn: "50x80cm"},
+						},
+					},
+					{
+						AttributeID:       27,
+						AttributeName:     "颜色",
+						AttributeNameEn:   "Color",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 739, AttributeValue: "白色", AttributeValueEn: "White"},
+						},
+					},
+				},
+			}},
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.PrimaryAttributeID == 87 {
+		t.Fatalf("primary attribute id = %d, want non-first SHEIN template blocked", resolution.PrimaryAttributeID)
+	}
+	if resolution.Status != "partial" {
+		t.Fatalf("status = %q, want partial for missing first template mapping", resolution.Status)
+	}
+	if !containsReviewNote(resolution.ReviewNotes, "需按模板顺序") {
+		t.Fatalf("review notes = %+v, want template order blocking note", resolution.ReviewNotes)
+	}
+}
+
+func TestSaleAttributeResolverTreatsAttributeLabelOneAsAuthoritativePrimary(t *testing.T) {
+	ordered := orderSaleScopeAttributes([]sheinattribute.AttributeInfo{
+		{
+			AttributeID:     87,
+			AttributeName:   "尺寸",
+			AttributeNameEn: "Size",
+			AttributeType:   1,
+			SKCScope:        boolPointer(true),
+		},
+		{
+			AttributeID:     27,
+			AttributeName:   "颜色",
+			AttributeNameEn: "Color",
+			AttributeType:   1,
+			SKCScope:        boolPointer(true),
+		},
+		{
+			AttributeID:     1001184,
+			AttributeName:   "款式",
+			AttributeNameEn: "Style Type",
+			AttributeType:   1,
+			AttributeLabel:  1,
+		},
+	}, []int{87, 27, 1001184})
+	if len(ordered) == 0 || ordered[0].AttributeID != 1001184 {
+		t.Fatalf("first sale attribute = %+v, want attribute_label=1 Style Type first", ordered)
+	}
+
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"white"}},
+			{Name: "Size", Values: []string{"40x60cm", "50x80cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "40x60cm"}}},
+			{SKU: "SKU-WHITE-50", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "50x80cm"}}},
+		},
+	}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeID: []int{87, 27, 1001184},
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeStatus:   3,
+						SKCScope:          boolPointer(true),
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+							{AttributeValueID: 11115576, AttributeValue: "50x80cm", AttributeValueEn: "50x80cm"},
+						},
+					},
+					{
+						AttributeID:       27,
+						AttributeName:     "颜色",
+						AttributeNameEn:   "Color",
+						AttributeType:     1,
+						SKCScope:          boolPointer(true),
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 739, AttributeValue: "白色", AttributeValueEn: "White"},
+						},
+					},
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "简约款", AttributeValueEn: "Minimal"},
+						},
+					},
+				},
+			}},
+		},
+	}, nil)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, &Package{CategoryID: 12014, SpuName: "Floor mat"})
+	if resolution.PrimaryAttributeID != 0 {
+		t.Fatalf("primary attribute id = %d, want no fallback primary when attribute_label=1 Style Type is unmapped", resolution.PrimaryAttributeID)
+	}
+	if resolution.Status != "partial" {
+		t.Fatalf("status = %q, want partial", resolution.Status)
+	}
+	if !containsReviewNote(resolution.ReviewNotes, "Style Type") {
+		t.Fatalf("review notes = %+v, want Style Type primary note", resolution.ReviewNotes)
 	}
 }
 
@@ -858,7 +1116,7 @@ func TestSaleAttributeResolverPromotesRequiredMultiValueColorOverEarlierStyleTyp
 						AttributeName:     "款式",
 						AttributeNameEn:   "Style Type",
 						AttributeType:     1,
-						AttributeLabel:    1,
+						AttributeLabel:    0,
 						AttributeInputNum: 1,
 						AttributeValueInfoList: []sheinattribute.AttributeValue{
 							{AttributeValueID: 886, AttributeValue: "默认", AttributeValueEn: "Default"},
@@ -921,7 +1179,7 @@ func TestSaleAttributeResolverPromotesImportantSingleColorOverEarlierAIStyleType
 						AttributeName:     "款式",
 						AttributeNameEn:   "Style Type",
 						AttributeType:     1,
-						AttributeLabel:    1,
+						AttributeLabel:    0,
 						AttributeInputNum: 1,
 						AttributeValueInfoList: []sheinattribute.AttributeValue{
 							{AttributeValueID: 901, AttributeValue: "国旗图案", AttributeValueEn: "National flag graphic"},

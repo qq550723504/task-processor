@@ -66,7 +66,7 @@ func saleAttributeSourceDimensions(dimensions []SourceVariantDimension) []Source
 	}
 	result := make([]SourceVariantDimension, 0, len(dimensions))
 	for _, dimension := range dimensions {
-		if isAIStyleSourceDimension(dimension.Name) {
+		if isAIStyleSourceDimension(dimension.Name) || isTechnicalSaleSourceDimension(dimension.Name) {
 			continue
 		}
 		result = append(result, dimension)

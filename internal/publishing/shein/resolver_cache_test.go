@@ -95,12 +95,20 @@ func TestCachedCategoryResolverCanRememberManualResolutionForSourceCategory(t *t
 		MatchedPath:    []string{"Home", "Decor", "Cushion Covers"},
 	})
 
-	next := resolver.Resolve(&BuildRequest{SheinStoreID: 42}, canonical, &Package{SpuName: "Envelope Pillow Cover"})
+	next := resolver.Resolve(&BuildRequest{SheinStoreID: 42, TargetCategoryHint: "8218"}, canonical, &Package{SpuName: "Envelope Pillow Cover"})
 	if inner.calls != 0 {
 		t.Fatalf("inner calls = %d, want 0", inner.calls)
 	}
 	if next.CategoryID != 8218 {
 		t.Fatalf("category id = %d, want 8218", next.CategoryID)
+	}
+
+	withoutHint := resolver.Resolve(&BuildRequest{SheinStoreID: 42}, canonical, &Package{SpuName: "Envelope Pillow Cover"})
+	if inner.calls != 1 {
+		t.Fatalf("inner calls without target hint = %d, want 1", inner.calls)
+	}
+	if withoutHint.CategoryID != 9999 {
+		t.Fatalf("category id without target hint = %d, want live resolver result", withoutHint.CategoryID)
 	}
 }
 

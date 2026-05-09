@@ -65,8 +65,9 @@ func buildSourceDimensionSelectionPrompt(dimensions []SourceVariantDimension) st
 		dimensionBuilder.WriteString(fmt.Sprintf("- name=%q distinct=%d values=%q\n", dimension.Name, dimension.DistinctCount, strings.Join(dimension.Values, " | ")))
 	}
 	return renderSheinSaleAttributePrompt(prompt.KSheinSaleAttributeSourceDimension, `You are choosing source sales dimensions for SHEIN draft grouping.
-Choose exactly one primary_source_dimension for SKC grouping and optionally one secondary_source_dimension for SKU grouping.
-Do not rename source dimensions. Prefer the most product-defining dimension as primary.
+Choose exactly one preliminary primary_source_dimension and optionally one preliminary secondary_source_dimension from the source data.
+This is only a source-data fallback before the live SHEIN template is known. Do not infer the final SHEIN primary sale attribute here.
+Do not rename source dimensions. Prefer stable, structured, non-technical source dimensions over prompt text or identifiers.
 Return JSON only with keys primary_source_dimension, secondary_source_dimension, reasons.
 
 Source dimensions:

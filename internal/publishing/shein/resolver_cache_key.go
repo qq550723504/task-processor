@@ -22,12 +22,20 @@ func shortResolutionCacheKey(key string) string {
 
 func categoryResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
 	payload := map[string]any{
-		"version":          2,
-		"store_id":         sheinStoreID(req),
-		"category_path":    normalizedSourceCategoryPath(canonical, pkg),
-		"product_identity": stableProductIdentity(canonical, pkg),
+		"version":              3,
+		"store_id":             sheinStoreID(req),
+		"target_category_hint": normalizeText(targetCategoryHint(req)),
+		"category_path":        normalizedSourceCategoryPath(canonical, pkg),
+		"product_identity":     stableProductIdentity(canonical, pkg),
 	}
 	return hashCachePayload(payload)
+}
+
+func targetCategoryHint(req *BuildRequest) string {
+	if req == nil {
+		return ""
+	}
+	return req.TargetCategoryHint
 }
 
 func attributeResolverCacheKey(req *BuildRequest, pkg *Package) string {
@@ -49,7 +57,7 @@ func saleAttributeResolverCacheKey(req *BuildRequest, canonical *canonical.Produ
 		return ""
 	}
 	payload := map[string]any{
-		"version":           11,
+		"version":           14,
 		"store_id":          sheinStoreID(req),
 		"category_id":       categoryID(pkg),
 		"category_id_list":  append([]int(nil), pkg.CategoryIDList...),

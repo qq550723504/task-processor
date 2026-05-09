@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strconv"
@@ -67,7 +68,8 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 		log.WithField("category_id", resolution.CategoryID).Warn("SHEIN sale attribute templates are empty")
 		return resolution
 	}
-	saleAttributes := filterSaleScopeAttributes(templates.Data[0].AttributeInfos)
+	template := templates.Data[0]
+	saleAttributes := orderSaleScopeAttributes(filterSaleScopeAttributes(template.AttributeInfos), template.AttributeID)
 	index := newTemplateIndex(saleAttributes)
 	log.WithFields(logrus.Fields{
 		"category_id":          resolution.CategoryID,
@@ -92,12 +94,18 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 		primaryCandidate = orderedPrimary
 		secondaryCandidate = orderedSecondary
 	}
-	blockPromptDerivedAIStyleFallback := false
+	blockUnsafePrimaryFallback := false
 	if shouldSelectSaleAttributeMappingWithLLM(primaryCandidate, sourceDimensions, saleAttributes) {
 		mappingDimensions := saleAttributeMappingSourceDimensions(sourceDimensions)
 		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, mappingDimensions, saleAttributes); err == nil && selection != nil {
 			llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(candidates, selection, sourceDimensions, saleAttributes)
-			if shouldUseLLMSaleAttributeMapping(primaryCandidate, llmPrimary, saleAttributes) {
+			if selectedCandidateMissesPrimarySaleTemplate(llmPrimary, saleAttributes) {
+				candidates = augmentedCandidates
+				resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes))
+				blockUnsafePrimaryFallback = true
+				primaryCandidate = nil
+				secondaryCandidate = nil
+			} else if shouldUseLLMSaleAttributeMapping(primaryCandidate, llmPrimary, saleAttributes) {
 				candidates = augmentedCandidates
 				primaryCandidate, secondaryCandidate = llmPrimary, llmSecondary
 				resolution.Source = "llm_sale_attribute_mapping"
@@ -105,14 +113,24 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 			}
 		}
 	}
+	if hasMarkedPrimarySaleTemplate(saleAttributes) && selectedCandidateMissesPrimarySaleTemplate(primaryCandidate, saleAttributes) {
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(primaryCandidate, saleAttributes))
+		blockUnsafePrimaryFallback = true
+		primaryCandidate = nil
+		secondaryCandidate = nil
+	}
+	if hasMarkedPrimarySaleTemplate(saleAttributes) && primaryCandidate == nil && len(candidates) > 0 {
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(nil, saleAttributes))
+		blockUnsafePrimaryFallback = true
+	}
 	if shouldBlockPromptDerivedAIStylePrimary(primaryCandidate, sourceDimensions) && resolution.Source != "llm_sale_attribute_mapping" {
-		blockPromptDerivedAIStyleFallback = true
+		blockUnsafePrimaryFallback = true
 		primaryCandidate = nil
 		secondaryCandidate = nil
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN Style Type 不能使用用户设计提示词作为销售属性来源，需使用 SDS 稳定销售维度重新映射")
 	}
 	if primaryCandidate == nil {
-		if !blockPromptDerivedAIStyleFallback {
+		if !blockUnsafePrimaryFallback {
 			primaryCandidate, secondaryCandidate = selectCandidatesBySourceDimensions(
 				candidates,
 				resolution.PrimarySourceDimension,
@@ -266,6 +284,59 @@ func filterSaleScopeAttributes(attributes []sheinattribute.AttributeInfo) []shei
 	return result
 }
 
+func orderSaleScopeAttributes(attributes []sheinattribute.AttributeInfo, orderedIDs []int) []sheinattribute.AttributeInfo {
+	if len(attributes) == 0 {
+		return attributes
+	}
+	if len(orderedIDs) == 0 {
+		ordered := append([]sheinattribute.AttributeInfo(nil), attributes...)
+		sort.SliceStable(ordered, func(i, j int) bool {
+			left := isPrimarySaleTemplateAttribute(ordered[i])
+			right := isPrimarySaleTemplateAttribute(ordered[j])
+			if left != right {
+				return left
+			}
+			return false
+		})
+		return ordered
+	}
+	byID := make(map[int]sheinattribute.AttributeInfo, len(attributes))
+	for _, attr := range attributes {
+		byID[attr.AttributeID] = attr
+	}
+	ordered := make([]sheinattribute.AttributeInfo, 0, len(attributes))
+	seen := make(map[int]struct{}, len(attributes))
+	for _, id := range orderedIDs {
+		attr, ok := byID[id]
+		if !ok {
+			continue
+		}
+		ordered = append(ordered, attr)
+		seen[id] = struct{}{}
+	}
+	for _, attr := range attributes {
+		if _, ok := seen[attr.AttributeID]; ok {
+			continue
+		}
+		ordered = append(ordered, attr)
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := isPrimarySaleTemplateAttribute(ordered[i])
+		right := isPrimarySaleTemplateAttribute(ordered[j])
+		if left != right {
+			return left
+		}
+		return false
+	})
+	return ordered
+}
+
+func isPrimarySaleTemplateAttribute(attr sheinattribute.AttributeInfo) bool {
+	// SHEIN marks the authoritative primary sale attribute with attribute_label=1.
+	// This must outrank template array order, SKC scope, required flags, value fit, and variant distinctness.
+	return attr.AttributeLabel == 1
+}
+
 func matchSelectedCandidates(
 	candidates []saleAttributeCandidate,
 	selection *saleAttributeMappingSelection,
@@ -400,6 +471,30 @@ func selectedCandidateMatchesFirstSaleTemplate(primary *saleAttributeCandidate, 
 	}
 	first := firstSaleAttributeTemplate(attributes)
 	return first != nil && primary.AttributeID == first.AttributeID
+}
+
+func hasMarkedPrimarySaleTemplate(attributes []sheinattribute.AttributeInfo) bool {
+	first := firstSaleAttributeTemplate(attributes)
+	return first != nil && isPrimarySaleTemplateAttribute(*first)
+}
+
+func buildPrimarySaleTemplateMismatchNote(primary *saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) string {
+	first := firstSaleAttributeTemplate(attributes)
+	if first == nil {
+		return "SHEIN 销售属性首个模板未能安全映射，已阻止使用非首位模板属性作为主销售属性"
+	}
+	firstName := firstNonEmpty(first.AttributeNameEn, first.AttributeName, strconv.Itoa(first.AttributeID))
+	if primary == nil {
+		return fmt.Sprintf("SHEIN 销售属性首个模板 %q(ID:%d) 未能安全映射，需确认主销售属性", firstName, first.AttributeID)
+	}
+	primaryName := firstNonEmpty(primary.TemplateName, primary.Match.Name, strconv.Itoa(primary.AttributeID))
+	return fmt.Sprintf(
+		"SHEIN 销售属性需按模板顺序，首个模板 %q(ID:%d) 未能安全映射，已阻止使用 %q(ID:%d) 作为主销售属性",
+		firstName,
+		first.AttributeID,
+		primaryName,
+		primary.AttributeID,
+	)
 }
 
 func selectTemplateOrderedCandidates(candidates []saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) (*saleAttributeCandidate, *saleAttributeCandidate) {
