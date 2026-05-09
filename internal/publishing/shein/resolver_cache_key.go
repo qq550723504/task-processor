@@ -49,7 +49,7 @@ func saleAttributeResolverCacheKey(req *BuildRequest, canonical *canonical.Produ
 		return ""
 	}
 	payload := map[string]any{
-		"version":           10,
+		"version":           11,
 		"store_id":          sheinStoreID(req),
 		"category_id":       categoryID(pkg),
 		"category_id_list":  append([]int(nil), pkg.CategoryIDList...),

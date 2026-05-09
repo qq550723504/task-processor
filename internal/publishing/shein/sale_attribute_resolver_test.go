@@ -444,8 +444,8 @@ func TestSaleAttributeResolverUsesStructuredColorInsteadOfAIStyleForPrimary(t *t
 			if attributeID != 1001184 {
 				t.Fatalf("custom validation attribute id = %d, want Style Type", attributeID)
 			}
-			if attributeValue != "Blue Dog Graphic" {
-				t.Fatalf("custom validation value = %q, want AI style", attributeValue)
+			if attributeValue != "White" {
+				t.Fatalf("custom validation value = %q, want SDS color", attributeValue)
 			}
 			resp := &sheinattribute.ValidateAttributeResponse{}
 			resp.Data.AttributeID = attributeID
@@ -492,7 +492,7 @@ func TestSaleAttributeResolverUsesLLMToMapColorAsRequiredStyleSurrogate(t *testi
 	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
 	llm := &stubSequentialSaleLLM{responses: []string{
 		`{"primary_source_dimension":"ai_style","secondary_source_dimension":"Size","reasons":["source fallback"]}`,
-		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","primary_attribute_id":1001184,"secondary_attribute_id":87,"reasons":["Style Type is required by the platform; Color is the safest stable SDS grouping surrogate."]}`,
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","primary_attribute_id":1001184,"secondary_attribute_id":87,"reasons":["The first SHEIN template requires a stable structured grouping source, and the selected source is the safest surrogate in this product."]}`,
 	}}
 	resolver := NewSaleAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
@@ -552,7 +552,7 @@ func TestSaleAttributeResolverUsesLLMToMapColorAsRequiredStyleSurrogate(t *testi
 		t.Fatalf("source = %q, want llm_sale_attribute_mapping", resolution.Source)
 	}
 	if resolution.PrimaryAttributeID != 1001184 || resolution.PrimarySourceDimension != "Color" {
-		t.Fatalf("primary = %d/%q, want Style Type from Color", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
+		t.Fatalf("primary = %d/%q, want first template mapped from LLM-selected structured source", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
 	}
 	if resolution.SecondaryAttributeID != 87 || resolution.SecondarySourceDimension != "Size" {
 		t.Fatalf("secondary = %d/%q, want Size", resolution.SecondaryAttributeID, resolution.SecondarySourceDimension)

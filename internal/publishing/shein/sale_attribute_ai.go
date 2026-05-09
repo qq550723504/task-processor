@@ -75,11 +75,13 @@ func buildSaleAttributeMappingPrompt(sourceDimensions []SourceVariantDimension, 
 		))
 	}
 	return renderSheinSaleAttributePrompt(prompt.KSheinSaleAttributeMapping, `You map source sales dimensions to SHEIN sale attributes.
-Choose at most one primary_source_dimension for SKC grouping and at most one secondary_source_dimension for SKU grouping.
+Use the SHEIN sale attribute templates in the exact order shown.
+The first template is the primary SKC sale attribute target. The next usable template is the secondary SKU sale attribute target.
+Choose at most one primary_source_dimension for the first template and at most one secondary_source_dimension for the next template.
 Keep source dimension names unchanged. Prefer required or SKC-scope SHEIN attributes.
-When the platform-required primary SHEIN attribute has no exact same-name source dimension, choose the source dimension whose values are the safest stable variant grouping surrogate for that target attribute.
-Avoid long image-generation prompts, technical ids, and size-only dimensions for primary style/design grouping when another source dimension is available.
-If ai_style requires external extraction and Color is available, do not choose ai_style for Style or Style Type; choose Color as the stable SDS surrogate.
+When the first SHEIN template has no exact same-name source dimension, choose the structured source dimension whose meaning and values are the safest stable surrogate for that target attribute.
+Do not invent source dimensions, do not use user free-form prompts, and avoid technical ids.
+Do not reorder SHEIN templates based on source dimension names; map source dimensions onto the template order.
 If there is no safe secondary mapping, leave secondary_source_dimension empty.
 Return JSON only with keys primary_source_dimension, secondary_source_dimension, primary_attribute_id, secondary_attribute_id, reasons.
 
