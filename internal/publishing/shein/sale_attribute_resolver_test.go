@@ -725,6 +725,188 @@ func TestSaleAttributeResolverBlocksNonFirstTemplateAsPrimary(t *testing.T) {
 	}
 }
 
+func TestSaleAttributeResolverRetriesLLMWhenPrimaryLabelTemplateIsMissed(t *testing.T) {
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"white"}},
+			{Name: "Size", Values: []string{"40x60cm", "50x80cm", "60x90cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "40x60cm"}}},
+			{SKU: "SKU-WHITE-50", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "50x80cm"}}},
+			{SKU: "SKU-WHITE-60", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "60x90cm"}}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	llm := &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"Size","secondary_source_dimension":"Color","reasons":["source fallback"]}`,
+		`{"primary_source_dimension":"Size","secondary_source_dimension":"Color","primary_attribute_id":87,"secondary_attribute_id":27,"reasons":["wrongly preferred the most variant-distinguishing source"]}`,
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","primary_attribute_id":1001184,"secondary_attribute_id":87,"reasons":["Validator feedback requires primary_label=true Style Type first, using Color as the stable non-size SDS surrogate."]}`,
+	}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeID: []int{87, 27, 1001184},
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+							{AttributeValueID: 11115576, AttributeValue: "50x80cm", AttributeValueEn: "50x80cm"},
+							{AttributeValueID: 14806240, AttributeValue: "60x90cm", AttributeValueEn: "60x90cm"},
+						},
+					},
+					{
+						AttributeID:       27,
+						AttributeName:     "颜色",
+						AttributeNameEn:   "Color",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 739, AttributeValue: "白色", AttributeValueEn: "White"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeID != 1001184 {
+				t.Fatalf("custom validation attribute id = %d, want Style Type", attributeID)
+			}
+			if attributeValue != "white" {
+				t.Fatalf("custom validation value = %q, want SDS color", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
+	}
+	if resolution.PrimaryAttributeID != 1001184 || resolution.PrimarySourceDimension != "Color" {
+		t.Fatalf("primary = %d/%q, want retry to map Color to Style Type", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
+	}
+	if resolution.SecondaryAttributeID != 87 || resolution.SecondarySourceDimension != "Size" {
+		t.Fatalf("secondary = %d/%q, want Size", resolution.SecondaryAttributeID, resolution.SecondarySourceDimension)
+	}
+	if llm.index != 3 {
+		t.Fatalf("llm calls = %d, want source selection + initial mapping + corrective retry", llm.index)
+	}
+}
+
+func TestSaleAttributeResolverMapsLLMSourceSelectionToPrimaryLabelTemplateWhenMappingFails(t *testing.T) {
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"white"}},
+			{Name: "Size", Values: []string{"40x60cm", "50x80cm", "60x90cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-WHITE-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "40x60cm"}}},
+			{SKU: "SKU-WHITE-50", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "50x80cm"}}},
+			{SKU: "SKU-WHITE-60", Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: "60x90cm"}}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	llm := &stubSequentialSaleLLM{responses: []string{
+		`{"primary_source_dimension":"Color","secondary_source_dimension":"Size","reasons":["Use SDS Color as the safest structured source for the marked primary style template."]}`,
+		`not-json`,
+	}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeID: []int{87, 27, 1001184},
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+							{AttributeValueID: 11115576, AttributeValue: "50x80cm", AttributeValueEn: "50x80cm"},
+							{AttributeValueID: 14806240, AttributeValue: "60x90cm", AttributeValueEn: "60x90cm"},
+						},
+					},
+					{
+						AttributeID:       27,
+						AttributeName:     "颜色",
+						AttributeNameEn:   "Color",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 739, AttributeValue: "白色", AttributeValueEn: "White"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeID != 1001184 {
+				t.Fatalf("custom validation attribute id = %d, want Style Type", attributeID)
+			}
+			if attributeValue != "white" {
+				t.Fatalf("custom validation value = %q, want SDS color", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved; notes=%v", resolution.Status, resolution.ReviewNotes)
+	}
+	if resolution.PrimaryAttributeID != 1001184 || resolution.PrimarySourceDimension != "Color" {
+		t.Fatalf("primary = %d/%q, want LLM-selected source mapped to primary_label template", resolution.PrimaryAttributeID, resolution.PrimarySourceDimension)
+	}
+	if resolution.SecondaryAttributeID != 87 || resolution.SecondarySourceDimension != "Size" {
+		t.Fatalf("secondary = %d/%q, want Size", resolution.SecondaryAttributeID, resolution.SecondarySourceDimension)
+	}
+}
+
 func TestSaleAttributeResolverTreatsAttributeLabelOneAsAuthoritativePrimary(t *testing.T) {
 	ordered := orderSaleScopeAttributes([]sheinattribute.AttributeInfo{
 		{

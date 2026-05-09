@@ -26,6 +26,15 @@ func selectSaleAttributeMappingWithLLM(
 	sourceDimensions []SourceVariantDimension,
 	templates []sheinattribute.AttributeInfo,
 ) (*saleAttributeMappingSelection, error) {
+	return selectSaleAttributeMappingWithLLMFeedback(client, sourceDimensions, templates, "")
+}
+
+func selectSaleAttributeMappingWithLLMFeedback(
+	client openaiclient.ChatCompleter,
+	sourceDimensions []SourceVariantDimension,
+	templates []sheinattribute.AttributeInfo,
+	feedback string,
+) (*saleAttributeMappingSelection, error) {
 	if client == nil || len(sourceDimensions) == 0 || len(templates) == 0 {
 		return nil, nil
 	}
@@ -33,7 +42,7 @@ func selectSaleAttributeMappingWithLLM(
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
-	response, err := client.Generate(ctx, buildSaleAttributeMappingPrompt(sourceDimensions, templates))
+	response, err := client.Generate(ctx, buildSaleAttributeMappingPrompt(sourceDimensions, templates, feedback))
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +59,7 @@ func selectSaleAttributeMappingWithLLM(
 	return &selection, nil
 }
 
-func buildSaleAttributeMappingPrompt(sourceDimensions []SourceVariantDimension, templates []sheinattribute.AttributeInfo) string {
+func buildSaleAttributeMappingPrompt(sourceDimensions []SourceVariantDimension, templates []sheinattribute.AttributeInfo, feedback string) string {
 	var sourceBuilder strings.Builder
 	for _, dimension := range sourceDimensions {
 		sourceBuilder.WriteString(fmt.Sprintf(
@@ -65,21 +74,29 @@ func buildSaleAttributeMappingPrompt(sourceDimensions []SourceVariantDimension, 
 	var templateBuilder strings.Builder
 	for _, template := range templates {
 		templateBuilder.WriteString(fmt.Sprintf(
-			"- attribute_id=%d name=%q name_en=%q required=%t skc_scope=%t sample_values=%q\n",
+			"- attribute_id=%d name=%q name_en=%q primary_label=%t required=%t skc_scope=%t sample_values=%q\n",
 			template.AttributeID,
 			template.AttributeName,
 			template.AttributeNameEn,
+			template.AttributeLabel == 1,
 			isTemplateRequired(template),
 			template.SKCScope != nil && *template.SKCScope,
 			buildTemplateSampleValues(template),
 		))
 	}
+	feedback = strings.TrimSpace(feedback)
+	feedbackBlock := ""
+	if feedback != "" {
+		feedbackBlock = "\nCorrection feedback from validator:\n" + feedback + "\n"
+	}
 	return renderSheinSaleAttributePrompt(prompt.KSheinSaleAttributeMapping, `You map source sales dimensions to SHEIN sale attributes.
 Use the SHEIN sale attribute templates in the exact order shown.
-The first template is the primary SKC sale attribute target. The next usable template is the secondary SKU sale attribute target.
+The first template is the primary SKC sale attribute target. A template with primary_label=true is the authoritative SHEIN primary sale attribute and must be treated as first even if other fields look more variant-distinguishing.
+The next usable template is the secondary SKU sale attribute target.
 Choose at most one primary_source_dimension for the first template and at most one secondary_source_dimension for the next template.
 Keep source dimension names unchanged. Do not choose the most variant-distinguishing source as primary unless it maps to the first SHEIN template.
 When the first SHEIN template has no exact same-name source dimension, choose the structured source dimension whose meaning and values are the safest stable surrogate for that target attribute.
+If the first template is Style Type / 款式 and the source has only Color and Size, Size usually belongs to the later Size template; choose the safest non-size structured source as the Style Type surrogate when semantically safe.
 Do not invent source dimensions, do not use user free-form prompts, and avoid technical ids.
 Do not reorder SHEIN templates based on source dimension names; map source dimensions onto the template order.
 primary_attribute_id must equal the first SHEIN template attribute_id. secondary_attribute_id must equal the next selected SHEIN template attribute_id.
@@ -90,9 +107,11 @@ Source dimensions:
 {{.SourceDimensionsBlock}}
 
 SHEIN sale attribute templates:
-{{.TemplatesBlock}}`, map[string]any{
+{{.TemplatesBlock}}
+{{.FeedbackBlock}}`, map[string]any{
 		"SourceDimensionsBlock": sourceBuilder.String(),
 		"TemplatesBlock":        templateBuilder.String(),
+		"FeedbackBlock":         feedbackBlock,
 	})
 }
 

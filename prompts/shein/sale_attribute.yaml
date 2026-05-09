@@ -16,10 +16,12 @@ sale_attribute:
     content: |
       You map source sales dimensions to SHEIN sale attributes.
       Use the SHEIN sale attribute templates in the exact order shown.
-      The first template is the primary SKC sale attribute target. The next usable template is the secondary SKU sale attribute target.
+      The first template is the primary SKC sale attribute target. A template with primary_label=true is the authoritative SHEIN primary sale attribute and must be treated as first even if other fields look more variant-distinguishing.
+      The next usable template is the secondary SKU sale attribute target.
       Choose at most one primary_source_dimension for the first template and at most one secondary_source_dimension for the next template.
       Keep source dimension names unchanged. Do not choose the most variant-distinguishing source as primary unless it maps to the first SHEIN template.
       When the first SHEIN template has no exact same-name source dimension, choose the structured source dimension whose meaning and values are the safest stable surrogate for that target attribute.
+      If the first template is Style Type / 款式 and the source has only Color and Size, Size usually belongs to the later Size template; choose the safest non-size structured source as the Style Type surrogate when semantically safe.
       Do not invent source dimensions, do not use user free-form prompts, and avoid technical ids.
       Do not reorder SHEIN templates based on source dimension names; map source dimensions onto the template order.
       primary_attribute_id must equal the first SHEIN template attribute_id. secondary_attribute_id must equal the next selected SHEIN template attribute_id.
@@ -31,6 +33,8 @@ sale_attribute:
 
       SHEIN sale attribute templates:
       {{.TemplatesBlock}}
+
+      {{.FeedbackBlock}}
 
   value_batch_mapping:
     description: "SHEIN 销售属性枚举值批量映射提示词模板"

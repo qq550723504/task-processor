@@ -99,7 +99,30 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 		mappingDimensions := saleAttributeMappingSourceDimensions(sourceDimensions)
 		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, mappingDimensions, saleAttributes); err == nil && selection != nil {
 			llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(candidates, selection, sourceDimensions, saleAttributes)
-			if selectedCandidateMissesPrimarySaleTemplate(llmPrimary, saleAttributes) {
+			if hasMarkedPrimarySaleTemplate(saleAttributes) && (llmPrimary == nil || selectedCandidateMissesPrimarySaleTemplate(llmPrimary, saleAttributes)) {
+				feedback := buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes) + "。请重新选择 primary_source_dimension，但 primary_attribute_id 必须等于 SHEIN primary_label=true 的首个模板 attribute_id。"
+				if retrySelection, retryErr := selectSaleAttributeMappingWithLLMFeedback(r.llm, mappingDimensions, saleAttributes, feedback); retryErr == nil && retrySelection != nil {
+					retryPrimary, retrySecondary, retryCandidates := matchSelectedCandidates(augmentedCandidates, retrySelection, sourceDimensions, saleAttributes)
+					if retryPrimary != nil && !selectedCandidateMissesPrimarySaleTemplate(retryPrimary, saleAttributes) && shouldUseLLMSaleAttributeMapping(primaryCandidate, retryPrimary, saleAttributes) {
+						candidates = retryCandidates
+						primaryCandidate, secondaryCandidate = retryPrimary, retrySecondary
+						resolution.Source = "llm_sale_attribute_mapping"
+						resolution.ReviewNotes = append(resolution.ReviewNotes, retrySelection.Reasons...)
+					} else {
+						candidates = retryCandidates
+						resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(retryPrimary, saleAttributes))
+						blockUnsafePrimaryFallback = true
+						primaryCandidate = nil
+						secondaryCandidate = nil
+					}
+				} else {
+					candidates = augmentedCandidates
+					resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes))
+					blockUnsafePrimaryFallback = true
+					primaryCandidate = nil
+					secondaryCandidate = nil
+				}
+			} else if selectedCandidateMissesPrimarySaleTemplate(llmPrimary, saleAttributes) {
 				candidates = augmentedCandidates
 				resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes))
 				blockUnsafePrimaryFallback = true
@@ -110,6 +133,18 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 				primaryCandidate, secondaryCandidate = llmPrimary, llmSecondary
 				resolution.Source = "llm_sale_attribute_mapping"
 				resolution.ReviewNotes = append(resolution.ReviewNotes, selection.Reasons...)
+			}
+		}
+	}
+	if resolution.Source == "llm_source_dimensions" &&
+		hasMarkedPrimarySaleTemplate(saleAttributes) &&
+		selectedCandidateMissesPrimarySaleTemplate(primaryCandidate, saleAttributes) {
+		if repairedPrimary, ok := buildPrimaryLabelCandidateFromSourceSelection(resolution.PrimarySourceDimension, sourceDimensions, saleAttributes); ok {
+			candidates = append(candidates, repairedPrimary)
+			if orderedPrimary, orderedSecondary := selectTemplateOrderedCandidates(candidates, saleAttributes); orderedPrimary != nil {
+				primaryCandidate = orderedPrimary
+				secondaryCandidate = orderedSecondary
+				resolution.Source = "llm_sale_attribute_mapping"
 			}
 		}
 	}
@@ -423,6 +458,21 @@ func buildLLMSelectedSaleAttributeCandidate(
 	match.MatchedBy = "llm_sale_attribute_mapping"
 	distinct := len(uniqueNormalizedValues(dimension.Values))
 	return newSaleAttributeCandidate(*dimension, sourceOrder, templateOrder, match, distinct, distinct)
+}
+
+func buildPrimaryLabelCandidateFromSourceSelection(sourceName string, dimensions []SourceVariantDimension, attributes []sheinattribute.AttributeInfo) (saleAttributeCandidate, bool) {
+	first := firstSaleAttributeTemplate(attributes)
+	if first == nil || !isPrimarySaleTemplateAttribute(*first) {
+		return saleAttributeCandidate{}, false
+	}
+	sourceName = strings.TrimSpace(sourceName)
+	if sourceName == "" || isAIStyleSourceDimension(sourceName) || isTechnicalSaleSourceDimension(sourceName) {
+		return saleAttributeCandidate{}, false
+	}
+	if isGenericSecondaryName(sourceName) {
+		return saleAttributeCandidate{}, false
+	}
+	return buildLLMSelectedSaleAttributeCandidate(sourceName, first.AttributeID, dimensions, attributes)
 }
 
 func shouldSelectSaleAttributeMappingWithLLM(primary *saleAttributeCandidate, dimensions []SourceVariantDimension, attributes []sheinattribute.AttributeInfo) bool {
