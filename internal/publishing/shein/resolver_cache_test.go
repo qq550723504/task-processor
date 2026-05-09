@@ -38,7 +38,7 @@ func (r *countingSaleAttributeResolver) Resolve(_ *BuildRequest, _ *canonical.Pr
 	return cloneSaleAttributeResolution(r.out)
 }
 
-func TestCachedCategoryResolverReusesStableSDSBaseProduct(t *testing.T) {
+func TestCachedCategoryResolverDoesNotRememberUnsubmittedLiveResolution(t *testing.T) {
 	inner := &countingCategoryResolver{
 		out: &CategoryResolution{
 			Status:         "resolved",
@@ -58,8 +58,8 @@ func TestCachedCategoryResolverReusesStableSDSBaseProduct(t *testing.T) {
 
 	first := resolver.Resolve(req, canonical, pkg)
 	second := resolver.Resolve(req, canonical, pkg)
-	if inner.calls != 1 {
-		t.Fatalf("inner calls = %d, want 1", inner.calls)
+	if inner.calls != 2 {
+		t.Fatalf("inner calls = %d, want 2", inner.calls)
 	}
 	if first == second {
 		t.Fatal("cached resolver should return cloned resolutions")
@@ -67,8 +67,8 @@ func TestCachedCategoryResolverReusesStableSDSBaseProduct(t *testing.T) {
 	if second.CategoryID != 8218 {
 		t.Fatalf("category id = %d, want 8218", second.CategoryID)
 	}
-	if len(second.ReviewNotes) != 1 || second.ReviewNotes[0] == "" {
-		t.Fatalf("cache note not attached: %#v", second.ReviewNotes)
+	if second.Cache != nil {
+		t.Fatalf("live generated category cache metadata = %#v, want nil before final submit", second.Cache)
 	}
 }
 
@@ -140,8 +140,9 @@ func TestCachedAttributeResolverSkipsZeroHitResolution(t *testing.T) {
 	}
 }
 
-func TestCachedAttributeResolverReusesResolvedBaseProductAttributes(t *testing.T) {
+func TestCachedAttributeResolverDoesNotPersistUnsubmittedLiveResolution(t *testing.T) {
 	valueID := 2001
+	store := newResolutionCacheTestStore(t)
 	inner := &countingAttributeResolver{
 		out: &AttributeResolution{
 			Status:        "resolved",
@@ -157,7 +158,7 @@ func TestCachedAttributeResolverReusesResolvedBaseProductAttributes(t *testing.T
 			}},
 		},
 	}
-	resolver := NewCachedAttributeResolver(inner)
+	resolver := NewCachedAttributeResolver(inner, store)
 	req := &BuildRequest{SheinStoreID: 42}
 	pkg := &Package{
 		CategoryID:       8218,
@@ -172,8 +173,8 @@ func TestCachedAttributeResolverReusesResolvedBaseProductAttributes(t *testing.T
 
 	first := resolver.Resolve(req, nil, pkg)
 	second := resolver.Resolve(req, nil, pkg)
-	if inner.calls != 1 {
-		t.Fatalf("inner calls = %d, want 1", inner.calls)
+	if inner.calls != 2 {
+		t.Fatalf("inner calls = %d, want 2", inner.calls)
 	}
 	if first == second {
 		t.Fatal("cached resolver should return cloned resolutions")
@@ -181,8 +182,15 @@ func TestCachedAttributeResolverReusesResolvedBaseProductAttributes(t *testing.T
 	if got := second.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 2001 {
 		t.Fatalf("attribute value id = %v, want 2001", got)
 	}
-	if len(second.ReviewNotes) != 1 || second.ReviewNotes[0] == "" {
-		t.Fatalf("cache note not attached: %#v", second.ReviewNotes)
+	if second.Cache != nil {
+		t.Fatalf("live generated attribute cache metadata = %#v, want nil before final submit", second.Cache)
+	}
+	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", attributeResolverCacheKey(req, pkg))
+	if err != nil {
+		t.Fatalf("get persisted cache: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("persisted live generated attribute cache = %#v, want nil before final submit", got)
 	}
 }
 
@@ -371,7 +379,7 @@ func TestCachedAttributeResolverRememberOverwritesPreviousHitKey(t *testing.T) {
 	}
 }
 
-func TestCachedSaleAttributeResolverReusesVariantMatrix(t *testing.T) {
+func TestCachedSaleAttributeResolverDoesNotRememberUnsubmittedVariantMatrix(t *testing.T) {
 	valueID := 103
 	inner := &countingSaleAttributeResolver{
 		out: &SaleAttributeResolution{
@@ -405,8 +413,8 @@ func TestCachedSaleAttributeResolverReusesVariantMatrix(t *testing.T) {
 
 	first := resolver.Resolve(req, canonical, pkg)
 	second := resolver.Resolve(req, canonical, pkg)
-	if inner.calls != 1 {
-		t.Fatalf("inner calls = %d, want 1", inner.calls)
+	if inner.calls != 2 {
+		t.Fatalf("inner calls = %d, want 2", inner.calls)
 	}
 	if first == second {
 		t.Fatal("cached resolver should return cloned resolutions")
@@ -414,8 +422,8 @@ func TestCachedSaleAttributeResolverReusesVariantMatrix(t *testing.T) {
 	if got := second.skcValueAssignments["white"].AttributeValueID; got == nil || *got != 103 {
 		t.Fatalf("cached value assignment = %v, want 103", got)
 	}
-	if len(second.ReviewNotes) != 1 || second.ReviewNotes[0] == "" {
-		t.Fatalf("cache note not attached: %#v", second.ReviewNotes)
+	if second.Cache != nil {
+		t.Fatalf("live generated sale attribute cache metadata = %#v, want nil before final submit", second.Cache)
 	}
 }
 

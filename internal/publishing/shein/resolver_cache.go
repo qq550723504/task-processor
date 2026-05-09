@@ -81,11 +81,6 @@ func (r *cachedCategoryResolver) Resolve(req *BuildRequest, canonical *canonical
 		}
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
-	if key != "" && shouldCacheCategoryResolution(resolution) {
-		attachResolutionCacheInfoToCategory(resolution, normalizedResolutionSource(resolution.Source, "live_resolver"), key, false)
-		r.cache.Store(key, cloneCategoryResolution(resolution))
-		r.savePersistentCache(ResolutionCacheKindCategory, req, canonical, pkg, key, resolution, false)
-	}
 	return resolution
 }
 
@@ -129,11 +124,6 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 		}
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
-	if key != "" && shouldCacheAttributeResolution(resolution) {
-		attachResolutionCacheInfoToAttribute(resolution, normalizedResolutionSource(resolution.Source, "live_resolver"), key, false)
-		r.cache.Store(key, cloneAttributeResolution(resolution))
-		r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, resolution, false)
-	}
 	return resolution
 }
 
@@ -201,11 +191,6 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *cano
 	if resolution != nil && strings.TrimSpace(cacheRejectedReason) != "" {
 		resolution.CacheRejectedReason = cacheRejectedReason
 		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, "SHEIN 销售属性缓存已失效: "+cacheRejectedReason))
-	}
-	if key != "" && shouldCacheSaleAttributeResolution(resolution) {
-		attachResolutionCacheInfoToSaleAttribute(resolution, normalizedResolutionSource(resolution.Source, "live_resolver"), key, false)
-		r.cache.Store(key, cloneSaleAttributeResolution(resolution))
-		r.savePersistentCache(ResolutionCacheKindSaleAttribute, req, canonical, pkg, key, resolution, false)
 	}
 	return resolution
 }

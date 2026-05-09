@@ -27,9 +27,6 @@ func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *App
 	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
 		return nil, err
 	}
-	if effectiveReq.Platform == "shein" {
-		s.rememberSheinManualResolution(task, effectiveReq)
-	}
 	appliedChanges := buildAppliedChangesPreview(effectiveReq.Platform, before, task.Result)
 	task.Result.Revision = &ListingKitRevisionSummary{
 		UpdatedAt:              task.Result.UpdatedAt,

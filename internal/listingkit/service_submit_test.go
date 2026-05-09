@@ -130,6 +130,60 @@ func (stubSubmitProductService) ProcessProduct(ctx context.Context, task *produc
 	return nil, errors.New("not implemented")
 }
 
+type submitResolutionCacheStore struct {
+	mu      sync.Mutex
+	entries []*sheinpub.SheinResolutionCacheEntry
+}
+
+func (s *submitResolutionCacheStore) GetResolutionCache(ctx context.Context, kind string, storeID string, cacheKey string) (*sheinpub.SheinResolutionCacheEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, entry := range s.entries {
+		if entry.CacheKind == kind && entry.StoreID == storeID && entry.CacheKey == cacheKey {
+			copied := *entry
+			return &copied, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *submitResolutionCacheStore) SaveResolutionCache(ctx context.Context, entry *sheinpub.SheinResolutionCacheEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if entry == nil {
+		return nil
+	}
+	copied := *entry
+	s.entries = append(s.entries, &copied)
+	return nil
+}
+
+func (s *submitResolutionCacheStore) DeleteResolutionCache(ctx context.Context, kind string, storeID string, cacheKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.entries[:0]
+	for _, entry := range s.entries {
+		if entry.CacheKind == kind && entry.StoreID == storeID && entry.CacheKey == cacheKey {
+			continue
+		}
+		out = append(out, entry)
+	}
+	s.entries = out
+	return nil
+}
+
+func (s *submitResolutionCacheStore) snapshot() []sheinpub.SheinResolutionCacheEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]sheinpub.SheinResolutionCacheEntry, 0, len(s.entries))
+	for _, entry := range s.entries {
+		if entry != nil {
+			out = append(out, *entry)
+		}
+	}
+	return out
+}
+
 type stubSheinProductAPIBuilder struct {
 	api sheinproduct.ProductAPI
 	msg string
@@ -626,6 +680,67 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 	}
 	if len(preview.Shein.SubmissionEvents) == 0 || preview.Shein.SubmissionEvents[len(preview.Shein.SubmissionEvents)-1].RequestID != "publish-123" {
 		t.Fatalf("submission events = %+v, want request id publish-123", preview.Shein.SubmissionEvents)
+	}
+}
+
+func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	cacheStore := &submitResolutionCacheStore{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinCategoryResolver: sheinpub.NewCachedCategoryResolver(
+			sheinpub.NewCategoryResolver(nil),
+			cacheStore,
+		),
+		SheinAttributeResolver: sheinpub.NewCachedAttributeResolver(
+			sheinpub.NewAttributeResolver(nil, nil),
+			cacheStore,
+		),
+		SheinSaleAttributeResolver: sheinpub.NewCachedSaleAttributeResolver(
+			sheinpub.NewSaleAttributeResolver(nil, nil),
+			cacheStore,
+		),
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "publish-cache-123"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if preview.Shein.ResolutionCache == nil ||
+		preview.Shein.ResolutionCache.Category == nil ||
+		preview.Shein.ResolutionCache.Attributes == nil ||
+		preview.Shein.ResolutionCache.SaleAttributes == nil {
+		t.Fatalf("resolution cache summary = %+v, want category/attribute/sale_attribute after publish", preview.Shein.ResolutionCache)
+	}
+	entries := cacheStore.snapshot()
+	if len(entries) != 3 {
+		t.Fatalf("cache entry count = %d, want 3: %+v", len(entries), entries)
+	}
+	for _, entry := range entries {
+		if entry.Source != "manual_cache" || !entry.Manual {
+			t.Fatalf("cache entry = %+v, want manual_cache confirmed by publish", entry)
+		}
 	}
 }
 

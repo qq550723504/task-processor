@@ -7,28 +7,39 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-func (s *service) rememberSheinManualResolution(task *Task, req *ApplyRevisionRequest) {
-	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil || req == nil || req.Shein == nil {
+func (s *service) rememberSheinSubmittedResolution(task *Task, action string) {
+	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil || strings.TrimSpace(action) != "publish" {
 		return
 	}
-	buildReq := buildSheinPublishRequest(task.Request)
-	pkg := task.Result.Shein
-	canonical := task.Result.CanonicalProduct
+	s.rememberSheinCategoryResolution(task)
+	s.rememberSheinAttributeResolution(task)
+	s.rememberSheinSaleAttributeResolution(task)
+}
 
-	if req.Shein.CategoryResolution != nil {
-		if cache, ok := s.sheinCategoryResolver.(sheinpub.CategoryResolutionCache); ok {
-			cache.RememberCategoryResolution(buildReq, canonical, pkg, pkg.CategoryResolution)
-		}
+func (s *service) rememberSheinCategoryResolution(task *Task) {
+	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
+		return
 	}
-	if req.Shein.AttributeResolution != nil {
-		if cache, ok := s.sheinAttributeResolver.(sheinpub.AttributeResolutionCache); ok {
-			cache.RememberAttributeResolution(buildReq, canonical, pkg, pkg.AttributeResolution)
-		}
+	if cache, ok := s.sheinCategoryResolver.(sheinpub.CategoryResolutionCache); ok {
+		cache.RememberCategoryResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.CategoryResolution)
 	}
-	if req.Shein.SaleAttributeResolution != nil {
-		if cache, ok := s.sheinSaleAttributeResolver.(sheinpub.SaleAttributeResolutionCache); ok {
-			cache.RememberSaleAttributeResolution(buildReq, canonical, pkg, pkg.SaleAttributeResolution)
-		}
+}
+
+func (s *service) rememberSheinAttributeResolution(task *Task) {
+	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
+		return
+	}
+	if cache, ok := s.sheinAttributeResolver.(sheinpub.AttributeResolutionCache); ok {
+		cache.RememberAttributeResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.AttributeResolution)
+	}
+}
+
+func (s *service) rememberSheinSaleAttributeResolution(task *Task) {
+	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
+		return
+	}
+	if cache, ok := s.sheinSaleAttributeResolver.(sheinpub.SaleAttributeResolutionCache); ok {
+		cache.RememberSaleAttributeResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.SaleAttributeResolution)
 	}
 }
 

@@ -133,6 +133,9 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	}
 	record := completeSheinSubmitAttempt(pkg, action, requestID, response, responseErr, time.Now())
 	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, response, responseErr, startedAt))
+	if responseErr == nil {
+		s.rememberSheinSubmittedResolution(task, action)
+	}
 	task.Result.UpdatedAt = time.Now()
 	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
 		return nil, err
@@ -236,6 +239,7 @@ func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, acti
 		record.Status = sheinpub.SubmissionStatusSuccess
 	}
 	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
+	s.rememberSheinSubmittedResolution(task, action)
 	task.Result.UpdatedAt = time.Now()
 	if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
 		return nil, err
