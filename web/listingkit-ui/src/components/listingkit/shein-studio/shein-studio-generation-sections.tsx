@@ -1,4 +1,13 @@
+import Image from "next/image";
 import type { ReactNode } from "react";
+
+import { Button } from "@/components/shared/button";
+import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
+import { SHEIN_STUDIO_PRODUCT_IMAGE_ROLES } from "@/lib/shein-studio/storage-shared";
+import type {
+  SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
+} from "@/lib/types/shein-studio";
 
 export function SectionHeading({
   description,
@@ -116,6 +125,166 @@ export function Message({
   return (
     <div className={`rounded-2xl border px-4 py-3 text-sm ${classes[tone]}`}>
       {children}
+    </div>
+  );
+}
+
+export function SDSImagePicker({
+  availableImages,
+  selectedImages,
+  setSelectedImages,
+}: {
+  availableImages: SheinStudioSelectableSDSImage[];
+  selectedImages: SheinStudioSelectedSDSImage[];
+  setSelectedImages: (value: SheinStudioSelectedSDSImage[]) => void;
+}) {
+  const selectedMap = new Map(selectedImages.map((item) => [item.imageUrl, item]));
+
+  function includeImage(image: SheinStudioSelectableSDSImage, asMain = false) {
+    const next = selectedImages.filter((item) => item.imageUrl !== image.imageUrl);
+    const payload = {
+      imageUrl: image.imageUrl,
+      variantSku: image.variantSku,
+      color: image.color,
+    } satisfies SheinStudioSelectedSDSImage;
+    setSelectedImages(asMain ? [payload, ...next] : [...next, payload]);
+  }
+
+  function removeImage(imageUrl: string) {
+    setSelectedImages(selectedImages.filter((item) => item.imageUrl !== imageUrl));
+  }
+
+  if (!availableImages.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-4 py-4 text-sm leading-6 text-zinc-600">
+        当前选中的 SDS 商品还没有可用的官方渲染图。未手动选择时，系统会继续沿用后端自动匹配规则。
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-[1.5rem] border border-zinc-200 bg-white px-4 py-4">
+      <SectionHeading
+        eyebrow="SDS 图片"
+        title="可选官方渲染图"
+        description="可手动指定混合模式优先使用的 SDS 图片。已选第 1 张会作为 SDS 主图，其余按顺序进入 SDS 图库；不手动选择时，继续沿用系统自动匹配。"
+      />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {availableImages.map((image) => {
+          const selected = selectedMap.get(image.imageUrl);
+          const selectedIndex = selectedImages.findIndex(
+            (item) => item.imageUrl === image.imageUrl,
+          );
+          return (
+            <div
+              key={image.imageUrl}
+              className={`space-y-3 rounded-[1.25rem] border px-3 py-3 ${
+                selected
+                  ? "border-zinc-950 bg-zinc-950/[0.03]"
+                  : "border-zinc-200 bg-zinc-50"
+              }`}
+            >
+              <div className="relative aspect-square overflow-hidden rounded-2xl bg-zinc-100">
+                <Image
+                  alt={image.label}
+                  className="object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 240px"
+                  src={image.imageUrl}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-zinc-900">{image.label}</p>
+                {image.description ? (
+                  <p className="text-xs leading-5 text-zinc-600">{image.description}</p>
+                ) : null}
+                <p className="text-xs font-medium text-zinc-500">
+                  {selectedIndex === 0
+                    ? "当前主图"
+                    : selectedIndex > 0
+                      ? `已选第 ${selectedIndex + 1} 张`
+                      : "未手动选择"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="h-9 px-3 text-xs"
+                  onClick={() => includeImage(image, true)}
+                  tone={selectedIndex === 0 ? "secondary" : "primary"}
+                  type="button"
+                >
+                  {selectedIndex === 0 ? "已设为主图" : "设为主图"}
+                </Button>
+                <Button
+                  className="h-9 px-3 text-xs"
+                  onClick={() =>
+                    selected ? removeImage(image.imageUrl) : includeImage(image, false)
+                  }
+                  tone="secondary"
+                  type="button"
+                >
+                  {selected ? "移除" : "加入图库"}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function ProductImagePromptPlanner({
+  count,
+  prompts,
+  setPrompts,
+}: {
+  count: string;
+  prompts: SheinStudioProductImagePrompt[];
+  setPrompts: (value: SheinStudioProductImagePrompt[]) => void;
+}) {
+  const visibleCount = clampProductImageCount(count);
+  const roles = SHEIN_STUDIO_PRODUCT_IMAGE_ROLES.slice(0, visibleCount);
+  const promptByRole = new Map(prompts.map((item) => [item.role, item]));
+
+  function updatePrompt(role: string, label: string, prompt: string) {
+    setPrompts([
+      ...prompts.filter((item) => item.role !== role),
+      { label, prompt, role },
+    ]);
+  }
+
+  return (
+    <div className="space-y-3 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
+      <div>
+        <div className="text-sm font-semibold text-zinc-800">每张商品图提示词</div>
+        <p className="mt-1 text-xs leading-5 text-zinc-500">
+          可选。留空则使用该图片类型的默认模板。
+        </p>
+      </div>
+      <div className="grid gap-3">
+        {roles.map((role, index) => (
+          <label
+            className="rounded-2xl border border-zinc-200 bg-white px-3 py-3"
+            key={role.role}
+          >
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <span>
+                {index + 1}. {role.label}
+              </span>
+              <span className="text-[10px] text-zinc-400">{role.role}</span>
+            </span>
+            <textarea
+              className="mt-2 min-h-20 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
+              onChange={(event) =>
+                updatePrompt(role.role, role.label, event.target.value)
+              }
+              placeholder={role.hint}
+              value={promptByRole.get(role.role)?.prompt ?? ""}
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

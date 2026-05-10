@@ -8,9 +8,10 @@ import type {
   SheinChecklistGroupItem,
   SheinReadinessItem,
   SheinResolutionCacheInfo,
+  SheinResolutionCacheSummary,
 } from "@/lib/types/listingkit";
 
-type ResolutionCacheKind = "category" | "attribute" | "sale_attribute";
+export type ResolutionCacheKind = "category" | "attribute" | "sale_attribute";
 
 export function ResolutionCacheRow({
   title,
@@ -198,6 +199,52 @@ export function ChecklistSection({
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+export function ResolutionCacheSummaryCard({
+  clearingResolutionCacheKind,
+  onClearResolutionCache,
+  resolutionCache,
+}: {
+  clearingResolutionCacheKind?: string | null;
+  onClearResolutionCache?: ((kind: ResolutionCacheKind) => void) | null;
+  resolutionCache?: SheinResolutionCacheSummary | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white/70 p-4">
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            解析缓存
+          </p>
+          <p className="text-sm leading-6 text-zinc-700">
+            分类、普通属性、销售属性的解析来源和缓存状态。
+          </p>
+        </div>
+        <ResolutionCacheRow
+          title="类目"
+          item={resolutionCache?.category}
+          kind="category"
+          isClearing={clearingResolutionCacheKind === "category"}
+          onClear={onClearResolutionCache}
+        />
+        <ResolutionCacheRow
+          title="普通属性"
+          item={resolutionCache?.attributes}
+          kind="attribute"
+          isClearing={clearingResolutionCacheKind === "attribute"}
+          onClear={onClearResolutionCache}
+        />
+        <ResolutionCacheRow
+          title="销售属性"
+          item={resolutionCache?.sale_attributes}
+          kind="sale_attribute"
+          isClearing={clearingResolutionCacheKind === "sale_attribute"}
+          onClear={onClearResolutionCache}
+        />
       </div>
     </div>
   );

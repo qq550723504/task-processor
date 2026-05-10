@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import {
   saveTaskCreateDraft,
@@ -12,15 +11,11 @@ import {
 } from "@/components/listingkit/tasks/task-create-draft";
 import { TaskInputGuidance } from "@/components/listingkit/tasks/task-input-guidance";
 import {
-  buildSDSOptions,
-  buildSceneOptions,
   buildTaskCreateDefaultValues,
   type FormValues,
   inferInitialSourceTab,
   parseImageUrls,
-  parseOptionalPositiveInt,
   parseSelectedVariantIds,
-  platformOptions,
   schema,
   taskCreatePageCopy,
   titleFieldCopy,
@@ -30,8 +25,6 @@ import { TaskSDSOptions } from "@/components/listingkit/tasks/task-sds-options";
 import { TaskSceneSettingsSection } from "@/components/listingkit/tasks/task-scene-settings-section";
 import {
   getPlatformSceneDefaults,
-  hasAnySceneCustomization,
-  matchesSceneDefaults,
 } from "@/components/listingkit/tasks/task-scene-defaults";
 import {
   TaskSourceTabs,
@@ -42,9 +35,20 @@ import {
   TaskProductUrlField,
   TaskTitleField,
 } from "@/components/listingkit/tasks/task-create-source-fields";
+import {
+  TaskAdvancedSettingsToggle,
+  TaskCreateFormActions,
+  TaskPlatformFieldset,
+  TaskSheinStoreField,
+} from "@/components/listingkit/tasks/task-create-form-sections";
+import {
+  useTaskCreateFocus,
+  useTaskCreateSDSQuerySync,
+  useTaskCreateSceneDefaults,
+} from "@/components/listingkit/tasks/task-create-form-hooks";
+import { buildTaskCreateSubmission } from "@/components/listingkit/tasks/task-create-submit";
 import { useCreateTask } from "@/lib/query/use-create-task";
 import { useUploadImages } from "@/lib/query/use-upload-images";
-import { loadSDSListingKitMetadata } from "@/lib/sds/product-metadata";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
 export function TaskCreateForm({
@@ -161,45 +165,14 @@ export function TaskCreateForm({
     name: "customSceneHint",
   });
 
-  useEffect(() => {
-    if (variant !== "sds") {
-      return;
-    }
-
-    const nextVariantId = liveSearchParams.get("variantId") ?? "";
-    const nextParentProductId = liveSearchParams.get("parentProductId") ?? "";
-    const nextPrototypeGroupId = liveSearchParams.get("prototypeGroupId") ?? "";
-    const nextLayerId = liveSearchParams.get("layerId") ?? "";
-    const hasSDSSelection = Boolean(
-      nextVariantId || nextParentProductId || nextPrototypeGroupId || nextLayerId,
-    );
-    const shouldClearSelection =
-      liveSearchParams.get("step") === "select" && !hasSDSSelection;
-
-    if (!hasSDSSelection && !shouldClearSelection) {
-      return;
-    }
-
-    const key = [
-      shouldClearSelection ? "clear" : "set",
-      nextVariantId,
-      nextParentProductId,
-      nextPrototypeGroupId,
-      nextLayerId,
-    ].join("|");
-    if (lastAppliedSDSQueryKeyRef.current === key) {
-      return;
-    }
-    lastAppliedSDSQueryKeyRef.current = key;
-
-    setValue("sdsVariantId", nextVariantId, { shouldValidate: true });
-    setValue("sdsParentProductId", nextParentProductId, { shouldValidate: true });
-    setValue("sdsPrototypeGroupId", nextPrototypeGroupId, { shouldValidate: true });
-    setValue("sdsLayerId", nextLayerId, { shouldValidate: true });
-    setValue("sdsEnabled", true, { shouldValidate: true });
-    setSDSEnabled(true);
-    setShowAdvancedSettings(true);
-  }, [liveSearchParams, setValue, variant]);
+  useTaskCreateSDSQuerySync({
+    lastAppliedSDSQueryKeyRef,
+    liveSearchParams,
+    setSDSEnabled,
+    setShowAdvancedSettings,
+    setValue,
+    variant,
+  });
 
   const helperText = useMemo(
     () => "可以直接粘贴公网图片链接、上传本地图片，或改用商品链接开始。",
@@ -232,42 +205,7 @@ export function TaskCreateForm({
     return `${primaryPlatform} 默认场景：${parts.join(" / ")}`;
   }, [platformSceneDefaults, primaryPlatform]);
 
-  useEffect(() => {
-    if (!showSceneCustomization || !platformSceneDefaults) {
-      return;
-    }
-    const currentSceneValues = {
-      sceneCategory: currentSceneCategory,
-      sceneStyle: currentSceneStyle,
-      backgroundTone: currentBackgroundTone,
-      composition: currentComposition,
-      propsLevel: currentPropsLevel,
-      audienceHint: currentAudienceHint,
-      customSceneHint: currentCustomSceneHint,
-    };
-    const canApplyDefaults =
-      !hasAnySceneCustomization(currentSceneValues) ||
-      matchesSceneDefaults(currentSceneValues, lastAppliedSceneDefaultsRef.current);
-    if (!canApplyDefaults) {
-      return;
-    }
-    setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
-      shouldDirty: true,
-    });
-    setValue("backgroundTone", platformSceneDefaults.backgroundTone ?? "", {
-      shouldDirty: true,
-    });
-    setValue("composition", platformSceneDefaults.composition ?? "", {
-      shouldDirty: true,
-    });
-    setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
-      shouldDirty: true,
-    });
-    setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
-      shouldDirty: true,
-    });
-    lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
-  }, [
+  useTaskCreateSceneDefaults({
     currentAudienceHint,
     currentBackgroundTone,
     currentComposition,
@@ -275,24 +213,19 @@ export function TaskCreateForm({
     currentPropsLevel,
     currentSceneCategory,
     currentSceneStyle,
+    lastAppliedSceneDefaultsRef,
     platformSceneDefaults,
     setValue,
     showSceneCustomization,
-  ]);
+  });
 
-  useEffect(() => {
-    if (initialFocus === "text") {
-      textRef.current?.focus();
-    }
-  }, [initialFocus]);
-
-  useEffect(() => {
-    if (activeSourceTab === "productUrl") {
-      productUrlRef.current?.focus();
-      return;
-    }
-    imageUrlsRef.current?.focus();
-  }, [activeSourceTab]);
+  useTaskCreateFocus({
+    activeSourceTab,
+    imageUrlsRef,
+    initialFocus,
+    productUrlRef,
+    textRef,
+  });
 
   return (
     <Card
@@ -305,81 +238,21 @@ export function TaskCreateForm({
       <form
         className="space-y-6"
         onSubmit={handleSubmit(async (values) => {
-          const text = (values.text ?? "").trim();
-          const imageUrls = values.imageUrls ?? "";
-          const productUrl = (values.productUrl ?? "").trim();
-          const parsedImageUrls = parseImageUrls(imageUrls);
-          if (!text && parsedImageUrls.length === 0 && !productUrl) {
+          const submission = await buildTaskCreateSubmission({
+            selectedVariantIds: parseSelectedVariantIds(
+              liveSearchParams.get("variantIds"),
+            ),
+            values,
+          });
+          if (!submission.ok) {
             setError("root", {
-              message:
-                "请至少提供商品标题、图片链接或商品链接中的一种。",
+              message: submission.message,
             });
             return;
           }
           clearErrors("root");
-          const draft = {
-            text,
-            imageUrls,
-            productUrl,
-            platforms: values.platforms,
-            sheinStoreId: values.sheinStoreId,
-            sdsEnabled: values.sdsEnabled,
-            sdsVariantId: values.sdsVariantId,
-            sdsParentProductId: values.sdsParentProductId,
-            sdsPrototypeGroupId: values.sdsPrototypeGroupId,
-            sdsLayerId: values.sdsLayerId,
-            sdsDesignType: values.sdsDesignType,
-            sdsFitLevel: values.sdsFitLevel,
-            sdsResizeMode: values.sdsResizeMode,
-            sceneCategory: values.sceneCategory,
-            sceneStyle: values.sceneStyle,
-            backgroundTone: values.backgroundTone,
-            composition: values.composition,
-            propsLevel: values.propsLevel,
-            audienceHint: values.audienceHint,
-            customSceneHint: values.customSceneHint,
-          } satisfies TaskCreateDraft;
-          const sceneOptions = buildSceneOptions(values);
-          const sdsOptions = buildSDSOptions(values);
-          if (values.sdsEnabled && !sdsOptions) {
-            setError("root", {
-              message: "启用 SDS 同步时，必须填写有效的 Variant ID。",
-            });
-            return;
-          }
-          const sdsMetadata =
-            sdsOptions && sdsOptions.variant_id && sdsOptions.parent_product_id
-              ? await loadSDSListingKitMetadata({
-                  parentProductId: sdsOptions.parent_product_id,
-                  variantId: sdsOptions.variant_id,
-                  selectedVariantIds: parseSelectedVariantIds(
-                    liveSearchParams.get("variantIds"),
-                  ),
-                })
-              : {};
-          const enrichedSDSOptions = sdsOptions
-            ? {
-                ...sdsMetadata,
-                ...sdsOptions,
-              }
-            : undefined;
-          const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
-          const options = {
-            ...(sceneOptions ? { process_images: true } : {}),
-            ...(enrichedSDSOptions && !sceneOptions ? { process_images: false } : {}),
-            ...(sceneOptions ? { scene: sceneOptions } : {}),
-            ...(enrichedSDSOptions ? { sds: enrichedSDSOptions } : {}),
-          };
-          const request = {
-            text: draft.text,
-            image_urls: parsedImageUrls,
-            platforms: values.platforms,
-            ...(sheinStoreId ? { shein_store_id: sheinStoreId } : {}),
-            ...(draft.productUrl ? { product_url: draft.productUrl } : {}),
-            ...(Object.keys(options).length > 0 ? { options } : {}),
-          };
-          const task = await createTask.mutateAsync(request);
-          saveTaskCreateDraft(task.task_id, draft);
+          const task = await createTask.mutateAsync(submission.request);
+          saveTaskCreateDraft(task.task_id, submission.draft);
           router.push(`/listing-kits/${task.task_id}/status`);
         })}
       >
@@ -447,67 +320,20 @@ export function TaskCreateForm({
           />
         ) : null}
 
-        <fieldset className="space-y-3">
-          <legend className="text-sm font-medium text-zinc-700">目标平台</legend>
-          <div className="grid gap-3 md:grid-cols-2">
-            {platformOptions.map((platform) => (
-              <label
-                className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900"
-                key={platform.value}
-              >
-                <input
-                  aria-label={platform.label}
-                  className="h-4 w-4 rounded border-zinc-300 accent-zinc-950"
-                  defaultChecked={selectedPlatforms?.includes(platform.value)}
-                  type="checkbox"
-                  value={platform.value}
-                  {...register("platforms")}
-                />
-                <span>{platform.label}</span>
-              </label>
-            ))}
-          </div>
-          <p className="text-sm text-zinc-500">
-            已选择 {selectedPlatforms?.length ?? 0} 个平台
-          </p>
-          {errors.platforms ? (
-            <p className="text-sm text-red-600">{errors.platforms.message}</p>
-          ) : null}
-        </fieldset>
+        <TaskPlatformFieldset
+          errors={errors}
+          register={register}
+          selectedPlatforms={selectedPlatforms}
+        />
 
         {selectedPlatforms?.includes("shein") ? (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">SHEIN 店铺 ID</span>
-            <input
-              aria-label="SHEIN 店铺 ID"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-              inputMode="numeric"
-              placeholder="869"
-              {...register("sheinStoreId")}
-            />
-            <p className="text-sm leading-6 text-zinc-500">
-              如果当前环境只对应一个店铺，可以先留空；多个 SHEIN 店铺共用时再填写。
-            </p>
-          </label>
+          <TaskSheinStoreField register={register} />
         ) : null}
 
-        <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1">
-              <h2 className="text-sm font-medium text-zinc-900">高级设置</h2>
-              <p className="text-sm leading-6 text-zinc-500">
-                先填写基础信息；SDS 和场景等高级配置可以稍后再补充。
-              </p>
-            </div>
-            <Button
-              onClick={() => setShowAdvancedSettings((current) => !current)}
-              tone="secondary"
-              type="button"
-            >
-              {showAdvancedSettings ? "收起高级设置" : "显示高级设置"}
-            </Button>
-          </div>
-        </section>
+        <TaskAdvancedSettingsToggle
+          setShowAdvancedSettings={setShowAdvancedSettings}
+          showAdvancedSettings={showAdvancedSettings}
+        />
 
         {showAdvancedSettings ? (
           <>
@@ -559,14 +385,11 @@ export function TaskCreateForm({
           hasProductUrl={Boolean(currentProductUrl?.trim())}
         />
 
-        <div className="flex flex-wrap gap-3">
-          <Button disabled={createTask.isPending} type="submit">
-            {createTask.isPending ? "创建中..." : pageCopy.submitLabel}
-          </Button>
-          <Button tone="secondary" onClick={() => router.push("/")} type="button">
-            返回首页
-          </Button>
-        </div>
+        <TaskCreateFormActions
+          isCreating={createTask.isPending}
+          onBack={() => router.push("/")}
+          submitLabel={pageCopy.submitLabel}
+        />
       </form>
     </Card>
   );

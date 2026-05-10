@@ -1,12 +1,12 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import { SDSPagination } from "@/components/listingkit/sds/sds-pagination";
 import { SDSProductCard } from "@/components/listingkit/sds/sds-product-card";
+import { SDSProductBrowserFilters } from "@/components/listingkit/sds/sds-product-browser-filters";
 import { SDSRecentVariants } from "@/components/listingkit/sds/sds-recent-variants";
 import { SDSSelectionSummary } from "@/components/listingkit/sds/sds-selection-summary";
 import { SDSVariantPicker } from "@/components/listingkit/sds/sds-variant-picker";
@@ -15,10 +15,6 @@ import { useSDSProductDetail } from "@/lib/query/use-sds-product-detail";
 import { useSDSProducts } from "@/lib/query/use-sds-products";
 import { useSDSRecentVariants } from "@/lib/query/use-sds-recent-variants";
 import { useSDSShipmentAreas } from "@/lib/query/use-sds-shipment-areas";
-import {
-  sdsCycleBands,
-  sdsWeightBands,
-} from "@/lib/sds/product-filters";
 import { buildSDSVariantSelection } from "@/lib/sds/variant-selection";
 import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/sds";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
@@ -143,13 +139,6 @@ export function SDSProductBrowser({
     applySelection(buildSDSVariantSelection(detail.data, primary, selectedVariants));
   }
 
-  function applySearch(keywordValue: string) {
-    updateQuery({
-      keyword: keywordValue.trim() || undefined,
-      page: "1",
-    });
-  }
-
   function openVariantPicker(productId: number) {
     setPickerProductId(productId);
   }
@@ -205,180 +194,21 @@ export function SDSProductBrowser({
           </div>
         </div>
 
-        <form
-          className="grid gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 shadow-sm md:grid-cols-2 xl:grid-cols-6"
-          onSubmit={(event: FormEvent<HTMLFormElement>) => {
-            event.preventDefault();
-            const formData = new FormData(event.currentTarget);
-            applySearch(String(formData.get("keyword") ?? ""));
-          }}
-        >
-          <select
-            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            disabled={shipmentAreas.isLoading || availableShipmentAreas.length === 0}
-            defaultValue={shipmentArea}
-            key={shipmentArea}
-            name="shipmentArea"
-            onChange={(event) =>
-              updateQuery({
-                shipmentArea: event.target.value,
-                page: "1",
-                categoryId: undefined,
-                productId: undefined,
-                variantId: undefined,
-                parentProductId: undefined,
-                prototypeGroupId: undefined,
-                layerId: undefined,
-                printWidth: undefined,
-                printHeight: undefined,
-                templateImageUrl: undefined,
-                maskImageUrl: undefined,
-                blankDesignUrl: undefined,
-                mockupImageUrl: undefined,
-                mockupImageUrls: undefined,
-                productName: undefined,
-                variantLabel: undefined,
-              })
-            }
-          >
-            {availableShipmentAreas.map((area) => (
-              <option key={area.value} value={area.value}>
-                {area.label} ({area.totalCount})
-              </option>
-            ))}
-          </select>
-          <select
-            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            disabled={categories.isLoading}
-            key={`${shipmentArea}:${categoryId ?? 0}`}
-            name="categoryId"
-            onChange={(event) =>
-              updateQuery({
-                categoryId: event.target.value || undefined,
-                page: "1",
-                productId: undefined,
-                variantId: undefined,
-                parentProductId: undefined,
-                prototypeGroupId: undefined,
-                layerId: undefined,
-                printWidth: undefined,
-                printHeight: undefined,
-                templateImageUrl: undefined,
-                maskImageUrl: undefined,
-                blankDesignUrl: undefined,
-                mockupImageUrl: undefined,
-                mockupImageUrls: undefined,
-                productName: undefined,
-                variantLabel: undefined,
-              })
-            }
-            defaultValue={categoryId ? String(categoryId) : ""}
-          >
-            <option value="">全部分类</option>
-            {availableCategories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name} ({category.count})
-              </option>
-            ))}
-          </select>
-          <select
-            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            defaultValue={sortValue}
-            key={`sort:${sortValue || "default"}`}
-            name="sort"
-            onChange={(event) =>
-              updateQuery({
-                sort: event.target.value || undefined,
-                page: "1",
-              })
-            }
-          >
-            <option value="">默认排序</option>
-            <option value="min_price:asc">价格从低到高</option>
-            <option value="min_price:desc">价格从高到低</option>
-          </select>
-          <select
-            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            defaultValue={weightBand}
-            key={`weight:${weightBand || "all"}`}
-            name="weightBand"
-            onChange={(event) =>
-              updateQuery({
-                weightBand: event.target.value || undefined,
-                page: "1",
-              })
-            }
-          >
-            {sdsWeightBands.map((band) => (
-              <option key={band.value || "all"} value={band.value}>
-                {band.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            defaultValue={cycleBand}
-            key={`cycle:${cycleBand || "all"}`}
-            name="cycleBand"
-            onChange={(event) =>
-              updateQuery({
-                cycleBand: event.target.value || undefined,
-                page: "1",
-              })
-            }
-          >
-            {sdsCycleBands.map((band) => (
-              <option key={band.value || "all"} value={band.value}>
-                {band.label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:col-span-2 xl:col-span-5"
-            defaultValue={queryKeyword}
-            key={queryKeyword}
-            name="keyword"
-            placeholder="按商品名或 SKU 搜索"
-          />
-          <div>
-            <Button type="submit">搜索</Button>
-          </div>
-        </form>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
-              onSaleOnly
-                ? "border-emerald-800 bg-emerald-900 text-white"
-                : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-            }`}
-            onClick={() =>
-              updateQuery({
-                onSaleStatus: onSaleOnly ? undefined : "2",
-                page: "1",
-              })
-            }
-            type="button"
-          >
-            只看在售
-          </button>
-          <button
-            className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
-              hotSellOnly
-                ? "border-rose-800 bg-rose-900 text-white"
-                : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-            }`}
-            onClick={() =>
-              updateQuery({
-                hotSellStatus: hotSellOnly ? undefined : "1",
-                page: "1",
-              })
-            }
-            type="button"
-          >
-            只看热卖
-          </button>
-        </div>
+        <SDSProductBrowserFilters
+          availableCategories={availableCategories}
+          availableShipmentAreas={availableShipmentAreas}
+          categoriesLoading={categories.isLoading}
+          categoryId={categoryId}
+          cycleBand={cycleBand}
+          hotSellOnly={hotSellOnly}
+          onSaleOnly={onSaleOnly}
+          queryKeyword={queryKeyword}
+          shipmentArea={shipmentArea}
+          shipmentAreasLoading={shipmentAreas.isLoading}
+          sortValue={sortValue}
+          updateQuery={updateQuery}
+          weightBand={weightBand}
+        />
 
         <SDSRecentVariants
           activeVariantId={selectedVariantId > 0 ? selectedVariantId : undefined}

@@ -1,5 +1,6 @@
 import type {
   SheinFinalReviewImage,
+  SheinPreviewPayload,
   SheinReadinessItem,
 } from "@/lib/types/listingkit";
 
@@ -81,4 +82,141 @@ export function summaryStatusLabel(status: ReviewSummaryItem["status"]) {
     default:
       return "已完成";
   }
+}
+
+export function initialPriceOverrides(pricing?: SheinPreviewPayload["pricing"]) {
+  return Object.fromEntries(
+    pricing?.sku_prices?.map((sku) => [
+      sku.supplier_sku ?? "",
+      String(sku.final_price ?? ""),
+    ]) ?? [],
+  );
+}
+
+export function manualPriceOverridesFromStrings(
+  priceOverrides: Record<string, string>,
+) {
+  const out: Record<string, number> = {};
+  for (const [sku, value] of Object.entries(priceOverrides)) {
+    const price = Number(value);
+    if (sku && Number.isFinite(price) && price > 0) {
+      out[sku] = price;
+    }
+  }
+  return out;
+}
+
+export function buildFinalReviewModel({
+  customerBlockingCount,
+  shein,
+}: {
+  customerBlockingCount: number;
+  shein?: SheinPreviewPayload | null;
+}) {
+  const finalReview = shein?.final_review;
+  const pricing = shein?.pricing;
+  if (!finalReview && !pricing) {
+    return null;
+  }
+
+  const blockers = finalReview?.blocking_items ?? [];
+  const confirmed = finalReview?.confirmed === true;
+  const ready = shein?.submit_readiness?.ready === true;
+  const readinessBlockers = shein?.submit_readiness?.blocking_items ?? [];
+  const visibleBlockers = blockers.length ? blockers : readinessBlockers;
+  const allBlockingItems = [...readinessBlockers, ...blockers];
+  const blockingCount = customerBlockingCount || visibleBlockers.length;
+  const imageCounts = imageRoleCounts(finalReview?.images);
+  const finalImages = (finalReview?.images ?? []).filter(
+    (image) => image.final !== false && image.url,
+  );
+  const attributeResolution = shein?.editor_context?.attributes?.current;
+  const finalAttributeCount = finalReview?.attributes?.length ?? 0;
+  const resolvedAttributeCount =
+    finalAttributeCount || attributeResolution?.resolved_count || 0;
+  const attributeBlocked = hasBlockingKey(allBlockingItems, [
+    "attributes",
+    "attribute_review",
+  ]);
+  const attributeResolvedByState =
+    !attributeBlocked &&
+    attributeResolution?.status === "resolved" &&
+    resolvedAttributeCount > 0;
+  const attributeDone =
+    !attributeBlocked && (finalAttributeCount > 0 || attributeResolvedByState);
+  const attributeMessage =
+    finalAttributeCount > 0
+      ? `已确认 ${finalAttributeCount} 个普通属性`
+      : attributeResolvedByState && attributeResolution?.source === "manual_fallback_review"
+        ? `已按当前 SDS 属性确认 ${resolvedAttributeCount} 个普通属性`
+        : attributeResolvedByState
+          ? `已确认 ${resolvedAttributeCount} 个普通属性`
+          : "普通属性未展示已确认结果，建议检查必填属性。";
+  const imageBlocked =
+    hasBlockingKey(allBlockingItems, ["images", "final_images", "preview_product"]) ||
+    imageCounts.final === 0 ||
+    imageCounts.main === 0;
+  const summaryItems: ReviewSummaryItem[] = [
+    {
+      key: "category",
+      title: "类目确认",
+      status: hasBlockingKey(allBlockingItems, ["category", "category_review"])
+        ? "blocked"
+        : finalReview?.category_id
+          ? "done"
+          : "warning",
+      message: finalReview?.category_id
+        ? `已选择类目 ${finalReview.category_id}`
+        : "还没有明确的 SHEIN 类目 ID，请确认类目后再提交。",
+      actionLabel: "去确认类目",
+    },
+    {
+      key: "attributes",
+      title: "普通属性",
+      status: attributeBlocked ? "blocked" : attributeDone ? "done" : "warning",
+      message: attributeMessage,
+      actionLabel: "去确认属性",
+    },
+    {
+      key: "sale_attributes",
+      title: "销售属性",
+      status: hasBlockingKey(allBlockingItems, ["sale_attributes", "variants"])
+        ? "blocked"
+        : (finalReview?.sale_attributes?.length ?? 0) > 0
+          ? "done"
+          : "warning",
+      message:
+        (finalReview?.sale_attributes?.length ?? 0) > 0
+          ? `已映射 ${finalReview?.sale_attributes?.length ?? 0} 个销售属性`
+          : "销售属性未展示已映射结果，建议检查主规格和其他规格。",
+      actionLabel: "去确认销售属性",
+    },
+    {
+      key: "images",
+      title: "图片资料",
+      status: imageBlocked ? "blocked" : "done",
+      message: imageBlocked
+        ? "主图、色块图或最终提交图片不完整，请先检查图片角色。"
+        : `最终 ${imageCounts.final} 张，主图 ${imageCounts.main} 张，色块图 ${imageCounts.swatch} 张`,
+      actionLabel: "去检查图片",
+    },
+  ];
+  const submitHint = !ready
+    ? `还差 ${blockingCount} 个阻断项，修复后才能提交。`
+    : !confirmed
+      ? "资料已通过检查，请先确认最终草稿。"
+      : "可以保存到 SHEIN 草稿箱，也可以正式发布。";
+
+  return {
+    blockingCount,
+    confirmed,
+    finalImages,
+    finalReview,
+    imageBlocked,
+    imageCounts,
+    pricing,
+    ready,
+    submitHint,
+    summaryItems,
+  };
 }
