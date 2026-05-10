@@ -6,10 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
 import { PlatformCardRail } from "@/components/listingkit/shared/platform-card-rail";
-import { SheinCategoryReviewCard } from "@/components/listingkit/shein/shein-category-review-card";
-import { SheinAttributeReviewCard } from "@/components/listingkit/shein/shein-attribute-review-card";
 import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
-import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein/shein-sale-attribute-review-card";
 import {
   canSelectSheinReadinessItem,
   isSheinWorkspaceActionKey,
@@ -26,6 +23,7 @@ import {
   SheinFinalReviewWorkspaceView,
   WorkspaceReviewView,
 } from "@/components/listingkit/workspace/workspace-screen-views";
+import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
 import { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
 import { useWorkspaceData } from "@/components/listingkit/workspace/use-workspace-data";
 import { deriveRecoveryNavigationTarget } from "@/components/listingkit/workspace/workspace-action-routing";
@@ -287,63 +285,31 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
 
   const sheinAdvancedReviewDetails =
     selectedPlatform === "shein" && showSheinReviewDetails && !isSheinFinalReviewMode ? (
-      <details
-        className="group rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm"
-        id="shein-advanced-review-details"
+      <SheinAdvancedReviewDetails
         open={shouldOpenSheinAdvancedDetails}
-      >
-        <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-              高级详情
-            </p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-950">
-              类目和属性映射诊断
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-zinc-600">
-              {shouldOpenSheinAdvancedDetails
-                ? "当前存在 SHEIN 阻断项，已经为你展开需要优先处理的类目和属性诊断。"
-                : "这里是内部排查信息，默认收起。需要处理类目、普通属性或销售属性时再展开。"}
-            </p>
-          </div>
-          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600">
-            {shouldOpenSheinAdvancedDetails ? "已自动展开" : "点击展开"}
-          </span>
-        </summary>
-        <div className="mt-5 grid min-w-0 items-start gap-4 xl:grid-cols-2">
-          {showSheinCategoryReview ? (
-            <div id="shein-category-review-card" className="min-w-0">
-              <SheinCategoryReviewCard
-                taskId={taskId}
-                editorContext={preview.data?.shein?.editor_context}
-                isApplying={applyRevision.isPending}
-                onApplySuggestedCategory={sheinActions.handleApplySuggestedSheinCategory}
-                onConfirmCurrentCategory={sheinActions.handleConfirmCurrentSheinCategory}
-                onApplyManualCategory={sheinActions.handleApplyManualSheinCategory}
-              />
-            </div>
-          ) : null}
-          {showSheinAttributeReview ? (
-            <div id="shein-attribute-review-card" className="min-w-0">
-              <SheinAttributeReviewCard
-                editorContext={preview.data?.shein?.editor_context}
-                isApplying={applyRevision.isPending}
-                onConfirmAttributes={sheinActions.handleConfirmSheinAttributes}
-                onConfirmFallbackAttributes={sheinActions.handleConfirmSheinFallbackAttributes}
-              />
-            </div>
-          ) : null}
-          {showSheinSaleAttributeReview ? (
-            <div id="shein-sale-attribute-review-card" className="min-w-0">
-              <SheinSaleAttributeReviewCard
-                editorContext={preview.data?.shein?.editor_context}
-                isApplying={applyRevision.isPending}
-                onConfirmCurrentSaleAttributes={sheinActions.handleConfirmCurrentSheinSaleAttributes}
-              />
-            </div>
-          ) : null}
-        </div>
-      </details>
+        showCategoryReview={showSheinCategoryReview}
+        showAttributeReview={showSheinAttributeReview}
+        showSaleAttributeReview={showSheinSaleAttributeReview}
+        categoryReviewProps={{
+          taskId,
+          editorContext: preview.data?.shein?.editor_context,
+          isApplying: applyRevision.isPending,
+          onApplySuggestedCategory: sheinActions.handleApplySuggestedSheinCategory,
+          onConfirmCurrentCategory: sheinActions.handleConfirmCurrentSheinCategory,
+          onApplyManualCategory: sheinActions.handleApplyManualSheinCategory,
+        }}
+        attributeReviewProps={{
+          editorContext: preview.data?.shein?.editor_context,
+          isApplying: applyRevision.isPending,
+          onConfirmAttributes: sheinActions.handleConfirmSheinAttributes,
+          onConfirmFallbackAttributes: sheinActions.handleConfirmSheinFallbackAttributes,
+        }}
+        saleAttributeReviewProps={{
+          editorContext: preview.data?.shein?.editor_context,
+          isApplying: applyRevision.isPending,
+          onConfirmCurrentSaleAttributes: sheinActions.handleConfirmCurrentSheinSaleAttributes,
+        }}
+      />
     ) : null;
 
   return (
