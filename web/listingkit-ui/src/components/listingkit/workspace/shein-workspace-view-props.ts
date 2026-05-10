@@ -9,6 +9,7 @@ import {
   canSelectSheinReadinessItem,
   isSheinWorkspaceActionKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
+import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
 import { submitErrorMessage } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import type { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
 import type {
@@ -26,6 +27,9 @@ type SheinSubmitReadinessPanelProps = ComponentProps<
 >;
 type SheinSubmissionTimelineProps = ComponentProps<
   typeof SheinSubmissionTimeline
+>;
+type SheinAdvancedReviewDetailsProps = ComponentProps<
+  typeof SheinAdvancedReviewDetails
 >;
 type SheinWorkspaceActions = ReturnType<typeof useSheinWorkspaceActions>;
 
@@ -160,5 +164,62 @@ export function buildSheinWorkspaceViewProps({
     finalModeReadinessProps,
     reviewModeReadinessProps,
     timelineProps,
+  };
+}
+
+export function buildSheinAdvancedReviewDetailsProps({
+  taskId,
+  shein,
+  selectedPlatform,
+  showReviewDetails,
+  showCategoryReview,
+  showAttributeReview,
+  showSaleAttributeReview,
+  isFinalReviewMode,
+  open,
+  isApplying,
+  sheinActions,
+}: {
+  taskId: string;
+  shein?: SheinPreviewPayload | null;
+  selectedPlatform?: string;
+  showReviewDetails: boolean;
+  showCategoryReview: boolean;
+  showAttributeReview: boolean;
+  showSaleAttributeReview: boolean;
+  isFinalReviewMode: boolean;
+  open: boolean;
+  isApplying: boolean;
+  sheinActions: SheinWorkspaceActions;
+}): SheinAdvancedReviewDetailsProps | null {
+  if (selectedPlatform !== "shein" || !showReviewDetails || isFinalReviewMode) {
+    return null;
+  }
+
+  return {
+    open,
+    showCategoryReview,
+    showAttributeReview,
+    showSaleAttributeReview,
+    categoryReviewProps: {
+      taskId,
+      editorContext: shein?.editor_context,
+      isApplying,
+      onApplySuggestedCategory: sheinActions.handleApplySuggestedSheinCategory,
+      onConfirmCurrentCategory: sheinActions.handleConfirmCurrentSheinCategory,
+      onApplyManualCategory: sheinActions.handleApplyManualSheinCategory,
+    },
+    attributeReviewProps: {
+      editorContext: shein?.editor_context,
+      isApplying,
+      onConfirmAttributes: sheinActions.handleConfirmSheinAttributes,
+      onConfirmFallbackAttributes: sheinActions.handleConfirmSheinFallbackAttributes,
+    },
+    saleAttributeReviewProps: {
+      editorContext: shein?.editor_context,
+      isApplying,
+      onConfirmCurrentSaleAttributes:
+        sheinActions.handleConfirmCurrentSheinSaleAttributes,
+    },
   };
 }
