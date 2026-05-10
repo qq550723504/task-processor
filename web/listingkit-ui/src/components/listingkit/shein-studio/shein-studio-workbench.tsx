@@ -3,12 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
+import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/shein-studio-progress-strip";
 import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-studio/shein-studio-selection-overview";
+import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
+import {
+  evaluateImportedGalleryDesigns,
+  STUDIO_SESSION_SYNC_TIMEOUT_MS,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
   ensureSheinStudioSession,
@@ -22,7 +27,6 @@ import {
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import {
   consumeSheinStudioGalleryHandoff,
-  evaluateSDSRatioMatch,
   galleryHandoffToDesign,
   type SDSRatioMatch,
 } from "@/lib/shein-studio/gallery-handoff";
@@ -60,26 +64,6 @@ import {
   saveSheinStudioBatch,
   saveSheinStudioDraftWithOptions,
 } from "@/lib/utils/shein-studio-batches";
-
-const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
-
-function evaluateImportedGalleryDesigns(
-  designs: SheinStudioGeneratedDesign[],
-  selection?: SDSProductVariantSelection,
-): SDSRatioMatch | null {
-  const imported = designs.find(
-    (design) => design.role === "gallery" && design.sourceWidth && design.sourceHeight,
-  );
-  if (!imported) {
-    return null;
-  }
-  return evaluateSDSRatioMatch({
-    sourceWidth: imported.sourceWidth,
-    sourceHeight: imported.sourceHeight,
-    targetWidth: selection?.printableWidth,
-    targetHeight: selection?.printableHeight,
-  });
-}
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -983,53 +967,8 @@ export function SheinStudioWorkbench({
       ) : null}
 
       {effectiveStep === "tasks" ? (
-        <div
-          id="shein-created-tasks"
-          className="scroll-mt-6 rounded-[1.75rem] border border-zinc-200/80 bg-white p-5 shadow-sm"
-        >
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-                第 4 步 · SHEIN 任务
-              </p>
-              <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
-                审核已生成的工作区
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600">
-                打开每个任务的工作区，完成最终图片、价格、属性和提交确认。
-              </p>
-            </div>
-            <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
-              {createdTasks.length} 个任务
-            </span>
-          </div>
-          {createdTasks.length ? (
-            <SheinCreatedTasksList tasks={createdTasks} />
-          ) : (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
-              还没有创建 SHEIN 任务。先回到“审核款式”步骤批准款式，再在“生成图片”
-              步骤点击“生成 SHEIN 资料”。
-            </div>
-          )}
-        </div>
+        <SheinStudioTasksStep createdTasks={createdTasks} />
       ) : null}
     </section>
-  );
-}
-
-function SheinStudioBusyOverlay({ message }: { message: string }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-[2rem] border border-white/20 bg-white px-6 py-6 text-center shadow-2xl">
-        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-950" />
-        <h3 className="mt-5 text-lg font-semibold text-zinc-950">{message}</h3>
-        <p className="mt-2 text-sm leading-6 text-zinc-600">
-          图片生成耗时较长，通常需要 1-3 分钟。请不要刷新页面或重复点击，完成后界面会自动更新。
-        </p>
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-          当前已锁定操作，避免重复提交导致多次扣费或生成重复任务。
-        </div>
-      </div>
-    </div>
   );
 }

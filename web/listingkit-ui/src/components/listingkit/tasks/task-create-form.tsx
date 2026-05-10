@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import {
@@ -13,7 +11,20 @@ import {
   type TaskCreateDraft,
 } from "@/components/listingkit/tasks/task-create-draft";
 import { TaskInputGuidance } from "@/components/listingkit/tasks/task-input-guidance";
+import {
+  buildSDSOptions,
+  buildSceneOptions,
+  type FormValues,
+  inferInitialSourceTab,
+  parseImageUrls,
+  parseOptionalPositiveInt,
+  parseSelectedVariantIds,
+  platformOptions,
+  schema,
+  titleFieldCopy,
+} from "@/components/listingkit/tasks/task-create-form-model";
 import { TaskSDSOptions } from "@/components/listingkit/tasks/task-sds-options";
+import { TaskSceneSettingsSection } from "@/components/listingkit/tasks/task-scene-settings-section";
 import {
   getPlatformSceneDefaults,
   hasAnySceneCustomization,
@@ -27,217 +38,6 @@ import { useCreateTask } from "@/lib/query/use-create-task";
 import { useUploadImages } from "@/lib/query/use-upload-images";
 import { loadSDSListingKitMetadata } from "@/lib/sds/product-metadata";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
-
-const platformOptions = [
-  { value: "amazon", label: "Amazon" },
-  { value: "shein", label: "SHEIN" },
-  { value: "temu", label: "Temu" },
-  { value: "walmart", label: "Walmart" },
-] as const;
-
-const sceneCategoryOptions = [
-  { value: "", label: "自动" },
-  { value: "shoes", label: "鞋履" },
-  { value: "jewelry", label: "饰品" },
-  { value: "bags", label: "箱包" },
-] as const;
-
-const sceneStyleOptions = [
-  { value: "", label: "自动" },
-  { value: "studio", label: "棚拍" },
-  { value: "lifestyle", label: "生活方式" },
-  { value: "outdoor", label: "户外" },
-  { value: "minimal", label: "极简" },
-] as const;
-
-const backgroundToneOptions = [
-  { value: "", label: "自动" },
-  { value: "warm", label: "暖色" },
-  { value: "cool", label: "冷色" },
-  { value: "neutral", label: "中性" },
-  { value: "bright", label: "明亮" },
-] as const;
-
-const compositionOptions = [
-  { value: "", label: "自动" },
-  { value: "centered", label: "居中" },
-  { value: "close_up", label: "特写" },
-  { value: "multi_angle", label: "多角度" },
-] as const;
-
-const propsLevelOptions = [
-  { value: "", label: "自动" },
-  { value: "none", label: "无" },
-  { value: "light", label: "轻量" },
-  { value: "moderate", label: "适中" },
-] as const;
-
-const audienceHintOptions = [
-  { value: "", label: "自动" },
-  { value: "premium", label: "高端" },
-  { value: "youthful", label: "年轻化" },
-  { value: "sporty", label: "运动感" },
-  { value: "homey", label: "居家感" },
-] as const;
-
-const schema = z
-  .object({
-    text: z.string().trim(),
-    imageUrls: z.string().trim(),
-    productUrl: z.string().trim(),
-    platforms: z.array(z.string()).min(1, "请至少选择一个平台。"),
-    sheinStoreId: z.string().trim(),
-    sdsEnabled: z.boolean(),
-    sdsVariantId: z.string().trim(),
-    sdsParentProductId: z.string().trim(),
-    sdsPrototypeGroupId: z.string().trim(),
-    sdsLayerId: z.string().trim(),
-    sdsDesignType: z.string().trim(),
-    sdsFitLevel: z.string().trim(),
-    sdsResizeMode: z.string().trim(),
-    sceneCategory: z.string().trim(),
-    sceneStyle: z.string().trim(),
-    backgroundTone: z.string().trim(),
-    composition: z.string().trim(),
-    propsLevel: z.string().trim(),
-    audienceHint: z.string().trim(),
-    customSceneHint: z.string().trim(),
-  });
-
-type FormValues = z.infer<typeof schema>;
-
-function parseImageUrls(input: string) {
-  return input
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function parseOptionalPositiveInt(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseOptionalInt(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseOptionalNumber(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseSelectedVariantIds(input: string | null) {
-  if (!input?.trim()) {
-    return undefined;
-  }
-  const ids = input
-    .split(",")
-    .map((item) => Number.parseInt(item.trim(), 10))
-    .filter((item) => Number.isFinite(item) && item > 0);
-  return ids.length > 0 ? ids : undefined;
-}
-
-function buildSDSOptions(values: FormValues) {
-  if (!values.sdsEnabled) {
-    return undefined;
-  }
-
-  const variantId = parseOptionalPositiveInt(values.sdsVariantId ?? "");
-  if (!variantId) {
-    return undefined;
-  }
-
-  return {
-    variant_id: variantId,
-    ...(parseOptionalPositiveInt(values.sdsParentProductId ?? "")
-      ? { parent_product_id: parseOptionalPositiveInt(values.sdsParentProductId ?? "") }
-      : {}),
-    ...(parseOptionalPositiveInt(values.sdsPrototypeGroupId ?? "")
-      ? { prototype_group_id: parseOptionalPositiveInt(values.sdsPrototypeGroupId ?? "") }
-      : {}),
-    ...(values.sdsLayerId.trim() ? { layer_id: values.sdsLayerId.trim() } : {}),
-    ...(values.sdsDesignType.trim() ? { design_type: values.sdsDesignType.trim() } : {}),
-    ...(parseOptionalNumber(values.sdsFitLevel ?? "") !== undefined
-      ? { fit_level: parseOptionalNumber(values.sdsFitLevel ?? "") }
-      : {}),
-    ...(parseOptionalInt(values.sdsResizeMode ?? "") !== undefined
-      ? { resize_mode: parseOptionalInt(values.sdsResizeMode ?? "") }
-      : {}),
-  };
-}
-
-function buildSceneOptions(values: FormValues) {
-  const scene = {
-    scene_category: values.sceneCategory,
-    scene_style: values.sceneStyle,
-    background_tone: values.backgroundTone,
-    composition: values.composition,
-    props_level: values.propsLevel,
-    audience_hint: values.audienceHint,
-    custom_scene_hint: values.customSceneHint,
-  };
-
-  return Object.values(scene).some((value) => value.trim())
-    ? scene
-    : undefined;
-}
-
-function inferInitialSourceTab({
-  initialValues,
-  initialFocus,
-}: {
-  initialValues?: Partial<TaskCreateDraft>;
-  initialFocus?: "text" | "imageUrls" | "productUrl";
-}): TaskSourceTab {
-  if (initialFocus === "productUrl") {
-    return "productUrl";
-  }
-  if (initialFocus === "imageUrls") {
-    return "imageUrls";
-  }
-  if (initialValues?.productUrl?.trim()) {
-    return "productUrl";
-  }
-
-  return "imageUrls";
-}
-
-function titleFieldCopy(activeSourceTab: TaskSourceTab) {
-  if (activeSourceTab === "productUrl") {
-    return {
-      label: "选填标题",
-      helper: "如果已经提供商品链接，这里不是必填；只有想覆盖原始标题时再填写。",
-    };
-  }
-
-  return {
-    label: "商品标题",
-    helper: "适合从图片开始创建任务。标题越完整，生成质量通常越稳定。",
-  };
-}
 
 export function TaskCreateForm({
   initialValues,
@@ -884,168 +684,24 @@ export function TaskCreateForm({
               resizeModeRegistration={register("sdsResizeMode")}
             />
 
-            <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-medium text-zinc-900">场景生成设置</h2>
-                  <p className="text-sm leading-6 text-zinc-500">
-                    如果你希望更精细地控制画面风格，可以在这里补充场景偏好。
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    setShowSceneCustomization((current) => {
-                      const next = !current;
-                      if (
-                        next &&
-                        platformSceneDefaults &&
-                        !hasAnySceneCustomization({
-                          sceneCategory: currentSceneCategory,
-                          sceneStyle: currentSceneStyle,
-                          backgroundTone: currentBackgroundTone,
-                          composition: currentComposition,
-                          propsLevel: currentPropsLevel,
-                          audienceHint: currentAudienceHint,
-                          customSceneHint: currentCustomSceneHint,
-                        })
-                      ) {
-                        setValue("sceneCategory", platformSceneDefaults.sceneCategory ?? "", {
-                          shouldDirty: true,
-                        });
-                        setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
-                          shouldDirty: true,
-                        });
-                        setValue("backgroundTone", platformSceneDefaults.backgroundTone ?? "", {
-                          shouldDirty: true,
-                        });
-                        setValue("composition", platformSceneDefaults.composition ?? "", {
-                          shouldDirty: true,
-                        });
-                        setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
-                          shouldDirty: true,
-                        });
-                        setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
-                          shouldDirty: true,
-                        });
-                        lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
-                      }
-                      return next;
-                    });
-                  }}
-                  tone="secondary"
-                  type="button"
-                >
-                  {showSceneCustomization ? "收起场景设置" : "显示场景设置"}
-                </Button>
-              </div>
-              {sceneSummary ? (
-                <p className="text-sm leading-6 text-zinc-500">{sceneSummary}</p>
-              ) : null}
-
-              {showSceneCustomization ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-zinc-700">场景类目</span>
-                    <select
-                      aria-label="场景类目"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      {...register("sceneCategory")}
-                    >
-                      {sceneCategoryOptions.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-zinc-700">场景风格</span>
-                    <select
-                      aria-label="场景风格"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      {...register("sceneStyle")}
-                    >
-                      {sceneStyleOptions.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-zinc-700">背景色调</span>
-                    <select
-                      aria-label="背景色调"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      {...register("backgroundTone")}
-                    >
-                      {backgroundToneOptions.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-zinc-700">构图方式</span>
-                    <select
-                      aria-label="构图方式"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      {...register("composition")}
-                    >
-                      {compositionOptions.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-zinc-700">道具强度</span>
-                    <select
-                      aria-label="道具强度"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      {...register("propsLevel")}
-                    >
-                      {propsLevelOptions.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-zinc-700">风格倾向</span>
-                    <select
-                      aria-label="风格倾向"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      {...register("audienceHint")}
-                    >
-                      {audienceHintOptions.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2 md:col-span-2">
-                    <span className="text-sm font-medium text-zinc-700">自定义场景说明</span>
-                    <textarea
-                      aria-label="自定义场景说明"
-                      className="min-h-28 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                      placeholder="补充一句你希望系统遵循的画面要求。"
-                      {...register("customSceneHint")}
-                    />
-                  </label>
-                </div>
-              ) : null}
-            </section>
+            <TaskSceneSettingsSection
+              currentSceneValues={{
+                sceneCategory: currentSceneCategory,
+                sceneStyle: currentSceneStyle,
+                backgroundTone: currentBackgroundTone,
+                composition: currentComposition,
+                propsLevel: currentPropsLevel,
+                audienceHint: currentAudienceHint,
+                customSceneHint: currentCustomSceneHint,
+              }}
+              lastAppliedSceneDefaultsRef={lastAppliedSceneDefaultsRef}
+              platformSceneDefaults={platformSceneDefaults}
+              register={register}
+              sceneSummary={sceneSummary}
+              setShowSceneCustomization={setShowSceneCustomization}
+              setValue={setValue}
+              showSceneCustomization={showSceneCustomization}
+            />
           </>
         ) : null}
 
