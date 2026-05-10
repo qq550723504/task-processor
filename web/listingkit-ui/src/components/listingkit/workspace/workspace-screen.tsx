@@ -1,16 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
 import { PlatformCardRail } from "@/components/listingkit/shared/platform-card-rail";
 import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
-import {
-  normalizeSheinWorkspaceActionKey,
-  sheinWorkspaceTargetIdForKey,
-} from "@/components/listingkit/shein/shein-workspace-actions";
 import { ReviewReasonsCard } from "@/components/listingkit/review/review-reasons-card";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
@@ -25,13 +20,8 @@ import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/sh
 import { buildSheinWorkspaceViewProps } from "@/components/listingkit/workspace/shein-workspace-view-props";
 import { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
 import { useWorkspaceData } from "@/components/listingkit/workspace/use-workspace-data";
-import { deriveRecoveryNavigationTarget } from "@/components/listingkit/workspace/workspace-action-routing";
-import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace/workspace-recovery-routing";
-import { buildWorkspaceSearch } from "@/components/listingkit/workspace/workspace-routing";
+import { useWorkspaceNavigationActions } from "@/components/listingkit/workspace/use-workspace-navigation-actions";
 import { EmptyState } from "@/components/shared/empty-state";
-import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/workspace-screen-helpers";
-import { useExecuteAction } from "@/lib/query/use-action";
-import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import { useApplyRevision } from "@/lib/query/use-apply-revision";
 import {
   useRefreshSubmissionStatus,
@@ -39,18 +29,8 @@ import {
 } from "@/lib/query/use-submit-task";
 import { useUpdateSheinFinalDraft } from "@/lib/query/use-shein-final-draft";
 import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
-import type {
-  ActionExecutionRequest,
-  NavigationTarget,
-  RecoveryDescriptor,
-  ResolvedActionSummary,
-  SheinReadinessItem,
-  ToolbarAction,
-} from "@/lib/types/listingkit";
-import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
@@ -83,8 +63,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     workspaceUpdatedAt,
     workspaceSubtitle,
   } = workspaceData;
-  const dispatch = useDispatchNavigation(taskId, baseQuery);
-  const action = useExecuteAction(taskId, baseQuery);
   const applyRevision = useApplyRevision(taskId);
   const submitTask = useSubmitTask(taskId);
   const refreshSubmissionStatus = useRefreshSubmissionStatus(taskId);
@@ -99,95 +77,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     submitTask,
     updateSheinFinalDraft,
   });
-
-  useEffect(() => {
-    const focusedTarget = session.data?.session?.focused_target;
-    if (!focusedTarget) {
-      return;
-    }
-
-    const nextSearch = buildWorkspaceSearch(searchParams.toString(), focusedTarget);
-    const currentSearch = searchParams.toString();
-    if (nextSearch === currentSearch) {
-      return;
-    }
-
-    router.replace(
-      `/listing-kits/${taskId}/workspace${nextSearch ? `?${nextSearch}` : ""}`,
-    );
-  }, [router, searchParams, session.data?.session?.focused_target, taskId]);
-
-  const handleDispatch = (target?: NavigationTarget | null) => {
-    if (!target) return;
-    dispatch.mutate(target);
-  };
-
-  const handleAction = (
-    actionSummary?: ResolvedActionSummary | null,
-    request?: ActionExecutionRequest,
-  ) => {
-    if (request) {
-      action.mutate(request);
-      return;
-    }
-
-    if (actionSummary?.action_target || actionSummary?.action_key) {
-      action.mutate({
-        action_key: actionSummary.action_key,
-        response_mode: "patch_only",
-        target: actionSummary.action_target,
-      });
-      return;
-    }
-
-    handleDispatch(actionSummary?.navigation_target);
-  };
-
-  const handleToolbarAction = (toolbarAction: ToolbarAction) => {
-    if (toolbarAction.action_target || toolbarAction.kind === "workflow") {
-      action.mutate({
-        action_key: toolbarAction.action_target?.action_key,
-        response_mode: "patch_only",
-        target: toolbarAction.action_target,
-      });
-      return;
-    }
-
-    handleDispatch(
-      toolbarAction.navigation_target ?? toolbarAction.target?.navigation_target,
-    );
-  };
-
-  const handleRecovery = (descriptor: RecoveryDescriptor) => {
-    const target = deriveRecoveryNavigationTarget(descriptor);
-    if (target) {
-      handleDispatch(target);
-    }
-  };
-
-  const handleSelectSheinBlockingItem = (item: SheinReadinessItem) => {
-    const normalizedKey = normalizeSheinWorkspaceActionKey(item.key);
-    if (!normalizedKey) {
-      return;
-    }
-    const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
-    scrollSheinWorkspaceTarget(normalizedKey, targetId);
-  };
-
-  const handleRunSheinPrimaryAction = (key?: string | null) => {
-    const normalizedKey = normalizeSheinWorkspaceActionKey(key);
-    if (!normalizedKey) {
-      return;
-    }
-    const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
-    scrollSheinWorkspaceTarget(normalizedKey, targetId);
-  };
-
-  const handlePlatformSelect = (platform: string) => {
-    const params = sanitizedNavigationSearchParams(searchParams);
-    params.set("platform", platform);
-    router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
-  };
+  const workspaceActions = useWorkspaceNavigationActions({
+    taskId,
+    baseQuery,
+    searchParams,
+    focusedTarget: session.data?.session?.focused_target,
+  });
   const sheinViewProps = buildSheinWorkspaceViewProps({
     shein: preview.data?.shein,
     selectedPlatform,
@@ -203,8 +98,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       ? clearSheinResolutionCache.variables
       : null,
     isRefreshingSubmissionStatus: refreshSubmissionStatus.isPending,
-    onSelectBlockingItem: handleSelectSheinBlockingItem,
-    onRunPrimaryAction: handleRunSheinPrimaryAction,
+    onSelectBlockingItem: workspaceActions.handleSelectSheinBlockingItem,
+    onRunPrimaryAction: workspaceActions.handleRunSheinPrimaryAction,
     onClearResolutionCache: (kind) => clearSheinResolutionCache.mutate(kind),
     onRefreshSubmissionStatus: () => refreshSubmissionStatus.mutate(),
   });
@@ -328,8 +223,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           preview.data.asset_generation_overview?.recovery_summary
         }
         showSheinStudioLink={selectedPlatform === "shein"}
-        onSelectAction={(summary) => handleAction(summary)}
-        onSelectRecovery={handleRecovery}
+        onSelectAction={(summary) => workspaceActions.handleAction(summary)}
+        onSelectRecovery={workspaceActions.handleRecovery}
       />
       <TaskStatusPanel task={taskResult.data} />
       <ReviewReasonsCard task={taskResult.data} />
@@ -343,18 +238,15 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         cards={platformCards}
         selectedPlatform={sessionData.selected_platform}
         onSelect={(card) => {
-          handleDispatch(
+          workspaceActions.dispatchTarget(
             card.primary_navigation_target ??
               card.resolved_action_summary?.navigation_target,
           );
-          handlePlatformSelect(card.platform);
+          workspaceActions.handlePlatformSelect(card.platform);
         }}
-        onSelectRecovery={(descriptor, card) => {
-          handleRecovery(descriptor);
-          if (shouldSyncPlatformOnRecovery(descriptor)) {
-            handlePlatformSelect(card.platform);
-          }
-        }}
+        onSelectRecovery={(descriptor, card) =>
+          workspaceActions.handlePlatformRecovery(descriptor, card.platform)
+        }
       />
 
       {selectedPlatform === "shein" ? (
@@ -380,13 +272,13 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           previewSuggestionProps={{
             suggestion: previewSuggestion,
             onSelect: (slot) =>
-              handleDispatch(slot.review_target?.navigation_target),
+              workspaceActions.dispatchTarget(slot.review_target?.navigation_target),
           }}
           reviewSectionTabsProps={{
             sections: sessionData.sections,
             selectedKey: sessionData.focused_section_key,
             onSelect: (section) =>
-              handleDispatch(section.review_target?.navigation_target),
+              workspaceActions.dispatchTarget(section.review_target?.navigation_target),
           }}
           sheinSourceProductProps={{ shein: preview.data?.shein }}
           sheinImageGalleryProps={sheinViewProps.imageGalleryProps}
@@ -401,11 +293,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             selectedSlot: sessionData.selected_slot,
             selectedAssetId: focusedPreview?.asset_id,
             onSelect: (slot) =>
-              handleDispatch(slot.review_target?.navigation_target),
+              workspaceActions.dispatchTarget(slot.review_target?.navigation_target),
           }}
           reviewToolbarProps={{
             toolbar: reviewPreview.data?.toolbar ?? sessionData.focused_toolbar,
-            onAction: handleToolbarAction,
+            onAction: workspaceActions.handleToolbarAction,
           }}
           sheinReadinessProps={sheinViewProps.reviewModeReadinessProps}
           sheinTimelineProps={sheinViewProps.timelineProps}
@@ -414,7 +306,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             descriptors:
               session.data?.recovery_summary?.recommended_descriptors ??
               sessionData.overview?.recovery_summary?.recommended_descriptors,
-            onSelect: handleRecovery,
+            onSelect: workspaceActions.handleRecovery,
           }}
         />
       )}
