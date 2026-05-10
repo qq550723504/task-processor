@@ -2,6 +2,10 @@
 
 Desktop-first internal UI for ListingKit review and generation operations.
 
+产品文档：
+- [ListingKit 产品总览](../../docs/product/listingkit-product-overview.md)
+- [ListingKit 操作指南](../../docs/product/listingkit-operating-guide.md)
+
 Current scope:
 - review workspace: `preview`, `generation-review-session`, `generation-review-preview`, `dispatch`, `action`
 - queue console: `generation-queue`, `resolved_action_summary`, `recovery_summary`
@@ -79,8 +83,18 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Routes
 
 - `/` task launcher
+- `/listing-kits` task list
+- `/listing-kits/new` generic ListingKit task creation
+- `/listing-kits/shein` SHEIN Studio workflow
+- `/listing-kits/sds` SDS product browser
+- `/listing-kits/settings` ListingKit settings
+- `/listing-kits/[taskId]/status`
 - `/listing-kits/[taskId]/workspace`
 - `/listing-kits/[taskId]/queue`
+- `/listing-kits/canonical-products`
+- `/listing-kits/style-gallery`
+- `/listing-kits/shein/gallery`
+- `/listing-kits/shein/batches/[batchId]`
 
 ## Commands
 
