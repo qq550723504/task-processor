@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
@@ -13,10 +13,7 @@ import {
   type SheinFlowStep,
 } from "@/components/listingkit/shein/shein-flow-nav";
 import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein/shein-sale-attribute-review-card";
-import {
-  collectSheinPreviewImageGroups,
-  type SheinPreviewImage,
-} from "@/components/listingkit/shein/shein-preview-image";
+import { collectSheinPreviewImageGroups } from "@/components/listingkit/shein/shein-preview-image";
 import {
   canSelectSheinReadinessItem,
   isSheinWorkspaceActionKey,
@@ -38,8 +35,7 @@ import {
   SheinFinalReviewWorkspaceView,
   WorkspaceReviewView,
 } from "@/components/listingkit/workspace/workspace-screen-views";
-import { regenerateSheinDataImage } from "@/lib/api/shein-image-regeneration";
-import type { UpdateSheinFinalDraftRequest } from "@/lib/api/shein-final-draft";
+import { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
 import {
   deriveRecoveryNavigationTarget,
   pickWorkspaceResolvedActionSummary,
@@ -76,9 +72,7 @@ import type {
   NavigationTarget,
   RecoveryDescriptor,
   ResolvedActionSummary,
-  SheinManualCategoryCandidate,
   SheinReadinessItem,
-  SheinResolvedAttribute,
   ToolbarAction,
 } from "@/lib/types/listingkit";
 import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
@@ -88,19 +82,6 @@ import { formatSheinSubmitError } from "@/lib/utils/shein-submit-error";
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [selectedSheinImageUrl, setSelectedSheinImageUrl] = useState<string>();
-  const [regeneratingSheinImage, setRegeneratingSheinImage] = useState(false);
-  const [sheinImageRegenerationError, setSheinImageRegenerationError] =
-    useState<string | null>(null);
-  const [sheinSubmitAction, setSheinSubmitAction] = useState<
-    "publish" | "save_draft" | null
-  >(null);
-  const [sheinFinalDraftMessage, setSheinFinalDraftMessage] = useState<
-    string | null
-  >(null);
-  const [sheinFinalDraftError, setSheinFinalDraftError] = useState<
-    string | null
-  >(null);
   const baseQuery = useMemo(
     () => queryFromSearchParams(searchParams),
     [searchParams],
@@ -123,6 +104,16 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const refreshSubmissionStatus = useRefreshSubmissionStatus(taskId);
   const updateSheinFinalDraft = useUpdateSheinFinalDraft(taskId);
   const clearSheinResolutionCache = useClearSheinResolutionCache(taskId);
+  const sheinPreviewPayload = preview.data?.shein;
+  const sheinActions = useSheinWorkspaceActions({
+    taskId,
+    sheinPreview: sheinPreviewPayload,
+    preview,
+    taskResult,
+    applyRevision,
+    submitTask,
+    updateSheinFinalDraft,
+  });
 
   const sessionData = session.data?.session;
   const platformCards =
@@ -183,7 +174,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const sheinDisplayImages =
     sheinImages.length > 0 ? sheinImages : sheinMockupImages;
   const selectedSheinImage =
-    sheinDisplayImages.find((image) => image.url === selectedSheinImageUrl) ??
+    sheinDisplayImages.find((image) => image.url === sheinActions.selectedSheinImageUrl) ??
     sheinDisplayImages[0];
   const sheinFallbackPreview =
     selectedPlatform === "shein" && !focusedPreview?.asset_url && !focusedPreview?.preview_svg
@@ -193,7 +184,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           asset_id: selectedSheinImage?.id ?? "shein-product-image",
         }
       : undefined;
-  const sheinPreviewPayload = preview.data?.shein;
   const sheinEditorContext = sheinPreviewPayload?.editor_context;
   const showSheinCategoryReview =
     hasSheinCategoryReviewSignal(sheinEditorContext);
@@ -341,213 +331,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     }
   };
 
-  const handleApplySuggestedSheinCategory = () => {
-    const sheinPreview = preview.data?.shein;
-    const current = sheinPreview?.editor_context?.category?.current;
-    const suggested = current?.suggested_category;
-
-    if (!suggested?.category_id) {
-      return;
-    }
-
-    applyRevision.mutate({
-      platform: "shein",
-      actor: "workspace",
-      reason: "Apply suggested SHEIN category",
-      shein: {
-        category_resolution: {
-          category_id: suggested.category_id,
-          category_id_list: suggested.category_id_list,
-          product_type_id: suggested.product_type_id,
-          top_category_id: suggested.top_category_id,
-          matched_path: suggested.matched_path,
-          source: suggested.source,
-          status: "resolved",
-        },
-        sale_attribute_resolution: {
-          recommend_category_review: false,
-          category_review_reason: "",
-        },
-      },
-    });
-  };
-
-  const handleConfirmCurrentSheinCategory = () => {
-    const sheinPreview = preview.data?.shein;
-    const current = sheinPreview?.editor_context?.category?.current;
-
-    if (!current?.category_id) {
-      return;
-    }
-
-    applyRevision.mutate({
-      platform: "shein",
-      actor: "workspace",
-      reason: "Confirm current SHEIN category",
-      shein: {
-        category_resolution: {
-          category_id: current.category_id,
-          category_id_list: current.category_id_list,
-          product_type_id: current.product_type_id,
-          top_category_id: current.top_category_id,
-          matched_path: current.category_path,
-          source: current.source ?? "manual_confirm",
-          status: "resolved",
-        },
-        sale_attribute_resolution: {
-          recommend_category_review: false,
-          category_review_reason: "",
-        },
-      },
-    });
-  };
-
-  const handleApplyManualSheinCategory = async (
-    candidate: SheinManualCategoryCandidate,
-  ) => {
-    await applyRevision.mutateAsync({
-      platform: "shein",
-      actor: "workspace",
-      reason: "Apply manual SHEIN category",
-      shein: {
-        category_resolution: {
-          category_id: candidate.category_id,
-          category_id_list: candidate.category_id_list,
-          product_type_id: candidate.product_type_id,
-          top_category_id: candidate.top_category_id,
-          matched_path: candidate.category_path,
-          source: candidate.source ?? "manual_search",
-          status: "resolved",
-        },
-        sale_attribute_resolution: {
-          recommend_category_review: false,
-          category_review_reason: "",
-        },
-      },
-    });
-  };
-
-  const handleConfirmSheinAttributes = (attributes: SheinResolvedAttribute[]) => {
-    const current = preview.data?.shein?.editor_context?.attributes?.current;
-    if (!current || attributes.length === 0) {
-      return;
-    }
-    const resolvedAttributes = [
-      ...(current.resolved_attributes ?? []),
-      ...attributes,
-    ];
-    const selectedIDs = new Set(
-      attributes
-        .map((attribute) => attribute.attribute_id)
-        .filter((attributeID): attributeID is number => Boolean(attributeID)),
-    );
-    const pendingAttributeCandidates =
-      current.pending_attribute_candidates?.filter(
-        (candidate) => !selectedIDs.has(candidate.attribute_id ?? 0),
-      ) ?? [];
-    const recommendedAttributeCandidates =
-      current.recommended_attribute_candidates?.filter(
-        (candidate) => !selectedIDs.has(candidate.attribute_id ?? 0),
-      ) ?? [];
-    const pendingAttributes =
-      current.pending_attributes?.filter((attribute) => {
-        const matchingCandidate = current.pending_attribute_candidates?.find(
-          (candidate) => candidate.name === attribute.name,
-        );
-        return !matchingCandidate?.attribute_id || !selectedIDs.has(matchingCandidate.attribute_id);
-      }) ?? [];
-
-    applyRevision.mutate({
-      platform: "shein",
-      actor: "workspace",
-      reason: "Apply SHEIN attribute candidate selections",
-      shein: {
-        attribute_resolution: {
-          status: pendingAttributeCandidates.length === 0 ? "resolved" : "partial",
-          source: "manual_review",
-          category_id: preview.data?.shein?.category_id,
-          template_count: current.template_count,
-          resolved_count: resolvedAttributes.length,
-          unresolved_count: pendingAttributeCandidates.length,
-          resolved_attributes: resolvedAttributes,
-          pending_attributes: pendingAttributes,
-          pending_attribute_candidates: pendingAttributeCandidates,
-          recommended_attribute_candidates: recommendedAttributeCandidates,
-          review_notes:
-            pendingAttributeCandidates.length === 0
-              ? ["SHEIN 普通属性已人工确认"]
-              : current.review_notes,
-        },
-      },
-    });
-  };
-
-  const handleConfirmSheinFallbackAttributes = () => {
-    const current = preview.data?.shein?.editor_context?.attributes?.current;
-    if (!current) {
-      return;
-    }
-    const resolvedCount =
-      current.resolved_count ??
-      current.resolved_attributes?.length ??
-      current.pending_attributes?.length ??
-      0;
-    if (resolvedCount <= 0 && !(current.review_notes?.length ?? 0)) {
-      return;
-    }
-
-    applyRevision.mutate({
-      platform: "shein",
-      actor: "workspace",
-      reason: "Confirm SHEIN fallback attributes for internal testing",
-      shein: {
-        attribute_resolution: {
-          status: "resolved",
-          source: "manual_fallback_review",
-          category_id: preview.data?.shein?.category_id,
-          template_count: current.template_count,
-          resolved_count: Math.max(resolvedCount, 1),
-          unresolved_count: 0,
-          pending_attributes: [],
-          pending_attribute_candidates: [],
-          recommended_attribute_candidates: [],
-          review_notes: [
-            "内部测试已按当前 SDS 属性确认；当前未写入真实 SHEIN attribute_id，正式发布前建议重新获取模板后复核。",
-          ],
-        },
-      },
-    });
-  };
-
-  const handleConfirmCurrentSheinSaleAttributes = () => {
-    const current = preview.data?.shein?.editor_context?.sale_attributes?.current;
-    if (!current?.primary_attribute_id) {
-      return;
-    }
-
-    applyRevision.mutate({
-      platform: "shein",
-      actor: "workspace",
-      reason: "Confirm current SHEIN sale attributes",
-      shein: {
-        sale_attribute_resolution: {
-          status: "resolved",
-          source: "manual_review",
-          recommend_category_review: false,
-          category_review_reason: "",
-          primary_attribute_id: current.primary_attribute_id,
-          secondary_attribute_id: current.secondary_attribute_id,
-          skc_attributes: current.skc_attributes ?? [],
-          sku_attributes: current.sku_attributes ?? [],
-          selection_summary: current.selection_summary ?? [],
-          review_notes: [
-            "SHEIN 销售属性已按当前主规格和其他规格人工确认。",
-          ],
-        },
-      },
-    });
-  };
-
   const canSelectSheinBlockingItem = (item: SheinReadinessItem) =>
     canSelectSheinReadinessItem(item);
 
@@ -567,66 +350,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     }
     const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
     scrollSheinWorkspaceTarget(normalizedKey, targetId);
-  };
-
-  const handleSaveSheinFinalDraft = (
-    payload: UpdateSheinFinalDraftRequest,
-    successMessage = "Final SHEIN draft saved.",
-  ) => {
-    setSheinFinalDraftMessage(null);
-    setSheinFinalDraftError(null);
-    updateSheinFinalDraft.mutate(payload, {
-      onSuccess: () => setSheinFinalDraftMessage(successMessage),
-      onError: (error) => setSheinFinalDraftError(submitErrorMessage(error)),
-    });
-  };
-
-  const handleSubmitShein = (actionType: "publish" | "save_draft" = "publish") => {
-    const confirmed = window.confirm(
-      actionType === "publish"
-        ? "确认要直接发布到 SHEIN 吗？系统会先上传最终图片，然后提交商品资料。"
-        : "确认要保存到 SHEIN 草稿箱吗？系统会先上传最终图片。",
-    );
-    if (!confirmed) {
-      return;
-    }
-    setSheinSubmitAction(actionType);
-    submitTask.mutate(
-      {
-        platform: "shein",
-        action: actionType,
-        confirmed_final: true,
-      },
-      {
-        onSettled: () => setSheinSubmitAction(null),
-      },
-    );
-  };
-
-  const handleSaveSheinDraft = () => {
-    handleSubmitShein("save_draft");
-  };
-
-  const handleRegenerateSheinImage = async (
-    image: SheinPreviewImage,
-    prompt: string,
-  ) => {
-    setRegeneratingSheinImage(true);
-    setSheinImageRegenerationError(null);
-    try {
-      const response = await regenerateSheinDataImage(taskId, {
-        image_url: image.url,
-        label: image.label,
-        prompt,
-      });
-      setSelectedSheinImageUrl(response.image?.image_url ?? undefined);
-      await Promise.all([preview.refetch(), taskResult.refetch()]);
-    } catch (error) {
-      setSheinImageRegenerationError(submitErrorMessage(error));
-      throw error;
-    } finally {
-      setRegeneratingSheinImage(false);
-    }
   };
 
   const handlePlatformSelect = (platform: string) => {
@@ -753,9 +476,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
                 taskId={taskId}
                 editorContext={preview.data?.shein?.editor_context}
                 isApplying={applyRevision.isPending}
-                onApplySuggestedCategory={handleApplySuggestedSheinCategory}
-                onConfirmCurrentCategory={handleConfirmCurrentSheinCategory}
-                onApplyManualCategory={handleApplyManualSheinCategory}
+                onApplySuggestedCategory={sheinActions.handleApplySuggestedSheinCategory}
+                onConfirmCurrentCategory={sheinActions.handleConfirmCurrentSheinCategory}
+                onApplyManualCategory={sheinActions.handleApplyManualSheinCategory}
               />
             </div>
           ) : null}
@@ -764,8 +487,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
               <SheinAttributeReviewCard
                 editorContext={preview.data?.shein?.editor_context}
                 isApplying={applyRevision.isPending}
-                onConfirmAttributes={handleConfirmSheinAttributes}
-                onConfirmFallbackAttributes={handleConfirmSheinFallbackAttributes}
+                onConfirmAttributes={sheinActions.handleConfirmSheinAttributes}
+                onConfirmFallbackAttributes={sheinActions.handleConfirmSheinFallbackAttributes}
               />
             </div>
           ) : null}
@@ -774,7 +497,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
               <SheinSaleAttributeReviewCard
                 editorContext={preview.data?.shein?.editor_context}
                 isApplying={applyRevision.isPending}
-                onConfirmCurrentSaleAttributes={handleConfirmCurrentSheinSaleAttributes}
+                onConfirmCurrentSaleAttributes={sheinActions.handleConfirmCurrentSheinSaleAttributes}
               />
             </div>
           ) : null}
@@ -847,38 +570,38 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             finalImages: preview.data?.shein?.final_review?.images,
             variantCount: sheinVariantCount,
             isSavingControls: updateSheinFinalDraft.isPending,
-            saveErrorMessage: sheinFinalDraftError,
-            saveMessage: sheinFinalDraftMessage,
+            saveErrorMessage: sheinActions.sheinFinalDraftError,
+            saveMessage: sheinActions.sheinFinalDraftMessage,
             selectedUrl: selectedSheinImage?.url,
-            onSelect: (image) => setSelectedSheinImageUrl(image.url),
+            onSelect: (image) => sheinActions.setSelectedSheinImageUrl(image.url),
             onSaveImageControls: (payload) =>
-              handleSaveSheinFinalDraft(
+              sheinActions.handleSaveSheinFinalDraft(
                 payload,
                 "图片设置已保存，最终提交会使用当前排序和角色。",
               ),
-            onRegenerate: handleRegenerateSheinImage,
-            isRegenerating: regeneratingSheinImage,
-            regenerationError: sheinImageRegenerationError,
+            onRegenerate: sheinActions.handleRegenerateSheinImage,
+            isRegenerating: sheinActions.regeneratingSheinImage,
+            regenerationError: sheinActions.sheinImageRegenerationError,
           }}
           finalReviewProps={{
             shein: preview.data?.shein,
             isSaving: updateSheinFinalDraft.isPending,
             isSubmitting: submitTask.isPending,
-            saveErrorMessage: sheinFinalDraftError,
-            saveMessage: sheinFinalDraftMessage,
-            submitAction: sheinSubmitAction,
+            saveErrorMessage: sheinActions.sheinFinalDraftError,
+            saveMessage: sheinActions.sheinFinalDraftMessage,
+            submitAction: sheinActions.sheinSubmitAction,
             submitErrorMessage: formatSheinSubmitError(
               submitTask.error,
               preview.data?.shein,
             ),
             canSelectBlockingItem: canSelectSheinBlockingItem,
             onSaveFinalDraft: (payload) =>
-              handleSaveSheinFinalDraft(
+              sheinActions.handleSaveSheinFinalDraft(
                 payload,
                 "最终草稿已确认。资料就绪后可以保存草稿或发布。",
               ),
             onSelectBlockingItem: handleSelectSheinBlockingItem,
-            onSubmit: handleSubmitShein,
+            onSubmit: sheinActions.handleSubmitShein,
           }}
           readinessProps={{
             readiness: preview.data?.shein?.submit_readiness,
@@ -895,13 +618,13 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
               preview.data?.shein?.submit_readiness?.ready === true &&
               preview.data?.shein?.final_review?.confirmed === true,
             isSubmitting: submitTask.isPending,
-            submitAction: sheinSubmitAction,
+            submitAction: sheinActions.sheinSubmitAction,
             submitErrorMessage: formatSheinSubmitError(
               submitTask.error,
               preview.data?.shein,
             ),
-            onSubmit: () => handleSubmitShein("publish"),
-            onSaveDraft: handleSaveSheinDraft,
+            onSubmit: () => sheinActions.handleSubmitShein("publish"),
+            onSaveDraft: sheinActions.handleSaveSheinDraft,
             clearingResolutionCacheKind: clearSheinResolutionCache.isPending
               ? clearSheinResolutionCache.variables
               : null,
@@ -936,38 +659,38 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             finalImages: preview.data?.shein?.final_review?.images,
             variantCount: sheinVariantCount,
             isSavingControls: updateSheinFinalDraft.isPending,
-            saveErrorMessage: sheinFinalDraftError,
-            saveMessage: sheinFinalDraftMessage,
+            saveErrorMessage: sheinActions.sheinFinalDraftError,
+            saveMessage: sheinActions.sheinFinalDraftMessage,
             selectedUrl: selectedSheinImage?.url,
-            onSelect: (image) => setSelectedSheinImageUrl(image.url),
+            onSelect: (image) => sheinActions.setSelectedSheinImageUrl(image.url),
             onSaveImageControls: (payload) =>
-              handleSaveSheinFinalDraft(
+              sheinActions.handleSaveSheinFinalDraft(
                 payload,
                 "图片设置已保存，最终提交会使用当前排序和角色。",
               ),
-            onRegenerate: handleRegenerateSheinImage,
-            isRegenerating: regeneratingSheinImage,
-            regenerationError: sheinImageRegenerationError,
+            onRegenerate: sheinActions.handleRegenerateSheinImage,
+            isRegenerating: sheinActions.regeneratingSheinImage,
+            regenerationError: sheinActions.sheinImageRegenerationError,
           }}
           sheinFinalReviewProps={{
             shein: preview.data?.shein,
             isSaving: updateSheinFinalDraft.isPending,
             isSubmitting: submitTask.isPending,
-            saveErrorMessage: sheinFinalDraftError,
-            saveMessage: sheinFinalDraftMessage,
-            submitAction: sheinSubmitAction,
+            saveErrorMessage: sheinActions.sheinFinalDraftError,
+            saveMessage: sheinActions.sheinFinalDraftMessage,
+            submitAction: sheinActions.sheinSubmitAction,
             submitErrorMessage: formatSheinSubmitError(
               submitTask.error,
               preview.data?.shein,
             ),
             canSelectBlockingItem: canSelectSheinBlockingItem,
             onSaveFinalDraft: (payload) =>
-              handleSaveSheinFinalDraft(
+              sheinActions.handleSaveSheinFinalDraft(
                 payload,
                 "最终草稿已确认。资料就绪后可以保存草稿或发布。",
               ),
             onSelectBlockingItem: handleSelectSheinBlockingItem,
-            onSubmit: handleSubmitShein,
+            onSubmit: sheinActions.handleSubmitShein,
           }}
           previewCanvasProps={{
             preview: sheinFallbackPreview ?? focusedPreview,
@@ -1000,10 +723,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
               preview.data?.shein?.submit_readiness?.ready === true &&
               preview.data?.shein?.final_review?.confirmed === true,
             isSubmitting: submitTask.isPending,
-            submitAction: sheinSubmitAction,
+            submitAction: sheinActions.sheinSubmitAction,
             submitErrorMessage: submitErrorMessage(submitTask.error),
-            onSubmit: () => handleSubmitShein("publish"),
-            onSaveDraft: handleSaveSheinDraft,
+            onSubmit: () => sheinActions.handleSubmitShein("publish"),
+            onSaveDraft: sheinActions.handleSaveSheinDraft,
             clearingResolutionCacheKind: clearSheinResolutionCache.isPending
               ? clearSheinResolutionCache.variables
               : null,
