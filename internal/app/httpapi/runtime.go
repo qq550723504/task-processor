@@ -9,6 +9,7 @@ import (
 
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/prompt"
@@ -29,13 +30,26 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		logger.Warnf("prompt registry initialization failed, fallback prompts will be used: %v", err)
 	}
 
-	llmMgr, err := newLLMManager(cfg.OpenAI)
-	if err != nil {
-		return nil, fmt.Errorf("create LLM manager: %w", err)
-	}
 	openaiMgr, err := newOpenAIManager(cfg.OpenAI)
 	if err != nil {
 		return nil, fmt.Errorf("create OpenAI manager: %w", err)
+	}
+	closers := make([]func() error, 0)
+	var aiCredentialStore *openaiclient.GormCredentialResolver
+	if cfg.Database != nil {
+		credentialResolver, closer, err := newDBOpenAICredentialResolver(cfg.Database, logger)
+		if err != nil {
+			return nil, fmt.Errorf("create OpenAI credential resolver: %w", err)
+		}
+		aiCredentialStore = credentialResolver
+		openaiMgr.SetConfigResolver(credentialResolver)
+		if closer != nil {
+			closers = append(closers, closer)
+		}
+	}
+	llmMgr, err := productenrich.NewLLMManagerAdapterFromManager(openaiMgr)
+	if err != nil {
+		return nil, fmt.Errorf("create LLM manager: %w", err)
 	}
 
 	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
@@ -58,15 +72,16 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	}
 
 	return &runtimeDeps{
-		cfg:              cfg,
-		closers:          nil,
-		openaiMgr:        openaiMgr,
-		llmMgr:           llmMgr,
-		inputParser:      inputParser,
-		understanding:    productUnderstanding,
-		imageWorkDir:     imageWorkDir,
-		shared:           shared,
-		managementClient: shared.ManagementClient,
+		cfg:               cfg,
+		closers:           closers,
+		openaiMgr:         openaiMgr,
+		aiCredentialStore: aiCredentialStore,
+		llmMgr:            llmMgr,
+		inputParser:       inputParser,
+		understanding:     productUnderstanding,
+		imageWorkDir:      imageWorkDir,
+		shared:            shared,
+		managementClient:  shared.ManagementClient,
 	}, nil
 }
 

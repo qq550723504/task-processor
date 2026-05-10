@@ -40,6 +40,23 @@ func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
 	})
 }
 
+func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Logger) (*openaiclient.GormCredentialResolver, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
+		return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
+	}
+	resolver := openaiclient.NewGormCredentialResolver(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return resolver, closer, nil
+}
+
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {
 	return productenrichenrich.NewCrawler1688Adapter(cfg)
 }

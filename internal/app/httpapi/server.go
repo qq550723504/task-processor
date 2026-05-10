@@ -72,6 +72,8 @@ func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imag
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/generate", Module: "listing-kit", Handler: listingKitHandler.GenerateListingKit},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/shein", Module: "listing-kit", Handler: listingKitHandler.GetSheinSettings},
 			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/shein", Module: "listing-kit", Handler: listingKitHandler.UpdateSheinSettings},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/ai", Module: "listing-kit", Handler: listingKitHandler.GetAIClientSettings},
+			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/ai", Module: "listing-kit", Handler: listingKitHandler.UpdateAIClientSettings},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: listingKitHandler.GenerateStudioDesigns},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: listingKitHandler.GenerateStudioProductImages},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: listingKitHandler.RegenerateSheinDataImage},

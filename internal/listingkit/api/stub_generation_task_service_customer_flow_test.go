@@ -16,6 +16,14 @@ func (s *stubGenerationTaskService) UpdateSheinSettings(ctx context.Context, req
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubGenerationTaskService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubGenerationTaskService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubGenerationTaskService) PreviewSheinPrice(ctx context.Context, taskID string, req *listingkit.SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
 	return nil, errors.New("not implemented")
 }
@@ -37,6 +45,14 @@ func (s *stubHistoryDetailService) GetSheinSettings(ctx context.Context) (*listi
 }
 
 func (s *stubHistoryDetailService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -64,6 +80,14 @@ func (s *stubHistoryService) UpdateSheinSettings(ctx context.Context, req *listi
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubHistoryService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubHistoryService) PreviewSheinPrice(ctx context.Context, taskID string, req *listingkit.SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
 	return nil, errors.New("not implemented")
 }
@@ -85,6 +109,14 @@ func (s *stubRevisionService) GetSheinSettings(ctx context.Context) (*listingkit
 }
 
 func (s *stubRevisionService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -112,6 +144,14 @@ func (s *stubRevisionValidateService) UpdateSheinSettings(ctx context.Context, r
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubRevisionValidateService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionValidateService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubRevisionValidateService) PreviewSheinPrice(ctx context.Context, taskID string, req *listingkit.SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
 	return nil, errors.New("not implemented")
 }
@@ -133,6 +173,14 @@ func (s *stubSubmitService) GetSheinSettings(ctx context.Context) (*listingkit.S
 }
 
 func (s *stubSubmitService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubSubmitService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubSubmitService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
 	return nil, errors.New("not implemented")
 }
 

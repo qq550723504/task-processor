@@ -12,6 +12,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/infra/clients/management"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
@@ -41,6 +42,11 @@ type AssetRecipeResolver = assetrecipe.Resolver
 type AssetBundleBuilder = assetbundle.Builder
 type GenerationReviewRepository = reviewstore.Repository
 type SheinManagementClient = management.ClientManager
+
+type AIClientCredentialStore interface {
+	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error
+	GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error)
+}
 
 type Repository interface {
 	CreateTask(ctx context.Context, task *Task) error
@@ -94,6 +100,8 @@ type Service interface {
 	RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error)
 	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
 	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
+	GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error)
+	UpdateAIClientSettings(ctx context.Context, req *AIClientSettings) (*AIClientSettings, error)
 	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
 	SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error)
 	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
@@ -129,6 +137,8 @@ type HandlerService interface {
 	RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error)
 	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
 	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
+	GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error)
+	UpdateAIClientSettings(ctx context.Context, req *AIClientSettings) (*AIClientSettings, error)
 	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
 	SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error)
 	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
@@ -162,6 +172,8 @@ type Handler interface {
 	RefreshSubmissionStatus(c *gin.Context)
 	GetSheinSettings(c *gin.Context)
 	UpdateSheinSettings(c *gin.Context)
+	GetAIClientSettings(c *gin.Context)
+	UpdateAIClientSettings(c *gin.Context)
 	PreviewSheinPrice(c *gin.Context)
 	SearchSheinCategories(c *gin.Context)
 	UpdateSheinFinalDraft(c *gin.Context)

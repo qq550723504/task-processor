@@ -6,8 +6,10 @@ export type ConditionalState = {
 };
 
 export type QueueQuery = {
+  client_name?: string;
   status?: string;
   platform?: string;
+  scope?: string;
   shein_workflow_status?: string;
   slot?: string;
   from_platform?: string;
@@ -34,6 +36,7 @@ export type QueueQuery = {
   sort_by?: string;
   sort_order?: string;
   kind?: string;
+  user_id?: string;
 };
 
 export type NavigationDispatchPlanStep = {

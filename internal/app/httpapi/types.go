@@ -29,6 +29,7 @@ type runtimeDeps struct {
 	cfg                   *config.Config
 	closers               []func() error
 	openaiMgr             *openaiclient.Manager
+	aiCredentialStore     *openaiclient.GormCredentialResolver
 	llmMgr                productenrich.LLMManager
 	inputParser           productenrich.InputParser
 	understanding         productenrich.ProductUnderstanding
@@ -124,6 +125,8 @@ type listingKitRouteHandler interface {
 	RefreshSubmissionStatus(c *gin.Context)
 	GetSheinSettings(c *gin.Context)
 	UpdateSheinSettings(c *gin.Context)
+	GetAIClientSettings(c *gin.Context)
+	UpdateAIClientSettings(c *gin.Context)
 	PreviewSheinPrice(c *gin.Context)
 	SearchSheinCategories(c *gin.Context)
 	UpdateSheinFinalDraft(c *gin.Context)

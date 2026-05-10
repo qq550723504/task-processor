@@ -38,6 +38,7 @@ type service struct {
 	sheinContentOptimizer      openaiclient.ChatCompleter
 	studioPromptDiversifier    openaiclient.ChatCompleter
 	studioImageGenerator       openaiclient.ImageGenerator
+	aiCredentialStore          AIClientCredentialStore
 	assetRepo                  AssetRepository
 	reviewRepo                 GenerationReviewRepository
 	assetRecipeResolver        AssetRecipeResolver
@@ -76,6 +77,7 @@ type ServiceConfig struct {
 	SheinContentOptimizer      openaiclient.ChatCompleter
 	StudioPromptDiversifier    openaiclient.ChatCompleter
 	StudioImageGenerator       openaiclient.ImageGenerator
+	AIClientCredentialStore    AIClientCredentialStore
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -154,6 +156,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		sheinContentOptimizer:      config.SheinContentOptimizer,
 		studioPromptDiversifier:    config.StudioPromptDiversifier,
 		studioImageGenerator:       config.StudioImageGenerator,
+		aiCredentialStore:          config.AIClientCredentialStore,
 		assetRepo:                  config.AssetRepository,
 		reviewRepo:                 config.ReviewRepository,
 		assetRecipeResolver:        config.AssetRecipeResolver,

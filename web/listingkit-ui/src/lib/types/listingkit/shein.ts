@@ -507,3 +507,16 @@ export type SheinSettings = {
   pricing?: SheinPricingRule;
   updated_at?: string;
 };
+
+export type AIClientSettings = {
+  scope?: "tenant" | "user" | string;
+  user_id?: string;
+  client_name?: string;
+  api_key?: string;
+  api_key_set?: boolean;
+  base_url?: string;
+  model?: string;
+  timeout_second?: number;
+  enabled?: boolean;
+  updated_at?: string;
+};

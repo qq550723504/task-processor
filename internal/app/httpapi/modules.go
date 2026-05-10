@@ -602,6 +602,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		SheinTranslateAPIBuilder:   sheinTranslateAPIBuilder,
 		SheinContentOptimizer:      buildSheinCategoryLLMClient(deps.openaiMgr),
 		StudioImageGenerator:       buildStudioImageGenerator(deps.cfg, deps.openaiMgr),
+		AIClientCredentialStore:    deps.aiCredentialStore,
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinAttributeResolver:     sheinAttributeResolver,

@@ -28,6 +28,9 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 		return
 	}
 	req.TenantID = requestTenantID(c, req.TenantID)
+	if req.UserID == "" {
+		req.UserID = requestUserID(c)
+	}
 	task, err := h.service.CreateGenerateTask(requestContext(c, req.TenantID), &req)
 	if err != nil {
 		status := http.StatusInternalServerError

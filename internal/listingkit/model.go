@@ -39,6 +39,7 @@ const (
 
 type GenerateRequest struct {
 	TenantID           string           `json:"tenant_id,omitempty"`
+	UserID             string           `json:"user_id,omitempty"`
 	ImageURLs          []string         `json:"image_urls,omitempty"`
 	Text               string           `json:"text,omitempty"`
 	ProductURL         string           `json:"product_url,omitempty"`
@@ -214,6 +215,18 @@ type SheinSettings struct {
 	DefaultSubmitMode string               `json:"default_submit_mode,omitempty"`
 	Pricing           sheinpub.PricingRule `json:"pricing,omitempty"`
 	UpdatedAt         *time.Time           `json:"updated_at,omitempty"`
+}
+
+type AIClientSettings struct {
+	Scope         string `json:"scope,omitempty"`
+	ClientName    string `json:"client_name,omitempty"`
+	APIKey        string `json:"api_key,omitempty"`
+	APIKeySet     bool   `json:"api_key_set"`
+	BaseURL       string `json:"base_url,omitempty"`
+	Model         string `json:"model,omitempty"`
+	TimeoutSecond int    `json:"timeout_second,omitempty"`
+	Enabled       bool   `json:"enabled"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 type SheinPricePreviewRequest struct {

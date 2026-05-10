@@ -264,6 +264,14 @@ func (s *stubListingKitHandler) UpdateSheinSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
 }
 
+func (s *stubListingKitHandler) GetAIClientSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"client_name": "default", "api_key_set": false})
+}
+
+func (s *stubListingKitHandler) UpdateAIClientSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"client_name": "default", "api_key_set": true})
+}
+
 func (s *stubListingKitHandler) PreviewSheinPrice(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ready": true})
 }

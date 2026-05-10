@@ -31,6 +31,10 @@ describe("ListingKitAppShell", () => {
     );
     expect(screen.queryByRole("link", { name: "SHEIN 上架" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "任务列表" })).toHaveAttribute("href", "/listing-kits");
+    expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute(
+      "href",
+      "/listing-kits/settings",
+    );
     expect(screen.getByRole("link", { name: "SDS 源" })).toHaveAttribute(
       "aria-current",
       "page",
