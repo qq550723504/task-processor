@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ListingKitAppShell } from "@/components/listingkit/shared/listingkit-app-shell";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { YudaoAuthBridge } from "@/components/providers/yudao-auth-bridge";
+import { YudaoAuthGate } from "@/components/providers/yudao-auth-gate";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,7 +19,10 @@ export default function RootLayout({
     <html lang="zh-CN" className="h-full antialiased">
       <body className="min-h-full bg-zinc-100 text-zinc-950">
         <QueryProvider>
-          <ListingKitAppShell>{children}</ListingKitAppShell>
+          <YudaoAuthBridge />
+          <YudaoAuthGate>
+            <ListingKitAppShell>{children}</ListingKitAppShell>
+          </YudaoAuthGate>
         </QueryProvider>
       </body>
     </html>

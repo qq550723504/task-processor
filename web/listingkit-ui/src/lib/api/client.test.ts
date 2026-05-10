@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiAsyncRequest } from "@/lib/api/client";
+import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 import { buildAsyncJobResumeKey, saveAsyncJobResumeEntry } from "@/lib/api/async-job-resume";
+import { rememberYudaoAuth } from "@/lib/api/yudao-auth";
 
 describe("apiAsyncRequest", () => {
   beforeEach(() => {
@@ -135,5 +136,40 @@ describe("apiAsyncRequest", () => {
 
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("apiRequest yudao auth headers", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("adds bearer token and tenant headers from the yudao bridge", async () => {
+    rememberYudaoAuth({
+      accessToken: "access-token-1",
+      tenantId: 286,
+      visitTenantId: 389,
+    });
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest<{ ok: boolean }>("/tasks")).resolves.toEqual({
+      ok: true,
+    });
+
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer access-token-1");
+    expect(headers.get("tenant-id")).toBe("286");
+    expect(headers.get("visit-tenant-id")).toBe("389");
   });
 });

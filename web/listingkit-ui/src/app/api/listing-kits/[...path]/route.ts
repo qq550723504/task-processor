@@ -48,6 +48,173 @@ export function shouldProxyListingKitResponseAsBinary(
   );
 }
 
+type YudaoLoginUserHeader = {
+  id?: string | number;
+  tenantId?: string | number;
+  tenant_id?: string | number;
+  userType?: string | number;
+  user_type?: string | number;
+};
+
+type YudaoVerifiedIdentity = {
+  tenantId?: string | number;
+  userId?: string | number;
+  userType?: string | number;
+};
+
+type YudaoCheckTokenOptions = {
+  checkTokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  tenantId?: string | null;
+};
+
+type YudaoCheckTokenResponse = {
+  code?: number;
+  data?: {
+    user_id?: string | number;
+    user_type?: string | number;
+    tenant_id?: string | number;
+  };
+  msg?: string;
+  message?: string;
+};
+
+export function buildListingKitUpstreamHeaders(
+  requestHeaders: Headers,
+  verifiedIdentity?: YudaoVerifiedIdentity,
+) {
+  const headers = new Headers();
+  headers.set("Accept", requestHeaders.get("accept") ?? "application/json");
+
+  copyHeader(requestHeaders, headers, "if-none-match", "If-None-Match");
+  copyHeader(requestHeaders, headers, "content-type", "Content-Type");
+  copyHeader(requestHeaders, headers, "authorization", "Authorization");
+  copyHeader(requestHeaders, headers, "tenant-id", "tenant-id");
+  copyHeader(requestHeaders, headers, "visit-tenant-id", "visit-tenant-id");
+  copyHeader(requestHeaders, headers, "login-user", "login-user");
+
+  const loginUser = parseYudaoLoginUserHeader(requestHeaders.get("login-user"));
+  const tenantID = stringifyIdentityValue(
+    verifiedIdentity?.tenantId ??
+      loginUser?.tenantId ??
+      loginUser?.tenant_id ??
+      requestHeaders.get("tenant-id"),
+  );
+  const userID = stringifyIdentityValue(verifiedIdentity?.userId ?? loginUser?.id);
+  const userType = stringifyIdentityValue(
+    verifiedIdentity?.userType ?? loginUser?.userType ?? loginUser?.user_type,
+  );
+
+  if (tenantID) {
+    headers.set("tenant-id", tenantID);
+    headers.set("X-Tenant-ID", tenantID);
+  }
+  if (userID) {
+    headers.set("X-User-ID", userID);
+  }
+  if (userType) {
+    headers.set("X-User-Type", userType);
+  }
+
+  return headers;
+}
+
+export async function verifyYudaoAccessToken(
+  authorization: string | null,
+  options: YudaoCheckTokenOptions,
+): Promise<YudaoVerifiedIdentity> {
+  const token = extractBearerToken(authorization);
+  if (!token) {
+    throw new Error("Missing yudao bearer token");
+  }
+
+  const response = await fetch(options.checkTokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(options.tenantId ? { "tenant-id": options.tenantId } : {}),
+    },
+    body: new URLSearchParams({
+      client_id: options.clientId,
+      client_secret: options.clientSecret,
+      token,
+    }).toString(),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => undefined)) as
+    | YudaoCheckTokenResponse
+    | undefined;
+
+  if (!response.ok || payload?.code !== 0 || !payload.data) {
+    throw new Error(
+      payload?.msg ??
+        payload?.message ??
+        `Yudao check-token failed: ${response.status}`,
+    );
+  }
+
+  return {
+    tenantId: payload.data.tenant_id,
+    userId: payload.data.user_id,
+    userType: payload.data.user_type,
+  };
+}
+
+function copyHeader(
+  source: Headers,
+  target: Headers,
+  sourceName: string,
+  targetName: string,
+) {
+  const value = source.get(sourceName);
+  if (value) {
+    target.set(targetName, value);
+  }
+}
+
+function parseYudaoLoginUserHeader(
+  value: string | null,
+): YudaoLoginUserHeader | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(decodeURIComponent(value)) as YudaoLoginUserHeader;
+  } catch {
+    try {
+      return JSON.parse(value) as YudaoLoginUserHeader;
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+function stringifyIdentityValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return "";
+}
+
+function extractBearerToken(authorization: string | null) {
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+export function getYudaoCheckTokenOptions(): YudaoCheckTokenOptions | undefined {
+  const checkTokenUrl = process.env.YUDAO_CHECK_TOKEN_URL?.trim();
+  const clientId = process.env.YUDAO_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.YUDAO_OAUTH_CLIENT_SECRET?.trim();
+  if (!checkTokenUrl || !clientId || !clientSecret) {
+    return undefined;
+  }
+  return { checkTokenUrl, clientId, clientSecret };
+}
+
 async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -117,18 +284,44 @@ async function proxyRequest(
     path: proxyPath,
   });
 
-  const headers = new Headers();
-  headers.set("Accept", request.headers.get("accept") ?? "application/json");
-
-  const ifNoneMatch = request.headers.get("if-none-match");
-  if (ifNoneMatch) {
-    headers.set("If-None-Match", ifNoneMatch);
+  const yudaoOptions = getYudaoCheckTokenOptions();
+  let verifiedIdentity: YudaoVerifiedIdentity | undefined;
+  if (yudaoOptions) {
+    try {
+      verifiedIdentity = await verifyYudaoAccessToken(
+        request.headers.get("authorization"),
+        {
+          ...yudaoOptions,
+          tenantId:
+            request.headers.get("tenant-id") ??
+            request.headers.get("x-tenant-id"),
+        },
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Yudao token verification failed";
+      logRequestWarn("listingkit proxy yudao token verification failed", {
+        requestId,
+        method: request.method,
+        path: proxyPath,
+        status: 401,
+        durationMs: Date.now() - startedAt,
+        error: message,
+      });
+      return NextResponse.json(
+        {
+          error: "yudao_token_invalid",
+          message,
+        },
+        { status: 401 },
+      );
+    }
   }
 
-  const contentType = request.headers.get("content-type");
-  if (contentType) {
-    headers.set("Content-Type", contentType);
-  }
+  const headers = buildListingKitUpstreamHeaders(
+    request.headers,
+    verifiedIdentity,
+  );
 
   let upstream: Response;
   try {

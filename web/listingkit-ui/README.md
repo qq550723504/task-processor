@@ -28,6 +28,20 @@ Default:
 LISTINGKIT_API_BASE=http://localhost:8080/api/v1/listing-kits
 ```
 
+When embedding ListingKit in yudao Vben, configure the yudao token verifier:
+
+```bash
+YUDAO_CHECK_TOKEN_URL=http://127.0.0.1:48081/admin-api/system/oauth2/check-token
+YUDAO_OAUTH_CLIENT_ID=default
+YUDAO_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+NEXT_PUBLIC_YUDAO_PARENT_ORIGINS=http://127.0.0.1:5666,http://localhost:5666
+```
+
+If `YUDAO_CHECK_TOKEN_URL`, `YUDAO_OAUTH_CLIENT_ID`, and
+`YUDAO_OAUTH_CLIENT_SECRET` are all set, the Next.js proxy verifies the browser
+Bearer token with yudao before forwarding requests to the ListingKit Go API.
+The verified `user_id` and `tenant_id` override browser-supplied tenant headers.
+
 For `SHEIN Studio` image generation, also configure:
 
 ```bash

@@ -12,6 +12,7 @@ import {
   ResponseJsonParseError,
 } from "@/lib/api/response-json";
 import type { ConditionalState, QueueQuery } from "@/lib/types/listingkit";
+import { applyYudaoAuthHeaders } from "@/lib/api/yudao-auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_LISTINGKIT_API_BASE ?? "/api/listing-kits";
@@ -60,7 +61,7 @@ function buildHeaders(conditional?: ConditionalState | null) {
     headers.set("If-None-Match", conditional.delta_token);
   }
 
-  return headers;
+  return applyYudaoAuthHeaders(headers);
 }
 
 function buildApiUrl(path: string, query?: QueueQuery) {
@@ -162,10 +163,10 @@ export async function apiAsyncRequest<T>(
         : "/api/listing-kits/async-jobs",
       {
         method: staged.staged ? "PATCH" : "POST",
-        headers: {
+        headers: applyYudaoAuthHeaders(new Headers({
           Accept: "application/json",
           "Content-Type": "application/json",
-        },
+        })),
         body: staged.staged
           ? JSON.stringify({ stage_id: staged.stageId })
           : JSON.stringify({ path, body: JSON.parse(staged.bodyText) }),
@@ -206,7 +207,9 @@ export async function apiAsyncRequest<T>(
       const response = await fetchWithRetry(
         `/api/listing-kits/async-jobs?id=${encodeURIComponent(startedJobId)}`,
         {
-          headers: { Accept: "application/json" },
+          headers: applyYudaoAuthHeaders(new Headers({
+            Accept: "application/json",
+          })),
           cache: "no-store",
         },
         { retries: 1, retryDelayMs: 1200 },
@@ -292,6 +295,7 @@ export async function apiFormRequest<T>(
 ): Promise<T> {
   const response = await fetch(buildApiUrl(path), {
     method,
+    headers: applyYudaoAuthHeaders(new Headers()),
     body: formData,
   });
 
