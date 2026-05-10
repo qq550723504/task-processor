@@ -6,7 +6,7 @@ import { SheinSubmitReadinessPanel } from "@/components/listingkit/shein/shein-s
 describe("SheinSubmitReadinessPanel", () => {
   it("renders blocking items and executable category repair entry", async () => {
     const user = userEvent.setup();
-    const onSelectBlockingItem = vi.fn(() => true);
+    const onSelectBlockingItem = vi.fn((item: { key?: string }) => item);
     const onRunPrimaryAction = vi.fn();
 
     render(

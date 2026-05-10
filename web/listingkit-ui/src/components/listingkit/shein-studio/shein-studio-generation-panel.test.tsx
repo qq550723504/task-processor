@@ -57,6 +57,7 @@ function renderPanel(options?: {
       selectedSdsImages={[]}
       selectedStyleCount={0}
       selectionReady={true}
+      variationIntensity="medium"
       setArtworkModel={() => undefined}
       setImageStrategy={() => undefined}
       setProductImageCount={() => undefined}
@@ -67,6 +68,7 @@ function renderPanel(options?: {
       setSelectedSdsImages={() => undefined}
       setSheinStoreId={() => undefined}
       setStyleCount={() => undefined}
+      setVariationIntensity={() => undefined}
       setTransparentBackground={() => undefined}
       sheinStoreId="869"
       styleCount={options?.styleCount ?? "1"}
@@ -137,6 +139,7 @@ describe("SheinStudioGenerationPanel", () => {
         selectedSdsImages={[]}
         selectedStyleCount={0}
         selectionReady={false}
+        variationIntensity="medium"
         setArtworkModel={() => undefined}
         setImageStrategy={() => undefined}
         setProductImageCount={() => undefined}
@@ -147,6 +150,7 @@ describe("SheinStudioGenerationPanel", () => {
         setSelectedSdsImages={() => undefined}
         setSheinStoreId={() => undefined}
         setStyleCount={() => undefined}
+        setVariationIntensity={() => undefined}
         setTransparentBackground={() => undefined}
         sheinStoreId="869"
         styleCount="1"

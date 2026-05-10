@@ -7,6 +7,7 @@ describe("SheinCategoryReviewCard", () => {
   it("renders current category review state and suggested category", () => {
     render(
       <SheinCategoryReviewCard
+        taskId="task-1"
         editorContext={{
           category: {
             current: {
@@ -44,6 +45,7 @@ describe("SheinCategoryReviewCard", () => {
   it("renders review-only state without suggested category", () => {
     render(
       <SheinCategoryReviewCard
+        taskId="task-1"
         editorContext={{
           category: {
             current: {
@@ -68,6 +70,7 @@ describe("SheinCategoryReviewCard", () => {
   it("renders confirmed category summary when there is no review signal", () => {
     render(
       <SheinCategoryReviewCard
+        taskId="task-1"
         editorContext={{
           category: {
             current: {
@@ -92,6 +95,7 @@ describe("SheinCategoryReviewCard", () => {
 
     render(
       <SheinCategoryReviewCard
+        taskId="task-1"
         editorContext={{
           category: {
             current: {
@@ -123,6 +127,7 @@ describe("SheinCategoryReviewCard", () => {
   it("hides apply action after the suggested category is already applied", () => {
     render(
       <SheinCategoryReviewCard
+        taskId="task-1"
         editorContext={{
           category: {
             current: {

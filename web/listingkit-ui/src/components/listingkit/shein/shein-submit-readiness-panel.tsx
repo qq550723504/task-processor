@@ -2,6 +2,20 @@ import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
 import { SheinCustomerIssueSummary } from "@/components/listingkit/shein/shein-customer-issue-summary";
 import {
+  checklistLabel,
+  compactSubmissionMessage,
+  hasResolutionCache,
+  normalizedSubmissionStatus,
+  statusLabel,
+  statusTone,
+} from "@/components/listingkit/shein/shein-submit-readiness-helpers";
+import {
+  ChecklistSection,
+  ReadinessItems,
+  ResolutionCacheRow,
+  SubmitFailureGuidance,
+} from "@/components/listingkit/shein/shein-submit-readiness-sections";
+import {
   buildSheinCustomerIssues,
   type CustomerIssue,
 } from "@/lib/shein-studio/shein-customer-issues";
@@ -11,320 +25,14 @@ import {
   sheinSubmitPhaseLabel,
 } from "@/lib/shein-studio/shein-submission-display";
 import type {
-  SheinChecklistGroupItem,
   SheinImageUploadPreflight,
   SheinReadinessItem,
-  SheinResolutionCacheInfo,
   SheinResolutionCacheSummary,
   SheinSubmissionReport,
   SheinSubmitChecklist,
   SheinSubmitReadiness,
   SheinWorkspaceOverview,
 } from "@/lib/types/listingkit";
-
-function statusLabel(status?: string) {
-  switch (status) {
-    case "blocked":
-      return "有阻断";
-    case "ready_with_warnings":
-      return "可提交但有提醒";
-    case "ready":
-      return "可提交";
-    default:
-      return "未知";
-  }
-}
-
-function statusTone(status?: string) {
-  switch (status) {
-    case "blocked":
-      return "border-rose-200 bg-rose-50 text-rose-700";
-    case "ready_with_warnings":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "ready":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    default:
-      return "border-zinc-200 bg-zinc-50 text-zinc-700";
-  }
-}
-
-function checklistLabel(items?: SheinChecklistGroupItem[] | null) {
-  if (!items?.length) {
-    return null;
-  }
-  return items;
-}
-
-function fieldPathsLabel(paths?: string[] | null) {
-  if (!paths?.length) {
-    return null;
-  }
-  return paths.join(" · ");
-}
-
-function compactSubmissionMessage(message?: string | null) {
-  if (!message) {
-    return null;
-  }
-
-  const status = message.match(/STATUS:\s*([0-9]+)/i)?.[1];
-  const eventId = message.match(/EVENT ID:\s*([0-9]+)/i)?.[1];
-  const url = message.match(/\(URL:\s*([^)]+)\)/i)?.[1];
-  if (status) {
-    return [
-      `SHEIN endpoint returned ${status}.`,
-      eventId ? `Event ID: ${eventId}.` : null,
-      url ? `URL: ${url}` : null,
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  const text = message
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (text.length <= 320) {
-    return text;
-  }
-  return `${text.slice(0, 320)}...`;
-}
-
-function normalizedSubmissionStatus(submission?: SheinSubmissionReport | null) {
-  const status = submission?.last_status;
-  const result = submission?.last_result;
-  if (
-    status === "unknown" &&
-    (result?.success === false || result?.validation_notes?.length)
-  ) {
-    return "failed";
-  }
-  return status;
-}
-
-function cacheSourceLabel(source?: string) {
-  switch (source) {
-    case "manual_cache":
-      return "Manual";
-    case "history_cache":
-      return "DB";
-    case "memory_cache":
-      return "Memory";
-    case "live_resolver":
-      return "Live";
-    case "static_fallback":
-      return "Static";
-    case "llm":
-      return "LLM";
-    default:
-      return source ?? "未知";
-  }
-}
-
-function cacheUpdatedLabel(value?: string) {
-  if (!value) {
-    return "暂无时间";
-  }
-  return value.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "");
-}
-
-function hasResolutionCache(cache?: SheinResolutionCacheSummary | null) {
-  return Boolean(cache?.category || cache?.attributes || cache?.sale_attributes);
-}
-
-function ResolutionCacheRow({
-  title,
-  item,
-  kind,
-  onClear,
-  isClearing,
-}: {
-  title: string;
-  item?: SheinResolutionCacheInfo | null;
-  kind: "category" | "attribute" | "sale_attribute";
-  onClear?: ((kind: "category" | "attribute" | "sale_attribute") => void) | null;
-  isClearing?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 bg-white/80 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="text-sm font-semibold text-zinc-950">{title}</p>
-          <p className="text-xs leading-5 text-zinc-600">
-            {item
-            ? `${cacheSourceLabel(item.source)} · ${item.short_key ?? "无 key"}`
-              : "暂无缓存信息"}
-          </p>
-          {item ? (
-            <p className="text-[11px] leading-5 text-zinc-500">
-              {item.status ?? "未知"} · 命中 {item.hit_count ?? 0} ·{" "}
-              {cacheUpdatedLabel(item.updated_at)}
-              {item.manual ? " · 人工确认" : ""}
-            </p>
-          ) : null}
-        </div>
-        {item?.clearable && onClear ? (
-          <Button
-            className="h-8 shrink-0 px-3 text-xs"
-            disabled={isClearing}
-            tone="secondary"
-            onClick={() => onClear(kind)}
-          >
-            清除
-          </Button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ReadinessItems({
-  title,
-  items,
-  actionLabel = "去处理",
-  canSelectItem,
-  onSelectItem,
-}: {
-  title: string;
-  items?: SheinReadinessItem[] | null;
-  actionLabel?: string;
-  canSelectItem?: ((item: SheinReadinessItem) => boolean) | null;
-  onSelectItem?: ((item: SheinReadinessItem) => void) | null;
-}) {
-  if (!items?.length) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-        {title}
-      </p>
-      <div className="space-y-3">
-        {items.map((item) => {
-          const canAct = canSelectItem ? canSelectItem(item) : false;
-          return (
-            <div
-              className="space-y-2 rounded-2xl border border-zinc-200 bg-white/80 p-4"
-              key={`${title}-${item.key}-${item.label}`}
-            >
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-zinc-950">
-                  {item.label ?? item.key ?? "未命名问题"}
-                </p>
-                {item.message ? (
-                  <p className="text-sm leading-6 text-zinc-700">{item.message}</p>
-                ) : null}
-              </div>
-              {item.reason?.summary ? (
-                <p className="text-xs leading-5 text-zinc-600">
-                  {item.reason.summary}
-                </p>
-              ) : null}
-              {fieldPathsLabel(item.field_paths) ? (
-                <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                  {fieldPathsLabel(item.field_paths)}
-                </p>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                {item.suggested_action ? (
-                  <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
-                    {item.suggested_action}
-                  </span>
-                ) : null}
-                {canAct && onSelectItem ? (
-                  <Button
-                    className="h-8 px-3 text-xs"
-                    tone="secondary"
-                    onClick={() => onSelectItem(item)}
-                  >
-                    {actionLabel}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function SubmitFailureGuidance({
-  detail,
-  impact,
-  nextStep,
-}: {
-  detail: string;
-  impact: string;
-  nextStep: string;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
-          发生了什么
-        </p>
-        <p className="break-words text-sm leading-6 text-rose-700">{detail}</p>
-      </div>
-      <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
-          可能影响
-        </p>
-        <p className="text-sm leading-6 text-zinc-700">{impact}</p>
-      </div>
-      <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
-          下一步怎么做
-        </p>
-        <p className="text-sm leading-6 text-zinc-700">{nextStep}</p>
-      </div>
-    </div>
-  );
-}
-
-function ChecklistSection({
-  title,
-  items,
-}: {
-  title: string;
-  items?: SheinChecklistGroupItem[] | null;
-}) {
-  if (!items?.length) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-        {title}
-      </p>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div
-            className="flex items-start justify-between gap-3 rounded-xl border border-zinc-200/80 bg-white/70 px-3 py-2"
-            key={`${title}-${item.key}-${item.label}`}
-          >
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-900">
-                {item.label ?? item.key ?? "未命名检查项"}
-              </p>
-              {item.message ? (
-                <p className="text-xs leading-5 text-zinc-600">{item.message}</p>
-              ) : null}
-            </div>
-            <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
-              {item.status ?? "未知"}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export function SheinSubmitReadinessPanel({
   readiness,

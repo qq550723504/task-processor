@@ -79,6 +79,61 @@ export const schema = z
   });
 
 export type FormValues = z.infer<typeof schema>;
+export type TaskCreateVariant = "default" | "sds";
+
+export function buildTaskCreateDefaultValues({
+  initialValues,
+  variant,
+}: {
+  initialValues?: Partial<TaskCreateDraft>;
+  variant: TaskCreateVariant;
+}): FormValues {
+  return {
+    text: initialValues?.text ?? "",
+    imageUrls: initialValues?.imageUrls ?? "",
+    productUrl: initialValues?.productUrl ?? "",
+    platforms:
+      initialValues?.platforms && initialValues.platforms.length > 0
+        ? initialValues.platforms
+        : variant === "sds"
+          ? ["amazon"]
+          : [],
+    sheinStoreId: initialValues?.sheinStoreId ?? "",
+    sdsEnabled: variant === "sds" || Boolean(initialValues?.sdsEnabled),
+    sdsVariantId: initialValues?.sdsVariantId ?? "",
+    sdsParentProductId: initialValues?.sdsParentProductId ?? "",
+    sdsPrototypeGroupId: initialValues?.sdsPrototypeGroupId ?? "",
+    sdsLayerId: initialValues?.sdsLayerId ?? "",
+    sdsDesignType: initialValues?.sdsDesignType ?? "material",
+    sdsFitLevel: initialValues?.sdsFitLevel ?? "1",
+    sdsResizeMode: initialValues?.sdsResizeMode ?? "0",
+    sceneCategory: initialValues?.sceneCategory ?? "",
+    sceneStyle: initialValues?.sceneStyle ?? "",
+    backgroundTone: initialValues?.backgroundTone ?? "",
+    composition: initialValues?.composition ?? "",
+    propsLevel: initialValues?.propsLevel ?? "",
+    audienceHint: initialValues?.audienceHint ?? "",
+    customSceneHint: initialValues?.customSceneHint ?? "",
+  };
+}
+
+export function taskCreatePageCopy(variant: TaskCreateVariant) {
+  if (variant === "sds") {
+    return {
+      eyebrow: "SDS 同步",
+      title: "创建带 SDS 同步的任务",
+      description: "先完成正常生成流程，再把选中的设计素材同步回 SDS。",
+      submitLabel: "创建任务并同步 SDS",
+    };
+  }
+
+  return {
+    eyebrow: "ListingKit",
+    title: "创建新任务",
+    description: "先提供标题、图片或商品链接，再选择要生成的平台。",
+    submitLabel: "创建任务",
+  };
+}
 
 export function parseImageUrls(input: string) {
   return input

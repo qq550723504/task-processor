@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 import { regenerateSheinDataImage } from "@/lib/api/shein-image-regeneration";
+import type { ApplyRevisionRequest } from "@/lib/api/revision";
+import type { SubmitTaskRequest } from "@/lib/api/submit";
 import type { UpdateSheinFinalDraftRequest } from "@/lib/api/shein-final-draft";
 import { submitErrorMessage } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import type {
@@ -16,18 +18,14 @@ type MutationLike<TVariables = unknown> = {
 };
 
 type ApplyRevisionMutation = MutationLike & {
-  mutate: (payload: unknown) => void;
-  mutateAsync: (payload: unknown) => Promise<unknown>;
+  mutate: (payload: ApplyRevisionRequest) => void;
+  mutateAsync: (payload: ApplyRevisionRequest) => Promise<unknown>;
 };
 
 type SubmitTaskMutation = MutationLike & {
   error?: unknown;
   mutate: (
-    payload: {
-      platform: string;
-      action: "publish" | "save_draft";
-      confirmed_final: boolean;
-    },
+    payload: SubmitTaskRequest,
     options?: { onSettled?: () => void },
   ) => void;
 };

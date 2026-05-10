@@ -3,7 +3,20 @@ import {
   type SDSRatioMatch,
 } from "@/lib/shein-studio/gallery-handoff";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
+import {
+  DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+  DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+  DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+  DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+} from "@/lib/shein-studio/storage-shared";
+import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
+import type {
+  SheinStudioDraft,
+  SheinStudioGeneratedDesign,
+  SheinStudioGenerateRequest,
+  SheinStudioArtworkModel,
+  SheinStudioVariationIntensity,
+} from "@/lib/types/shein-studio";
 
 export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
 
@@ -23,4 +36,189 @@ export function evaluateImportedGalleryDesigns(
     targetWidth: selection?.printableWidth,
     targetHeight: selection?.printableHeight,
   });
+}
+
+export function buildSheinStudioSelectionKey(
+  selection?: SDSProductVariantSelection,
+) {
+  if (!selection) {
+    return "none";
+  }
+
+  return JSON.stringify({
+    productId: selection.productId,
+    parentProductId: selection.parentProductId,
+    variantId: selection.variantId,
+    prototypeGroupId: selection.prototypeGroupId,
+    layerId: selection.layerId,
+    printableWidth: selection.printableWidth ?? null,
+    printableHeight: selection.printableHeight ?? null,
+    selectedVariantIds: selection.selectedVariantIds ?? [],
+  });
+}
+
+export function buildSheinStudioSelectedVariants(
+  selection?: SDSProductVariantSelection,
+) {
+  if (selection?.variants?.length) {
+    return selection.variants;
+  }
+
+  if (selection?.selectedVariantIds?.length) {
+    return selection.selectedVariantIds.map((variantId) => ({
+      variantId,
+      size: undefined,
+      color: undefined,
+    }));
+  }
+
+  if (selection?.variantId) {
+    return [
+      {
+        variantId: selection.variantId,
+        size: selection.variantLabel,
+        color: "默认",
+      },
+    ];
+  }
+
+  return [];
+}
+
+export function summarizeSheinStudioSelection(
+  selection?: SDSProductVariantSelection,
+) {
+  const selectedVariants = buildSheinStudioSelectedVariants(selection);
+  return {
+    printableAreaLabel:
+      selection?.printableWidth && selection?.printableHeight
+        ? `${selection.printableWidth} × ${selection.printableHeight}px`
+        : "自动",
+    selectedVariants,
+    selectedColorCount: new Set(
+      selectedVariants.map((variant) => variant.color || "default"),
+    ).size,
+    selectedSizeCount: new Set(
+      selectedVariants.map((variant) => variant.size || "One size"),
+    ).size,
+  };
+}
+
+export function getSheinStudioCreateActionDisabledReason({
+  selection,
+  galleryRatioCheck,
+  selectedIds,
+}: {
+  selection?: SDSProductVariantSelection;
+  galleryRatioCheck?: SDSRatioMatch | null;
+  selectedIds: string[];
+}) {
+  if (!selection?.variantId) {
+    return "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。";
+  }
+  if (galleryRatioCheck?.status === "blocking") {
+    return galleryRatioCheck.message;
+  }
+  if (selectedIds.length === 0) {
+    return "请至少批准 1 个款式后再生成 SHEIN 资料。";
+  }
+  return undefined;
+}
+
+export function mergeSheinStudioDraftState({
+  draft,
+  galleryDesign,
+  galleryPrompt,
+}: {
+  draft?: SheinStudioDraft | null;
+  galleryDesign?: SheinStudioGeneratedDesign | null;
+  galleryPrompt?: string | null;
+}) {
+  const draftDesigns = draft?.designs ?? [];
+  const designs =
+    galleryDesign && !draftDesigns.some((design) => design.id === galleryDesign.id)
+      ? [...draftDesigns, galleryDesign]
+      : draftDesigns;
+  const draftSelectedIds = draft?.selectedIds ?? [];
+  const selectedIds =
+    galleryDesign && !draftSelectedIds.includes(galleryDesign.id)
+      ? [...draftSelectedIds, galleryDesign.id]
+      : draftSelectedIds;
+  const createdTasks = draft?.createdTasks ?? [];
+
+  return {
+    prompt: draft?.prompt || galleryPrompt || "",
+    styleCount: draft?.styleCount ?? "1",
+    variationIntensity:
+      draft?.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+    productImageCount:
+      draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+    productImagePrompt: draft?.productImagePrompt ?? "",
+    productImagePrompts: draft?.productImagePrompts ?? [],
+    artworkModel: draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+    transparentBackground: draft?.transparentBackground ?? false,
+    sheinStoreId: draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    imageStrategy: draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+    selectedSdsImages: draft?.selectedSdsImages ?? [],
+    renderSizeImagesWithSds: draft?.renderSizeImagesWithSds ?? true,
+    designs,
+    selectedIds,
+    createdTasks,
+    hasCustomizedSdsSelection: (draft?.selectedSdsImages?.length ?? 0) > 0,
+    importedGalleryDesign: Boolean(galleryDesign),
+    designCount: designs.length,
+    createdTaskCount: createdTasks.length,
+  };
+}
+
+export function buildSheinStudioGenerateRequest({
+  artworkModel,
+  prompt,
+  printableHeight,
+  printableWidth,
+  productReferenceImageUrls,
+  styleCount,
+  transparentBackground,
+  variationIntensity,
+}: {
+  artworkModel: SheinStudioArtworkModel;
+  prompt: string;
+  printableHeight?: number;
+  printableWidth?: number;
+  productReferenceImageUrls?: string[];
+  styleCount: number;
+  transparentBackground: boolean;
+  variationIntensity: SheinStudioVariationIntensity;
+}): SheinStudioGenerateRequest {
+  return {
+    prompt: prompt.trim(),
+    count: styleCount,
+    variationIntensity,
+    printableWidth,
+    printableHeight,
+    productReferenceImageUrls,
+    imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+    transparentBackground,
+  };
+}
+
+export function sheinStudioBusyMessage({
+  isCreatingTasks,
+  isGenerating,
+  regeneratingId,
+}: {
+  isCreatingTasks: boolean;
+  isGenerating: boolean;
+  regeneratingId?: string;
+}) {
+  if (isGenerating) {
+    return "正在生成款式图";
+  }
+  if (regeneratingId) {
+    return "正在重新生成图片";
+  }
+  if (isCreatingTasks) {
+    return "正在生成商品图和 SHEIN 资料";
+  }
+  return "";
 }

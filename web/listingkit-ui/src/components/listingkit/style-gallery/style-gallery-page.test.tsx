@@ -41,7 +41,9 @@ describe("StyleGalleryPage", () => {
             publishedInputs: 0,
             studioLegacy: 0,
             studioSaved: 1,
+            taskLinked: 0,
           },
+          generatedAt: "2026-05-10T00:00:00.000Z",
           total: 1,
         }}
       />,
@@ -108,7 +110,9 @@ describe("StyleGalleryPage", () => {
             publishedInputs: 0,
             studioLegacy: 0,
             studioSaved: 3,
+            taskLinked: 0,
           },
+          generatedAt: "2026-05-10T00:00:00.000Z",
           total: 3,
         }}
       />,

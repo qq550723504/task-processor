@@ -14,6 +14,7 @@ import { TaskInputGuidance } from "@/components/listingkit/tasks/task-input-guid
 import {
   buildSDSOptions,
   buildSceneOptions,
+  buildTaskCreateDefaultValues,
   type FormValues,
   inferInitialSourceTab,
   parseImageUrls,
@@ -21,7 +22,9 @@ import {
   parseSelectedVariantIds,
   platformOptions,
   schema,
+  taskCreatePageCopy,
   titleFieldCopy,
+  type TaskCreateVariant,
 } from "@/components/listingkit/tasks/task-create-form-model";
 import { TaskSDSOptions } from "@/components/listingkit/tasks/task-sds-options";
 import { TaskSceneSettingsSection } from "@/components/listingkit/tasks/task-scene-settings-section";
@@ -34,6 +37,11 @@ import {
   TaskSourceTabs,
   type TaskSourceTab,
 } from "@/components/listingkit/tasks/task-source-tabs";
+import {
+  TaskImageUrlField,
+  TaskProductUrlField,
+  TaskTitleField,
+} from "@/components/listingkit/tasks/task-create-source-fields";
 import { useCreateTask } from "@/lib/query/use-create-task";
 import { useUploadImages } from "@/lib/query/use-upload-images";
 import { loadSDSListingKitMetadata } from "@/lib/sds/product-metadata";
@@ -48,7 +56,7 @@ export function TaskCreateForm({
   initialValues?: Partial<TaskCreateDraft>;
   initialFocus?: "text" | "imageUrls" | "productUrl";
   fieldIssues?: Array<"text" | "imageUrls" | "productUrl">;
-  variant?: "default" | "sds";
+  variant?: TaskCreateVariant;
 }) {
   const router = useRouter();
   const liveSearchParams = useLiveSearchParams();
@@ -105,33 +113,7 @@ export function TaskCreateForm({
     control,
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      text: initialValues?.text ?? "",
-      imageUrls: initialValues?.imageUrls ?? "",
-      productUrl: initialValues?.productUrl ?? "",
-      platforms:
-        initialValues?.platforms && initialValues.platforms.length > 0
-          ? initialValues.platforms
-          : variant === "sds"
-            ? ["amazon"]
-            : [],
-      sheinStoreId: initialValues?.sheinStoreId ?? "",
-      sdsEnabled: variant === "sds" || Boolean(initialValues?.sdsEnabled),
-      sdsVariantId: initialValues?.sdsVariantId ?? "",
-      sdsParentProductId: initialValues?.sdsParentProductId ?? "",
-      sdsPrototypeGroupId: initialValues?.sdsPrototypeGroupId ?? "",
-      sdsLayerId: initialValues?.sdsLayerId ?? "",
-      sdsDesignType: initialValues?.sdsDesignType ?? "material",
-      sdsFitLevel: initialValues?.sdsFitLevel ?? "1",
-      sdsResizeMode: initialValues?.sdsResizeMode ?? "0",
-      sceneCategory: initialValues?.sceneCategory ?? "",
-      sceneStyle: initialValues?.sceneStyle ?? "",
-      backgroundTone: initialValues?.backgroundTone ?? "",
-      composition: initialValues?.composition ?? "",
-      propsLevel: initialValues?.propsLevel ?? "",
-      audienceHint: initialValues?.audienceHint ?? "",
-      customSceneHint: initialValues?.customSceneHint ?? "",
-    },
+    defaultValues: buildTaskCreateDefaultValues({ initialValues, variant }),
   });
 
   const selectedPlatforms = useWatch({
@@ -149,42 +131,6 @@ export function TaskCreateForm({
   const currentProductUrl = useWatch({
     control,
     name: "productUrl",
-  });
-  const currentSheinStoreId = useWatch({
-    control,
-    name: "sheinStoreId",
-  });
-  const currentSDSEnabled = useWatch({
-    control,
-    name: "sdsEnabled",
-  });
-  const currentSDSVariantId = useWatch({
-    control,
-    name: "sdsVariantId",
-  });
-  const currentSDSParentProductId = useWatch({
-    control,
-    name: "sdsParentProductId",
-  });
-  const currentSDSPrototypeGroupId = useWatch({
-    control,
-    name: "sdsPrototypeGroupId",
-  });
-  const currentSDSLayerId = useWatch({
-    control,
-    name: "sdsLayerId",
-  });
-  const currentSDSDesignType = useWatch({
-    control,
-    name: "sdsDesignType",
-  });
-  const currentSDSFitLevel = useWatch({
-    control,
-    name: "sdsFitLevel",
-  });
-  const currentSDSResizeMode = useWatch({
-    control,
-    name: "sdsResizeMode",
   });
   const currentSceneCategory = useWatch({
     control,
@@ -268,22 +214,7 @@ export function TaskCreateForm({
   const imageUrlsRegistration = register("imageUrls");
   const productUrlRegistration = register("productUrl");
   const titleCopy = titleFieldCopy(activeSourceTab);
-  const pageCopy =
-    variant === "sds"
-      ? {
-          eyebrow: "SDS 同步",
-          title: "创建带 SDS 同步的任务",
-          description:
-            "先完成正常生成流程，再把选中的设计素材同步回 SDS。",
-          submitLabel: "创建任务并同步 SDS",
-        }
-      : {
-          eyebrow: "ListingKit",
-          title: "创建新任务",
-          description:
-            "先提供标题、图片或商品链接，再选择要生成的平台。",
-          submitLabel: "创建任务",
-        };
+  const pageCopy = taskCreatePageCopy(variant);
   const primaryPlatform = selectedPlatforms?.[0];
   const platformSceneDefaults = useMemo(
     () => getPlatformSceneDefaults(primaryPlatform, currentSceneCategory),
@@ -391,15 +322,15 @@ export function TaskCreateForm({
             imageUrls,
             productUrl,
             platforms: values.platforms,
-            sheinStoreId: currentSheinStoreId,
-            sdsEnabled: currentSDSEnabled,
-            sdsVariantId: currentSDSVariantId,
-            sdsParentProductId: currentSDSParentProductId,
-            sdsPrototypeGroupId: currentSDSPrototypeGroupId,
-            sdsLayerId: currentSDSLayerId,
-            sdsDesignType: currentSDSDesignType,
-            sdsFitLevel: currentSDSFitLevel,
-            sdsResizeMode: currentSDSResizeMode,
+            sheinStoreId: values.sheinStoreId,
+            sdsEnabled: values.sdsEnabled,
+            sdsVariantId: values.sdsVariantId,
+            sdsParentProductId: values.sdsParentProductId,
+            sdsPrototypeGroupId: values.sdsPrototypeGroupId,
+            sdsLayerId: values.sdsLayerId,
+            sdsDesignType: values.sdsDesignType,
+            sdsFitLevel: values.sdsFitLevel,
+            sdsResizeMode: values.sdsResizeMode,
             sceneCategory: values.sceneCategory,
             sceneStyle: values.sceneStyle,
             backgroundTone: values.backgroundTone,
@@ -483,126 +414,37 @@ export function TaskCreateForm({
           }}
         />
 
-        <label className="block space-y-2">
-          <span className="text-sm font-medium text-zinc-700">{titleCopy.label}</span>
-          <input
-            aria-label="商品标题"
-            className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            placeholder="例如：女士针织开衫"
-            {...textRegistration}
-            ref={(element) => {
-              textRef.current = element;
-              textRegistration.ref(element);
-            }}
-          />
-          <p className="text-sm leading-6 text-zinc-500">{titleCopy.helper}</p>
-          {errors.text ? (
-            <p className="text-sm text-red-600">{errors.text.message}</p>
-          ) : null}
-          {fieldIssues?.includes("text") ? (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-              上一次任务失败在文案质量不足，请补充更完整的标题或描述。
-            </p>
-          ) : null}
-        </label>
+        <TaskTitleField
+          errors={errors}
+          fieldIssues={fieldIssues}
+          inputRef={textRef}
+          registration={textRegistration}
+          titleCopy={titleCopy}
+        />
 
         {activeSourceTab === "imageUrls" ? (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">图片链接</span>
-            <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <input
-                  aria-label="上传图片"
-                  className="block text-sm text-zinc-600 file:mr-4 file:rounded-xl file:border-0 file:bg-zinc-950 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-                  multiple
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files ?? []);
-                    setSelectedFiles(files);
-                  }}
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                />
-                <Button
-                  disabled={selectedFiles.length === 0 || uploadImages.isPending}
-                  onClick={async () => {
-                    const response = await uploadImages.mutateAsync(selectedFiles);
-                    const mergedUrls = [
-                      ...parseImageUrls(currentImageUrls ?? ""),
-                      ...(response.image_urls ?? []),
-                    ];
-                    setValue("imageUrls", mergedUrls.join("\n"), {
-                      shouldDirty: true,
-                    });
-                    setSelectedFiles([]);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = "";
-                    }
-                  }}
-                  type="button"
-                >
-                  {uploadImages.isPending ? "上传中..." : "上传所选图片"}
-                </Button>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-zinc-500">
-                可以先上传本地图片，系统会把返回的图片链接自动补到下方输入框里。
-              </p>
-              {selectedFiles.length > 0 ? (
-                <p className="mt-2 text-sm text-zinc-700">
-                  已选择 {selectedFiles.length} 个文件：
-                  {selectedFiles.map((file) => file.name).join(", ")}
-                </p>
-              ) : null}
-            </div>
-            <textarea
-              aria-label="图片链接"
-              className={`w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 ${
-                variant === "sds" ? "min-h-28" : "min-h-40"
-              }`}
-              placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg"}
-              {...imageUrlsRegistration}
-              ref={(element) => {
-                imageUrlsRef.current = element;
-                imageUrlsRegistration.ref(element);
-              }}
-            />
-            <p className="text-sm leading-6 text-zinc-500">{helperText}</p>
-            {errors.imageUrls ? (
-              <p className="text-sm text-red-600">{errors.imageUrls.message}</p>
-            ) : null}
-            {uploadImages.error instanceof Error ? (
-              <p className="text-sm text-red-600">{uploadImages.error.message}</p>
-            ) : null}
-            {fieldIssues?.includes("imageUrls") ? (
-              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                上一次任务失败在图片覆盖不足，请至少补充 3 张清晰商品图。
-              </p>
-            ) : null}
-          </label>
+          <TaskImageUrlField
+            currentImageUrls={currentImageUrls}
+            errors={errors}
+            fieldIssues={fieldIssues}
+            fileInputRef={fileInputRef}
+            helperText={helperText}
+            imageUrlsRef={imageUrlsRef}
+            registration={imageUrlsRegistration}
+            selectedFiles={selectedFiles}
+            setSelectedFiles={setSelectedFiles}
+            setValue={setValue}
+            uploadImages={uploadImages}
+            variant={variant}
+          />
         ) : null}
 
         {activeSourceTab === "productUrl" ? (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">商品链接</span>
-            <input
-              aria-label="商品链接"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-              placeholder="https://detail.1688.com/offer/123456789.html"
-              {...productUrlRegistration}
-              ref={(element) => {
-                productUrlRef.current = element;
-                productUrlRegistration.ref(element);
-              }}
-            />
-            <p className="text-sm leading-6 text-zinc-500">
-              适合已有原始商品页的场景。支持 1688 等商品链接，系统会从原始商品资料开始处理。
-            </p>
-            {fieldIssues?.includes("productUrl") ? (
-              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                上一次任务缺少足够强的商品来源，建议补充商品链接后再重试。
-              </p>
-            ) : null}
-          </label>
+          <TaskProductUrlField
+            fieldIssues={fieldIssues}
+            inputRef={productUrlRef}
+            registration={productUrlRegistration}
+          />
         ) : null}
 
         <fieldset className="space-y-3">

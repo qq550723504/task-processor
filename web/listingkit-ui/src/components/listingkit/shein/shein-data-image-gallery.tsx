@@ -1,10 +1,18 @@
 import { useMemo, useState } from "react";
 
 import { Card } from "@/components/shared/card";
+import { ImageRoleStatus } from "@/components/listingkit/shein/shein-data-image-gallery-sections";
 import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
+import {
+  buildImageRoleOverrides,
+  hasSavedImageRole,
+  moveItem,
+  normalizeImageRole,
+  roleLabel,
+  suggestImageRoles,
+  type ImageRole,
+} from "@/components/listingkit/shein/shein-data-image-gallery-model";
 import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
-
-type ImageRole = "main" | "gallery" | "swatch" | "size_map" | "skc";
 
 export function SheinDataImageGallery({
   images,
@@ -465,155 +473,4 @@ export function SheinDataImageGallery({
       ) : null}
     </Card>
   );
-}
-
-function buildImageRoleOverrides(
-  imageUrls: string[],
-  roleByUrl: Record<string, ImageRole>,
-  mainUrl?: string,
-) {
-  const overrides: Record<string, ImageRole> = {};
-  for (const url of imageUrls) {
-    const role = roleByUrl[url] ?? "gallery";
-    overrides[url] = url === mainUrl && role === "gallery" ? "main" : role;
-  }
-  return overrides;
-}
-
-function suggestImageRoles(
-  images: SheinPreviewImage[],
-  currentRoles: Record<string, ImageRole>,
-  currentMainUrl?: string,
-) {
-  const roles: Record<string, ImageRole> = {};
-  for (const image of images) {
-    roles[image.url] = currentRoles[image.url] ?? "gallery";
-  }
-  const mainUrl =
-    images.find((image) => image.url === currentMainUrl)?.url ?? images[0]?.url;
-  if (mainUrl) {
-    roles[mainUrl] = "main";
-  }
-  const sizeImage = images.find((image) => isLikelySizeMapImage(image, roles[image.url]));
-  if (sizeImage) {
-    roles[sizeImage.url] = "size_map";
-  }
-  const skcImage = images.find((image) => image.url !== mainUrl && roles[image.url] === "skc");
-  const swatchSource = skcImage ?? images.find((image) => image.url !== mainUrl && roles[image.url] === "gallery");
-  if (swatchSource && roles[swatchSource.url] !== "size_map") {
-    roles[swatchSource.url] = "swatch";
-  }
-  return { mainUrl, roles };
-}
-
-function isLikelySizeMapImage(image: SheinPreviewImage, role?: ImageRole) {
-  if (role === "size_map") {
-    return true;
-  }
-  const text = `${image.label} ${image.id}`.toLowerCase();
-  return (
-    text.includes("size") ||
-    text.includes("dimension") ||
-    text.includes("尺寸") ||
-    text.includes("尺码")
-  );
-}
-
-function normalizeImageRole(role?: string): ImageRole | undefined {
-  switch (role) {
-    case "main":
-    case "gallery":
-    case "swatch":
-    case "size_map":
-    case "skc":
-      return role;
-    default:
-      return undefined;
-  }
-}
-
-function hasSavedImageRole(
-  finalImages?: Array<{
-    url?: string;
-    role?: string;
-    main?: boolean;
-    swatch?: boolean;
-    size_map?: boolean;
-  }>,
-) {
-  return Boolean(
-    finalImages?.some(
-      (image) =>
-        image.main ||
-        image.swatch ||
-        image.size_map ||
-        normalizeImageRole(image.role) !== undefined,
-    ),
-  );
-}
-
-function ImageRoleStatus({
-  count,
-  fallbackReady = false,
-  label,
-  required = false,
-}: {
-  count: number;
-  fallbackReady?: boolean;
-  label: string;
-  required?: boolean;
-}) {
-  const ready = count > 0 || fallbackReady;
-  return (
-    <div
-      className={[
-        "rounded-xl border px-3 py-2",
-        ready
-          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-          : required
-            ? "border-amber-200 bg-amber-50 text-amber-800"
-            : "border-zinc-200 bg-white text-zinc-600",
-      ].join(" ")}
-    >
-      <div className="font-semibold">{label}</div>
-      <div className="mt-1 text-[11px]">
-        {count > 0
-          ? `${count} 张已设置`
-          : fallbackReady
-            ? "默认使用首图"
-            : required
-              ? "需要设置"
-              : "未设置"}
-      </div>
-    </div>
-  );
-}
-
-function roleLabel(role: string) {
-  switch (role) {
-    case "main":
-      return "主图";
-    case "swatch":
-      return "色块图";
-    case "size_map":
-      return "尺寸图";
-    case "skc":
-      return "SKC 图";
-    default:
-      return "图库";
-  }
-}
-
-function moveItem(items: string[], value: string, delta: -1 | 1) {
-  const next = [...items];
-  const index = next.indexOf(value);
-  if (index < 0) {
-    return next;
-  }
-  const target = index + delta;
-  if (target < 0 || target >= next.length) {
-    return next;
-  }
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
 }

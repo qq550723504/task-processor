@@ -11,8 +11,14 @@ import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-stud
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
+  buildSheinStudioSelectionKey,
+  buildSheinStudioGenerateRequest,
   evaluateImportedGalleryDesigns,
+  getSheinStudioCreateActionDisabledReason,
+  mergeSheinStudioDraftState,
+  sheinStudioBusyMessage,
   STUDIO_SESSION_SYNC_TIMEOUT_MS,
+  summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
@@ -121,55 +127,19 @@ export function SheinStudioWorkbench({
   const activeSelection = hydratedSelection ?? selection;
   const activeSelectionRef = useRef(activeSelection);
   const activeStepRef = useRef(activeStep);
-  const activeSelectionKey = activeSelection
-    ? JSON.stringify({
-        productId: activeSelection.productId,
-        parentProductId: activeSelection.parentProductId,
-        variantId: activeSelection.variantId,
-        prototypeGroupId: activeSelection.prototypeGroupId,
-        layerId: activeSelection.layerId,
-        printableWidth: activeSelection.printableWidth ?? null,
-        printableHeight: activeSelection.printableHeight ?? null,
-        selectedVariantIds: activeSelection.selectedVariantIds ?? [],
-      })
-    : "none";
-
-  const printableAreaLabel =
-    activeSelection?.printableWidth && activeSelection?.printableHeight
-      ? `${activeSelection.printableWidth} × ${activeSelection.printableHeight}px`
-      : "自动";
-  const selectedVariants =
-    activeSelection?.variants?.length
-      ? activeSelection.variants
-      : activeSelection?.selectedVariantIds?.length
-        ? activeSelection.selectedVariantIds.map((variantId) => ({
-            variantId,
-            size: undefined,
-            color: undefined,
-          }))
-        : activeSelection?.variantId
-          ? [
-              {
-                variantId: activeSelection.variantId,
-                size: activeSelection.variantLabel,
-                color: "默认",
-              },
-            ]
-          : [];
-  const selectedColorCount = new Set(
-    selectedVariants.map((variant) => variant.color || "default"),
-  ).size;
-  const selectedSizeCount = new Set(
-    selectedVariants.map((variant) => variant.size || "One size"),
-  ).size;
+  const activeSelectionKey = buildSheinStudioSelectionKey(activeSelection);
+  const {
+    printableAreaLabel,
+    selectedColorCount,
+    selectedSizeCount,
+    selectedVariants,
+  } = summarizeSheinStudioSelection(activeSelection);
   const availableSdsImages = buildSelectableSDSImages(activeSelection);
-  const createActionDisabledReason = !activeSelection?.variantId
-    ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。"
-    : galleryRatioCheck?.status === "blocking"
-      ? galleryRatioCheck.message
-    : selectedIds.length === 0
-      ? "请至少批准 1 个款式后再生成 SHEIN 资料。"
-      : undefined;
+  const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
+    selection: activeSelection,
+    galleryRatioCheck,
+    selectedIds,
+  });
 
   useEffect(() => {
     setEffectiveStep(activeStep);
@@ -226,46 +196,34 @@ export function SheinStudioWorkbench({
           const galleryDesign = galleryHandoff
             ? galleryHandoffToDesign(galleryHandoff)
             : null;
-          const draftDesigns = draft?.designs ?? [];
-          const nextDesigns =
-            galleryDesign && !draftDesigns.some((design) => design.id === galleryDesign.id)
-              ? [...draftDesigns, galleryDesign]
-              : draftDesigns;
-          const draftSelectedIds = draft?.selectedIds ?? [];
-          const nextSelectedIds =
-            galleryDesign && !draftSelectedIds.includes(galleryDesign.id)
-              ? [...draftSelectedIds, galleryDesign.id]
-              : draftSelectedIds;
-          const nextPrompt = draft?.prompt || galleryHandoff?.prompt || galleryHandoff?.title || "";
-          const nextCreatedTasks = draft?.createdTasks ?? [];
+          const draftState = mergeSheinStudioDraftState({
+            draft,
+            galleryDesign,
+            galleryPrompt: galleryHandoff?.prompt || galleryHandoff?.title,
+          });
 
-          setPrompt(nextPrompt);
-          setStyleCount(draft?.styleCount ?? "1");
-          setVariationIntensity(
-            draft?.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
-          );
-          setProductImageCount(
-            draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-          );
-          setProductImagePrompt(draft?.productImagePrompt ?? "");
-          setProductImagePrompts(draft?.productImagePrompts ?? []);
-          setArtworkModel(draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
-          setTransparentBackground(draft?.transparentBackground ?? false);
-          setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
-          setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
-          setSelectedSdsImages(draft?.selectedSdsImages ?? []);
-          hasCustomizedSdsSelectionRef.current =
-            (draft?.selectedSdsImages?.length ?? 0) > 0;
-          setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
-          setDesigns(nextDesigns);
-          setSelectedIds(nextSelectedIds);
-          setCreatedTasks(nextCreatedTasks);
+          setPrompt(draftState.prompt);
+          setStyleCount(draftState.styleCount);
+          setVariationIntensity(draftState.variationIntensity);
+          setProductImageCount(draftState.productImageCount);
+          setProductImagePrompt(draftState.productImagePrompt);
+          setProductImagePrompts(draftState.productImagePrompts);
+          setArtworkModel(draftState.artworkModel);
+          setTransparentBackground(draftState.transparentBackground);
+          setSheinStoreId(draftState.sheinStoreId);
+          setImageStrategy(draftState.imageStrategy);
+          setSelectedSdsImages(draftState.selectedSdsImages);
+          hasCustomizedSdsSelectionRef.current = draftState.hasCustomizedSdsSelection;
+          setRenderSizeImagesWithSds(draftState.renderSizeImagesWithSds);
+          setDesigns(draftState.designs);
+          setSelectedIds(draftState.selectedIds);
+          setCreatedTasks(draftState.createdTasks);
           setGalleryRatioCheck(
-            evaluateImportedGalleryDesigns(nextDesigns, activeSelectionRef.current),
+            evaluateImportedGalleryDesigns(draftState.designs, activeSelectionRef.current),
           );
-          nextEffectiveDesignCount = nextDesigns.length;
-          nextEffectiveCreatedTaskCount = nextCreatedTasks.length;
-          if (galleryDesign) {
+          nextEffectiveDesignCount = draftState.designCount;
+          nextEffectiveCreatedTaskCount = draftState.createdTaskCount;
+          if (draftState.importedGalleryDesign) {
             hasLocalWorkflowStateRef.current = true;
             importedGalleryDesign = true;
           }
@@ -565,16 +523,16 @@ export function SheinStudioWorkbench({
 
     try {
       const response = await generateSheinStudioDesigns(
-        {
+        buildSheinStudioGenerateRequest({
           prompt: prompt.trim(),
-          count: parsePositiveInt(styleCount) ?? 1,
           variationIntensity,
           printableWidth: activeSelection.printableWidth,
           printableHeight: activeSelection.printableHeight,
           productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
-          imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+          styleCount: parsePositiveInt(styleCount) ?? 1,
+          artworkModel,
           transparentBackground,
-        },
+        }),
         {
           onJobStarted: (jobId) => {
             void sessionSyncPromise
@@ -667,16 +625,16 @@ export function SheinStudioWorkbench({
     setRegeneratingId(designId);
 
     try {
-      const response = await generateSheinStudioDesigns({
+      const response = await generateSheinStudioDesigns(buildSheinStudioGenerateRequest({
         prompt: prompt.trim(),
-        count: 1,
         variationIntensity,
         printableWidth: activeSelection.printableWidth,
         printableHeight: activeSelection.printableHeight,
         productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
-        imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+        styleCount: 1,
+        artworkModel,
         transparentBackground,
-      });
+      }));
       const replacement = response.images[0];
       if (!replacement) {
         throw new Error("重新生成已完成，但没有返回任何图片。");
@@ -853,13 +811,11 @@ export function SheinStudioWorkbench({
     }
   }
 
-  const busyMessage = isGenerating
-    ? "正在生成款式图"
-    : regeneratingId
-      ? "正在重新生成图片"
-      : isCreatingTasks
-        ? "正在生成商品图和 SHEIN 资料"
-        : "";
+  const busyMessage = sheinStudioBusyMessage({
+    isCreatingTasks,
+    isGenerating,
+    regeneratingId,
+  });
 
   return (
     <section className="relative space-y-6">

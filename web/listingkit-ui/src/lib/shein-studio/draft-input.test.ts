@@ -7,6 +7,7 @@ describe("buildSheinStudioDraftInput", () => {
     const payload = buildSheinStudioDraftInput({
       prompt: "retro cherries",
       styleCount: "2",
+      variationIntensity: "medium",
       productImageCount: "5",
       productImagePrompt: "hero image",
       productImagePrompts: [{ role: "main", label: "主图", prompt: "white bg" }],
