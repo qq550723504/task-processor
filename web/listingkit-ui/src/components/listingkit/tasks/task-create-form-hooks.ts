@@ -1,21 +1,179 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { MutableRefObject, RefObject } from "react";
-import type { UseFormSetValue } from "react-hook-form";
+import type {
+  Control,
+  UseFormClearErrors,
+  UseFormSetError,
+  UseFormSetValue,
+} from "react-hook-form";
+import { useWatch } from "react-hook-form";
 
+import {
+  saveTaskCreateDraft,
+} from "@/components/listingkit/tasks/task-create-draft";
+import {
+  buildTaskCreateSubmission,
+} from "@/components/listingkit/tasks/task-create-submit";
 import type {
   FormValues,
   TaskCreateVariant,
 } from "@/components/listingkit/tasks/task-create-form-model";
 import {
+  parseImageUrls,
+  parseSelectedVariantIds,
+  taskCreatePageCopy,
+  titleFieldCopy,
+} from "@/components/listingkit/tasks/task-create-form-model";
+import {
+  getPlatformSceneDefaults,
   hasAnySceneCustomization,
   matchesSceneDefaults,
   type TaskSceneDraftValues,
 } from "@/components/listingkit/tasks/task-scene-defaults";
 import type { TaskSourceTab } from "@/components/listingkit/tasks/task-source-tabs";
+import type {
+  CreateListingKitTaskRequest,
+  CreateListingKitTaskResponse,
+} from "@/lib/types/listingkit";
 
 type SearchParamReader = {
   get: (name: string) => string | null;
 };
+
+export function useTaskCreateWatchedState({
+  activeSourceTab,
+  control,
+  variant,
+}: {
+  activeSourceTab: TaskSourceTab;
+  control: Control<FormValues>;
+  variant: TaskCreateVariant;
+}) {
+  const selectedPlatforms = useWatch({
+    control,
+    name: "platforms",
+  });
+  const currentText = useWatch({
+    control,
+    name: "text",
+  });
+  const currentImageUrls = useWatch({
+    control,
+    name: "imageUrls",
+  });
+  const currentProductUrl = useWatch({
+    control,
+    name: "productUrl",
+  });
+  const currentSceneCategory = useWatch({
+    control,
+    name: "sceneCategory",
+  });
+  const currentSceneStyle = useWatch({
+    control,
+    name: "sceneStyle",
+  });
+  const currentBackgroundTone = useWatch({
+    control,
+    name: "backgroundTone",
+  });
+  const currentComposition = useWatch({
+    control,
+    name: "composition",
+  });
+  const currentPropsLevel = useWatch({
+    control,
+    name: "propsLevel",
+  });
+  const currentAudienceHint = useWatch({
+    control,
+    name: "audienceHint",
+  });
+  const currentCustomSceneHint = useWatch({
+    control,
+    name: "customSceneHint",
+  });
+  const imageCount = useMemo(
+    () => parseImageUrls(currentImageUrls ?? "").length,
+    [currentImageUrls],
+  );
+  const primaryPlatform = selectedPlatforms?.[0];
+  const platformSceneDefaults = useMemo(
+    () => getPlatformSceneDefaults(primaryPlatform, currentSceneCategory),
+    [primaryPlatform, currentSceneCategory],
+  );
+  const sceneSummary = useMemo(() => {
+    if (!primaryPlatform || !platformSceneDefaults) {
+      return null;
+    }
+    const parts = [
+      platformSceneDefaults.sceneStyle,
+      platformSceneDefaults.backgroundTone,
+      platformSceneDefaults.composition,
+    ].filter(Boolean);
+    return `${primaryPlatform} 默认场景：${parts.join(" / ")}`;
+  }, [platformSceneDefaults, primaryPlatform]);
+
+  return {
+    currentAudienceHint,
+    currentBackgroundTone,
+    currentComposition,
+    currentCustomSceneHint,
+    currentImageUrls,
+    currentProductUrl,
+    currentPropsLevel,
+    currentSceneCategory,
+    currentSceneStyle,
+    currentText,
+    imageCount,
+    pageCopy: taskCreatePageCopy(variant),
+    platformSceneDefaults,
+    sceneSummary,
+    selectedPlatforms,
+    textLength: (currentText ?? "").trim().length,
+    titleCopy: titleFieldCopy(activeSourceTab),
+  };
+}
+
+export function useTaskCreateSubmit({
+  clearErrors,
+  createTask,
+  liveSearchParams,
+  router,
+  setError,
+}: {
+  clearErrors: UseFormClearErrors<FormValues>;
+  createTask: {
+    mutateAsync: (
+      request: CreateListingKitTaskRequest,
+    ) => Promise<CreateListingKitTaskResponse>;
+  };
+  liveSearchParams: SearchParamReader;
+  router: { push: (href: string) => void };
+  setError: UseFormSetError<FormValues>;
+}) {
+  return useCallback(
+    async (values: FormValues) => {
+      const submission = await buildTaskCreateSubmission({
+        selectedVariantIds: parseSelectedVariantIds(
+          liveSearchParams.get("variantIds"),
+        ),
+        values,
+      });
+      if (!submission.ok) {
+        setError("root", {
+          message: submission.message,
+        });
+        return;
+      }
+      clearErrors("root");
+      const task = await createTask.mutateAsync(submission.request);
+      saveTaskCreateDraft(task.task_id, submission.draft);
+      router.push(`/listing-kits/${task.task_id}/status`);
+    },
+    [clearErrors, createTask, liveSearchParams, router, setError],
+  );
+}
 
 export function useTaskCreateSDSQuerySync({
   lastAppliedSDSQueryKeyRef,

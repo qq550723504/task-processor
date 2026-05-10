@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card } from "@/components/shared/card";
 import {
-  saveTaskCreateDraft,
   type TaskCreateDraft,
 } from "@/components/listingkit/tasks/task-create-draft";
 import { TaskInputGuidance } from "@/components/listingkit/tasks/task-input-guidance";
@@ -14,11 +13,7 @@ import {
   buildTaskCreateDefaultValues,
   type FormValues,
   inferInitialSourceTab,
-  parseImageUrls,
-  parseSelectedVariantIds,
   schema,
-  taskCreatePageCopy,
-  titleFieldCopy,
   type TaskCreateVariant,
 } from "@/components/listingkit/tasks/task-create-form-model";
 import { TaskSDSOptions } from "@/components/listingkit/tasks/task-sds-options";
@@ -45,8 +40,9 @@ import {
   useTaskCreateFocus,
   useTaskCreateSDSQuerySync,
   useTaskCreateSceneDefaults,
+  useTaskCreateSubmit,
+  useTaskCreateWatchedState,
 } from "@/components/listingkit/tasks/task-create-form-hooks";
-import { buildTaskCreateSubmission } from "@/components/listingkit/tasks/task-create-submit";
 import { useCreateTask } from "@/lib/query/use-create-task";
 import { useUploadImages } from "@/lib/query/use-upload-images";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
@@ -120,49 +116,27 @@ export function TaskCreateForm({
     defaultValues: buildTaskCreateDefaultValues({ initialValues, variant }),
   });
 
-  const selectedPlatforms = useWatch({
+  const {
+    currentAudienceHint,
+    currentBackgroundTone,
+    currentComposition,
+    currentCustomSceneHint,
+    currentImageUrls,
+    currentProductUrl,
+    currentPropsLevel,
+    currentSceneCategory,
+    currentSceneStyle,
+    imageCount,
+    pageCopy,
+    platformSceneDefaults,
+    sceneSummary,
+    selectedPlatforms,
+    textLength,
+    titleCopy,
+  } = useTaskCreateWatchedState({
+    activeSourceTab,
     control,
-    name: "platforms",
-  });
-  const currentText = useWatch({
-    control,
-    name: "text",
-  });
-  const currentImageUrls = useWatch({
-    control,
-    name: "imageUrls",
-  });
-  const currentProductUrl = useWatch({
-    control,
-    name: "productUrl",
-  });
-  const currentSceneCategory = useWatch({
-    control,
-    name: "sceneCategory",
-  });
-  const currentSceneStyle = useWatch({
-    control,
-    name: "sceneStyle",
-  });
-  const currentBackgroundTone = useWatch({
-    control,
-    name: "backgroundTone",
-  });
-  const currentComposition = useWatch({
-    control,
-    name: "composition",
-  });
-  const currentPropsLevel = useWatch({
-    control,
-    name: "propsLevel",
-  });
-  const currentAudienceHint = useWatch({
-    control,
-    name: "audienceHint",
-  });
-  const currentCustomSceneHint = useWatch({
-    control,
-    name: "customSceneHint",
+    variant,
   });
 
   useTaskCreateSDSQuerySync({
@@ -174,36 +148,17 @@ export function TaskCreateForm({
     variant,
   });
 
-  const helperText = useMemo(
-    () => "可以直接粘贴公网图片链接、上传本地图片，或改用商品链接开始。",
-    [],
-  );
-  const imageCount = useMemo(
-    () => parseImageUrls(currentImageUrls ?? "").length,
-    [currentImageUrls],
-  );
-  const textLength = (currentText ?? "").trim().length;
+  const helperText = "可以直接粘贴公网图片链接、上传本地图片，或改用商品链接开始。";
   const textRegistration = register("text");
   const imageUrlsRegistration = register("imageUrls");
   const productUrlRegistration = register("productUrl");
-  const titleCopy = titleFieldCopy(activeSourceTab);
-  const pageCopy = taskCreatePageCopy(variant);
-  const primaryPlatform = selectedPlatforms?.[0];
-  const platformSceneDefaults = useMemo(
-    () => getPlatformSceneDefaults(primaryPlatform, currentSceneCategory),
-    [primaryPlatform, currentSceneCategory],
-  );
-  const sceneSummary = useMemo(() => {
-    if (!primaryPlatform || !platformSceneDefaults) {
-      return null;
-    }
-    const parts = [
-      platformSceneDefaults.sceneStyle,
-      platformSceneDefaults.backgroundTone,
-      platformSceneDefaults.composition,
-    ].filter(Boolean);
-    return `${primaryPlatform} 默认场景：${parts.join(" / ")}`;
-  }, [platformSceneDefaults, primaryPlatform]);
+  const handleCreateTask = useTaskCreateSubmit({
+    clearErrors,
+    createTask,
+    liveSearchParams,
+    router,
+    setError,
+  });
 
   useTaskCreateSceneDefaults({
     currentAudienceHint,
@@ -237,24 +192,7 @@ export function TaskCreateForm({
     >
       <form
         className="space-y-6"
-        onSubmit={handleSubmit(async (values) => {
-          const submission = await buildTaskCreateSubmission({
-            selectedVariantIds: parseSelectedVariantIds(
-              liveSearchParams.get("variantIds"),
-            ),
-            values,
-          });
-          if (!submission.ok) {
-            setError("root", {
-              message: submission.message,
-            });
-            return;
-          }
-          clearErrors("root");
-          const task = await createTask.mutateAsync(submission.request);
-          saveTaskCreateDraft(task.task_id, submission.draft);
-          router.push(`/listing-kits/${task.task_id}/status`);
-        })}
+        onSubmit={handleSubmit(handleCreateTask)}
       >
         <div className="space-y-2">
           <p
