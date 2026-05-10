@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -14,7 +13,6 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
-	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
@@ -349,156 +347,4 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		}(),
 	}).Info("listing kit workflow finished assembling result")
 	return final, nil
-}
-
-func (s *service) applyDefaultSheinPricing(pkg *sheinpub.Package) {
-	if pkg == nil || (pkg.Pricing != nil && pkg.Pricing.Ready) {
-		return
-	}
-	var overrides map[string]float64
-	if pkg.FinalDraft != nil {
-		overrides = pkg.FinalDraft.ManualPriceOverrides
-	}
-	review := buildSheinPricingReview(pkg, s.currentSheinPricingRule(), overrides)
-	applySheinPricingReview(pkg, review)
-}
-
-func initResult(task *Task) *ListingKitResult {
-	if task == nil || task.Request == nil {
-		return &ListingKitResult{Summary: &GenerationSummary{}}
-	}
-	return &ListingKitResult{
-		TaskID:    task.ID,
-		Status:    string(TaskStatusProcessing),
-		Platforms: append([]string(nil), task.Request.Platforms...),
-		Country:   task.Request.Country,
-		Language:  task.Request.Language,
-		CreatedAt: task.CreatedAt,
-		UpdatedAt: task.UpdatedAt,
-		Summary: &GenerationSummary{
-			SourceType: detectSourceType(task.Request),
-			ImageCount: len(task.Request.ImageURLs),
-		},
-	}
-}
-
-func toProductGenerateRequest(task *Task) *productenrich.GenerateRequest {
-	if task == nil || task.Request == nil {
-		return &productenrich.GenerateRequest{}
-	}
-	return &productenrich.GenerateRequest{
-		ImageURLs:  append([]string(nil), task.Request.ImageURLs...),
-		Text:       task.Request.Text,
-		ProductURL: task.Request.ProductURL,
-	}
-}
-
-func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
-	if task == nil || task.Request == nil {
-		return &productimage.ImageProcessRequest{}
-	}
-	marketplace := detectImageMarketplace(task.Request)
-	var scene *productimage.SceneGenerationOptions
-	if task.Request.Options != nil {
-		scene = task.Request.Options.Scene.Clone()
-	}
-	return &productimage.ImageProcessRequest{
-		ProductURL:  task.Request.ProductURL,
-		ImageURLs:   append([]string(nil), task.Request.ImageURLs...),
-		Text:        task.Request.Text,
-		Marketplace: marketplace,
-		Country:     task.Request.Country,
-		Scene:       scene,
-	}
-}
-
-func shouldProcessImages(req *GenerateRequest) bool {
-	if shouldUseSDSCatalogSource(req) {
-		return false
-	}
-	return req != nil && req.Options != nil && req.Options.ProcessImages &&
-		(len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != "")
-}
-
-func shouldGenerateAssets(req *GenerateRequest) bool {
-	if shouldUseSDSCatalogSource(req) {
-		return false
-	}
-	return req != nil && req.Options != nil && req.Options.ProcessImages
-}
-
-func shouldUseSDSCatalogSource(req *GenerateRequest) bool {
-	if req == nil || req.Options == nil || req.Options.SDS == nil {
-		return false
-	}
-	sds := req.Options.SDS
-	return shouldSyncSDS(req) &&
-		(strings.TrimSpace(sds.ProductName) != "" ||
-			strings.TrimSpace(sds.ProductSKU) != "" ||
-			strings.TrimSpace(sds.VariantSKU) != "" ||
-			len(sds.CategoryPath) > 0)
-}
-
-func shouldSyncSDS(req *GenerateRequest) bool {
-	return req != nil &&
-		req.Options != nil &&
-		req.Options.SDS != nil &&
-		(req.Options.SDS.VariantID > 0 || len(req.Options.SDS.Variants) > 0)
-}
-
-func markChildTask(result *ListingKitResult, kind, taskID, status, errorMsg string) {
-	if result == nil {
-		return
-	}
-	// Compatibility shim for legacy task payloads and older UI paths.
-	// New workflow state should be recorded through workflowRecorder stages/issues.
-	for i := range result.ChildTasks {
-		if result.ChildTasks[i].Kind == kind {
-			result.ChildTasks[i].TaskID = taskID
-			result.ChildTasks[i].Status = status
-			result.ChildTasks[i].Error = errorMsg
-			return
-		}
-	}
-	result.ChildTasks = append(result.ChildTasks, ChildTaskState{Kind: kind, TaskID: taskID, Status: status, Error: errorMsg})
-}
-
-func appendWarning(result *ListingKitResult, warning string) {
-	if result == nil || result.Summary == nil || strings.TrimSpace(warning) == "" {
-		return
-	}
-	// Compatibility shim for legacy summary warnings. New warnings should be
-	// represented as workflow issues and surfaced through aggregate counts.
-	result.Summary.Warnings = append(result.Summary.Warnings, warning)
-}
-
-func detectSourceType(req *GenerateRequest) string {
-	if req == nil {
-		return ""
-	}
-	switch {
-	case strings.TrimSpace(req.ProductURL) != "" && len(req.ImageURLs) > 0 && strings.TrimSpace(req.Text) != "":
-		return "mixed"
-	case strings.TrimSpace(req.ProductURL) != "":
-		return "product_url"
-	case len(req.ImageURLs) > 0 && strings.TrimSpace(req.Text) != "":
-		return "images_and_text"
-	case len(req.ImageURLs) > 0:
-		return "images"
-	case strings.TrimSpace(req.Text) != "":
-		return "text"
-	default:
-		return "unknown"
-	}
-}
-
-func detectImageMarketplace(req *GenerateRequest) string {
-	if req == nil {
-		return "amazon"
-	}
-	platforms := normalizePlatforms(req.Platforms)
-	if len(platforms) == 0 {
-		return "amazon"
-	}
-	return platforms[0]
 }
