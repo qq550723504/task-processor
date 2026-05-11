@@ -174,7 +174,7 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 				CostCNY:         cost,
 				CalculatedPrice: price,
 				FinalPrice:      finalPrice,
-				Currency:        existingSheinDraftCurrency(sku, rule.TargetCurrency),
+				Currency:        normalizeSheinReviewCurrency(existingSheinDraftCurrency(sku, rule.TargetCurrency), rule),
 				Manual:          manual,
 			})
 		}
@@ -187,8 +187,13 @@ func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingRevi
 		return
 	}
 	pkg.Pricing = review
+	rule := sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "USD", ExchangeRate: 7.2}
+	if review.RuleSnapshot != nil {
+		rule = normalizeSheinPricingRule(*review.RuleSnapshot, rule)
+	}
 	priceBySKU := make(map[string]sheinpub.SKUPriceReview, len(review.SKUPrices))
 	for _, price := range review.SKUPrices {
+		price.Currency = normalizeSheinReviewCurrency(price.Currency, rule)
 		priceBySKU[price.SupplierSKU] = price
 	}
 	if pkg.RequestDraft != nil {
@@ -211,10 +216,6 @@ func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingRevi
 		}
 	}
 	if pkg.PreviewProduct != nil {
-		rule := sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "USD", ExchangeRate: 7.2}
-		if review.RuleSnapshot != nil {
-			rule = *review.RuleSnapshot
-		}
 		applySheinPreviewProductPrices(pkg.PreviewProduct, priceBySKU, rule)
 	}
 }
@@ -342,4 +343,20 @@ func existingSheinDraftCurrency(sku sheinpub.SKUDraft, fallback string) string {
 		return "USD"
 	}
 	return fallback
+}
+
+func normalizeSheinReviewCurrency(currency string, rule sheinpub.PricingRule) string {
+	sourceCurrency := strings.ToUpper(strings.TrimSpace(rule.SourceCurrency))
+	if sourceCurrency == "" {
+		sourceCurrency = "CNY"
+	}
+	targetCurrency := strings.ToUpper(strings.TrimSpace(rule.TargetCurrency))
+	if targetCurrency == "" {
+		targetCurrency = "USD"
+	}
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if currency == "" || currency == sourceCurrency {
+		return targetCurrency
+	}
+	return currency
 }

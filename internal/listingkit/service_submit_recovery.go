@@ -172,21 +172,7 @@ func (s *service) confirmSheinSubmitRemote(ctx context.Context, taskID string, p
 		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusPending, nil, now, "missing supplier code")
 		return ptrSheinSubmissionEvent(buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, "SHEIN submit succeeded, but supplier code is unavailable for remote confirmation", nil))
 	}
-	confirmProduct, err := sheinConfirmRemoteProduct(pkg, supplierCode)
-	if err != nil {
-		now := time.Now()
-		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusFailed, nil, now, err.Error())
-		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusFailed, requestID, startedAt, "SHEIN confirm_publish payload preparation failed", err)
-		return &event
-	}
-	needConfirm, _, confirmErr := productAPI.ConfirmPublish(confirmProduct)
-	if confirmErr == nil && !needConfirm {
-		return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, true, "SHEIN confirm_publish passed")
-	}
-	if confirmErr == nil && needConfirm {
-		return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, false, "SHEIN confirm_publish still requires confirmation")
-	}
-	return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, false, fmt.Sprintf("SHEIN confirm_publish failed: %v", confirmErr))
+	return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, false, "refreshing SHEIN remote record")
 }
 
 func ptrSheinSubmissionEvent(event sheinpub.SubmissionEvent) *sheinpub.SubmissionEvent {
@@ -242,18 +228,4 @@ func lookupSheinRemoteRecord(productAPI sheinproduct.ProductAPI, supplierCode st
 		return nil, nil
 	}
 	return &resp.Info.Data[0], nil
-}
-
-func sheinConfirmRemoteProduct(pkg *SheinPackage, supplierCode string) (*sheinproduct.Product, error) {
-	if pkg != nil && pkg.PreviewProduct != nil {
-		product, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
-		if err != nil {
-			return nil, err
-		}
-		if product != nil {
-			product.SupplierCode = supplierCode
-			return product, nil
-		}
-	}
-	return &sheinproduct.Product{SupplierCode: supplierCode}, nil
 }

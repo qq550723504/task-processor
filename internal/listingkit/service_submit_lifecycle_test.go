@@ -235,7 +235,6 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	var recordSupplierCodes []string
-	var confirmedSupplierCodes []string
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,
 		ProductService: stubSubmitProductService{},
@@ -245,9 +244,6 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 					Code: "0",
 					Msg:  "success",
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
-				},
-				confirmHook: func(product *sheinproduct.Product) {
-					confirmedSupplierCodes = append(confirmedSupplierCodes, product.SupplierCode)
 				},
 				recordHook: func(request *sheinproduct.ProductRecordRequest) {
 					if request.SupplierCodeList != nil {
@@ -279,9 +275,6 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 	if preview.Shein.Submission.Publish.RemoteRecordID != "record-123" {
 		t.Fatalf("remote record id = %q, want record-123", preview.Shein.Submission.Publish.RemoteRecordID)
 	}
-	if len(confirmedSupplierCodes) != 1 || confirmedSupplierCodes[0] == "" {
-		t.Fatalf("confirm supplier codes = %+v, want one supplier code", confirmedSupplierCodes)
-	}
 	if len(recordSupplierCodes) != 1 || recordSupplierCodes[0] == "" {
 		t.Fatalf("record supplier codes = %+v, want one supplier code", recordSupplierCodes)
 	}
@@ -308,7 +301,6 @@ func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T)
 					Msg:  "success",
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
-				confirmNeed:    true,
 				recordResponse: makeSheinRecordResponse(),
 			},
 		},
@@ -331,7 +323,7 @@ func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T)
 	}
 }
 
-func TestSubmitTaskConfirmsRemoteWithoutRecordWhenConfirmPublishPasses(t *testing.T) {
+func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordNotVisible(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -367,11 +359,11 @@ func TestSubmitTaskConfirmsRemoteWithoutRecordWhenConfirmPublishPasses(t *testin
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusPending {
+		t.Fatalf("remote status = %q, want pending", got)
 	}
 	if got := atomic.LoadInt32(&recordCalls); got != 1 {
-		t.Fatalf("record calls = %d, want 1 enrichment attempt", got)
+		t.Fatalf("record calls = %d, want 1 record lookup", got)
 	}
 	if preview.Shein.Submission.Publish.RemoteRecordID != "" {
 		t.Fatalf("remote record id = %q, want empty when record not visible", preview.Shein.Submission.Publish.RemoteRecordID)
@@ -402,7 +394,6 @@ func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.
 		t.Fatalf("create task: %v", err)
 	}
 	var publishCalls int32
-	var confirmCalls int32
 	var recordCalls int32
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,
@@ -412,10 +403,6 @@ func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.
 				publishHook: func(product *sheinproduct.Product) {
 					atomic.AddInt32(&publishCalls, 1)
 				},
-				confirmHook: func(product *sheinproduct.Product) {
-					atomic.AddInt32(&confirmCalls, 1)
-				},
-				confirmNeed: true,
 				recordHook: func(request *sheinproduct.ProductRecordRequest) {
 					atomic.AddInt32(&recordCalls, 1)
 				},
@@ -440,9 +427,6 @@ func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.
 
 	if got := atomic.LoadInt32(&publishCalls); got != 0 {
 		t.Fatalf("publish calls = %d, want 0", got)
-	}
-	if got := atomic.LoadInt32(&confirmCalls); got != 1 {
-		t.Fatalf("confirm calls = %d, want 1", got)
 	}
 	if got := atomic.LoadInt32(&recordCalls); got != 1 {
 		t.Fatalf("record calls = %d, want 1", got)
