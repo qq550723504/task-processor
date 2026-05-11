@@ -208,6 +208,12 @@ func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 	s.taskSubmitter = submitter
 }
 
+func (s *service) currentSheinSubmitSettings() SheinSettings {
+	s.sheinSettingsMu.RLock()
+	defer s.sheinSettingsMu.RUnlock()
+	return s.sheinSettings
+}
+
 func normalizeGenerateRequest(req *GenerateRequest) {
 	if req == nil {
 		return

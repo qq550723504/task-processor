@@ -602,7 +602,7 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 		t.Fatalf("site_list = %+v, want shein/shein-us", submitted.SiteList)
 	}
 	submittedSKU := submitted.SKCList[0].SKUS[0]
-	if len(submittedSKU.StockInfoList) != 1 || submittedSKU.StockInfoList[0].MerchantWarehouseCode != defaultSheinWarehouseCode || submittedSKU.StockInfoList[0].InventoryNum != 999 {
+	if len(submittedSKU.StockInfoList) != 1 || submittedSKU.StockInfoList[0].MerchantWarehouseCode != "DEFAULT" || submittedSKU.StockInfoList[0].InventoryNum != 999 {
 		t.Fatalf("stock_info_list = %+v", submittedSKU.StockInfoList)
 	}
 	if submittedSKU.StockCount != nil {
@@ -730,8 +730,11 @@ func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
 	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "en"); got != "A durable decorative metal sign designed for wall display in bars, garages, game rooms, and home spaces." {
 		t.Fatalf("english product description = %q", got)
 	}
-	if got := submitted.SKCList[0].MultiLanguageName.Name; !strings.EqualFold(got, "English 白色") {
+	if got := submitted.SKCList[0].MultiLanguageName.Name; !strings.EqualFold(got, "optimized bottle cap metal sign for bar and garage decor 白色") {
 		t.Fatalf("skc primary name = %q", got)
+	}
+	if got := findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "spanish optimized bottle cap metal sign for bar and garage decor 白色") {
+		t.Fatalf("spanish skc name = %q", got)
 	}
 	if len(translateAPI.calls) == 0 {
 		t.Fatal("expected translate API to be called")
@@ -786,7 +789,7 @@ func TestSubmitTaskAddsRegionalTranslationsForEnglishSheinContent(t *testing.T) 
 	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "es"); got != "Spanish A soft door curtain for bedrooms and living rooms." {
 		t.Fatalf("spanish product description = %q", got)
 	}
-	if got := findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "Spanish white") {
+	if got := findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "spanish door curtain for home decor white") {
 		t.Fatalf("spanish skc name = %q", got)
 	}
 	if len(translateAPI.calls) == 0 {

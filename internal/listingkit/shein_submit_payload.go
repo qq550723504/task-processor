@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	sheinproduct "task-processor/internal/shein/api/product"
+	sheinstore "task-processor/internal/shein/store"
 )
 
 const (
@@ -18,47 +19,69 @@ const (
 )
 
 func prepareSheinProductForNewSubmit(product *sheinproduct.Product) {
+	prepareSheinProductForSubmit(product, SheinSettings{
+		Site:          "US",
+		WarehouseCode: "DEFAULT",
+	})
+}
+
+func prepareSheinProductForSubmit(product *sheinproduct.Product, settings SheinSettings) {
 	if product == nil {
 		return
 	}
 	// SHEIN generates spu_name for new products. Sending a display title here
 	// makes the product API reject the draft/publish request.
 	product.SPUName = ""
-	ensureSheinSubmitSites(product)
-	ensureSheinSubmitSKUs(product)
+	ensureSheinSubmitSites(product, settings)
+	ensureSheinSubmitSKUs(product, settings)
 	normalizeSheinSubmitImages(product)
 }
 
-func ensureSheinSubmitSites(product *sheinproduct.Product) {
+func ensureSheinSubmitSites(product *sheinproduct.Product, settings SheinSettings) {
 	if product == nil {
 		return
 	}
+	defaultSites := sheinSubmitDefaultSites(settings)
 	if len(product.SiteList) == 0 {
-		product.SiteList = []sheinproduct.SiteInfo{{
-			MainSite:    defaultSheinMainSite,
-			SubSiteList: []string{defaultSheinSubSite},
-		}}
+		product.SiteList = defaultSites
 		return
 	}
 	for index := range product.SiteList {
 		if strings.TrimSpace(product.SiteList[index].MainSite) == "" || strings.EqualFold(product.SiteList[index].MainSite, "US") {
-			product.SiteList[index].MainSite = defaultSheinMainSite
+			product.SiteList[index].MainSite = defaultSites[0].MainSite
 		}
 		if len(product.SiteList[index].SubSiteList) == 0 {
-			product.SiteList[index].SubSiteList = []string{defaultSheinSubSite}
+			product.SiteList[index].SubSiteList = append([]string(nil), defaultSites[0].SubSiteList...)
 		}
 		for subIndex, subSite := range product.SiteList[index].SubSiteList {
 			if strings.EqualFold(strings.TrimSpace(subSite), "US") {
-				product.SiteList[index].SubSiteList[subIndex] = defaultSheinSubSite
+				product.SiteList[index].SubSiteList[subIndex] = defaultSites[0].SubSiteList[0]
 			}
 		}
 	}
 }
 
-func ensureSheinSubmitSKUs(product *sheinproduct.Product) {
+func sheinSubmitDefaultSites(settings SheinSettings) []sheinproduct.SiteInfo {
+	region := strings.ToUpper(strings.TrimSpace(settings.Site))
+	if region == "" {
+		region = "US"
+	}
+	return sheinstore.GetSiteListByRegion(region)
+}
+
+func sheinSubmitPreferredWarehouseCode(settings SheinSettings) string {
+	value := strings.TrimSpace(settings.WarehouseCode)
+	if value != "" {
+		return value
+	}
+	return "DEFAULT"
+}
+
+func ensureSheinSubmitSKUs(product *sheinproduct.Product, settings SheinSettings) {
 	if product == nil {
 		return
 	}
+	preferredWarehouseCode := sheinSubmitPreferredWarehouseCode(settings)
 	for skcIndex := range product.SKCList {
 		if product.SKCList[skcIndex].ShelfWay == 0 {
 			product.SKCList[skcIndex].ShelfWay = defaultSheinSKCShelfWay
@@ -72,7 +95,7 @@ func ensureSheinSubmitSKUs(product *sheinproduct.Product) {
 				}
 				sku.StockInfoList = []sheinproduct.StockInfo{{
 					InventoryNum:          inventory,
-					MerchantWarehouseCode: defaultSheinWarehouseCode,
+					MerchantWarehouseCode: preferredWarehouseCode,
 				}}
 				sku.StockCount = nil
 			} else {
@@ -80,7 +103,7 @@ func ensureSheinSubmitSKUs(product *sheinproduct.Product) {
 					if strings.TrimSpace(sku.StockInfoList[stockIndex].MerchantWarehouseCode) == "" ||
 						strings.EqualFold(sku.StockInfoList[stockIndex].MerchantWarehouseCode, "DEFAULT") ||
 						strings.EqualFold(sku.StockInfoList[stockIndex].MerchantWarehouseCode, "US") {
-						sku.StockInfoList[stockIndex].MerchantWarehouseCode = defaultSheinWarehouseCode
+						sku.StockInfoList[stockIndex].MerchantWarehouseCode = preferredWarehouseCode
 					}
 					if sku.StockInfoList[stockIndex].InventoryNum <= 0 {
 						sku.StockInfoList[stockIndex].InventoryNum = 1000

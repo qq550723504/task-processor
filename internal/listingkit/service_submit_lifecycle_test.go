@@ -323,6 +323,62 @@ func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T)
 	}
 }
 
+func TestSubmitTaskFailsWhenRemoteRecordShowsDraftState(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-draft",
+					SupplierCode: "SUP-submit-task-1",
+					State:        1,
+					AuditState:   2,
+				}),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "draft-remote-123"})
+	if err == nil || !strings.Contains(err.Error(), "landed in draft state") {
+		t.Fatalf("submit err = %v, want draft state failure", err)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	submission := saved.Result.Shein.Submission
+	if submission == nil {
+		t.Fatal("expected submission report")
+	}
+	if submission.RemoteStatus != sheinpub.SubmissionRemoteStatusFailed {
+		t.Fatalf("remote status = %q, want failed", submission.RemoteStatus)
+	}
+	if submission.LastStatus != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("last status = %q, want failed", submission.LastStatus)
+	}
+	if submission.Publish == nil || !strings.Contains(submission.Publish.RemoteMessage, "draft state") {
+		t.Fatalf("publish record = %+v, want draft-state remote message", submission.Publish)
+	}
+}
+
 func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordNotVisible(t *testing.T) {
 	t.Parallel()
 
@@ -488,8 +544,8 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	if got := atomic.LoadInt32(&publishCalls); got != 1 {
 		t.Fatalf("publish calls = %d, want 1", got)
 	}
-	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusPending {
+		t.Fatalf("remote status = %q, want pending", preview.Shein.Submission.RemoteStatus)
 	}
 	if preview.Shein.Submission.CurrentPhase != "" {
 		t.Fatalf("current phase = %q, want cleared", preview.Shein.Submission.CurrentPhase)

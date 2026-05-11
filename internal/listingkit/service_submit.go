@@ -132,9 +132,12 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote); err != nil {
 			return nil, err
 		}
-		remoteEvent := s.confirmSheinSubmitRemote(ctx, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
+		remoteEvent, remoteErr := s.confirmSheinSubmitRemote(ctx, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
 		if remoteEvent != nil {
 			appendSheinSubmissionEvent(pkg, *remoteEvent)
+		}
+		if remoteErr != nil {
+			responseErr = remoteErr
 		}
 	}
 	record := completeSheinSubmitAttempt(pkg, action, requestID, response, responseErr, time.Now())
@@ -232,7 +235,7 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 	if err := sheinpub.PrepareSubmitProductContent(ctx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
 		return nil, err
 	}
-	prepareSheinProductForNewSubmit(submitProduct)
+	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(task))
 	if action == "publish" {
 		if err := validateSheinProductPublishPayload(submitProduct); err != nil {
 			return nil, err
