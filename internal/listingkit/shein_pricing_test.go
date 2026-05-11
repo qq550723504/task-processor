@@ -209,8 +209,8 @@ func TestSubmitTaskNormalizesLegacyCNYDraftCurrencyToUSD(t *testing.T) {
 	if got := submitted.SKCList[0].SKUS[0].PriceInfoList[0].Currency; got != "USD" {
 		t.Fatalf("submitted price currency = %q, want USD", got)
 	}
-	if submitted.SKCList[0].SKUS[0].CostInfo == nil || submitted.SKCList[0].SKUS[0].CostInfo.CostPrice != "10.25" {
-		t.Fatalf("submitted cost info = %+v, want cost price 10.25", submitted.SKCList[0].SKUS[0].CostInfo)
+	if submitted.SKCList[0].SKUS[0].CostInfo == nil || submitted.SKCList[0].SKUS[0].CostInfo.CostPrice != "24.99" {
+		t.Fatalf("submitted cost info = %+v, want cost price 24.99", submitted.SKCList[0].SKUS[0].CostInfo)
 	}
 }
 

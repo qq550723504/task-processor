@@ -245,28 +245,10 @@ func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[st
 			if sku.CostInfo == nil {
 				sku.CostInfo = &sheinproduct.CostInfo{}
 			}
-			costSource := price.CostCNY
-			if costSource <= 0 && sku.CostInfo != nil {
-				costSource = parseMoney(sku.CostInfo.CostPrice)
-			}
-			costPrice := sheinConvertedSubmitCostPrice(costSource, rule)
-			if costPrice > 0 {
-				sku.CostInfo.CostPrice = formatMoney(costPrice)
-			}
+			sku.CostInfo.CostPrice = formatMoney(price.FinalPrice)
 			sku.CostInfo.Currency = targetCurrency
 		}
 	}
-}
-
-func sheinConvertedSubmitCostPrice(costCNY float64, rule sheinpub.PricingRule) float64 {
-	if costCNY <= 0 {
-		return 0
-	}
-	exchangeRate := rule.ExchangeRate
-	if exchangeRate <= 0 {
-		exchangeRate = 7.2
-	}
-	return math.Round((costCNY/exchangeRate)*100) / 100
 }
 
 func calculateSheinPrice(costCNY float64, rule sheinpub.PricingRule) float64 {
