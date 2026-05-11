@@ -6,6 +6,8 @@
 
 1. [ListingKit 产品总览](./listingkit-product-overview.md)
 2. [ListingKit 操作指南](./listingkit-operating-guide.md)
+3. [ListingKit 产品路线图](./listingkit-product-roadmap.md)
+4. [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
 
 ## 面向读者
 

@@ -103,6 +103,33 @@ describe("SheinSubmitReadinessPanel", () => {
     expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
   });
 
+  it("surfaces unknown blocker keys as integration gaps", () => {
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "blocked",
+          blocking_items: [
+            {
+              key: "remote_compliance_hold",
+              label: "平台合规拦截",
+              message: "SHEIN 返回了新的阻断类型",
+              suggested_action: "联系工程确认映射",
+            },
+          ],
+        }}
+        canSelectBlockingItem={() => false}
+      />,
+    );
+
+    expect(screen.getByText("平台合规拦截")).toBeInTheDocument();
+    expect(screen.getByText("未支持自动跳转")).toBeInTheDocument();
+    expect(screen.getByText("原始 key：remote_compliance_hold")).toBeInTheDocument();
+    expect(
+      screen.getByText("请记录这个阻断项 key，并补充 SHEIN readiness 映射后再验收。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
+  });
+
   it("renders ready state without blocker lists", () => {
     const onSubmit = vi.fn();
     const onSaveDraft = vi.fn();
