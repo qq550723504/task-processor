@@ -114,25 +114,37 @@ data:
 
     declare -A shop_map
     declare -A used_proxy
+    declare -A proxy_owner
+    duplicate_keys=()
     in_map=0
     while IFS= read -r line; do
-      if [[ "$line" =~ ^[[:space:]]{4}shop_proxy_map: ]]; then
+      if [[ "$line" =~ ^[[:space:]]*shop_proxy_map: ]]; then
         in_map=1
         continue
       fi
       if (( in_map )); then
-        if [[ "$line" =~ ^[[:space:]]{6}([^:]+:[^:]+):[[:space:]]*(.+)$ ]]; then
+        if [[ "$line" =~ ^[[:space:]]+([0-9]+:[0-9]+):[[:space:]]*(http://[^[:space:]]+) ]]; then
           key="${BASH_REMATCH[1]}"
           proxy="${BASH_REMATCH[2]}"
           shop_map["$key"]="$proxy"
-          used_proxy["$proxy"]=1
+          if [[ -n "${proxy_owner[$proxy]+x}" ]]; then
+            duplicate_keys+=("$key")
+          else
+            proxy_owner["$proxy"]="$key"
+            used_proxy["$proxy"]=1
+          fi
           continue
         fi
-        if [[ ! "$line" =~ ^[[:space:]]{6} && -n "${line//[[:space:]]/}" ]]; then
+        if [[ ! "$line" =~ ^[[:space:]]+ && -n "${line//[[:space:]]/}" ]]; then
           in_map=0
         fi
       fi
     done < "$config_path"
+
+    if (( ${#shop_map[@]} == 0 )); then
+      echo "failed to parse existing SHEIN shop_proxy_map; refusing to allocate from an empty map" >&2
+      exit 1
+    fi
 
     store_query="
     select tenant_id, id, coalesce(name, ''), coalesce(proxy, '')
@@ -147,7 +159,9 @@ data:
       env PGPASSWORD="$db_password" psql -U "$db_user" -d "$db_name" -At -F $'\t' -c "$store_query" > "$stores_path"
 
     assigned_lines_path="/tmp/assigned-map-lines.txt"
+    updated_lines_path="/tmp/updated-map-lines.tsv"
     : > "$assigned_lines_path"
+    : > "$updated_lines_path"
     assigned_count=0
     update_count=0
     values=""
@@ -164,6 +178,19 @@ data:
       done
       return 1
     }
+
+    for key in "${duplicate_keys[@]}"; do
+      old_proxy="${shop_map[$key]}"
+      proxy="$(next_proxy)" || {
+        echo "proxy pool exhausted" >&2
+        exit 1
+      }
+      shop_map["$key"]="$proxy"
+      used_proxy["$proxy"]=1
+      printf '%s\t%s\n' "$key" "$proxy" >> "$updated_lines_path"
+      assigned_count=$((assigned_count + 1))
+      echo "reassigned duplicate ${key}: ${old_proxy} -> ${proxy}"
+    done
 
     while IFS=$'\t' read -r tenant_id store_id store_name store_proxy || [[ -n "${tenant_id:-}" ]]; do
       [[ -n "${tenant_id:-}" && -n "${store_id:-}" ]] || continue
@@ -196,10 +223,14 @@ data:
     fi
 
     if (( assigned_count > 0 )); then
-      awk -v add_file="$assigned_lines_path" '
+      awk -v add_file="$assigned_lines_path" -v update_file="$updated_lines_path" '
         BEGIN {
           while ((getline line < add_file) > 0) {
             adds[++add_count] = line
+          }
+          while ((getline line < update_file) > 0) {
+            split(line, parts, "\t")
+            updates[parts[1]] = parts[2]
           }
         }
         function insert_adds() {
@@ -212,6 +243,10 @@ data:
           if (in_map && $0 !~ /^      / && $0 !~ /^[[:space:]]*$/) {
             insert_adds()
             in_map = 0
+          }
+          if (in_map && match($0, /^([[:space:]]+)([0-9]+:[0-9]+):[[:space:]]*http:\/\/[^[:space:]]+/, m) && (m[2] in updates)) {
+            print m[1] m[2] ": " updates[m[2]]
+            next
           }
           print
           if ($0 ~ /^    shop_proxy_map:/) {
