@@ -307,6 +307,9 @@ type stubSheinProductAPI struct {
 	saveResponse    *sheinproduct.SheinResponse
 	saveErr         error
 	saveHook        func(*sheinproduct.Product)
+	confirmNeed     bool
+	confirmErr      error
+	confirmHook     func(*sheinproduct.Product)
 	recordResponse  *sheinproduct.RecordResponse
 	recordErr       error
 	recordHook      func(*sheinproduct.ProductRecordRequest)
@@ -341,7 +344,10 @@ func (s stubSheinProductAPI) PublishProduct(prod *sheinproduct.Product) (*sheinp
 	return s.publishResponse, "", s.publishErr
 }
 func (s stubSheinProductAPI) ConfirmPublish(product *sheinproduct.Product) (bool, string, error) {
-	return false, "", errors.New("not implemented")
+	if s.confirmHook != nil {
+		s.confirmHook(product)
+	}
+	return s.confirmNeed, "", s.confirmErr
 }
 func (s stubSheinProductAPI) Record(request *sheinproduct.ProductRecordRequest) (*sheinproduct.RecordResponse, error) {
 	if s.recordHook != nil {

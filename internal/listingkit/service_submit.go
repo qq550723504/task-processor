@@ -177,7 +177,7 @@ func normalizedSubmitIdempotencyKey(req *SubmitTaskRequest) string {
 func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
 	normalizeSheinStudioSubmitSupplierSKUs(task, pkg)
 	if pkg.Pricing == nil || !pkg.Pricing.Ready {
-		review := buildSheinPricingReview(pkg, s.currentSheinPricingRule(), nil)
+		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), nil)
 		applySheinPricingReview(pkg, review)
 	} else {
 		// Submit clones PreviewProduct, so ensure any persisted ready pricing is

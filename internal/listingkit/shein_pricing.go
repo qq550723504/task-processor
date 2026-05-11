@@ -139,6 +139,49 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 	return review
 }
 
+func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64) *sheinpub.PricingReview {
+	review := &sheinpub.PricingReview{
+		RuleSnapshot:    &rule,
+		ManualOverrides: clonePriceOverrides(overrides),
+		Ready:           true,
+	}
+	now := time.Now()
+	review.UpdatedAt = &now
+	if pkg == nil || pkg.RequestDraft == nil {
+		review.Ready = false
+		return review
+	}
+	for _, skc := range pkg.RequestDraft.SKCList {
+		for _, sku := range skc.SKUList {
+			cost := parseMoney(sku.CostPrice)
+			price := existingSheinDraftPrice(sku)
+			if price <= 0 {
+				price = calculateSheinPrice(cost, rule)
+			}
+			finalPrice := price
+			manual := false
+			if value, ok := overrides[sku.SupplierSKU]; ok && value > 0 {
+				finalPrice = value
+				manual = true
+			}
+			if finalPrice <= 0 {
+				review.Ready = false
+				review.MissingPriceSKUs = append(review.MissingPriceSKUs, sku.SupplierSKU)
+			}
+			review.SKUPrices = append(review.SKUPrices, sheinpub.SKUPriceReview{
+				SupplierSKU:     sku.SupplierSKU,
+				SupplierCode:    skc.SupplierCode,
+				CostCNY:         cost,
+				CalculatedPrice: price,
+				FinalPrice:      finalPrice,
+				Currency:        existingSheinDraftCurrency(sku, rule.TargetCurrency),
+				Manual:          manual,
+			})
+		}
+	}
+	return review
+}
+
 func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingReview) {
 	if pkg == nil || review == nil {
 		return
@@ -271,4 +314,32 @@ func clonePriceOverrides(input map[string]float64) map[string]float64 {
 		}
 	}
 	return out
+}
+
+func existingSheinDraftPrice(sku sheinpub.SKUDraft) float64 {
+	if value := parseMoney(sku.BasePrice); value > 0 {
+		return value
+	}
+	for _, item := range sku.SitePriceList {
+		if value := parseMoney(item.BasePrice); value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func existingSheinDraftCurrency(sku sheinpub.SKUDraft, fallback string) string {
+	if value := strings.ToUpper(strings.TrimSpace(sku.Currency)); value != "" {
+		return value
+	}
+	for _, item := range sku.SitePriceList {
+		if value := strings.ToUpper(strings.TrimSpace(item.Currency)); value != "" {
+			return value
+		}
+	}
+	fallback = strings.ToUpper(strings.TrimSpace(fallback))
+	if fallback == "" {
+		return "USD"
+	}
+	return fallback
 }

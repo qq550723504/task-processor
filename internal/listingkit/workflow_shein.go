@@ -10,6 +10,6 @@ func (s *service) applyDefaultSheinPricing(pkg *sheinpub.Package) {
 	if pkg.FinalDraft != nil {
 		overrides = pkg.FinalDraft.ManualPriceOverrides
 	}
-	review := buildSheinPricingReview(pkg, s.currentSheinPricingRule(), overrides)
+	review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), overrides)
 	applySheinPricingReview(pkg, review)
 }

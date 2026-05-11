@@ -184,7 +184,7 @@ func defaultSheinSettings(storeID int64, policy sheinpub.PricingPolicy) SheinSet
 		rule.TargetCurrency = strings.ToUpper(strings.TrimSpace(policy.Currency))
 	}
 	if policy.MarkupRate > 0 {
-		rule.MarkupMultiplier = policy.MarkupRate
+		rule.MarkupMultiplier = 1 + policy.MarkupRate
 	}
 	if policy.MinimumPrice > 0 {
 		rule.MinimumPrice = policy.MinimumPrice

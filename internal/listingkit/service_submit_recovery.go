@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -171,6 +172,52 @@ func (s *service) confirmSheinSubmitRemote(ctx context.Context, taskID string, p
 		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusPending, nil, now, "missing supplier code")
 		return ptrSheinSubmissionEvent(buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, "SHEIN submit succeeded, but supplier code is unavailable for remote confirmation", nil))
 	}
+	confirmProduct, err := sheinConfirmRemoteProduct(pkg, supplierCode)
+	if err != nil {
+		now := time.Now()
+		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusFailed, nil, now, err.Error())
+		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusFailed, requestID, startedAt, "SHEIN confirm_publish payload preparation failed", err)
+		return &event
+	}
+	needConfirm, _, confirmErr := productAPI.ConfirmPublish(confirmProduct)
+	if confirmErr == nil && !needConfirm {
+		return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, true, "SHEIN confirm_publish passed")
+	}
+	if confirmErr == nil && needConfirm {
+		return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, false, "SHEIN confirm_publish still requires confirmation")
+	}
+	return s.confirmSheinRemoteRecordFallback(taskID, pkg, productAPI, action, requestID, supplierCode, startedAt, false, fmt.Sprintf("SHEIN confirm_publish failed: %v", confirmErr))
+}
+
+func ptrSheinSubmissionEvent(event sheinpub.SubmissionEvent) *sheinpub.SubmissionEvent {
+	return &event
+}
+
+func (s *service) confirmSheinRemoteRecordFallback(taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time, defaultConfirmed bool, fallbackMessage string) *sheinpub.SubmissionEvent {
+	item, recordErr := lookupSheinRemoteRecord(productAPI, supplierCode)
+	now := time.Now()
+	if recordErr == nil && item != nil {
+		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusConfirmed, item, now, "")
+		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, "SHEIN remote record confirmed", nil)
+		event.RemoteRecordID = item.RecordID
+		return &event
+	}
+	if defaultConfirmed {
+		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusConfirmed, nil, now, fallbackMessage)
+		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
+		return &event
+	}
+	if recordErr != nil {
+		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusPending, nil, now, recordErr.Error())
+		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
+		return &event
+	}
+	setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusPending, nil, now, "record not found")
+	event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
+	return &event
+}
+
+func lookupSheinRemoteRecord(productAPI sheinproduct.ProductAPI, supplierCode string) (*sheinproduct.RecordItem, error) {
 	codes := []string{supplierCode}
 	resp, err := productAPI.Record(&sheinproduct.ProductRecordRequest{
 		Language:                  "en",
@@ -181,33 +228,32 @@ func (s *service) confirmSheinSubmitRemote(ctx context.Context, taskID string, p
 		SupplierCodeList:          &codes,
 		SupplierCodeSearchType:    1,
 	})
-	now := time.Now()
 	if err != nil {
-		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusFailed, nil, now, err.Error())
-		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusFailed, requestID, startedAt, "SHEIN remote confirmation failed", err)
-		return &event
+		return nil, err
 	}
 	if resp == nil || resp.Code != "0" {
-		msg := "SHEIN remote confirmation returned no success code"
+		msg := "SHEIN remote record query returned no success code"
 		if resp != nil && strings.TrimSpace(resp.Msg) != "" {
 			msg = resp.Msg
 		}
-		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusFailed, nil, now, msg)
-		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusFailed, requestID, startedAt, msg, nil)
-		return &event
+		return nil, errors.New(msg)
 	}
 	if len(resp.Info.Data) == 0 {
-		setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusPending, nil, now, "record not found")
-		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, "SHEIN remote record is not visible yet", nil)
-		return &event
+		return nil, nil
 	}
-	item := resp.Info.Data[0]
-	setSheinSubmitRemoteRecord(pkg, action, requestID, sheinpub.SubmissionRemoteStatusConfirmed, &item, now, "")
-	event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, "SHEIN remote record confirmed", nil)
-	event.RemoteRecordID = item.RecordID
-	return &event
+	return &resp.Info.Data[0], nil
 }
 
-func ptrSheinSubmissionEvent(event sheinpub.SubmissionEvent) *sheinpub.SubmissionEvent {
-	return &event
+func sheinConfirmRemoteProduct(pkg *SheinPackage, supplierCode string) (*sheinproduct.Product, error) {
+	if pkg != nil && pkg.PreviewProduct != nil {
+		product, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
+		if err != nil {
+			return nil, err
+		}
+		if product != nil {
+			product.SupplierCode = supplierCode
+			return product, nil
+		}
+	}
+	return &sheinproduct.Product{SupplierCode: supplierCode}, nil
 }

@@ -59,7 +59,7 @@ func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req 
 	if pkg.Pricing != nil && pkg.Pricing.RuleSnapshot != nil {
 		rule = *pkg.Pricing.RuleSnapshot
 	}
-	review := buildSheinPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
+	review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
 	applySheinPricingReview(pkg, review)
 	applySheinFinalImageDraft(pkg)
 	applySheinVariantImageCoverageGuard(task, pkg)
