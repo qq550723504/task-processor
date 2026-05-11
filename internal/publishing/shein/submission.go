@@ -30,6 +30,7 @@ type SubmissionRecord struct {
 	Error            string              `json:"error,omitempty"`
 	SubmittedAt      time.Time           `json:"submitted_at"`
 	Result           *SubmissionResponse `json:"result,omitempty"`
+	SubmitSnapshot   *SubmitSnapshot     `json:"submit_snapshot,omitempty"`
 	RequestID        string              `json:"request_id,omitempty"`
 	Phase            string              `json:"phase,omitempty"`
 	StartedAt        time.Time           `json:"started_at,omitempty"`
@@ -86,6 +87,21 @@ type SubmissionResponse struct {
 	SPUName         string   `json:"spu_name,omitempty"`
 	Version         string   `json:"version,omitempty"`
 	ValidationNotes []string `json:"validation_notes,omitempty"`
+}
+
+type SubmitSnapshot struct {
+	SPUName               string              `json:"spu_name,omitempty"`
+	SupplierCode          string              `json:"supplier_code,omitempty"`
+	MultiLanguageNameList []LocalizedText     `json:"multi_language_name_list,omitempty"`
+	MultiLanguageDescList []LocalizedText     `json:"multi_language_desc_list,omitempty"`
+	SKCList               []SubmitSKCSnapshot `json:"skc_list,omitempty"`
+	ImageCount            int                 `json:"image_count,omitempty"`
+}
+
+type SubmitSKCSnapshot struct {
+	SupplierCode          string          `json:"supplier_code,omitempty"`
+	PrimaryName           string          `json:"primary_name,omitempty"`
+	MultiLanguageNameList []LocalizedText `json:"multi_language_name_list,omitempty"`
 }
 
 func BuildSubmissionResponseSummary(resp *sheinproduct.SheinResponse) *SubmissionResponse {

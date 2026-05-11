@@ -250,6 +250,17 @@ func SetRemoteResponse(pkg *sheinpub.Package, action, requestID, supplierCode st
 	pkg.Submission.LastResult = response
 }
 
+func SetSubmitSnapshot(pkg *sheinpub.Package, action, requestID string, snapshot *sheinpub.SubmitSnapshot) {
+	if pkg == nil || pkg.Submission == nil || snapshot == nil {
+		return
+	}
+	record := RecordForAction(pkg.Submission, action)
+	if record == nil || record.RequestID != requestID {
+		return
+	}
+	record.SubmitSnapshot = snapshot
+}
+
 func SetRemoteRecord(pkg *sheinpub.Package, action, requestID, remoteStatus string, item *sheinproduct.RecordItem, checkedAt time.Time, message string) {
 	if pkg == nil {
 		return
