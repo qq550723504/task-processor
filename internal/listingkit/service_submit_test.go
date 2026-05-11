@@ -303,6 +303,7 @@ type stubSheinProductAPI struct {
 	publishResponse *sheinproduct.SheinResponse
 	publishErr      error
 	publishHook     func(*sheinproduct.Product)
+	publishFunc     func(*sheinproduct.Product) (*sheinproduct.SheinResponse, error)
 	saveResponse    *sheinproduct.SheinResponse
 	saveErr         error
 	saveHook        func(*sheinproduct.Product)
@@ -332,6 +333,10 @@ func (s stubSheinProductAPI) SaveDraftProduct(prod *sheinproduct.Product) (*shei
 func (s stubSheinProductAPI) PublishProduct(prod *sheinproduct.Product) (*sheinproduct.SheinResponse, string, error) {
 	if s.publishHook != nil {
 		s.publishHook(prod)
+	}
+	if s.publishFunc != nil {
+		resp, err := s.publishFunc(prod)
+		return resp, "", err
 	}
 	return s.publishResponse, "", s.publishErr
 }

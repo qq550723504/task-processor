@@ -730,7 +730,7 @@ func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
 	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "en"); got != "A durable decorative metal sign designed for wall display in bars, garages, game rooms, and home spaces." {
 		t.Fatalf("english product description = %q", got)
 	}
-	if got := submitted.SKCList[0].MultiLanguageName.Name; got != "English 白色" {
+	if got := submitted.SKCList[0].MultiLanguageName.Name; !strings.EqualFold(got, "English 白色") {
 		t.Fatalf("skc primary name = %q", got)
 	}
 	if len(translateAPI.calls) == 0 {
@@ -738,5 +738,106 @@ func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
 	}
 	if contentAI.calls == 0 {
 		t.Fatal("expected content optimizer to be called")
+	}
+}
+
+func TestSubmitTaskAddsRegionalTranslationsForEnglishSheinContent(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Request.Country = "US"
+	task.Result.Shein.PreviewProduct.MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "Door curtain for home decor"}}
+	task.Result.Shein.PreviewProduct.MultiLanguageDescList = []sheinproduct.LanguageContent{{Language: "en", Name: "A soft door curtain for bedrooms and living rooms."}}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageName = sheinproduct.LanguageContent{Language: "en", Name: "white"}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "white"}}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	var submitted *sheinproduct.Product
+	translateAPI := &stubSheinTranslateAPI{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "success", Info: sheinproduct.ResponseInfo{Success: true}},
+			},
+		},
+		SheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{api: translateAPI},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "es"); got != "Spanish Door curtain for home decor" {
+		t.Fatalf("spanish product name = %q", got)
+	}
+	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "es"); got != "Spanish A soft door curtain for bedrooms and living rooms." {
+		t.Fatalf("spanish product description = %q", got)
+	}
+	if got := findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "Spanish white") {
+		t.Fatalf("spanish skc name = %q", got)
+	}
+	if len(translateAPI.calls) == 0 {
+		t.Fatal("expected translate API to be called")
+	}
+}
+
+func TestSubmitTaskCleansSheinSensitiveWordsBeforePublish(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Request.Country = ""
+	task.Result.Shein.PreviewProduct.MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}}
+	task.Result.Shein.PreviewProduct.MultiLanguageDescList = []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy decor for a relaxed room."}}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageName = sheinproduct.LanguageContent{Language: "en", Name: "whimsy white"}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "whimsy white"}}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	var submitted *sheinproduct.Product
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "success", Info: sheinproduct.ResponseInfo{Success: true}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if strings.Contains(strings.ToLower(findSheinLanguageContent(submitted.MultiLanguageNameList, "en")), "whimsy") {
+		t.Fatalf("english product name still contains whimsy: %q", findSheinLanguageContent(submitted.MultiLanguageNameList, "en"))
+	}
+	if strings.Contains(strings.ToLower(findSheinLanguageContent(submitted.MultiLanguageDescList, "en")), "whimsy") {
+		t.Fatalf("english product description still contains whimsy: %q", findSheinLanguageContent(submitted.MultiLanguageDescList, "en"))
+	}
+	if strings.Contains(strings.ToLower(findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "en")), "whimsy") {
+		t.Fatalf("english skc name still contains whimsy: %q", findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "en"))
 	}
 }

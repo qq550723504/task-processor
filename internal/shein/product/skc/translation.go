@@ -13,7 +13,7 @@ import (
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/product"
-	"task-processor/internal/shein/translate"
+	"task-processor/internal/shein/submitprep"
 )
 
 type SKCTranslationHandler struct {
@@ -29,7 +29,7 @@ func NewSKCTranslationHandler(runtime *SKCRuntimeInput, openaiClient openaiClien
 }
 
 func (h *SKCTranslationHandler) CreateSKC(ctx context.Context, params shein.SKCCreationParams) product.SKC {
-	targetLanguages := translate.GetTargetLanguagesByRegion(h.runtime.Region)
+	targetLanguages := submitprep.GetTargetLanguagesByRegion(h.runtime.Region)
 	sourceTitle := h.findBestSourceTitle(params)
 	sourceLang := h.detectTitleLanguage(sourceTitle)
 	multiLanguageNameList := h.initializeMultiLanguageContent(targetLanguages)
@@ -93,30 +93,7 @@ func (h *SKCTranslationHandler) findBestSourceTitle(params shein.SKCCreationPara
 }
 
 func (h *SKCTranslationHandler) detectTitleLanguage(title string) string {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return "en"
-	}
-
-	var japaneseCount, chineseCount, englishCount int
-	for _, r := range title {
-		switch {
-		case (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF):
-			japaneseCount++
-		case r >= 0x4E00 && r <= 0x9FFF:
-			chineseCount++
-		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
-			englishCount++
-		}
-	}
-
-	if japaneseCount > chineseCount && japaneseCount > englishCount {
-		return "ja"
-	}
-	if chineseCount > englishCount && chineseCount > japaneseCount {
-		return "zh"
-	}
-	return "en"
+	return submitprep.DetectLanguage(title, "")
 }
 
 func (h *SKCTranslationHandler) initializeMultiLanguageContent(targetLanguages []string) []product.LanguageContent {

@@ -56,6 +56,10 @@ func setSheinSubmitRemoteResponse(pkg *SheinPackage, action, requestID, supplier
 	listingsubmission.SetRemoteResponse(pkg, action, requestID, supplierCode, response)
 }
 
+func setSheinSubmitSnapshot(pkg *SheinPackage, action, requestID string, snapshot *sheinpub.SubmitSnapshot) {
+	listingsubmission.SetSubmitSnapshot(pkg, action, requestID, snapshot)
+}
+
 func setSheinSubmitRemoteRecord(pkg *SheinPackage, action, requestID, remoteStatus string, item *sheinproduct.RecordItem, checkedAt time.Time, message string) {
 	listingsubmission.SetRemoteRecord(pkg, action, requestID, remoteStatus, item, checkedAt, message)
 }

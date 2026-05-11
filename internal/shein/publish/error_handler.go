@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/content"
+	"task-processor/internal/shein/submitprep"
 	skuutils "task-processor/internal/shein/product/sku"
 )
 
@@ -130,12 +131,7 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 	}
 
 	logger.GetGlobalLogger("shein/publish").Info("开始检查敏感词错误并尝试自动替换重试...")
-	sensitiveWordService := h.getSensitiveWordService()
-	if sensitiveWordService == nil {
-		logger.GetGlobalLogger("shein/publish").Error("无法创建敏感词服务，跳过敏感词处理")
-		return false
-	}
-	if !sensitiveWordService.HandleValidationErrors(ctx, results) {
+	if !submitprep.RetrySensitiveWordCleanup(ctx.ProductData, flattenValidationNotes(results)) {
 		return false
 	}
 
@@ -178,6 +174,26 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 
 	logger.GetGlobalLogger("shein/publish").Info("敏感词重试成功 - 产品发布成功")
 	return true
+}
+
+func flattenValidationNotes(results []shein.PreValidResult) []string {
+	if len(results) == 0 {
+		return nil
+	}
+	notes := make([]string, 0, len(results)*2)
+	for _, result := range results {
+		notes = append(notes, result.Messages...)
+		for _, messages := range result.OtherLanguageMessageMap {
+			notes = append(notes, messages...)
+		}
+		for _, skcError := range result.SkcErrorMessageMap {
+			notes = append(notes, skcError.Messages...)
+			for _, messages := range skcError.OtherLanguageMessageMap {
+				notes = append(notes, messages...)
+			}
+		}
+	}
+	return notes
 }
 
 // getSensitiveWordService 获取敏感词服务实例

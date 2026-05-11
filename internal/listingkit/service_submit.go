@@ -86,6 +86,7 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		}
 		return nil, err
 	}
+	setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
 	if sheinProductPendingImageUploadCount(submitProduct) > 0 {
 		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseUploadImages); err != nil {
 			return nil, err
@@ -116,6 +117,11 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	response, responseErr := executeSheinSubmitRemote(productAPI, action, submitProduct)
 	if responseErr == nil {
 		responseErr = buildSheinSubmitResponseError(action, response)
+	}
+	if retryResponse, retryErr, retried := s.retrySheinSensitiveWordSubmit(ctx, taskID, pkg, action, requestID, productAPI, submitProduct, response, responseErr); retried {
+		response = retryResponse
+		responseErr = retryErr
+		setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
 	}
 
 	if responseErr == nil {
@@ -213,21 +219,17 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 	if attrs := sheinpub.BuildProductAttributes(pkg); sheinProductAttributesReadyForSubmit(attrs) {
 		submitProduct.ProductAttributeList = attrs
 	}
-	if err := optimizeSheinProductContentForSubmit(ctx, submitProduct, s.sheinContentOptimizer); err != nil {
-		return nil, err
-	}
 	var translateAPI sheintranslateapi.TranslateAPI
-	if sheinProductNeedsContentTranslation(submitProduct) {
-		if s.sheinTranslateAPIBuilder == nil {
-			return nil, fmt.Errorf("shein translate api builder is not configured")
-		}
-		var fallback string
-		translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(task.Request.SheinStoreID)
-		if translateAPI == nil {
-			return nil, fmt.Errorf("shein translate unavailable: %s", fallback)
+	if sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, task.Request.Country) {
+		if s.sheinTranslateAPIBuilder != nil {
+			var fallback string
+			translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(task.Request.SheinStoreID)
+			if translateAPI == nil && strings.TrimSpace(fallback) != "" {
+				translateAPI = nil
+			}
 		}
 	}
-	if err := translateSheinProductContentForSubmit(submitProduct, translateAPI, task.Request.Country); err != nil {
+	if err := sheinpub.PrepareSubmitProductContent(ctx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
 		return nil, err
 	}
 	prepareSheinProductForNewSubmit(submitProduct)

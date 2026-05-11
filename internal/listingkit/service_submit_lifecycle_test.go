@@ -157,6 +157,9 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 	if preview.Shein.Submission.Publish.StartedAt.IsZero() || preview.Shein.Submission.Publish.FinishedAt == nil {
 		t.Fatalf("publish timing was not recorded: %+v", preview.Shein.Submission.Publish)
 	}
+	if preview.Shein.Submission.Publish.SubmitSnapshot == nil || len(preview.Shein.Submission.Publish.SubmitSnapshot.MultiLanguageNameList) == 0 {
+		t.Fatalf("submit snapshot = %+v", preview.Shein.Submission.Publish.SubmitSnapshot)
+	}
 	if len(preview.Shein.SubmissionEvents) == 0 || preview.Shein.SubmissionEvents[len(preview.Shein.SubmissionEvents)-1].RequestID != "publish-123" {
 		t.Fatalf("submission events = %+v, want request id publish-123", preview.Shein.SubmissionEvents)
 	}
@@ -845,5 +848,95 @@ func TestSubmitTaskMarksPublishPreValidationNotesAsFailed(t *testing.T) {
 	}
 	if submission.Publish == nil || submission.Publish.Result == nil || len(submission.Publish.Result.ValidationNotes) != 2 {
 		t.Fatalf("publish result = %+v", submission.Publish)
+	}
+}
+
+func TestSubmitTaskRetriesSensitiveWordValidationNotesBeforeFailing(t *testing.T) {
+	restore := overrideSensitiveWordsConfigForTest(t)
+	defer restore()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.PreviewProduct.MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}}
+	task.Result.Shein.PreviewProduct.MultiLanguageDescList = []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy decor for a relaxed room."}}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageName = sheinproduct.LanguageContent{Language: "en", Name: "whimsy white"}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "whimsy white"}}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	var publishCalls int
+	var submitted []*sheinproduct.Product
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishFunc: func(product *sheinproduct.Product) (*sheinproduct.SheinResponse, error) {
+					publishCalls++
+					submitted = append(submitted, product)
+					if publishCalls == 1 {
+						return &sheinproduct.SheinResponse{
+							Code: "0",
+							Msg:  "OK",
+							Info: sheinproduct.ResponseInfo{
+								Success: false,
+								PreValidResult: []sheinproduct.PreValidResult{{
+									Messages: []string{"敏感词：whimsy"},
+								}},
+							},
+						}, nil
+					}
+					return &sheinproduct.SheinResponse{
+						Code: "0",
+						Msg:  "success",
+						Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-456"},
+					}, nil
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if publishCalls != 2 {
+		t.Fatalf("publish calls = %d, want 2", publishCalls)
+	}
+	if len(submitted) != 2 {
+		t.Fatalf("submitted payload count = %d, want 2", len(submitted))
+	}
+	if strings.Contains(strings.ToLower(findSheinLanguageContent(submitted[1].MultiLanguageNameList, "en")), "whimsy") {
+		t.Fatalf("retried product name still contains whimsy: %+v", submitted[1].MultiLanguageNameList)
+	}
+	if !repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseSubmitRemote) {
+		t.Fatalf("submit_remote phase was not persisted; saved phases = %+v", repo.savedSubmissionPhases)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.Submission == nil || preview.Shein.Submission.LastStatus != "success" {
+		t.Fatalf("preview submission = %+v", preview)
+	}
+	if preview.Shein.Submission.Publish == nil || preview.Shein.Submission.Publish.SubmitSnapshot == nil {
+		t.Fatalf("publish snapshot = %+v", preview.Shein.Submission.Publish)
+	}
+	if snapshotName := localizedSubmitSnapshotText(preview.Shein.Submission.Publish.SubmitSnapshot.MultiLanguageNameList, "en"); strings.Contains(strings.ToLower(snapshotName), "whimsy") {
+		t.Fatalf("submit snapshot still contains whimsy: %+v", preview.Shein.Submission.Publish.SubmitSnapshot)
+	}
+	if len(preview.Shein.SubmissionEvents) == 0 {
+		t.Fatalf("submission events = %+v, want retry and completion events", preview.Shein.SubmissionEvents)
+	}
+	foundRetryEvent := false
+	for _, event := range preview.Shein.SubmissionEvents {
+		if event.Phase == sheinpub.SubmissionPhaseSubmitRemote && strings.Contains(event.Detail, "检测到敏感词") {
+			foundRetryEvent = true
+			break
+		}
+	}
+	if !foundRetryEvent {
+		t.Fatalf("submission events = %+v, want sensitive-word retry event", preview.Shein.SubmissionEvents)
 	}
 }
