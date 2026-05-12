@@ -1,5 +1,7 @@
 package api
 
+import "task-processor/internal/pkg/types"
+
 // PricingRuleRespDTO 自动核价规则响应DTO
 type PricingRuleRespDTO struct {
 	ID                 int64    `json:"id"`
@@ -17,7 +19,7 @@ type PricingRuleRespDTO struct {
 	RejectCondition    *string  `json:"rejectCondition"`
 	Status             int      `json:"status"`
 	Remark             *string  `json:"remark"`
-	CreateTime         int64    `json:"createTime"`
+	CreateTime         types.FlexibleTime `json:"createTime"`
 	TenantID           int64    `json:"tenantId"`
 	TargetProfitMargin float64  `json:"targetProfitMargin"`
 	MinProfitMargin    float64  `json:"minProfitMargin"`

@@ -1,5 +1,7 @@
 package api
 
+import "task-processor/internal/pkg/types"
+
 // RawJsonDataReqDTO 原始JSON数据请求DTO
 type RawJsonDataReqDTO struct {
 	TenantID   int64  `json:"tenantId" binding:"required"`
@@ -18,8 +20,8 @@ type RawJsonDataRespDTO struct {
 	ProductID   string `json:"productId"`
 	Region      string `json:"region"`
 	RawJSONData string `json:"rawJsonData"`
-	CreateTime  int64  `json:"createTime"`
-	UpdateTime  int64  `json:"updateTime"`
+	CreateTime  types.FlexibleTime `json:"createTime"`
+	UpdateTime  types.FlexibleTime `json:"updateTime"`
 }
 
 // ProductVariantConfirmationReqDTO 产品变体确认请求DTO

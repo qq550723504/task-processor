@@ -37,8 +37,8 @@ func (a *RawJsonDataAdapter) GetRawJsonData(req *product.RawJsonReq) (*product.R
 		ProductID:   resp.ProductID,
 		Region:      resp.Region,
 		RawJSONData: resp.RawJSONData,
-		CreateTime:  resp.CreateTime,
-		UpdateTime:  resp.UpdateTime,
+		CreateTime:  resp.CreateTime.UnixMilli(),
+		UpdateTime:  resp.UpdateTime.UnixMilli(),
 	}, nil
 }
 

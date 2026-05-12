@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/types"
 	"time"
 )
 
@@ -73,16 +74,15 @@ func (m *RawJsonDataAPIClient) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.
 }
 
 // isDataFresh 检查数据是否在新鲜度范围内
-func isDataFresh(createTime, updateTime int64, freshnessDays int) bool {
-	latestTime := createTime
-	if updateTime > latestTime {
-		latestTime = updateTime
+func isDataFresh(createTime, updateTime types.FlexibleTime, freshnessDays int) bool {
+	latestTime := createTime.Time
+	if updateTime.After(latestTime) {
+		latestTime = updateTime.Time
 	}
-	if latestTime == 0 {
+	if latestTime.IsZero() {
 		return false
 	}
-	dataTime := time.Unix(latestTime/1000, (latestTime%1000)*1000000)
-	ageDays := time.Since(dataTime).Hours() / 24
+	ageDays := time.Since(latestTime).Hours() / 24
 	return ageDays < float64(freshnessDays)
 }
 
