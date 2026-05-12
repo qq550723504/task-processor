@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
+ARG RUNTIME_BASE_IMAGE=xuwei190/crawler-env:latest
+
 FROM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache git make
@@ -22,21 +24,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o listing-service \
         "${SERVICE_CMD}"
 
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build \
-        -ldflags="-s -w" \
-        -o playwright-installer \
-        ./cmd/playwright-installer/main.go
-
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build \
-        -ldflags="-s -w" \
-        -o fingerprint-browser-installer \
-        ./cmd/fingerprint-browser-installer/main.go
-
-FROM xuwei190/crawler-env:latest
+FROM ${RUNTIME_BASE_IMAGE}
 
 ENV TZ=Asia/Shanghai
 ENV FINGERPRINT_CHROME_VERSION=144
@@ -44,14 +32,7 @@ ENV FINGERPRINT_CHROME_DIR=/opt/fingerprint-chrome
 
 WORKDIR /app
 
-COPY --from=builder /app/playwright-installer /usr/local/bin/playwright-installer
-COPY --from=builder /app/fingerprint-browser-installer /usr/local/bin/fingerprint-browser-installer
-
-RUN chmod +x /usr/local/bin/playwright-installer && \
-    chmod +x /usr/local/bin/fingerprint-browser-installer && \
-    mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome && \
-    /usr/local/bin/playwright-installer && \
-    /usr/local/bin/fingerprint-browser-installer
+RUN mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome
 
 COPY --from=builder /app/listing-service /app/listing-service
 COPY --from=builder /app/config ./config
