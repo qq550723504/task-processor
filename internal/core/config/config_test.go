@@ -15,6 +15,7 @@ func TestBrowserConfigDefaults(t *testing.T) {
 	assert.True(t, v.GetBool("browser.enabled"))
 	assert.True(t, v.GetBool("browser.headless"))
 	assert.Equal(t, "./chrome/chrome.exe", v.GetString("browser.browserPath"))
+	assert.Equal(t, "", v.GetString("browser.userDataDir"))
 	assert.Equal(t, 3, v.GetInt("browser.poolSize"))
 	assert.Equal(t, 1920, v.GetInt("browser.viewportWidth"))
 	assert.Equal(t, 1080, v.GetInt("browser.viewportHeight"))
@@ -87,6 +88,7 @@ func TestConfigBuild(t *testing.T) {
 	v := viper.New()
 	v.Set("browser.enabled", true)
 	v.Set("browser.poolSize", 5)
+	v.Set("browser.userDataDir", "./tmp/browser-profiles/1688")
 	v.Set("browser.randomConfig.enabled", true)
 	v.Set("browser.randomConfig.strategy", "stable")
 	v.Set("browser.randomConfig.presetName", "mac_high_end")
@@ -120,6 +122,7 @@ func TestConfigBuild(t *testing.T) {
 
 	assert.True(t, cfg.Browser.Enabled)
 	assert.Equal(t, 5, cfg.Browser.PoolSize)
+	assert.Equal(t, "./tmp/browser-profiles/1688", cfg.Browser.UserDataDir)
 	assert.True(t, cfg.Browser.RandomConfig.Enabled)
 	assert.Equal(t, "stable", cfg.Browser.RandomConfig.Strategy)
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)

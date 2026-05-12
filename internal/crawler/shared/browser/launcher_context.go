@@ -44,8 +44,13 @@ func (cl *ContextLauncher) Launch(userAgent string) (playwright.Browser, playwri
 
 // launchPersistentContext 使用持久化上下文启动（避免隐身模式检测）
 func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright.BrowserContext, error) {
+	userDataDir, err := resolveUserDataDir(cl.userDataDir)
+	if err != nil {
+		return nil, fmt.Errorf("解析用户数据目录失败: %w", err)
+	}
+
 	// 确保用户数据目录存在
-	if err := os.MkdirAll(cl.userDataDir, 0755); err != nil {
+	if err := os.MkdirAll(userDataDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建用户数据目录失败: %w", err)
 	}
 
@@ -88,10 +93,10 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 		logger.GetGlobalLogger("crawler/shared").Infof("使用代理服务器: %s", cl.config.ProxyServer)
 	}
 
-	logger.GetGlobalLogger("crawler/shared").Infof("使用持久化上下文启动浏览器，用户数据目录: %s", cl.userDataDir)
+	logger.GetGlobalLogger("crawler/shared").Infof("使用持久化上下文启动浏览器，用户数据目录: %s", userDataDir)
 
 	// 启动持久化上下文
-	context, err := (*cl.pw).Chromium.LaunchPersistentContext(cl.userDataDir, options)
+	context, err := (*cl.pw).Chromium.LaunchPersistentContext(userDataDir, options)
 	if err != nil {
 		return nil, fmt.Errorf("启动持久化上下文失败: %w", err)
 	}
@@ -128,6 +133,18 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 	}
 
 	return browser, context, nil
+}
+
+func resolveUserDataDir(dir string) (string, error) {
+	trimmed := strings.TrimSpace(dir)
+	if trimmed == "" {
+		return "", nil
+	}
+	absDir, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(absDir), nil
 }
 
 // ensureBrowserPath 确保浏览器路径存在（支持自动下载）

@@ -33,7 +33,7 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 
 	// 处理验证码
 	if err := po.handleCaptcha(page); err != nil {
-		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("验证码处理失败: %v", err)
+		return captchaStageError("验证码处理", err)
 	}
 
 	// 等待页面就绪
@@ -43,7 +43,7 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 
 	// 再次处理可能出现的验证码
 	if err := po.handleCaptcha(page); err != nil {
-		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("二次验证码处理失败: %v", err)
+		return captchaStageError("二次验证码处理", err)
 	}
 
 	// 滚动页面以触发懒加载
@@ -52,6 +52,13 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 	}
 
 	return nil
+}
+
+func captchaStageError(stage string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s失败: %w", stage, err)
 }
 
 // navigate 执行页面导航

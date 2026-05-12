@@ -59,6 +59,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			Enabled:        v.GetBool("browser.enabled"),
 			Headless:       v.GetBool("browser.headless"),
 			BrowserPath:    v.GetString("browser.browserPath"),
+			UserDataDir:    v.GetString("browser.userDataDir"),
 			PoolSize:       v.GetInt("browser.poolSize"),
 			ViewportWidth:  v.GetInt("browser.viewportWidth"),
 			ViewportHeight: v.GetInt("browser.viewportHeight"),

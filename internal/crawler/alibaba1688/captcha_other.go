@@ -86,7 +86,7 @@ func (ch *CaptchaHandler) waitForManualCaptcha(page playwright.Page, captchaType
 	logger.GetGlobalLogger("crawler/alibaba1688").Warnf("检测到%s，请手动完成验证", captchaType)
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("等待用户手动操作...")
 
-	timeout := 120 * time.Second
+	timeout := manualCaptchaTimeout
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {

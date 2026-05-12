@@ -391,6 +391,10 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_BROWSER_PATH",
 			Deprecated: []string{"BROWSER_PATH"},
 		},
+		"browser.userDataDir": {
+			Primary:    "TASK_PROCESSOR_BROWSER_USER_DATA_DIR",
+			Deprecated: []string{"BROWSER_USER_DATA_DIR"},
+		},
 		"browser.headless": {
 			Primary:    "TASK_PROCESSOR_BROWSER_HEADLESS",
 			Deprecated: []string{"BROWSER_HEADLESS"},
@@ -817,6 +821,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if value, ok := lookupKnownEnvValue("browser.browserPath"); ok {
 		cfg.Browser.BrowserPath = value
+	}
+	if value, ok := lookupKnownEnvValue("browser.userDataDir"); ok {
+		cfg.Browser.UserDataDir = value
 	}
 
 	ensureDatabase := func() {

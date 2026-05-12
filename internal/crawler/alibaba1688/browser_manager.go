@@ -3,6 +3,8 @@ package alibaba1688
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
@@ -27,12 +29,25 @@ func NewBrowserManager(cfg *config.Config) *BrowserManager {
 		UserAgent:      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
 
-	logger.GetGlobalLogger("crawler/alibaba1688").Info("创建1688浏览器管理器，使用共享浏览器组件")
+	manager := sharedbrowser.NewManager(browserConfig)
+	userDataDir := resolveAlibaba1688UserDataDir(cfg)
+	manager.SetUserDataDir(userDataDir)
+
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("创建1688浏览器管理器，使用共享浏览器组件，profile目录: %s", userDataDir)
 
 	return &BrowserManager{
-		Manager: sharedbrowser.NewManager(browserConfig),
+		Manager: manager,
 		config:  cfg,
 	}
+}
+
+func resolveAlibaba1688UserDataDir(cfg *config.Config) string {
+	if cfg != nil {
+		if dir := strings.TrimSpace(cfg.Browser.UserDataDir); dir != "" {
+			return dir
+		}
+	}
+	return filepath.Join(".", "tmp", "browser-profiles", "1688")
 }
 
 // CreateBrowser 创建浏览器实例（保持向后兼容的API）

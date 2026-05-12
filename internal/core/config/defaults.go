@@ -74,6 +74,7 @@ func setBrowserDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("browser.enabled", b.Enabled)
 	v.SetDefault("browser.headless", b.Headless)
 	v.SetDefault("browser.browserPath", b.BrowserPath)
+	v.SetDefault("browser.userDataDir", b.UserDataDir)
 	v.SetDefault("browser.poolSize", b.PoolSize)
 	v.SetDefault("browser.viewportWidth", b.ViewportWidth)
 	v.SetDefault("browser.viewportHeight", b.ViewportHeight)

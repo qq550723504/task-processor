@@ -145,6 +145,7 @@ func NewDefaultConfig() *Config {
 			Enabled:        true,
 			Headless:       true,
 			BrowserPath:    "./chrome/chrome.exe",
+			UserDataDir:    "",
 			PoolSize:       3,
 			ViewportWidth:  1920,
 			ViewportHeight: 1080,

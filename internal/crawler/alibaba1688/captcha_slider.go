@@ -216,8 +216,21 @@ func (ch *CaptchaHandler) checkSliderSuccess(page playwright.Page) bool {
 		}
 	}
 
+	title, err := page.Title()
+	if err == nil && !isProductPageReadyAfterCaptcha(title, false) {
+		return false
+	}
+
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("滑动验证码已消失，可能验证成功")
 	return true
+}
+
+func isProductPageReadyAfterCaptcha(title string, hasPageData bool) bool {
+	if hasPageData {
+		return true
+	}
+	title = strings.TrimSpace(strings.ToLower(title))
+	return title != "" && !strings.Contains(title, "captcha")
 }
 
 // waitForManualSlider 等待用户手动完成滑动验证
@@ -225,7 +238,7 @@ func (ch *CaptchaHandler) waitForManualSlider(page playwright.Page) error {
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("自动滑动失败，请手动完成滑动验证码")
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("程序将等待您手动操作，请在浏览器中完成滑动验证...")
 
-	timeout := 90 * time.Second // 增加到90秒
+	timeout := manualCaptchaTimeout
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
@@ -284,13 +297,15 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 			logger.GetGlobalLogger("crawler/alibaba1688").Infof("URL已跳转到商品页面: %s", currentURL)
 
 			// 等待页面完全加载，并检查数据是否存在
+			ready := false
 			for i := 0; i < 10; i++ { // 最多等待10秒
 				time.Sleep(1 * time.Second)
 
 				// 检查页面标题是否更新
 				title, _ := page.Title()
-				if title != "Captcha Interception" && title != "" {
+				if isProductPageReadyAfterCaptcha(title, false) {
 					logger.GetGlobalLogger("crawler/alibaba1688").Infof("页面标题已更新: %s", title)
+					ready = true
 					break
 				}
 
@@ -301,6 +316,7 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				}`)
 				if err == nil && hasData == true {
 					logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到页面数据已加载")
+					ready = true
 					break
 				}
 
@@ -312,6 +328,10 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				}
 
 				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("等待页面数据加载... (%d/10)", i+1)
+			}
+
+			if !ready {
+				return fmt.Errorf("验证码未放行，页面仍停留在拦截状态")
 			}
 
 			time.Sleep(2 * time.Second) // 额外等待时间

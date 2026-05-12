@@ -9,6 +9,8 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
+const manualCaptchaTimeout = 5 * time.Minute
+
 // HandlePageCaptcha 处理页面中的各种验证码
 func (ch *CaptchaHandler) HandlePageCaptcha(page playwright.Page) error {
 	// 先等待一下，让验证码有时间显示

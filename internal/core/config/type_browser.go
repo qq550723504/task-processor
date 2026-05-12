@@ -5,6 +5,7 @@ type BrowserConfig struct {
 	Enabled        bool                `yaml:"enabled"`
 	Headless       bool                `yaml:"headless"`
 	BrowserPath    string              `yaml:"browserPath"`
+	UserDataDir    string              `yaml:"userDataDir"`
 	PoolSize       int                 `yaml:"poolSize"` // 浏览器池大小
 	ViewportWidth  int                 `yaml:"viewportWidth"`
 	ViewportHeight int                 `yaml:"viewportHeight"`
