@@ -32,6 +32,20 @@ func main() {
 		log.Fatalf("load config failed: %v", err)
 	}
 
+	fmt.Println("=== 配置信息 ===")
+	fmt.Printf("Headless: %v\n", cfg.Browser.Headless)
+	fmt.Printf("BrowserPath: %s\n", cfg.Browser.BrowserPath)
+	fmt.Printf("Viewport: %dx%d\n", cfg.Browser.ViewportWidth, cfg.Browser.ViewportHeight)
+	fmt.Println()
+
+	fmt.Println("强制设置 Headless 为 false...")
+	cfg.Browser.Headless = false
+	// 使用临时用户数据目录，确保测试是干净的
+	cfg.Browser.UserDataDir = "./tmp/browser-profiles/test-1688-tmp"
+	fmt.Printf("修改后 Headless: %v\n", cfg.Browser.Headless)
+	fmt.Printf("使用临时用户数据目录: %s\n", cfg.Browser.UserDataDir)
+	fmt.Println()
+
 	processor := alibaba1688.NewAlibaba1688Processor(cfg)
 	defer processor.Shutdown()
 

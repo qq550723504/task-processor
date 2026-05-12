@@ -11,19 +11,25 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
-// handleSliderCaptcha 处理滑动验证码
-func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
-	// 常见的滑动验证码选择器（包含新版验证码）
+// handleSliderCaptchaWithResult 处理滑动验证码并返回结果
+func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) CaptchaResult {
+	startTime := time.Now()
+	attempts := 0
+	maxRetries := ch.maxRetries
+
 	sliderSelectors := []string{
-		".nc_iconfont.btn_slide",                       // 阿里系滑动验证码（旧版）
-		"#nc_1_n1z",                                    // 阿里系滑动验证码（新版ID）
-		".nc-container .nc_iconfont",                   // 阿里系容器内的滑块
-		".slider-button",                               // 通用滑动按钮
-		".captcha-slider-button",                       // 验证码滑动按钮
-		"[class*='slider'][class*='button']",           // 包含slider和button的类名
-		".verify-slider-track .verify-slider-button",   // 另一种滑动验证码
-		".slide-verify .slide-verify-slider-mask-item", // 其他滑动验证码
-		"span.btn_slide",                               // 新版span标签滑块
+		".nc_iconfont.btn_slide",
+		"#nc_1_n1z",
+		".nc-container .nc_iconfont",
+		".slider-button",
+		".captcha-slider-button",
+		"[class*='slider'][class*='button']",
+		".verify-slider-track .verify-slider-button",
+		".slide-verify .slide-verify-slider-mask-item",
+		"span.btn_slide",
+		".geetest_slider_button",
+		".geetest_slider",
+		".captcha-slider-wrap .slider-btn",
 	}
 
 	for _, selector := range sliderSelectors {
@@ -32,7 +38,6 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 			continue
 		}
 
-		// 检查滑动按钮是否可见
 		isVisible, err := sliderBtn.IsVisible()
 		if err != nil || !isVisible {
 			continue
@@ -40,43 +45,44 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 
 		logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到滑动验证码，使用人类行为策略滑动")
 
-		// 只使用人类行为策略，最多重试3次
-		maxRetries := 3
 		for attempt := 1; attempt <= maxRetries; attempt++ {
+			attempts++
 			logger.GetGlobalLogger("crawler/alibaba1688").Infof("第 %d 次尝试人类行为滑动", attempt)
 
 			if err := ch.performSliderAction(page, sliderBtn, "human"); err != nil {
 				logger.GetGlobalLogger("crawler/alibaba1688").Warnf("人类行为滑动失败: %v", err)
 			} else {
-				// 检查是否成功
+				time.Sleep(2 * time.Second)
 				if ch.checkSliderSuccess(page) {
 					logger.GetGlobalLogger("crawler/alibaba1688").Info("人类行为策略滑动验证码成功")
-					// 等待页面跳转到商品页面
+					
 					if err := ch.waitForPageRedirect(page); err != nil {
 						logger.GetGlobalLogger("crawler/alibaba1688").Warnf("等待页面跳转失败: %v", err)
 					}
-					return nil
+					
+					return CaptchaResult{
+						Type:       CaptchaTypeSlider,
+						Status:     CaptchaStatusSuccess,
+						Attempts:   attempts,
+						UsedMethod: "human_behavior",
+						Duration:   time.Since(startTime),
+					}
 				}
 			}
 
-			// 如果不是最后一次尝试，刷新页面重试
 			if attempt < maxRetries {
 				logger.GetGlobalLogger("crawler/alibaba1688").Infof("第 %d 次滑动失败，刷新页面重试", attempt)
-				_, err := page.Reload()
-				if err != nil {
+				if _, err := page.Reload(); err != nil {
 					logger.GetGlobalLogger("crawler/alibaba1688").Warnf("刷新页面失败: %v", err)
 				} else {
-					// 等待页面加载
 					time.Sleep(3 * time.Second)
-
-					// 重新查找滑动按钮
+					
 					newSliderBtn, err := page.QuerySelector(selector)
 					if err != nil || newSliderBtn == nil {
 						logger.GetGlobalLogger("crawler/alibaba1688").Warn("刷新后未找到滑动按钮")
 						continue
 					}
 
-					// 检查新按钮是否可见
 					isVisible, err := newSliderBtn.IsVisible()
 					if err != nil || !isVisible {
 						logger.GetGlobalLogger("crawler/alibaba1688").Warn("刷新后滑动按钮不可见")
@@ -88,21 +94,28 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 				}
 			}
 
-			// 等待一下再尝试
-			time.Sleep(2 * time.Second)
+			time.Sleep(time.Duration(1000+ch.randomDelay(1000)) * time.Millisecond)
 		}
 
-		// 所有重试都失败
 		logger.GetGlobalLogger("crawler/alibaba1688").Warn("人类行为滑动重试失败，等待用户手动操作")
-		return ch.waitForManualSlider(page)
+		result := ch.waitForManualSliderWithResult(page)
+		result.Attempts = attempts
+		result.Type = CaptchaTypeSlider
+		result.Duration = time.Since(startTime)
+		return result
 	}
 
-	return nil
+	return CaptchaResult{
+		Type:       CaptchaTypeSlider,
+		Status:     CaptchaStatusFailed,
+		Attempts:   attempts,
+		UsedMethod: "none",
+		Duration:   time.Since(startTime),
+	}
 }
 
-// performSliderAction 执行滑动操作（仅支持人类行为策略）
+// performSliderAction 执行滑动操作
 func (ch *CaptchaHandler) performSliderAction(page playwright.Page, sliderBtn playwright.ElementHandle, strategy string) error {
-	// 获取滑动按钮的位置和大小
 	box, err := sliderBtn.BoundingBox()
 	if err != nil {
 		return fmt.Errorf("获取滑动按钮位置失败: %w", err)
@@ -111,36 +124,35 @@ func (ch *CaptchaHandler) performSliderAction(page playwright.Page, sliderBtn pl
 		return fmt.Errorf("滑动按钮位置信息为空")
 	}
 
-	// 获取滑动轨道的宽度
 	slideDistance, err := ch.calculateSlideDistance(page, box)
 	if err != nil {
 		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("计算滑动距离失败，使用默认距离: %v", err)
-		slideDistance = 260.0 // 使用经过验证的默认距离
+		slideDistance = 260.0
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始滑动验证码，策略: %s, 滑动距离: %.2f", strategy, slideDistance)
 
-	// 只支持人类行为策略
 	return ch.optimizedSlideWithHumanBehavior(page, box, slideDistance)
 }
 
-// calculateSlideDistance 计算滑动距离
+// calculateSlideDistance 计算滑动距离（优化版）
 func (ch *CaptchaHandler) calculateSlideDistance(page playwright.Page, buttonBox *playwright.Rect) (float64, error) {
 	if buttonBox == nil {
 		return 0, fmt.Errorf("按钮位置信息为空")
 	}
 
-	// 尝试多种轨道选择器（包含新版验证码）
 	trackSelectors := []string{
-		".nc-lang-cnt",      // 阿里系主要轨道
-		"#nc_1__scale_text", // 新版轨道文本容器
-		".nc_scale",         // 阿里系轨道容器
-		".nc_wrapper",       // 阿里系包装器
+		".nc-lang-cnt",
+		"#nc_1__scale_text",
+		".nc_scale",
+		".nc_wrapper",
 		".slider-track",
 		".captcha-slider-track",
 		".slide-verify",
 		"[class*='track']",
 		"[class*='slider-container']",
+		".geetest_slider_track",
+		".geetest_canvas_bg",
 	}
 
 	for _, selector := range trackSelectors {
@@ -154,22 +166,19 @@ func (ch *CaptchaHandler) calculateSlideDistance(page playwright.Page, buttonBox
 			continue
 		}
 
-		// 计算滑动距离，针对阿里系验证码优化
 		var distance float64
 		if strings.Contains(selector, "nc-lang-cnt") || strings.Contains(selector, "nc_") {
-			// 阿里系验证码：需要滑动到轨道最右边
-			// 根据实际测试和Chrome DevTools测量，需要滑动到轨道宽度减去按钮宽度
-			// 新版验证码可能需要更精确的距离
-			distance = trackBox.Width - buttonBox.Width + 5 // 稍微超出一点，确保滑动到底
+			distance = trackBox.Width - buttonBox.Width + 5
+		} else if strings.Contains(selector, "geetest") {
+			distance = trackBox.Width - buttonBox.Width - 8
 		} else {
-			// 其他验证码：滑动到轨道末端减去按钮宽度和余量
 			distance = trackBox.Width - buttonBox.Width - 15
 		}
 
 		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("找到轨道: %s, 轨道宽度: %.2f, 按钮宽度: %.2f, 计算距离: %.2f",
 			selector, trackBox.Width, buttonBox.Width, distance)
 
-		if distance > 50 && distance < 400 { // 合理的滑动距离范围
+		if distance > 50 && distance < 400 {
 			return distance, nil
 		}
 	}
@@ -177,15 +186,17 @@ func (ch *CaptchaHandler) calculateSlideDistance(page playwright.Page, buttonBox
 	return 0, fmt.Errorf("未找到合适的滑动轨道")
 }
 
-// checkSliderSuccess 检查滑动验证是否成功
+// checkSliderSuccess 检查滑动验证是否成功（增强版）
 func (ch *CaptchaHandler) checkSliderSuccess(page playwright.Page) bool {
-	// 检查成功标识
 	successSelectors := []string{
-		".nc-lang-cnt[data-nc-lang='_ddddd']", // 阿里系成功标识
+		".nc-lang-cnt[data-nc-lang='_ddddd']",
 		".slider-success",
 		".captcha-success",
 		"[class*='success']",
 		".verify-success",
+		".geetest_success",
+		".geetest_success_popup",
+		".nc_iconfont.nc_success",
 	}
 
 	for _, selector := range successSelectors {
@@ -199,30 +210,34 @@ func (ch *CaptchaHandler) checkSliderSuccess(page playwright.Page) bool {
 		}
 	}
 
-	// 检查是否还有验证码存在
 	captchaSelectors := []string{
 		".nc_iconfont.btn_slide",
 		".slider-button",
 		".captcha-slider-button",
+		".geetest_slider_button",
 	}
 
+	captchaExists := false
 	for _, selector := range captchaSelectors {
 		element, err := page.QuerySelector(selector)
 		if err == nil && element != nil {
 			isVisible, _ := element.IsVisible()
 			if isVisible {
-				return false // 验证码仍然存在
+				captchaExists = true
+				break
 			}
 		}
 	}
 
-	title, err := page.Title()
-	if err == nil && !isProductPageReadyAfterCaptcha(title, false) {
-		return false
+	if !captchaExists {
+		title, err := page.Title()
+		if err == nil && isProductPageReadyAfterCaptcha(title, false) {
+			logger.GetGlobalLogger("crawler/alibaba1688").Info("滑动验证码已消失，验证成功")
+			return true
+		}
 	}
 
-	logger.GetGlobalLogger("crawler/alibaba1688").Info("滑动验证码已消失，可能验证成功")
-	return true
+	return false
 }
 
 func isProductPageReadyAfterCaptcha(title string, hasPageData bool) bool {
@@ -233,8 +248,8 @@ func isProductPageReadyAfterCaptcha(title string, hasPageData bool) bool {
 	return title != "" && !strings.Contains(title, "captcha")
 }
 
-// waitForManualSlider 等待用户手动完成滑动验证
-func (ch *CaptchaHandler) waitForManualSlider(page playwright.Page) error {
+// waitForManualSliderWithResult 等待用户手动完成滑动验证
+func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) CaptchaResult {
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("自动滑动失败，请手动完成滑动验证码")
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("程序将等待您手动操作，请在浏览器中完成滑动验证...")
 
@@ -242,16 +257,23 @@ func (ch *CaptchaHandler) waitForManualSlider(page playwright.Page) error {
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
-		// 检查验证码是否还存在
 		if ch.checkSliderSuccess(page) {
 			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到验证码已完成，继续处理")
-			return nil
+			return CaptchaResult{
+				Type:   CaptchaTypeSlider,
+				Status: CaptchaStatusSuccess,
+				UsedMethod: "manual",
+			}
 		}
-
 		time.Sleep(1 * time.Second)
 	}
 
-	return fmt.Errorf("等待用户手动操作超时")
+	return CaptchaResult{
+		Type:   CaptchaTypeSlider,
+		Status: CaptchaStatusManualRequired,
+		Error:  fmt.Errorf("等待用户手动操作超时"),
+		UsedMethod: "manual_timeout",
+	}
 }
 
 // waitForPageRedirect 等待页面跳转到商品页面
@@ -262,15 +284,12 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
-		// 检查页面标题是否已经改变
 		title, err := page.Title()
 		if err == nil && title != "Captcha Interception" && title != "" {
 			logger.GetGlobalLogger("crawler/alibaba1688").Infof("页面已跳转，新标题: %s", title)
 
-			// 等待页面完全加载
 			time.Sleep(3 * time.Second)
 
-			// 检查是否有商品相关的元素
 			productSelectors := []string{
 				"h1",
 				".product-title",
@@ -291,17 +310,14 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 			}
 		}
 
-		// 检查URL是否包含商品ID
 		currentURL := page.URL()
 		if strings.Contains(currentURL, "offer/") && strings.Contains(currentURL, ".html") {
 			logger.GetGlobalLogger("crawler/alibaba1688").Infof("URL已跳转到商品页面: %s", currentURL)
 
-			// 等待页面完全加载，并检查数据是否存在
 			ready := false
-			for i := 0; i < 10; i++ { // 最多等待10秒
+			for i := 0; i < 10; i++ {
 				time.Sleep(1 * time.Second)
 
-				// 检查页面标题是否更新
 				title, _ := page.Title()
 				if isProductPageReadyAfterCaptcha(title, false) {
 					logger.GetGlobalLogger("crawler/alibaba1688").Infof("页面标题已更新: %s", title)
@@ -309,7 +325,6 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 					break
 				}
 
-				// 检查是否有JavaScript数据
 				hasData, err := page.Evaluate(`() => {
 					return (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA !== null) ||
 						   (typeof window.context !== 'undefined' && window.context !== null);
@@ -320,7 +335,6 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 					break
 				}
 
-				// 如果等待了5秒还没有数据，尝试刷新页面
 				if i == 4 {
 					logger.GetGlobalLogger("crawler/alibaba1688").Info("页面数据未加载，尝试刷新页面")
 					page.Reload()
@@ -334,7 +348,7 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				return fmt.Errorf("验证码未放行，页面仍停留在拦截状态")
 			}
 
-			time.Sleep(2 * time.Second) // 额外等待时间
+			time.Sleep(2 * time.Second)
 			return nil
 		}
 
@@ -344,71 +358,165 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 	return fmt.Errorf("等待页面跳转超时")
 }
 
-// optimizedSlideWithHumanBehavior 优化的人类行为滑动
+// optimizedSlideWithHumanBehavior 优化的人类行为滑动（使用真实轨迹算法）
 func (ch *CaptchaHandler) optimizedSlideWithHumanBehavior(page playwright.Page, box *playwright.Rect, slideDistance float64) error {
-	startX := box.X + box.Width/2
-	startY := box.Y + box.Height/2
+	return ch.optimizedSlideWithRealTrack(page, box, slideDistance)
+}
 
-	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("开始优化人类行为滑动: 起始位置(%.2f, %.2f), 滑动距离: %.2f", startX, startY, slideDistance)
-
-	// 1. 先在按钮上悬停，模拟用户观察
-	if err := page.Mouse().Move(startX, startY); err != nil {
-		return fmt.Errorf("移动鼠标到起始位置失败: %w", err)
-	}
-	time.Sleep(time.Duration(400+ch.randomDelay(600)) * time.Millisecond) // 0.4-1秒随机延迟
-
-	// 2. 按下鼠标
-	if err := page.Mouse().Down(); err != nil {
-		return fmt.Errorf("按下鼠标失败: %w", err)
-	}
-
-	// 3. 使用更精细的滑动控制
-	steps := 25 + ch.randomDelay(15) // 25-40步，更细腻的滑动
-
-	for i := 1; i <= steps; i++ {
-		progress := float64(i) / float64(steps)
-
-		// 使用更复杂的缓动函数，模拟真实的人类滑动
-		easedProgress := ch.complexEasing(progress)
-		currentX := startX + slideDistance*easedProgress
-
-		// 添加更真实的垂直偏移和水平微调
-		verticalOffset := math.Sin(progress*math.Pi*2) * 2 // 正弦波形的垂直偏移
-		horizontalJitter := float64(ch.randomDelay(4) - 2) // ±2像素水平抖动
-
-		finalX := currentX + horizontalJitter
-		finalY := startY + verticalOffset + float64(ch.randomDelay(3)-1) // 额外的随机偏移
-
-		if err := page.Mouse().Move(finalX, finalY); err != nil {
-			return fmt.Errorf("滑动过程中移动鼠标失败: %w", err)
+// generateQuickDragPoints 生成快速滑动轨迹
+func (ch *CaptchaHandler) generateQuickDragPoints(startX, startY, distance float64, numPoints int) []point {
+	points := make([]point, numPoints)
+	
+	for i := 0; i < numPoints; i++ {
+		t := float64(i) / float64(numPoints - 1)
+		
+		// 快速但自然的缓动曲线
+		xProgress := ch.quickEaseFunction(t)
+		
+		// 添加少量随机性
+		if t > 0.1 && t < 0.9 {
+			xProgress += (float64(ch.randomDelay(60) - 30)) / 1000.0
 		}
+		xProgress = math.Max(0, math.Min(1, xProgress))
+		
+		x := startX + distance * xProgress
+		
+		// 垂直方向有小幅度抖动
+		yWobble := math.Sin(t * math.Pi * 3) * float64(2 + ch.randomDelay(2))
+		yWobble += float64(ch.randomDelay(6) - 3)
+		
+		y := startY + yWobble
+		
+		points[i] = point{x, y}
+	}
+	
+	return points
+}
 
-		// 更真实的变速延迟
-		var delay int
-		if progress < 0.1 {
-			delay = 120 + ch.randomDelay(80) // 开始很慢：120-200ms
-		} else if progress < 0.3 {
-			delay = 60 + ch.randomDelay(40) // 加速阶段：60-100ms
-		} else if progress < 0.7 {
-			delay = 25 + ch.randomDelay(25) // 快速阶段：25-50ms
-		} else if progress < 0.9 {
-			delay = 40 + ch.randomDelay(30) // 减速阶段：40-70ms
-		} else {
-			delay = 80 + ch.randomDelay(60) // 结束很慢：80-140ms
+// quickEaseFunction 快速滑动的缓动函数
+func (ch *CaptchaHandler) quickEaseFunction(t float64) float64 {
+	// 快速启动，中间快，结尾稍微减速
+	if t < 0.1 {
+		return 3 * t * t * t
+	} else if t < 0.85 {
+		return 0.03 + 0.94 * ((t - 0.1) / 0.75)
+	} else {
+		remaining := 1 - t
+		return 1 - remaining * remaining * remaining
+	}
+}
+
+// generateHumanDragPoints 生成更真实的人类拖拽路径
+func (ch *CaptchaHandler) generateHumanDragPoints(startX, startY, distance float64, numPoints int) []point {
+	points := make([]point, numPoints)
+	
+	for i := 0; i < numPoints; i++ {
+		t := float64(i) / float64(numPoints - 1)
+		
+		// 使用改进的缓动曲线
+		xProgress := ch.humanEaseFunction(t)
+		
+		// 加入轨迹随机性
+		randomness := (float64(ch.randomDelay(200)) - 100) / 1000.0
+		if t > 0.1 && t < 0.9 {
+			xProgress += randomness
 		}
+		xProgress = math.Max(0, math.Min(1, xProgress))
+		
+		x := startX + distance * xProgress
+		
+		// 垂直方向的随机移动，模拟人手在滑动时的上下抖动
+		verticalWobble := math.Sin(t * math.Pi * 2) * 3.0    // 主要正弦波动
+		verticalWobble += math.Sin(t * math.Pi * 5) * 1.5   // 高频小波动
+		verticalWobble += float64(ch.randomDelay(8) - 4)     // 纯随机
+		
+		// 在滑动前半段加入更大的随机变化
+		if t < 0.4 {
+			verticalWobble *= 1.5
+		}
+		
+		y := startY + verticalWobble
+		
+		points[i] = point{x, y}
+	}
+	
+	return points
+}
 
-		time.Sleep(time.Duration(delay) * time.Millisecond)
+// humanEaseFunction 更符合人类操作的缓动函数
+func (ch *CaptchaHandler) humanEaseFunction(t float64) float64 {
+	// 人类滑动特点：开始慢，中间加速，结尾减速
+	if t < 0.15 {
+		// 起始阶段：慢启动
+		return 0.3 * t * t * t + 0.7 * t * t
+	} else if t < 0.7 {
+		// 中间阶段：快速移动
+		return 0.5 * math.Pow(2*t - 0.3, 2) + 0.12
+	} else {
+		// 结束阶段：减速接近终点
+		return 1 - 0.5 * math.Pow(2*(1-t)-0.3, 2)
+	}
+}
+
+// calculateHumanStepDelay 计算更符合人类操作的每步延迟
+func (ch *CaptchaHandler) calculateHumanStepDelay(progress float64, totalDuration float64, steps int) int {
+	baseDelay := totalDuration / float64(steps)
+	
+	// 根据进度调整延迟
+	var multiplier float64
+	if progress < 0.15 {
+		// 开始阶段：较慢的移动
+		multiplier = 2.0 + float64(ch.randomDelay(100))/100.0
+	} else if progress < 0.4 {
+		// 加速阶段：较快移动
+		multiplier = 0.6 + float64(ch.randomDelay(50))/100.0
+	} else if progress < 0.75 {
+		// 快速阶段：最快
+		multiplier = 0.4 + float64(ch.randomDelay(40))/100.0
+	} else if progress < 0.9 {
+		// 减速阶段
+		multiplier = 0.8 + float64(ch.randomDelay(60))/100.0
+	} else {
+		// 接近终点：再次放慢
+		multiplier = 1.8 + float64(ch.randomDelay(100))/100.0
+	}
+	
+	// 添加额外的随机
+	return int(baseDelay * multiplier)
+}
+
+// calculateVerticalWobble 计算垂直抖动
+func (ch *CaptchaHandler) calculateVerticalWobble(progress, i, steps float64) float64 {
+	wobble1 := math.Sin(progress*math.Pi*4+float64(ch.randomDelay(500))/100) * 2.5
+	wobble2 := math.Sin(progress*math.Pi*7+float64(ch.randomDelay(300))/50) * 1.5
+	return wobble1 + wobble2
+}
+
+// calculateStepDuration 计算每步的延迟
+func (ch *CaptchaHandler) calculateStepDuration(progress float64, totalDuration, steps float64) int {
+	baseDelay := totalDuration / steps
+	
+	if progress < 0.1 {
+		return int(baseDelay * (1.5 + float64(ch.randomDelay(100))/100))
+	} else if progress < 0.2 {
+		return int(baseDelay * (1.2 + float64(ch.randomDelay(80))/100))
+	} else if progress < 0.6 {
+		return int(baseDelay * (0.7 + float64(ch.randomDelay(60))/100))
+	} else if progress < 0.85 {
+		return int(baseDelay * (1.1 + float64(ch.randomDelay(80))/100))
+	} else {
+		return int(baseDelay * (2.0 + float64(ch.randomDelay(100))/100))
+	}
+}
+
+// complexEasingWithVariation 带随机变化的复杂缓动函数
+func (ch *CaptchaHandler) complexEasingWithVariation(t float64) float64 {
+	baseEasing := ch.complexEasing(t)
+	variation := (float64(ch.randomDelay(20)) - 10) / 100
+
+	if t > 0.1 && t < 0.9 {
+		baseEasing += variation * 0.05
 	}
 
-	// 4. 在目标位置稍作停留，模拟人类确认
-	time.Sleep(time.Duration(200+ch.randomDelay(300)) * time.Millisecond)
-
-	// 5. 释放鼠标
-	if err := page.Mouse().Up(); err != nil {
-		return fmt.Errorf("释放鼠标失败: %w", err)
-	}
-
-	// 6. 等待验证结果
-	time.Sleep(3 * time.Second)
-	return nil
+	return math.Max(0, math.Min(1, baseEasing))
 }
