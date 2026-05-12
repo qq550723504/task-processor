@@ -21,17 +21,25 @@ param(
     [switch]$SkipApply,
     [switch]$PublishLatest,
     [switch]$Fast,
-    [switch]$SequentialRollout
+    [switch]$SequentialRollout,
+    [switch]$UseShardStatefulSet,
+    [string]$ShardStatefulSetName = "shein-listing-shard",
+    [int]$ShardBatchSize = 4
 )
 
 $ErrorActionPreference = "Stop"
 
 $ImageName = "task-processor-shein-listing"
 $Dockerfile = "deployments/docker/Dockerfile.listing"
+$ShardRolloutScript = Join-Path $PSScriptRoot "rollout-shein-shard-statefulset.ps1"
 
 if ($Fast) {
     $SkipTests = $true
     $SkipApply = $true
+}
+
+if (-not $UseShardStatefulSet -and $OverlayPath -like "*prod-auto-shard-statefulset*") {
+    $UseShardStatefulSet = $true
 }
 
 if (-not $Tag) {
@@ -106,6 +114,11 @@ Write-Host "  Overlay: $OverlayPath" -ForegroundColor Cyan
 Write-Host "  Deployments: $($DeploymentNames -join ', ')" -ForegroundColor Cyan
 Write-Host "  Fast mode: $Fast" -ForegroundColor Cyan
 Write-Host "  Sequential rollout: $SequentialRollout" -ForegroundColor Cyan
+Write-Host "  Shard StatefulSet mode: $UseShardStatefulSet" -ForegroundColor Cyan
+if ($UseShardStatefulSet) {
+    Write-Host "  Shard StatefulSet: $ShardStatefulSetName" -ForegroundColor Cyan
+    Write-Host "  Shard batch size: $ShardBatchSize" -ForegroundColor Cyan
+}
 Write-Host "========================================" -ForegroundColor Cyan
 
 if (-not $SkipTests) {
@@ -153,26 +166,39 @@ if (-not $SkipApply) {
     }
 }
 
-Invoke-Step "[6/7] Updating deployment images..." {
-    foreach ($deploymentName in $DeploymentNames) {
-        kubectl -n $Namespace set image deployment/$deploymentName "shein-listing=$FullImage"
-        if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$deploymentName" }
+Invoke-Step "[6/7] Updating workloads..." {
+    if ($UseShardStatefulSet) {
+        if (-not (Test-Path $ShardRolloutScript)) {
+            throw "shard rollout script not found: $ShardRolloutScript"
+        }
+        & $ShardRolloutScript -Namespace $Namespace -StatefulSetName $ShardStatefulSetName -ContainerName "shein-listing" -Image $FullImage -BatchSize $ShardBatchSize
+        if ($LASTEXITCODE -ne 0) { throw "shard StatefulSet rollout failed" }
+    } else {
+        foreach ($deploymentName in $DeploymentNames) {
+            kubectl -n $Namespace set image deployment/$deploymentName "shein-listing=$FullImage"
+            if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$deploymentName" }
+        }
     }
 }
 
 Invoke-Step "[7/7] Waiting for rollouts..." {
-    if ($SequentialRollout) {
-        foreach ($deploymentName in $DeploymentNames) {
-            kubectl -n $Namespace rollout status deployment/$deploymentName --timeout=5m
-            if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$deploymentName" }
-        }
+    if ($UseShardStatefulSet) {
+        kubectl -n $Namespace get pods -l "app=$ShardStatefulSetName" -o wide
+        if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ShardStatefulSetName" }
     } else {
-        Wait-RolloutsParallel -Namespace $Namespace -DeploymentNames $DeploymentNames -TimeoutSeconds 300
-    }
+        if ($SequentialRollout) {
+            foreach ($deploymentName in $DeploymentNames) {
+                kubectl -n $Namespace rollout status deployment/$deploymentName --timeout=5m
+                if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$deploymentName" }
+            }
+        } else {
+            Wait-RolloutsParallel -Namespace $Namespace -DeploymentNames $DeploymentNames -TimeoutSeconds 300
+        }
 
-    foreach ($deploymentName in $DeploymentNames) {
-        kubectl -n $Namespace get pods -l "app=$deploymentName" -o wide
-        if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$deploymentName" }
+        foreach ($deploymentName in $DeploymentNames) {
+            kubectl -n $Namespace get pods -l "app=$deploymentName" -o wide
+            if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$deploymentName" }
+        }
     }
 }
 

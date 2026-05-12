@@ -9,6 +9,10 @@ spec:
   serviceName: shein-listing-shard-headless
   replicas: 32
   podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
   revisionHistoryLimit: 3
   selector:
     matchLabels:
