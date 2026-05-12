@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
@@ -266,6 +267,11 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		"has_shein":   final != nil && final.Shein != nil,
 		"has_summary": final != nil && final.Summary != nil,
 	}).Info("listing kit assembler completed")
+	if final != nil && final.Shein != nil {
+		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, s.sheinContentOptimizer); err != nil {
+			appendWarning(final, "shein content optimization skipped: "+err.Error())
+		}
+	}
 	final.CatalogProduct = result.CatalogProduct
 	final.CanonicalProduct = canonical
 	final.AssetBundle = result.AssetBundle
