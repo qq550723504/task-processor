@@ -2,6 +2,7 @@
 package types
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -148,6 +149,47 @@ func (ft FlexibleTime) Format(layout string) string {
 // IsZero 判断是否为零值
 func (ft FlexibleTime) IsZero() bool {
 	return ft.Time.IsZero()
+}
+
+// Scan 实现 sql.Scanner，兼容数据库返回的 time.Time / 字符串 / 时间戳。
+func (ft *FlexibleTime) Scan(value any) error {
+	if value == nil {
+		ft.Time = time.Time{}
+		return nil
+	}
+
+	switch v := value.(type) {
+	case time.Time:
+		ft.Time = v
+		return nil
+	case *time.Time:
+		if v == nil {
+			ft.Time = time.Time{}
+			return nil
+		}
+		ft.Time = *v
+		return nil
+	case []byte:
+		return ft.UnmarshalJSON([]byte(strconv.Quote(string(v))))
+	case string:
+		return ft.UnmarshalJSON([]byte(strconv.Quote(v)))
+	case int64:
+		return ft.UnmarshalJSON([]byte(strconv.FormatInt(v, 10)))
+	case int32:
+		return ft.UnmarshalJSON([]byte(strconv.FormatInt(int64(v), 10)))
+	case int:
+		return ft.UnmarshalJSON([]byte(strconv.FormatInt(int64(v), 10)))
+	default:
+		return fmt.Errorf("unsupported scan type for FlexibleTime: %T", value)
+	}
+}
+
+// Value 实现 driver.Valuer，供数据库写入使用。
+func (ft FlexibleTime) Value() (driver.Value, error) {
+	if ft.Time.IsZero() {
+		return nil, nil
+	}
+	return ft.Time, nil
 }
 
 // ToFlexibleTime 将 *time.Time 转换为 *FlexibleTime

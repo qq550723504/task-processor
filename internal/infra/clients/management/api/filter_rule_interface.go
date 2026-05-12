@@ -1,6 +1,9 @@
 package api
 
-import "task-processor/internal/product"
+import (
+	"task-processor/internal/pkg/types"
+	"task-processor/internal/product"
+)
 
 // FilterRule 筛选规则API接口定义
 type FilterRule interface {
@@ -32,7 +35,7 @@ type FilterRuleRespDTO struct {
 	FulfillmentType string   `json:"fulfillmentType"`
 	Status          int16    `json:"status"`
 	Remark          string   `json:"remark"`
-	CreateTime      int64    `json:"createTime"`
+	CreateTime      types.FlexibleTime `json:"createTime"`
 }
 
 // FilterRuleAPI 筛选规则API接口（别名，用于兼容性）

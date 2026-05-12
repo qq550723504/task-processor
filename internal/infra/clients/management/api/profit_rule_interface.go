@@ -1,5 +1,7 @@
 package api
 
+import "task-processor/internal/pkg/types"
+
 // ProfitRuleRespDTO 利润规则响应DTO
 type ProfitRuleRespDTO struct {
 	ID                      int64   `json:"id"`
@@ -12,7 +14,7 @@ type ProfitRuleRespDTO struct {
 	DiscountPriceMultiplier float64 `json:"discountPriceMultiplier,omitempty"`
 	Status                  int16   `json:"status"`
 	Remark                  string  `json:"remark"`
-	CreateTime              int64   `json:"createTime"`
+	CreateTime              types.FlexibleTime `json:"createTime"`
 }
 
 // ProfitRuleReqDTO 利润规则请求DTO
