@@ -17,9 +17,11 @@ import (
 type stubChatCompleter struct {
 	response *openaiclient.ChatCompletionResponse
 	err      error
+	lastReq  *openaiclient.ChatCompletionRequest
 }
 
 func (s stubChatCompleter) CreateChatCompletion(ctx context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	s.lastReq = req
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -35,6 +37,28 @@ func (s stubChatCompleter) AnalyzeImage(ctx context.Context, imageURL string, pr
 }
 
 func (s stubChatCompleter) GetDefaultModel() string {
+	return "test-model"
+}
+
+type recordingChatCompleter struct {
+	response *openaiclient.ChatCompletionResponse
+	lastReq  *openaiclient.ChatCompletionRequest
+}
+
+func (s *recordingChatCompleter) CreateChatCompletion(ctx context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	s.lastReq = req
+	return s.response, nil
+}
+
+func (s *recordingChatCompleter) Generate(context.Context, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *recordingChatCompleter) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *recordingChatCompleter) GetDefaultModel() string {
 	return "test-model"
 }
 
@@ -77,8 +101,11 @@ func TestPrepareSubmitProductContent_FallsBackWhenAIUnavailable(t *testing.T) {
 	if got := findLocalizedText(product.MultiLanguageNameList, "es"); got != "Door curtain for home decor" {
 		t.Fatalf("spanish title fallback = %q, want %q", got, "Door curtain for home decor")
 	}
-	if got := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "es"); got != "white" {
-		t.Fatalf("spanish skc fallback = %q, want %q", got, "white")
+	if got := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en"); !strings.EqualFold(got, "door curtain for home decor white") {
+		t.Fatalf("english skc fallback = %q, want case-insensitive match for %q", got, "door curtain for home decor white")
+	}
+	if got := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "door curtain for home decor white") {
+		t.Fatalf("spanish skc fallback = %q, want case-insensitive match for %q", got, "door curtain for home decor white")
 	}
 }
 
@@ -112,11 +139,119 @@ func TestPrepareSubmitProductContent_UsesTranslateAPIForMissingTargets(t *testin
 	if got := findLocalizedText(product.MultiLanguageDescList, "es"); got != "Spanish A soft curtain for bedrooms and living rooms." {
 		t.Fatalf("spanish description = %q, want %q", got, "Spanish A soft curtain for bedrooms and living rooms.")
 	}
-	if got := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "Spanish white") {
-		t.Fatalf("spanish skc = %q, want case-insensitive match for %q", got, "Spanish white")
+	if got := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "Spanish door curtain for home decor white") {
+		t.Fatalf("spanish skc = %q, want case-insensitive match for %q", got, "Spanish door curtain for home decor white")
 	}
-	if got := product.SKCList[0].MultiLanguageName; got.Language != "en" || got.Name != "white" {
+	if got := product.SKCList[0].MultiLanguageName; got.Language != "en" || !strings.EqualFold(got.Name, "door curtain for home decor white") {
 		t.Fatalf("primary skc name = %+v, want english primary name", got)
+	}
+}
+
+func TestOptimizeSubmitContentWithAI_SendsMainImageToAI(t *testing.T) {
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Door curtain",
+		}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Soft decorative curtain for bedrooms.",
+		}},
+		ImageInfo: &sheinproduct.ImageInfo{
+			ImageInfoList: []sheinproduct.ImageDetail{
+				{ImageURL: "https://example.com/main.jpg"},
+				{ImageURL: "https://example.com/gallery.jpg"},
+			},
+		},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "white"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "white",
+			}},
+		}},
+	}
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"title":"Elegant Door Curtain for Bedroom Privacy and Home Decor Styling","description":"A soft decorative door curtain designed to add privacy, texture, and a warm finished look to bedrooms and living spaces."}`,
+				},
+			}},
+		},
+	}
+
+	title, description, err := optimizeSubmitContentWithAI(
+		context.Background(),
+		ai,
+		findLocalizedText(product.MultiLanguageNameList, "en"),
+		findLocalizedText(product.MultiLanguageDescList, "en"),
+		buildSubmitContentFeatures(product),
+		collectSubmitContentImageURLs(product),
+	)
+	if err != nil {
+		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+	}
+	if title == "" || description == "" {
+		t.Fatalf("optimized content = %q / %q, want non-empty", title, description)
+	}
+	if ai.lastReq == nil || len(ai.lastReq.Messages) < 2 {
+		t.Fatalf("ai request = %+v, want multimodal user message", ai.lastReq)
+	}
+	parts := ai.lastReq.Messages[1].MultiContent
+	if len(parts) != 2 {
+		t.Fatalf("user multi-content parts = %+v, want text + main image", parts)
+	}
+	if parts[0].Type != "text" {
+		t.Fatalf("first part type = %q, want text", parts[0].Type)
+	}
+	if parts[1].Type != "image_url" || parts[1].ImageURL == nil || parts[1].ImageURL.URL != "https://example.com/main.jpg" {
+		t.Fatalf("image part = %+v, want main image only", parts[1])
+	}
+}
+
+func TestPrepareSubmitProductContent_PreservesExistingContentWithoutAIRewrite(t *testing.T) {
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Envelope style pillow cover",
+		}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Envelope style pillow cover designed for everyday home decor.",
+		}},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "beige"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "beige",
+			}},
+		}},
+	}
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"title":"Unexpected rewrite","description":"Unexpected rewrite"}`,
+				},
+			}},
+		},
+	}
+
+	if err := PrepareSubmitProductContent(context.Background(), product, "US", ai, nil); err != nil {
+		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
+	}
+	if ai.lastReq != nil {
+		t.Fatalf("ai request = %+v, want submit content to skip AI rewrite", ai.lastReq)
+	}
+	if got := findLocalizedText(product.MultiLanguageNameList, "en"); got != "Envelope style pillow cover" {
+		t.Fatalf("english title = %q, want original reviewed content", got)
+	}
+	if got := findLocalizedText(product.MultiLanguageDescList, "en"); got != "Envelope style pillow cover designed for everyday home decor." {
+		t.Fatalf("english description = %q, want original reviewed content", got)
+	}
+	if got := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en"); !strings.EqualFold(got, "envelope style pillow cover beige") {
+		t.Fatalf("english skc = %q, want case-insensitive match for %q", got, "envelope style pillow cover beige")
 	}
 }
 

@@ -112,13 +112,13 @@ func BuildSubmissionResponseSummary(resp *sheinproduct.SheinResponse) *Submissio
 		Code:    resp.Code,
 		Message: resp.Msg,
 	}
-	summary.Success = resp.Info.Success
 	summary.SPUName = resp.Info.SPUName
 	summary.Version = resp.Info.Version
 	for _, result := range resp.Info.PreValidResult {
 		summary.ValidationNotes = append(summary.ValidationNotes, result.Messages...)
 	}
 	summary.ValidationNotes = uniqueSubmissionStrings(summary.ValidationNotes)
+	summary.Success = resp.Info.Success || (summary.Code == "0" && len(summary.ValidationNotes) == 0)
 	return summary
 }
 

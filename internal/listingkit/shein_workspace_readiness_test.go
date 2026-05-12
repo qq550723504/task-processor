@@ -235,6 +235,39 @@ func TestBuildSheinSubmitReadinessAllowsSingleVariantMainImageWithoutSizeMap(t *
 	}
 }
 
+func TestBuildSheinSubmitReadinessSaveDraftDoesNotRequireFinalConfirmation(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       false,
+		MainImageURL:    "https://cdn.example.com/main.jpg",
+		FinalImageOrder: []string{"https://cdn.example.com/main.jpg"},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: "https://cdn.example.com/main.jpg",
+		Gallery:   []string{"https://cdn.example.com/gallery.jpg"},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{
+		"https://cdn.example.com/main.jpg",
+		"https://cdn.example.com/gallery.jpg",
+	})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{"https://cdn.example.com/main.jpg"})
+
+	readiness := buildSheinSubmitReadinessForAction(task.Result.Shein, "save_draft")
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if !readiness.Ready {
+		t.Fatalf("ready = false, want true for save_draft without final confirmation; blockers=%+v", readiness.BlockingItems)
+	}
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "final_review" {
+			t.Fatalf("unexpected final_review blocker for save_draft: %+v", readiness.BlockingItems)
+		}
+	}
+}
+
 func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T) {
 	t.Parallel()
 

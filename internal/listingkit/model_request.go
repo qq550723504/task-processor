@@ -174,6 +174,7 @@ type SubmitTaskRequest struct {
 	Platform       string `json:"platform,omitempty"`
 	Action         string `json:"action,omitempty"`
 	ConfirmedFinal bool   `json:"confirmed_final,omitempty"`
+	RequestID      string `json:"request_id,omitempty"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 

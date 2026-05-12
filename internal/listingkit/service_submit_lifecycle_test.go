@@ -165,6 +165,58 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskTreatsCodeZeroPublishWithoutValidationNotesAsAccepted(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "OK",
+					Info: sheinproduct.ResponseInfo{
+						Success: false,
+						SPUName: "SPU-123",
+					},
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-accepted",
+					SupplierCode: "SUP-submit-task-1",
+					State:        2,
+					AuditState:   3,
+				}),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "publish-ok-123"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if preview.Shein.Submission == nil || preview.Shein.Submission.LastStatus != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("submission = %+v, want success", preview.Shein.Submission)
+	}
+	if preview.Shein.Submission.Publish == nil || preview.Shein.Submission.Publish.Result == nil || !preview.Shein.Submission.Publish.Result.Success {
+		t.Fatalf("publish result = %+v, want accepted success", preview.Shein.Submission.Publish)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	}
+}
+
 func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -275,15 +327,46 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 	if preview.Shein.Submission.Publish.RemoteRecordID != "record-123" {
 		t.Fatalf("remote record id = %q, want record-123", preview.Shein.Submission.Publish.RemoteRecordID)
 	}
-	if len(recordSupplierCodes) != 1 || recordSupplierCodes[0] == "" {
-		t.Fatalf("record supplier codes = %+v, want one supplier code", recordSupplierCodes)
+	if len(recordSupplierCodes) == 0 || recordSupplierCodes[0] == "" {
+		t.Fatalf("record supplier codes = %+v, want non-empty lookup codes", recordSupplierCodes)
 	}
 	if !repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseConfirmRemote) {
 		t.Fatalf("confirm_remote phase was not persisted; saved phases = %+v", repo.savedSubmissionPhases)
 	}
 }
 
-func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T) {
+func TestCollectSheinRemoteLookupCodesIncludesNormalizedSupplierSKUs(t *testing.T) {
+	t.Parallel()
+
+	pkg := &SheinPackage{
+		PreviewProduct: &sheinproduct.Product{
+			SupplierCode: "MG8089003001",
+			SKCList: []sheinproduct.SKC{
+				{SupplierCode: strPtr("MG8089003001"), SKUS: []sheinproduct.SKU{{SupplierSKU: "MG8089003001-V245612-T47D318DF"}}},
+				{SupplierCode: strPtr("MG8089003002"), SKUS: []sheinproduct.SKU{{SupplierSKU: "MG8089003002-V245613-T47D318DF"}}},
+				{SupplierCode: strPtr("MG8089003003"), SKUS: []sheinproduct.SKU{{SupplierSKU: "MG8089003003-V245614-T47D318DF"}}},
+			},
+		},
+	}
+
+	codes := collectSheinRemoteLookupCodes(pkg, "MG8089003001")
+
+	expected := []string{
+		"MG8089003001",
+		"MG8089003001-V245612-T47D318DF",
+		"MG8089003002",
+		"MG8089003002-V245613-T47D318DF",
+		"MG8089003003",
+		"MG8089003003-V245614-T47D318DF",
+	}
+	for _, want := range expected {
+		if !containsString(codes, want) {
+			t.Fatalf("lookup codes = %+v, want to contain %q", codes, want)
+		}
+	}
+}
+
+func TestSubmitTaskTreatsAcceptedPublishAsConfirmedWhenRecordMissing(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -315,15 +398,70 @@ func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordMissing(t *testing.T)
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusPending {
-		t.Fatalf("remote status = %q, want pending", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", got)
 	}
 	if preview.Shein.Submission.LastStatus != sheinpub.SubmissionStatusSuccess {
 		t.Fatalf("last status = %q, want success", preview.Shein.Submission.LastStatus)
 	}
+	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "accepted publish request") {
+		t.Fatalf("remote message = %q, want accepted publish fallback detail", got)
+	}
 }
 
-func TestSubmitTaskFailsWhenRemoteRecordShowsDraftState(t *testing.T) {
+func TestSubmitTaskConfirmsRemoteByInventoryWhenRecordMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var queriedSPU string
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordResponse: makeSheinRecordResponse(),
+				inventoryHook: func(spuName string) {
+					queriedSPU = spuName
+				},
+				inventoryResp: &sheinproduct.InventoryQueryResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.InventoryInfo{SpuName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "inventory-confirm-123"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if queriedSPU != "SPU-123" {
+		t.Fatalf("inventory lookup spu_name = %q, want SPU-123", queriedSPU)
+	}
+	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", got)
+	}
+	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "spu_name=SPU-123") {
+		t.Fatalf("remote message = %q, want inventory confirmation detail", got)
+	}
+}
+
+func TestSubmitTaskKeepsPublishSuccessWhenRemoteRecordLooksDraft(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -355,9 +493,9 @@ func TestSubmitTaskFailsWhenRemoteRecordShowsDraftState(t *testing.T) {
 		t.Fatalf("new service: %v", err)
 	}
 
-	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "draft-remote-123"})
-	if err == nil || !strings.Contains(err.Error(), "landed in draft state") {
-		t.Fatalf("submit err = %v, want draft state failure", err)
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "draft-remote-123"})
+	if err != nil {
+		t.Fatalf("submit err = %v, want nil", err)
 	}
 
 	saved, err := repo.GetTask(context.Background(), task.ID)
@@ -368,18 +506,21 @@ func TestSubmitTaskFailsWhenRemoteRecordShowsDraftState(t *testing.T) {
 	if submission == nil {
 		t.Fatal("expected submission report")
 	}
-	if submission.RemoteStatus != sheinpub.SubmissionRemoteStatusFailed {
-		t.Fatalf("remote status = %q, want failed", submission.RemoteStatus)
+	if submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", submission.RemoteStatus)
 	}
-	if submission.LastStatus != sheinpub.SubmissionStatusFailed {
-		t.Fatalf("last status = %q, want failed", submission.LastStatus)
+	if submission.LastStatus != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("last status = %q, want success", submission.LastStatus)
 	}
-	if submission.Publish == nil || !strings.Contains(submission.Publish.RemoteMessage, "draft state") {
-		t.Fatalf("publish record = %+v, want draft-state remote message", submission.Publish)
+	if submission.Publish == nil || !strings.Contains(submission.Publish.RemoteMessage, "publish API reported success") {
+		t.Fatalf("publish record = %+v, want accepted publish remote message", submission.Publish)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("preview remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
 	}
 }
 
-func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordNotVisible(t *testing.T) {
+func TestSubmitTaskTreatsRecordNotVisibleAsConfirmedAfterAcceptedPublish(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -415,14 +556,17 @@ func TestSubmitTaskMarksRemoteConfirmationPendingWhenRecordNotVisible(t *testing
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusPending {
-		t.Fatalf("remote status = %q, want pending", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", got)
 	}
 	if got := atomic.LoadInt32(&recordCalls); got != 1 {
 		t.Fatalf("record calls = %d, want 1 record lookup", got)
 	}
 	if preview.Shein.Submission.Publish.RemoteRecordID != "" {
 		t.Fatalf("remote record id = %q, want empty when record not visible", preview.Shein.Submission.Publish.RemoteRecordID)
+	}
+	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "accepted publish request") {
+		t.Fatalf("remote message = %q, want accepted publish fallback detail", got)
 	}
 }
 
@@ -544,8 +688,8 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	if got := atomic.LoadInt32(&publishCalls); got != 1 {
 		t.Fatalf("publish calls = %d, want 1", got)
 	}
-	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusPending {
-		t.Fatalf("remote status = %q, want pending", preview.Shein.Submission.RemoteStatus)
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
 	}
 	if preview.Shein.Submission.CurrentPhase != "" {
 		t.Fatalf("current phase = %q, want cleared", preview.Shein.Submission.CurrentPhase)
@@ -1042,4 +1186,98 @@ func TestSubmitTaskRetriesSensitiveWordValidationNotesBeforeFailing(t *testing.T
 	if !foundRetryEvent {
 		t.Fatalf("submission events = %+v, want sensitive-word retry event", preview.Shein.SubmissionEvents)
 	}
+}
+
+func TestRefreshSubmissionStatusPrefersPublishSPURecord(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction:  "publish",
+		LastStatus:  sheinpub.SubmissionStatusSuccess,
+		SubmittedAt: &now,
+		LastResult: &sheinpub.SubmissionResponse{
+			Code:    "0",
+			Message: "OK",
+			Success: true,
+			SPUName: "SPU-PUBLISH",
+		},
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			Status:       sheinpub.SubmissionStatusSuccess,
+			SubmittedAt:  now,
+			RequestID:    "refresh-publish-spu",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+			FinishedAt:   &now,
+			Result: &sheinpub.SubmissionResponse{
+				Code:    "0",
+				Message: "OK",
+				Success: true,
+				SPUName: "SPU-PUBLISH",
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				recordResponse: makeSheinRecordResponse(
+					sheinproduct.RecordItem{
+						RecordID:     "record-draft-old",
+						SupplierCode: "SKC-1",
+						SpuName:      "SPU-DRAFT",
+						State:        0,
+						AuditState:   1,
+						CreateTime:   "2026-05-12 13:19:24",
+					},
+					sheinproduct.RecordItem{
+						RecordID:     "record-publish-new",
+						SupplierCode: "SKC-1",
+						SpuName:      "SPU-PUBLISH",
+						State:        14,
+						AuditState:   4,
+						CreateTime:   "2026-05-12 13:45:13",
+					},
+				),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.RefreshSubmissionStatus(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("refresh submission status: %v", err)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	}
+	if preview.Shein.Submission.Publish.RemoteRecordID != "record-publish-new" {
+		t.Fatalf("remote record id = %q, want record-publish-new", preview.Shein.Submission.Publish.RemoteRecordID)
+	}
+	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "publish API reported success") {
+		t.Fatalf("remote message = %q, want success message", got)
+	}
+}
+
+func strPtr(value string) *string {
+	return &value
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

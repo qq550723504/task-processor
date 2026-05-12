@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -328,7 +329,7 @@ func TestSubmitTaskNormalizesSingleStudioSupplierSKUWithTaskDiscriminator(t *tes
 		FinalDraft:     task.Result.Shein.FinalDraft,
 		Pricing:        task.Result.Shein.Pricing,
 	}
-	changed := normalizeSheinStudioSubmitSupplierSKUs(task, pkg)
+	changed := normalizeSheinStudioSubmitSupplierSKUs(task, pkg, "")
 	if !changed {
 		t.Fatal("expected single-variant supplier sku normalization to change payload")
 	}
@@ -350,6 +351,47 @@ func TestSubmitTaskNormalizesSingleStudioSupplierSKUWithTaskDiscriminator(t *tes
 	}
 	if len(pkg.Pricing.SKUPrices) != 1 || pkg.Pricing.SKUPrices[0].SupplierSKU != wantSKU {
 		t.Fatalf("pricing sku prices = %#v, want remapped single sku", pkg.Pricing.SKUPrices)
+	}
+}
+
+func TestSubmitTaskNormalizesStudioSupplierSKUWithRequestDiscriminator(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	task.ID = "fe7413d2-ac75-4c97-be0f-800a40dffa00"
+	task.Request.Options = &GenerateOptions{
+		SheinStudio: &SheinStudioOptions{StyleID: "D7E68190"},
+		SDS: &SDSSyncOptions{
+			ProductSKU: "MG8014186001",
+			StyleID:    "D7E68190",
+			Variants: []SDSSyncVariantOption{
+				{VariantID: 101, Color: "black", Size: "均码"},
+			},
+		},
+	}
+	task.Result.TaskID = task.ID
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU = "MG8014186001-D7E68190"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].Attributes = map[string]string{
+		"Color":          "black",
+		"Size":           "均码",
+		"source_sds_sku": "MG8014186001",
+	}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SupplierSKU = "MG8014186001-D7E68190"
+	task.Result.Shein.SkcList[0].SKUs[0].SKU = "MG8014186001-D7E68190"
+	pkg := &sheinpub.Package{
+		RequestDraft:   task.Result.Shein.RequestDraft,
+		PreviewProduct: task.Result.Shein.PreviewProduct,
+		SkcList:        task.Result.Shein.SkcList,
+	}
+
+	changed := normalizeSheinStudioSubmitSupplierSKUs(task, pkg, "debug-18095-run-1")
+	if !changed {
+		t.Fatal("expected supplier sku normalization to change payload")
+	}
+	got := pkg.RequestDraft.SKCList[0].SKUList[0].SupplierSKU
+	want := "MG8014186001-V101-TFE7413D2-RDEBUG180-D7E68190"
+	if got != want {
+		t.Fatalf("request-scoped supplier sku = %q, want %q", got, want)
 	}
 }
 
@@ -515,8 +557,8 @@ func TestSubmitTaskSaveDraftDoesNotFailWhenContentOptimizerFails(t *testing.T) {
 	if submitted == nil {
 		t.Fatal("expected save draft payload to be captured")
 	}
-	if contentAI.calls == 0 {
-		t.Fatal("expected content optimizer to be attempted")
+	if contentAI.calls != 0 {
+		t.Fatalf("content optimizer calls = %d, want 0 because submit prep should preserve reviewed content", contentAI.calls)
 	}
 	if preview.Shein == nil || preview.Shein.Submission == nil || preview.Shein.Submission.LastStatus != "success" {
 		t.Fatalf("submission = %+v", preview.Shein)
@@ -583,11 +625,49 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submitted == nil {
 		t.Fatal("expected publish payload to be captured")
 	}
-	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != 0 {
-		t.Fatalf("product image_info = %+v, want empty for publish payload", submitted.ImageInfo)
+	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != 3 {
+		t.Fatalf("product image_info = %+v, want normalized SPU images without top-level color block", submitted.ImageInfo)
+	}
+	if submitted.ImageInfo.ImageInfoList[2].ImageType != 5 {
+		t.Fatalf("spu square image type = %d, want 5", submitted.ImageInfo.ImageInfoList[2].ImageType)
+	}
+	for _, image := range submitted.ImageInfo.ImageInfoList {
+		if image.ImageType == 6 {
+			t.Fatalf("spu image_info = %+v, want no top-level image_type=6", submitted.ImageInfo)
+		}
+	}
+	if submitted.Extra.SwitchToSPUPic {
+		t.Fatalf("extra = %+v, want switch_to_spu_pic disabled to match shein-listing submit payload", submitted.Extra)
+	}
+	if submitted.Extra.FromPageID == nil || *submitted.Extra.FromPageID != "product_publish" {
+		t.Fatalf("from_page_id = %+v, want product_publish", submitted.Extra.FromPageID)
+	}
+	if submitted.Extra.UseCVTransformImage || submitted.Extra.TransformCVSizeImage {
+		t.Fatalf("extra cv flags = %+v, want both false for direct publish payload", submitted.Extra)
+	}
+	if submitted.SourceSystem != "listingkit" {
+		t.Fatalf("source_system = %q, want listingkit", submitted.SourceSystem)
+	}
+	if submitted.SupplierCode == "" {
+		t.Fatal("supplier_code is empty, want non-empty top-level publish lookup code")
 	}
 	if len(submitted.SKCList[0].ImageInfo.ImageInfoList) != 6 {
 		t.Fatalf("skc image count = %d, want 6", len(submitted.SKCList[0].ImageInfo.ImageInfoList))
+	}
+	if submitted.SKCList[0].SupplierCode != nil {
+		t.Fatalf("skc supplier_code = %#v, want nil to match shein-listing direct publish payload", submitted.SKCList[0].SupplierCode)
+	}
+	if submitted.SKCList[0].SaleAttribute.PreFillSpec {
+		t.Fatalf("skc sale_attribute.pre_fill_spec = true, want false to match shein-listing direct publish payload")
+	}
+	if submitted.SKCList[0].SiteDetailImageInfoList == nil {
+		t.Fatal("site_detail_image_info_list = nil, want empty array to match shein-listing direct publish payload")
+	}
+	if submitted.SKCList[0].SiteSpecImageInfoList == nil {
+		t.Fatal("site_spec_image_info_list = nil, want empty array to match shein-listing direct publish payload")
+	}
+	if submitted.SKCList[0].SKCScopeAttributeList == nil {
+		t.Fatal("skc_scope_attribute_list = nil, want empty array to match shein-listing direct publish payload")
 	}
 	if submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType != 5 {
 		t.Fatalf("skc square image type = %d, want 5", submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType)
@@ -595,8 +675,8 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submitted.SKCList[0].ImageInfo.ImageInfoList[5].ImageType != 6 {
 		t.Fatalf("skc color block image type = %d, want 6", submitted.SKCList[0].ImageInfo.ImageInfoList[5].ImageType)
 	}
-	if submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 0 {
-		t.Fatalf("sku image_info = %+v, want empty for publish payload", submitted.SKCList[0].SKUS[0].ImageInfo)
+	if submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 1 {
+		t.Fatalf("sku image_info = %+v, want preserved SKU image for publish payload", submitted.SKCList[0].SKUS[0].ImageInfo)
 	}
 	if len(submitted.SiteList) != 1 || submitted.SiteList[0].MainSite != "shein" || len(submitted.SiteList[0].SubSiteList) != 1 || submitted.SiteList[0].SubSiteList[0] != "shein-us" {
 		t.Fatalf("site_list = %+v, want shein/shein-us", submitted.SiteList)
@@ -616,6 +696,12 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submittedSKU.PackageType != 3 {
 		t.Fatalf("package_type = %d, want 3", submittedSKU.PackageType)
 	}
+	if submittedSKU.StopPurchase != 1 {
+		t.Fatalf("stop_purchase = %d, want 1 to match shein-listing direct publish payload", submittedSKU.StopPurchase)
+	}
+	if submittedSKU.CompetingCostPriceImages == nil {
+		t.Fatal("competing_cost_price_images = nil, want empty array to match shein-listing direct publish payload")
+	}
 	if len(submittedSKU.PriceInfoList) != 1 || submittedSKU.PriceInfoList[0].SubSite != "shein-us" {
 		t.Fatalf("price_info_list = %+v, want sub_site shein-us", submittedSKU.PriceInfoList)
 	}
@@ -624,6 +710,121 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	}
 	if submittedSKU.WeightUnit != "g" {
 		t.Fatalf("weight_unit = %q, want g", submittedSKU.WeightUnit)
+	}
+}
+
+func TestSubmitTaskNormalizesNilSlicesToEmptyArraysForSheinPublish(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.PreviewProduct.BrandSeriesList = nil
+	task.Result.Shein.PreviewProduct.MultiLanguageMakeupIngredientList = nil
+	task.Result.Shein.PreviewProduct.ProductVideoList = nil
+	task.Result.Shein.PreviewProduct.PartInfoList = nil
+	task.Result.Shein.PreviewProduct.PLMPatternIDList = nil
+	task.Result.Shein.PreviewProduct.SizeAttributeList = nil
+	task.Result.Shein.PreviewProduct.BackSizeAttributeList = nil
+	task.Result.Shein.PreviewProduct.ImageInfo = &sheinproduct.ImageInfo{
+		ImageInfoList: []sheinproduct.ImageDetail{
+			{ImageType: 1, ImageSort: 1, ImageURL: "https://cdn.example.com/main.jpg"},
+			{ImageType: 2, ImageSort: 2, ImageURL: "https://cdn.example.com/gallery-1.jpg"},
+		},
+	}
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = sheinproduct.ImageInfo{
+		ImageInfoList: []sheinproduct.ImageDetail{
+			{ImageType: 1, ImageSort: 1, ImageURL: "https://cdn.example.com/main.jpg"},
+			{ImageType: 2, ImageSort: 2, ImageURL: "https://cdn.example.com/gallery-1.jpg"},
+		},
+	}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList = nil
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].CompetingCostPriceImages = nil
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if submitted.BrandSeriesList == nil {
+		t.Fatal("brand_series_list = nil, want []")
+	}
+	if submitted.MultiLanguageMakeupIngredientList == nil {
+		t.Fatal("multi_language_makeup_ingredient_list = nil, want []")
+	}
+	if submitted.ProductVideoList == nil {
+		t.Fatal("product_video_list = nil, want []")
+	}
+	if submitted.PartInfoList == nil {
+		t.Fatal("part_info_list = nil, want []")
+	}
+	if submitted.PLMPatternIDList == nil {
+		t.Fatal("plm_pattern_id_list = nil, want []")
+	}
+	if submitted.SizeAttributeList == nil {
+		t.Fatal("size_attribute_list = nil, want []")
+	}
+	if submitted.BackSizeAttributeList == nil {
+		t.Fatal("back_size_attribute_list = nil, want []")
+	}
+	if submitted.SKCList[0].SKUS[0].SaleAttributeList == nil {
+		t.Fatal("sku.sale_attribute_list = nil, want []")
+	}
+	if submitted.SKCList[0].SKUS[0].CompetingCostPriceImages == nil {
+		t.Fatal("sku.competing_cost_price_images = nil, want []")
+	}
+	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) == 0 || submitted.ImageInfo.ImageInfoList[0].PSTypes == nil {
+		t.Fatal("spu image ps_types = nil, want []")
+	}
+	if len(submitted.SKCList[0].ImageInfo.ImageInfoList) == 0 || submitted.SKCList[0].ImageInfo.ImageInfoList[0].PSTypes == nil {
+		t.Fatal("skc image ps_types = nil, want []")
+	}
+
+	payload, err := json.Marshal(submitted)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	jsonText := string(payload)
+	for _, needle := range []string{
+		`"brand_series_list":null`,
+		`"multi_language_makeup_ingredient_list":null`,
+		`"product_video_list":null`,
+		`"part_info_list":null`,
+		`"plm_pattern_id_list":null`,
+		`"size_attribute_list":null`,
+		`"back_size_attribute_list":null`,
+		`"sale_attribute_list":null`,
+		`"competing_cost_price_images":null`,
+		`"ps_types":null`,
+	} {
+		if strings.Contains(jsonText, needle) {
+			t.Fatalf("publish payload still contains %s: %s", needle, jsonText)
+		}
 	}
 }
 
@@ -721,26 +922,26 @@ func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
 	if submitted == nil {
 		t.Fatal("expected publish payload to be captured")
 	}
-	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "en"); got != "Optimized Bottle Cap Metal Sign for Bar and Garage Decor" {
+	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "en"); got != "English 啤酒盖铁板画" {
 		t.Fatalf("english product name = %q", got)
 	}
-	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "es"); got != "Spanish Optimized Bottle Cap Metal Sign for Bar and Garage Decor" {
+	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "es"); got != "Spanish 啤酒盖铁板画" {
 		t.Fatalf("spanish product name = %q", got)
 	}
-	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "en"); got != "A durable decorative metal sign designed for wall display in bars, garages, game rooms, and home spaces." {
+	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "en"); got != "English 适用于酒吧和车库装饰" {
 		t.Fatalf("english product description = %q", got)
 	}
-	if got := submitted.SKCList[0].MultiLanguageName.Name; !strings.EqualFold(got, "optimized bottle cap metal sign for bar and garage decor 白色") {
+	if got := submitted.SKCList[0].MultiLanguageName.Name; !strings.EqualFold(got, "english 啤酒盖铁板画 白色") {
 		t.Fatalf("skc primary name = %q", got)
 	}
-	if got := findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "spanish optimized bottle cap metal sign for bar and garage decor 白色") {
+	if got := findSheinLanguageContent(submitted.SKCList[0].MultiLanguageNameList, "es"); !strings.EqualFold(got, "spanish 啤酒盖铁板画 白色") {
 		t.Fatalf("spanish skc name = %q", got)
 	}
 	if len(translateAPI.calls) == 0 {
 		t.Fatal("expected translate API to be called")
 	}
-	if contentAI.calls == 0 {
-		t.Fatal("expected content optimizer to be called")
+	if contentAI.calls != 0 {
+		t.Fatalf("content optimizer calls = %d, want 0 because submit prep should preserve reviewed content", contentAI.calls)
 	}
 }
 

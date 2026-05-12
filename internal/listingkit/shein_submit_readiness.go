@@ -177,11 +177,19 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 	)
 
 	finalDraftReady := pkg.FinalDraft == nil || pkg.FinalDraft.Confirmed
+	if action == "save_draft" {
+		finalDraftReady = true
+	}
 	addCheck(
 		"final_review",
 		"最终确认",
 		finalDraftReady,
-		"提交前必须在最终确认页核对图片、价格、属性和 SKU 后确认",
+		func() string {
+			if action == "save_draft" {
+				return "保存草稿允许跳过最终确认；正式发布前仍需在最终确认页核对图片、价格、属性和 SKU"
+			}
+			return "提交前必须在最终确认页核对图片、价格、属性和 SKU 后确认"
+		}(),
 		[]string{"shein.final_draft", "shein.final_review"},
 		"最终确认",
 		false,

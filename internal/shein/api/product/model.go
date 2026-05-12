@@ -87,6 +87,7 @@ type Extra struct {
 	CopySKCConfirmUpdated       bool              `json:"copy_skc_confirm_updated"`
 	ExtraClearBiddingOrBestSale bool              `json:"extra_clear_bidding_or_best_sale"`
 	IsSpmbCopyProduct           bool              `json:"is_spmb_copy_product"`
+	BiddingSimilarSKC           string            `json:"bidding_similar_skc"`
 	ArmorToken                  string            `json:"armor_token"`
 	BlackBox                    string            `json:"black_box"`
 }

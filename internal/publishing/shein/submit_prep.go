@@ -7,7 +7,6 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/pkg/timeout"
 	sheincontent "task-processor/internal/shein/content"
 	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/submitprep"
@@ -98,6 +97,8 @@ func BuildSubmitSnapshot(product *sheinproduct.Product) *SubmitSnapshot {
 }
 
 func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Product, aiClient openaiclient.ChatCompleter) error {
+	_ = ctx
+	_ = aiClient
 	if product == nil {
 		return nil
 	}
@@ -116,48 +117,59 @@ func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Pro
 	if description == "" {
 		description = title
 	}
-	if aiClient == nil {
-		applySubmitContent(product, title, description)
-		return nil
-	}
-
-	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
-	defer cancel()
-
-	optimizedTitle, optimizedDescription, err := optimizeSubmitContentWithAI(aiCtx, aiClient, title, description, buildSubmitContentFeatures(product))
-	if err != nil {
-		applySubmitContent(product, title, description)
-		return nil
-	}
-	optimizedTitle = strings.TrimSpace(cleaner.RemoveForbiddenWords(cleaner.NormalizeText(optimizedTitle)))
-	optimizedDescription = strings.TrimSpace(cleaner.RemoveForbiddenWords(cleaner.NormalizeText(optimizedDescription)))
-	if optimizedTitle == "" {
-		optimizedTitle = title
-	}
-	if optimizedDescription == "" {
-		optimizedDescription = description
-	}
-	applySubmitContent(product, optimizedTitle, optimizedDescription)
+	// Submit-time payloads need to stay deterministic. The workbench preview/final
+	// draft is already the reviewed content surface; re-running a multimodal
+	// optimizer here makes publish and save_draft diverge on the same task.
+	applySubmitContent(product, title, description)
 	return nil
 }
 
-func optimizeSubmitContentWithAI(ctx context.Context, aiClient openaiclient.ChatCompleter, title, description, features string) (string, string, error) {
+func optimizeSubmitContentWithAI(ctx context.Context, aiClient openaiclient.ChatCompleter, title, description, features string, imageURLs []string) (string, string, error) {
 	systemPrompt := `You are an e-commerce content optimization expert for SHEIN product listings.
 Requirements:
 1. Output title and description in natural English only.
-2. Title length should be 80-800 characters when possible, concise and keyword-rich.
-3. Description length should be 100-2000 characters when possible, covering material, use cases, and selling points.
-4. Do not include brand names, emojis, medical claims, absolute guarantees, or platform policy-risk claims.
-5. Return strict JSON only: {"title":"...","description":"..."}`
-	userPrompt := fmt.Sprintf("Source product content:\nTitle: %s\nDescription: %s\nFeatures:\n%s\n\nCreate optimized SHEIN listing content.", title, description, features)
+2. Optimize for e-commerce conversion, search relevance, and attribute clarity instead of being minimal.
+3. Use the provided product images to identify visual motifs, style, room or use context, print or pattern cues, and other concrete shopper-relevant details that are visible.
+4. Title should usually be 110-220 characters when the source supports it, with high-intent product keywords, material or construction terms, style cues, use-case context, and shopper-friendly wording.
+5. Description should usually be 220-900 characters when the source supports it, with 3-5 compact sentences covering what the product is, key material or build details, visual style, common use scenarios, and why a shopper would choose it.
+6. Keep claims concrete and product-focused. Avoid fluff, repetition, keyword stuffing, brand names, emojis, medical claims, absolute guarantees, or platform policy-risk claims.
+7. Preserve the core product type and major factual details from the source.
+8. Return strict JSON only: {"title":"...","description":"..."}`
+	userPrompt := fmt.Sprintf("Source product content:\nTitle: %s\nDescription: %s\nFeatures:\n%s\n\nCreate a stronger SHEIN listing title and description aimed at ecommerce conversion. Use the images as additional evidence for visible style, pattern, room context, and shopper intent. Do not invent hidden materials, dimensions, or compliance claims.", title, description, features)
 	temperature := float32(0.7)
+	messages := []openaiclient.ChatCompletionMessage{{
+		Role:    "system",
+		Content: systemPrompt,
+	}}
+	if len(imageURLs) == 0 {
+		messages = append(messages, openaiclient.ChatCompletionMessage{
+			Role:    "user",
+			Content: userPrompt,
+		})
+	} else {
+		parts := make([]openaiclient.ChatCompletionContentPart, 0, 1+len(imageURLs))
+		parts = append(parts, openaiclient.ChatCompletionContentPart{
+			Type: "text",
+			Text: userPrompt,
+		})
+		for _, imageURL := range imageURLs {
+			parts = append(parts, openaiclient.ChatCompletionContentPart{
+				Type: "image_url",
+				ImageURL: &openaiclient.ChatCompletionContentPartImage{
+					URL:    imageURL,
+					Detail: "auto",
+				},
+			})
+		}
+		messages = append(messages, openaiclient.ChatCompletionMessage{
+			Role:         "user",
+			MultiContent: parts,
+		})
+	}
 	resp, err := aiClient.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
 		Model:       aiClient.GetDefaultModel(),
 		Temperature: &temperature,
-		Messages: []openaiclient.ChatCompletionMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
+		Messages:    messages,
 	})
 	if err != nil {
 		return title, description, err
@@ -181,6 +193,27 @@ Requirements:
 		parsed.Description = description
 	}
 	return parsed.Title, parsed.Description, nil
+}
+
+func collectSubmitContentImageURLs(product *sheinproduct.Product) []string {
+	if product == nil {
+		return nil
+	}
+	if product.ImageInfo != nil {
+		for _, image := range product.ImageInfo.ImageInfoList {
+			if imageURL := strings.TrimSpace(image.ImageURL); imageURL != "" {
+				return []string{imageURL}
+			}
+		}
+	}
+	for _, skc := range product.SKCList {
+		for _, image := range skc.ImageInfo.ImageInfoList {
+			if imageURL := strings.TrimSpace(image.ImageURL); imageURL != "" {
+				return []string{imageURL}
+			}
+		}
+	}
+	return nil
 }
 
 func buildSubmitContentFeatures(product *sheinproduct.Product) string {
@@ -208,14 +241,104 @@ func applySubmitContent(product *sheinproduct.Product, title, description string
 	if product == nil {
 		return
 	}
+	title = truncateSubmitTitle(strings.TrimSpace(title), 800)
+	description = truncateSubmitDescription(strings.TrimSpace(description), 5000)
 	product.MultiLanguageNameList = []sheinproduct.LanguageContent{{
 		Language: "en",
-		Name:     truncateSubmitTitle(strings.TrimSpace(title), 800),
+		Name:     title,
 	}}
 	product.MultiLanguageDescList = []sheinproduct.LanguageContent{{
 		Language: "en",
-		Name:     truncateSubmitDescription(strings.TrimSpace(description), 5000),
+		Name:     description,
 	}}
+	applySubmitSKCContent(product, title)
+}
+
+func applySubmitSKCContent(product *sheinproduct.Product, title string) {
+	if product == nil {
+		return
+	}
+	for skcIndex := range product.SKCList {
+		skc := &product.SKCList[skcIndex]
+		suffix := submitprep.FirstLocalizedText(skc.MultiLanguageNameList)
+		if strings.TrimSpace(suffix) == "" {
+			suffix = strings.TrimSpace(skc.MultiLanguageName.Name)
+		}
+		name := buildSubmitSKCTitle(title, suffix)
+		skc.MultiLanguageName = sheinproduct.LanguageContent{Language: "en", Name: name}
+		skc.MultiLanguageNameList = []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     name,
+		}}
+	}
+}
+
+func buildSubmitSKCTitle(title, suffix string) string {
+	title = strings.TrimSpace(title)
+	suffix = strings.TrimSpace(suffix)
+	if title == "" {
+		return truncateSubmitTitle(suffix, 200)
+	}
+	if suffix == "" {
+		return truncateSubmitTitle(title, 200)
+	}
+	if strings.Contains(strings.ToLower(title), strings.ToLower(suffix)) {
+		return truncateSubmitTitle(title, 200)
+	}
+	return truncateSubmitTitle(title+" - "+suffix, 200)
+}
+
+func strengthenSubmitTitle(title, sourceTitle, sourceDescription string) string {
+	title = strings.TrimSpace(title)
+	if len(title) >= 90 {
+		return truncateSubmitTitle(title, 800)
+	}
+	extra := firstSubmitSentence(sourceDescription)
+	if extra == "" {
+		extra = strings.TrimSpace(sourceTitle)
+	}
+	extra = strings.TrimSpace(extra)
+	if submitprep.TextNeedsTranslation(extra, "en") {
+		extra = ""
+	}
+	if extra == "" || strings.Contains(strings.ToLower(title), strings.ToLower(extra)) {
+		return truncateSubmitTitle(title, 800)
+	}
+	return truncateSubmitTitle(title+" - "+extra, 800)
+}
+
+func strengthenSubmitDescription(description, sourceDescription string) string {
+	description = strings.TrimSpace(description)
+	if len(description) >= 220 {
+		return truncateSubmitDescription(description, 5000)
+	}
+	extra := strings.TrimSpace(sourceDescription)
+	if submitprep.TextNeedsTranslation(extra, "en") {
+		extra = ""
+	}
+	if extra == "" || strings.Contains(strings.ToLower(description), strings.ToLower(extra)) {
+		return truncateSubmitDescription(description, 5000)
+	}
+	joined := description
+	if joined != "" && !strings.HasSuffix(joined, ".") {
+		joined += "."
+	}
+	if joined != "" {
+		joined += " "
+	}
+	joined += extra
+	return truncateSubmitDescription(strings.TrimSpace(joined), 5000)
+}
+
+func firstSubmitSentence(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if index := strings.IndexAny(text, ".!?;\n"); index > 0 {
+		text = text[:index]
+	}
+	return strings.TrimSpace(text)
 }
 
 func translateSubmitProductContent(product *sheinproduct.Product, api sheintranslateapi.TranslateAPI, region string) error {

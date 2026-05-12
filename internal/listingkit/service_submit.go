@@ -86,6 +86,7 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		}
 		return nil, err
 	}
+	dumpSheinSubmitPayloadForDebug(taskID, action, requestID, "prepared", submitProduct)
 	setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
 	if sheinProductPendingImageUploadCount(submitProduct) > 0 {
 		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseUploadImages); err != nil {
@@ -97,6 +98,8 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 			}
 			return nil, err
 		}
+		prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(task))
+		dumpSheinSubmitPayloadForDebug(taskID, action, requestID, "uploaded", submitProduct)
 	}
 
 	if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhasePreValidate); err != nil {
@@ -174,11 +177,14 @@ func normalizedSubmitIdempotencyKey(req *SubmitTaskRequest) string {
 	if req == nil {
 		return ""
 	}
-	return strings.TrimSpace(req.IdempotencyKey)
+	if value := strings.TrimSpace(req.IdempotencyKey); value != "" {
+		return value
+	}
+	return strings.TrimSpace(req.RequestID)
 }
 
 func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
-	normalizeSheinStudioSubmitSupplierSKUs(task, pkg)
+	normalizeSheinStudioSubmitSupplierSKUs(task, pkg, normalizedSubmitIdempotencyKey(req))
 	if pkg.Pricing == nil || !pkg.Pricing.Ready {
 		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), nil)
 		applySheinPricingReview(pkg, review)

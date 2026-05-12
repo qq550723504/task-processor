@@ -94,8 +94,25 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 	if submitted == nil {
 		t.Fatal("expected publish payload to be captured")
 	}
-	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != 0 {
-		t.Fatalf("submitted SPU image info = %+v, want empty for publish payload", submitted.ImageInfo)
+	expectedSPUImages := append([]string(nil), uploaded...)
+	expectedSPUImages = append(expectedSPUImages, uploaded[0])
+	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != len(expectedSPUImages) {
+		t.Fatalf("submitted SPU image info = %+v, want normalized uploaded SPU images", submitted.ImageInfo)
+	}
+	for index, image := range submitted.ImageInfo.ImageInfoList {
+		if image.ImageURL != expectedSPUImages[index] {
+			t.Fatalf("submitted SPU image %d = %q, want uploaded %q", index, image.ImageURL, expectedSPUImages[index])
+		}
+		wantType := 2
+		if index == 0 {
+			wantType = 1
+		}
+		if index == len(expectedSPUImages)-1 {
+			wantType = 5
+		}
+		if image.ImageType != wantType {
+			t.Fatalf("submitted SPU image %d type = %d, want %d", index, image.ImageType, wantType)
+		}
 	}
 	expectedSKCImages := append([]string(nil), uploaded...)
 	expectedSKCImages = append(expectedSKCImages, uploaded[0])
@@ -123,8 +140,11 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 			t.Fatalf("submitted SKC image still uses source image: %q", sourceImage)
 		}
 	}
-	if len(submitted.SKCList[0].SKUS) != 1 || submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 0 {
-		t.Fatalf("submitted SKU image info = %+v, want empty for publish payload", submitted.SKCList[0].SKUS)
+	if len(submitted.SKCList[0].SKUS) != 1 || submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 1 {
+		t.Fatalf("submitted SKU image info = %+v, want preserved uploaded SKU image", submitted.SKCList[0].SKUS)
+	}
+	if got := submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList[0].ImageURL; got != uploaded[0] {
+		t.Fatalf("submitted SKU image url = %q, want uploaded %q", got, uploaded[0])
 	}
 	if len(imageAPI.calls) != len(rendered) {
 		t.Fatalf("upload calls = %+v, want %d unique uploads", imageAPI.calls, len(rendered))
@@ -307,6 +327,46 @@ func TestSubmitTaskSaveDraftAllowsMissingStrictPublishImageRoles(t *testing.T) {
 	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft"})
 	if err != nil {
 		t.Fatalf("save draft should allow missing strict publish image roles: %v", err)
+	}
+}
+
+func TestSubmitTaskSaveDraftDoesNotRequireFinalConfirmation(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       false,
+		MainImageURL:    sourceImage,
+		FinalImageOrder: []string{sourceImage},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: sourceImage,
+		Gallery:   []string{sourceImage},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{sourceImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{sourceImage})
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "OK"},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft"}); err != nil {
+		t.Fatalf("save draft should not require final confirmation: %v", err)
 	}
 }
 

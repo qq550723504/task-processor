@@ -313,6 +313,9 @@ type stubSheinProductAPI struct {
 	recordResponse  *sheinproduct.RecordResponse
 	recordErr       error
 	recordHook      func(*sheinproduct.ProductRecordRequest)
+	inventoryResp   *sheinproduct.InventoryQueryResponse
+	inventoryErr    error
+	inventoryHook   func(string)
 }
 
 func (s stubSheinProductAPI) GetProduct(productID string) (*sheinproduct.Product, error) {
@@ -362,7 +365,10 @@ func (s stubSheinProductAPI) QueryStock(request *sheinproduct.StockQueryRequest)
 	return nil, errors.New("not implemented")
 }
 func (s stubSheinProductAPI) QueryInventory(spuName string) (*sheinproduct.InventoryQueryResponse, error) {
-	return nil, errors.New("not implemented")
+	if s.inventoryHook != nil {
+		s.inventoryHook(spuName)
+	}
+	return s.inventoryResp, s.inventoryErr
 }
 func (s stubSheinProductAPI) UpdateInventory(request *sheinproduct.InventoryUpdateRequest) error {
 	return errors.New("not implemented")
