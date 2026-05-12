@@ -1,12 +1,14 @@
 package sale
 
 import (
+	"fmt"
 	"strings"
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	sheinattr "task-processor/internal/shein/product/attribute"
+	sheinsku "task-processor/internal/shein/product/sku"
 )
 
 // validateAndFixSaleAttributeData 验证并修复销售属性数据
@@ -24,6 +26,9 @@ func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data sheinattr.Re
 
 	// 4. 验证变体属性完整性（关键修复）
 	data = h.validateVariantAttributes(data, productsData)
+
+	// 5. 修复缺失或不可解析的变体重量，避免后续被兜底为 0.01g
+	data = h.repairVariantWeights(data, productsData)
 
 	logger.GetGlobalLogger("shein/product").Info("销售属性数据验证和修复完成")
 	return data
@@ -225,6 +230,62 @@ func (h *SaleAttributeHandler) validateVariantAttributes(data sheinattr.ResultSa
 	}
 
 	return data
+}
+
+func (h *SaleAttributeHandler) repairVariantWeights(data sheinattr.ResultSaleAttribute, products []map[string]string) sheinattr.ResultSaleAttribute {
+	logger.GetGlobalLogger("shein/product").Info("🔧 开始修复变体重量")
+
+	weightParser := sheinsku.NewSKUUtils()
+	sourceWeights := make(map[string]string, len(products))
+	fallbackWeight := ""
+
+	for _, product := range products {
+		asin := strings.TrimSpace(product["asin"])
+		weight := strings.TrimSpace(product["weight"])
+		if asin != "" && weight != "" {
+			sourceWeights[asin] = weight
+		}
+		if fallbackWeight == "" && weightParser.ParseWeight(weight) > 0 {
+			fallbackWeight = formatVariantWeightInGrams(weightParser.ParseWeight(weight))
+		}
+	}
+
+	fixedCount := 0
+	for i := range data.Variants {
+		currentWeight := strings.TrimSpace(data.Variants[i].Weight.String())
+		if weightParser.ParseWeight(currentWeight) > 0 {
+			continue
+		}
+
+		repairedWeight := ""
+		if sourceWeight := strings.TrimSpace(sourceWeights[data.Variants[i].ASIN]); weightParser.ParseWeight(sourceWeight) > 0 {
+			repairedWeight = formatVariantWeightInGrams(weightParser.ParseWeight(sourceWeight))
+		} else if fallbackWeight != "" {
+			repairedWeight = fallbackWeight
+		}
+
+		if repairedWeight == "" {
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 变体 %s 缺少可用重量，无法修复", data.Variants[i].ASIN)
+			continue
+		}
+
+		data.Variants[i].Weight = types.FlexibleString(repairedWeight)
+		fixedCount++
+		logger.GetGlobalLogger("shein/product").Infof("✅ 已修复变体 %s 的重量为 %sg", data.Variants[i].ASIN, repairedWeight)
+	}
+
+	if fixedCount > 0 {
+		logger.GetGlobalLogger("shein/product").Infof("✅ 共修复 %d 个变体重量", fixedCount)
+	}
+	return data
+}
+
+func formatVariantWeightInGrams(weight float64) string {
+	trimmed := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", weight), "0"), ".")
+	if trimmed == "" {
+		return "0"
+	}
+	return trimmed
 }
 
 // filterValidASINs 过滤有效的ASIN
