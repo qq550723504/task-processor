@@ -101,9 +101,15 @@ func (c *Client) hasLoginServiceBootstrap() bool {
 		return false
 	}
 	cfg := c.config.AuthBootstrap
-	return strings.TrimSpace(cfg.LoginServiceBaseURL) != "" &&
-		strings.TrimSpace(cfg.LoginServiceTenantID) != "" &&
-		strings.TrimSpace(cfg.LoginServiceIdentifier) != ""
+	tenantID := strings.TrimSpace(cfg.LoginServiceTenantID)
+	identifier := strings.TrimSpace(cfg.LoginServiceIdentifier)
+	if tenantID == "" || identifier == "" {
+		return false
+	}
+	if loadLocalLoginProvider() != nil {
+		return true
+	}
+	return strings.TrimSpace(cfg.LoginServiceBaseURL) != ""
 }
 
 func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error {
@@ -114,6 +120,10 @@ func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error
 	baseURL := strings.TrimSpace(cfg.LoginServiceBaseURL)
 	tenantID := strings.TrimSpace(cfg.LoginServiceTenantID)
 	identifier := strings.TrimSpace(cfg.LoginServiceIdentifier)
+
+	if localProvider := loadLocalLoginProvider(); localProvider != nil {
+		return nil
+	}
 
 	requestCtx := ctx
 	if requestCtx == nil {
@@ -337,7 +347,36 @@ func (c *Client) loadLoginServiceBootstrap(ctx context.Context) (*bootstrapMater
 	baseURL := strings.TrimSpace(cfg.LoginServiceBaseURL)
 	tenantID := strings.TrimSpace(cfg.LoginServiceTenantID)
 	identifier := strings.TrimSpace(cfg.LoginServiceIdentifier)
-	if baseURL == "" || tenantID == "" || identifier == "" {
+	if tenantID == "" || identifier == "" {
+		return nil, nil
+	}
+	if localProvider := loadLocalLoginProvider(); localProvider != nil {
+		payload, err := localProvider.LoadAuthState(ctx, tenantID, identifier)
+		if err != nil {
+			return nil, fmt.Errorf("load local SDS auth state: %w", err)
+		}
+		if payload == nil || strings.TrimSpace(payload.AccessToken) == "" {
+			return nil, nil
+		}
+		material := &bootstrapMaterial{
+			authState: &AuthState{
+				AccessToken: payload.AccessToken,
+				OutToken:    payload.OutToken,
+				MerchantID:  payload.MerchantID,
+				UserID:      payload.UserID,
+				Username:    payload.Username,
+			},
+			source: payload.Source,
+		}
+		for _, item := range payload.Cookies {
+			if item == nil || strings.TrimSpace(item.Name) == "" {
+				continue
+			}
+			material.cookies = append(material.cookies, item.toHTTPCookie())
+		}
+		return material, nil
+	}
+	if baseURL == "" {
 		return nil, nil
 	}
 

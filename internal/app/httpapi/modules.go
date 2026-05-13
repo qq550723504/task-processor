@@ -35,6 +35,7 @@ import (
 	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
+	"task-processor/internal/sdslogin"
 	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
@@ -87,16 +88,23 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	listingKitModule, err := buildListingKitModule(logger, deps)
-	if err != nil {
-		return nil, err
-	}
 	sheinLoginHandler, sheinLoginCloser, err := buildSheinLoginModule(deps)
 	if err != nil {
 		return nil, err
 	}
 	if sheinLoginCloser != nil {
 		deps.closers = append(deps.closers, sheinLoginCloser)
+	}
+	sdsLoginHandler, sdsLoginCloser, err := buildSDSLoginModule(deps)
+	if err != nil {
+		return nil, err
+	}
+	if sdsLoginCloser != nil {
+		deps.closers = append(deps.closers, sdsLoginCloser)
+	}
+	listingKitModule, err := buildListingKitModule(logger, deps)
+	if err != nil {
+		return nil, err
 	}
 
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
@@ -113,7 +121,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	sdsCatalogHandler := buildSDSCatalogHandler(logger, deps.cfg)
 
-	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, sheinLoginHandler, taskRPCHandler, sdsCatalogHandler)
+	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
@@ -122,6 +130,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		studioSessionHandler: listingKitModule.studioSessionHandler,
 		sdsCatalogHandler:    sdsCatalogHandler,
 		sheinLoginHandler:    sheinLoginHandler,
+		sdsLoginHandler:      sdsLoginHandler,
 		taskRPCHandler:       taskRPCHandler,
 		server:               server,
 		routes:               routes,
@@ -150,6 +159,15 @@ func buildSDSCatalogHandler(logger *logrus.Logger, cfg *config.Config) sdsCatalo
 		return newSDSCatalogHandler(nil)
 	}
 	return newSDSCatalogHandler(sdstemplate.NewService(sdsHTTPClient))
+}
+
+func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error, error) {
+	if deps == nil || deps.cfg == nil {
+		return nil, nil, nil
+	}
+	svc := sdslogin.NewService(deps.cfg.Platforms.SDS.LoginService, deps.cfg.Browser)
+	sdsclient.ConfigureLocalLoginProvider(svc)
+	return sdslogin.NewHandler(svc), nil, nil
 }
 
 func buildSDSClientConfig(cfg *config.Config) *sdsclient.Config {
