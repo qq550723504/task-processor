@@ -33,6 +33,7 @@ func TestRunWorkflowReusesCanonicalProductCacheWithoutSkippingDownstreamAssembly
 		Repository:     repo,
 		ProductService: productSvc,
 		Assembler:      assembler,
+		TaskSubmitter:  noopTaskSubmitter{},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -79,6 +80,10 @@ func TestRunWorkflowReusesCanonicalProductCacheWithoutSkippingDownstreamAssembly
 		t.Fatalf("second child tasks = %+v, want completed product_enrich cache hit", secondResult.ChildTasks)
 	}
 }
+
+type noopTaskSubmitter struct{}
+
+func (noopTaskSubmitter) Submit(string) error { return nil }
 
 func canonicalProductCacheTestRequest(sdsTitle string) *GenerateRequest {
 	req := &GenerateRequest{

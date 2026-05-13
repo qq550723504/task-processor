@@ -257,4 +257,47 @@ func TestUpdateSheinFinalDraftPreservesExistingDraftPrice(t *testing.T) {
 	if got := saved.Result.Shein.Pricing.SKUPrices[0].FinalPrice; got != 21.99 {
 		t.Fatalf("saved final price = %v, want 21.99", got)
 	}
+	if repo.mutateCalls == 0 {
+		t.Fatal("expected UpdateSheinFinalDraft to persist through mutate task result")
+	}
+	if repo.saveCalls != 0 {
+		t.Fatalf("save calls = %d, want 0 when transaction mutation is available", repo.saveCalls)
+	}
+}
+
+func TestPreviewSheinPriceApplyToTaskUsesMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	review, err := svc.PreviewSheinPrice(context.Background(), task.ID, &SheinPricePreviewRequest{
+		ApplyToTask: true,
+		ManualOverrides: map[string]float64{
+			"SKU-1": 29.99,
+		},
+	})
+	if err != nil {
+		t.Fatalf("preview shein price: %v", err)
+	}
+	if review == nil || len(review.SKUPrices) != 1 || review.SKUPrices[0].FinalPrice != 29.99 {
+		t.Fatalf("review = %+v, want persisted manual override", review)
+	}
+	if repo.mutateCalls == 0 {
+		t.Fatal("expected PreviewSheinPrice(apply_to_task=true) to persist through mutate task result")
+	}
+	if repo.saveCalls != 0 {
+		t.Fatalf("save calls = %d, want 0 when transaction mutation is available", repo.saveCalls)
+	}
 }

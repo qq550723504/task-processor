@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/tenantctx"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type taskRepository struct {
@@ -53,27 +55,35 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 		db = db.Where("status = ?", query.Status)
 	}
 
-	if query != nil && query.Platform != "" {
-		var all []listingkit.Task
-		if err := db.Order("created_at DESC").Find(&all).Error; err != nil {
+	if query != nil && (query.Platform != "" || query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
+		var candidates []taskListFilterRow
+		columns := []string{"id", "created_at", "status"}
+		if query.Platform != "" || query.SheinWorkQueue != "" {
+			columns = append(columns, "request")
+		}
+		if query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
+			columns = append(columns, "result")
+		}
+		if err := db.Select(columns).Order("created_at DESC").Find(&candidates).Error; err != nil {
 			return nil, 0, err
 		}
-		filtered := make([]listingkit.Task, 0, len(all))
-		for i := range all {
-			if taskHasPlatform(&all[i], query.Platform) {
-				filtered = append(filtered, all[i])
+		filteredIDs := make([]string, 0, len(candidates))
+		for i := range candidates {
+			if !matchesTaskListFilterRow(&candidates[i], query) {
+				continue
 			}
+			filteredIDs = append(filteredIDs, candidates[i].ID)
 		}
-		total := int64(len(filtered))
+		total := int64(len(filteredIDs))
 		start := (page - 1) * pageSize
-		if start >= len(filtered) {
+		if start >= len(filteredIDs) {
 			return []listingkit.Task{}, total, nil
 		}
 		end := start + pageSize
-		if end > len(filtered) {
-			end = len(filtered)
+		if end > len(filteredIDs) {
+			end = len(filteredIDs)
 		}
-		return filtered[start:end], total, nil
+		return r.loadTasksByIDs(ctx, filteredIDs[start:end], total)
 	}
 
 	var total int64
@@ -85,6 +95,103 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 		return nil, 0, err
 	}
 	return tasks, total, nil
+}
+
+func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, error) {
+	db := applyTenantScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx, "tenant_id")
+	if query != nil && query.Status != "" {
+		db = db.Where("status = ?", query.Status)
+	}
+
+	if query != nil && (query.Platform != "" || query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
+		var candidates []taskListFilterRow
+		columns := []string{"id", "created_at", "status"}
+		if query.Platform != "" || query.SheinWorkQueue != "" {
+			columns = append(columns, "request")
+		}
+		if query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
+			columns = append(columns, "result")
+		}
+		if err := db.Select(columns).Order("created_at DESC").Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+		filteredIDs := make([]string, 0, len(candidates))
+		for i := range candidates {
+			if !matchesTaskListFilterRow(&candidates[i], query) {
+				continue
+			}
+			filteredIDs = append(filteredIDs, candidates[i].ID)
+		}
+		tasks, _, err := r.loadTasksByIDs(ctx, filteredIDs, int64(len(filteredIDs)))
+		return tasks, err
+	}
+
+	var tasks []listingkit.Task
+	if err := db.Order("created_at DESC").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+type taskListFilterRow struct {
+	ID        string    `gorm:"column:id"`
+	Status    string    `gorm:"column:status"`
+	Request   string    `gorm:"column:request"`
+	Result    string    `gorm:"column:result"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+}
+
+type taskListFilterRequest struct {
+	Platforms []string `json:"platforms,omitempty"`
+}
+
+type taskListFilterResult struct {
+	Shein *sheinpub.Package `json:"shein,omitempty"`
+}
+
+func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskListQuery) bool {
+	if row == nil {
+		return false
+	}
+	task := &listingkit.Task{}
+	task.Status = listingkit.TaskStatus(row.Status)
+	if query != nil && (query.Platform != "" || query.SheinWorkQueue != "") {
+		var request taskListFilterRequest
+		if err := json.Unmarshal([]byte(row.Request), &request); err == nil {
+			task.Request = &listingkit.GenerateRequest{Platforms: request.Platforms}
+		}
+	}
+	if query != nil && (query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
+		var result taskListFilterResult
+		if err := json.Unmarshal([]byte(row.Result), &result); err == nil {
+			task.Result = &listingkit.ListingKitResult{Shein: result.Shein}
+		}
+	}
+	return listingkit.TaskMatchesListQuery(task, query)
+}
+
+func (r *taskRepository) loadTasksByIDs(ctx context.Context, ids []string, total int64) ([]listingkit.Task, int64, error) {
+	if len(ids) == 0 {
+		return []listingkit.Task{}, total, nil
+	}
+	var tasks []listingkit.Task
+	db := applyTenantScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx, "tenant_id")
+	if err := db.Where("id IN ?", ids).Find(&tasks).Error; err != nil {
+		return nil, 0, err
+	}
+	order := make(map[string]int, len(ids))
+	for i, id := range ids {
+		order[id] = i
+	}
+	ordered := make([]listingkit.Task, len(ids))
+	for _, task := range tasks {
+		index, ok := order[task.ID]
+		if !ok {
+			continue
+		}
+		ordered[index] = task
+	}
+	return ordered, total, nil
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {

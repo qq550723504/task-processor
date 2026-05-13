@@ -5,24 +5,44 @@ import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
+  buildFacetSummarySections,
+  descriptorOptions,
+  facetDescriptorLabel,
   formatDate,
   PLATFORM_OPTIONS,
   primaryLinkClass,
+  queueTone,
   secondaryLinkClass,
+  sheinActionQueueLabel,
+  sheinWorkQueueLabel,
   SHEIN_WORKFLOW_OPTIONS,
+  SHEIN_ACTION_QUEUE_OPTIONS,
+  SHEIN_WORK_QUEUE_OPTIONS,
   STATUS_OPTIONS,
   statusTone,
   taskStatusLabel,
   taskTitle,
+  taxonomySeverity,
 } from "@/components/listingkit/tasks/task-list-page-model";
 import {
   sheinSubmissionRemoteStatusLabel,
   sheinSubmissionStatusLabel,
   sheinWorkflowStatusLabel,
 } from "@/lib/shein-studio/shein-submission-display";
-import type { ListingKitTaskListItem } from "@/lib/types/listingkit";
+import type {
+  ListingKitTaskListItem,
+  ListingKitTaskListSummary,
+  ListingKitTaskListTaxonomy,
+} from "@/lib/types/listingkit";
 
-type FilterKey = "status" | "platform" | "shein_workflow_status";
+type FilterKey =
+  | "status"
+  | "platform"
+  | "shein_workflow_status"
+  | "shein_work_queue"
+  | "shein_action_queue"
+  | "shein_blocker_key"
+  | "shein_warning_key";
 
 export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
   return (
@@ -54,17 +74,156 @@ export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
 
 export function TaskListFilters({
   platform,
+  sheinActionQueue,
+  sheinBlockerKey,
   sheinWorkflowStatus,
+  sheinWarningKey,
+  sheinWorkQueue,
   status,
+  summary,
+  taxonomy,
   total,
+  updateFilters,
   updateFilter,
 }: {
   platform: string;
+  sheinActionQueue: string;
+  sheinBlockerKey: string;
   sheinWorkflowStatus: string;
+  sheinWarningKey: string;
+  sheinWorkQueue: string;
   status: string;
+  summary?: ListingKitTaskListSummary;
+  taxonomy?: ListingKitTaskListTaxonomy;
   total: number;
+  updateFilters: (updates: Partial<Record<FilterKey, string | null>>) => void;
   updateFilter: (key: FilterKey, value: string) => void;
 }) {
+  const workflowOptions = descriptorOptions(
+    taxonomy?.shein_workflow_statuses,
+    SHEIN_WORKFLOW_OPTIONS,
+    "全部 SHEIN 状态",
+  );
+  const workQueueOptions = descriptorOptions(
+    taxonomy?.shein_work_queues,
+    SHEIN_WORK_QUEUE_OPTIONS,
+    "全部工作队列",
+  );
+  const actionQueueOptions = descriptorOptions(
+    taxonomy?.shein_action_queues,
+    SHEIN_ACTION_QUEUE_OPTIONS,
+    "全部处理动作",
+  );
+  const blockerOptions = descriptorOptions(
+    taxonomy?.shein_blockers,
+    [],
+    "全部阻断项",
+  );
+  const warningOptions = descriptorOptions(
+    taxonomy?.shein_warnings,
+    [],
+    "全部待确认项",
+  );
+  const summarySections = buildFacetSummarySections(summary, taxonomy);
+  const activeFacetValueByKey: Record<FilterKey, string> = {
+    platform,
+    shein_action_queue: sheinActionQueue,
+    shein_blocker_key: sheinBlockerKey,
+    shein_warning_key: sheinWarningKey,
+    shein_work_queue: sheinWorkQueue,
+    shein_workflow_status: sheinWorkflowStatus,
+    status,
+  };
+  const activeFilters = [
+    status
+      ? {
+          key: "status" as const,
+          label: facetDescriptorLabel(status, undefined, STATUS_OPTIONS),
+        }
+      : null,
+    platform
+      ? {
+          key: "platform" as const,
+          label: facetDescriptorLabel(platform, undefined, PLATFORM_OPTIONS),
+        }
+      : null,
+    sheinWorkflowStatus
+      ? {
+          key: "shein_workflow_status" as const,
+          label: facetDescriptorLabel(
+            sheinWorkflowStatus,
+            taxonomy?.shein_workflow_statuses,
+            SHEIN_WORKFLOW_OPTIONS,
+          ),
+        }
+      : null,
+    sheinWorkQueue
+      ? {
+          key: "shein_work_queue" as const,
+          label: facetDescriptorLabel(
+            sheinWorkQueue,
+            taxonomy?.shein_work_queues,
+            SHEIN_WORK_QUEUE_OPTIONS,
+          ),
+        }
+      : null,
+    sheinActionQueue
+      ? {
+          key: "shein_action_queue" as const,
+          label: facetDescriptorLabel(
+            sheinActionQueue,
+            taxonomy?.shein_action_queues,
+            SHEIN_ACTION_QUEUE_OPTIONS,
+          ),
+        }
+      : null,
+    sheinBlockerKey
+      ? {
+          key: "shein_blocker_key" as const,
+          label: facetDescriptorLabel(sheinBlockerKey, taxonomy?.shein_blockers, []),
+        }
+      : null,
+    sheinWarningKey
+      ? {
+          key: "shein_warning_key" as const,
+          label: facetDescriptorLabel(sheinWarningKey, taxonomy?.shein_warnings, []),
+        }
+      : null,
+  ].filter((item): item is { key: FilterKey; label: string } => Boolean(item));
+
+  const applySummaryFilter = (key: FilterKey, value: string) => {
+    if (key === "shein_work_queue") {
+      updateFilters({
+        shein_work_queue: sheinWorkQueue === value ? null : value,
+        shein_action_queue: null,
+        shein_blocker_key: null,
+        shein_warning_key: null,
+      });
+      return;
+    }
+    if (key === "shein_action_queue") {
+      updateFilters({
+        shein_action_queue: sheinActionQueue === value ? null : value,
+        shein_blocker_key: null,
+        shein_warning_key: null,
+      });
+      return;
+    }
+    if (key === "shein_blocker_key") {
+      updateFilters({
+        shein_blocker_key: sheinBlockerKey === value ? null : value,
+        shein_warning_key: null,
+      });
+      return;
+    }
+    if (key === "shein_warning_key") {
+      updateFilters({
+        shein_warning_key: sheinWarningKey === value ? null : value,
+        shein_blocker_key: null,
+      });
+    }
+  };
+
   return (
     <Card className="border-white/70 bg-white/82 p-4">
       <div className="flex flex-wrap gap-3">
@@ -86,7 +245,29 @@ export function TaskListFilters({
             updateFilter("shein_workflow_status", event.target.value)
           }
         >
-          {SHEIN_WORKFLOW_OPTIONS.map((option) => (
+          {workflowOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+            ))}
+        </select>
+        <select
+          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+          value={sheinWorkQueue}
+          onChange={(event) => updateFilter("shein_work_queue", event.target.value)}
+        >
+          {workQueueOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <select
+          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+          value={sheinActionQueue}
+          onChange={(event) => updateFilter("shein_action_queue", event.target.value)}
+        >
+          {actionQueueOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
@@ -103,11 +284,120 @@ export function TaskListFilters({
             </option>
           ))}
         </select>
+        {blockerOptions.length > 1 ? (
+          <select
+            className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+            value={sheinBlockerKey}
+            onChange={(event) => updateFilter("shein_blocker_key", event.target.value)}
+          >
+            {blockerOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {warningOptions.length > 1 ? (
+          <select
+            className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+            value={sheinWarningKey}
+            onChange={(event) => updateFilter("shein_warning_key", event.target.value)}
+          >
+            {warningOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <div className="ml-auto flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
           <Boxes className="h-4 w-4" />
           {total} 个任务
         </div>
       </div>
+      {activeFilters.length ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            当前筛选
+          </p>
+          {activeFilters.map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => updateFilter(filter.key, "")}
+              className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-950 hover:text-zinc-950"
+            >
+              {filter.label}
+            </button>
+          ))}
+          {activeFilters.length > 1 ? (
+            <button
+              type="button"
+              onClick={() =>
+                updateFilters({
+                  platform: null,
+                  shein_action_queue: null,
+                  shein_blocker_key: null,
+                  shein_warning_key: null,
+                  shein_work_queue: null,
+                  shein_workflow_status: null,
+                  status: null,
+                })
+              }
+              className="text-xs font-medium text-zinc-500 transition hover:text-zinc-900"
+            >
+              清空全部
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {summarySections.length ? (
+        <div className="mt-4 grid gap-3">
+          {summarySections.map((section) => (
+            <div key={section.filterKey} className="grid gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  {section.title}
+                </p>
+                {activeFacetValueByKey[section.filterKey] ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateFilter(section.filterKey, "")
+                    }
+                    className="text-[11px] font-medium text-zinc-500 transition hover:text-zinc-900"
+                  >
+                    清除
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {section.entries.map((entry) => {
+                  const active =
+                    activeFacetValueByKey[section.filterKey] === entry.key;
+                  return (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      onClick={() =>
+                        applySummaryFilter(section.filterKey, entry.key)
+                      }
+                      aria-pressed={active}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        active
+                          ? "border-zinc-950 bg-zinc-950 text-white"
+                          : queueTone(entry.severity)
+                      }`}
+                    >
+                      {entry.label} · {entry.count}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -117,11 +407,21 @@ export function TaskListContent({
   isLoading,
   items,
   onRefresh,
+  page,
+  pageSize,
+  total,
+  taxonomy,
+  updatePage,
 }: {
   isError: boolean;
   isLoading: boolean;
   items: ListingKitTaskListItem[];
   onRefresh: () => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  taxonomy?: ListingKitTaskListTaxonomy;
+  updatePage: (page: number) => void;
 }) {
   if (isLoading) {
     return (
@@ -157,20 +457,67 @@ export function TaskListContent({
       />
     );
   }
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(pageSize, 1)));
+  const startItem = total > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endItem = total > 0 ? Math.min(page * pageSize, total) : 0;
+
   return (
     <div className="grid gap-4">
       {items.map((task) => (
-        <TaskRow key={task.task_id} task={task} />
+        <TaskRow key={task.task_id} task={task} taxonomy={taxonomy} />
       ))}
+      {totalPages > 1 ? (
+        <Card className="border-white/70 bg-white/82 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-zinc-500">
+              第 {page} / {totalPages} 页
+              <span className="ml-2 text-zinc-400">
+                {startItem}-{endItem} / {total}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                tone="secondary"
+                disabled={page <= 1}
+                onClick={() => updatePage(page - 1)}
+              >
+                上一页
+              </Button>
+              <Button
+                tone="secondary"
+                disabled={page >= totalPages}
+                onClick={() => updatePage(page + 1)}
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }
 
-function TaskRow({ task }: { task: ListingKitTaskListItem }) {
+function TaskRow({
+  task,
+  taxonomy,
+}: {
+  task: ListingKitTaskListItem;
+  taxonomy?: ListingKitTaskListTaxonomy;
+}) {
   const workspaceHref = `/listing-kits/${task.task_id}/workspace?platform=${task.platforms?.[0] ?? "shein"}`;
   const remoteCheckedAt = task.shein_submission_remote_checked_at
     ? formatDate(task.shein_submission_remote_checked_at)
     : null;
+  const sheinOverview = task.shein_status_overview;
+  const workQueueSeverity = taxonomySeverity(
+    task.shein_work_queue,
+    taxonomy?.shein_work_queues,
+  );
+  const actionQueueSeverity = taxonomySeverity(
+    task.shein_action_queue,
+    taxonomy?.shein_action_queues,
+  );
 
   return (
     <Card className="group border-white/70 bg-white/88 p-5 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
@@ -190,6 +537,20 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
             {task.shein_workflow_status ? (
               <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-700">
                 {sheinWorkflowStatusLabel(task.shein_workflow_status)}
+              </span>
+            ) : null}
+            {task.shein_work_queue ? (
+              <span
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${queueTone(workQueueSeverity)}`}
+              >
+                {sheinWorkQueueLabel(task.shein_work_queue, taxonomy)}
+              </span>
+            ) : null}
+            {task.shein_action_queue ? (
+              <span
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${queueTone(actionQueueSeverity)}`}
+              >
+                {sheinActionQueueLabel(task.shein_action_queue, taxonomy)}
               </span>
             ) : null}
             {task.shein_submission_remote_status ? (
@@ -219,6 +580,27 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
             <p className="mt-1 truncate text-sm text-zinc-500">
               {task.variant_label}
             </p>
+          ) : null}
+          {sheinOverview?.headline ? (
+            <p className="mt-2 text-sm font-medium text-zinc-700">
+              {sheinOverview.headline}
+            </p>
+          ) : null}
+          {sheinOverview?.subheadline ? (
+            <p className="mt-1 text-sm text-zinc-500">{sheinOverview.subheadline}</p>
+          ) : null}
+          {sheinOverview ? (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
+              {typeof sheinOverview.blocking_count === "number" ? (
+                <span>阻断 {sheinOverview.blocking_count}</span>
+              ) : null}
+              {typeof sheinOverview.warning_count === "number" ? (
+                <span>待确认 {sheinOverview.warning_count}</span>
+              ) : null}
+              {sheinOverview.primary_action ? (
+                <span>下一步 {sheinOverview.primary_action}</span>
+              ) : null}
+            </div>
           ) : null}
           {task.error ? (
             <p className="mt-2 line-clamp-2 text-sm text-rose-600">

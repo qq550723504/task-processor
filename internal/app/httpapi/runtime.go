@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/sirupsen/logrus"
@@ -50,6 +51,13 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	llmMgr, err := productenrich.NewLLMManagerAdapterFromManager(openaiMgr)
 	if err != nil {
 		return nil, fmt.Errorf("create LLM manager: %w", err)
+	}
+	if productenrich.IsMockLLMEnabled(os.Getenv(productenrich.ProductEnrichMockLLMEnv)) {
+		logger.WithField("env", productenrich.ProductEnrichMockLLMEnv).Warn("productenrich mock LLM enabled for local runtime")
+		llmMgr = productenrich.NewLocalMockLLMManager()
+	}
+	if err := productenrich.ValidateMockLLMManager(llmMgr); err != nil {
+		return nil, fmt.Errorf("validate LLM manager: %w", err)
 	}
 
 	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)

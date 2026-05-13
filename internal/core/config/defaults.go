@@ -179,6 +179,11 @@ func setSDSDefaults(v *viper.Viper, p *SDSPlatformConfig) {
 	v.SetDefault("platforms.sds.loginService.merchantName", p.LoginService.MerchantName)
 	v.SetDefault("platforms.sds.loginService.username", p.LoginService.Username)
 	v.SetDefault("platforms.sds.loginService.password", p.LoginService.Password)
+	v.SetDefault("platforms.sds.loginService.maxConcurrentLogins", p.LoginService.MaxConcurrentLogins)
+	v.SetDefault("platforms.sds.loginService.profileRootDir", p.LoginService.ProfileRootDir)
+	v.SetDefault("platforms.sds.loginService.artifactDir", p.LoginService.ArtifactDir)
+	v.SetDefault("platforms.sds.loginService.defaultHeadless", p.LoginService.DefaultHeadless)
+	v.SetDefault("platforms.sds.loginService.adminPageEnabled", p.LoginService.AdminPageEnabled)
 }
 
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
@@ -234,13 +239,16 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.cookieRedis.password", p.CookieRedis.Password)
 	v.SetDefault("platforms.shein.cookieRedis.db", p.CookieRedis.DB)
 	v.SetDefault("platforms.shein.cookieRedis.pool_size", p.CookieRedis.PoolSize)
-	v.SetDefault("platforms.shein.loginService.baseURL", p.LoginService.BaseURL)
-	v.SetDefault("platforms.shein.loginService.sharedKey", p.LoginService.SharedKey)
 	v.SetDefault("platforms.shein.loginService.tenantID", p.LoginService.TenantID)
 	v.SetDefault("platforms.shein.loginService.identifier", p.LoginService.Identifier)
 	v.SetDefault("platforms.shein.loginService.merchantName", p.LoginService.MerchantName)
 	v.SetDefault("platforms.shein.loginService.username", p.LoginService.Username)
 	v.SetDefault("platforms.shein.loginService.password", p.LoginService.Password)
+	v.SetDefault("platforms.shein.loginService.maxConcurrentLogins", p.LoginService.MaxConcurrentLogins)
+	v.SetDefault("platforms.shein.loginService.profileRootDir", p.LoginService.ProfileRootDir)
+	v.SetDefault("platforms.shein.loginService.artifactDir", p.LoginService.ArtifactDir)
+	v.SetDefault("platforms.shein.loginService.defaultHeadless", p.LoginService.DefaultHeadless)
+	v.SetDefault("platforms.shein.loginService.adminPageEnabled", p.LoginService.AdminPageEnabled)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

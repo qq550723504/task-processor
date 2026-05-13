@@ -9,19 +9,19 @@ import (
 )
 
 func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
-	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, taskRPCHandler, sdsCatalogHandlers...)
+	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
 	return server
 }
 
 func buildHTTPServerWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
-	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, taskRPCHandler, sdsCatalogHandlers...)
+	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, nil, taskRPCHandler, sdsCatalogHandlers...)
 	return server
 }
 
-func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) (*http.Server, []routeDescriptor) {
+func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) (*http.Server, []routeDescriptor) {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	routes := buildRouteDescriptors(productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, taskRPCHandler, sdsCatalogHandlers...)
+	routes := buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, sheinLoginHandler, taskRPCHandler, sdsCatalogHandlers...)
 	mountRoutes(router, routes)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
@@ -31,10 +31,14 @@ func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandle
 }
 
 func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) {
-	mountRoutes(r, buildRouteDescriptors(productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, taskRPCHandler, sdsCatalogHandlers...))
+	mountRoutes(r, buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, nil, taskRPCHandler, sdsCatalogHandlers...))
 }
 
 func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
+	return buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, nil, taskRPCHandler, sdsCatalogHandlers...)
+}
+
+func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
 	routes := []routeDescriptor{
 		{Method: http.MethodGet, Path: "/health", Module: "system", Handler: func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -134,6 +138,21 @@ func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imag
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/management/tasks/:task_id/retry", Module: "management", Handler: taskRPCHandler.RetryTask},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/management/tasks/:task_id/cancel", Module: "management", Handler: taskRPCHandler.CancelTask},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/queue-stats", Module: "management", Handler: taskRPCHandler.GetQueueStats},
+		)
+	}
+
+	if sheinLoginHandler != nil {
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/health", Module: "shein-login", Handler: sheinLoginHandler.Health},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts", Module: "shein-login", Handler: sheinLoginHandler.ListAccounts},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/shein-login/accounts/:store_id/login", Module: "shein-login", Handler: sheinLoginHandler.Login},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/status", Module: "shein-login", Handler: sheinLoginHandler.Status},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/shein-login/accounts/:store_id/verify-code", Module: "shein-login", Handler: sheinLoginHandler.SubmitVerifyCode},
+			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/verify-code-wait", Module: "shein-login", Handler: sheinLoginHandler.CancelVerifyCodeWait},
+			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/cookie", Module: "shein-login", Handler: sheinLoginHandler.ClearCookie},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/last-failure", Module: "shein-login", Handler: sheinLoginHandler.GetLastFailure},
+			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/last-failure", Module: "shein-login", Handler: sheinLoginHandler.ClearLastFailure},
+			routeDescriptor{Method: http.MethodGet, Path: "/shein-login", Module: "shein-login", Handler: sheinLoginHandler.AdminPage},
 		)
 	}
 

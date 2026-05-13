@@ -54,23 +54,7 @@ func (r *MemTaskRepository) ListTasks(ctx context.Context, query *listingkit.Tas
 	defer r.mu.RUnlock()
 
 	page, pageSize := normalizeTaskListPage(query)
-	items := make([]listingkit.Task, 0, len(r.tasks))
-	for _, task := range r.tasks {
-		if !matchesTenantScope(ctx, task.TenantID) {
-			continue
-		}
-		if query != nil && query.Status != "" && string(task.Status) != query.Status {
-			continue
-		}
-		if query != nil && query.Platform != "" && !taskHasPlatform(task, query.Platform) {
-			continue
-		}
-		copied := *task
-		items = append(items, copied)
-	}
-	sort.SliceStable(items, func(i, j int) bool {
-		return items[i].CreatedAt.After(items[j].CreatedAt)
-	})
+	items := r.collectFilteredTasksLocked(ctx, query)
 
 	total := int64(len(items))
 	start := (page - 1) * pageSize
@@ -82,6 +66,12 @@ func (r *MemTaskRepository) ListTasks(ctx context.Context, query *listingkit.Tas
 		end = len(items)
 	}
 	return items[start:end], total, nil
+}
+
+func (r *MemTaskRepository) ListTaskSummaryTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.collectFilteredTasksLocked(ctx, query), nil
 }
 
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
@@ -264,4 +254,22 @@ func matchesTenantScope(ctx context.Context, recordTenantID string) bool {
 
 func canonicalCacheKey(ctx context.Context, fingerprint string) string {
 	return tenantctx.TenantIDFromContext(ctx) + ":" + fingerprint
+}
+
+func (r *MemTaskRepository) collectFilteredTasksLocked(ctx context.Context, query *listingkit.TaskListQuery) []listingkit.Task {
+	items := make([]listingkit.Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if !matchesTenantScope(ctx, task.TenantID) {
+			continue
+		}
+		if !listingkit.TaskMatchesListQuery(task, query) {
+			continue
+		}
+		copied := *task
+		items = append(items, copied)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	return items
 }

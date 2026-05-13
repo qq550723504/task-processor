@@ -86,6 +86,26 @@ describe("home-recent-tasks", () => {
     expect(pickContinueTask(tasks)?.task_id).toBe("resume-shein-draft");
   });
 
+  it("treats shein work queue as resumable even without legacy workflow status", () => {
+    const tasks = [
+      makeTask({
+        task_id: "processing-amazon",
+        platforms: ["amazon"],
+        status: "processing",
+        updated_at: "2026-04-30T12:00:00+08:00",
+      }),
+      makeTask({
+        task_id: "resume-shein-repair",
+        platforms: ["shein"],
+        status: "completed",
+        shein_work_queue: "repair_queue",
+        updated_at: "2026-04-30T11:00:00+08:00",
+      }),
+    ];
+
+    expect(pickContinueTask(tasks)?.task_id).toBe("resume-shein-repair");
+  });
+
   it("returns newest overall task when all tasks are completed", () => {
     const tasks = [
       makeTask({ task_id: "older", updated_at: "2026-04-30T09:00:00+08:00" }),

@@ -12,7 +12,9 @@ import (
 )
 
 type stubApplyRevisionRepo struct {
-	task *Task
+	task           *Task
+	saveCalls      int
+	failOnSaveCall int
 }
 
 type stubRevisionSheinAttributeResolver struct{}
@@ -99,6 +101,10 @@ func (r *stubApplyRevisionRepo) IncrementRetryCount(ctx context.Context, taskID 
 	return nil
 }
 func (r *stubApplyRevisionRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
+	r.saveCalls++
+	if r.failOnSaveCall > 0 && r.saveCalls == r.failOnSaveCall {
+		return context.DeadlineExceeded
+	}
 	r.task.Result = result
 	return nil
 }
@@ -680,6 +686,52 @@ func TestApplyTaskRevisionReturnsNotFoundForMissingRestoreRevision(t *testing.T)
 	})
 	if err == nil || err != ErrRevisionHistoryRecordNotFound {
 		t.Fatalf("error = %v, want %v", err, ErrRevisionHistoryRecordNotFound)
+	}
+}
+
+func TestApplyTaskRevisionPersistsAtomically(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{failOnSaveCall: 2}
+	task := &Task{
+		ID:     "task-apply-atomic",
+		Status: TaskStatusCompleted,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-atomic",
+			Shein: &SheinPackage{
+				SpuName: "Before",
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{repo: repo}
+
+	newName := "After"
+	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			SpuName: &newName,
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.Headline != newName {
+		t.Fatalf("preview = %+v, want updated shein headline", preview)
+	}
+	if repo.saveCalls != 1 {
+		t.Fatalf("save calls = %d, want 1 atomic save", repo.saveCalls)
+	}
+	if repo.task.Result == nil || repo.task.Result.Shein == nil || repo.task.Result.Shein.SpuName != newName {
+		t.Fatalf("stored shein result = %+v, want updated spu name", repo.task.Result)
+	}
+	if len(repo.task.Result.RevisionHistory) != 1 {
+		t.Fatalf("revision history = %+v, want 1 record", repo.task.Result.RevisionHistory)
 	}
 }
 

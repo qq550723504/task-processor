@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { TaskListPage } from "@/components/listingkit/tasks/task-list-page";
 
 const mocks = vi.hoisted(() => ({
+  currentSearch: "",
   push: vi.fn(),
   refetch: vi.fn(),
   useListingKitTasks: vi.fn(),
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => new URLSearchParams(mocks.currentSearch),
 }));
 
 vi.mock("@/lib/query/use-task-list", () => ({
@@ -23,6 +24,7 @@ vi.mock("@/components/listingkit/shein/shein-settings-card", () => ({
 
 describe("TaskListPage", () => {
   beforeEach(() => {
+    mocks.currentSearch = "";
     mocks.push.mockReset();
     mocks.refetch.mockReset();
     mocks.useListingKitTasks.mockReset();
@@ -124,6 +126,215 @@ describe("TaskListPage", () => {
 
     expect(screen.getByText("任务 ID")).toBeInTheDocument();
     expect(screen.getByText("10856aa8-7e11-4257-ac11-dd095ed1593d")).toBeInTheDocument();
+  });
+
+  it("renders shein overview, work queue, and action queue when present", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        summary: {
+          shein_work_queue_counts: { repair_queue: 3 },
+          shein_action_queue_counts: { final_review_queue: 2 },
+          shein_blocker_counts: { final_review: 2 },
+          shein_warning_counts: { manual_notes: 1 },
+        },
+        taxonomy: {
+          shein_blockers: [
+            { key: "final_review", label: "最终确认", severity: "warning" },
+          ],
+          shein_warnings: [
+            { key: "manual_notes", label: "人工备注", severity: "warning" },
+          ],
+          shein_work_queues: [
+            { key: "repair_queue", label: "修复队列", severity: "negative" },
+          ],
+          shein_action_queues: [
+            { key: "final_review_queue", label: "最终确认", severity: "warning" },
+          ],
+        },
+        items: [
+          {
+            task_id: "task-queue-1",
+            status: "completed",
+            platforms: ["shein"],
+            title: "待确认商品",
+            shein_workflow_status: "pending_confirmation",
+            shein_work_queue: "repair_queue",
+            shein_action_queue: "final_review_queue",
+            shein_status_overview: {
+              headline: "SHEIN 资料包暂不能直接提交",
+              subheadline: "提交前必须在最终确认页核对图片、价格、属性和 SKU 后确认",
+              blocking_count: 1,
+              warning_count: 1,
+              primary_action: "最终确认",
+            },
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getAllByText("修复队列").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("最终确认").length).toBeGreaterThan(0);
+    expect(screen.getByRole("option", { name: "人工备注" })).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 资料包暂不能直接提交")).toBeInTheDocument();
+    expect(screen.getByText(/阻断 1/)).toBeInTheDocument();
+    expect(screen.getByText(/待确认 1/)).toBeInTheDocument();
+  });
+
+  it("applies facet filters when summary chips are clicked", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        summary: {
+          shein_work_queue_counts: { repair_queue: 3 },
+          shein_action_queue_counts: { final_review_queue: 2 },
+          shein_blocker_counts: { final_review: 2 },
+          shein_warning_counts: { manual_notes: 1 },
+        },
+        taxonomy: {
+          shein_blockers: [
+            { key: "final_review", label: "最终确认", severity: "warning" },
+          ],
+          shein_warnings: [
+            { key: "manual_notes", label: "人工备注", severity: "warning" },
+          ],
+          shein_work_queues: [
+            { key: "repair_queue", label: "修复队列", severity: "negative" },
+          ],
+          shein_action_queues: [
+            { key: "final_review_queue", label: "最终确认", severity: "warning" },
+          ],
+        },
+        items: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "修复队列 · 3" }));
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/listing-kits?shein_work_queue=repair_queue",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "人工备注 · 1" }));
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/listing-kits?shein_warning_key=manual_notes",
+    );
+  });
+
+  it("shows active facet state and clears it from summary controls", () => {
+    mocks.currentSearch = "shein_work_queue=repair_queue";
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        summary: {
+          shein_work_queue_counts: { repair_queue: 3 },
+        },
+        taxonomy: {
+          shein_work_queues: [
+            { key: "repair_queue", label: "修复队列", severity: "negative" },
+          ],
+        },
+        items: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(
+      screen.getByRole("button", { name: "修复队列 · 3" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "清除" }));
+    expect(mocks.push).toHaveBeenCalledWith("/listing-kits");
+  });
+
+  it("shows active filter chips and clears all active filters together", () => {
+    mocks.currentSearch =
+      "platform=shein&shein_work_queue=repair_queue&shein_action_queue=final_review_queue";
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        summary: {
+          shein_work_queue_counts: { repair_queue: 3 },
+          shein_action_queue_counts: { final_review_queue: 2 },
+        },
+        taxonomy: {
+          shein_work_queues: [
+            { key: "repair_queue", label: "修复队列", severity: "negative" },
+          ],
+          shein_action_queues: [
+            { key: "final_review_queue", label: "最终确认", severity: "warning" },
+          ],
+        },
+        items: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByText("当前筛选")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SHEIN" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "修复队列" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "最终确认" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "清空全部" }));
+    expect(mocks.push).toHaveBeenCalledWith("/listing-kits");
+  });
+
+  it("renders pagination controls and updates the page query", () => {
+    mocks.currentSearch = "page=2";
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 2,
+        page_size: 20,
+        total: 45,
+        items: [
+          {
+            task_id: "task-page-2",
+            status: "completed",
+            platforms: ["shein"],
+            title: "第二页商品",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
+    expect(screen.getByText("21-40 / 45")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "上一页" }));
+    expect(mocks.push).toHaveBeenCalledWith("/listing-kits");
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(mocks.push).toHaveBeenCalledWith("/listing-kits?page=3");
   });
 
   it("shows diagnostic timestamps and refresh guidance when the task list fails", () => {

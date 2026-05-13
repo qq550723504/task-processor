@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildListingKitUpstreamHeaders,
   resolveListingKitProxyTimeoutMs,
+  shouldBypassYudaoTokenVerification,
   shouldProxyListingKitResponseAsBinary,
   verifyYudaoAccessToken,
 } from "@/app/api/listing-kits/[...path]/route";
@@ -95,6 +96,25 @@ describe("buildListingKitUpstreamHeaders", () => {
 describe("verifyYudaoAccessToken", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("can bypass token verification in non-production local dev", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("YUDAO_DEV_BYPASS_TOKEN_VERIFICATION", "1");
+
+    await expect(
+      verifyYudaoAccessToken("Bearer access-token-1", {
+        checkTokenUrl: "http://127.0.0.1:48080/admin-api/system/oauth2/check-token",
+        clientId: "default",
+        clientSecret: "secret",
+        tenantId: "286",
+      }),
+    ).resolves.toEqual({
+      tenantId: "286",
+      userId: "dev-user",
+      userType: "1",
+    });
   });
 
   it("checks bearer token through yudao oauth check-token", async () => {
@@ -140,5 +160,20 @@ describe("verifyYudaoAccessToken", () => {
     expect(headers.get("Content-Type")).toBe(
       "application/x-www-form-urlencoded",
     );
+  });
+});
+
+describe("shouldBypassYudaoTokenVerification", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("only enables bypass outside production when the env flag is set", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("YUDAO_DEV_BYPASS_TOKEN_VERIFICATION", "1");
+    expect(shouldBypassYudaoTokenVerification()).toBe(true);
+
+    vi.stubEnv("NODE_ENV", "production");
+    expect(shouldBypassYudaoTokenVerification()).toBe(false);
   });
 });

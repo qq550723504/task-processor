@@ -40,9 +40,15 @@ func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *She
 	}
 	review := buildSheinPricingReview(task.Result.Shein, rule, overrides)
 	if applyToTask {
-		applySheinPricingReview(task.Result.Shein, review)
-		task.Result.UpdatedAt = time.Now()
-		if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
+		task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
+			if task.Result == nil || task.Result.Shein == nil {
+				return ErrTaskResultUnavailable
+			}
+			applySheinPricingReview(task.Result.Shein, review)
+			task.Result.UpdatedAt = time.Now()
+			return nil
+		})
+		if err != nil {
 			return nil, err
 		}
 	}

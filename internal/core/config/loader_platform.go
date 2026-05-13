@@ -66,13 +66,18 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 
 func BuildLoginServiceConfig(v *viper.Viper, prefix string) LoginServiceConfig {
 	return LoginServiceConfig{
-		BaseURL:      v.GetString(prefix + ".baseURL"),
-		SharedKey:    v.GetString(prefix + ".sharedKey"),
-		TenantID:     v.GetString(prefix + ".tenantID"),
-		Identifier:   v.GetString(prefix + ".identifier"),
-		MerchantName: v.GetString(prefix + ".merchantName"),
-		Username:     v.GetString(prefix + ".username"),
-		Password:     v.GetString(prefix + ".password"),
+		BaseURL:             v.GetString(prefix + ".baseURL"),
+		SharedKey:           v.GetString(prefix + ".sharedKey"),
+		TenantID:            v.GetString(prefix + ".tenantID"),
+		Identifier:          v.GetString(prefix + ".identifier"),
+		MerchantName:        v.GetString(prefix + ".merchantName"),
+		Username:            v.GetString(prefix + ".username"),
+		Password:            v.GetString(prefix + ".password"),
+		MaxConcurrentLogins: v.GetInt(prefix + ".maxConcurrentLogins"),
+		ProfileRootDir:      v.GetString(prefix + ".profileRootDir"),
+		ArtifactDir:         v.GetString(prefix + ".artifactDir"),
+		DefaultHeadless:     v.GetBool(prefix + ".defaultHeadless"),
+		AdminPageEnabled:    v.GetBool(prefix + ".adminPageEnabled"),
 	}
 }
 

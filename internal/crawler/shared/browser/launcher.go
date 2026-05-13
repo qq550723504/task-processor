@@ -158,8 +158,10 @@ func CreateLaunchOptions(cfg *BrowserConfig, fingerprint *FingerprintConfig) pla
 
 	// 设置代理
 	if cfg.ProxyServer != "" {
-		launchOptions.Proxy = &playwright.Proxy{Server: cfg.ProxyServer}
-		logger.GetGlobalLogger("crawler/shared").Infof("使用代理: %s", cfg.ProxyServer)
+		if proxy := parseProxyServer(cfg.ProxyServer); proxy != nil {
+			launchOptions.Proxy = proxy
+			logger.GetGlobalLogger("crawler/shared").Infof("使用代理: %s", proxy.Server)
+		}
 	}
 
 	return launchOptions
