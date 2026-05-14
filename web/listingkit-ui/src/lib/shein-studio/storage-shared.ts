@@ -18,7 +18,7 @@ export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
   "sds_official";
 export const DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT = "5";
 export const DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL: SheinStudioArtworkModel =
-  "nanobanana";
+  "";
 export const DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY: SheinStudioVariationIntensity =
   "medium";
 export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
@@ -94,8 +94,8 @@ export function normalizeImageStrategy(value: unknown): SheinStudioImageStrategy
 }
 
 export function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {
-  return value === "gpt-image-2" || value === "nanobanana"
-    ? value
+  return typeof value === "string"
+    ? value.trim()
     : DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL;
 }
 

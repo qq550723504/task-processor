@@ -44,9 +44,9 @@ export async function generateSheinStudioDesigns(
       printable_height: body.printableHeight,
       product_reference_image_urls: body.productReferenceImageUrls,
       image_model:
-        body.transparentBackground || body.imageModel === "gpt-image-2"
+        body.transparentBackground
           ? "gpt-image-2"
-          : undefined,
+          : body.imageModel?.trim() || undefined,
       transparent_background: body.transparentBackground,
     },
     timeoutMs: 3600000,

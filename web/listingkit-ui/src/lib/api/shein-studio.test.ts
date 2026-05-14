@@ -52,6 +52,55 @@ describe("shein studio design metadata", () => {
     });
   });
 
+  it("passes a custom image model through when transparent background is off", async () => {
+    mockedApiAsyncRequest.mockResolvedValueOnce({
+      prompt: "retro botanical clock",
+      image_model: "custom-image-model",
+      transparent_background: false,
+      images: [],
+    });
+
+    await generateSheinStudioDesigns({
+      prompt: "retro botanical clock",
+      count: 1,
+      imageModel: "custom-image-model",
+      transparentBackground: false,
+    });
+
+    expect(mockedApiAsyncRequest).toHaveBeenCalledWith(
+      "/studio/designs",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          image_model: "custom-image-model",
+        }),
+      }),
+    );
+  });
+
+  it("omits image model when using backend default model", async () => {
+    mockedApiAsyncRequest.mockResolvedValueOnce({
+      prompt: "retro botanical clock",
+      transparent_background: false,
+      images: [],
+    });
+
+    await generateSheinStudioDesigns({
+      prompt: "retro botanical clock",
+      count: 1,
+      imageModel: "",
+      transparentBackground: false,
+    });
+
+    expect(mockedApiAsyncRequest).toHaveBeenCalledWith(
+      "/studio/designs",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          image_model: undefined,
+        }),
+      }),
+    );
+  });
+
   it("persists design prompt and model metadata in studio sessions", async () => {
     mockedApiRequest.mockResolvedValueOnce({
       session: { id: "session-1" },

@@ -130,6 +130,27 @@ describe("shein studio workbench model", () => {
     });
   });
 
+  it("leaves image model empty so backend default can apply", () => {
+    expect(
+      buildSheinStudioGenerateRequest({
+        artworkModel: "   ",
+        prompt: "retro cherries",
+        styleCount: 1,
+        transparentBackground: false,
+        variationIntensity: "medium",
+      }),
+    ).toEqual({
+      prompt: "retro cherries",
+      count: 1,
+      variationIntensity: "medium",
+      printableWidth: undefined,
+      printableHeight: undefined,
+      productReferenceImageUrls: undefined,
+      imageModel: undefined,
+      transparentBackground: false,
+    });
+  });
+
   it("prioritizes busy messages by active operation", () => {
     expect(
       sheinStudioBusyMessage({

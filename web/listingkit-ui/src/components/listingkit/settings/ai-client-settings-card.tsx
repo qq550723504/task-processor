@@ -1,15 +1,48 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { KeyRound, ServerCog } from "lucide-react";
+import { Image, KeyRound, ServerCog, Sparkles, Tags } from "lucide-react";
 
 import { Button } from "@/components/shared/button";
 import { useAIClientSettings, useUpdateAIClientSettings } from "@/lib/query/use-ai-client-settings";
 
+const aiClientOptions = [
+  {
+    name: "default",
+    label: "通用文案",
+    description: "SHEIN 文案优化、标题与通用提示词生成",
+    modelHint: "用于文案、分类和通用提示词的默认模型",
+    icon: Sparkles,
+  },
+  {
+    name: "scorer",
+    label: "属性映射",
+    description: "SHEIN 属性、销售属性和打分映射",
+    modelHint: "用于属性判断和映射的专用模型",
+    icon: Tags,
+  },
+  {
+    name: "image_nanobanana",
+    label: "Nano Banana",
+    description: "SHEIN Studio 默认生图链路，单独配置 Nano Banana 的地址和密钥",
+    modelHint: "例如 nano-banana-fast",
+    icon: Image,
+  },
+  {
+    name: "image_gpt_image_2",
+    label: "GPT Image 2",
+    description: "透明背景和 GPT Image 2 生图链路，单独配置它的地址和密钥",
+    modelHint: "例如 gpt-image-2",
+    icon: Image,
+  },
+] as const;
+
+type AIClientName = (typeof aiClientOptions)[number]["name"];
+
 type AISettingsForm = {
   scope: "tenant" | "user";
   user_id: string;
-  client_name: string;
+  client_name: AIClientName;
   api_key: string;
   base_url: string;
   model: string;
@@ -20,23 +53,26 @@ type AISettingsForm = {
 export function AIClientSettingsCard() {
   const [scope, setScope] = useState<"tenant" | "user">("tenant");
   const [userId, setUserId] = useState("");
-  const settings = useAIClientSettings(scope, "default", userId);
+  const [clientName, setClientName] = useState<AIClientName>("default");
+  const settings = useAIClientSettings(scope, clientName, userId);
   const update = useUpdateAIClientSettings();
   const [draft, setDraft] = useState<AISettingsForm | null>(null);
+  const selectedClient =
+    aiClientOptions.find((option) => option.name === clientName) ?? aiClientOptions[0];
 
   const loadedForm = useMemo<AISettingsForm>(() => {
     const data = settings.data;
     return {
       scope,
       user_id: userId,
-      client_name: data?.client_name ?? "default",
+      client_name: (data?.client_name as AIClientName | undefined) ?? clientName,
       api_key: "",
       base_url: data?.base_url ?? "",
       model: data?.model ?? "",
       timeout_second: String(data?.timeout_second ?? 60),
       enabled: data?.enabled ?? true,
     };
-  }, [scope, settings.data, userId]);
+  }, [clientName, scope, settings.data, userId]);
   const form = draft ?? loadedForm;
 
   const set = <Key extends keyof AISettingsForm>(
@@ -78,80 +114,128 @@ export function AIClientSettingsCard() {
             {settings.data?.api_key_set ? "密钥已配置" : "密钥未配置"}
           </span>
           <Button disabled={update.isPending} onClick={submit}>
-            {update.isPending ? "保存中..." : "保存 AI 配置"}
+            {update.isPending ? "保存中..." : `保存 ${selectedClient.label} 配置`}
           </Button>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr_140px]">
-        <label className="space-y-1">
-          <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
-            配置范围
-          </span>
-          <select
-            aria-label="配置范围"
-            className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm"
-            value={form.scope}
-            onChange={(event) => {
-              const nextScope = event.target.value as "tenant" | "user";
-              setScope(nextScope);
-              setDraft(null);
-            }}
-          >
-            <option value="tenant">当前客户</option>
-            <option value="user">当前用户</option>
-          </select>
-          <span className="block text-[11px] leading-4 text-zinc-500">
-            用户配置优先于客户配置
-          </span>
-        </label>
-        {form.scope === "user" ? (
-          <Input
-            label="User ID"
-            hint="用于给指定用户覆盖客户默认配置"
-            value={form.user_id}
-            onChange={(value) => {
-              setUserId(value);
-              set("user_id", value);
-            }}
-          />
-        ) : null}
-        <Input
-          label="Endpoint"
-          hint="OpenAI 兼容接口地址，例如 https://api.openai.com/v1"
-          value={form.base_url}
-          onChange={(value) => set("base_url", value)}
-        />
-        <Input
-          label="Model"
-          hint="用于文案、属性映射和提示词生成的默认模型"
-          value={form.model}
-          onChange={(value) => set("model", value)}
-        />
-        <Input
-          label="超时秒数"
-          hint="留空时使用系统默认"
-          value={form.timeout_second}
-          onChange={(value) => set("timeout_second", value)}
-        />
+      <div className="mt-4 flex flex-wrap gap-2">
+        {aiClientOptions.map((option) => {
+          const Icon = option.icon;
+          const active = option.name === clientName;
+          return (
+            <button
+              key={option.name}
+              className={[
+                "min-w-[160px] rounded-xl border px-3 py-3 text-left transition",
+                active
+                  ? "border-zinc-900 bg-zinc-950 text-white shadow-sm"
+                  : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300",
+              ].join(" ")}
+              type="button"
+              onClick={() => {
+                setClientName(option.name);
+                setDraft(null);
+              }}
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Icon className="h-4 w-4" />
+                {option.label}
+              </div>
+              <div
+                className={[
+                  "mt-1 text-xs leading-5",
+                  active ? "text-white/78" : "text-zinc-500",
+                ].join(" ")}
+              >
+                {option.description}
+              </div>
+            </button>
+          );
+        })}
       </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-        <Input
-          label="API Key"
-          hint={settings.data?.api_key_set ? "留空表示继续使用已保存密钥" : "保存后后端不会回显明文密钥"}
-          type="password"
-          value={form.api_key}
-          onChange={(value) => set("api_key", value)}
-        />
-        <label className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-700">
-          <input
-            checked={form.enabled}
-            className="h-4 w-4"
-            type="checkbox"
-            onChange={(event) => set("enabled", event.target.checked)}
+
+      <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-zinc-950">{selectedClient.label}</div>
+            <div className="mt-1 text-sm text-zinc-600">{selectedClient.description}</div>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">
+            client_name: <span className="font-semibold text-zinc-800">{selectedClient.name}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr_140px]">
+          <label className="space-y-1">
+            <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
+              配置范围
+            </span>
+            <select
+              aria-label="配置范围"
+              className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm"
+              value={form.scope}
+              onChange={(event) => {
+                const nextScope = event.target.value as "tenant" | "user";
+                setScope(nextScope);
+                setDraft(null);
+              }}
+            >
+              <option value="tenant">当前客户</option>
+              <option value="user">当前用户</option>
+            </select>
+            <span className="block text-[11px] leading-4 text-zinc-500">
+              用户配置优先于客户配置
+            </span>
+          </label>
+          {form.scope === "user" ? (
+            <Input
+              label="User ID"
+              hint="用于给指定用户覆盖客户默认配置"
+              value={form.user_id}
+              onChange={(value) => {
+                setUserId(value);
+                set("user_id", value);
+              }}
+            />
+          ) : null}
+          <Input
+            label="Endpoint"
+            hint="OpenAI 兼容接口地址，例如 https://api.openai.com/v1"
+            value={form.base_url}
+            onChange={(value) => set("base_url", value)}
           />
-          启用配置
-        </label>
+          <Input
+            label="Model"
+            hint={selectedClient.modelHint}
+            value={form.model}
+            onChange={(value) => set("model", value)}
+          />
+          <Input
+            label="超时秒数"
+            hint="留空时使用系统默认"
+            value={form.timeout_second}
+            onChange={(value) => set("timeout_second", value)}
+          />
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+          <Input
+            label="API Key"
+            hint={settings.data?.api_key_set ? "留空表示继续使用已保存密钥" : "保存后后端不会回显明文密钥"}
+            type="password"
+            value={form.api_key}
+            onChange={(value) => set("api_key", value)}
+          />
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-700">
+            <input
+              checked={form.enabled}
+              className="h-4 w-4"
+              type="checkbox"
+              onChange={(event) => set("enabled", event.target.checked)}
+            />
+            启用配置
+          </label>
+        </div>
       </div>
       {settings.isError ? (
         <p className="mt-3 text-sm text-rose-600">AI 配置读取失败，请检查后端配置接口。</p>

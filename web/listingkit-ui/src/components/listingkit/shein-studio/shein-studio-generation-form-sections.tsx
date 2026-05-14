@@ -96,20 +96,28 @@ export function ArtworkGenerationSettings({
       <div className="grid gap-4 lg:grid-cols-2">
         <label className="space-y-2">
           <span className="text-sm font-medium text-zinc-700">款式图模型</span>
-          <select
+          <input
             className="w-full rounded-2xl border border-emerald-200 bg-white/80 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-900 focus:bg-white"
+            list="shein-studio-artwork-models"
             onChange={(event) => {
-              const nextModel = event.target.value as SheinStudioArtworkModel;
+              const nextModel = event.target.value.trim();
               setArtworkModel(nextModel);
               if (nextModel !== "gpt-image-2" && transparentBackground) {
                 setTransparentBackground(false);
               }
             }}
+            placeholder="留空时跟随后端 image client 默认模型"
             value={transparentBackground ? "gpt-image-2" : artworkModel}
-          >
-            <option value="nanobanana">Nano Banana（默认）</option>
-            <option value="gpt-image-2">GPT Image 2（支持透明背景）</option>
-          </select>
+          />
+          <datalist id="shein-studio-artwork-models">
+            <option value="gpt-image-2" />
+            <option value="nanobanana" />
+            <option value="nano-banana-fast" />
+            <option value="gpt-image-1" />
+          </datalist>
+          <p className="text-xs leading-6 text-zinc-600">
+            不再固定为前端两个选项。留空时使用设置页里 `image` client 保存的默认模型，也可以直接手填覆盖。
+          </p>
         </label>
         <label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-white/75 px-4 py-3">
           <input
@@ -127,8 +135,8 @@ export function ArtworkGenerationSettings({
           <span className="text-sm leading-6 text-emerald-950">
             <span className="block font-semibold">生成透明背景图案</span>
             <span className="block text-xs text-emerald-800">
-              开启后自动切换到 GPT Image 2，并要求输出真正 alpha
-              透明背景，不再让 Nano Banana 模拟透明。
+              开启后仍会强制切换到 `gpt-image-2`，并要求输出真正 alpha
+              透明背景。
             </span>
           </span>
         </label>

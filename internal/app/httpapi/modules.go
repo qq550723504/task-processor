@@ -566,9 +566,9 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, resolutionCacheClosers...)
 
-	sheinCategoryResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.openaiMgr)), resolutionCacheStore)
-	sheinAttributeResolver := sheinpub.NewCachedAttributeResolver(sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)), resolutionCacheStore)
-	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)), resolutionCacheStore)
+	sheinCategoryResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
+	sheinAttributeResolver := sheinpub.NewCachedAttributeResolver(sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
+	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
 	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(deps.managementClient)
 	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(deps.managementClient)
 	sheinTranslateAPIBuilder := sheinpub.NewManagedTranslateAPIBuilder(deps.managementClient)
@@ -600,15 +600,15 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		SheinProductAPIBuilder:     sheinProductAPIBuilder,
 		SheinImageAPIBuilder:       sheinImageAPIBuilder,
 		SheinTranslateAPIBuilder:   sheinTranslateAPIBuilder,
-		SheinContentOptimizer:      buildSheinCategoryLLMClient(deps.openaiMgr),
-		StudioImageGenerator:       buildStudioImageGenerator(deps.cfg, deps.openaiMgr),
+		SheinContentOptimizer:      buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore),
+		StudioImageGenerator:       buildStudioImageGenerator(deps.cfg, deps.aiCredentialStore),
 		AIClientCredentialStore:    deps.aiCredentialStore,
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinAttributeResolver:     sheinAttributeResolver,
 			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
 			SheinPricingPolicy:         sheinPricingPolicy,
-			SheinTitleOptimizer:        buildSheinCategoryLLMClient(deps.openaiMgr),
+			SheinTitleOptimizer:        buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore),
 		}),
 	})
 	if err != nil {
