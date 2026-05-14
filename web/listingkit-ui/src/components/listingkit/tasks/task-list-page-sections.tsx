@@ -35,7 +35,7 @@ import type {
   ListingKitTaskListTaxonomy,
 } from "@/lib/types/listingkit";
 
-type FilterKey =
+export type FilterKey =
   | "status"
   | "platform"
   | "shein_workflow_status"

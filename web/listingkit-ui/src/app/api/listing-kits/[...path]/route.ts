@@ -234,13 +234,6 @@ export function getYudaoCheckTokenOptions(): YudaoCheckTokenOptions | undefined 
   return { checkTokenUrl, clientId, clientSecret };
 }
 
-function shouldBypassYudaoTokenVerification() {
-  return (
-    process.env.NODE_ENV !== "production" &&
-    process.env.YUDAO_DEV_BYPASS_TOKEN_VERIFICATION === "1"
-  );
-}
-
 async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
