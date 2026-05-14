@@ -1,12 +1,10 @@
 package httpapi
 
 import (
+	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-func buildSheinCategoryLLMClient(mgr *openaiclient.Manager) openaiclient.ChatCompleter {
-	if mgr == nil {
-		return nil
-	}
-	return mgr.GetDefaultClient()
+func buildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+	return buildStrictListingKitChatClient(cfg, resolver, "default")
 }

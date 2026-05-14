@@ -500,6 +500,13 @@ export type SheinSubmissionEvent = {
 
 export type SheinSettings = {
   default_store_id?: number;
+  available_stores?: Array<{
+    id: number;
+    store_id?: string;
+    name?: string;
+    platform?: string;
+    region?: string;
+  }>;
   site?: string;
   warehouse_code?: string;
   default_stock?: number;

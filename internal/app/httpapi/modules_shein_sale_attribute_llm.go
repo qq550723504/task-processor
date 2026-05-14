@@ -7,16 +7,6 @@ import (
 
 const sheinSaleAttributeClientName = "scorer"
 
-func buildSheinSaleAttributeLLMClient(cfg *config.Config, mgr *openaiclient.Manager) openaiclient.ChatCompleter {
-	if mgr == nil {
-		return nil
-	}
-	if cfg != nil {
-		if _, ok := cfg.OpenAI.Clients[sheinSaleAttributeClientName]; ok {
-			if client, err := mgr.GetClient(sheinSaleAttributeClientName); err == nil {
-				return client
-			}
-		}
-	}
-	return mgr.GetDefaultClient()
+func buildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+	return buildStrictListingKitChatClient(cfg, resolver, sheinSaleAttributeClientName)
 }

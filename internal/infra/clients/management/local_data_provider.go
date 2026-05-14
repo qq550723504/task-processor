@@ -180,6 +180,9 @@ func (p *LocalDataProvider) PageStores(req *api.StorePageReqDTO) (*api.PageResul
 	}
 	query := p.db.Table("listing_store")
 	if req != nil {
+		if req.TenantID > 0 {
+			query = query.Where("tenant_id = ?", req.TenantID)
+		}
 		if req.Platform != "" {
 			query = query.Where("platform = ?", req.Platform)
 		}

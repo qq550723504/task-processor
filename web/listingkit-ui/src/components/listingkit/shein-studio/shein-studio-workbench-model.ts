@@ -190,6 +190,7 @@ export function buildSheinStudioGenerateRequest({
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
 }): SheinStudioGenerateRequest {
+  const trimmedModel = artworkModel.trim();
   return {
     prompt: prompt.trim(),
     count: styleCount,
@@ -197,7 +198,7 @@ export function buildSheinStudioGenerateRequest({
     printableWidth,
     printableHeight,
     productReferenceImageUrls,
-    imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+    imageModel: transparentBackground ? "gpt-image-2" : trimmedModel || undefined,
     transparentBackground,
   };
 }

@@ -46,27 +46,31 @@ If `YUDAO_CHECK_TOKEN_URL`, `YUDAO_OAUTH_CLIENT_ID`, and
 Bearer token with yudao before forwarding requests to the ListingKit Go API.
 The verified `user_id` and `tenant_id` override browser-supplied tenant headers.
 
-For `SHEIN Studio` image generation, also configure:
+如果只是本地联调，想暂时跳过页面授权门禁，可以额外设置：
+
+```bash
+LISTINGKIT_UI_BYPASS_AUTH_GATE=1
+```
+
+这个开关只在非生产环境生效，只跳过前端 `YudaoAuthGate`，不会修改后端 API 的实际鉴权逻辑。
+
+如果要使用 ListingKit 里的 AI 能力，需要先在 ListingKit 设置页为当前租户或用户保存 AI 配置。
+后端不再回退到仓库级别的默认 OpenAI / 图片环境变量。
+
+下面这些旧环境变量说明可以删除，不再作为 ListingKit 的兜底来源：
 
 ```bash
 OPENAI_API_KEY=your_api_key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_IMAGE_MODEL=gpt-image-1
 OPENAI_API_STYLE=openai
-```
-
-`SHEIN Studio` now also falls back to the repo-level backend image settings when present, especially:
-
-```bash
 TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY=...
 TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL=...
 TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE=nanobanana
 TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL=nano-banana-fast
 ```
 
-This is useful when the backend is already using a provider-specific image client such as `nanobanana`.
-
-Optional local demo mode:
+可选的本地演示模式：
 
 ```bash
 LISTINGKIT_UI_USE_MOCK=1

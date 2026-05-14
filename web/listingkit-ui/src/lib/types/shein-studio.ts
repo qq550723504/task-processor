@@ -22,7 +22,7 @@ export type SheinStudioImageStrategy =
   | "sds_official"
   | "hybrid";
 
-export type SheinStudioArtworkModel = "nanobanana" | "gpt-image-2";
+export type SheinStudioArtworkModel = string;
 export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 
 export type SheinStudioProductImagePrompt = {
@@ -56,7 +56,7 @@ export type SheinStudioGenerateRequest = {
   printableWidth?: number;
   printableHeight?: number;
   productReferenceImageUrls?: string[];
-  imageModel?: SheinStudioArtworkModel;
+  imageModel?: string;
   transparentBackground?: boolean;
 };
 

@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/query/use-ai-client-settings", () => ({
-  useAIClientSettings: (scope: string, clientName: string) =>
-    mocks.useAIClientSettings(scope, clientName),
+  useAIClientSettings: (scope: string, clientName: string, userId?: string) =>
+    mocks.useAIClientSettings(scope, clientName, userId),
   useUpdateAIClientSettings: () => mocks.useUpdateAIClientSettings(),
 }));
 
@@ -19,19 +19,29 @@ describe("AIClientSettingsCard", () => {
     mocks.mutate.mockReset();
     mocks.useAIClientSettings.mockReset();
     mocks.useUpdateAIClientSettings.mockReset();
-    mocks.useAIClientSettings.mockReturnValue({
+    mocks.useAIClientSettings.mockImplementation((_scope: string, clientName: string) => ({
       data: {
         scope: "tenant",
-        client_name: "default",
-        api_key_set: true,
-        base_url: "https://tenant-ai.example.com/v1",
-        model: "gpt-4.1-mini",
+        client_name: clientName,
+        api_key_set: clientName !== "image_gpt_image_2",
+        base_url:
+          clientName === "image_nanobanana"
+            ? "https://tenant-nano.example.com/v1"
+            : clientName === "image_gpt_image_2"
+            ? "https://tenant-image.example.com/v1"
+            : "https://tenant-ai.example.com/v1",
+        model:
+          clientName === "image_nanobanana"
+            ? "nano-banana-fast"
+            : clientName === "image_gpt_image_2"
+              ? "gpt-image-2"
+              : "gpt-4.1-mini",
         timeout_second: 45,
         enabled: true,
       },
       isLoading: false,
       isError: false,
-    });
+    }));
     mocks.useUpdateAIClientSettings.mockReturnValue({
       mutate: mocks.mutate,
       isPending: false,
@@ -60,7 +70,7 @@ describe("AIClientSettingsCard", () => {
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "gpt-4.1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存 AI 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 通用文案 配置" }));
 
     expect(mocks.mutate).toHaveBeenCalledWith({
       scope: "tenant",
@@ -85,13 +95,34 @@ describe("AIClientSettingsCard", () => {
     fireEvent.change(screen.getByLabelText("API Key"), {
       target: { value: "user-secret" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存 AI 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 通用文案 配置" }));
 
     expect(mocks.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
         scope: "user",
         user_id: "user-1",
         api_key: "user-secret",
+      }),
+    );
+  });
+
+  it("switches to Nano Banana settings and saves with image client name", () => {
+    render(<AIClientSettingsCard />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Nano Banana/ }));
+
+    expect(screen.getByDisplayValue("https://tenant-nano.example.com/v1")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("nano-banana-fast")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "nano-banana-pro" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存 Nano Banana 配置" }));
+
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_name: "image_nanobanana",
+        model: "nano-banana-pro",
       }),
     );
   });

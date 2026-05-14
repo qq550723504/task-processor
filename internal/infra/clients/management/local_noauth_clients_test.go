@@ -24,6 +24,36 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 	}
 
 	statements := []string{
+		`CREATE TABLE listing_store (
+			id INTEGER PRIMARY KEY,
+			tenant_id INTEGER,
+			store_id TEXT,
+			name TEXT,
+			username TEXT,
+			password TEXT,
+			login_url TEXT,
+			shop_type TEXT,
+			region TEXT,
+			platform TEXT,
+			daily_limit INTEGER,
+			daily_limit_type TEXT,
+			fixed_stock_count INTEGER,
+			sku_generate_strategy TEXT,
+			prefix TEXT,
+			suffix TEXT,
+			proxy TEXT,
+			enable_auto_listing BOOLEAN,
+			enable_auto_login BOOLEAN,
+			enable_draft BOOLEAN,
+			enable_auto_price BOOLEAN,
+			enable_rebargain BOOLEAN,
+			temu_price_reject_strategy TEXT,
+			price_type TEXT,
+			remark TEXT,
+			status INTEGER,
+			valid_from DATETIME,
+			valid_until DATETIME
+		)`,
 		`CREATE TABLE listing_product_import_mapping (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			tenant_id INTEGER,
@@ -92,6 +122,39 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 	}
 
 	return &LocalDataProvider{db: db}
+}
+
+func TestLocalDataProviderPageStoresFiltersByTenantAndPlatform(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	rows := []localListingStore{
+		{ID: 101, TenantID: 1, StoreID: "SHEIN-US-1", Name: "Tenant1 Shein", Platform: "shein", Region: "us", Status: 0},
+		{ID: 102, TenantID: 2, StoreID: "SHEIN-US-2", Name: "Tenant2 Shein", Platform: "shein", Region: "us", Status: 0},
+		{ID: 103, TenantID: 1, StoreID: "TEMU-US-1", Name: "Tenant1 Temu", Platform: "temu", Region: "us", Status: 0},
+	}
+	for _, row := range rows {
+		if err := provider.db.Table("listing_store").Create(&row).Error; err != nil {
+			t.Fatalf("seed listing_store: %v", err)
+		}
+	}
+
+	page, err := provider.PageStores(&api.StorePageReqDTO{
+		TenantID: 1,
+		Platform: "shein",
+		PageNo:   1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("PageStores() error = %v", err)
+	}
+	if page == nil {
+		t.Fatal("PageStores() returned nil page")
+	}
+	if page.Total != 1 || len(page.List) != 1 {
+		t.Fatalf("PageStores() = total %d len %d, want 1/1", page.Total, len(page.List))
+	}
+	if page.List[0].ID != 101 {
+		t.Fatalf("PageStores()[0].ID = %d, want 101", page.List[0].ID)
+	}
 }
 
 func TestProductImportMappingAPIClient_LocalProvider(t *testing.T) {
