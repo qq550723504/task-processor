@@ -8,6 +8,7 @@ import { useSheinSettings, useUpdateSheinSettings } from "@/lib/query/use-shein-
 export function SheinSettingsCard() {
   const settings = useSheinSettings();
   const update = useUpdateSheinSettings();
+  const availableStores = settings.data?.available_stores ?? [];
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const loadedForm = useMemo(() => {
     const data = settings.data;
@@ -25,6 +26,22 @@ export function SheinSettingsCard() {
     };
   }, [settings.data]);
   const form = draft ?? loadedForm;
+  const storeOptions = useMemo(() => {
+    if (!form.default_store_id) {
+      return availableStores;
+    }
+    if (availableStores.some((store) => String(store.id) === form.default_store_id)) {
+      return availableStores;
+    }
+    return [
+      ...availableStores,
+      {
+        id: Number(form.default_store_id),
+        store_id: form.default_store_id,
+        name: "当前已保存店铺",
+      },
+    ];
+  }, [availableStores, form.default_store_id]);
 
   const set = (key: keyof typeof form, value: string) =>
     setDraft((current) => ({ ...(current ?? loadedForm), [key]: value }));
@@ -68,12 +85,29 @@ export function SheinSettingsCard() {
         </Button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-5">
-        <Input
-          label="默认店铺 ID"
-          hint="提交 SHEIN 时使用的店铺编号"
-          value={form.default_store_id}
-          onChange={(value) => set("default_store_id", value)}
-        />
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
+            默认店铺
+          </span>
+          <select
+            aria-label="默认店铺"
+            className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm"
+            value={form.default_store_id}
+            onChange={(event) => set("default_store_id", event.target.value)}
+          >
+            <option value="">
+              {storeOptions.length > 0 ? "请选择当前租户店铺" : "当前租户下暂无 SHEIN 店铺"}
+            </option>
+            {storeOptions.map((store) => (
+              <option key={store.id} value={String(store.id)}>
+                {formatStoreOptionLabel(store)}
+              </option>
+            ))}
+          </select>
+          <span className="block text-[11px] leading-4 text-zinc-500">
+            店铺列表从当前登录租户的 `listing_store` 数据读取
+          </span>
+        </label>
         <Input
           label="站点"
           hint="例如 US，美国站"
@@ -140,6 +174,19 @@ export function SheinSettingsCard() {
       ) : null}
     </section>
   );
+}
+
+function formatStoreOptionLabel(store: {
+  id: number;
+  store_id?: string;
+  name?: string;
+  region?: string;
+}) {
+  const primary = store.name?.trim() || store.store_id?.trim() || `店铺 ${store.id}`;
+  const meta = [store.store_id?.trim(), store.region?.trim()]
+    .filter(Boolean)
+    .join(" / ");
+  return meta ? `${primary} (${meta})` : primary;
 }
 
 function Input({

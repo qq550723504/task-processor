@@ -180,12 +180,21 @@ type SubmitTaskRequest struct {
 
 type SheinSettings struct {
 	DefaultStoreID    int64                `json:"default_store_id,omitempty"`
+	AvailableStores   []SheinStoreOption   `json:"available_stores,omitempty"`
 	Site              string               `json:"site,omitempty"`
 	WarehouseCode     string               `json:"warehouse_code,omitempty"`
 	DefaultStock      int                  `json:"default_stock,omitempty"`
 	DefaultSubmitMode string               `json:"default_submit_mode,omitempty"`
 	Pricing           sheinpub.PricingRule `json:"pricing,omitempty"`
 	UpdatedAt         *time.Time           `json:"updated_at,omitempty"`
+}
+
+type SheinStoreOption struct {
+	ID       int64  `json:"id"`
+	StoreID  string `json:"store_id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	Region   string `json:"region,omitempty"`
 }
 
 type AIClientSettings struct {

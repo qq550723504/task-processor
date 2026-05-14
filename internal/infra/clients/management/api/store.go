@@ -33,6 +33,7 @@ type StoreRespDTO struct {
 // StorePageReqDTO 分页查询店铺请求
 type StorePageReqDTO struct {
 	Platform        string `json:"platform,omitempty"`
+	TenantID        int64  `json:"tenantId,omitempty"`
 	PageNo          int    `json:"pageNo"`
 	PageSize        int    `json:"pageSize"`
 	EnableAutoPrice *bool  `json:"enableAutoPrice,omitempty"`
