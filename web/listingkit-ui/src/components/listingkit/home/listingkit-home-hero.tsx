@@ -10,7 +10,7 @@ const WORKFLOW_STEPS = [
   },
   {
     step: "02",
-    title: "生成 Canonical Product",
+    title: "生成标准商品",
     description: "沉淀统一的标题、类目、属性、规格、变体、图片和价格基础信息。",
   },
   {
@@ -39,7 +39,7 @@ export function ListingKitHomeHero() {
             </h1>
             <p className="max-w-2xl text-sm leading-7 text-zinc-600 sm:text-base">
               ListingKit 的主流程是先把 1688、图片、文案或 SDS 商品资料整理成
-              canonical product，再按平台模板生成可审核、可提交的上架资料。
+              标准商品，再按平台模板生成可审核、可提交的上架资料。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -63,7 +63,7 @@ export function ListingKitHomeHero() {
               href="/listing-kits/canonical-products"
               className="inline-flex h-11 items-center justify-center rounded-lg bg-white px-5 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
             >
-              查看 Canonical Products
+              查看标准商品
             </Link>
           </div>
         </div>

@@ -12,6 +12,13 @@ const RESUMABLE_SHEIN_WORKFLOW_STATUSES = new Set([
   "publish_failed",
   "draft_saved",
 ]);
+const RESUMABLE_SHEIN_WORK_QUEUES = new Set([
+  "repair_queue",
+  "review_queue",
+  "submit_ready_queue",
+  "draft_queue",
+  "submit_failed_queue",
+]);
 
 function updatedAtValue(task: ListingKitTaskListItem) {
   const value = Date.parse(task.updated_at ?? task.created_at ?? "");
@@ -30,8 +37,26 @@ function hasResumableSheinWorkflow(task: ListingKitTaskListItem) {
   return RESUMABLE_SHEIN_WORKFLOW_STATUSES.has(task.shein_workflow_status ?? "");
 }
 
+function hasResumableSheinQueue(task: ListingKitTaskListItem) {
+  return RESUMABLE_SHEIN_WORK_QUEUES.has(task.shein_work_queue ?? "");
+}
+
+function hasResumableSheinAction(task: ListingKitTaskListItem) {
+  return Boolean(
+    task.shein_action_queue ||
+      task.shein_status_overview?.primary_action ||
+      task.shein_status_overview?.needs_review,
+  );
+}
+
 function isContinueCandidate(task: ListingKitTaskListItem) {
-  return isActionable(task) || (isSheinTask(task) && hasResumableSheinWorkflow(task));
+  return (
+    isActionable(task) ||
+    (isSheinTask(task) &&
+      (hasResumableSheinWorkflow(task) ||
+        hasResumableSheinQueue(task) ||
+        hasResumableSheinAction(task)))
+  );
 }
 
 export function sortRecentTasksForHomepage(tasks: ListingKitTaskListItem[]) {

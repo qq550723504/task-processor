@@ -215,6 +215,13 @@ export function getYudaoCheckTokenOptions(): YudaoCheckTokenOptions | undefined 
   return { checkTokenUrl, clientId, clientSecret };
 }
 
+function shouldBypassYudaoTokenVerification() {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.YUDAO_DEV_BYPASS_TOKEN_VERIFICATION === "1"
+  );
+}
+
 async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -284,7 +291,9 @@ async function proxyRequest(
     path: proxyPath,
   });
 
-  const yudaoOptions = getYudaoCheckTokenOptions();
+  const yudaoOptions = shouldBypassYudaoTokenVerification()
+    ? undefined
+    : getYudaoCheckTokenOptions();
   let verifiedIdentity: YudaoVerifiedIdentity | undefined;
   if (yudaoOptions) {
     try {

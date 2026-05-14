@@ -44,7 +44,7 @@ export function StyleGalleryHero() {
           href="/listing-kits/sds"
           className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
         >
-          从 SDS 源生成
+          从 POD 生成
         </Link>
       </div>
     </section>
@@ -165,7 +165,7 @@ export function StyleGalleryEmptyState() {
       <ImageIcon className="h-8 w-8 text-zinc-400" />
       <h2 className="mt-4 text-lg font-semibold text-zinc-950">暂无款式图</h2>
       <p className="mt-2 max-w-md text-sm text-zinc-500">
-        先从 SDS 源生成款式，或创建 ListingKit 任务后再回来查看。
+        先从 POD 生成款式，或创建 ListingKit 任务后再回来查看。
       </p>
     </Card>
   );

@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   { label: "首页", href: "/", match: "exact" },
   { label: "新建任务", href: "/listing-kits/new", match: "exact" },
-  { label: "SDS 源", href: "/listing-kits/sds", match: "prefix" },
+  { label: "POD", href: "/listing-kits/sds", match: "prefix" },
   { label: "款式图库", href: "/listing-kits/style-gallery", match: "prefix" },
   {
-    label: "Canonical Products",
+    label: "标准商品",
     href: "/listing-kits/canonical-products",
     match: "prefix",
   },
@@ -46,7 +46,7 @@ export function ListingKitAppShell({
                 ListingKit
               </p>
               <p className="mt-1 text-sm font-medium text-zinc-950">
-                源信息 -&gt; Canonical Product -&gt; 平台资料
+                源信息 -&gt; 标准商品 -&gt; 平台资料
               </p>
               <p className="text-sm text-zinc-500">
                 当前页面

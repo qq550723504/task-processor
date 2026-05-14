@@ -6,18 +6,18 @@ const QUICK_TOOLS = [
   {
     eyebrow: "Create",
     title: "新建 ListingKit 任务",
-    description: "从 1688 链接、图片或文本开始生成 canonical product。",
+    description: "从 1688 链接、图片或文本开始生成标准商品。",
     href: "/listing-kits/new",
   },
   {
     eyebrow: "Source",
-    title: "SDS 源",
-    description: "选择 SDS 商品、子 SKU 和印刷区，创建后续生成任务。",
+    title: "POD",
+    description: "选择 POD 商品、子 SKU 和印刷区，创建后续生成任务。",
     href: "/listing-kits/sds",
   },
   {
     eyebrow: "Canonical",
-    title: "Canonical Products",
+    title: "标准商品",
     description: "查看已抽取的标准商品事实和来源任务。",
     href: "/listing-kits/canonical-products",
   },

@@ -18,6 +18,7 @@ import {
 
 export function TaskSceneSettingsSection({
   currentSceneValues,
+  embedded = false,
   lastAppliedSceneDefaultsRef,
   platformSceneDefaults,
   register,
@@ -25,8 +26,10 @@ export function TaskSceneSettingsSection({
   setShowSceneCustomization,
   setValue,
   showSceneCustomization,
+  showToggle = true,
 }: {
   currentSceneValues: TaskSceneDraftValues;
+  embedded?: boolean;
   lastAppliedSceneDefaultsRef: { current: TaskSceneDraftValues | null };
   platformSceneDefaults: TaskSceneDraftValues | null;
   register: UseFormRegister<FormValues>;
@@ -34,9 +37,18 @@ export function TaskSceneSettingsSection({
   setShowSceneCustomization: Dispatch<SetStateAction<boolean>>;
   setValue: UseFormSetValue<FormValues>;
   showSceneCustomization: boolean;
+  showToggle?: boolean;
 }) {
+  const sceneFieldsVisible = showToggle ? showSceneCustomization : true;
+
   return (
-    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+    <section
+      className={
+        embedded
+          ? "space-y-4"
+          : "space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-sm font-medium text-zinc-900">场景生成设置</h2>
@@ -44,49 +56,51 @@ export function TaskSceneSettingsSection({
             如果你希望更精细地控制画面风格，可以在这里补充场景偏好。
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setShowSceneCustomization((current) => {
-              const next = !current;
-              if (
-                next &&
-                platformSceneDefaults &&
-                !hasAnySceneCustomization(currentSceneValues)
-              ) {
-                setValue("sceneCategory", platformSceneDefaults.sceneCategory ?? "", {
-                  shouldDirty: true,
-                });
-                setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
-                  shouldDirty: true,
-                });
-                setValue("backgroundTone", platformSceneDefaults.backgroundTone ?? "", {
-                  shouldDirty: true,
-                });
-                setValue("composition", platformSceneDefaults.composition ?? "", {
-                  shouldDirty: true,
-                });
-                setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
-                  shouldDirty: true,
-                });
-                setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
-                  shouldDirty: true,
-                });
-                lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
-              }
-              return next;
-            });
-          }}
-          tone="secondary"
-          type="button"
-        >
-          {showSceneCustomization ? "收起场景设置" : "显示场景设置"}
-        </Button>
+        {showToggle ? (
+          <Button
+            onClick={() => {
+              setShowSceneCustomization((current) => {
+                const next = !current;
+                if (
+                  next &&
+                  platformSceneDefaults &&
+                  !hasAnySceneCustomization(currentSceneValues)
+                ) {
+                  setValue("sceneCategory", platformSceneDefaults.sceneCategory ?? "", {
+                    shouldDirty: true,
+                  });
+                  setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
+                    shouldDirty: true,
+                  });
+                  setValue("backgroundTone", platformSceneDefaults.backgroundTone ?? "", {
+                    shouldDirty: true,
+                  });
+                  setValue("composition", platformSceneDefaults.composition ?? "", {
+                    shouldDirty: true,
+                  });
+                  setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
+                    shouldDirty: true,
+                  });
+                  setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
+                    shouldDirty: true,
+                  });
+                  lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
+                }
+                return next;
+              });
+            }}
+            tone="secondary"
+            type="button"
+          >
+            {showSceneCustomization ? "收起场景设置" : "显示场景设置"}
+          </Button>
+        ) : null}
       </div>
       {sceneSummary ? (
         <p className="text-sm leading-6 text-zinc-500">{sceneSummary}</p>
       ) : null}
 
-      {showSceneCustomization ? (
+      {sceneFieldsVisible ? (
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">场景类目</span>

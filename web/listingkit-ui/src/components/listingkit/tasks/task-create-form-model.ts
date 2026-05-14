@@ -6,8 +6,9 @@ export const platformOptions = [
   { value: "amazon", label: "Amazon" },
   { value: "shein", label: "SHEIN" },
   { value: "temu", label: "Temu" },
-  { value: "walmart", label: "Walmart" },
 ] as const;
+
+export const supportedPlatformValues = platformOptions.map((platform) => platform.value);
 
 export const sceneCategoryOptions = [
   { value: "", label: "自动" },
@@ -88,25 +89,31 @@ export function buildTaskCreateDefaultValues({
   initialValues?: Partial<TaskCreateDraft>;
   variant: TaskCreateVariant;
 }): FormValues {
+  const isSDSVariant = variant === "sds";
+  const sanitizedPlatforms =
+    initialValues?.platforms?.filter((platform) =>
+      supportedPlatformValues.includes(platform as (typeof supportedPlatformValues)[number]),
+    ) ?? [];
+
   return {
     text: initialValues?.text ?? "",
     imageUrls: initialValues?.imageUrls ?? "",
     productUrl: initialValues?.productUrl ?? "",
     platforms:
-      initialValues?.platforms && initialValues.platforms.length > 0
-        ? initialValues.platforms
-        : variant === "sds"
+      sanitizedPlatforms.length > 0
+        ? sanitizedPlatforms
+        : isSDSVariant
           ? ["amazon"]
           : [],
     sheinStoreId: initialValues?.sheinStoreId ?? "",
-    sdsEnabled: variant === "sds" || Boolean(initialValues?.sdsEnabled),
-    sdsVariantId: initialValues?.sdsVariantId ?? "",
-    sdsParentProductId: initialValues?.sdsParentProductId ?? "",
-    sdsPrototypeGroupId: initialValues?.sdsPrototypeGroupId ?? "",
-    sdsLayerId: initialValues?.sdsLayerId ?? "",
-    sdsDesignType: initialValues?.sdsDesignType ?? "material",
-    sdsFitLevel: initialValues?.sdsFitLevel ?? "1",
-    sdsResizeMode: initialValues?.sdsResizeMode ?? "0",
+    sdsEnabled: isSDSVariant,
+    sdsVariantId: isSDSVariant ? (initialValues?.sdsVariantId ?? "") : "",
+    sdsParentProductId: isSDSVariant ? (initialValues?.sdsParentProductId ?? "") : "",
+    sdsPrototypeGroupId: isSDSVariant ? (initialValues?.sdsPrototypeGroupId ?? "") : "",
+    sdsLayerId: isSDSVariant ? (initialValues?.sdsLayerId ?? "") : "",
+    sdsDesignType: isSDSVariant ? (initialValues?.sdsDesignType ?? "material") : "material",
+    sdsFitLevel: isSDSVariant ? (initialValues?.sdsFitLevel ?? "1") : "1",
+    sdsResizeMode: isSDSVariant ? (initialValues?.sdsResizeMode ?? "0") : "0",
     sceneCategory: initialValues?.sceneCategory ?? "",
     sceneStyle: initialValues?.sceneStyle ?? "",
     backgroundTone: initialValues?.backgroundTone ?? "",

@@ -7,6 +7,7 @@ import { ArrowRight, Database, LoaderCircle, RefreshCw, ShieldAlert } from "luci
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import { useCanonicalProducts } from "@/lib/query/use-canonical-products";
 import type { CanonicalProductListItem } from "@/lib/canonical-products/canonical-products";
 
@@ -33,65 +34,63 @@ export function CanonicalProductListPage() {
   const items = products.data?.items ?? [];
 
   return (
-    <div className="min-h-screen bg-[#f7f7f3] px-6 py-10">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <section className="grid gap-4 border-b border-zinc-200 pb-6 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-teal-700">
-              Canonical Product
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-950">
-              通用产品模型
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
-              从最近的 ListingKit 任务结果中聚合 canonical product，用于检查 1688、SDS 到 SHEIN 前的通用商品事实。
-            </p>
-          </div>
-          <Button tone="secondary" onClick={() => products.refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            刷新
-          </Button>
-        </section>
+    <ListingKitPageShell backgroundClassName="bg-[#f7f7f3]">
+      <section className="grid gap-4 border-b border-zinc-200 pb-6 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-teal-700">
+            标准商品
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-950">
+            标准商品
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+            从最近的 ListingKit 任务结果中聚合标准商品，用于检查 1688、POD 到 SHEIN 前的统一商品事实。
+          </p>
+        </div>
+        <Button tone="secondary" onClick={() => products.refetch()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          刷新
+        </Button>
+      </section>
 
-        <Card className="border-zinc-200 bg-white p-4">
-          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
-            <Database className="h-4 w-4 text-teal-700" />
-            <span>当前页 {items.length} 个 canonical product</span>
-            <span className="text-zinc-300">/</span>
-            <span>来源：ListingKit task result canonical_product</span>
-          </div>
+      <Card className="border-zinc-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+          <Database className="h-4 w-4 text-teal-700" />
+          <span>当前页 {items.length} 个标准商品</span>
+          <span className="text-zinc-300">/</span>
+          <span>来源：ListingKit task result canonical_product</span>
+        </div>
+      </Card>
+
+      {products.isLoading ? (
+        <Card className="flex min-h-72 items-center justify-center">
+          <LoaderCircle className="h-6 w-6 animate-spin text-zinc-500" />
         </Card>
-
-        {products.isLoading ? (
-          <Card className="flex min-h-72 items-center justify-center">
-            <LoaderCircle className="h-6 w-6 animate-spin text-zinc-500" />
-          </Card>
-        ) : products.isError ? (
-          <EmptyState
-            title="canonical product 加载失败"
-            description="任务列表或任务详情接口暂时不可用。"
-            action={
-              <Button tone="secondary" onClick={() => products.refetch()}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                刷新
-              </Button>
-            }
-          />
-        ) : items.length === 0 ? (
-          <EmptyState
-            title="暂无 canonical product"
-            description="完成或待审核的 ListingKit 任务产生 canonical_product 后会出现在这里。"
-            action={<Link className="text-sm font-medium text-zinc-950 underline" href="/listing-kits">查看任务列表</Link>}
-          />
-        ) : (
-          <div className="grid gap-3">
-            {items.map((item) => (
-              <CanonicalProductRow key={item.taskId} item={item} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      ) : products.isError ? (
+        <EmptyState
+          title="标准商品加载失败"
+          description="任务列表或任务详情接口暂时不可用。"
+          action={
+            <Button tone="secondary" onClick={() => products.refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              刷新
+            </Button>
+          }
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          title="暂无标准商品"
+          description="完成或待审核的 ListingKit 任务产出标准商品后会出现在这里。"
+          action={<Link className="text-sm font-medium text-zinc-950 underline" href="/listing-kits">查看任务列表</Link>}
+        />
+      ) : (
+        <div className="grid gap-3">
+          {items.map((item) => (
+            <CanonicalProductRow key={item.taskId} item={item} />
+          ))}
+        </div>
+      )}
+    </ListingKitPageShell>
   );
 }
 

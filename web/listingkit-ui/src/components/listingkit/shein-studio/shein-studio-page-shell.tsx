@@ -94,7 +94,7 @@ export function SheinStudioPageShell({
       <div
         className={
           compact
-            ? "mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-5 px-5 py-6 lg:px-8"
+            ? "flex w-full flex-1 flex-col gap-5 py-6"
             : "relative mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-10 lg:px-10"
         }
       >

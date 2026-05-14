@@ -23,7 +23,7 @@ describe("StyleGalleryPage", () => {
     window.localStorage.clear();
   });
 
-  it("stores the selected gallery image before entering the SDS source flow", () => {
+  it("stores the selected gallery image before entering the POD flow", () => {
     render(
       <StyleGalleryPage
         initialGallery={{
@@ -55,7 +55,7 @@ describe("StyleGalleryPage", () => {
     fireEvent.load(image);
 
     expect(screen.getByText("ListingKit 款式图库")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "从 SDS 源生成" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "从 POD 生成" })).toHaveAttribute(
       "href",
       "/listing-kits/sds",
     );

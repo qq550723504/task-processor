@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   description: "ListingKit 上架任务工作台",
 };
 
+const shouldBypassAuthGate =
+  process.env.NODE_ENV !== "production" &&
+  process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE === "1";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -20,9 +24,13 @@ export default function RootLayout({
       <body className="min-h-full bg-zinc-100 text-zinc-950">
         <QueryProvider>
           <YudaoAuthBridge />
-          <YudaoAuthGate>
+          {shouldBypassAuthGate ? (
             <ListingKitAppShell>{children}</ListingKitAppShell>
-          </YudaoAuthGate>
+          ) : (
+            <YudaoAuthGate>
+              <ListingKitAppShell>{children}</ListingKitAppShell>
+            </YudaoAuthGate>
+          )}
         </QueryProvider>
       </body>
     </html>

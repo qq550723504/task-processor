@@ -16,16 +16,16 @@ describe("ListingKitAppShell", () => {
     );
 
     expect(screen.getByText("ListingKit")).toBeInTheDocument();
-    expect(screen.getByText("源信息 -> Canonical Product -> 平台资料")).toBeInTheDocument();
+    expect(screen.getByText("源信息 -> 标准商品 -> 平台资料")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "ListingKit 主导航" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "新建任务" })).toHaveAttribute("href", "/listing-kits/new");
-    expect(screen.getByRole("link", { name: "SDS 源" })).toHaveAttribute("href", "/listing-kits/sds");
+    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("href", "/listing-kits/sds");
     expect(screen.getByRole("link", { name: "款式图库" })).toHaveAttribute(
       "href",
       "/listing-kits/style-gallery",
     );
-    expect(screen.getByRole("link", { name: "Canonical Products" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "标准商品" })).toHaveAttribute(
       "href",
       "/listing-kits/canonical-products",
     );
@@ -35,7 +35,7 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/settings",
     );
-    expect(screen.getByRole("link", { name: "SDS 源" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
       "aria-current",
       "page",
     );

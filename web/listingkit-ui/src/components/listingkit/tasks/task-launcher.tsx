@@ -50,7 +50,7 @@ export function TaskLauncher() {
             Create New Task
           </Button>
           <Button tone="secondary" onClick={() => router.push("/listing-kits/sds")}>
-            Open SDS Sync
+            Open POD
           </Button>
           <Button tone="secondary" onClick={() => router.push("/listing-kits/shein")}>
             Open SHEIN Studio

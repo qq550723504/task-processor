@@ -15,6 +15,7 @@ import {
   type DimensionPreset,
   type ImageDimensions,
 } from "@/components/listingkit/style-gallery/style-gallery-page-model";
+import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import type { StyleGalleryResponse } from "@/lib/types/style-gallery";
 
 export { formatImageDimensions } from "@/components/listingkit/style-gallery/style-gallery-page-model";
@@ -72,35 +73,35 @@ export function StyleGalleryPage({ initialGallery }: GalleryPageProps) {
   }
 
   return (
-    <div className="relative isolate min-h-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,rgba(14,165,233,0.15),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(245,158,11,0.18),transparent_30%),linear-gradient(180deg,#fbfaf6_0%,#efeee8_100%)] px-6 py-10">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(24,24,27,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.035)_1px,transparent_1px)] bg-[size:34px_34px]" />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <StyleGalleryHero />
-        <StyleGalleryMetrics gallery={initialGallery} />
-        <StyleGalleryDimensionFilters
-          dimensionPreset={dimensionPreset}
-          itemCount={items.length}
-          minHeight={minHeight}
-          minWidth={minWidth}
-          setDimensionPreset={setDimensionPreset}
-          setMinHeight={setMinHeight}
-          setMinWidth={setMinWidth}
-          visibleCount={visibleItems.length}
-        />
+    <ListingKitPageShell
+      backgroundClassName="isolate overflow-hidden bg-[radial-gradient(circle_at_12%_8%,rgba(14,165,233,0.15),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(245,158,11,0.18),transparent_30%),linear-gradient(180deg,#fbfaf6_0%,#efeee8_100%)]"
+      overlayClassName="bg-[linear-gradient(rgba(24,24,27,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.035)_1px,transparent_1px)] bg-[size:34px_34px]"
+    >
+      <StyleGalleryHero />
+      <StyleGalleryMetrics gallery={initialGallery} />
+      <StyleGalleryDimensionFilters
+        dimensionPreset={dimensionPreset}
+        itemCount={items.length}
+        minHeight={minHeight}
+        minWidth={minWidth}
+        setDimensionPreset={setDimensionPreset}
+        setMinHeight={setMinHeight}
+        setMinWidth={setMinWidth}
+        visibleCount={visibleItems.length}
+      />
 
-        {items.length === 0 ? (
-          <StyleGalleryEmptyState />
-        ) : visibleItems.length === 0 ? (
-          <StyleGalleryNoResults
-            hasActiveDimensionFilter={hasActiveDimensionFilter}
-          />
-        ) : (
-          <StyleGalleryGrid
-            items={visibleItems}
-            onDimensions={handleDimensions}
-          />
-        )}
-      </div>
-    </div>
+      {items.length === 0 ? (
+        <StyleGalleryEmptyState />
+      ) : visibleItems.length === 0 ? (
+        <StyleGalleryNoResults
+          hasActiveDimensionFilter={hasActiveDimensionFilter}
+        />
+      ) : (
+        <StyleGalleryGrid
+          items={visibleItems}
+          onDimensions={handleDimensions}
+        />
+      )}
+    </ListingKitPageShell>
   );
 }

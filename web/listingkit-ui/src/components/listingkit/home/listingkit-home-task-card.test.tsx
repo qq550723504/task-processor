@@ -60,7 +60,35 @@ describe("ListingKitHomeTaskCard", () => {
       />,
     );
 
-    expect(screen.getByText("待 SHEIN 确认")).toBeInTheDocument();
+    expect(screen.getAllByText("待 SHEIN 确认").length).toBeGreaterThan(0);
+  });
+
+  it("shows shein work queues, action queues, and compact next-step guidance", () => {
+    render(
+      <ListingKitHomeTaskCard
+        taxonomy={{
+          shein_work_queues: [
+            { key: "repair_queue", label: "修复队列", severity: "negative" },
+          ],
+          shein_action_queues: [
+            { key: "final_review_queue", label: "最终确认", severity: "warning" },
+          ],
+        }}
+        task={makeTask({
+          shein_work_queue: "repair_queue",
+          shein_action_queue: "final_review_queue",
+          shein_status_overview: {
+            headline: "SHEIN 资料包暂不能直接提交",
+            primary_action: "最终确认",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("修复队列")).toBeInTheDocument();
+    expect(screen.getAllByText("最终确认").length).toBeGreaterThan(0);
+    expect(screen.getByText("下一步")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "继续处理 Task" })).toBeInTheDocument();
   });
 
   it("uses the SHEIN workspace query for resumable mixed-platform tasks", () => {

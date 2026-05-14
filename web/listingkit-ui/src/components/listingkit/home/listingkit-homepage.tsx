@@ -3,15 +3,17 @@
 import { ListingKitHomeHero } from "@/components/listingkit/home/listingkit-home-hero";
 import { ListingKitHomeQuickTools } from "@/components/listingkit/home/listingkit-home-quick-tools";
 import { ListingKitHomeRecentWork } from "@/components/listingkit/home/listingkit-home-recent-work";
+import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import { useListingKitTasks } from "@/lib/query/use-task-list";
 
 export function ListingKitHomepage() {
   const tasks = useListingKitTasks({ page: 1, page_size: 6 });
   const items = tasks.data?.items ?? [];
+  const summary = tasks.data?.summary;
+  const taxonomy = tasks.data?.taxonomy;
 
   return (
-    <div className="flex flex-1 overflow-hidden rounded-lg bg-zinc-50 px-4 py-4 sm:px-6 sm:py-6">
-      <div className="flex w-full flex-col gap-6 lg:gap-8">
+    <ListingKitPageShell backgroundClassName="overflow-hidden rounded-lg bg-zinc-50" contentClassName="gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:gap-8">
         <ListingKitHomeHero />
         <div className="space-y-4">
           <div className="space-y-1">
@@ -37,9 +39,10 @@ export function ListingKitHomepage() {
             tasks={items}
             isLoading={tasks.isLoading}
             isError={tasks.isError}
+            summary={summary}
+            taxonomy={taxonomy}
           />
         </div>
-      </div>
-    </div>
+    </ListingKitPageShell>
   );
 }

@@ -12,6 +12,10 @@ import {
 
 type AuthState = "authorized" | "checking" | "unauthorized";
 
+const shouldBypassAuthGate =
+  process.env.NODE_ENV !== "production" &&
+  process.env.NEXT_PUBLIC_LISTINGKIT_UI_BYPASS_AUTH_GATE === "1";
+
 export function YudaoAuthGate({
   authWaitMs = 1200,
   children,
@@ -19,6 +23,10 @@ export function YudaoAuthGate({
   authWaitMs?: number;
   children: ReactNode;
 }) {
+  if (shouldBypassAuthGate) {
+    return <>{children}</>;
+  }
+
   const [authState, setAuthState] = useState<AuthState>("checking");
 
   useEffect(() => {

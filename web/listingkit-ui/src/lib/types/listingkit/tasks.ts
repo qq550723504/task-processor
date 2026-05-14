@@ -4,7 +4,11 @@ import type {
   QueueItem,
   QueueSummary,
 } from "./preview";
-import type { PlatformPreviewPayload, SheinPreviewPayload } from "./shein";
+import type {
+  PlatformPreviewPayload,
+  SheinPreviewPayload,
+  SheinStatusOverview,
+} from "./shein";
 import type { AssetGenerationOverview } from "./review";
 
 export type ListingKitPreview = {
@@ -108,8 +112,19 @@ export type ListingKitTaskListQuery = {
   status?: string;
   platform?: string;
   shein_workflow_status?: string;
+  shein_blocker_key?: string;
+  shein_warning_key?: string;
+  shein_work_queue?: string;
+  shein_action_queue?: string;
   page?: number;
   page_size?: number;
+};
+
+export type ListingKitTaskFacetDescriptor = {
+  key: string;
+  label?: string;
+  description?: string;
+  severity?: string;
 };
 
 export type ListingKitTaskListItem = {
@@ -123,6 +138,11 @@ export type ListingKitTaskListItem = {
   variant_label?: string;
   sds_sync_status?: string;
   shein_workflow_status?: string;
+  shein_blocking_keys?: string[];
+  shein_warning_keys?: string[];
+  shein_work_queue?: string;
+  shein_action_queue?: string;
+  shein_status_overview?: SheinStatusOverview;
   shein_latest_submission_status?: string;
   shein_latest_submission_error?: string;
   shein_submission_remote_status?: string;
@@ -134,10 +154,29 @@ export type ListingKitTaskListItem = {
   completed_at?: string;
 };
 
+export type ListingKitTaskListSummary = {
+  status_counts?: Record<string, number>;
+  shein_workflow_status_counts?: Record<string, number>;
+  shein_work_queue_counts?: Record<string, number>;
+  shein_action_queue_counts?: Record<string, number>;
+  shein_blocker_counts?: Record<string, number>;
+  shein_warning_counts?: Record<string, number>;
+};
+
+export type ListingKitTaskListTaxonomy = {
+  shein_workflow_statuses?: ListingKitTaskFacetDescriptor[];
+  shein_work_queues?: ListingKitTaskFacetDescriptor[];
+  shein_action_queues?: ListingKitTaskFacetDescriptor[];
+  shein_blockers?: ListingKitTaskFacetDescriptor[];
+  shein_warnings?: ListingKitTaskFacetDescriptor[];
+};
+
 export type ListingKitTaskListPage = {
   page: number;
   page_size: number;
   total: number;
+  summary?: ListingKitTaskListSummary;
+  taxonomy?: ListingKitTaskListTaxonomy;
   items?: ListingKitTaskListItem[];
 };
 

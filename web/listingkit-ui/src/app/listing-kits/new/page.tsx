@@ -16,7 +16,7 @@ export default async function ListingKitNewTaskPage({
     .filter((value): value is "text" | "imageUrls" => value === "text" || value === "imageUrls");
 
   return (
-    <div className="flex flex-1 items-center justify-center py-16">
+    <div className="flex flex-1 py-6">
       <TaskCreatePage fromTask={fromTask} focus={focus} issues={parsedIssues} />
     </div>
   );

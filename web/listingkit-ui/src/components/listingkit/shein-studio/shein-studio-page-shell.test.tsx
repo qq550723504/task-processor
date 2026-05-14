@@ -32,20 +32,20 @@ describe("SheinStudioPageShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("allows the SDS source route to use SDS-facing header copy", () => {
+  it("allows the POD route to use POD-facing header copy", () => {
     render(
       <SheinStudioPageShell
-        eyebrow="SDS 源"
+        eyebrow="POD"
         layout="compact"
-        title="从 SDS 商品生成上架资料"
-        description="选择 SDS 商品、生成图片、审核款式，然后创建平台资料确认任务。"
+        title="从 POD 商品生成上架资料"
+        description="选择 POD 商品、生成图片、审核款式，然后创建平台资料确认任务。"
       />,
     );
 
-    expect(screen.getByText("SDS 源")).toBeInTheDocument();
-    expect(screen.getByText("从 SDS 商品生成上架资料")).toBeInTheDocument();
+    expect(screen.getByText("POD")).toBeInTheDocument();
+    expect(screen.getByText("从 POD 商品生成上架资料")).toBeInTheDocument();
     expect(
-      screen.getByText("选择 SDS 商品、生成图片、审核款式，然后创建平台资料确认任务。"),
+      screen.getByText("选择 POD 商品、生成图片、审核款式，然后创建平台资料确认任务。"),
     ).toBeInTheDocument();
     expect(screen.queryByText("当前步骤")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看款式图库" })).not.toBeInTheDocument();

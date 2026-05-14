@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "@/components/shared/button";
 import { platformOptions } from "@/components/listingkit/tasks/task-create-form-model";
 import type { UseFormRegister, FieldErrors } from "react-hook-form";
@@ -15,21 +16,26 @@ export function TaskPlatformFieldset({
   return (
     <fieldset className="space-y-3">
       <legend className="text-sm font-medium text-zinc-700">目标平台</legend>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-2">
         {platformOptions.map((platform) => (
           <label
-            className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900"
+            className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 transition hover:border-zinc-300"
             key={platform.value}
           >
-            <input
-              aria-label={platform.label}
-              className="h-4 w-4 rounded border-zinc-300 accent-zinc-950"
-              defaultChecked={selectedPlatforms?.includes(platform.value)}
-              type="checkbox"
-              value={platform.value}
-              {...register("platforms")}
-            />
-            <span>{platform.label}</span>
+            <span className="flex items-center gap-3">
+              <input
+                aria-label={platform.label}
+                className="h-4 w-4 rounded border-zinc-300 accent-zinc-950"
+                defaultChecked={selectedPlatforms?.includes(platform.value)}
+                type="checkbox"
+                value={platform.value}
+                {...register("platforms")}
+              />
+              <span className="font-medium">{platform.label}</span>
+            </span>
+            <span className="text-xs text-zinc-500">
+              {selectedPlatforms?.includes(platform.value) ? "已选择" : "可启用"}
+            </span>
           </label>
         ))}
       </div>
@@ -53,7 +59,7 @@ export function TaskSheinStoreField({
       <span className="text-sm font-medium text-zinc-700">SHEIN 店铺 ID</span>
       <input
         aria-label="SHEIN 店铺 ID"
-        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
         inputMode="numeric"
         placeholder="869"
         {...register("sheinStoreId")}
@@ -66,22 +72,29 @@ export function TaskSheinStoreField({
 }
 
 export function TaskAdvancedSettingsToggle({
+  children,
   showAdvancedSettings,
   setShowAdvancedSettings,
+  variant = "default",
 }: {
+  children?: ReactNode;
   showAdvancedSettings: boolean;
   setShowAdvancedSettings: (value: boolean | ((current: boolean) => boolean)) => void;
+  variant?: "default" | "sds";
 }) {
   return (
-    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-sm font-medium text-zinc-900">高级设置</h2>
           <p className="text-sm leading-6 text-zinc-500">
-            先填写基础信息；SDS 和场景等高级配置可以稍后再补充。
+            {variant === "sds"
+              ? "先填写基础信息；SDS 和场景等高级配置可以稍后再补充。"
+              : "先填写基础信息；场景等高级配置可以稍后再补充。"}
           </p>
         </div>
         <Button
+          className="min-w-[112px]"
           onClick={() => setShowAdvancedSettings((current) => !current)}
           tone="secondary"
           type="button"
@@ -89,6 +102,9 @@ export function TaskAdvancedSettingsToggle({
           {showAdvancedSettings ? "收起高级设置" : "显示高级设置"}
         </Button>
       </div>
+      {showAdvancedSettings && children ? (
+        <div className="border-t border-zinc-200 pt-4">{children}</div>
+      ) : null}
     </section>
   );
 }
@@ -104,10 +120,10 @@ export function TaskCreateFormActions({
 }) {
   return (
     <div className="flex flex-wrap gap-3">
-      <Button disabled={isCreating} type="submit">
+      <Button className="min-w-[140px]" disabled={isCreating} type="submit">
         {isCreating ? "创建中..." : submitLabel}
       </Button>
-      <Button tone="secondary" onClick={onBack} type="button">
+      <Button className="min-w-[112px]" tone="secondary" onClick={onBack} type="button">
         返回首页
       </Button>
     </div>

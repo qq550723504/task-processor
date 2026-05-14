@@ -43,12 +43,12 @@ describe("TaskCreateForm", () => {
     expect(screen.queryByText("SDS 同步设置")).not.toBeInTheDocument();
     expect(screen.queryByText("场景生成设置")).not.toBeInTheDocument();
     expect(
-      screen.getByText("先填写基础信息；SDS 和场景等高级配置可以稍后再补充。"),
+      screen.getByText("先填写基础信息；场景等高级配置可以稍后再补充。"),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "显示高级设置" }));
 
-    expect(screen.getByText("SDS 同步设置")).toBeInTheDocument();
+    expect(screen.queryByText("SDS 同步设置")).not.toBeInTheDocument();
     expect(screen.getByText("场景生成设置")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收起高级设置" })).toBeInTheDocument();
   });
@@ -121,7 +121,7 @@ describe("TaskCreateForm", () => {
     expect(
       screen.getByText("如果已经提供商品链接，这里不是必填；只有想覆盖原始标题时再填写。"),
     ).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("商品链接"), {
+    fireEvent.change(screen.getByRole("textbox", { name: "商品链接" }), {
       target: { value: "https://detail.1688.com/offer/123456789.html" },
     });
     fireEvent.click(screen.getByLabelText("Temu"));
@@ -184,7 +184,7 @@ describe("TaskCreateForm", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "商品链接" }));
     await waitFor(() => {
-      expect(screen.getByLabelText("商品链接")).toHaveFocus();
+      expect(screen.getByRole("textbox", { name: "商品链接" })).toHaveFocus();
     });
 
     fireEvent.click(screen.getByRole("tab", { name: "图片素材" }));
@@ -232,5 +232,18 @@ describe("TaskCreateForm", () => {
     expect(screen.getByLabelText("图片链接")).toHaveValue(
       "http://localhost:8080/api/v1/listing-kits/uploads/files/a.jpg\nhttp://localhost:8080/api/v1/listing-kits/uploads/files/b.jpg",
     );
+  });
+
+  it("does not expose unsupported walmart selection", () => {
+    render(
+      <TaskCreateForm
+        initialValues={{
+          platforms: ["walmart", "amazon"],
+        }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Walmart")).not.toBeInTheDocument();
+    expect(screen.getByText("已选择 1 个平台")).toBeInTheDocument();
   });
 });
