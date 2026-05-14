@@ -123,13 +123,9 @@ func (a *PlaywrightAutomation) Login(ctx context.Context, account Account, cfg A
 }
 
 func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, cfg AutomationConfig) (*AutomationResult, VerifySession, error) {
-	profileDir := filepath.Join(strings.TrimSpace(cfg.ProfileRoot), fmt.Sprintf("%d", account.TenantID), fmt.Sprintf("%d", account.StoreID))
-	if !filepath.IsAbs(profileDir) {
-		absDir, absErr := filepath.Abs(profileDir)
-		if absErr != nil {
-			return nil, nil, absErr
-		}
-		profileDir = absDir
+	profileDir, err := resolveProfileDir(cfg.ProfileRoot, account.TenantID, account.StoreID)
+	if err != nil {
+		return nil, nil, err
 	}
 	if err := os.MkdirAll(profileDir, 0o755); err != nil {
 		return nil, nil, err
@@ -152,36 +148,37 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	if err := manager.Install(); err != nil {
 		return nil, nil, err
 	}
-	if err := manager.Launch(); err != nil {
+	if err := launchManagerWithProfileRecovery(manager, profileDir); err != nil {
 		manager.Close()
+		trimProfileDir(profileDir)
 		return nil, nil, err
 	}
 
 	page, err := manager.NewPage()
 	if err != nil {
-		manager.Close()
+		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
 	}
 	if _, err = page.Goto(loginURLForAccount(account), playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 		Timeout:   playwright.Float(60000),
 	}); err != nil {
-		manager.Close()
+		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
 	}
 	if err := fillLogin(page, account); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "fill_login", err)
-		manager.Close()
+		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
 	if err := submitLogin(page); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "submit_login", err)
-		manager.Close()
+		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
 	if waiting, err := waitForLoginOutcome(ctx, page); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "wait_login", err)
-		manager.Close()
+		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	} else if waiting {
 		return &AutomationResult{
@@ -193,17 +190,18 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 				manager:     manager,
 				page:        page,
 				artifactDir: cfg.ArtifactDir,
+				profileDir:  profileDir,
 			}, nil
 	}
 
 	storageState, err := manager.GetContext().StorageState()
 	if err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "export_state", err)
-		manager.Close()
+		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
-	state := map[string]any{"cookies": storageState.Cookies, "origins": storageState.Origins}
-	manager.Close()
+	state := cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})
+	closeManagerProfile(manager, profileDir)
 	return &AutomationResult{BrowserState: state}, nil, nil
 }
 
@@ -292,6 +290,7 @@ type playwrightVerifySession struct {
 	manager     *sharedbrowser.Manager
 	page        playwright.Page
 	artifactDir string
+	profileDir  string
 }
 
 func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (*AutomationResult, error) {
@@ -316,18 +315,44 @@ func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (
 		return artifactResult(s.page, s.artifactDir, s.account, "export_state_after_verify", err)
 	}
 	return &AutomationResult{
-		BrowserState: map[string]any{
-			"cookies": storageState.Cookies,
-			"origins": storageState.Origins,
-		},
+		BrowserState: cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies}),
 	}, nil
 }
 
 func (s *playwrightVerifySession) Close() error {
 	if s.manager != nil {
-		s.manager.Close()
+		closeManagerProfile(s.manager, s.profileDir)
 	}
 	return nil
+}
+
+func launchManagerWithProfileRecovery(manager *sharedbrowser.Manager, profileDir string) error {
+	err := manager.Launch()
+	if err == nil {
+		return nil
+	}
+	if !isProfileInUseError(err) {
+		return err
+	}
+	terminateProfileBrowserProcesses(profileDir)
+	cleared := clearProfileLockFiles(profileDir)
+	if !cleared {
+		return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", err)
+	}
+	if retryErr := manager.Launch(); retryErr != nil {
+		if isProfileInUseError(retryErr) {
+			return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", retryErr)
+		}
+		return retryErr
+	}
+	return nil
+}
+
+func closeManagerProfile(manager *sharedbrowser.Manager, profileDir string) {
+	if manager != nil {
+		manager.Close()
+	}
+	trimProfileDir(profileDir)
 }
 
 func submitVerifyCode(page playwright.Page, code string) error {

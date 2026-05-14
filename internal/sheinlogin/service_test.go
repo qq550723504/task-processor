@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,7 +102,10 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 	session := &stubVerifySession{
 		result: &AutomationResult{
-			BrowserState: map[string]any{"cookies": []any{map[string]any{"name": "sid", "value": "ok"}}},
+			BrowserState: map[string]any{
+				"cookies": []any{map[string]any{"name": "sid", "value": "ok"}},
+				"origins": []any{map[string]any{"origin": "https://sellerhub.shein.com"}},
+			},
 		},
 	}
 	auto := &stubAutomation{
@@ -120,6 +124,36 @@ func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 	}
 	if has, err := svc.store.HasCookie(context.Background(), 1, 2); err != nil || !has {
 		t.Fatalf("expected cookie persisted, has=%v err=%v", has, err)
+	}
+}
+
+func TestServiceLoginPersistsCookieOnlyBrowserState(t *testing.T) {
+	auto := &stubAutomation{
+		result: &AutomationResult{
+			BrowserState: map[string]any{
+				"cookies": []any{map[string]any{"name": "sid", "value": "ok"}},
+				"origins": []any{map[string]any{"origin": "https://sellerhub.shein.com"}},
+			},
+		},
+	}
+	svc := newTestService(t, auto)
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected successful login result: %+v", result)
+	}
+
+	raw, err := svc.store.client.Get(context.Background(), cookieKey(1, 2)).Result()
+	if err != nil {
+		t.Fatalf("load saved cookie state: %v", err)
+	}
+	if raw == "" {
+		t.Fatal("expected saved cookie state")
+	}
+	if strings.Contains(raw, "\"origins\"") {
+		t.Fatalf("expected cookie-only payload, got %s", raw)
 	}
 }
 

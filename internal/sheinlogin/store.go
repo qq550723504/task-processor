@@ -64,7 +64,7 @@ func (s *RedisStore) Ready(ctx context.Context) bool {
 }
 
 func (s *RedisStore) SaveCookieState(ctx context.Context, tenantID, storeID int64, payload map[string]any, ttl time.Duration) error {
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(cookieOnlyBrowserState(payload))
 	if err != nil {
 		return err
 	}

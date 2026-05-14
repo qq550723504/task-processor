@@ -2,6 +2,7 @@ package sheinlogin
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -66,5 +67,38 @@ func TestRedisStoreCookieAndVerifyCodeLifecycle(t *testing.T) {
 	failure, err = store.LastFailure(ctx, 1, 2)
 	if err != nil || failure != nil {
 		t.Fatalf("expected cleared last failure: failure=%+v err=%v", failure, err)
+	}
+}
+
+func TestSaveCookieStateStripsNonCookieBrowserState(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	store := newRedisStoreFromClient(client)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+
+	payload := map[string]any{
+		"cookies": []map[string]any{{"name": "sid", "value": "123"}},
+		"origins": []map[string]any{{"origin": "https://sellerhub.shein.com"}},
+	}
+	if err := store.SaveCookieState(ctx, 1, 2, payload, time.Hour); err != nil {
+		t.Fatalf("save cookie state: %v", err)
+	}
+
+	raw, err := client.Get(ctx, cookieKey(1, 2)).Result()
+	if err != nil {
+		t.Fatalf("load saved payload: %v", err)
+	}
+
+	var saved map[string]any
+	if err := json.Unmarshal([]byte(raw), &saved); err != nil {
+		t.Fatalf("unmarshal saved payload: %v", err)
+	}
+	if _, ok := saved["origins"]; ok {
+		t.Fatalf("expected origins to be stripped, payload=%v", saved)
+	}
+	cookies, ok := saved["cookies"].([]any)
+	if !ok || len(cookies) != 1 {
+		t.Fatalf("expected cookies to be preserved, payload=%v", saved)
 	}
 }
