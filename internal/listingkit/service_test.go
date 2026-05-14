@@ -1,9 +1,15 @@
 package listingkit
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func TestNormalizeGenerateRequestDefaults(t *testing.T) {
@@ -155,4 +161,528 @@ func TestValidateRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestListTasksFiltersSheinWorkflowStatusBeforePagination(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	repo := &stubTaskListRepo{
+		tasks: []Task{
+			makeTaskListFixture("task-1", now.Add(-time.Minute), SheinWorkflowStatusPendingConfirmation, ""),
+			makeTaskListFixture("task-2", now.Add(-2*time.Minute), SheinWorkflowStatusDraftSaved, ""),
+			makeTaskListFixture("task-3", now.Add(-3*time.Minute), SheinWorkflowStatusPublished, ""),
+		},
+	}
+	svc := &service{repo: repo}
+
+	page, err := svc.ListTasks(context.Background(), &TaskListQuery{
+		Page:                1,
+		PageSize:            1,
+		SheinWorkflowStatus: SheinWorkflowStatusPublished,
+	})
+	if err != nil {
+		t.Fatalf("ListTasks error = %v", err)
+	}
+	if repo.lastQuery == nil || repo.lastQuery.SheinWorkflowStatus != SheinWorkflowStatusPublished {
+		t.Fatalf("repo query = %+v, want shein_workflow_status propagated", repo.lastQuery)
+	}
+	if page.Total != 1 {
+		t.Fatalf("page total = %d, want 1", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].TaskID != "task-3" {
+		t.Fatalf("page items = %+v, want task-3 only", page.Items)
+	}
+	if page.Taxonomy == nil || len(page.Taxonomy.SheinWorkflowStatuses) == 0 {
+		t.Fatalf("page taxonomy = %+v, want workflow descriptors", page.Taxonomy)
+	}
+}
+
+func TestListTasksFiltersBySheinBlockerKey(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	repo := &stubTaskListRepo{
+		tasks: []Task{
+			makeTaskListFixture("task-final-review", now.Add(-time.Minute), SheinWorkflowStatusPendingConfirmation, "final_review"),
+			makeTaskListFixture("task-category", now.Add(-2*time.Minute), SheinWorkflowStatusPendingConfirmation, "category"),
+			makeTaskListFixture("task-published", now.Add(-3*time.Minute), SheinWorkflowStatusPublished, ""),
+		},
+	}
+	svc := &service{repo: repo}
+
+	page, err := svc.ListTasks(context.Background(), &TaskListQuery{
+		Page:            1,
+		PageSize:        10,
+		SheinBlockerKey: "final_review",
+	})
+	if err != nil {
+		t.Fatalf("ListTasks error = %v", err)
+	}
+	if repo.lastQuery == nil || repo.lastQuery.SheinBlockerKey != "final_review" {
+		t.Fatalf("repo query = %+v, want shein_blocker_key propagated", repo.lastQuery)
+	}
+	if page.Total != 1 {
+		t.Fatalf("page total = %d, want 1", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].TaskID != "task-final-review" {
+		t.Fatalf("page items = %+v, want task-final-review only", page.Items)
+	}
+}
+
+func TestListTasksFiltersBySheinWorkQueue(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	repo := &stubTaskListRepo{
+		tasks: []Task{
+			makeTaskListFixture("task-submit-ready", now.Add(-time.Minute), SheinWorkflowStatusPendingConfirmation, "ready"),
+			makeTaskListFixture("task-review", now.Add(-2*time.Minute), SheinWorkflowStatusPendingConfirmation, "warning"),
+			makeTaskListFixture("task-repair", now.Add(-3*time.Minute), SheinWorkflowStatusPendingConfirmation, "final_review"),
+		},
+	}
+	svc := &service{repo: repo}
+
+	page, err := svc.ListTasks(context.Background(), &TaskListQuery{
+		Page:           1,
+		PageSize:       10,
+		SheinWorkQueue: SheinWorkQueueSubmitReady,
+	})
+	if err != nil {
+		t.Fatalf("ListTasks error = %v", err)
+	}
+	if repo.lastQuery == nil || repo.lastQuery.SheinWorkQueue != SheinWorkQueueSubmitReady {
+		t.Fatalf("repo query = %+v, want shein_work_queue propagated", repo.lastQuery)
+	}
+	if page.Total != 1 {
+		t.Fatalf("page total = %d, want 1", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].TaskID != "task-submit-ready" {
+		t.Fatalf("page items = %+v, want task-submit-ready only", page.Items)
+	}
+}
+
+func TestListTasksFiltersBySheinWarningKey(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	repo := &stubTaskListRepo{
+		tasks: []Task{
+			makeTaskListFixture("task-review", now.Add(-time.Minute), SheinWorkflowStatusPendingConfirmation, "warning"),
+			makeTaskListFixture("task-ready", now.Add(-2*time.Minute), SheinWorkflowStatusPendingConfirmation, "ready"),
+			makeTaskListFixture("task-repair", now.Add(-3*time.Minute), SheinWorkflowStatusPendingConfirmation, "final_review"),
+		},
+	}
+	svc := &service{repo: repo}
+
+	page, err := svc.ListTasks(context.Background(), &TaskListQuery{
+		Page:            1,
+		PageSize:        10,
+		SheinWarningKey: "manual_notes",
+	})
+	if err != nil {
+		t.Fatalf("ListTasks error = %v", err)
+	}
+	if repo.lastQuery == nil || repo.lastQuery.SheinWarningKey != "manual_notes" {
+		t.Fatalf("repo query = %+v, want shein_warning_key propagated", repo.lastQuery)
+	}
+	if page.Total != 1 {
+		t.Fatalf("page total = %d, want 1", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].TaskID != "task-review" {
+		t.Fatalf("page items = %+v, want task-review only", page.Items)
+	}
+}
+
+func TestListTasksFiltersBySheinActionQueue(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	repo := &stubTaskListRepo{
+		tasks: []Task{
+			makeTaskListFixture("task-classification", now.Add(-time.Minute), SheinWorkflowStatusPendingConfirmation, "category"),
+			makeTaskListFixture("task-review", now.Add(-2*time.Minute), SheinWorkflowStatusPendingConfirmation, "warning"),
+			makeTaskListFixture("task-ready", now.Add(-3*time.Minute), SheinWorkflowStatusPendingConfirmation, "ready"),
+		},
+	}
+	svc := &service{repo: repo}
+
+	page, err := svc.ListTasks(context.Background(), &TaskListQuery{
+		Page:             1,
+		PageSize:         10,
+		SheinActionQueue: SheinActionQueueClassification,
+	})
+	if err != nil {
+		t.Fatalf("ListTasks error = %v", err)
+	}
+	if repo.lastQuery == nil || repo.lastQuery.SheinActionQueue != SheinActionQueueClassification {
+		t.Fatalf("repo query = %+v, want shein_action_queue propagated", repo.lastQuery)
+	}
+	if page.Total != 1 {
+		t.Fatalf("page total = %d, want 1", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].TaskID != "task-classification" {
+		t.Fatalf("page items = %+v, want task-classification only", page.Items)
+	}
+	if page.Summary == nil || page.Summary.SheinActionQueueCounts[SheinActionQueueClassification] != 1 || page.Summary.SheinActionQueueCounts[SheinActionQueueManualReview] != 1 {
+		t.Fatalf("page summary = %+v, want filtered-universe action queue counts", page.Summary)
+	}
+	if page.Taxonomy == nil || len(page.Taxonomy.SheinActionQueues) == 0 || page.Taxonomy.SheinActionQueues[0].Key == "" {
+		t.Fatalf("page taxonomy = %+v, want action queue descriptors", page.Taxonomy)
+	}
+}
+
+func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
+	t.Parallel()
+
+	productTask := &productenrich.Task{
+		ID: "product-task-inline",
+		Request: &productenrich.GenerateRequest{
+			Text: "inline product",
+		},
+	}
+	productSvc := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:       "Inline Product",
+			Description: "Inline description",
+			Category:    []string{"Home"},
+			Images:      []string{"https://example.com/source-1.jpg"},
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-inline"},
+		result: &productimage.ImageProcessResult{
+			MainImage: &productimage.ImageAsset{URL: "https://cdn.example.com/main.jpg"},
+		},
+	}
+	repo := NewInMemoryRepositoryForTest()
+	svc := &service{
+		repo:                repo,
+		productSvc:          productSvc,
+		imageSvc:            imageSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+		Text:      "inline listing kit",
+		Platforms: []string{"amazon"},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask error = %v", err)
+	}
+	if task.Status == TaskStatusPending {
+		t.Fatalf("task status = %q, want non-pending after inline execution", task.Status)
+	}
+	if task.Result == nil {
+		t.Fatalf("task result = nil, want inline workflow result")
+	}
+}
+
+type stubTaskListRepo struct {
+	tasks      []Task
+	lastQuery  *TaskListQuery
+	listErr    error
+	saveResult *ListingKitResult
+}
+
+func (r *stubTaskListRepo) CreateTask(context.Context, *Task) error { return nil }
+func (r *stubTaskListRepo) GetTask(context.Context, string) (*Task, error) {
+	return nil, ErrTaskNotFound
+}
+func (r *stubTaskListRepo) ListTasks(_ context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	if query != nil {
+		copied := *query
+		r.lastQuery = &copied
+	}
+	if r.listErr != nil {
+		return nil, 0, r.listErr
+	}
+	filtered := make([]Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if query != nil && query.SheinWorkflowStatus != "" {
+			if buildTaskListItem(&task).SheinWorkflowStatus != query.SheinWorkflowStatus {
+				continue
+			}
+		}
+		if query != nil && query.SheinBlockerKey != "" {
+			matched := false
+			for _, key := range buildTaskListItem(&task).SheinBlockingKeys {
+				if key == query.SheinBlockerKey {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if query != nil && query.SheinWarningKey != "" {
+			matched := false
+			for _, key := range buildTaskListItem(&task).SheinWarningKeys {
+				if key == query.SheinWarningKey {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if query != nil && query.SheinWorkQueue != "" {
+			if buildTaskListItem(&task).SheinWorkQueue != query.SheinWorkQueue {
+				continue
+			}
+		}
+		if query != nil && query.SheinActionQueue != "" {
+			if buildTaskListItem(&task).SheinActionQueue != query.SheinActionQueue {
+				continue
+			}
+		}
+		filtered = append(filtered, task)
+	}
+	total := int64(len(filtered))
+	if query == nil {
+		return filtered, total, nil
+	}
+	start := (query.Page - 1) * query.PageSize
+	if start >= len(filtered) {
+		return []Task{}, total, nil
+	}
+	end := start + query.PageSize
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], total, nil
+}
+func (r *stubTaskListRepo) MarkProcessing(context.Context, string) error { return nil }
+func (r *stubTaskListRepo) MarkCompleted(context.Context, string, *ListingKitResult) error {
+	return nil
+}
+func (r *stubTaskListRepo) MarkNeedsReview(context.Context, string, *ListingKitResult, string) error {
+	return nil
+}
+func (r *stubTaskListRepo) MarkFailed(context.Context, string, string) error  { return nil }
+func (r *stubTaskListRepo) PrepareRetry(context.Context, string) error        { return nil }
+func (r *stubTaskListRepo) IncrementRetryCount(context.Context, string) error { return nil }
+func (r *stubTaskListRepo) SaveTaskResult(_ context.Context, _ string, result *ListingKitResult) error {
+	r.saveResult = result
+	return nil
+}
+
+func (r *stubTaskListRepo) ListTaskSummaryTasks(_ context.Context, query *TaskListQuery) ([]Task, error) {
+	filtered := make([]Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if TaskMatchesListQuery(&task, query) {
+			filtered = append(filtered, task)
+		}
+	}
+	return filtered, nil
+}
+
+func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, blockerKey string) Task {
+	task := Task{
+		ID:        id,
+		Status:    TaskStatusCompleted,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+		Request: &GenerateRequest{
+			Text:      id,
+			Platforms: []string{"shein"},
+		},
+		Result: &ListingKitResult{
+			TaskID: id,
+			Shein: &SheinPackage{
+				RequestDraft: &SheinRequestDraft{
+					ImageInfo: &sheinpub.ImageDraft{
+						MainImage: "https://cdn.example.com/main.png",
+						Gallery:   []string{"https://cdn.example.com/gallery.png"},
+					},
+					SKCList: []SheinSKCRequestDraft{{
+						SupplierCode: "SKC-1",
+						ImageInfo: &sheinpub.ImageDraft{
+							MainImage: "https://cdn.example.com/skc-main.png",
+						},
+						SKUList: []sheinpub.SKUDraft{{
+							SupplierSKU: "SKU-1",
+							BasePrice:   "19.99",
+							SitePriceList: []sheinpub.SitePrice{{
+								SubSite:   "US",
+								BasePrice: "19.99",
+								Currency:  "USD",
+							}},
+						}},
+					}},
+				},
+				PreviewProduct: &sheinproduct.Product{},
+				SkcList: []SheinSKCPackage{{
+					SupplierCode: "SKC-1",
+					SKUs: []PlatformVariant{{
+						SKU: "SKU-1",
+					}},
+				}},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 3001,
+				},
+				CategoryID:     3001,
+				CategoryIDList: []int{1, 2, 3001},
+				ProductTypeID:  intPtr(901),
+				AttributeResolution: &SheinAttributeResolution{
+					Status:        "resolved",
+					ResolvedCount: 1,
+				},
+				ResolvedAttributes: []SheinResolvedAttribute{{
+					Name:        "Material",
+					AttributeID: 160,
+				}},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:             "resolved",
+					PrimaryAttributeID: 27,
+				},
+			},
+		},
+	}
+	switch blockerKey {
+	case "final_review":
+		task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{Confirmed: false}
+	case "category":
+		task.Result.Shein.CategoryResolution.Status = "partial"
+		task.Result.Shein.CategoryID = 0
+		task.Result.Shein.ProductTypeID = nil
+		task.Result.Shein.CategoryIDList = nil
+	case "warning":
+		task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+			Confirmed:    true,
+			MainImageURL: "https://cdn.example.com/main.png",
+			ImageRoleOverrides: map[string]string{
+				"https://cdn.example.com/skc-main.png": "swatch",
+			},
+		}
+		task.Result.Shein.ReviewNotes = []string{"需要人工确认吊牌文案"}
+	case "ready":
+		task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+			Confirmed:    true,
+			MainImageURL: "https://cdn.example.com/main.png",
+			ImageRoleOverrides: map[string]string{
+				"https://cdn.example.com/skc-main.png": "swatch",
+			},
+		}
+	default:
+		task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+			Confirmed:    true,
+			MainImageURL: "https://cdn.example.com/main.png",
+			ImageRoleOverrides: map[string]string{
+				"https://cdn.example.com/skc-main.png": "swatch",
+			},
+		}
+	}
+	switch workflowStatus {
+	case SheinWorkflowStatusPublished:
+		task.Result.Shein.SubmissionEvents = []sheinpub.SubmissionEvent{{
+			Action: "publish",
+			Status: "success",
+		}}
+	case SheinWorkflowStatusDraftSaved:
+		task.Result.Shein.SubmissionEvents = []sheinpub.SubmissionEvent{{
+			Action: "save_draft",
+			Status: "success",
+		}}
+	}
+	return task
+}
+
+func NewInMemoryRepositoryForTest() Repository {
+	return &stubInlineTaskRepo{tasks: map[string]*Task{}}
+}
+
+type stubInlineTaskRepo struct {
+	tasks map[string]*Task
+}
+
+func (r *stubInlineTaskRepo) CreateTask(_ context.Context, task *Task) error {
+	copied := *task
+	r.tasks[task.ID] = &copied
+	return nil
+}
+
+func (r *stubInlineTaskRepo) GetTask(_ context.Context, taskID string) (*Task, error) {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return nil, ErrTaskNotFound
+	}
+	copied := *task
+	return &copied, nil
+}
+
+func (r *stubInlineTaskRepo) ListTasks(context.Context, *TaskListQuery) ([]Task, int64, error) {
+	return nil, 0, nil
+}
+
+func (r *stubInlineTaskRepo) MarkProcessing(_ context.Context, taskID string) error {
+	task := r.tasks[taskID]
+	task.Status = TaskStatusProcessing
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubInlineTaskRepo) MarkCompleted(_ context.Context, taskID string, result *ListingKitResult) error {
+	task := r.tasks[taskID]
+	task.Result = result
+	task.Status = TaskStatusCompleted
+	task.Error = ""
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubInlineTaskRepo) MarkNeedsReview(_ context.Context, taskID string, result *ListingKitResult, reason string) error {
+	task := r.tasks[taskID]
+	task.Result = result
+	task.Status = TaskStatusNeedsReview
+	task.Error = reason
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubInlineTaskRepo) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
+	task := r.tasks[taskID]
+	task.Status = TaskStatusFailed
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubInlineTaskRepo) PrepareRetry(context.Context, string) error        { return nil }
+func (r *stubInlineTaskRepo) IncrementRetryCount(context.Context, string) error { return nil }
+func (r *stubInlineTaskRepo) SaveTaskResult(_ context.Context, taskID string, result *ListingKitResult) error {
+	task := r.tasks[taskID]
+	task.Result = result
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubInlineTaskRepo) GetCanonicalProductCache(context.Context, string) (*canonical.Product, error) {
+	return nil, nil
+}
+
+func (r *stubInlineTaskRepo) SaveCanonicalProductCache(context.Context, string, *canonical.Product, string) error {
+	return nil
+}
+
+func (r *stubInlineTaskRepo) MutateTaskResult(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return nil, ErrTaskNotFound
+	}
+	if mutate != nil {
+		if err := mutate(task); err != nil {
+			return nil, err
+		}
+	}
+	task.UpdatedAt = time.Now()
+	copied := *task
+	return &copied, nil
 }

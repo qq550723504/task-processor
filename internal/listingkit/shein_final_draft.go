@@ -10,61 +10,60 @@ import (
 )
 
 func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
+	task, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
+		if task.Result == nil || task.Result.Shein == nil {
+			return ErrTaskResultUnavailable
+		}
+		pkg := task.Result.Shein
+		if pkg.FinalDraft == nil {
+			pkg.FinalDraft = &sheinpub.FinalDraft{}
+		}
+		if req != nil {
+			if req.SubmitMode != "" {
+				mode := strings.ToLower(strings.TrimSpace(req.SubmitMode))
+				if mode == "publish" || mode == "save_draft" {
+					pkg.FinalDraft.SubmitMode = mode
+				}
+			}
+			if len(req.ManualPriceOverrides) > 0 {
+				pkg.FinalDraft.ManualPriceOverrides = clonePriceOverrides(req.ManualPriceOverrides)
+			}
+			if req.FinalImageOrder != nil {
+				pkg.FinalDraft.FinalImageOrder = uniqueNonEmptyStrings(*req.FinalImageOrder)
+			}
+			if value := strings.TrimSpace(req.MainImageURL); value != "" {
+				pkg.FinalDraft.MainImageURL = value
+			}
+			if req.DeletedImageURLs != nil {
+				pkg.FinalDraft.DeletedImageURLs = uniqueNonEmptyStrings(*req.DeletedImageURLs)
+			}
+			if len(req.ImageRoleOverrides) > 0 {
+				pkg.FinalDraft.ImageRoleOverrides = normalizeImageRoleOverrides(req.ImageRoleOverrides)
+			}
+			if req.Confirmed != nil {
+				pkg.FinalDraft.Confirmed = *req.Confirmed
+				if *req.Confirmed {
+					now := time.Now()
+					pkg.FinalDraft.ConfirmedAt = &now
+				} else {
+					pkg.FinalDraft.ConfirmedAt = nil
+				}
+			}
+		}
+		now := time.Now()
+		pkg.FinalDraft.UpdatedAt = &now
+		rule := s.currentSheinPricingRule()
+		if pkg.Pricing != nil && pkg.Pricing.RuleSnapshot != nil {
+			rule = *pkg.Pricing.RuleSnapshot
+		}
+		review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
+		applySheinPricingReview(pkg, review)
+		applySheinFinalImageDraft(pkg)
+		applySheinVariantImageCoverageGuard(task, pkg)
+		task.Result.UpdatedAt = now
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return nil, ErrTaskResultUnavailable
-	}
-	pkg := task.Result.Shein
-	if pkg.FinalDraft == nil {
-		pkg.FinalDraft = &sheinpub.FinalDraft{}
-	}
-	if req != nil {
-		if req.SubmitMode != "" {
-			mode := strings.ToLower(strings.TrimSpace(req.SubmitMode))
-			if mode == "publish" || mode == "save_draft" {
-				pkg.FinalDraft.SubmitMode = mode
-			}
-		}
-		if len(req.ManualPriceOverrides) > 0 {
-			pkg.FinalDraft.ManualPriceOverrides = clonePriceOverrides(req.ManualPriceOverrides)
-		}
-		if req.FinalImageOrder != nil {
-			pkg.FinalDraft.FinalImageOrder = uniqueNonEmptyStrings(*req.FinalImageOrder)
-		}
-		if value := strings.TrimSpace(req.MainImageURL); value != "" {
-			pkg.FinalDraft.MainImageURL = value
-		}
-		if req.DeletedImageURLs != nil {
-			pkg.FinalDraft.DeletedImageURLs = uniqueNonEmptyStrings(*req.DeletedImageURLs)
-		}
-		if len(req.ImageRoleOverrides) > 0 {
-			pkg.FinalDraft.ImageRoleOverrides = normalizeImageRoleOverrides(req.ImageRoleOverrides)
-		}
-		if req.Confirmed != nil {
-			pkg.FinalDraft.Confirmed = *req.Confirmed
-			if *req.Confirmed {
-				now := time.Now()
-				pkg.FinalDraft.ConfirmedAt = &now
-			} else {
-				pkg.FinalDraft.ConfirmedAt = nil
-			}
-		}
-	}
-	now := time.Now()
-	pkg.FinalDraft.UpdatedAt = &now
-	rule := s.currentSheinPricingRule()
-	if pkg.Pricing != nil && pkg.Pricing.RuleSnapshot != nil {
-		rule = *pkg.Pricing.RuleSnapshot
-	}
-	review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
-	applySheinPricingReview(pkg, review)
-	applySheinFinalImageDraft(pkg)
-	applySheinVariantImageCoverageGuard(task, pkg)
-	task.Result.UpdatedAt = now
-	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
 		return nil, err
 	}
 	return buildListingKitPreview(task, "shein")

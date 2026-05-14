@@ -8,11 +8,12 @@ import {
   TaskListContent,
   TaskListFilters,
   TaskListHero,
+  type FilterKey,
 } from "@/components/listingkit/tasks/task-list-page-sections";
 import { useListingKitTasks } from "@/lib/query/use-task-list";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
-type FilterKey = "status" | "platform" | "shein_workflow_status";
+const PAGE_SIZE = 20;
 
 export function TaskListPage() {
   const router = useRouter();
@@ -20,27 +21,50 @@ export function TaskListPage() {
   const status = searchParams.get("status") ?? "";
   const platform = searchParams.get("platform") ?? "";
   const sheinWorkflowStatus = searchParams.get("shein_workflow_status") ?? "";
+  const sheinWorkQueue = searchParams.get("shein_work_queue") ?? "";
+  const sheinActionQueue = searchParams.get("shein_action_queue") ?? "";
+  const sheinBlockerKey = searchParams.get("shein_blocker_key") ?? "";
+  const sheinWarningKey = searchParams.get("shein_warning_key") ?? "";
   const page = Number(searchParams.get("page") ?? "1") || 1;
+
   const tasks = useListingKitTasks({
     status: status || undefined,
     platform: platform || undefined,
     shein_workflow_status: sheinWorkflowStatus || undefined,
+    shein_work_queue: sheinWorkQueue || undefined,
+    shein_action_queue: sheinActionQueue || undefined,
+    shein_blocker_key: sheinBlockerKey || undefined,
+    shein_warning_key: sheinWarningKey || undefined,
     page,
-    page_size: 20,
+    page_size: PAGE_SIZE,
   });
   const items = tasks.data?.items ?? [];
 
-  const updateFilter = (key: FilterKey, value: string) => {
+  const updateFilters = (updates: Partial<Record<FilterKey, string | null>>) => {
     const params = sanitizedNavigationSearchParams(searchParams);
-    if (value) {
+    for (const [key, value] of Object.entries(updates)) {
+      if (!value) {
+        params.delete(key);
+        continue;
+      }
       params.set(key, value);
-    } else {
-      params.delete(key);
     }
     params.delete("page");
-    router.push(
-      `/listing-kits${params.toString() ? `?${params.toString()}` : ""}`,
-    );
+    router.push(`/listing-kits${params.toString() ? `?${params.toString()}` : ""}`);
+  };
+
+  const updateFilter = (key: FilterKey, value: string) => {
+    updateFilters({ [key]: value });
+  };
+
+  const updatePage = (nextPage: number) => {
+    const params = sanitizedNavigationSearchParams(searchParams);
+    if (nextPage <= 1) {
+      params.delete("page");
+    } else {
+      params.set("page", String(nextPage));
+    }
+    router.push(`/listing-kits${params.toString() ? `?${params.toString()}` : ""}`);
   };
 
   return (
@@ -52,9 +76,16 @@ export function TaskListPage() {
       <SheinSettingsCard />
       <TaskListFilters
         platform={platform}
+        sheinActionQueue={sheinActionQueue}
+        sheinBlockerKey={sheinBlockerKey}
         sheinWorkflowStatus={sheinWorkflowStatus}
+        sheinWarningKey={sheinWarningKey}
+        sheinWorkQueue={sheinWorkQueue}
         status={status}
+        summary={tasks.data?.summary}
+        taxonomy={tasks.data?.taxonomy}
         total={tasks.data?.total ?? 0}
+        updateFilters={updateFilters}
         updateFilter={updateFilter}
       />
       <TaskListContent
@@ -62,6 +93,11 @@ export function TaskListPage() {
         isLoading={tasks.isLoading}
         items={items}
         onRefresh={() => tasks.refetch()}
+        page={tasks.data?.page ?? page}
+        pageSize={tasks.data?.page_size ?? PAGE_SIZE}
+        total={tasks.data?.total ?? 0}
+        taxonomy={tasks.data?.taxonomy}
+        updatePage={updatePage}
       />
     </ListingKitPageShell>
   );

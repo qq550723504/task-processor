@@ -286,6 +286,13 @@ func NewDefaultConfig() *Config {
 				Enabled:          false,
 				SchedulerEnabled: false,
 				FetchMode:        "auto",
+				LoginService: LoginServiceConfig{
+					MaxConcurrentLogins: 3,
+					ProfileRootDir:      "./tmp/shein-login/profiles",
+					ArtifactDir:         "./tmp/shein-login/artifacts",
+					DefaultHeadless:     true,
+					AdminPageEnabled:    true,
+				},
 				AutoPricing: AutoPricingConfig{
 					Enabled:   false,
 					Interval:  300,

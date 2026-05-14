@@ -80,6 +80,13 @@ type YudaoCheckTokenResponse = {
   message?: string;
 };
 
+export function shouldBypassYudaoTokenVerification() {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.YUDAO_DEV_BYPASS_TOKEN_VERIFICATION === "1"
+  );
+}
+
 export function buildListingKitUpstreamHeaders(
   requestHeaders: Headers,
   verifiedIdentity?: YudaoVerifiedIdentity,
@@ -124,6 +131,18 @@ export async function verifyYudaoAccessToken(
   authorization: string | null,
   options: YudaoCheckTokenOptions,
 ): Promise<YudaoVerifiedIdentity> {
+  if (shouldBypassYudaoTokenVerification()) {
+    const token = extractBearerToken(authorization);
+    if (!token) {
+      throw new Error("Missing yudao bearer token");
+    }
+    return {
+      tenantId: options.tenantId ?? "1",
+      userId: "dev-user",
+      userType: "1",
+    };
+  }
+
   const token = extractBearerToken(authorization);
   if (!token) {
     throw new Error("Missing yudao bearer token");
@@ -213,13 +232,6 @@ export function getYudaoCheckTokenOptions(): YudaoCheckTokenOptions | undefined 
     return undefined;
   }
   return { checkTokenUrl, clientId, clientSecret };
-}
-
-function shouldBypassYudaoTokenVerification() {
-  return (
-    process.env.NODE_ENV !== "production" &&
-    process.env.YUDAO_DEV_BYPASS_TOKEN_VERIFICATION === "1"
-  );
 }
 
 async function proxyRequest(

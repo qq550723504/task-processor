@@ -22,13 +22,19 @@ type stubSubmitRepo struct {
 	task                            *Task
 	savedSubmissionPhases           []string
 	failSaveWhenCurrentPhaseCleared bool
+	failSaveOnCurrentPhase          string
 	saveFailed                      bool
+	saveCalls                       int
+	mutateCalls                     int
 }
 
 func (r *stubSubmitRepo) CreateTask(ctx context.Context, task *Task) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	copied := *task
+	copied, err := cloneSubmitTestTask(task)
+	if err != nil {
+		return err
+	}
 	r.task = &copied
 	return nil
 }
@@ -39,7 +45,10 @@ func (r *stubSubmitRepo) GetTask(ctx context.Context, taskID string) (*Task, err
 	if r.task == nil || r.task.ID != taskID {
 		return nil, ErrTaskNotFound
 	}
-	copied := *r.task
+	copied, err := cloneSubmitTestTask(r.task)
+	if err != nil {
+		return nil, err
+	}
 	return &copied, nil
 }
 
@@ -70,6 +79,7 @@ func (r *stubSubmitRepo) IncrementRetryCount(ctx context.Context, taskID string)
 func (r *stubSubmitRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.saveCalls++
 	if r.task == nil || r.task.ID != taskID {
 		return ErrTaskNotFound
 	}
@@ -77,10 +87,18 @@ func (r *stubSubmitRepo) SaveTaskResult(ctx context.Context, taskID string, resu
 		r.saveFailed = true
 		return errors.New("save task result failed")
 	}
-	r.task.Result = result
+	if r.failSaveOnCurrentPhase != "" && !r.saveFailed && result != nil && result.Shein != nil && result.Shein.Submission != nil && result.Shein.Submission.CurrentPhase == r.failSaveOnCurrentPhase {
+		r.saveFailed = true
+		return errors.New("save task result failed")
+	}
+	clonedResult, err := cloneListingKitResult(result)
+	if err != nil {
+		return err
+	}
+	r.task.Result = clonedResult
 	r.task.UpdatedAt = time.Now()
-	if result != nil && result.Shein != nil && result.Shein.Submission != nil {
-		r.savedSubmissionPhases = append(r.savedSubmissionPhases, result.Shein.Submission.CurrentPhase)
+	if clonedResult != nil && clonedResult.Shein != nil && clonedResult.Shein.Submission != nil {
+		r.savedSubmissionPhases = append(r.savedSubmissionPhases, clonedResult.Shein.Submission.CurrentPhase)
 	}
 	return nil
 }
@@ -88,10 +106,14 @@ func (r *stubSubmitRepo) SaveTaskResult(ctx context.Context, taskID string, resu
 func (r *stubSubmitRepo) MutateTaskResult(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.mutateCalls++
 	if r.task == nil || r.task.ID != taskID {
 		return nil, ErrTaskNotFound
 	}
-	copied := *r.task
+	copied, err := cloneSubmitTestTask(r.task)
+	if err != nil {
+		return nil, err
+	}
 	out := &copied
 	if mutate != nil {
 		if err := mutate(r.task); err != nil {
@@ -99,8 +121,26 @@ func (r *stubSubmitRepo) MutateTaskResult(ctx context.Context, taskID string, mu
 		}
 	}
 	r.task.UpdatedAt = time.Now()
-	copied = *r.task
+	copied, err = cloneSubmitTestTask(r.task)
+	if err != nil {
+		return nil, err
+	}
 	return &copied, nil
+}
+
+func cloneSubmitTestTask(task *Task) (Task, error) {
+	if task == nil {
+		return Task{}, nil
+	}
+	copied := *task
+	if task.Result != nil {
+		result, err := cloneListingKitResult(task.Result)
+		if err != nil {
+			return Task{}, err
+		}
+		copied.Result = result
+	}
+	return copied, nil
 }
 
 func (r *stubSubmitRepo) hasSavedSubmissionPhase(phase string) bool {

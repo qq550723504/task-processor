@@ -87,10 +87,10 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 
 	// 配置代理
 	if cl.config.ProxyServer != "" {
-		options.Proxy = &playwright.Proxy{
-			Server: cl.config.ProxyServer,
+		if proxy := parseProxyServer(cl.config.ProxyServer); proxy != nil {
+			options.Proxy = proxy
+			logger.GetGlobalLogger("crawler/shared").Infof("使用代理服务器: %s", proxy.Server)
 		}
-		logger.GetGlobalLogger("crawler/shared").Infof("使用代理服务器: %s", cl.config.ProxyServer)
 	}
 
 	logger.GetGlobalLogger("crawler/shared").Infof("使用持久化上下文启动浏览器，用户数据目录: %s", userDataDir)

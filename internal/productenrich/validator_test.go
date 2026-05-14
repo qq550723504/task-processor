@@ -2,7 +2,10 @@ package productenrich
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestInputValidator_ValidateText(t *testing.T) {
@@ -125,5 +128,70 @@ func TestInputValidator_ImageScoreTable(t *testing.T) {
 				t.Errorf("ImageScore = %.0f, want %.0f (count=%d)", result.ImageScore, want, count)
 			}
 		})
+	}
+}
+
+func TestInputValidator_ValidateImages_InfersFormatFromContentType(t *testing.T) {
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	v := NewInputValidator(&InputValidatorConfig{HTTPTimeout: 2 * time.Second})
+	result, err := v.Validate(ctx, &ParsedInput{
+		Images: []string{server.URL + "/image-without-extension"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ImageScore != 40 {
+		t.Fatalf("ImageScore = %.0f, want 40", result.ImageScore)
+	}
+	if result.ImageValidation == nil || result.ImageValidation.ValidCount != 1 {
+		t.Fatalf("ValidCount = %d, want 1", result.ImageValidation.ValidCount)
+	}
+	if got := result.ImageValidation.ValidImages[0].Format; got != "jpg" {
+		t.Fatalf("image format = %q, want jpg", got)
+	}
+}
+
+func TestInputValidator_ValidateImages_FallsBackToGetWhenHeadRejected(t *testing.T) {
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			w.WriteHeader(http.StatusForbidden)
+		case http.MethodGet:
+			if got := r.Header.Get("Range"); got != "bytes=0-0" {
+				t.Fatalf("Range header = %q, want bytes=0-0", got)
+			}
+			w.Header().Set("Content-Type", "image/png")
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	v := NewInputValidator(&InputValidatorConfig{HTTPTimeout: 2 * time.Second})
+	result, err := v.Validate(ctx, &ParsedInput{
+		Images: []string{server.URL + "/blocked-head.png"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ImageScore != 40 {
+		t.Fatalf("ImageScore = %.0f, want 40", result.ImageScore)
+	}
+	if result.ImageValidation == nil || result.ImageValidation.ValidCount != 1 {
+		t.Fatalf("ValidCount = %d, want 1", result.ImageValidation.ValidCount)
+	}
+	if got := result.ImageValidation.ValidImages[0].Format; got != "png" {
+		t.Fatalf("image format = %q, want png", got)
 	}
 }

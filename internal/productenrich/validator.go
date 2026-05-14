@@ -273,22 +273,18 @@ func (v *inputValidator) validateSingleImage(ctx context.Context, imageURL strin
 		return info
 	}
 
-	// 检查图片格式
+	// 先尝试从 URL 后缀推断格式；没有后缀时，后续再根据响应头兜底。
 	format := v.getImageFormat(imageURL)
 	info.Format = format
-	if format != "jpg" && format != "jpeg" && format != "png" && format != "webp" {
-		info.Error = fmt.Sprintf("不支持的图片格式: %s", format)
-		v.cacheImageInfo(ctx, imageURL, &info)
-		return info
-	}
 
-	// 发送 HTTP HEAD 请求检查可访问性
+	// 先尝试 HEAD；部分 CDN 会拒绝 HEAD，这种情况再降级到轻量 GET。
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, imageURL, nil)
 	if err != nil {
 		info.Error = fmt.Sprintf("创建请求失败: %v", err)
 		v.cacheImageInfo(ctx, imageURL, &info)
 		return info
 	}
+	req.Header.Set("User-Agent", "task-processor/1.0")
 
 	resp, err := v.httpClient.Do(req)
 	if err != nil {
@@ -298,7 +294,26 @@ func (v *inputValidator) validateSingleImage(ctx context.Context, imageURL strin
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusMethodNotAllowed {
+		resp.Body.Close()
+		resp, err = v.fetchImageMetadataWithGet(ctx, imageURL)
+		if err != nil {
+			info.Error = fmt.Sprintf("无法访问图片: %v", err)
+			v.cacheImageInfo(ctx, imageURL, &info)
+			return info
+		}
+		defer resp.Body.Close()
+	}
+
 	if resp.StatusCode == http.StatusOK {
+		if info.Format == "unknown" {
+			info.Format = imageFormatFromContentType(resp.Header.Get("Content-Type"))
+		}
+		if !isSupportedImageFormat(info.Format) {
+			info.Error = fmt.Sprintf("不支持的图片格式: %s", info.Format)
+			v.cacheImageInfo(ctx, imageURL, &info)
+			return info
+		}
 		info.IsValid = true
 	} else {
 		info.Error = fmt.Sprintf("HTTP 错误: %d", resp.StatusCode)
@@ -308,6 +323,16 @@ func (v *inputValidator) validateSingleImage(ctx context.Context, imageURL strin
 	v.cacheImageInfo(ctx, imageURL, &info)
 
 	return info
+}
+
+func (v *inputValidator) fetchImageMetadataWithGet(ctx context.Context, imageURL string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "task-processor/1.0")
+	req.Header.Set("Range", "bytes=0-0")
+	return v.httpClient.Do(req)
 }
 
 // cacheImageInfo 缓存图片验证信息
@@ -334,6 +359,29 @@ func (v *inputValidator) getImageFormat(imageURL string) string {
 		return "webp"
 	}
 	return "unknown"
+}
+
+func imageFormatFromContentType(contentType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(contentType))
+	switch {
+	case strings.HasPrefix(normalized, "image/jpeg"):
+		return "jpg"
+	case strings.HasPrefix(normalized, "image/png"):
+		return "png"
+	case strings.HasPrefix(normalized, "image/webp"):
+		return "webp"
+	default:
+		return "unknown"
+	}
+}
+
+func isSupportedImageFormat(format string) bool {
+	switch format {
+	case "jpg", "jpeg", "png", "webp":
+		return true
+	default:
+		return false
+	}
 }
 
 // ValidateText 验证文本数据

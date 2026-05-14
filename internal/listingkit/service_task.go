@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
@@ -37,6 +38,9 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
+	if s.taskSubmitter == nil {
+		return s.runTaskInline(ctx, task)
+	}
 	if shouldRunStudioInline(req) {
 		return s.enqueueOrRunStudioTask(ctx, task)
 	}
@@ -54,6 +58,10 @@ func (s *service) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task
 		return task, nil
 	}
 
+	return s.runTaskInline(ctx, task)
+}
+
+func (s *service) runTaskInline(ctx context.Context, task *Task) (*Task, error) {
 	if _, err := s.ProcessListingKit(context.WithoutCancel(ctx), task); err != nil {
 		refreshed, getErr := s.repo.GetTask(context.WithoutCancel(ctx), task.ID)
 		if getErr == nil {
@@ -121,21 +129,93 @@ func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskLis
 
 	items := make([]TaskListItem, 0, len(tasks))
 	for i := range tasks {
-		item := buildTaskListItem(&tasks[i])
-		if normalized.SheinWorkflowStatus != "" && item.SheinWorkflowStatus != normalized.SheinWorkflowStatus {
-			continue
-		}
-		items = append(items, item)
+		items = append(items, buildTaskListItem(&tasks[i]))
 	}
-	if normalized.SheinWorkflowStatus != "" {
-		total = int64(len(items))
+	var summary *TaskListSummary
+	if source, ok := s.repo.(TaskListSummarySource); ok {
+		summaryTasks, summaryErr := source.ListTaskSummaryTasks(ctx, summaryTaskListQuery(normalized))
+		if summaryErr != nil {
+			return nil, summaryErr
+		}
+		summary = buildTaskListSummary(summaryTasks)
 	}
 	return &TaskListPage{
 		Page:     normalized.Page,
 		PageSize: normalized.PageSize,
 		Total:    total,
+		Summary:  summary,
+		Taxonomy: BuildTaskListTaxonomy(),
 		Items:    items,
 	}, nil
+}
+
+func TaskMatchesListQuery(task *Task, query *TaskListQuery) bool {
+	if task == nil {
+		return false
+	}
+	if query == nil {
+		return true
+	}
+	if query.Status != "" && string(task.Status) != query.Status {
+		return false
+	}
+	if query.Platform != "" && !taskHasPlatform(task, query.Platform) {
+		return false
+	}
+	if query.SheinWorkflowStatus != "" {
+		if buildTaskListItem(task).SheinWorkflowStatus != query.SheinWorkflowStatus {
+			return false
+		}
+	}
+	if query.SheinBlockerKey != "" {
+		item := buildTaskListItem(task)
+		matched := false
+		for _, key := range item.SheinBlockingKeys {
+			if key == query.SheinBlockerKey {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if query.SheinWarningKey != "" {
+		item := buildTaskListItem(task)
+		matched := false
+		for _, key := range item.SheinWarningKeys {
+			if key == query.SheinWarningKey {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if query.SheinWorkQueue != "" {
+		if buildTaskListItem(task).SheinWorkQueue != query.SheinWorkQueue {
+			return false
+		}
+	}
+	if query.SheinActionQueue != "" {
+		if buildTaskListItem(task).SheinActionQueue != query.SheinActionQueue {
+			return false
+		}
+	}
+	return true
+}
+
+func taskHasPlatform(task *Task, platform string) bool {
+	if task == nil || task.Request == nil {
+		return false
+	}
+	for _, candidate := range task.Request.Platforms {
+		if candidate == platform {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeTaskListQuery(query *TaskListQuery) *TaskListQuery {
@@ -153,6 +233,17 @@ func normalizeTaskListQuery(query *TaskListQuery) *TaskListQuery {
 		normalized.PageSize = 100
 	}
 	return normalized
+}
+
+func summaryTaskListQuery(query *TaskListQuery) *TaskListQuery {
+	if query == nil {
+		return nil
+	}
+	return &TaskListQuery{
+		TenantID: query.TenantID,
+		Status:   query.Status,
+		Platform: query.Platform,
+	}
 }
 
 func buildTaskListItem(task *Task) TaskListItem {
@@ -190,8 +281,16 @@ func buildTaskListItem(task *Task) TaskListItem {
 	if task.Result != nil && task.Result.SDSSync != nil {
 		item.SDSSyncStatus = task.Result.SDSSync.Status
 	}
+	if taskHasPlatform(task, "shein") || (task.Result != nil && task.Result.Shein != nil) {
+		item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
+	}
 	if task.Result != nil && task.Result.Shein != nil {
 		item.SheinWorkflowStatus = deriveSheinWorkflowStatus(task.Result.Shein)
+		item.SheinBlockingKeys = sheinBlockingKeys(task.Result.Shein)
+		item.SheinWarningKeys = sheinWarningKeys(task.Result.Shein)
+		item.SheinStatusOverview = buildSheinTaskStatusOverview(task.Result.Shein)
+		item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
+		item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
 		if latest := latestSheinSubmissionEvent(task.Result.Shein); latest != nil {
 			item.SheinLatestSubmissionStatus = latest.Status
 			item.SheinLatestSubmissionError = latest.ErrorMessage
@@ -206,6 +305,132 @@ func buildTaskListItem(task *Task) TaskListItem {
 		item.CompletedAt = &completedAt
 	}
 	return item
+}
+
+func buildSheinTaskStatusOverview(pkg *SheinPackage) *sheinworkspace.StatusOverview {
+	if pkg == nil {
+		return nil
+	}
+	readiness := buildSheinSubmitReadiness(pkg)
+	return sheinworkspace.BuildStatusOverview(pkg.Inspection, toSheinWorkspaceSubmitState(readiness))
+}
+
+func sheinBlockingKeys(pkg *SheinPackage) []string {
+	readiness := buildSheinSubmitReadiness(pkg)
+	if readiness == nil || len(readiness.BlockingItems) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(readiness.BlockingItems))
+	for _, item := range readiness.BlockingItems {
+		if strings.TrimSpace(item.Key) == "" {
+			continue
+		}
+		keys = append(keys, item.Key)
+	}
+	return uniqueNonEmptyStrings(keys)
+}
+
+func sheinWarningKeys(pkg *SheinPackage) []string {
+	readiness := buildSheinSubmitReadiness(pkg)
+	if readiness == nil || len(readiness.WarningItems) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(readiness.WarningItems))
+	for _, item := range readiness.WarningItems {
+		if strings.TrimSpace(item.Key) == "" {
+			continue
+		}
+		keys = append(keys, item.Key)
+	}
+	return uniqueNonEmptyStrings(keys)
+}
+
+func deriveSheinWorkQueue(task *Task, workflowStatus string, overview *sheinworkspace.StatusOverview) string {
+	if task == nil {
+		return ""
+	}
+	switch task.Status {
+	case TaskStatusPending, TaskStatusProcessing:
+		return SheinWorkQueueGeneration
+	case TaskStatusFailed:
+		return SheinWorkQueueGenerationFailed
+	}
+	switch workflowStatus {
+	case SheinWorkflowStatusPublished:
+		return SheinWorkQueuePublished
+	case SheinWorkflowStatusDraftSaved:
+		return SheinWorkQueueDraft
+	case SheinWorkflowStatusPublishFailed:
+		return SheinWorkQueueSubmitFailed
+	}
+	if overview == nil {
+		return ""
+	}
+	switch overview.Status {
+	case "blocked":
+		return SheinWorkQueueRepair
+	case "ready_with_warnings":
+		return SheinWorkQueueReview
+	case "ready":
+		return SheinWorkQueueSubmitReady
+	default:
+		return ""
+	}
+}
+
+func deriveSheinActionQueue(task *Task, workflowStatus string, overview *sheinworkspace.StatusOverview, blockingKeys []string, warningKeys []string) string {
+	if task == nil {
+		return ""
+	}
+	switch task.Status {
+	case TaskStatusPending, TaskStatusProcessing, TaskStatusFailed:
+		return ""
+	}
+	switch workflowStatus {
+	case SheinWorkflowStatusPublished, SheinWorkflowStatusDraftSaved, SheinWorkflowStatusPublishFailed:
+		return ""
+	}
+	for _, key := range blockingKeys {
+		if queue := sheinActionQueueForKey(key); queue != "" {
+			return queue
+		}
+	}
+	for _, key := range warningKeys {
+		if queue := sheinActionQueueForKey(key); queue != "" {
+			return queue
+		}
+	}
+	if overview != nil && overview.Status == "ready" {
+		return SheinActionQueueSubmitReady
+	}
+	return ""
+}
+
+func sheinActionQueueForKey(key string) string {
+	switch strings.TrimSpace(key) {
+	case sheinCookieUnavailableIssueCode:
+		return SheinActionQueueStoreAuth
+	case "category", "category_review":
+		return SheinActionQueueClassification
+	case "attributes", "attribute_review":
+		return SheinActionQueueAttributes
+	case "sale_attributes", "variants":
+		return SheinActionQueueVariant
+	case "images", "final_images", "variant_image_coverage":
+		return SheinActionQueueMedia
+	case "pricing":
+		return SheinActionQueuePricing
+	case "final_review":
+		return SheinActionQueueFinalReview
+	case "source_facts":
+		return SheinActionQueueSourceReview
+	case "request_draft", "preview_product":
+		return SheinActionQueuePayloadRebuild
+	case "manual_notes":
+		return SheinActionQueueManualReview
+	default:
+		return ""
+	}
 }
 
 func taskListImageCount(task *Task) int {
@@ -318,31 +543,104 @@ func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
 	}
 	if latest := latestSheinSubmissionEvent(pkg); latest != nil {
 		if latest.Action == "publish" && latest.Status == "success" {
-			return "published"
+			return SheinWorkflowStatusPublished
 		}
 		if latest.Action == "save_draft" && latest.Status == "success" {
-			return "draft_saved"
+			return SheinWorkflowStatusDraftSaved
 		}
 		if latest.Status == "failed" {
-			return "publish_failed"
+			return SheinWorkflowStatusPublishFailed
 		}
 	}
 	if pkg.Submission != nil {
 		if pkg.Submission.Publish != nil && pkg.Submission.Publish.Status == "success" {
-			return "published"
+			return SheinWorkflowStatusPublished
 		}
 		if pkg.Submission.SaveDraft != nil && pkg.Submission.SaveDraft.Status == "success" {
-			return "draft_saved"
+			return SheinWorkflowStatusDraftSaved
 		}
 		if pkg.Submission.LastStatus == "failed" {
-			return "publish_failed"
+			return SheinWorkflowStatusPublishFailed
 		}
 	}
 	readiness := buildSheinSubmitReadiness(pkg)
 	if readiness != nil && readiness.Ready {
-		return "ready_to_submit"
+		return SheinWorkflowStatusReadyToSubmit
 	}
-	return "pending_confirmation"
+	return SheinWorkflowStatusPendingConfirmation
+}
+
+func buildTaskListSummary(tasks []Task) *TaskListSummary {
+	if len(tasks) == 0 {
+		return nil
+	}
+	summary := &TaskListSummary{
+		StatusCounts:              make(map[string]int),
+		SheinWorkflowStatusCounts: make(map[string]int),
+		SheinWorkQueueCounts:      make(map[string]int),
+		SheinActionQueueCounts:    make(map[string]int),
+		SheinBlockerCounts:        make(map[string]int),
+		SheinWarningCounts:        make(map[string]int),
+	}
+	for i := range tasks {
+		item := buildTaskListItem(&tasks[i])
+		if item.Status != "" {
+			summary.StatusCounts[string(item.Status)]++
+		}
+		if item.SheinWorkflowStatus != "" {
+			summary.SheinWorkflowStatusCounts[item.SheinWorkflowStatus]++
+		}
+		if item.SheinWorkQueue != "" {
+			summary.SheinWorkQueueCounts[item.SheinWorkQueue]++
+		}
+		if item.SheinActionQueue != "" {
+			summary.SheinActionQueueCounts[item.SheinActionQueue]++
+		}
+		for _, key := range item.SheinBlockingKeys {
+			if key != "" {
+				summary.SheinBlockerCounts[key]++
+			}
+		}
+		for _, key := range item.SheinWarningKeys {
+			if key != "" {
+				summary.SheinWarningCounts[key]++
+			}
+		}
+	}
+	return pruneEmptyTaskListSummary(summary)
+}
+
+func pruneEmptyTaskListSummary(summary *TaskListSummary) *TaskListSummary {
+	if summary == nil {
+		return nil
+	}
+	if len(summary.StatusCounts) == 0 {
+		summary.StatusCounts = nil
+	}
+	if len(summary.SheinWorkflowStatusCounts) == 0 {
+		summary.SheinWorkflowStatusCounts = nil
+	}
+	if len(summary.SheinWorkQueueCounts) == 0 {
+		summary.SheinWorkQueueCounts = nil
+	}
+	if len(summary.SheinActionQueueCounts) == 0 {
+		summary.SheinActionQueueCounts = nil
+	}
+	if len(summary.SheinBlockerCounts) == 0 {
+		summary.SheinBlockerCounts = nil
+	}
+	if len(summary.SheinWarningCounts) == 0 {
+		summary.SheinWarningCounts = nil
+	}
+	if summary.StatusCounts == nil &&
+		summary.SheinWorkflowStatusCounts == nil &&
+		summary.SheinWorkQueueCounts == nil &&
+		summary.SheinActionQueueCounts == nil &&
+		summary.SheinBlockerCounts == nil &&
+		summary.SheinWarningCounts == nil {
+		return nil
+	}
+	return summary
 }
 
 func latestSheinSubmissionEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {

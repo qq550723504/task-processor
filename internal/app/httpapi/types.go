@@ -51,6 +51,8 @@ type appBootstrap struct {
 	listingKitHandler    listingkit.Handler
 	studioSessionHandler listingkit.StudioSessionHandler
 	sdsCatalogHandler    sdsCatalogRouteHandler
+	sheinLoginHandler    sheinLoginRouteHandler
+	sdsLoginHandler      sdsLoginRouteHandler
 	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
 	routes               []routeDescriptor
@@ -155,6 +157,29 @@ type taskRPCRouteHandler interface {
 	CancelTask(c *gin.Context)
 	GetQueueStats(c *gin.Context)
 	GetHealth(c *gin.Context)
+}
+
+type sheinLoginRouteHandler interface {
+	Health(c *gin.Context)
+	ListAccounts(c *gin.Context)
+	Login(c *gin.Context)
+	Status(c *gin.Context)
+	SubmitVerifyCode(c *gin.Context)
+	CancelVerifyCodeWait(c *gin.Context)
+	ClearCookie(c *gin.Context)
+	GetLastFailure(c *gin.Context)
+	ClearLastFailure(c *gin.Context)
+	AdminPage(c *gin.Context)
+}
+
+type sdsLoginRouteHandler interface {
+	Health(c *gin.Context)
+	Status(c *gin.Context)
+	Login(c *gin.Context)
+	ManualLogin(c *gin.Context)
+	GetAuthState(c *gin.Context)
+	ClearState(c *gin.Context)
+	AdminPage(c *gin.Context)
 }
 
 type routeDescriptor struct {

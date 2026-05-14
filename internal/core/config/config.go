@@ -490,12 +490,6 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.shein.cookieRedis.pool_size": {
 			Primary: "TASK_PROCESSOR_SHEIN_COOKIE_REDIS_POOL_SIZE",
 		},
-		"platforms.shein.loginService.baseURL": {
-			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_BASE_URL",
-		},
-		"platforms.shein.loginService.sharedKey": {
-			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_SHARED_KEY",
-		},
 		"platforms.shein.loginService.tenantID": {
 			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_TENANT_ID",
 		},

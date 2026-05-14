@@ -2,23 +2,15 @@ package client
 
 import "testing"
 
-func TestLoadSheinLoginServiceConfigPrefersConfiguredOverride(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_BASE_URL", "http://env-login:8000")
-	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_SHARED_KEY", "env-key")
+func TestLoadSheinLoginAccountConfigPrefersConfiguredOverride(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_TENANT_ID", "99")
 	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER", "999")
-	ConfigureLoginService("http://config-login:8000", "config-key", "1", "2")
+	ConfigureLoginAccount("1", "2")
 	t.Cleanup(func() {
-		ConfigureLoginService("", "", "", "")
+		ConfigureLoginAccount("", "")
 	})
 
-	cfg := loadSheinLoginServiceConfig()
-	if cfg.baseURL != "http://config-login:8000" {
-		t.Fatalf("baseURL = %q, want configured value", cfg.baseURL)
-	}
-	if cfg.sharedKey != "config-key" {
-		t.Fatalf("sharedKey = %q, want configured value", cfg.sharedKey)
-	}
+	cfg := loadSheinLoginAccountConfig()
 	if cfg.tenantID != "1" {
 		t.Fatalf("tenantID = %q, want configured value", cfg.tenantID)
 	}
@@ -27,20 +19,12 @@ func TestLoadSheinLoginServiceConfigPrefersConfiguredOverride(t *testing.T) {
 	}
 }
 
-func TestLoadSheinLoginServiceConfigFallsBackToEnv(t *testing.T) {
-	ConfigureLoginService("", "", "", "")
-	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_BASE_URL", "http://env-login:8000")
-	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_SHARED_KEY", "env-key")
+func TestLoadSheinLoginAccountConfigFallsBackToEnv(t *testing.T) {
+	ConfigureLoginAccount("", "")
 	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_TENANT_ID", "99")
 	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER", "999")
 
-	cfg := loadSheinLoginServiceConfig()
-	if cfg.baseURL != "http://env-login:8000" {
-		t.Fatalf("baseURL = %q, want env value", cfg.baseURL)
-	}
-	if cfg.sharedKey != "env-key" {
-		t.Fatalf("sharedKey = %q, want env value", cfg.sharedKey)
-	}
+	cfg := loadSheinLoginAccountConfig()
 	if cfg.tenantID != "99" {
 		t.Fatalf("tenantID = %q, want env value", cfg.tenantID)
 	}
@@ -50,16 +34,16 @@ func TestLoadSheinLoginServiceConfigFallsBackToEnv(t *testing.T) {
 }
 
 func TestCookieManagerUsesConfiguredLoginServiceTenantAndIdentifier(t *testing.T) {
-	ConfigureLoginService("", "", "1", "2")
+	ConfigureLoginAccount("1", "2")
 	t.Cleanup(func() {
-		ConfigureLoginService("", "", "", "")
+		ConfigureLoginAccount("", "")
 	})
 
 	cm := NewCookieManager(869, nil)
 	if got := cm.forceLoginTenantID(); got != 1 {
 		t.Fatalf("force login tenantID = %d, want configured tenant", got)
 	}
-	if got := cm.forceLoginIdentifier(); got != "2" {
-		t.Fatalf("force login identifier = %q, want configured identifier", got)
+	if got := cm.configuredLoginStoreID(); got != 2 {
+		t.Fatalf("configured login storeID = %d, want configured identifier", got)
 	}
 }

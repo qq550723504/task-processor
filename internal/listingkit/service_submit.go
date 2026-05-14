@@ -112,11 +112,12 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		return nil, err
 	}
 
+	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
+	setSheinSubmitSupplierCode(pkg, action, requestID, supplierCode)
+	setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
 	if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return nil, err
 	}
-	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
-	setSheinSubmitSupplierCode(pkg, action, requestID, supplierCode)
 	response, responseErr := executeSheinSubmitRemote(productAPI, action, submitProduct)
 	if responseErr == nil {
 		responseErr = buildSheinSubmitResponseError(action, response)
@@ -129,6 +130,10 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 
 	if responseErr == nil {
 		setSheinSubmitRemoteResponse(pkg, action, requestID, supplierCode, response)
+		task.Result.UpdatedAt = time.Now()
+		if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
+			return nil, err
+		}
 		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhasePersistResult); err != nil {
 			return nil, err
 		}

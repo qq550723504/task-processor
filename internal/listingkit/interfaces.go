@@ -61,6 +61,10 @@ type Repository interface {
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
 }
 
+type TaskListSummarySource interface {
+	ListTaskSummaryTasks(ctx context.Context, query *TaskListQuery) ([]Task, error)
+}
+
 type CanonicalProductCacheRepository interface {
 	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error)
 	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error

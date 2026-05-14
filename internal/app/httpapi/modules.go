@@ -35,7 +35,9 @@ import (
 	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
+	"task-processor/internal/sdslogin"
 	sheinclient "task-processor/internal/shein/client"
+	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -86,6 +88,20 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
+	sheinLoginHandler, sheinLoginCloser, err := buildSheinLoginModule(deps)
+	if err != nil {
+		return nil, err
+	}
+	if sheinLoginCloser != nil {
+		deps.closers = append(deps.closers, sheinLoginCloser)
+	}
+	sdsLoginHandler, sdsLoginCloser, err := buildSDSLoginModule(deps)
+	if err != nil {
+		return nil, err
+	}
+	if sdsLoginCloser != nil {
+		deps.closers = append(deps.closers, sdsLoginCloser)
+	}
 	listingKitModule, err := buildListingKitModule(logger, deps)
 	if err != nil {
 		return nil, err
@@ -105,7 +121,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	sdsCatalogHandler := buildSDSCatalogHandler(logger, deps.cfg)
 
-	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, taskRPCHandler, sdsCatalogHandler)
+	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
@@ -113,12 +129,27 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		listingKitHandler:    listingKitModule.handler,
 		studioSessionHandler: listingKitModule.studioSessionHandler,
 		sdsCatalogHandler:    sdsCatalogHandler,
+		sheinLoginHandler:    sheinLoginHandler,
+		sdsLoginHandler:      sdsLoginHandler,
 		taskRPCHandler:       taskRPCHandler,
 		server:               server,
 		routes:               routes,
 		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
 		closers:              deps.closers,
 	}, nil
+}
+
+func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() error, error) {
+	if deps == nil || deps.cfg == nil || deps.managementClient == nil {
+		return nil, nil, nil
+	}
+	provider := sheinlogin.NewManagementAccountProvider(deps.managementClient)
+	svc, err := sheinlogin.NewService(deps.cfg.Platforms.Shein.LoginService, deps.cfg.EffectiveSheinCookieRedis(), deps.cfg.Browser, provider)
+	if err != nil {
+		return nil, nil, err
+	}
+	sheinclient.ConfigureLocalLoginRefresher(svc)
+	return sheinlogin.NewHandler(svc), svc.Close, nil
 }
 
 func buildSDSCatalogHandler(logger *logrus.Logger, cfg *config.Config) sdsCatalogRouteHandler {
@@ -128,6 +159,15 @@ func buildSDSCatalogHandler(logger *logrus.Logger, cfg *config.Config) sdsCatalo
 		return newSDSCatalogHandler(nil)
 	}
 	return newSDSCatalogHandler(sdstemplate.NewService(sdsHTTPClient))
+}
+
+func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error, error) {
+	if deps == nil || deps.cfg == nil {
+		return nil, nil, nil
+	}
+	svc := sdslogin.NewService(deps.cfg.Platforms.SDS.LoginService, deps.cfg.Browser)
+	sdsclient.ConfigureLocalLoginProvider(svc)
+	return sdslogin.NewHandler(svc), nil, nil
 }
 
 func buildSDSClientConfig(cfg *config.Config) *sdsclient.Config {
@@ -174,7 +214,7 @@ func configureSheinLoginService(cfg *config.Config) {
 		tenantID = strings.TrimSpace(cfg.Management.TenantID)
 	}
 	identifier := strings.TrimSpace(loginService.Identifier)
-	sheinclient.ConfigureLoginService(loginService.BaseURL, loginService.SharedKey, tenantID, identifier)
+	sheinclient.ConfigureLoginAccount(tenantID, identifier)
 }
 
 func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {

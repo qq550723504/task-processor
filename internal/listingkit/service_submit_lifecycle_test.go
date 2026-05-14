@@ -680,11 +680,92 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	if firstErr == nil || !strings.Contains(firstErr.Error(), "save task result failed") {
 		t.Fatalf("first submit err = %v, want save failure", firstErr)
 	}
+	savedAfterFailure, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task after failed save: %v", err)
+	}
+	if savedAfterFailure.Result == nil || savedAfterFailure.Result.Shein == nil || savedAfterFailure.Result.Shein.Submission == nil {
+		t.Fatalf("saved result after failed save = %+v", savedAfterFailure.Result)
+	}
+	publishRecord := savedAfterFailure.Result.Shein.Submission.Publish
+	if publishRecord == nil {
+		t.Fatalf("publish record after failed save = %+v", savedAfterFailure.Result.Shein.Submission)
+	}
+	if publishRecord.SupplierCode == "" {
+		t.Fatalf("publish record supplier_code = %q, want persisted recovery code", publishRecord.SupplierCode)
+	}
+	if publishRecord.SubmitSnapshot == nil {
+		t.Fatalf("publish record submit snapshot = %+v, want persisted snapshot", publishRecord)
+	}
 	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "recover-123"})
 	if err != nil {
 		t.Fatalf("recovery submit: %v", err)
 	}
 
+	if got := atomic.LoadInt32(&publishCalls); got != 1 {
+		t.Fatalf("publish calls = %d, want 1", got)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	}
+	if preview.Shein.Submission.CurrentPhase != "" {
+		t.Fatalf("current phase = %q, want cleared", preview.Shein.Submission.CurrentPhase)
+	}
+}
+
+func TestSubmitTaskRecoversRemoteSubmitAfterPersistResultSaveFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{failSaveOnCurrentPhase: sheinpub.SubmissionPhasePersistResult}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var publishCalls int32
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					atomic.AddInt32(&publishCalls, 1)
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-persist-result",
+					SupplierCode: "SUP-submit-task-1",
+				}),
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, firstErr := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "recover-persist-123"})
+	if firstErr == nil || !strings.Contains(firstErr.Error(), "save task result failed") {
+		t.Fatalf("first submit err = %v, want save failure", firstErr)
+	}
+	savedAfterFailure, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task after failed save: %v", err)
+	}
+	if savedAfterFailure.Result == nil || savedAfterFailure.Result.Shein == nil || savedAfterFailure.Result.Shein.Submission == nil {
+		t.Fatalf("saved result after failed save = %+v", savedAfterFailure.Result)
+	}
+	if savedAfterFailure.Result.Shein.Submission.Publish == nil || savedAfterFailure.Result.Shein.Submission.Publish.Result == nil {
+		t.Fatalf("publish result after failed save = %+v, want persisted remote response", savedAfterFailure.Result.Shein.Submission.Publish)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "recover-persist-123"})
+	if err != nil {
+		t.Fatalf("recovery submit: %v", err)
+	}
 	if got := atomic.LoadInt32(&publishCalls); got != 1 {
 		t.Fatalf("publish calls = %d, want 1", got)
 	}
@@ -1266,6 +1347,12 @@ func TestRefreshSubmissionStatusPrefersPublishSPURecord(t *testing.T) {
 	}
 	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "publish API reported success") {
 		t.Fatalf("remote message = %q, want success message", got)
+	}
+	if repo.mutateCalls == 0 {
+		t.Fatal("expected RefreshSubmissionStatus to persist through mutate task result")
+	}
+	if repo.saveCalls != 0 {
+		t.Fatalf("save calls = %d, want 0 when transaction mutation is available", repo.saveCalls)
 	}
 }
 
