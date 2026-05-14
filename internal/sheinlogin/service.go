@@ -79,14 +79,14 @@ func (s *Service) Health(ctx context.Context) ServiceHealth {
 	}
 }
 
-func (s *Service) ListAccounts(ctx context.Context) ([]AccountStatus, error) {
-	accounts, err := s.provider.ListAccounts(ctx)
+func (s *Service) ListAccounts(ctx context.Context, tenantID int64) ([]AccountStatus, error) {
+	accounts, err := s.provider.ListAccounts(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]AccountStatus, 0, len(accounts))
 	for _, account := range accounts {
-		status, statusErr := s.Status(ctx, account.StoreID)
+		status, statusErr := s.Status(ctx, tenantID, account.StoreID)
 		if statusErr == nil {
 			result = append(result, *status)
 		}
@@ -94,8 +94,8 @@ func (s *Service) ListAccounts(ctx context.Context) ([]AccountStatus, error) {
 	return result, nil
 }
 
-func (s *Service) Status(ctx context.Context, storeID int64) (*AccountStatus, error) {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*AccountStatus, error) {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +128,8 @@ func (s *Service) Status(ctx context.Context, storeID int64) (*AccountStatus, er
 	}, nil
 }
 
-func (s *Service) Login(ctx context.Context, storeID int64, req LoginRequest) (*LoginResult, error) {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req LoginRequest) (*LoginResult, error) {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func (s *Service) Login(ctx context.Context, storeID int64, req LoginRequest) (*
 }
 
 func (s *Service) ForceLogin(ctx context.Context, tenantID int64, storeID int64) error {
-	result, err := s.Login(ctx, storeID, LoginRequest{ForceLogin: true})
+	result, err := s.Login(ctx, tenantID, storeID, LoginRequest{ForceLogin: true})
 	if err != nil {
 		return err
 	}
@@ -259,8 +259,8 @@ func (s *Service) ForceLogin(ctx context.Context, tenantID int64, storeID int64)
 	return nil
 }
 
-func (s *Service) SubmitVerifyCode(ctx context.Context, storeID int64, code string, expireSeconds int) error {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID int64, code string, expireSeconds int) error {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return err
 	}
@@ -444,8 +444,8 @@ func failureDetailFromArtifact(summary *FailureSummary, metadata artifactMetadat
 	return detail
 }
 
-func (s *Service) CancelVerifyCodeWait(ctx context.Context, storeID int64) (bool, error) {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) CancelVerifyCodeWait(ctx context.Context, tenantID int64, storeID int64) (bool, error) {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return false, err
 	}
@@ -453,8 +453,8 @@ func (s *Service) CancelVerifyCodeWait(ctx context.Context, storeID int64) (bool
 	return s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
 }
 
-func (s *Service) ClearCookie(ctx context.Context, storeID int64) error {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) ClearCookie(ctx context.Context, tenantID int64, storeID int64) error {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return err
 	}
@@ -462,16 +462,16 @@ func (s *Service) ClearCookie(ctx context.Context, storeID int64) error {
 	return s.store.ClearCookie(ctx, account.TenantID, account.StoreID)
 }
 
-func (s *Service) ClearLastFailure(ctx context.Context, storeID int64) error {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) ClearLastFailure(ctx context.Context, tenantID int64, storeID int64) error {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return err
 	}
 	return s.store.ClearLastFailure(ctx, account.TenantID, account.StoreID)
 }
 
-func (s *Service) GetLastFailureDetail(ctx context.Context, storeID int64) (*FailureDetail, error) {
-	account, err := s.provider.GetAccount(ctx, storeID)
+func (s *Service) GetLastFailureDetail(ctx context.Context, tenantID int64, storeID int64) (*FailureDetail, error) {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, err
 	}

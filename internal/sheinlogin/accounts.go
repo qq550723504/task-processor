@@ -12,23 +12,30 @@ import (
 )
 
 type AccountProvider interface {
-	ListAccounts(ctx context.Context) ([]Account, error)
-	GetAccount(ctx context.Context, storeID int64) (*Account, error)
+	ListAccounts(ctx context.Context, tenantID int64) ([]Account, error)
+	GetAccount(ctx context.Context, tenantID int64, storeID int64) (*Account, error)
 }
 
 type ManagementAccountProvider struct {
 	client *management.ClientManager
 	mu     sync.RWMutex
-	cache  []Account
-	until  time.Time
+	cache  map[int64]tenantAccountCache
+}
+
+type tenantAccountCache struct {
+	items []Account
+	until time.Time
 }
 
 func NewManagementAccountProvider(client *management.ClientManager) *ManagementAccountProvider {
-	return &ManagementAccountProvider{client: client}
+	return &ManagementAccountProvider{
+		client: client,
+		cache:  make(map[int64]tenantAccountCache),
+	}
 }
 
-func (p *ManagementAccountProvider) GetAccount(ctx context.Context, storeID int64) (*Account, error) {
-	accounts, err := p.ListAccounts(ctx)
+func (p *ManagementAccountProvider) GetAccount(ctx context.Context, tenantID int64, storeID int64) (*Account, error) {
+	accounts, err := p.ListAccounts(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -38,13 +45,18 @@ func (p *ManagementAccountProvider) GetAccount(ctx context.Context, storeID int6
 			return &acc, nil
 		}
 	}
-	return nil, fmt.Errorf("shein login account not found for store %d", storeID)
+	return nil, fmt.Errorf("shein login account not found for tenant %d store %d", tenantID, storeID)
 }
 
-func (p *ManagementAccountProvider) ListAccounts(ctx context.Context) ([]Account, error) {
+func (p *ManagementAccountProvider) ListAccounts(ctx context.Context, tenantID int64) ([]Account, error) {
+	if tenantID <= 0 {
+		return nil, fmt.Errorf("tenant id is required")
+	}
+
 	p.mu.RLock()
-	if time.Now().Before(p.until) && p.cache != nil {
-		cached := append([]Account(nil), p.cache...)
+	entry, exists := p.cache[tenantID]
+	if exists && time.Now().Before(entry.until) && entry.items != nil {
+		cached := append([]Account(nil), entry.items...)
 		p.mu.RUnlock()
 		return cached, nil
 	}
@@ -52,14 +64,15 @@ func (p *ManagementAccountProvider) ListAccounts(ctx context.Context) ([]Account
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if time.Now().Before(p.until) && p.cache != nil {
-		return append([]Account(nil), p.cache...), nil
+	entry, exists = p.cache[tenantID]
+	if exists && time.Now().Before(entry.until) && entry.items != nil {
+		return append([]Account(nil), entry.items...), nil
 	}
 	if p.client == nil {
 		return nil, fmt.Errorf("management client is nil")
 	}
 
-	storeClient := p.client.GetStoreClient()
+	storeClient := p.client.GetStoreClientWithTenant(tenantID)
 	if storeClient == nil {
 		return nil, fmt.Errorf("management store client is nil")
 	}
@@ -72,6 +85,7 @@ func (p *ManagementAccountProvider) ListAccounts(ctx context.Context) ([]Account
 	for {
 		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
 			Platform: "SHEIN",
+			TenantID: tenantID,
 			PageNo:   pageNo,
 			PageSize: pageSize,
 		})
@@ -98,8 +112,10 @@ func (p *ManagementAccountProvider) ListAccounts(ctx context.Context) ([]Account
 		pageNo++
 	}
 
-	p.cache = append([]Account(nil), items...)
-	p.until = time.Now().Add(5 * time.Second)
+	p.cache[tenantID] = tenantAccountCache{
+		items: append([]Account(nil), items...),
+		until: time.Now().Add(5 * time.Second),
+	}
 	return append([]Account(nil), items...), nil
 }
 

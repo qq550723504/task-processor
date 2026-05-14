@@ -103,6 +103,20 @@ func (cm *ClientManager) GetStoreClient() *StoreAPIClient {
 	}
 }
 
+func (cm *ClientManager) GetStoreClientWithTenant(tenantID int64) *StoreAPIClient {
+	baseClient := NewManagementAPIClientWithBaseURL(cm.baseURL)
+
+	sharedClient := cm.GetClient()
+	accessToken, _ := sharedClient.GetAccessToken()
+	baseClient.SetUserToken(accessToken, fmt.Sprintf("%d", tenantID))
+
+	return &StoreAPIClient{
+		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
+		sheinCookieProvider: cm.sheinCookieProvider,
+	}
+}
+
 // GetRawJsonDataClient 获取原始JSON数据API客户端
 func (cm *ClientManager) GetRawJsonDataClient() *RawJsonDataAPIClient {
 	// 直接基于基础客户端创建

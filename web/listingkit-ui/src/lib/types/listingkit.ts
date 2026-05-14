@@ -3,3 +3,4 @@ export * from "./listingkit/preview";
 export * from "./listingkit/shein";
 export * from "./listingkit/review";
 export * from "./listingkit/tasks";
+export * from "./shein-login";

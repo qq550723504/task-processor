@@ -58,6 +58,9 @@ func (m *StoreAPIClient) PageStores(req *api.StorePageReqDTO) (*api.PageResult[*
 	if req.Platform != "" {
 		reqBody["platform"] = req.Platform
 	}
+	if req.TenantID > 0 {
+		reqBody["tenantId"] = req.TenantID
+	}
 	if req.EnableAutoPrice != nil {
 		reqBody["enableAutoPrice"] = *req.EnableAutoPrice
 	}

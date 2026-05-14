@@ -2,6 +2,7 @@ package sheinlogin
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,19 +13,27 @@ import (
 )
 
 type stubAccountProvider struct {
-	account Account
+	accounts []Account
 }
 
-func (s *stubAccountProvider) ListAccounts(context.Context) ([]Account, error) {
-	return []Account{s.account}, nil
-}
-
-func (s *stubAccountProvider) GetAccount(_ context.Context, storeID int64) (*Account, error) {
-	if s.account.StoreID != storeID {
-		return nil, context.Canceled
+func (s *stubAccountProvider) ListAccounts(_ context.Context, tenantID int64) ([]Account, error) {
+	var accounts []Account
+	for _, account := range s.accounts {
+		if account.TenantID == tenantID {
+			accounts = append(accounts, account)
+		}
 	}
-	account := s.account
-	return &account, nil
+	return accounts, nil
+}
+
+func (s *stubAccountProvider) GetAccount(_ context.Context, tenantID int64, storeID int64) (*Account, error) {
+	for _, account := range s.accounts {
+		if account.TenantID == tenantID && account.StoreID == storeID {
+			copyAccount := account
+			return &copyAccount, nil
+		}
+	}
+	return nil, fmt.Errorf("shein login account not found for tenant %d store %d", tenantID, storeID)
 }
 
 type stubVerifySession struct {
@@ -61,7 +70,7 @@ func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{"cookies": []any{}}, time.Hour); err != nil {
 		t.Fatalf("seed cookie: %v", err)
 	}
-	result, err := svc.Login(context.Background(), 2, LoginRequest{})
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -77,7 +86,7 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 		session: session,
 	}
 	svc := newTestService(t, auto)
-	result, err := svc.Login(context.Background(), 2, LoginRequest{ForceLogin: true})
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -100,10 +109,10 @@ func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 		session: session,
 	}
 	svc := newTestService(t, auto)
-	if _, err := svc.Login(context.Background(), 2, LoginRequest{ForceLogin: true}); err != nil {
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
 		t.Fatalf("start login: %v", err)
 	}
-	if err := svc.SubmitVerifyCode(context.Background(), 2, "123456", 60); err != nil {
+	if err := svc.SubmitVerifyCode(context.Background(), 1, 2, "123456", 60); err != nil {
 		t.Fatalf("submit verify code: %v", err)
 	}
 	if svc.loadSession(2) != nil {
@@ -128,7 +137,7 @@ func TestServiceLoginReturnsFailureResultWhenAutomationHasNoBrowserState(t *test
 		},
 	}
 	svc := newTestService(t, auto)
-	result, err := svc.Login(context.Background(), 2, LoginRequest{ForceLogin: true})
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -138,7 +147,7 @@ func TestServiceLoginReturnsFailureResultWhenAutomationHasNoBrowserState(t *test
 	if result.ErrorCode != "REQUEST_FAILED" || result.LastFailure == nil {
 		t.Fatalf("expected failure summary in result: %+v", result)
 	}
-	status, err := svc.Status(context.Background(), 2)
+	status, err := svc.Status(context.Background(), 1, 2)
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}
@@ -148,10 +157,10 @@ func TestServiceLoginReturnsFailureResultWhenAutomationHasNoBrowserState(t *test
 	if status.RecommendedAction.Key != "retry_login" || status.RecommendedAction.Message == "" {
 		t.Fatalf("expected recommended action in status: %+v", status)
 	}
-	if err := svc.ClearLastFailure(context.Background(), 2); err != nil {
+	if err := svc.ClearLastFailure(context.Background(), 1, 2); err != nil {
 		t.Fatalf("clear last failure: %v", err)
 	}
-	status, err = svc.Status(context.Background(), 2)
+	status, err = svc.Status(context.Background(), 1, 2)
 	if err != nil {
 		t.Fatalf("status after clear: %v", err)
 	}
@@ -165,7 +174,7 @@ func TestStatusPrefersVerifyCodeRecommendedAction(t *testing.T) {
 	if err := svc.store.SetVerifyWait(context.Background(), 1, 2, time.Minute); err != nil {
 		t.Fatalf("set verify wait: %v", err)
 	}
-	status, err := svc.Status(context.Background(), 2)
+	status, err := svc.Status(context.Background(), 1, 2)
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}
@@ -216,7 +225,7 @@ func TestServiceGetLastFailureDetailPrefersArtifactMetadata(t *testing.T) {
 	}, time.Hour); err != nil {
 		t.Fatalf("record last failure: %v", err)
 	}
-	detail, err := svc.GetLastFailureDetail(context.Background(), 2)
+	detail, err := svc.GetLastFailureDetail(context.Background(), 1, 2)
 	if err != nil {
 		t.Fatalf("get last failure detail: %v", err)
 	}
@@ -247,8 +256,9 @@ func newTestService(t *testing.T, automation Automation) *Service {
 	store := newRedisStoreFromClient(client)
 	t.Cleanup(func() { _ = store.Close() })
 	account := Account{StoreID: 2, TenantID: 1, Username: "demo", Password: "pwd", Platform: "SHEIN"}
+	otherTenantAccount := Account{StoreID: 2, TenantID: 9, Username: "other", Password: "pwd", Platform: "SHEIN"}
 	return &Service{
-		provider:         &stubAccountProvider{account: account},
+		provider:         &stubAccountProvider{accounts: []Account{account, otherTenantAccount}},
 		store:            store,
 		runtime:          NewRuntime(1),
 		automation:       automation,
