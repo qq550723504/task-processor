@@ -6,7 +6,6 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     ingress.kubernetes.io/ssl-redirect: "true"
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    traefik.ingress.kubernetes.io/router.middlewares: task-processor-listingkit-workbench-basic-auth@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:

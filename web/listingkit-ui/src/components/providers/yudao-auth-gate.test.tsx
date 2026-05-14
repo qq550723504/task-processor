@@ -14,7 +14,7 @@ describe("YudaoAuthGate", () => {
     window.sessionStorage.clear();
   });
 
-  it("blocks direct access when no yudao auth is available", async () => {
+  it("renders the workbench while waiting for yudao auth", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -25,13 +25,12 @@ describe("YudaoAuthGate", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("未授权访问")).toBeInTheDocument();
+      expect(screen.getByText("ListingKit workbench")).toBeInTheDocument();
     });
-    expect(screen.queryByText("ListingKit workbench")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("renders children only after stored yudao auth is verified", async () => {
+  it("verifies stored yudao auth in the background", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -60,7 +59,7 @@ describe("YudaoAuthGate", () => {
     expect(headers.get("visit-tenant-id")).toBe("2");
   });
 
-  it("clears stale auth and blocks access when verification fails", async () => {
+  it("clears stale auth without blocking the workbench", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValueOnce(
@@ -82,9 +81,9 @@ describe("YudaoAuthGate", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("未授权访问")).toBeInTheDocument();
+      expect(screen.getByText("ListingKit workbench")).toBeInTheDocument();
     });
-    expect(screen.queryByText("ListingKit workbench")).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem("listingkit:yudao-auth")).toBeNull();
     clearYudaoAuth();
   });
 });

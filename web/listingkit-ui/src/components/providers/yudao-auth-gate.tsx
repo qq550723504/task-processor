@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect } from "react";
 
 import {
   applyYudaoAuthHeaders,
@@ -9,8 +9,6 @@ import {
   readYudaoAuth,
   YUDAO_AUTH_CHANGED_EVENT,
 } from "@/lib/api/yudao-auth";
-
-type AuthState = "authorized" | "checking" | "unauthorized";
 
 const shouldBypassAuthGate =
   process.env.NODE_ENV !== "production" &&
@@ -26,8 +24,6 @@ export function YudaoAuthGate({
   if (shouldBypassAuthGate) {
     return <>{children}</>;
   }
-
-  const [authState, setAuthState] = useState<AuthState>("checking");
 
   useEffect(() => {
     let cancelled = false;
@@ -53,18 +49,9 @@ export function YudaoAuthGate({
 
     async function finishAuthCheck() {
       try {
-        if (await verifyStoredAuth()) {
-          if (!cancelled) {
-            setAuthState("authorized");
-          }
-          return;
-        }
+        await verifyStoredAuth();
       } catch {
         clearYudaoAuth();
-      }
-
-      if (!cancelled) {
-        setAuthState("unauthorized");
       }
     }
 
@@ -73,24 +60,20 @@ export function YudaoAuthGate({
         clearTimeout(waitTimer);
         waitTimer = undefined;
       }
-      setAuthState("checking");
       void finishAuthCheck();
     }
 
     window.addEventListener(YUDAO_AUTH_CHANGED_EVENT, handleAuthChanged);
-    setAuthState("checking");
     void verifyStoredAuth()
       .then((verified) => {
         if (cancelled) {
           return;
         }
-        if (verified) {
-          setAuthState("authorized");
-          return;
+        if (!verified) {
+          waitTimer = setTimeout(() => {
+            void finishAuthCheck();
+          }, authWaitMs);
         }
-        waitTimer = setTimeout(() => {
-          void finishAuthCheck();
-        }, authWaitMs);
       })
       .catch(() => {
         clearYudaoAuth();
@@ -110,29 +93,5 @@ export function YudaoAuthGate({
     };
   }, [authWaitMs]);
 
-  if (authState === "authorized") {
-    return <>{children}</>;
-  }
-
-  if (authState === "checking") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 text-zinc-900">
-        <div className="w-full max-w-sm rounded border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="text-sm font-medium">正在校验登录状态</div>
-          <div className="mt-2 text-sm text-zinc-500">请稍候。</div>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 text-zinc-900">
-      <div className="w-full max-w-md rounded border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="text-base font-semibold">未授权访问</div>
-        <div className="mt-2 text-sm leading-6 text-zinc-600">
-          请先登录 AI Listing 后台，再从左侧菜单进入 ListingKit 工作台。
-        </div>
-      </div>
-    </main>
-  );
+  return <>{children}</>;
 }
