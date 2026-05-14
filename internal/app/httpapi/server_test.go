@@ -31,6 +31,44 @@ type stubTaskRPCHandler struct {
 	queueStatsCalled bool
 }
 
+type stubSheinLoginHandler struct{}
+
+func (s *stubSheinLoginHandler) Health(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *stubSheinLoginHandler) ListAccounts(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": []any{}})
+}
+
+func (s *stubSheinLoginHandler) Login(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSheinLoginHandler) Status(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSheinLoginHandler) SubmitVerifyCode(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSheinLoginHandler) CancelVerifyCodeWait(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSheinLoginHandler) ClearCookie(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSheinLoginHandler) GetLastFailure(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSheinLoginHandler) ClearLastFailure(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 func (s *stubTaskRPCHandler) GetHealth(c *gin.Context) {
 	s.healthCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -750,6 +788,24 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 		if resp.Code != http.StatusNotFound {
 			t.Fatalf("%s %s = %d, want 404", tt.method, tt.path, resp.Code)
 		}
+	}
+}
+
+func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
+	t.Parallel()
+
+	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, &stubSheinLoginHandler{}, nil, nil)
+
+	index := make(map[string]struct{}, len(routes))
+	for _, route := range routes {
+		index[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	if _, ok := index[http.MethodGet+" /api/v1/shein-login/accounts"]; !ok {
+		t.Fatal("expected SHEIN login accounts API route to remain registered")
+	}
+	if _, ok := index[http.MethodGet+" /shein-login"]; ok {
+		t.Fatal("legacy embedded SHEIN login HTML route should not be registered")
 	}
 }
 

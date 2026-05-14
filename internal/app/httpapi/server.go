@@ -152,7 +152,6 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/cookie", Module: "shein-login", Handler: sheinLoginHandler.ClearCookie},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/last-failure", Module: "shein-login", Handler: sheinLoginHandler.GetLastFailure},
 			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/last-failure", Module: "shein-login", Handler: sheinLoginHandler.ClearLastFailure},
-			routeDescriptor{Method: http.MethodGet, Path: "/shein-login", Module: "shein-login", Handler: sheinLoginHandler.AdminPage},
 		)
 	}
 

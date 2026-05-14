@@ -101,5 +101,4 @@ type ServiceHealth struct {
 	RedisReady          bool `json:"redis_ready"`
 	ManagementReady     bool `json:"management_ready"`
 	MaxConcurrentLogins int  `json:"max_concurrent_logins"`
-	AdminPageEnabled    bool `json:"admin_page_enabled"`
 }

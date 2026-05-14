@@ -30,7 +30,6 @@ type Service struct {
 	chromeDownloadDir string
 	viewportWidth     int
 	viewportHeight    int
-	adminPageEnabled  bool
 	sessionsMu        sync.Mutex
 	sessions          map[int64]VerifySession
 }
@@ -54,7 +53,6 @@ func NewService(cfg config.LoginServiceConfig, redisCfg config.RedisConfig, brow
 		chromeDownloadDir: "./chrome",
 		viewportWidth:     browserCfg.ViewportWidth,
 		viewportHeight:    browserCfg.ViewportHeight,
-		adminPageEnabled:  cfg.AdminPageEnabled,
 		sessions:          make(map[int64]VerifySession),
 	}, nil
 }
@@ -75,7 +73,6 @@ func (s *Service) Health(ctx context.Context) ServiceHealth {
 		RedisReady:          s.store.Ready(ctx),
 		ManagementReady:     s.provider != nil,
 		MaxConcurrentLogins: s.runtime.MaxConcurrent(),
-		AdminPageEnabled:    s.adminPageEnabled,
 	}
 }
 

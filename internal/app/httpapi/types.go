@@ -169,7 +169,6 @@ type sheinLoginRouteHandler interface {
 	ClearCookie(c *gin.Context)
 	GetLastFailure(c *gin.Context)
 	ClearLastFailure(c *gin.Context)
-	AdminPage(c *gin.Context)
 }
 
 type sdsLoginRouteHandler interface {

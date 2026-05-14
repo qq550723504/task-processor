@@ -292,12 +292,11 @@ func newTestService(t *testing.T, automation Automation) *Service {
 	account := Account{StoreID: 2, TenantID: 1, Username: "demo", Password: "pwd", Platform: "SHEIN"}
 	otherTenantAccount := Account{StoreID: 2, TenantID: 9, Username: "other", Password: "pwd", Platform: "SHEIN"}
 	return &Service{
-		provider:         &stubAccountProvider{accounts: []Account{account, otherTenantAccount}},
-		store:            store,
-		runtime:          NewRuntime(1),
-		automation:       automation,
-		defaultHeadless:  true,
-		adminPageEnabled: true,
-		sessions:         make(map[int64]VerifySession),
+		provider:        &stubAccountProvider{accounts: []Account{account, otherTenantAccount}},
+		store:           store,
+		runtime:         NewRuntime(1),
+		automation:      automation,
+		defaultHeadless: true,
+		sessions:        make(map[int64]VerifySession),
 	}
 }
