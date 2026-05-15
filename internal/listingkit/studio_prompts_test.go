@@ -330,6 +330,10 @@ func (s *stubImageUploadStore) Open(context.Context, string) (*StoredUploadedIma
 	return nil, ErrUploadedImageNotFound
 }
 
+func (s *stubImageUploadStore) Delete(context.Context, string) error {
+	return ErrUploadedImageNotFound
+}
+
 func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t *testing.T) {
 	img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
 	img.Set(0, 0, color.NRGBA{R: 255, G: 0, B: 0, A: 255})

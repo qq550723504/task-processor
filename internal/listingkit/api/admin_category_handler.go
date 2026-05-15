@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminCategories(c *gin.Context) {
@@ -21,6 +23,9 @@ func (h *handler) GetAdminCategory(c *gin.Context) {
 }
 
 func (h *handler) CreateAdminCategory(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	if !h.requireCategoryHandler(c) {
 		return
 	}
@@ -28,6 +33,9 @@ func (h *handler) CreateAdminCategory(c *gin.Context) {
 }
 
 func (h *handler) UpdateAdminCategory(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	if !h.requireCategoryHandler(c) {
 		return
 	}
@@ -35,6 +43,9 @@ func (h *handler) UpdateAdminCategory(c *gin.Context) {
 }
 
 func (h *handler) UpdateAdminCategoryStatus(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	if !h.requireCategoryHandler(c) {
 		return
 	}
@@ -42,6 +53,9 @@ func (h *handler) UpdateAdminCategoryStatus(c *gin.Context) {
 }
 
 func (h *handler) DeleteAdminCategory(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	if !h.requireCategoryHandler(c) {
 		return
 	}

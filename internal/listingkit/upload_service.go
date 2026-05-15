@@ -23,6 +23,16 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 		if err != nil {
 			return nil, fmt.Errorf("save uploaded image: %w", err)
 		}
+		if s.uploadedImageRepo != nil {
+			_ = s.uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
+				Key:          stored.Key,
+				Filename:     stored.Filename,
+				PublicURL:    stored.PublicURL,
+				ContentType:  stored.ContentType,
+				Size:         stored.Size,
+				OriginalName: stored.OriginalName,
+			})
+		}
 		publicURL := strings.TrimSpace(stored.PublicURL)
 		if publicURL == "" {
 			publicURL = buildUploadedImagePath(stored.Key)
@@ -60,6 +70,35 @@ func (s *service) GetUploadedImage(ctx context.Context, key string) (*UploadedIm
 		ContentType: stored.ContentType,
 		Data:        data,
 	}, nil
+}
+
+func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error) {
+	if s.uploadStore == nil {
+		return nil, ErrUploadedImageNotFound
+	}
+	var stored *StoredUploadedImage
+	if s.uploadedImageRepo != nil {
+		record, err := s.uploadedImageRepo.GetUploadedImage(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		stored = &StoredUploadedImage{Key: record.Key, Size: record.Size}
+	} else {
+		var err error
+		stored, err = s.uploadStore.Open(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := s.uploadStore.Delete(ctx, stored.Key); err != nil {
+		return nil, err
+	}
+	if s.uploadedImageRepo != nil {
+		if _, err := s.uploadedImageRepo.MarkUploadedImageDeleted(ctx, stored.Key); err != nil {
+			return nil, err
+		}
+	}
+	return &DeletedUploadedImage{Key: stored.Key, Size: stored.Size}, nil
 }
 
 func buildUploadedImagePath(key string) string {

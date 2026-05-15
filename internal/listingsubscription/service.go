@@ -33,6 +33,7 @@ func DefaultModules() []Module {
 		{Code: ModuleRules, Name: "规则", Description: "筛选、利润、核价规则和敏感词", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},
 		{Code: ModuleOperationStrategy, Name: "运营策略", Description: "运营策略配置和应用", SortOrder: 40, Active: true, CreatedAt: now, UpdatedAt: now},
 		{Code: ModuleStudio, Name: "Studio", Description: "设计生成、产品图生成和异步任务", SortOrder: 50, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleOSSStorage, Name: "OSS 存储", Description: "对象存储上传容量计费", SortOrder: 60, Active: true, CreatedAt: now, UpdatedAt: now},
 	}
 }
 
@@ -197,6 +198,22 @@ func (s *Service) Check(ctx context.Context, tenantID, moduleCode string) (Guard
 }
 
 func (s *Service) CheckUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (GuardResult, error) {
+	result, err := s.AuthorizeUsage(ctx, tenantID, moduleCode, metric, increment)
+	if err != nil {
+		return result, err
+	}
+	if metric == "" || increment <= 0 {
+		return result, nil
+	}
+	counter, err := s.RecordUsage(ctx, tenantID, moduleCode, metric, increment)
+	if err != nil {
+		return result, err
+	}
+	result.Used = counter.Used
+	return result, nil
+}
+
+func (s *Service) AuthorizeUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (GuardResult, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	moduleCode = strings.TrimSpace(moduleCode)
 	result := GuardResult{ModuleCode: moduleCode, Metric: metric}
@@ -218,23 +235,65 @@ func (s *Service) CheckUsage(ctx context.Context, tenantID, moduleCode, metric s
 		return result, nil
 	}
 	limit := entitlement.Limits[metric]
-	if limit <= 0 {
-		result.Allowed = true
-		return result, nil
-	}
-	periodKey := s.now().UTC().Format("2006-01")
-	counter, err := s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
+	currentUsed, err := s.currentPeriodUsage(ctx, tenantID, moduleCode, metric)
 	if err != nil {
 		return result, err
 	}
 	result.Limit = limit
-	result.Used = counter.Used
-	if counter.Used > limit {
+	result.Used = currentUsed + increment
+	if limit > 0 && result.Used > limit {
 		result.Reason = "quota_exceeded"
 		return result, ErrSubscriptionQuotaExceed
 	}
 	result.Allowed = true
 	return result, nil
+}
+
+func (s *Service) RecordUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (*UsageCounter, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	moduleCode = strings.TrimSpace(moduleCode)
+	metric = strings.TrimSpace(metric)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if metric == "" {
+		return nil, errors.New("usage metric is required")
+	}
+	if increment == 0 {
+		return nil, errors.New("usage increment cannot be zero")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	if increment < 0 {
+		currentUsed, err := s.currentPeriodUsage(ctx, tenantID, moduleCode, metric)
+		if err != nil {
+			return nil, err
+		}
+		if currentUsed+increment < 0 {
+			increment = -currentUsed
+		}
+	}
+	periodKey := s.now().UTC().Format("2006-01")
+	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
+}
+
+func (s *Service) currentPeriodUsage(ctx context.Context, tenantID, moduleCode, metric string) (int, error) {
+	periodKey := s.now().UTC().Format("2006-01")
+	usage, err := s.repo.ListUsage(ctx, tenantID)
+	if err != nil {
+		return 0, err
+	}
+	used := 0
+	for _, counter := range usage {
+		if counter.ModuleCode == moduleCode && counter.PeriodKey == periodKey && counter.Metric == metric {
+			used += counter.Used
+		}
+	}
+	return used, nil
 }
 
 func (s *Service) moduleExists(ctx context.Context, moduleCode string) bool {

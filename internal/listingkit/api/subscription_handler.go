@@ -203,6 +203,30 @@ func (h *handler) requireSubscriptionUsage(c *gin.Context, moduleCode, metric st
 	return false
 }
 
+func (h *handler) authorizeSubscriptionUsage(c *gin.Context, moduleCode, metric string, increment int) bool {
+	if h.subscriptionService == nil {
+		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
+		return false
+	}
+	result, err := h.subscriptionService.AuthorizeUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
+	if err == nil && result.Allowed {
+		return true
+	}
+	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
+		writeQuotaExceeded(c, result)
+		return false
+	}
+	writeSubscriptionRequired(c, result)
+	return false
+}
+
+func (h *handler) recordSubscriptionUsage(c *gin.Context, moduleCode, metric string, increment int) {
+	if h.subscriptionService == nil || increment == 0 || metric == "" {
+		return
+	}
+	_, _ = h.subscriptionService.RecordUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
+}
+
 func (h *handler) requireSubscriptionHandler(c *gin.Context) bool {
 	if h.subscriptionHandler != nil {
 		return true

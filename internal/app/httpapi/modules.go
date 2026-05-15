@@ -678,6 +678,12 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, studioSessionClosers...)
 
+	uploadedImageRepository, uploadedImageClosers, err := buildListingKitUploadedImageRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, uploadedImageClosers...)
+
 	resolutionCacheStore, resolutionCacheClosers, err := buildSheinResolutionCacheStore(deps.cfg, logger)
 	if err != nil {
 		return nil, err
@@ -696,6 +702,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Repository:              repo,
 		StudioSessionRepository: studioSessionRepository,
+		UploadedImageRepository: uploadedImageRepository,
 		ProductService:          deps.productService,
 		ImageService:            deps.imageService,
 		SDSSyncService:          deps.sdsSyncService,
@@ -983,6 +990,19 @@ func buildListingKitStudioSessionRepository(cfg *config.Config, logger *logrus.L
 
 	logger.Warn("database not configured, SHEIN studio session repository disabled")
 	return nil, nil, nil
+}
+
+func buildListingKitUploadedImageRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitUploadedImageRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit uploaded image repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory listingkit uploaded image repository")
+	return listingkit.NewMemUploadedImageRepository(), nil, nil
 }
 
 func buildSheinResolutionCacheStore(cfg *config.Config, logger *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {

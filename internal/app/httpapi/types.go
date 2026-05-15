@@ -110,6 +110,7 @@ type listingKitRouteHandler interface {
 	RegenerateSheinDataImage(c *gin.Context)
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
+	DeleteUploadedListingKitImage(c *gin.Context)
 	ListTasks(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)

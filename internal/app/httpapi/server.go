@@ -157,6 +157,7 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: listingKitHandler.RegenerateSheinDataImage},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/uploads/images", Module: "listing-kit", Handler: listingKitHandler.UploadListingKitImages},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/uploads/files/*key", Module: "listing-kit", Handler: listingKitHandler.GetUploadedListingKitImage},
+			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/uploads/files/*key", Module: "listing-kit", Handler: listingKitHandler.DeleteUploadedListingKitImage},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks", Module: "listing-kit", Handler: listingKitHandler.ListTasks},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id", Module: "listing-kit", Handler: listingKitHandler.GetTaskResult},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/preview", Module: "listing-kit", Handler: listingKitHandler.GetTaskPreview},

@@ -227,6 +227,7 @@ type Handler interface {
 	ListPlatformTenantSubscriptionAuditLogs(c *gin.Context)
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
+	DeleteUploadedListingKitImage(c *gin.Context)
 	GenerateStudioDesigns(c *gin.Context)
 	GenerateStudioProductImages(c *gin.Context)
 	StartStudioAsyncJob(c *gin.Context)

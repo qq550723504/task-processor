@@ -110,6 +110,57 @@ describe("PlatformSubscriptionPage", () => {
     });
   });
 
+  it("applies OSS storage limit presets as byte limits", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [
+        {
+          module: {
+            code: "oss_storage",
+            name: "OSS 存储",
+            sort_order: 60,
+            active: true,
+          },
+          usage: [],
+          allowed: false,
+          reason: "not_configured",
+          used: {},
+          limits: {},
+        },
+      ],
+    });
+    mockedUpdatePlatformTenantSubscriptionEntitlement.mockResolvedValue({
+      id: 1,
+      tenant_id: "org-target",
+      module_code: "oss_storage",
+      status: "active",
+      limits: { storage_bytes: 1073741824 },
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+      target: { value: "org-target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查询" }));
+
+    await screen.findByText("OSS 存储");
+    fireEvent.click(screen.getByRole("button", { name: "配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 GB" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      expect(mockedUpdatePlatformTenantSubscriptionEntitlement).toHaveBeenCalledWith(
+        "org-target",
+        "oss_storage",
+        expect.objectContaining({
+          limits: { storage_bytes: 1073741824 },
+        }),
+      );
+    });
+  });
+
   it("loads a tenant from the configured tenant list", async () => {
     mockedGetPlatformTenantSubscription.mockResolvedValue({
       tenant_id: "org-target",
@@ -135,40 +186,40 @@ describe("PlatformSubscriptionPage", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
-            name: "Studio",
-            sort_order: 50,
+            code: "oss_storage",
+            name: "OSS 存储",
+            sort_order: 60,
             active: true,
           },
           entitlement: {
             id: 1,
             tenant_id: "org-target",
-            module_code: "studio",
+            module_code: "oss_storage",
             status: "active",
-            limits: { design_jobs: 10 },
+            limits: { storage_bytes: 1048576 },
           },
           usage: [
             {
               id: 1,
               tenant_id: "org-target",
-              module_code: "studio",
+              module_code: "oss_storage",
               period_key: "2026-05",
-              metric: "design_jobs",
-              used: 4,
+              metric: "storage_bytes",
+              used: 2048,
             },
           ],
           allowed: true,
-          used: { design_jobs: 4 },
-          limits: { design_jobs: 10 },
+          used: { storage_bytes: 2048 },
+          limits: { storage_bytes: 1048576 },
         },
       ],
     });
     mockedUpdatePlatformTenantSubscriptionUsage.mockResolvedValue({
       id: 1,
       tenant_id: "org-target",
-      module_code: "studio",
+      module_code: "oss_storage",
       period_key: "2026-05",
-      metric: "design_jobs",
+      metric: "storage_bytes",
       used: 0,
     });
 
@@ -179,7 +230,9 @@ describe("PlatformSubscriptionPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "查询" }));
 
-    await screen.findByText("Studio");
+    await screen.findByText("OSS 存储");
+    expect(screen.getByText("storage_bytes: 1 MB")).toBeInTheDocument();
+    expect(screen.getByText("storage_bytes: 2 KB")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "配置" }));
     fireEvent.click(screen.getByRole("button", { name: "重置为 0" }));
     fireEvent.click(screen.getByRole("button", { name: "保存用量" }));
@@ -187,9 +240,9 @@ describe("PlatformSubscriptionPage", () => {
     await waitFor(() => {
       expect(mockedUpdatePlatformTenantSubscriptionUsage).toHaveBeenCalledWith(
         "org-target",
-        "studio",
+        "oss_storage",
         expect.objectContaining({
-          metric: "design_jobs",
+          metric: "storage_bytes",
           period_key: "2026-05",
           used: 0,
         }),

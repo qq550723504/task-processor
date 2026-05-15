@@ -255,6 +255,10 @@ func (s *stubListingKitHandler) GetUploadedListingKitImage(c *gin.Context) {
 	c.Data(http.StatusOK, "image/jpeg", []byte{0xFF, 0xD8, 0xFF})
 }
 
+func (s *stubListingKitHandler) DeleteUploadedListingKitImage(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"key": c.Param("key"), "size": 3})
+}
+
 func (s *stubListingKitHandler) ListTasks(c *gin.Context) {
 	s.listTasksCalled = true
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})

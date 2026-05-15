@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) GetSheinSettings(c *gin.Context) {
@@ -19,6 +20,9 @@ func (h *handler) GetSheinSettings(c *gin.Context) {
 }
 
 func (h *handler) UpdateSheinSettings(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+		return
+	}
 	var req listingkit.SheinSettings
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
@@ -51,6 +55,9 @@ func (h *handler) PreviewSheinPrice(c *gin.Context) {
 }
 
 func (h *handler) UpdateSheinFinalDraft(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+		return
+	}
 	var req listingkit.SheinFinalDraftUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})

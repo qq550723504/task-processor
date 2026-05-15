@@ -12,6 +12,7 @@ const (
 	ModuleRules             = "rules"
 	ModuleOperationStrategy = "operation_strategy"
 	ModuleStudio            = "studio"
+	ModuleOSSStorage        = "oss_storage"
 )
 
 const (

@@ -36,6 +36,13 @@ describe("SubscriptionPage", () => {
           sort_order: 50,
           active: true,
         },
+        {
+          code: "oss_storage",
+          name: "OSS 存储",
+          description: "Storage",
+          sort_order: 60,
+          active: true,
+        },
       ],
       entitlements: [
         {
@@ -58,6 +65,26 @@ describe("SubscriptionPage", () => {
           limits: { design_jobs: 10 },
           used: { design_jobs: 2 },
         },
+        {
+          module: {
+            code: "oss_storage",
+            name: "OSS 存储",
+            description: "Storage",
+            sort_order: 60,
+            active: true,
+          },
+          entitlement: {
+            id: 2,
+            tenant_id: "org-286",
+            module_code: "oss_storage",
+            status: "active",
+            limits: { storage_bytes: 1048576 },
+          },
+          usage: [],
+          allowed: true,
+          limits: { storage_bytes: 1048576 },
+          used: { storage_bytes: 2048 },
+        },
       ],
     });
     mockedUpdateSubscriptionEntitlement.mockResolvedValue({
@@ -76,6 +103,8 @@ describe("SubscriptionPage", () => {
     expect(screen.getAllByText("已开通").length).toBeGreaterThan(0);
     expect(screen.getByText("design_jobs: 10")).toBeInTheDocument();
     expect(screen.getByText("design_jobs: 2")).toBeInTheDocument();
+    expect(screen.getByText("storage_bytes: 1 MB")).toBeInTheDocument();
+    expect(screen.getByText("storage_bytes: 2 KB")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "配置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存配置" })).not.toBeInTheDocument();
     expect(mockedUpdateSubscriptionEntitlement).not.toHaveBeenCalled();

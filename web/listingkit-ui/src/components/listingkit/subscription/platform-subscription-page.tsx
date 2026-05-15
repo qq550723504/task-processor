@@ -29,6 +29,12 @@ const STATUS_LABEL: Record<SubscriptionStatus, string> = {
   disabled: "已停用",
 };
 
+const OSS_STORAGE_LIMIT_PRESETS = [
+  { label: "1 GB", bytes: 1 * 1024 * 1024 * 1024 },
+  { label: "10 GB", bytes: 10 * 1024 * 1024 * 1024 },
+  { label: "100 GB", bytes: 100 * 1024 * 1024 * 1024 },
+];
+
 export function PlatformSubscriptionPage() {
   const [tenantInput, setTenantInput] = useState("");
   const [tenantId, setTenantId] = useState("");
@@ -340,15 +346,37 @@ export function PlatformSubscriptionPage() {
                 className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
               />
             </label>
-            <label className="mb-3 block text-xs font-medium text-zinc-500">
-              额度 JSON
+            <div className="mb-3">
+              <label
+                htmlFor="subscription-limits-json"
+                className="block text-xs font-medium text-zinc-500"
+              >
+                额度 JSON
+              </label>
+              {editingModule === "oss_storage" ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {OSS_STORAGE_LIMIT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() =>
+                        setLimitsText(setStorageLimitPresetBytes(limitsText, preset.bytes))
+                      }
+                      className="inline-flex h-8 items-center rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:border-zinc-300"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <textarea
+                id="subscription-limits-json"
                 value={limitsText}
                 onChange={(event) => setLimitsText(event.target.value)}
                 rows={7}
                 className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 font-mono text-xs text-zinc-900"
               />
-            </label>
+            </div>
             <button
               type="submit"
               disabled={!editingModule || !normalizedTenantId || saving}
@@ -463,6 +491,11 @@ export function PlatformSubscriptionPage() {
   );
 }
 
+function setStorageLimitPresetBytes(limitsText: string, bytes: number) {
+  const limits = parseLimits(limitsText);
+  return JSON.stringify({ ...limits, storage_bytes: bytes }, null, 2);
+}
+
 function StatusBadge({ view }: { view: SubscriptionEntitlementView }) {
   return (
     <span
@@ -492,8 +525,30 @@ function formatRecord(value?: Record<string, number>) {
     return "-";
   }
   return Object.entries(value)
-    .map(([key, count]) => `${key}: ${count}`)
+    .map(([key, count]) => `${key}: ${formatMetricValue(key, count)}`)
     .join(", ");
+}
+
+function formatMetricValue(key: string, value: number) {
+  if (key === "storage_bytes" || key.endsWith("_bytes")) {
+    return formatBytes(value);
+  }
+  return String(value);
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const maximumFractionDigits = unitIndex === 0 ? 0 : 1;
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits }).format(size)} ${units[unitIndex]}`;
 }
 
 function toLocalDateTimeInput(value?: string) {

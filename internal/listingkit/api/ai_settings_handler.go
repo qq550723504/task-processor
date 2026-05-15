@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) GetAIClientSettings(c *gin.Context) {
@@ -18,6 +19,9 @@ func (h *handler) GetAIClientSettings(c *gin.Context) {
 }
 
 func (h *handler) UpdateAIClientSettings(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+		return
+	}
 	var req listingkit.AIClientSettings
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})

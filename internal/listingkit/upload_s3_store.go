@@ -24,11 +24,16 @@ type s3ImageUploadReader interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
+type s3ImageUploadDeleter interface {
+	DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+}
+
 type S3ImageUploadStoreConfig struct {
 	Bucket     string
 	PublicBase string
 	Uploader   s3ImageUploadWriter
 	Reader     s3ImageUploadReader
+	Deleter    s3ImageUploadDeleter
 }
 
 type s3ImageUploadStore struct {
@@ -36,6 +41,7 @@ type s3ImageUploadStore struct {
 	publicBase string
 	uploader   s3ImageUploadWriter
 	reader     s3ImageUploadReader
+	deleter    s3ImageUploadDeleter
 }
 
 func NewS3ImageUploadStore(cfg S3ImageUploadStoreConfig) (ImageUploadStore, error) {
@@ -48,11 +54,20 @@ func NewS3ImageUploadStore(cfg S3ImageUploadStoreConfig) (ImageUploadStore, erro
 	if cfg.Reader == nil {
 		return nil, fmt.Errorf("reader cannot be nil")
 	}
+	deleter := cfg.Deleter
+	if deleter == nil {
+		var ok bool
+		deleter, ok = cfg.Reader.(s3ImageUploadDeleter)
+		if !ok {
+			return nil, fmt.Errorf("deleter cannot be nil")
+		}
+	}
 	return &s3ImageUploadStore{
 		bucket:     strings.TrimSpace(cfg.Bucket),
 		publicBase: strings.TrimRight(strings.TrimSpace(cfg.PublicBase), "/"),
 		uploader:   cfg.Uploader,
 		reader:     cfg.Reader,
+		deleter:    deleter,
 	}, nil
 }
 
@@ -88,6 +103,21 @@ func (s *s3ImageUploadStore) Save(ctx context.Context, input *ImageUploadInput) 
 		Size:         int64(len(input.Data)),
 		OriginalName: strings.TrimSpace(input.Filename),
 	}, nil
+}
+
+func (s *s3ImageUploadStore) Delete(ctx context.Context, key string) error {
+	normalizedKey := strings.TrimLeft(strings.TrimSpace(key), "/")
+	if normalizedKey == "" {
+		return ErrUploadedImageNotFound
+	}
+	_, err := s.deleter.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(normalizedKey),
+	})
+	if err != nil {
+		return ErrUploadedImageNotFound
+	}
+	return nil
 }
 
 func (s *s3ImageUploadStore) Open(ctx context.Context, key string) (*StoredUploadedImage, error) {

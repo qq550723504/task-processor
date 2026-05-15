@@ -26,6 +26,7 @@ type service struct {
 	imageSvc                   ImageService
 	sdsSyncSvc                 SDSSyncService
 	uploadStore                ImageUploadStore
+	uploadedImageRepo          UploadedImageRepository
 	assembler                  Assembler
 	sheinCategoryResolver      sheinpub.CategoryResolver
 	sheinManagementClient      *management.ClientManager
@@ -58,6 +59,7 @@ type ServiceConfig struct {
 	ImageService               ImageService
 	SDSSyncService             SDSSyncService
 	ImageUploadStore           ImageUploadStore
+	UploadedImageRepository    UploadedImageRepository
 	Assembler                  Assembler
 	AssetRepository            AssetRepository
 	ReviewRepository           GenerationReviewRepository
@@ -144,6 +146,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		imageSvc:                   config.ImageService,
 		sdsSyncSvc:                 config.SDSSyncService,
 		uploadStore:                config.ImageUploadStore,
+		uploadedImageRepo:          config.UploadedImageRepository,
 		assembler:                  config.Assembler,
 		sheinCategoryResolver:      config.SheinCategoryResolver,
 		sheinManagementClient:      config.SheinManagementClient,

@@ -20,7 +20,8 @@ func TestS3ImageUploadStoreSaveUsesPublicBase(t *testing.T) {
 		Uploader: &stubS3ImageUploadUploader{
 			url: "https://listingkit-inputs.s3.amazonaws.com/20260419/image.jpg",
 		},
-		Reader: &stubS3ImageUploadReader{},
+		Reader:  &stubS3ImageUploadReader{},
+		Deleter: &stubS3ImageUploadDeleter{},
 	})
 	if err != nil {
 		t.Fatalf("NewS3ImageUploadStore() error = %v", err)
@@ -67,6 +68,7 @@ func TestS3ImageUploadStoreOpenReadsObjectData(t *testing.T) {
 				ContentLength: aws.Int64(11),
 			},
 		},
+		Deleter: &stubS3ImageUploadDeleter{},
 	})
 	if err != nil {
 		t.Fatalf("NewS3ImageUploadStore() error = %v", err)
@@ -84,6 +86,28 @@ func TestS3ImageUploadStoreOpenReadsObjectData(t *testing.T) {
 	}
 	if opened.ContentType != "image/jpeg" {
 		t.Fatalf("content type = %q, want image/jpeg", opened.ContentType)
+	}
+}
+
+func TestS3ImageUploadStoreDeleteDeletesObject(t *testing.T) {
+	t.Parallel()
+
+	deleter := &stubS3ImageUploadDeleter{}
+	store, err := NewS3ImageUploadStore(S3ImageUploadStoreConfig{
+		Bucket:   "listingkit-inputs",
+		Uploader: &stubS3ImageUploadUploader{},
+		Reader:   &stubS3ImageUploadReader{},
+		Deleter:  deleter,
+	})
+	if err != nil {
+		t.Fatalf("NewS3ImageUploadStore() error = %v", err)
+	}
+
+	if err := store.Delete(context.Background(), "/20260419/example.jpg"); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if deleter.deletedKey != "20260419/example.jpg" {
+		t.Fatalf("deleted key = %q, want normalized key", deleter.deletedKey)
 	}
 }
 
@@ -105,4 +129,15 @@ type stubS3ImageUploadReader struct {
 
 func (s *stubS3ImageUploadReader) GetObject(_ context.Context, _ *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	return s.output, nil
+}
+
+type stubS3ImageUploadDeleter struct {
+	deletedKey string
+}
+
+func (s *stubS3ImageUploadDeleter) DeleteObject(_ context.Context, input *s3.DeleteObjectInput, _ ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	if input.Key != nil {
+		s.deletedKey = *input.Key
+	}
+	return &s3.DeleteObjectOutput{}, nil
 }

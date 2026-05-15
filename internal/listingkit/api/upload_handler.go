@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) UploadListingKitImages(c *gin.Context) {
@@ -27,6 +29,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 	request := &listingkit.UploadImagesRequest{
 		Files: make([]listingkit.ImageUploadInput, 0, len(files)),
 	}
+	totalBytes := 0
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
@@ -40,12 +43,17 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 			return
 		}
+		totalBytes += len(data)
 
 		request.Files = append(request.Files, listingkit.ImageUploadInput{
 			Filename:    fileHeader.Filename,
 			ContentType: fileHeader.Header.Get("Content-Type"),
 			Data:        data,
 		})
+	}
+
+	if !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "storage_bytes", totalBytes) {
+		return
 	}
 
 	response, err := h.service.UploadImages(requestContext(c), request)
@@ -57,6 +65,8 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 		c.JSON(status, gin.H{"error": "upload_failed", "message": err.Error()})
 		return
 	}
+	h.recordSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "storage_bytes", totalBytes)
+	h.recordSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "uploaded_bytes", totalBytes)
 	response.ImageURLs = absolutizeUploadedImageURLs(c, response.ImageURLs)
 
 	c.JSON(http.StatusOK, response)
@@ -79,6 +89,30 @@ func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 		c.Header("Content-Disposition", `inline; filename="`+file.Filename+`"`)
 	}
 	c.Data(http.StatusOK, file.ContentType, file.Data)
+}
+
+func (h *handler) DeleteUploadedListingKitImage(c *gin.Context) {
+	key := strings.TrimPrefix(c.Param("key"), "/")
+	deleteService, ok := h.service.(interface {
+		DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
+	})
+	if !ok {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "image_delete_unavailable", "message": "uploaded image delete is not configured"})
+		return
+	}
+	deleted, err := deleteService.DeleteUploadedImage(requestContext(c), key)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "image_delete_failed", "message": err.Error()})
+		return
+	}
+	if deleted.Size > 0 {
+		h.recordSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "storage_bytes", -int(deleted.Size))
+	}
+	c.JSON(http.StatusOK, deleted)
 }
 
 func absolutizeUploadedImageURLs(c *gin.Context, urls []string) []string {

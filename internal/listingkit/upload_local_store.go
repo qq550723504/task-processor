@@ -102,6 +102,26 @@ func (s *localImageUploadStore) Open(_ context.Context, key string) (*StoredUplo
 	}, nil
 }
 
+func (s *localImageUploadStore) Delete(_ context.Context, key string) error {
+	normalizedKey := strings.TrimLeft(strings.TrimSpace(key), "/")
+	if normalizedKey == "" {
+		return ErrUploadedImageNotFound
+	}
+	targetPath := filepath.Join(s.rootDir, filepath.FromSlash(normalizedKey))
+	cleanedRoot := filepath.Clean(s.rootDir)
+	cleanedTarget := filepath.Clean(targetPath)
+	if cleanedTarget != cleanedRoot && !strings.HasPrefix(cleanedTarget, cleanedRoot+string(os.PathSeparator)) {
+		return ErrUploadedImageNotFound
+	}
+	if err := os.Remove(cleanedTarget); err != nil {
+		if os.IsNotExist(err) {
+			return ErrUploadedImageNotFound
+		}
+		return fmt.Errorf("delete uploaded image: %w", err)
+	}
+	return nil
+}
+
 func normalizedImageExtension(filename, contentType string, data []byte) string {
 	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(filename)))
 	switch ext {

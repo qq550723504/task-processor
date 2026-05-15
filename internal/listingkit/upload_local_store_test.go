@@ -76,3 +76,26 @@ func TestLocalImageUploadStoreOpenReturnsNotFound(t *testing.T) {
 		t.Fatalf("Open() error = %v, want %v", err, ErrUploadedImageNotFound)
 	}
 }
+
+func TestLocalImageUploadStoreDeleteRemovesFile(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewLocalImageUploadStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalImageUploadStore() error = %v", err)
+	}
+	file, err := store.Save(context.Background(), &ImageUploadInput{
+		Filename: "shirt.jpg",
+		Data:     []byte{0xFF, 0xD8, 0xFF},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := store.Delete(context.Background(), file.Key); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if _, err := store.Open(context.Background(), file.Key); err != ErrUploadedImageNotFound {
+		t.Fatalf("Open() after delete error = %v, want ErrUploadedImageNotFound", err)
+	}
+}

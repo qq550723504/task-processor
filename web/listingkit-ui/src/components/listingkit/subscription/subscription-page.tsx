@@ -139,6 +139,28 @@ function formatRecord(value?: Record<string, number>) {
     return "-";
   }
   return Object.entries(value)
-    .map(([key, count]) => `${key}: ${count}`)
+    .map(([key, count]) => `${key}: ${formatMetricValue(key, count)}`)
     .join(", ");
+}
+
+function formatMetricValue(key: string, value: number) {
+  if (key === "storage_bytes" || key.endsWith("_bytes")) {
+    return formatBytes(value);
+  }
+  return String(value);
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const maximumFractionDigits = unitIndex === 0 ? 0 : 1;
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits }).format(size)} ${units[unitIndex]}`;
 }

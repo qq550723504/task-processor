@@ -8,9 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) RegenerateSheinDataImage(c *gin.Context) {
+	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, "image_regenerations", 1) {
+		return
+	}
 	var req listingkit.RegenerateSheinDataImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
