@@ -527,3 +527,18 @@ export type AIClientSettings = {
   enabled?: boolean;
   updated_at?: string;
 };
+
+export type PromptSetting = {
+  id?: number;
+  tenant_id?: string;
+  key: string;
+  content: string;
+  version?: string;
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type PromptSettingsResponse = {
+  items: PromptSetting[];
+};

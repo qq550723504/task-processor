@@ -763,6 +763,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		listingkitapi.WithCategoryRepository(categoryRepo),
 		listingkitapi.WithProductDataRepository(productDataRepo),
 		listingkitapi.WithSubscriptionService(subscriptionService),
+		listingkitapi.WithTenantPromptStore(deps.tenantPromptStore),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)

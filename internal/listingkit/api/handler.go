@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/prompt"
 )
 
 type handler struct {
@@ -28,6 +29,7 @@ type handler struct {
 	productDataHandler          *listingadmin.ProductDataHandler
 	subscriptionService         *listingsubscription.Service
 	subscriptionHandler         *listingsubscription.Handler
+	tenantPromptStore           prompt.TenantPromptStore
 }
 
 type HandlerOption func(*handler)
@@ -126,6 +128,12 @@ func WithSubscriptionService(service *listingsubscription.Service) HandlerOption
 			h.subscriptionService = service
 			h.subscriptionHandler = listingsubscription.NewHandler(service)
 		}
+	}
+}
+
+func WithTenantPromptStore(store prompt.TenantPromptStore) HandlerOption {
+	return func(h *handler) {
+		h.tenantPromptStore = store
 	}
 }
 

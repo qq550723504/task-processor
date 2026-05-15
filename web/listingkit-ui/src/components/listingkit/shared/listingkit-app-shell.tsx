@@ -76,6 +76,7 @@ const OPERATIONS_NAV_ITEMS = [
 
 const SYSTEM_NAV_ITEMS = [
   { label: "订阅", href: "/listing-kits/subscription", match: "prefix" },
+  { label: "提示词", href: "/listing-kits/prompts", match: "prefix" },
   {
     label: "平台订阅",
     href: "/listing-kits/platform/subscriptions",

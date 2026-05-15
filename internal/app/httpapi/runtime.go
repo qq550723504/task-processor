@@ -37,8 +37,10 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	}
 	closers := make([]func() error, 0)
 	var aiCredentialStore *openaiclient.GormCredentialResolver
+	var tenantPromptStore prompt.TenantPromptStore
 	if cfg.Database != nil {
-		tenantPromptStore, closer, err := newDBTenantPromptStore(cfg.Database, logger)
+		var closer func() error
+		tenantPromptStore, closer, err = newDBTenantPromptStore(cfg.Database, logger)
 		if err != nil {
 			return nil, fmt.Errorf("create tenant prompt store: %w", err)
 		}
@@ -95,6 +97,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		closers:           closers,
 		openaiMgr:         openaiMgr,
 		aiCredentialStore: aiCredentialStore,
+		tenantPromptStore: tenantPromptStore,
 		llmMgr:            llmMgr,
 		inputParser:       inputParser,
 		understanding:     productUnderstanding,

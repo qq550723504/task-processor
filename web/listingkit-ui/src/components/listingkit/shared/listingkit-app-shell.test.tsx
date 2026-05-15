@@ -40,6 +40,10 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/subscription",
     );
+    expect(screen.getByRole("link", { name: "提示词" })).toHaveAttribute(
+      "href",
+      "/listing-kits/prompts",
+    );
     expect(screen.getByRole("link", { name: "平台订阅" })).toHaveAttribute(
       "href",
       "/listing-kits/platform/subscriptions",

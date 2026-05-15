@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	"task-processor/internal/prompt"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/taskrpcapi"
 )
@@ -30,6 +31,7 @@ type runtimeDeps struct {
 	closers               []func() error
 	openaiMgr             *openaiclient.Manager
 	aiCredentialStore     *openaiclient.GormCredentialResolver
+	tenantPromptStore     prompt.TenantPromptStore
 	llmMgr                productenrich.LLMManager
 	inputParser           productenrich.InputParser
 	understanding         productenrich.ProductUnderstanding
@@ -132,6 +134,9 @@ type listingKitRouteHandler interface {
 	UpdateSheinSettings(c *gin.Context)
 	GetAIClientSettings(c *gin.Context)
 	UpdateAIClientSettings(c *gin.Context)
+	ListPromptSettings(c *gin.Context)
+	UpsertPromptSetting(c *gin.Context)
+	SetPromptSettingStatus(c *gin.Context)
 	ListAdminStores(c *gin.Context)
 	GetAdminStore(c *gin.Context)
 	CreateAdminStore(c *gin.Context)
