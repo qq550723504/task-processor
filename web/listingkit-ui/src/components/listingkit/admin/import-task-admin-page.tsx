@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   batchCreateListingImportTasks,
   deleteListingImportTask,
@@ -84,7 +86,7 @@ export function ImportTaskAdminPage() {
       setProductText("");
       await importTaskQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -96,7 +98,7 @@ export function ImportTaskAdminPage() {
       await deleteListingImportTask(id);
       await importTaskQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

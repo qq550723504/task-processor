@@ -31,6 +31,7 @@ import {
   type TaskSceneDraftValues,
 } from "@/components/listingkit/tasks/task-scene-defaults";
 import type { TaskSourceTab } from "@/components/listingkit/tasks/task-source-tabs";
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import type {
   CreateListingKitTaskRequest,
   CreateListingKitTaskResponse,
@@ -167,9 +168,15 @@ export function useTaskCreateSubmit({
         return;
       }
       clearErrors("root");
-      const task = await createTask.mutateAsync(submission.request);
-      saveTaskCreateDraft(task.task_id, submission.draft);
-      router.push(`/listing-kits/${task.task_id}/status`);
+      try {
+        const task = await createTask.mutateAsync(submission.request);
+        saveTaskCreateDraft(task.task_id, submission.draft);
+        router.push(`/listing-kits/${task.task_id}/status`);
+      } catch (error) {
+        setError("root", {
+          message: formatSubscriptionApiError(error),
+        });
+      }
     },
     [clearErrors, createTask, liveSearchParams, router, setError],
   );

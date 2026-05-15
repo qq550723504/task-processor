@@ -12,6 +12,7 @@ import {
   ensureSheinStudioSession,
   updateSheinStudioSession,
 } from "@/lib/api/shein-studio-sessions";
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { parsePositiveInt } from "@/lib/shein-studio/create-review-tasks";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -234,6 +235,7 @@ export function useSheinStudioDesignActions({
         },
       ).catch(() => undefined);
     } catch (error) {
+      const message = formatSubscriptionApiError(error);
       workbench.setField("designs", []);
       workbench.setField("selectedIds", []);
       void sessionSyncPromise
@@ -245,8 +247,7 @@ export function useSheinStudioDesignActions({
             sessionId,
             {
               status: "failed",
-              generationError:
-                error instanceof Error ? error.message : "款式图生成失败。",
+              generationError: message,
             },
             {
               timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
@@ -254,10 +255,7 @@ export function useSheinStudioDesignActions({
           );
         })
         .catch(() => undefined);
-      workbench.setField(
-        "generationError",
-        error instanceof Error ? error.message : "款式图生成失败。",
-      );
+      workbench.setField("generationError", message);
     } finally {
       workbench.setField("isGenerating", false);
     }
@@ -322,10 +320,7 @@ export function useSheinStudioDesignActions({
         },
       ).catch(() => undefined);
     } catch (error) {
-      workbench.setField(
-        "generationError",
-        error instanceof Error ? error.message : "重新生成款式失败。",
-      );
+      workbench.setField("generationError", formatSubscriptionApiError(error));
     } finally {
       workbench.setField("regeneratingId", "");
     }

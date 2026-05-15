@@ -561,6 +561,10 @@ func (s *stubListingKitHandler) UpsertSubscriptionEntitlement(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"module_code": c.Param("module_code")})
 }
 
+func (s *stubListingKitHandler) ListPlatformTenantSubscriptions(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"tenant_id": "org-286"}}})
+}
+
 func (s *stubListingKitHandler) GetPlatformTenantSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tenant_id": c.Param("tenant_id")})
 }

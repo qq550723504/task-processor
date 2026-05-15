@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Clock, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingStore,
   deleteListingStore,
@@ -81,7 +83,7 @@ export function StoreAdminPage() {
       setForm(DEFAULT_FORM);
       await storeQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -94,7 +96,7 @@ export function StoreAdminPage() {
       await storeQuery.refetch();
       await deletedStoreQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -105,7 +107,7 @@ export function StoreAdminPage() {
       await storeQuery.refetch();
       await deletedStoreQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -115,7 +117,7 @@ export function StoreAdminPage() {
       await permanentlyDeleteListingStore(id);
       await deletedStoreQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -125,7 +127,7 @@ export function StoreAdminPage() {
       await extendListingStoreValidity(id, 30);
       await storeQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { FolderTree, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingCategory,
   deleteListingCategory,
@@ -60,7 +62,7 @@ export function CategoryAdminPage() {
       setForm(DEFAULT_FORM);
       await categoryQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -75,7 +77,7 @@ export function CategoryAdminPage() {
       );
       await categoryQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -85,7 +87,7 @@ export function CategoryAdminPage() {
       await deleteListingCategory(id);
       await categoryQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

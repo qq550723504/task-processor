@@ -82,6 +82,7 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/subscription/modules", Module: "listing-kit-admin", Handler: listingKitHandler.ListSubscriptionModules},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/subscription/entitlements", Module: "listing-kit-admin", Handler: listingKitHandler.ListSubscriptionEntitlements},
 			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/admin/subscription/entitlements/:module_code", Module: "listing-kit-admin", Handler: listingKitHandler.UpsertSubscriptionEntitlement},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions", Module: "listing-kit-platform-admin", Handler: listingKitHandler.ListPlatformTenantSubscriptions},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id", Module: "listing-kit-platform-admin", Handler: listingKitHandler.GetPlatformTenantSubscription},
 			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code", Module: "listing-kit-platform-admin", Handler: listingKitHandler.UpsertPlatformTenantSubscriptionEntitlement},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores", Module: "listing-kit-admin", Handler: listingKitHandler.ListAdminStores},

@@ -198,6 +198,7 @@ type listingKitRouteHandler interface {
 	ListSubscriptionModules(c *gin.Context)
 	ListSubscriptionEntitlements(c *gin.Context)
 	UpsertSubscriptionEntitlement(c *gin.Context)
+	ListPlatformTenantSubscriptions(c *gin.Context)
 	GetPlatformTenantSubscription(c *gin.Context)
 	UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context)
 	PreviewSheinPrice(c *gin.Context)

@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, ShieldAlert, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingSensitiveWord,
   deleteListingSensitiveWord,
@@ -72,7 +74,7 @@ export function SensitiveWordAdminPage() {
       setForm(DEFAULT_FORM);
       await sensitiveWordQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -84,7 +86,7 @@ export function SensitiveWordAdminPage() {
       await updateListingSensitiveWordStatus(item.id, item.status === 1 ? 0 : 1);
       await sensitiveWordQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -94,7 +96,7 @@ export function SensitiveWordAdminPage() {
       await deleteListingSensitiveWord(id);
       await sensitiveWordQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

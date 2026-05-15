@@ -69,6 +69,23 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	if studio == nil || !studio.Allowed || studio.Limits["design_jobs"] != 12 {
 		t.Fatalf("studio entitlement = %#v", studio)
 	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/platform/subscriptions", nil)
+	listReq.Header.Set("X-User-Roles", "platform_admin")
+	listResp := httptest.NewRecorder()
+	router.ServeHTTP(listResp, listReq)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d; body=%s", listResp.Code, http.StatusOK, listResp.Body.String())
+	}
+	var listBody struct {
+		Items []listingsubscription.TenantOverview `json:"items"`
+	}
+	if err := json.Unmarshal(listResp.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode tenant list: %v", err)
+	}
+	if len(listBody.Items) != 1 || listBody.Items[0].TenantID != "org-target" || listBody.Items[0].ActiveCount != 1 {
+		t.Fatalf("tenant list = %#v", listBody.Items)
+	}
 }
 
 func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
@@ -83,6 +100,7 @@ func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
 		t.Fatalf("create handler: %v", err)
 	}
 	router := gin.New()
+	router.GET("/platform/subscriptions", h.ListPlatformTenantSubscriptions)
 	router.GET("/platform/subscriptions/:tenant_id", h.GetPlatformTenantSubscription)
 	router.PUT("/platform/subscriptions/:tenant_id/entitlements/:module_code", h.UpsertPlatformTenantSubscriptionEntitlement)
 	return router

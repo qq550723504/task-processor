@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import {
   formatSubscriptionApiError,
+  getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
   updatePlatformTenantSubscriptionEntitlement,
   type SubscriptionEntitlementView,
@@ -42,10 +43,18 @@ export function PlatformSubscriptionPage() {
     queryFn: () => getPlatformTenantSubscription(normalizedTenantId),
     enabled: Boolean(normalizedTenantId),
   });
+  const tenantListQuery = useQuery({
+    queryKey: ["listingkit-platform-subscriptions"],
+    queryFn: getPlatformTenantSubscriptions,
+  });
 
   const summary = query.data;
   const visibleError =
-    error || (query.error ? formatSubscriptionApiError(query.error) : "");
+    error ||
+    (query.error ? formatSubscriptionApiError(query.error) : "") ||
+    (tenantListQuery.error
+      ? formatSubscriptionApiError(tenantListQuery.error)
+      : "");
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,6 +89,7 @@ export function PlatformSubscriptionPage() {
         },
       );
       setEditingModule("");
+      await tenantListQuery.refetch();
       await query.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -133,6 +143,52 @@ export function PlatformSubscriptionPage() {
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+          <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-zinc-900">已配置租户</h2>
+              <button
+                type="button"
+                onClick={() => void tenantListQuery.refetch()}
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:border-zinc-300"
+              >
+                <RefreshCw
+                  className={`size-3.5 ${tenantListQuery.isFetching ? "animate-spin" : ""}`}
+                />
+                刷新
+              </button>
+            </div>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {tenantListQuery.isLoading ? (
+                <span className="text-sm text-zinc-500">加载中...</span>
+              ) : (tenantListQuery.data ?? []).length === 0 ? (
+                <span className="text-sm text-zinc-500">暂无租户</span>
+              ) : (
+                tenantListQuery.data?.map((tenant) => (
+                  <button
+                    key={tenant.tenant_id}
+                    type="button"
+                    onClick={() => {
+                      setTenantInput(tenant.tenant_id);
+                      setTenantId(tenant.tenant_id);
+                      setEditingModule("");
+                      setError("");
+                    }}
+                    className={[
+                      "shrink-0 rounded-md border px-3 py-2 text-left text-xs",
+                      tenant.tenant_id === normalizedTenantId
+                        ? "border-zinc-900 bg-zinc-950 text-white"
+                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300",
+                    ].join(" ")}
+                  >
+                    <div className="font-mono">{tenant.tenant_id}</div>
+                    <div className="mt-1 opacity-80">
+                      {tenant.active_count}/{tenant.entitlement_count} 已开通
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-zinc-200 text-sm">
               <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">

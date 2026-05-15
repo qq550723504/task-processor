@@ -78,6 +78,30 @@ func (r *MemRepository) ListEntitlements(_ context.Context, tenantID string) ([]
 	return items, nil
 }
 
+func (r *MemRepository) ListTenantOverviews(context.Context) ([]TenantOverview, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	byTenant := map[string]TenantOverview{}
+	for _, entitlement := range r.entitlements {
+		item := byTenant[entitlement.TenantID]
+		item.TenantID = entitlement.TenantID
+		item.EntitlementCount++
+		if entitlement.Status == StatusActive || entitlement.Status == StatusTrialing {
+			item.ActiveCount++
+		}
+		if item.UpdatedAt == nil || entitlement.UpdatedAt.After(*item.UpdatedAt) {
+			updatedAt := entitlement.UpdatedAt
+			item.UpdatedAt = &updatedAt
+		}
+		byTenant[entitlement.TenantID] = item
+	}
+	items := make([]TenantOverview, 0, len(byTenant))
+	for _, item := range byTenant {
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 func (r *MemRepository) UpsertEntitlement(_ context.Context, entitlement *Entitlement) (*Entitlement, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

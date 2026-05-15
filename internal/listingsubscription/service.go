@@ -97,6 +97,28 @@ func (s *Service) GetTenantSummary(ctx context.Context, tenantID string) (*Summa
 	return s.GetSummary(ctx, tenantID)
 }
 
+func (s *Service) ListTenantOverviews(ctx context.Context) ([]TenantOverview, error) {
+	items, err := s.repo.ListTenantOverviews(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := items[i].UpdatedAt
+		right := items[j].UpdatedAt
+		if left != nil && right != nil && !left.Equal(*right) {
+			return left.After(*right)
+		}
+		if left != nil && right == nil {
+			return true
+		}
+		if left == nil && right != nil {
+			return false
+		}
+		return items[i].TenantID < items[j].TenantID
+	})
+	return items, nil
+}
+
 func (s *Service) UpsertEntitlement(ctx context.Context, tenantID, moduleCode string, input EntitlementInput) (*Entitlement, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	moduleCode = strings.TrimSpace(moduleCode)

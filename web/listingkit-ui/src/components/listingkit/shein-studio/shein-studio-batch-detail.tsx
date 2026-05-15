@@ -7,6 +7,7 @@ import { SheinBatchPublishGate } from "@/components/listingkit/shein-studio/shei
 import { SheinBatchTaskTracker } from "@/components/listingkit/shein-studio/shein-batch-task-tracker";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { Button } from "@/components/shared/button";
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 import {
@@ -193,9 +194,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         `已生成 ${createdTasks.length} 个 SHEIN 资料任务。`,
       );
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "SHEIN 任务创建失败。",
-      );
+      setActionError(formatSubscriptionApiError(error));
     } finally {
       setIsCreatingTasks(false);
     }

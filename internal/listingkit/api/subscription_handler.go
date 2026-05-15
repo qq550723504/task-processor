@@ -43,6 +43,21 @@ func (h *handler) UpsertSubscriptionEntitlement(c *gin.Context) {
 	h.subscriptionHandler.UpsertEntitlement(c)
 }
 
+func (h *handler) ListPlatformTenantSubscriptions(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	items, err := h.subscriptionService.ListTenantOverviews(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "subscription_tenant_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *handler) GetPlatformTenantSubscription(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return

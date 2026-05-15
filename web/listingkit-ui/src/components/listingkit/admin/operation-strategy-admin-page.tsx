@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingOperationStrategy,
   deleteListingOperationStrategy,
@@ -74,7 +76,7 @@ export function OperationStrategyAdminPage() {
       setForm(DEFAULT_FORM);
       await strategyQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -89,7 +91,7 @@ export function OperationStrategyAdminPage() {
       );
       await strategyQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -99,7 +101,7 @@ export function OperationStrategyAdminPage() {
       await deleteListingOperationStrategy(id);
       await strategyQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

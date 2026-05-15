@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SubscriptionPage } from "@/components/listingkit/subscription/subscription-page";
@@ -70,27 +69,16 @@ describe("SubscriptionPage", () => {
     });
   });
 
-  it("renders modules and saves entitlement updates", async () => {
-    const user = userEvent.setup();
+  it("renders current tenant subscription as read-only", async () => {
     renderWithQueryClient(<SubscriptionPage />);
 
     expect(await screen.findByText("Studio")).toBeInTheDocument();
     expect(screen.getAllByText("已开通").length).toBeGreaterThan(0);
     expect(screen.getByText("design_jobs: 10")).toBeInTheDocument();
     expect(screen.getByText("design_jobs: 2")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "配置" }));
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-
-    await waitFor(() => {
-      expect(mockedUpdateSubscriptionEntitlement).toHaveBeenCalledWith(
-        "studio",
-        expect.objectContaining({
-          status: "active",
-          limits: { design_jobs: 10 },
-        }),
-      );
-    });
+    expect(screen.queryByRole("button", { name: "配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存配置" })).not.toBeInTheDocument();
+    expect(mockedUpdateSubscriptionEntitlement).not.toHaveBeenCalled();
   });
 });
 

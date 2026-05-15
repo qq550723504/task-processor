@@ -2,6 +2,7 @@ import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { evaluateImportedGalleryDesigns } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
@@ -121,9 +122,7 @@ export function useSheinStudioTaskCreationAction({
         },
       ).catch(() => undefined);
     } catch (error) {
-      setCreatingError(
-        error instanceof Error ? error.message : "SHEIN 任务创建失败。",
-      );
+      setCreatingError(formatSubscriptionApiError(error));
       setCreatingMessage("");
     } finally {
       setIsCreatingTasks(false);

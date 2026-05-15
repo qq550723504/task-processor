@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Calculator, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingPricingRule,
   deleteListingPricingRule,
@@ -87,7 +89,7 @@ export function PricingRuleAdminPage() {
       setForm(DEFAULT_FORM);
       await pricingRuleQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -99,7 +101,7 @@ export function PricingRuleAdminPage() {
       await updateListingPricingRuleStatus(rule.id, rule.status === 1 ? 0 : 1);
       await pricingRuleQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -109,7 +111,7 @@ export function PricingRuleAdminPage() {
       await deleteListingPricingRule(id);
       await pricingRuleQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

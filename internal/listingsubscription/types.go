@@ -83,6 +83,13 @@ type Summary struct {
 	Entitlements []EntitlementView `json:"entitlements"`
 }
 
+type TenantOverview struct {
+	TenantID         string     `json:"tenant_id"`
+	EntitlementCount int        `json:"entitlement_count"`
+	ActiveCount      int        `json:"active_count"`
+	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+}
+
 type GuardResult struct {
 	Allowed    bool
 	Reason     string
@@ -97,6 +104,7 @@ type Repository interface {
 	UpsertDefaultModules(ctx context.Context, modules []Module) error
 	GetEntitlement(ctx context.Context, tenantID, moduleCode string) (*Entitlement, error)
 	ListEntitlements(ctx context.Context, tenantID string) ([]Entitlement, error)
+	ListTenantOverviews(ctx context.Context) ([]TenantOverview, error)
 	UpsertEntitlement(ctx context.Context, entitlement *Entitlement) (*Entitlement, error)
 	ListUsage(ctx context.Context, tenantID string) ([]UsageCounter, error)
 	IncrementUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int) (*UsageCounter, error)

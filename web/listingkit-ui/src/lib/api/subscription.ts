@@ -68,9 +68,24 @@ export const subscriptionSummarySchema = z
   })
   .passthrough();
 
+export const subscriptionTenantOverviewSchema = z
+  .object({
+    tenant_id: z.string(),
+    entitlement_count: z.number(),
+    active_count: z.number(),
+    updated_at: z.string().optional(),
+  })
+  .passthrough();
+
 const subscriptionModuleListSchema = z
   .object({
     items: z.array(subscriptionModuleSchema),
+  })
+  .passthrough();
+
+const subscriptionTenantOverviewListSchema = z
+  .object({
+    items: z.array(subscriptionTenantOverviewSchema),
   })
   .passthrough();
 
@@ -95,6 +110,9 @@ export type SubscriptionEntitlementView = z.infer<
   typeof subscriptionEntitlementViewSchema
 >;
 export type SubscriptionSummary = z.infer<typeof subscriptionSummarySchema>;
+export type SubscriptionTenantOverview = z.infer<
+  typeof subscriptionTenantOverviewSchema
+>;
 export type SubscriptionRequiredPayload = z.infer<
   typeof subscriptionRequiredPayloadSchema
 >;
@@ -121,6 +139,16 @@ export function parseSubscriptionModuleList(
     payload,
     subscriptionModuleListSchema,
     "ListingKit API returned an unexpected subscription module response",
+  ).items;
+}
+
+export function parseSubscriptionTenantOverviewList(
+  payload: unknown,
+): SubscriptionTenantOverview[] {
+  return parseApiResponseShape(
+    payload,
+    subscriptionTenantOverviewListSchema,
+    "ListingKit API returned an unexpected subscription tenant list response",
   ).items;
 }
 
@@ -189,6 +217,13 @@ export async function getPlatformTenantSubscription(
     `/platform/subscriptions/${encodeURIComponent(tenantId)}`,
   );
   return parseSubscriptionSummary(payload);
+}
+
+export async function getPlatformTenantSubscriptions(): Promise<
+  SubscriptionTenantOverview[]
+> {
+  const payload = await apiRequest<unknown>("/platform/subscriptions");
+  return parseSubscriptionTenantOverviewList(payload);
 }
 
 export async function updatePlatformTenantSubscriptionEntitlement(

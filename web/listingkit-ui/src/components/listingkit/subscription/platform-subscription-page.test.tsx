@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 
 import { PlatformSubscriptionPage } from "@/components/listingkit/subscription/platform-subscription-page";
 import {
+  getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
   updatePlatformTenantSubscriptionEntitlement,
 } from "@/lib/api/subscription";
@@ -14,11 +15,15 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/api/subscription")>();
   return {
     ...actual,
+    getPlatformTenantSubscriptions: vi.fn(),
     getPlatformTenantSubscription: vi.fn(),
     updatePlatformTenantSubscriptionEntitlement: vi.fn(),
   };
 });
 
+const mockedGetPlatformTenantSubscriptions = vi.mocked(
+  getPlatformTenantSubscriptions,
+);
 const mockedGetPlatformTenantSubscription = vi.mocked(getPlatformTenantSubscription);
 const mockedUpdatePlatformTenantSubscriptionEntitlement = vi.mocked(
   updatePlatformTenantSubscriptionEntitlement,
@@ -26,8 +31,16 @@ const mockedUpdatePlatformTenantSubscriptionEntitlement = vi.mocked(
 
 describe("PlatformSubscriptionPage", () => {
   beforeEach(() => {
+    mockedGetPlatformTenantSubscriptions.mockReset();
     mockedGetPlatformTenantSubscription.mockReset();
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockReset();
+    mockedGetPlatformTenantSubscriptions.mockResolvedValue([
+      {
+        tenant_id: "org-target",
+        entitlement_count: 1,
+        active_count: 0,
+      },
+    ]);
   });
 
   it("loads a tenant subscription and updates a module entitlement", async () => {
@@ -80,6 +93,24 @@ describe("PlatformSubscriptionPage", () => {
           status: "active",
           limits: { design_jobs: 10 },
         }),
+      );
+    });
+  });
+
+  it("loads a tenant from the configured tenant list", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    fireEvent.click(await screen.findByText("org-target"));
+
+    await waitFor(() => {
+      expect(mockedGetPlatformTenantSubscription).toHaveBeenCalledWith(
+        "org-target",
       );
     });
   });

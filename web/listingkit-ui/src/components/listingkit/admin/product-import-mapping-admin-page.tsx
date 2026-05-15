@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { GitBranch, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingProductImportMapping,
   deleteListingProductImportMapping,
@@ -74,7 +76,7 @@ export function ProductImportMappingAdminPage() {
       setForm(DEFAULT_FORM);
       await mappingQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -89,7 +91,7 @@ export function ProductImportMappingAdminPage() {
       );
       await mappingQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -99,7 +101,7 @@ export function ProductImportMappingAdminPage() {
       await deleteListingProductImportMapping(id);
       await mappingQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 

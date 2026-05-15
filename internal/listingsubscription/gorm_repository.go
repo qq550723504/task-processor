@@ -122,6 +122,33 @@ func (r *GormRepository) ListEntitlements(ctx context.Context, tenantID string) 
 	return items, nil
 }
 
+func (r *GormRepository) ListTenantOverviews(ctx context.Context) ([]TenantOverview, error) {
+	var rows []struct {
+		TenantID         string     `gorm:"column:tenant_id"`
+		EntitlementCount int        `gorm:"column:entitlement_count"`
+		ActiveCount      int        `gorm:"column:active_count"`
+		UpdatedAt        *time.Time `gorm:"column:updated_at"`
+	}
+	if err := r.db.WithContext(ctx).
+		Model(&tenantEntitlementRow{}).
+		Select("tenant_id, COUNT(*) AS entitlement_count, SUM(CASE WHEN status IN ? THEN 1 ELSE 0 END) AS active_count, MAX(updated_at) AS updated_at", []string{StatusActive, StatusTrialing}).
+		Group("tenant_id").
+		Order("updated_at DESC, tenant_id ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]TenantOverview, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, TenantOverview{
+			TenantID:         row.TenantID,
+			EntitlementCount: row.EntitlementCount,
+			ActiveCount:      row.ActiveCount,
+			UpdatedAt:        row.UpdatedAt,
+		})
+	}
+	return items, nil
+}
+
 func (r *GormRepository) UpsertEntitlement(ctx context.Context, entitlement *Entitlement) (*Entitlement, error) {
 	limitsJSON, err := marshalLimits(entitlement.Limits)
 	if err != nil {

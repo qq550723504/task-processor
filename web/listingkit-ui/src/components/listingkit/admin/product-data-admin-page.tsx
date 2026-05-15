@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { PackageSearch, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
+
 import {
   createListingProductData,
   deleteListingProductData,
@@ -80,7 +82,7 @@ export function ProductDataAdminPage() {
       setForm(DEFAULT_FORM);
       await productDataQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
@@ -92,7 +94,7 @@ export function ProductDataAdminPage() {
       await updateListingProductDataStatus(item.id, item.status === 1 ? 0 : 1);
       await productDataQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
@@ -102,7 +104,7 @@ export function ProductDataAdminPage() {
       await deleteListingProductData(id);
       await productDataQuery.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatSubscriptionApiError(err));
     }
   }
 
