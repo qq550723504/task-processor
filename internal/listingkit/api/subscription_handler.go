@@ -3,6 +3,9 @@ package api
 import (
 	"errors"
 	"net/http"
+	"os"
+	"slices"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,7 +37,60 @@ func (h *handler) UpsertSubscriptionEntitlement(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
 	h.subscriptionHandler.UpsertEntitlement(c)
+}
+
+func (h *handler) GetPlatformTenantSubscription(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	tenantID := strings.TrimSpace(c.Param("tenant_id"))
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id_required", "message": "tenant id is required"})
+		return
+	}
+	summary, err := h.subscriptionService.GetTenantSummary(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "subscription_summary_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *handler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	tenantID := strings.TrimSpace(c.Param("tenant_id"))
+	moduleCode := strings.TrimSpace(c.Param("module_code"))
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id_required", "message": "tenant id is required"})
+		return
+	}
+	var req listingsubscription.EntitlementInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_entitlement", "message": err.Error()})
+		return
+	}
+	entitlement, err := h.subscriptionService.UpsertEntitlement(c.Request.Context(), tenantID, moduleCode, req)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "subscription_entitlement_update_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, entitlement)
 }
 
 func (h *handler) requireSubscription(c *gin.Context, moduleCode string) bool {
@@ -82,6 +138,27 @@ func (h *handler) requireSubscriptionHandler(c *gin.Context) bool {
 	return false
 }
 
+func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
+	userID := strings.TrimSpace(c.GetHeader("X-User-ID"))
+	if userID != "" && slices.Contains(splitCSVEnv("LISTINGKIT_PLATFORM_ADMIN_USERS"), userID) {
+		return true
+	}
+	allowedRoles := splitCSVEnv("LISTINGKIT_PLATFORM_ADMIN_ROLES")
+	if len(allowedRoles) == 0 {
+		allowedRoles = []string{"listingkit_admin", "platform_admin", "admin"}
+	}
+	for _, role := range splitCSVHeaders(c.GetHeader("X-User-Roles"), c.GetHeader("X-Zitadel-Roles")) {
+		if slices.Contains(allowedRoles, role) {
+			return true
+		}
+	}
+	c.JSON(http.StatusForbidden, gin.H{
+		"error":   "platform_subscription_forbidden",
+		"message": "platform subscription management requires a platform admin role",
+	})
+	return false
+}
+
 func writeSubscriptionRequired(c *gin.Context, result listingsubscription.GuardResult) {
 	c.JSON(http.StatusPaymentRequired, gin.H{
 		"error":       "subscription_required",
@@ -100,4 +177,27 @@ func writeQuotaExceeded(c *gin.Context, result listingsubscription.GuardResult) 
 		"used":        result.Used,
 		"message":     "subscription quota exceeded",
 	})
+}
+
+func splitCSVEnv(name string) []string {
+	return splitCSVHeaders(os.Getenv(name))
+}
+
+func splitCSVHeaders(values ...string) []string {
+	out := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			item := strings.TrimSpace(part)
+			if item == "" {
+				continue
+			}
+			if _, ok := seen[item]; ok {
+				continue
+			}
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	return out
 }

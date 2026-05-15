@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,6 +34,7 @@ type zitadelIntrospectionResponse struct {
 	Username   string          `json:"username"`
 	UserID     string          `json:"user_id"`
 	ResourceID string          `json:"urn:zitadel:iam:user:resourceowner:id"`
+	Roles      []string        `json:"-"`
 	Extra      json.RawMessage `json:"-"`
 }
 
@@ -100,6 +102,9 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		c.Request.Header.Set("X-User-ID", userID)
 		c.Request.Header.Set("X-User-Type", "zitadel")
 	}
+	if len(identity.Roles) > 0 {
+		c.Request.Header.Set("X-User-Roles", strings.Join(identity.Roles, ","))
+	}
 	c.Next()
 }
 
@@ -130,10 +135,16 @@ func (m *zitadelAuthMiddleware) verifyToken(r *http.Request, token string) (*zit
 	}
 	defer resp.Body.Close()
 
-	var payload zitadelIntrospectionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
 	}
+	var payload zitadelIntrospectionResponse
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
+	}
+	payload.Extra = data
+	payload.Roles = parseZitadelRoles(data)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !payload.Active {
 		return nil, fmt.Errorf("ZITADEL token introspection failed: %d", resp.StatusCode)
 	}
@@ -171,7 +182,7 @@ func (m *zitadelAuthMiddleware) getDiscovery(r *http.Request) (zitadelDiscovery,
 }
 
 func listingKitRouteRequiresZitadelAuth(route routeDescriptor) bool {
-	return route.Module == "listing-kit" || route.Module == "listing-kit-admin" || route.Module == "listing-kit-studio" || route.Module == "shein-login"
+	return route.Module == "listing-kit" || route.Module == "listing-kit-admin" || route.Module == "listing-kit-platform-admin" || route.Module == "listing-kit-studio" || route.Module == "shein-login"
 }
 
 func bearerToken(authorization string) string {
@@ -198,4 +209,51 @@ func firstNonEmptyZitadelValue(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func parseZitadelRoles(data []byte) []string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	roles := []string{}
+	add := func(value string) {
+		role := strings.TrimSpace(value)
+		if role == "" {
+			return
+		}
+		if _, ok := seen[role]; ok {
+			return
+		}
+		seen[role] = struct{}{}
+		roles = append(roles, role)
+	}
+	for _, key := range []string{"urn:zitadel:iam:org:project:roles", "roles", "role"} {
+		value, ok := raw[key]
+		if !ok {
+			continue
+		}
+		var list []string
+		if err := json.Unmarshal(value, &list); err == nil {
+			for _, role := range list {
+				add(role)
+			}
+			continue
+		}
+		var single string
+		if err := json.Unmarshal(value, &single); err == nil {
+			for _, role := range strings.Split(single, ",") {
+				add(role)
+			}
+			continue
+		}
+		var roleMap map[string]any
+		if err := json.Unmarshal(value, &roleMap); err == nil {
+			for role := range roleMap {
+				add(role)
+			}
+		}
+	}
+	return roles
 }

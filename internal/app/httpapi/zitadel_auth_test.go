@@ -79,6 +79,9 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 				"active":                                true,
 				"sub":                                   "user-42",
 				"urn:zitadel:iam:user:resourceowner:id": "org-286",
+				"urn:zitadel:iam:org:project:roles": map[string]any{
+					"listingkit_admin": map[string]any{"displayName": "ListingKit Admin"},
+				},
 			})
 		default:
 			http.NotFound(w, r)
@@ -100,6 +103,7 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 					"tenant_id": c.GetHeader("X-Tenant-ID"),
 					"user_id":   c.GetHeader("X-User-ID"),
 					"user_type": c.GetHeader("X-User-Type"),
+					"roles":     c.GetHeader("X-User-Roles"),
 				})
 			},
 		},
@@ -120,8 +124,21 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body["tenant_id"] != "org-286" || body["user_id"] != "user-42" || body["user_type"] != "zitadel" {
+	if body["tenant_id"] != "org-286" || body["user_id"] != "user-42" || body["user_type"] != "zitadel" || body["roles"] != "listingkit_admin" {
 		t.Fatalf("identity headers = %#v", body)
+	}
+}
+
+func TestParseZitadelRoles(t *testing.T) {
+	roles := parseZitadelRoles([]byte(`{
+		"urn:zitadel:iam:org:project:roles": {"listingkit_admin": {}, "platform_admin": {}},
+		"roles": ["platform_admin", "billing_admin"],
+		"role": "admin, listingkit_admin"
+	}`))
+
+	want := []string{"listingkit_admin", "platform_admin", "billing_admin", "admin"}
+	if strings.Join(roles, ",") != strings.Join(want, ",") {
+		t.Fatalf("roles = %#v, want %#v", roles, want)
 	}
 }
 

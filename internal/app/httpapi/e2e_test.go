@@ -345,6 +345,7 @@ func enableListingKitSubscriptionModule(t *testing.T, client *http.Client, baseU
 	req, err := http.NewRequest(http.MethodPut, baseURL+"/api/v1/listing-kits/admin/subscription/entitlements/"+moduleCode, bytes.NewReader(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Roles", "platform_admin")
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()

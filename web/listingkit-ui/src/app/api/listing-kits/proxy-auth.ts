@@ -25,6 +25,10 @@ export function buildListingKitUpstreamHeaders(
   );
   const userID = stringifyIdentityValue(verifiedIdentity?.userId);
   const userType = stringifyIdentityValue(verifiedIdentity?.userType);
+  const userRoles = verifiedIdentity?.roles
+    ?.map((role) => stringifyIdentityValue(role))
+    .filter(Boolean)
+    .join(",");
 
   if (tenantID) {
     headers.set("tenant-id", tenantID);
@@ -35,6 +39,9 @@ export function buildListingKitUpstreamHeaders(
   }
   if (userType) {
     headers.set("X-User-Type", userType);
+  }
+  if (userRoles) {
+    headers.set("X-User-Roles", userRoles);
   }
 
   return headers;

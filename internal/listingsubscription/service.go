@@ -93,6 +93,10 @@ func (s *Service) GetSummary(ctx context.Context, tenantID string) (*Summary, er
 	return &Summary{TenantID: tenantID, Modules: modules, Entitlements: views}, nil
 }
 
+func (s *Service) GetTenantSummary(ctx context.Context, tenantID string) (*Summary, error) {
+	return s.GetSummary(ctx, tenantID)
+}
+
 func (s *Service) UpsertEntitlement(ctx context.Context, tenantID, moduleCode string, input EntitlementInput) (*Entitlement, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	moduleCode = strings.TrimSpace(moduleCode)

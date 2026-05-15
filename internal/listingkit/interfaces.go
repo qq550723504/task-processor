@@ -220,6 +220,8 @@ type Handler interface {
 	ListSubscriptionModules(c *gin.Context)
 	ListSubscriptionEntitlements(c *gin.Context)
 	UpsertSubscriptionEntitlement(c *gin.Context)
+	GetPlatformTenantSubscription(c *gin.Context)
+	UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context)
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
 	GenerateStudioDesigns(c *gin.Context)

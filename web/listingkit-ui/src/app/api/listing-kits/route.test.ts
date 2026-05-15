@@ -61,6 +61,7 @@ describe("buildListingKitUpstreamHeaders", () => {
       tenantId: "org-286",
       userId: "user-42",
       userType: "zitadel",
+      roles: ["platform_admin", "listingkit_admin"],
     });
 
     expect(headers.get("Authorization")).toBe("Bearer user-token");
@@ -68,6 +69,7 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-Tenant-ID")).toBe("org-286");
     expect(headers.get("X-User-ID")).toBe("user-42");
     expect(headers.get("X-User-Type")).toBe("zitadel");
+    expect(headers.get("X-User-Roles")).toBe("platform_admin,listingkit_admin");
   });
 
   it("does not forward legacy gateway-only headers", () => {
@@ -113,6 +115,9 @@ describe("verifyZitadelAccessToken", () => {
           active: true,
           sub: "user-42",
           "urn:zitadel:iam:user:resourceowner:id": "org-286",
+          "urn:zitadel:iam:org:project:roles": {
+            platform_admin: {},
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -139,6 +144,7 @@ describe("verifyZitadelAccessToken", () => {
       tenantId: "org-286",
       userId: "user-42",
       userType: "zitadel",
+      roles: ["platform_admin"],
     });
 
     expect(fetchMock).toHaveBeenCalledWith(

@@ -142,6 +142,9 @@ export function parseSubscriptionRequiredPayload(
 }
 
 export function formatSubscriptionApiError(error: unknown): string {
+  if (error instanceof ApiError && error.status === 403) {
+    return "没有平台订阅管理权限";
+  }
   if (!(error instanceof ApiError) || error.status !== 402) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -171,6 +174,30 @@ export async function updateSubscriptionEntitlement(
 ): Promise<SubscriptionEntitlement> {
   const payload = await apiRequest<unknown>(
     `/admin/subscription/entitlements/${encodeURIComponent(moduleCode)}`,
+    {
+      method: "PUT",
+      body: input,
+    },
+  );
+  return parseSubscriptionEntitlement(payload);
+}
+
+export async function getPlatformTenantSubscription(
+  tenantId: string,
+): Promise<SubscriptionSummary> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscriptions/${encodeURIComponent(tenantId)}`,
+  );
+  return parseSubscriptionSummary(payload);
+}
+
+export async function updatePlatformTenantSubscriptionEntitlement(
+  tenantId: string,
+  moduleCode: string,
+  input: SubscriptionEntitlementInput,
+): Promise<SubscriptionEntitlement> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscriptions/${encodeURIComponent(tenantId)}/entitlements/${encodeURIComponent(moduleCode)}`,
     {
       method: "PUT",
       body: input,

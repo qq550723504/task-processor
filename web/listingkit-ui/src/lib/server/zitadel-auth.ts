@@ -36,6 +36,7 @@ export type ZitadelVerifiedIdentity = {
   tenantId?: string | number;
   userId?: string | number;
   userType?: string | number;
+  roles?: string[];
 };
 
 type ZitadelTokenResponse = {
@@ -56,6 +57,9 @@ type ZitadelIntrospectionResponse = {
   aud?: string | string[];
   exp?: number;
   "urn:zitadel:iam:user:resourceowner:id"?: string;
+  "urn:zitadel:iam:org:project:roles"?: Record<string, unknown> | string[] | string;
+  roles?: string[] | string;
+  role?: string;
 };
 
 export function getZitadelAuthOptions(): ZitadelAuthOptions | undefined {
@@ -201,6 +205,7 @@ export async function verifyZitadelAccessToken(
     tenantId: payload["urn:zitadel:iam:user:resourceowner:id"],
     userId: payload.sub ?? payload.user_id ?? payload.username,
     userType: "zitadel",
+    roles: parseZitadelRoles(payload),
   };
 }
 
@@ -335,6 +340,38 @@ function normalizeReturnTo(value: string | null) {
 function extractBearerToken(authorization: string | null) {
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() ?? "";
+}
+
+function parseZitadelRoles(payload: ZitadelIntrospectionResponse) {
+  const seen = new Set<string>();
+  const roles: string[] = [];
+  const add = (value: string) => {
+    const role = value.trim();
+    if (!role || seen.has(role)) {
+      return;
+    }
+    seen.add(role);
+    roles.push(role);
+  };
+  for (const value of [
+    payload["urn:zitadel:iam:org:project:roles"],
+    payload.roles,
+    payload.role,
+  ]) {
+    if (!value) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(add);
+      continue;
+    }
+    if (typeof value === "string") {
+      value.split(",").forEach(add);
+      continue;
+    }
+    Object.keys(value).forEach(add);
+  }
+  return roles;
 }
 
 function randomBase64Url(byteLength: number) {
