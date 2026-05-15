@@ -25,6 +25,21 @@ kubectl apply -n task-processor -f tmp/listingkit-workbench-secret.yaml
 
 Do not commit the filled secret file.
 
+Required ZITADEL values:
+
+```text
+ZITADEL_ISSUER_URL=https://auth.example.com
+ZITADEL_CLIENT_ID=<oidc-web-client-id>
+ZITADEL_CLIENT_SECRET=<oidc-web-client-secret>
+ZITADEL_REDIRECT_URI=https://<workbench-host>/api/zitadel-auth/callback
+ZITADEL_POST_LOGOUT_REDIRECT_URI=https://<workbench-host>
+```
+
+Keep `urn:zitadel:iam:user:resourceowner` in `ZITADEL_SCOPES`; ListingKit uses
+that claim as the tenant id. The base config sets
+`TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED=1` so the Go API fails closed
+when ZITADEL is missing.
+
 ## Deploy
 
 ```powershell
@@ -49,5 +64,11 @@ The UI uses:
 
 - `LISTINGKIT_API_BASE=http://product-listing-api:8085/api/v1/listing-kits`
 - `LISTINGKIT_SERVICE_API_BASE=http://product-listing-api:8085/api/v1`
+- `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`, and
+  redirect URIs from `listingkit-workbench-secret`
 
-The Go API still reads `config/config-prod.yaml` baked into the image, with secret values expected to be supplied by environment variables or the mounted runtime configuration used in your cluster.
+The Go API still reads `config/config-prod.yaml` baked into the image, with
+secret values expected to be supplied by environment variables or the mounted
+runtime configuration used in your cluster. It also verifies ZITADEL bearer
+tokens for direct ListingKit API access when `ZITADEL_ISSUER_URL` and
+`ZITADEL_CLIENT_ID` are present.

@@ -32,7 +32,7 @@ Default:
 LISTINGKIT_API_BASE=http://localhost:8080/api/v1/listing-kits
 ```
 
-Configure ZITADEL for the ListingKit UI session and proxy identity:
+Configure ZITADEL for the ListingKit UI session, proxy identity, and Go API:
 
 ```bash
 ZITADEL_ISSUER_URL=https://your-zitadel-instance
@@ -45,6 +45,12 @@ ZITADEL_POST_LOGOUT_REDIRECT_URI=http://localhost:3000
 The Next.js proxy verifies the ZITADEL session or bearer token before forwarding
 requests to the ListingKit Go API. The verified ZITADEL user and resource owner
 are forwarded as ListingKit identity headers.
+
+The Go API also verifies direct `/api/v1/listing-kits/*` and
+`/api/v1/shein-login/*` bearer-token requests when `ZITADEL_ISSUER_URL` and
+`ZITADEL_CLIENT_ID` are set. Set
+`TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED=1` in deployments that should
+fail closed if ZITADEL is missing.
 
 如果只是本地联调，想暂时跳过页面授权门禁，可以额外设置：
 

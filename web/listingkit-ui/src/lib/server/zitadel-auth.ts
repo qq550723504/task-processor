@@ -74,7 +74,7 @@ export function getZitadelAuthOptions(): ZitadelAuthOptions | undefined {
       process.env.ZITADEL_POST_LOGOUT_REDIRECT_URI?.trim() || undefined,
     scopes:
       process.env.ZITADEL_SCOPES?.trim() ||
-      "openid profile email urn:zitadel:iam:org:project:id:zitadel:aud",
+      "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud",
   };
 }
 
