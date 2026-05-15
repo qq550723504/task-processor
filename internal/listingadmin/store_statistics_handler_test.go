@@ -1,0 +1,128 @@
+package listingadmin
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
+)
+
+func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) {
+	t.Parallel()
+
+	router := newStoreStatisticsTestRouter(t)
+	trueValue := true
+	falseValue := false
+	limit := 10
+	seedStore(t, router.db, listingStore{
+		ID:                1,
+		TenantID:          101,
+		StoreID:           "SHEIN-US",
+		Name:              "SHEIN US",
+		Username:          "shein-us",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		Region:            "US",
+		DailyLimit:        &limit,
+		DailyLimitType:    "fixed",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStore(t, router.db, listingStore{
+		ID:                2,
+		TenantID:          101,
+		Name:              "Manual Store",
+		Username:          "manual",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &falseValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStore(t, router.db, listingStore{
+		ID:                3,
+		TenantID:          202,
+		Name:              "Other Tenant",
+		Username:          "other",
+		Password:          "secret",
+		Platform:          "TEMU",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P1", Status: 0})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P2", Status: 1})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P3", Status: 5})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P4", Status: 10})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P5", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var items []StoreStatistics
+	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %+v, want one auto listing store for tenant 101", items)
+	}
+	got := items[0]
+	if got.Name != "SHEIN US" || got.CompletedCount != 1 || got.RemainingCount != 2 || got.QueuedCount != 1 || got.HoldCount != 1 {
+		t.Fatalf("statistics = %+v, want aggregated counts", got)
+	}
+	if got.ProgressPercentage != 10 {
+		t.Fatalf("progress = %v, want 10", got.ProgressPercentage)
+	}
+}
+
+type storeStatisticsTestRouter struct {
+	engine *gin.Engine
+	db     *gorm.DB
+}
+
+func newStoreStatisticsTestRouter(t *testing.T) storeStatisticsTestRouter {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}, &listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate statistics tables: %v", err)
+	}
+	repo := NewGormStoreStatisticsRepository(db)
+	handler := NewStoreStatisticsHandler(repo)
+	engine := gin.New()
+	engine.GET("/store-statistics", handler.ListStoreStatistics)
+	return storeStatisticsTestRouter{engine: engine, db: db}
+}
+
+func seedStatisticsImportTask(t *testing.T, db *gorm.DB, task listingProductImportTask) listingProductImportTask {
+	t.Helper()
+	if task.CategoryID == 0 {
+		task.CategoryID = 1
+	}
+	if err := db.Table("listing_product_import_task").Create(&task).Error; err != nil {
+		t.Fatalf("seed import task: %v", err)
+	}
+	return task
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
+}

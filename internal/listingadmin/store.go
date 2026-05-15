@@ -1,0 +1,487 @@
+package listingadmin
+
+import (
+	"context"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+var ErrStoreNotFound = errors.New("store not found")
+
+type Store struct {
+	ID                      int64      `json:"id"`
+	TenantID                int64      `json:"tenantId"`
+	StoreID                 string     `json:"storeId,omitempty"`
+	Name                    string     `json:"name"`
+	Username                string     `json:"username"`
+	Password                string     `json:"password,omitempty"`
+	LoginURL                string     `json:"loginUrl,omitempty"`
+	ShopType                string     `json:"shopType"`
+	Region                  string     `json:"region"`
+	Platform                string     `json:"platform"`
+	DailyLimit              *int       `json:"dailyLimit,omitempty"`
+	DailyLimitType          string     `json:"dailyLimitType,omitempty"`
+	FixedStockCount         *int       `json:"fixedStockCount,omitempty"`
+	SKUGenerateStrategy     string     `json:"skuGenerateStrategy,omitempty"`
+	Prefix                  string     `json:"prefix,omitempty"`
+	Suffix                  string     `json:"suffix,omitempty"`
+	Proxy                   string     `json:"proxy,omitempty"`
+	EnableAutoListing       *bool      `json:"enableAutoListing,omitempty"`
+	EnableAutoLogin         *bool      `json:"enableAutoLogin,omitempty"`
+	EnableDraft             *bool      `json:"enableDraft,omitempty"`
+	EnableAutoPrice         *bool      `json:"enableAutoPrice,omitempty"`
+	EnableRebargain         *bool      `json:"enableRebargain,omitempty"`
+	TemuPriceRejectStrategy string     `json:"temuPriceRejectStrategy,omitempty"`
+	PriceType               string     `json:"priceType,omitempty"`
+	Remark                  string     `json:"remark,omitempty"`
+	Status                  int16      `json:"status"`
+	ValidFrom               *time.Time `json:"validFrom,omitempty"`
+	ValidUntil              *time.Time `json:"validUntil,omitempty"`
+	Expired                 bool       `json:"expired"`
+	DedicatedQueueEnabled   *bool      `json:"dedicatedQueueEnabled,omitempty"`
+	CreateTime              *time.Time `json:"createTime,omitempty"`
+	UpdateTime              *time.Time `json:"updateTime,omitempty"`
+}
+
+type StoreQuery struct {
+	TenantID          int64
+	Page              int
+	PageSize          int
+	StoreID           string
+	Name              string
+	Username          string
+	ShopType          string
+	Region            string
+	Platform          string
+	SKUGenerate       string
+	EnableAutoListing *bool
+	EnableAutoLogin   *bool
+	EnableDraft       *bool
+	EnableAutoPrice   *bool
+	EnableRebargain   *bool
+	PriceType         string
+	Status            *int16
+	Expired           *bool
+	Deleted           *int16
+}
+
+type StorePage struct {
+	Items    []Store `json:"items"`
+	Total    int64   `json:"total"`
+	Page     int     `json:"page"`
+	PageSize int     `json:"page_size"`
+}
+
+type StoreRepository interface {
+	ListStores(ctx context.Context, query StoreQuery) (*StorePage, error)
+	GetStore(ctx context.Context, tenantID, id int64) (*Store, error)
+	CreateStore(ctx context.Context, store *Store) (*Store, error)
+	UpdateStore(ctx context.Context, store *Store) (*Store, error)
+	UpdateStoreStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*Store, error)
+	DeleteStore(ctx context.Context, tenantID, id int64) error
+	ListDeletedStores(ctx context.Context, tenantID int64) ([]Store, error)
+	RestoreStore(ctx context.Context, tenantID, id int64) (*Store, error)
+	PermanentlyDeleteStore(ctx context.Context, tenantID, id int64) error
+	ExtendStoreValidity(ctx context.Context, tenantID, id int64, days int) (*Store, error)
+}
+
+type listingStore struct {
+	ID                      int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	TenantID                int64      `gorm:"column:tenant_id;not null;index"`
+	StoreID                 string     `gorm:"column:store_id"`
+	Name                    string     `gorm:"column:name;not null"`
+	Username                string     `gorm:"column:username;not null"`
+	Password                string     `gorm:"column:password;not null"`
+	LoginURL                string     `gorm:"column:login_url"`
+	ShopType                string     `gorm:"column:shop_type;not null"`
+	Region                  string     `gorm:"column:region"`
+	Platform                string     `gorm:"column:platform;not null"`
+	DailyLimit              *int       `gorm:"column:daily_limit"`
+	DailyLimitType          string     `gorm:"column:daily_limit_type"`
+	FixedStockCount         *int       `gorm:"column:fixed_stock_count"`
+	SKUGenerateStrategy     string     `gorm:"column:sku_generate_strategy"`
+	Prefix                  string     `gorm:"column:prefix"`
+	Suffix                  string     `gorm:"column:suffix"`
+	Proxy                   string     `gorm:"column:proxy"`
+	EnableAutoListing       *bool      `gorm:"column:enable_auto_listing"`
+	EnableAutoLogin         *bool      `gorm:"column:enable_auto_login"`
+	EnableDraft             *bool      `gorm:"column:enable_draft"`
+	EnableAutoPrice         *bool      `gorm:"column:enable_auto_price"`
+	EnableRebargain         *bool      `gorm:"column:enable_rebargain"`
+	TemuPriceRejectStrategy string     `gorm:"column:temu_price_reject_strategy"`
+	PriceType               string     `gorm:"column:price_type"`
+	Remark                  string     `gorm:"column:remark"`
+	Status                  int16      `gorm:"column:status"`
+	ValidFrom               *time.Time `gorm:"column:valid_from"`
+	ValidUntil              *time.Time `gorm:"column:valid_until"`
+	Expired                 bool       `gorm:"column:expired"`
+	DedicatedQueueEnabled   *bool      `gorm:"column:dedicated_queue_enabled"`
+	Creator                 string     `gorm:"column:creator"`
+	CreateTime              *time.Time `gorm:"column:create_time;autoCreateTime"`
+	Updater                 string     `gorm:"column:updater"`
+	UpdateTime              *time.Time `gorm:"column:update_time;autoUpdateTime"`
+	Deleted                 int16      `gorm:"column:deleted;not null;default:0;index"`
+}
+
+func (listingStore) TableName() string {
+	return "listing_store"
+}
+
+func (s listingStore) toStore() Store {
+	return Store{
+		ID:                      s.ID,
+		TenantID:                s.TenantID,
+		StoreID:                 s.StoreID,
+		Name:                    s.Name,
+		Username:                s.Username,
+		Password:                s.Password,
+		LoginURL:                s.LoginURL,
+		ShopType:                s.ShopType,
+		Region:                  s.Region,
+		Platform:                s.Platform,
+		DailyLimit:              s.DailyLimit,
+		DailyLimitType:          s.DailyLimitType,
+		FixedStockCount:         s.FixedStockCount,
+		SKUGenerateStrategy:     s.SKUGenerateStrategy,
+		Prefix:                  s.Prefix,
+		Suffix:                  s.Suffix,
+		Proxy:                   s.Proxy,
+		EnableAutoListing:       s.EnableAutoListing,
+		EnableAutoLogin:         s.EnableAutoLogin,
+		EnableDraft:             s.EnableDraft,
+		EnableAutoPrice:         s.EnableAutoPrice,
+		EnableRebargain:         s.EnableRebargain,
+		TemuPriceRejectStrategy: s.TemuPriceRejectStrategy,
+		PriceType:               s.PriceType,
+		Remark:                  s.Remark,
+		Status:                  s.Status,
+		ValidFrom:               s.ValidFrom,
+		ValidUntil:              s.ValidUntil,
+		Expired:                 s.Expired,
+		DedicatedQueueEnabled:   s.DedicatedQueueEnabled,
+		CreateTime:              s.CreateTime,
+		UpdateTime:              s.UpdateTime,
+	}
+}
+
+func listingStoreFromStore(store *Store) listingStore {
+	if store == nil {
+		return listingStore{}
+	}
+	return listingStore{
+		ID:                      store.ID,
+		TenantID:                store.TenantID,
+		StoreID:                 strings.TrimSpace(store.StoreID),
+		Name:                    strings.TrimSpace(store.Name),
+		Username:                strings.TrimSpace(store.Username),
+		Password:                store.Password,
+		LoginURL:                strings.TrimSpace(store.LoginURL),
+		ShopType:                strings.TrimSpace(store.ShopType),
+		Region:                  strings.TrimSpace(store.Region),
+		Platform:                strings.TrimSpace(store.Platform),
+		DailyLimit:              store.DailyLimit,
+		DailyLimitType:          strings.TrimSpace(store.DailyLimitType),
+		FixedStockCount:         store.FixedStockCount,
+		SKUGenerateStrategy:     strings.TrimSpace(store.SKUGenerateStrategy),
+		Prefix:                  strings.TrimSpace(store.Prefix),
+		Suffix:                  strings.TrimSpace(store.Suffix),
+		Proxy:                   strings.TrimSpace(store.Proxy),
+		EnableAutoListing:       store.EnableAutoListing,
+		EnableAutoLogin:         store.EnableAutoLogin,
+		EnableDraft:             store.EnableDraft,
+		EnableAutoPrice:         store.EnableAutoPrice,
+		EnableRebargain:         store.EnableRebargain,
+		TemuPriceRejectStrategy: strings.TrimSpace(store.TemuPriceRejectStrategy),
+		PriceType:               strings.TrimSpace(store.PriceType),
+		Remark:                  strings.TrimSpace(store.Remark),
+		Status:                  store.Status,
+		ValidFrom:               store.ValidFrom,
+		ValidUntil:              store.ValidUntil,
+		Expired:                 store.Expired,
+		DedicatedQueueEnabled:   store.DedicatedQueueEnabled,
+	}
+}
+
+type GormStoreRepository struct {
+	db *gorm.DB
+}
+
+func NewGormStoreRepository(db *gorm.DB) *GormStoreRepository {
+	return &GormStoreRepository{db: db}
+}
+
+func AutoMigrateStoreRepository(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("database is not configured")
+	}
+	return db.AutoMigrate(&listingStore{})
+}
+
+func (r *GormStoreRepository) ListStores(ctx context.Context, query StoreQuery) (*StorePage, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("store repository database is not configured")
+	}
+	page, pageSize := normalizePage(query.Page, query.PageSize)
+	db := applyStoreQuery(r.db.WithContext(ctx).Table("listing_store"), query)
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var rows []listingStore
+	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]Store, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toStore())
+	}
+	return &StorePage{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
+}
+
+func (r *GormStoreRepository) GetStore(ctx context.Context, tenantID, id int64) (*Store, error) {
+	var row listingStore
+	err := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrStoreNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	store := row.toStore()
+	return &store, nil
+}
+
+func (r *GormStoreRepository) CreateStore(ctx context.Context, store *Store) (*Store, error) {
+	row := listingStoreFromStore(store)
+	if row.Status == 0 {
+		row.Status = 0
+	}
+	if row.DailyLimitType == "" {
+		row.DailyLimitType = "SPU"
+	}
+	if row.Region == "" {
+		row.Region = "US"
+	}
+	if err := r.db.WithContext(ctx).Table("listing_store").Create(&row).Error; err != nil {
+		return nil, err
+	}
+	created := row.toStore()
+	return &created, nil
+}
+
+func (r *GormStoreRepository) UpdateStore(ctx context.Context, store *Store) (*Store, error) {
+	row := listingStoreFromStore(store)
+	updates := map[string]any{
+		"store_id":                   row.StoreID,
+		"name":                       row.Name,
+		"username":                   row.Username,
+		"login_url":                  row.LoginURL,
+		"shop_type":                  row.ShopType,
+		"region":                     row.Region,
+		"platform":                   row.Platform,
+		"daily_limit":                row.DailyLimit,
+		"daily_limit_type":           row.DailyLimitType,
+		"fixed_stock_count":          row.FixedStockCount,
+		"sku_generate_strategy":      row.SKUGenerateStrategy,
+		"prefix":                     row.Prefix,
+		"suffix":                     row.Suffix,
+		"proxy":                      row.Proxy,
+		"enable_auto_listing":        row.EnableAutoListing,
+		"enable_auto_login":          row.EnableAutoLogin,
+		"enable_draft":               row.EnableDraft,
+		"enable_auto_price":          row.EnableAutoPrice,
+		"enable_rebargain":           row.EnableRebargain,
+		"temu_price_reject_strategy": row.TemuPriceRejectStrategy,
+		"price_type":                 row.PriceType,
+		"remark":                     row.Remark,
+		"status":                     row.Status,
+		"valid_from":                 row.ValidFrom,
+		"valid_until":                row.ValidUntil,
+		"expired":                    row.Expired,
+		"dedicated_queue_enabled":    row.DedicatedQueueEnabled,
+	}
+	if strings.TrimSpace(row.Password) != "" {
+		updates["password"] = row.Password
+	}
+	res := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrStoreNotFound
+	}
+	return r.GetStore(ctx, row.TenantID, row.ID)
+}
+
+func (r *GormStoreRepository) UpdateStoreStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*Store, error) {
+	updates := map[string]any{"status": status}
+	if strings.TrimSpace(remark) != "" {
+		updates["remark"] = strings.TrimSpace(remark)
+	}
+	res := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Updates(updates)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrStoreNotFound
+	}
+	return r.GetStore(ctx, tenantID, id)
+}
+
+func (r *GormStoreRepository) DeleteStore(ctx context.Context, tenantID, id int64) error {
+	res := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrStoreNotFound
+	}
+	return nil
+}
+
+func (r *GormStoreRepository) ListDeletedStores(ctx context.Context, tenantID int64) ([]Store, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("store repository database is not configured")
+	}
+	var rows []listingStore
+	db := r.db.WithContext(ctx).Table("listing_store").Where("deleted = 1")
+	if tenantID > 0 {
+		db = db.Where("tenant_id = ?", tenantID)
+	}
+	if err := db.Order("id desc").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]Store, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toStore())
+	}
+	return items, nil
+}
+
+func (r *GormStoreRepository) RestoreStore(ctx context.Context, tenantID, id int64) (*Store, error) {
+	res := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 1", tenantID, id).Update("deleted", 0)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrStoreNotFound
+	}
+	return r.GetStore(ctx, tenantID, id)
+}
+
+func (r *GormStoreRepository) PermanentlyDeleteStore(ctx context.Context, tenantID, id int64) error {
+	res := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 1", tenantID, id).Delete(&listingStore{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrStoreNotFound
+	}
+	return nil
+}
+
+func (r *GormStoreRepository) ExtendStoreValidity(ctx context.Context, tenantID, id int64, days int) (*Store, error) {
+	if days <= 0 {
+		days = 30
+	}
+	var row listingStore
+	err := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrStoreNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	base := time.Now()
+	if row.ValidUntil != nil {
+		base = *row.ValidUntil
+	}
+	nextValidUntil := base.AddDate(0, 0, days)
+	if err := r.db.WithContext(ctx).Table("listing_store").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Updates(map[string]any{
+		"valid_until": nextValidUntil,
+		"expired":     false,
+	}).Error; err != nil {
+		return nil, err
+	}
+	return r.GetStore(ctx, tenantID, id)
+}
+
+func applyStoreQuery(db *gorm.DB, query StoreQuery) *gorm.DB {
+	if query.Deleted != nil {
+		db = db.Where("deleted = ?", *query.Deleted)
+	} else {
+		db = db.Where("deleted = 0")
+	}
+	if query.TenantID > 0 {
+		db = db.Where("tenant_id = ?", query.TenantID)
+	}
+	if query.StoreID != "" {
+		db = db.Where("store_id LIKE ?", "%"+query.StoreID+"%")
+	}
+	if query.Name != "" {
+		db = db.Where("name LIKE ?", "%"+query.Name+"%")
+	}
+	if query.Username != "" {
+		db = db.Where("username LIKE ?", "%"+query.Username+"%")
+	}
+	if query.ShopType != "" {
+		db = db.Where("shop_type = ?", query.ShopType)
+	}
+	if query.Region != "" {
+		db = db.Where("region = ?", query.Region)
+	}
+	if query.Platform != "" {
+		db = db.Where("platform = ?", query.Platform)
+	}
+	if query.SKUGenerate != "" {
+		db = db.Where("sku_generate_strategy = ?", query.SKUGenerate)
+	}
+	if query.EnableAutoListing != nil {
+		db = db.Where("enable_auto_listing = ?", *query.EnableAutoListing)
+	}
+	if query.EnableAutoLogin != nil {
+		db = db.Where("enable_auto_login = ?", *query.EnableAutoLogin)
+	}
+	if query.EnableDraft != nil {
+		db = db.Where("enable_draft = ?", *query.EnableDraft)
+	}
+	if query.EnableAutoPrice != nil {
+		db = db.Where("enable_auto_price = ?", *query.EnableAutoPrice)
+	}
+	if query.EnableRebargain != nil {
+		db = db.Where("enable_rebargain = ?", *query.EnableRebargain)
+	}
+	if query.PriceType != "" {
+		db = db.Where("price_type = ?", query.PriceType)
+	}
+	if query.Status != nil {
+		db = db.Where("status = ?", *query.Status)
+	}
+	if query.Expired != nil {
+		db = db.Where("expired = ?", *query.Expired)
+	}
+	return db
+}
+
+func normalizePage(page, pageSize int) (int, int) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	return page, pageSize
+}
+
+func parseTenantID(value string) int64 {
+	id, _ := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	return id
+}

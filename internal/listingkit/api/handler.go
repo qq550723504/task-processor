@@ -7,15 +7,117 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 )
 
 type handler struct {
-	service         listingkit.HandlerService
-	studioAsyncJobs *studioAsyncJobStore
+	service                     listingkit.HandlerService
+	studioAsyncJobs             *studioAsyncJobStore
+	storeHandler                *listingadmin.StoreHandler
+	storeStatisticsHandler      *listingadmin.StoreStatisticsHandler
+	importTaskHandler           *listingadmin.ImportTaskHandler
+	filterRuleHandler           *listingadmin.FilterRuleHandler
+	profitRuleHandler           *listingadmin.ProfitRuleHandler
+	pricingRuleHandler          *listingadmin.PricingRuleHandler
+	operationStrategyHandler    *listingadmin.OperationStrategyHandler
+	sensitiveWordHandler        *listingadmin.SensitiveWordHandler
+	productImportMappingHandler *listingadmin.ProductImportMappingHandler
+	categoryHandler             *listingadmin.CategoryHandler
+	productDataHandler          *listingadmin.ProductDataHandler
 }
 
-func NewHandler(service listingkit.HandlerService) (listingkit.Handler, error) {
+type HandlerOption func(*handler)
+
+func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.storeHandler = listingadmin.NewStoreHandler(repo)
+		}
+	}
+}
+
+func WithStoreStatisticsRepository(repo listingadmin.StoreStatisticsRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.storeStatisticsHandler = listingadmin.NewStoreStatisticsHandler(repo)
+		}
+	}
+}
+
+func WithImportTaskRepository(repo listingadmin.ImportTaskRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.importTaskHandler = listingadmin.NewImportTaskHandler(repo)
+		}
+	}
+}
+
+func WithFilterRuleRepository(repo listingadmin.FilterRuleRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.filterRuleHandler = listingadmin.NewFilterRuleHandler(repo)
+		}
+	}
+}
+
+func WithProfitRuleRepository(repo listingadmin.ProfitRuleRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.profitRuleHandler = listingadmin.NewProfitRuleHandler(repo)
+		}
+	}
+}
+
+func WithPricingRuleRepository(repo listingadmin.PricingRuleRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.pricingRuleHandler = listingadmin.NewPricingRuleHandler(repo)
+		}
+	}
+}
+
+func WithOperationStrategyRepository(repo listingadmin.OperationStrategyRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.operationStrategyHandler = listingadmin.NewOperationStrategyHandler(repo)
+		}
+	}
+}
+
+func WithSensitiveWordRepository(repo listingadmin.SensitiveWordRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.sensitiveWordHandler = listingadmin.NewSensitiveWordHandler(repo)
+		}
+	}
+}
+
+func WithProductImportMappingRepository(repo listingadmin.ProductImportMappingRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.productImportMappingHandler = listingadmin.NewProductImportMappingHandler(repo)
+		}
+	}
+}
+
+func WithCategoryRepository(repo listingadmin.CategoryRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.categoryHandler = listingadmin.NewCategoryHandler(repo)
+		}
+	}
+}
+
+func WithProductDataRepository(repo listingadmin.ProductDataRepository) HandlerOption {
+	return func(h *handler) {
+		if repo != nil {
+			h.productDataHandler = listingadmin.NewProductDataHandler(repo)
+		}
+	}
+}
+
+func NewHandler(service listingkit.HandlerService, opts ...HandlerOption) (listingkit.Handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
@@ -23,7 +125,13 @@ func NewHandler(service listingkit.HandlerService) (listingkit.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &handler{service: service, studioAsyncJobs: studioAsyncJobs}, nil
+	h := &handler{service: service, studioAsyncJobs: studioAsyncJobs}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(h)
+		}
+	}
+	return h, nil
 }
 
 func (h *handler) GenerateListingKit(c *gin.Context) {

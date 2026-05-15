@@ -13,6 +13,53 @@ const NAV_ITEMS = [
     href: "/listing-kits/canonical-products",
     match: "prefix",
   },
+  { label: "店铺", href: "/listing-kits/admin/stores", match: "prefix" },
+  {
+    label: "上架统计",
+    href: "/listing-kits/admin/store-statistics",
+    match: "prefix",
+  },
+  { label: "分类", href: "/listing-kits/admin/categories", match: "prefix" },
+  {
+    label: "任务导入",
+    href: "/listing-kits/admin/import-tasks",
+    match: "prefix",
+  },
+  {
+    label: "导入映射",
+    href: "/listing-kits/admin/product-import-mappings",
+    match: "prefix",
+  },
+  {
+    label: "商品数据",
+    href: "/listing-kits/admin/product-data",
+    match: "prefix",
+  },
+  {
+    label: "筛选规则",
+    href: "/listing-kits/admin/filter-rules",
+    match: "prefix",
+  },
+  {
+    label: "利润规则",
+    href: "/listing-kits/admin/profit-rules",
+    match: "prefix",
+  },
+  {
+    label: "核价规则",
+    href: "/listing-kits/admin/pricing-rules",
+    match: "prefix",
+  },
+  {
+    label: "运营策略",
+    href: "/listing-kits/admin/operation-strategies",
+    match: "prefix",
+  },
+  {
+    label: "敏感词",
+    href: "/listing-kits/admin/sensitive-words",
+    match: "prefix",
+  },
   { label: "SHEIN 登录", href: "/listing-kits/shein-login", match: "prefix" },
   { label: "任务列表", href: "/listing-kits", match: "exact" },
   { label: "设置", href: "/listing-kits/settings", match: "prefix" },

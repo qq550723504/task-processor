@@ -18,6 +18,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
 	"task-processor/internal/listingkit/reviewstore"
@@ -582,6 +583,72 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, closers...)
 
+	storeRepo, storeClosers, err := buildListingAdminStoreRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, storeClosers...)
+
+	storeStatisticsRepo, storeStatisticsClosers, err := buildListingAdminStoreStatisticsRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, storeStatisticsClosers...)
+
+	importTaskRepo, importTaskClosers, err := buildListingAdminImportTaskRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, importTaskClosers...)
+
+	filterRuleRepo, filterRuleClosers, err := buildListingAdminFilterRuleRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, filterRuleClosers...)
+
+	profitRuleRepo, profitRuleClosers, err := buildListingAdminProfitRuleRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, profitRuleClosers...)
+
+	pricingRuleRepo, pricingRuleClosers, err := buildListingAdminPricingRuleRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, pricingRuleClosers...)
+
+	operationStrategyRepo, operationStrategyClosers, err := buildListingAdminOperationStrategyRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, operationStrategyClosers...)
+
+	sensitiveWordRepo, sensitiveWordClosers, err := buildListingAdminSensitiveWordRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, sensitiveWordClosers...)
+
+	productImportMappingRepo, productImportMappingClosers, err := buildListingAdminProductImportMappingRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, productImportMappingClosers...)
+
+	categoryRepo, categoryClosers, err := buildListingAdminCategoryRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, categoryClosers...)
+
+	productDataRepo, productDataClosers, err := buildListingAdminProductDataRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, productDataClosers...)
+
 	assetRepository, assetClosers, err := buildAssetRepository(deps.cfg, logger)
 	if err != nil {
 		return nil, err
@@ -664,7 +731,20 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	svc.SetTaskSubmitter(submitter)
 	processor.SetTaskSubmitter(submitter)
 
-	handler, err := listingkitapi.NewHandler(svc)
+	handler, err := listingkitapi.NewHandler(
+		svc,
+		listingkitapi.WithStoreRepository(storeRepo),
+		listingkitapi.WithStoreStatisticsRepository(storeStatisticsRepo),
+		listingkitapi.WithImportTaskRepository(importTaskRepo),
+		listingkitapi.WithFilterRuleRepository(filterRuleRepo),
+		listingkitapi.WithProfitRuleRepository(profitRuleRepo),
+		listingkitapi.WithPricingRuleRepository(pricingRuleRepo),
+		listingkitapi.WithOperationStrategyRepository(operationStrategyRepo),
+		listingkitapi.WithSensitiveWordRepository(sensitiveWordRepo),
+		listingkitapi.WithProductImportMappingRepository(productImportMappingRepo),
+		listingkitapi.WithCategoryRepository(categoryRepo),
+		listingkitapi.WithProductDataRepository(productDataRepo),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
@@ -677,6 +757,149 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
 	}
 	return &listingKitModule{handler: handler, studioSessionHandler: studioSessionHandler, pool: pool}, nil
+}
+
+func buildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminStoreRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin store repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit store admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminStoreStatisticsRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminStoreStatisticsRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin store statistics repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit store statistics admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminImportTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminImportTaskRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin import task repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit import task admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminFilterRuleRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminFilterRuleRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin filter rule repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit filter rule admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminProfitRuleRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminProfitRuleRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin profit rule repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit profit rule admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminPricingRuleRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminPricingRuleRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin pricing rule repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit pricing rule admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminOperationStrategyRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminOperationStrategyRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin operation strategy repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit operation strategy admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminSensitiveWordRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminSensitiveWordRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin sensitive word repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit sensitive word admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminProductImportMappingRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminProductImportMappingRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin product import mapping repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit product import mapping admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminCategoryRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminCategoryRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin category repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit category admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingAdminProductDataRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingAdminProductDataRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing admin product data repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, ListingKit product data admin API disabled")
+	return nil, nil, nil
 }
 
 func buildListingKitSheinPricingPolicy(cfg *config.Config) sheinpub.PricingPolicy {

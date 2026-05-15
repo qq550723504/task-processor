@@ -171,7 +171,7 @@ func (m *zitadelAuthMiddleware) getDiscovery(r *http.Request) (zitadelDiscovery,
 }
 
 func listingKitRouteRequiresZitadelAuth(route routeDescriptor) bool {
-	return route.Module == "listing-kit" || route.Module == "listing-kit-studio" || route.Module == "shein-login"
+	return route.Module == "listing-kit" || route.Module == "listing-kit-admin" || route.Module == "listing-kit-studio" || route.Module == "shein-login"
 }
 
 func bearerToken(authorization string) string {

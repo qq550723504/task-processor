@@ -161,30 +161,63 @@ func (s *stubImageHandler) ReviewTask(c *gin.Context) {
 }
 
 type stubListingKitHandler struct {
-	generateCalled                     bool
-	generateStudioDesignsCalled        bool
-	generateStudioProductImagesCalled  bool
-	startStudioAsyncJobCalled          bool
-	getStudioAsyncJobCalled            bool
-	uploadImagesCalled                 bool
-	getUploadedImageCalled             bool
-	listTasksCalled                    bool
-	getResultCalled                    bool
-	getPreviewCalled                   bool
-	getGenerationCalled                bool
-	getGenerationQueueCalled           bool
-	getGenerationReviewSessionCalled   bool
-	getGenerationReviewPreviewCalled   bool
-	dispatchGenerationNavigationCalled bool
-	retryGenerationCalled              bool
-	executeGenerationActionCalled      bool
-	getHistoryCalled                   bool
-	getHistoryDetailCalled             bool
-	getExportCalled                    bool
-	revisionCalled                     bool
-	validateCalled                     bool
-	searchSheinCategoriesCalled        bool
-	submitCalled                       bool
+	generateCalled                        bool
+	generateStudioDesignsCalled           bool
+	generateStudioProductImagesCalled     bool
+	startStudioAsyncJobCalled             bool
+	getStudioAsyncJobCalled               bool
+	uploadImagesCalled                    bool
+	getUploadedImageCalled                bool
+	listTasksCalled                       bool
+	getResultCalled                       bool
+	getPreviewCalled                      bool
+	getGenerationCalled                   bool
+	getGenerationQueueCalled              bool
+	getGenerationReviewSessionCalled      bool
+	getGenerationReviewPreviewCalled      bool
+	dispatchGenerationNavigationCalled    bool
+	retryGenerationCalled                 bool
+	executeGenerationActionCalled         bool
+	getHistoryCalled                      bool
+	getHistoryDetailCalled                bool
+	getExportCalled                       bool
+	revisionCalled                        bool
+	validateCalled                        bool
+	searchSheinCategoriesCalled           bool
+	submitCalled                          bool
+	listAdminStoresCalled                 bool
+	listAdminStoreStatisticsCalled        bool
+	listDeletedAdminStoresCalled          bool
+	restoreAdminStoreCalled               bool
+	permanentlyDeleteAdminStoreCalled     bool
+	extendAdminStoreValidityCalled        bool
+	listAdminImportTasksCalled            bool
+	batchCreateAdminImportTasksCalled     bool
+	deleteAdminImportTaskCalled           bool
+	listAdminFilterRulesCalled            bool
+	createAdminFilterRuleCalled           bool
+	deleteAdminFilterRuleCalled           bool
+	listAdminProfitRulesCalled            bool
+	createAdminProfitRuleCalled           bool
+	deleteAdminProfitRuleCalled           bool
+	listAdminPricingRulesCalled           bool
+	createAdminPricingRuleCalled          bool
+	deleteAdminPricingRuleCalled          bool
+	listAdminOperationStrategiesCalled    bool
+	createAdminOperationStrategyCalled    bool
+	deleteAdminOperationStrategyCalled    bool
+	listAdminSensitiveWordsCalled         bool
+	createAdminSensitiveWordCalled        bool
+	deleteAdminSensitiveWordCalled        bool
+	listAdminProductImportMappingsCalled  bool
+	createAdminProductImportMappingCalled bool
+	deleteAdminProductImportMappingCalled bool
+	listAdminCategoriesCalled             bool
+	createAdminCategoryCalled             bool
+	deleteAdminCategoryCalled             bool
+	listAdminProductDataCalled            bool
+	createAdminProductDataCalled          bool
+	deleteAdminProductDataCalled          bool
 }
 
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
@@ -225,6 +258,291 @@ func (s *stubListingKitHandler) GetUploadedListingKitImage(c *gin.Context) {
 func (s *stubListingKitHandler) ListTasks(c *gin.Context) {
 	s.listTasksCalled = true
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) ListAdminStores(c *gin.Context) {
+	s.listAdminStoresCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) ListAdminStoreStatistics(c *gin.Context) {
+	s.listAdminStoreStatisticsCalled = true
+	c.JSON(http.StatusOK, []any{})
+}
+
+func (s *stubListingKitHandler) ListDeletedAdminStores(c *gin.Context) {
+	s.listDeletedAdminStoresCalled = true
+	c.JSON(http.StatusOK, []any{})
+}
+
+func (s *stubListingKitHandler) GetAdminStore(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminStore(c *gin.Context) {
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminStore(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminStoreStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminStore(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListSimpleAdminStores(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}})
+}
+
+func (s *stubListingKitHandler) RestoreAdminStore(c *gin.Context) {
+	s.restoreAdminStoreCalled = true
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) PermanentlyDeleteAdminStore(c *gin.Context) {
+	s.permanentlyDeleteAdminStoreCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ExtendAdminStoreValidity(c *gin.Context) {
+	s.extendAdminStoreValidityCalled = true
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) ListAdminImportTasks(c *gin.Context) {
+	s.listAdminImportTasksCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) BatchCreateAdminImportTasks(c *gin.Context) {
+	s.batchCreateAdminImportTasksCalled = true
+	c.JSON(http.StatusCreated, gin.H{"createdCount": 1, "items": []any{}})
+}
+
+func (s *stubListingKitHandler) DeleteAdminImportTask(c *gin.Context) {
+	s.deleteAdminImportTaskCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminFilterRules(c *gin.Context) {
+	s.listAdminFilterRulesCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminFilterRule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminFilterRule(c *gin.Context) {
+	s.createAdminFilterRuleCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminFilterRule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminFilterRuleStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminFilterRule(c *gin.Context) {
+	s.deleteAdminFilterRuleCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminProfitRules(c *gin.Context) {
+	s.listAdminProfitRulesCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminProfitRule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminProfitRule(c *gin.Context) {
+	s.createAdminProfitRuleCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminProfitRule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminProfitRuleStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminProfitRule(c *gin.Context) {
+	s.deleteAdminProfitRuleCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminPricingRules(c *gin.Context) {
+	s.listAdminPricingRulesCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminPricingRule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminPricingRule(c *gin.Context) {
+	s.createAdminPricingRuleCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminPricingRule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminPricingRuleStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminPricingRule(c *gin.Context) {
+	s.deleteAdminPricingRuleCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminOperationStrategies(c *gin.Context) {
+	s.listAdminOperationStrategiesCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminOperationStrategy(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminOperationStrategy(c *gin.Context) {
+	s.createAdminOperationStrategyCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminOperationStrategy(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminOperationStrategyStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminOperationStrategy(c *gin.Context) {
+	s.deleteAdminOperationStrategyCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminSensitiveWords(c *gin.Context) {
+	s.listAdminSensitiveWordsCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminSensitiveWord(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminSensitiveWord(c *gin.Context) {
+	s.createAdminSensitiveWordCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminSensitiveWord(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminSensitiveWordStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminSensitiveWord(c *gin.Context) {
+	s.deleteAdminSensitiveWordCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminProductImportMappings(c *gin.Context) {
+	s.listAdminProductImportMappingsCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminProductImportMapping(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminProductImportMapping(c *gin.Context) {
+	s.createAdminProductImportMappingCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminProductImportMapping(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminProductImportMappingStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminProductImportMapping(c *gin.Context) {
+	s.deleteAdminProductImportMappingCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminCategories(c *gin.Context) {
+	s.listAdminCategoriesCalled = true
+	c.JSON(http.StatusOK, []any{})
+}
+
+func (s *stubListingKitHandler) GetAdminCategory(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminCategory(c *gin.Context) {
+	s.createAdminCategoryCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminCategory(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminCategoryStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminCategory(c *gin.Context) {
+	s.deleteAdminCategoryCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminProductData(c *gin.Context) {
+	s.listAdminProductDataCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminProductData(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminProductData(c *gin.Context) {
+	s.createAdminProductDataCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminProductData(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminProductDataStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminProductData(c *gin.Context) {
+	s.deleteAdminProductDataCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
 func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
@@ -626,6 +944,378 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.getUploadedImageCalled {
 		t.Fatal("listing kit GetUploadedListingKitImage handler was not called")
+	}
+
+	handler.listAdminStoresCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/stores", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/stores = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminStoresCalled {
+		t.Fatal("listing kit ListAdminStores handler was not called")
+	}
+
+	handler.listAdminStoreStatisticsCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/store-statistics?date=2026-05-15", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/store-statistics = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminStoreStatisticsCalled {
+		t.Fatal("listing kit ListAdminStoreStatistics handler was not called")
+	}
+
+	handler.listDeletedAdminStoresCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/stores/deleted", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/stores/deleted = %d, want 200", resp.Code)
+	}
+	if !handler.listDeletedAdminStoresCalled {
+		t.Fatal("listing kit ListDeletedAdminStores handler was not called")
+	}
+
+	handler.restoreAdminStoreCalled = false
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/listing-kits/admin/stores/1/restore", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /api/v1/listing-kits/admin/stores/:id/restore = %d, want 200", resp.Code)
+	}
+	if !handler.restoreAdminStoreCalled {
+		t.Fatal("listing kit RestoreAdminStore handler was not called")
+	}
+
+	handler.permanentlyDeleteAdminStoreCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/stores/1/permanent", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/stores/:id/permanent = %d, want 200", resp.Code)
+	}
+	if !handler.permanentlyDeleteAdminStoreCalled {
+		t.Fatal("listing kit PermanentlyDeleteAdminStore handler was not called")
+	}
+
+	handler.extendAdminStoreValidityCalled = false
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/listing-kits/admin/stores/1/extend-validity?days=30", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /api/v1/listing-kits/admin/stores/:id/extend-validity = %d, want 200", resp.Code)
+	}
+	if !handler.extendAdminStoreValidityCalled {
+		t.Fatal("listing kit ExtendAdminStoreValidity handler was not called")
+	}
+
+	handler.listAdminImportTasksCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/import-tasks", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/import-tasks = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminImportTasksCalled {
+		t.Fatal("listing kit ListAdminImportTasks handler was not called")
+	}
+
+	handler.batchCreateAdminImportTasksCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/import-tasks/batch", bytes.NewReader([]byte(`{"productIds":["B001"]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/import-tasks/batch = %d, want 201", resp.Code)
+	}
+	if !handler.batchCreateAdminImportTasksCalled {
+		t.Fatal("listing kit BatchCreateAdminImportTasks handler was not called")
+	}
+
+	handler.deleteAdminImportTaskCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/import-tasks/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/import-tasks/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminImportTaskCalled {
+		t.Fatal("listing kit DeleteAdminImportTask handler was not called")
+	}
+
+	handler.listAdminFilterRulesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/filter-rules", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/filter-rules = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminFilterRulesCalled {
+		t.Fatal("listing kit ListAdminFilterRules handler was not called")
+	}
+
+	handler.createAdminFilterRuleCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/filter-rules", bytes.NewReader([]byte(`{"name":"Rule","ruleCode":"FR-1"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/filter-rules = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminFilterRuleCalled {
+		t.Fatal("listing kit CreateAdminFilterRule handler was not called")
+	}
+
+	handler.deleteAdminFilterRuleCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/filter-rules/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/filter-rules/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminFilterRuleCalled {
+		t.Fatal("listing kit DeleteAdminFilterRule handler was not called")
+	}
+
+	handler.listAdminProfitRulesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/profit-rules", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/profit-rules = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminProfitRulesCalled {
+		t.Fatal("listing kit ListAdminProfitRules handler was not called")
+	}
+
+	handler.createAdminProfitRuleCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/profit-rules", bytes.NewReader([]byte(`{"name":"Rule","ruleCode":"PR-1"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/profit-rules = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminProfitRuleCalled {
+		t.Fatal("listing kit CreateAdminProfitRule handler was not called")
+	}
+
+	handler.deleteAdminProfitRuleCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/profit-rules/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/profit-rules/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminProfitRuleCalled {
+		t.Fatal("listing kit DeleteAdminProfitRule handler was not called")
+	}
+
+	handler.listAdminPricingRulesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/pricing-rules", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/pricing-rules = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminPricingRulesCalled {
+		t.Fatal("listing kit ListAdminPricingRules handler was not called")
+	}
+
+	handler.createAdminPricingRuleCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/pricing-rules", bytes.NewReader([]byte(`{"name":"Rule","ruleCode":"AR-1"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/pricing-rules = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminPricingRuleCalled {
+		t.Fatal("listing kit CreateAdminPricingRule handler was not called")
+	}
+
+	handler.deleteAdminPricingRuleCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/pricing-rules/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/pricing-rules/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminPricingRuleCalled {
+		t.Fatal("listing kit DeleteAdminPricingRule handler was not called")
+	}
+
+	handler.listAdminOperationStrategiesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/operation-strategies", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/operation-strategies = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminOperationStrategiesCalled {
+		t.Fatal("listing kit ListAdminOperationStrategies handler was not called")
+	}
+
+	handler.createAdminOperationStrategyCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/operation-strategies", bytes.NewReader([]byte(`{"name":"Strategy","platform":"SHEIN","storeId":1}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/operation-strategies = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminOperationStrategyCalled {
+		t.Fatal("listing kit CreateAdminOperationStrategy handler was not called")
+	}
+
+	handler.deleteAdminOperationStrategyCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/operation-strategies/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/operation-strategies/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminOperationStrategyCalled {
+		t.Fatal("listing kit DeleteAdminOperationStrategy handler was not called")
+	}
+
+	handler.listAdminSensitiveWordsCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/sensitive-words", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/sensitive-words = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminSensitiveWordsCalled {
+		t.Fatal("listing kit ListAdminSensitiveWords handler was not called")
+	}
+
+	handler.createAdminSensitiveWordCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/sensitive-words", bytes.NewReader([]byte(`{"word":"restricted","language":"en"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/sensitive-words = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminSensitiveWordCalled {
+		t.Fatal("listing kit CreateAdminSensitiveWord handler was not called")
+	}
+
+	handler.deleteAdminSensitiveWordCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/sensitive-words/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/sensitive-words/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminSensitiveWordCalled {
+		t.Fatal("listing kit DeleteAdminSensitiveWord handler was not called")
+	}
+
+	handler.listAdminProductImportMappingsCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/product-import-mappings", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/product-import-mappings = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminProductImportMappingsCalled {
+		t.Fatal("listing kit ListAdminProductImportMappings handler was not called")
+	}
+
+	handler.createAdminProductImportMappingCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/product-import-mappings", bytes.NewReader([]byte(`{"importTaskId":1001,"storeId":11,"platform":"SHEIN","region":"US","productId":"B001"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/product-import-mappings = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminProductImportMappingCalled {
+		t.Fatal("listing kit CreateAdminProductImportMapping handler was not called")
+	}
+
+	handler.deleteAdminProductImportMappingCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/product-import-mappings/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/product-import-mappings/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminProductImportMappingCalled {
+		t.Fatal("listing kit DeleteAdminProductImportMapping handler was not called")
+	}
+
+	handler.listAdminCategoriesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/categories", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/categories = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminCategoriesCalled {
+		t.Fatal("listing kit ListAdminCategories handler was not called")
+	}
+
+	handler.createAdminCategoryCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/categories", bytes.NewReader([]byte(`{"name":"Apparel","code":"APPAREL","level":1}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/categories = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminCategoryCalled {
+		t.Fatal("listing kit CreateAdminCategory handler was not called")
+	}
+
+	handler.deleteAdminCategoryCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/categories/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/categories/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminCategoryCalled {
+		t.Fatal("listing kit DeleteAdminCategory handler was not called")
+	}
+
+	handler.listAdminProductDataCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/product-data", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/product-data = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminProductDataCalled {
+		t.Fatal("listing kit ListAdminProductData handler was not called")
+	}
+
+	handler.createAdminProductDataCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/product-data", bytes.NewReader([]byte(`{"productId":"B001","platform":"SHEIN"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/product-data = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminProductDataCalled {
+		t.Fatal("listing kit CreateAdminProductData handler was not called")
+	}
+
+	handler.deleteAdminProductDataCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/product-data/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/product-data/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminProductDataCalled {
+		t.Fatal("listing kit DeleteAdminProductData handler was not called")
 	}
 
 	handler.getResultCalled = false

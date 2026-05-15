@@ -1,0 +1,54 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { StoreStatisticsAdminPage } from "@/components/listingkit/admin/store-statistics-admin-page";
+import * as adminStoreStatisticsApi from "@/lib/api/admin-store-statistics";
+
+describe("StoreStatisticsAdminPage", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("loads and renders ListingKit store statistics", async () => {
+    vi.spyOn(
+      adminStoreStatisticsApi,
+      "getListingStoreStatistics",
+    ).mockResolvedValue([
+      {
+        id: 1,
+        storeId: "SHEIN-US",
+        tenantId: 101,
+        name: "SHEIN US",
+        platform: "SHEIN",
+        dailyLimit: 10,
+        dailyLimitType: "fixed",
+        completedCount: 6,
+        remainingCount: 2,
+        holdCount: 1,
+        queuedCount: 3,
+        remainingQuota: 4,
+        progressPercentage: 60,
+        status: 0,
+      },
+    ]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreStatisticsAdminPage />
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "上架统计" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("SHEIN US")).toBeInTheDocument();
+    });
+    expect(screen.getByText("6 / 10")).toBeInTheDocument();
+    expect(screen.getByText("60%")).toBeInTheDocument();
+  });
+});
