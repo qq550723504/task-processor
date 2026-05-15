@@ -22,6 +22,9 @@ func NewService(repo Repository) (*Service, error) {
 	if err := repo.UpsertDefaultModules(context.Background(), DefaultModules()); err != nil {
 		return nil, err
 	}
+	if err := repo.UpsertDefaultPlans(context.Background(), DefaultPlans()); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -37,6 +40,43 @@ func DefaultModules() []Module {
 	}
 }
 
+func DefaultPlans() []PlanBundle {
+	now := time.Now().UTC()
+	return []PlanBundle{
+		{
+			Plan: Plan{Code: PlanBasic, Name: "基础版", Description: "店铺、任务导入和基础规则", SortOrder: 10, Active: true, CreatedAt: now, UpdatedAt: now},
+			Modules: []PlanModule{
+				{PlanCode: PlanBasic, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanBasic, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 100}, SortOrder: 20},
+				{PlanCode: PlanBasic, ModuleCode: ModuleRules, SortOrder: 30},
+				{PlanCode: PlanBasic, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 1 * 1024 * 1024 * 1024}, SortOrder: 60},
+			},
+		},
+		{
+			Plan: Plan{Code: PlanProfessional, Name: "专业版", Description: "包含运营策略、Studio 和 10GB OSS 存储", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
+			Modules: []PlanModule{
+				{PlanCode: PlanProfessional, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 1000}, SortOrder: 20},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleRules, SortOrder: 30},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 100, "product_image_jobs": 100}, SortOrder: 50},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 10 * 1024 * 1024 * 1024}, SortOrder: 60},
+			},
+		},
+		{
+			Plan: Plan{Code: PlanEnterprise, Name: "企业版", Description: "完整模块和更高额度", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},
+			Modules: []PlanModule{
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 10000}, SortOrder: 20},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleRules, SortOrder: 30},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 1000, "product_image_jobs": 1000}, SortOrder: 50},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 100 * 1024 * 1024 * 1024}, SortOrder: 60},
+			},
+		},
+	}
+}
+
 func (s *Service) ListModules(ctx context.Context) ([]Module, error) {
 	modules, err := s.repo.ListModules(ctx)
 	if err != nil {
@@ -49,6 +89,28 @@ func (s *Service) ListModules(ctx context.Context) ([]Module, error) {
 		return modules[i].SortOrder < modules[j].SortOrder
 	})
 	return modules, nil
+}
+
+func (s *Service) ListPlans(ctx context.Context) ([]PlanBundle, error) {
+	plans, err := s.repo.ListPlans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(plans, func(i, j int) bool {
+		if plans[i].Plan.SortOrder == plans[j].Plan.SortOrder {
+			return plans[i].Plan.Code < plans[j].Plan.Code
+		}
+		return plans[i].Plan.SortOrder < plans[j].Plan.SortOrder
+	})
+	for i := range plans {
+		sort.Slice(plans[i].Modules, func(left, right int) bool {
+			if plans[i].Modules[left].SortOrder == plans[i].Modules[right].SortOrder {
+				return plans[i].Modules[left].ModuleCode < plans[i].Modules[right].ModuleCode
+			}
+			return plans[i].Modules[left].SortOrder < plans[i].Modules[right].SortOrder
+		})
+	}
+	return plans, nil
 }
 
 func (s *Service) GetSummary(ctx context.Context, tenantID string) (*Summary, error) {
@@ -92,7 +154,20 @@ func (s *Service) GetSummary(ctx context.Context, tenantID string) (*Summary, er
 		}
 		views = append(views, view)
 	}
-	return &Summary{TenantID: tenantID, Modules: modules, Entitlements: views}, nil
+	summary := &Summary{TenantID: tenantID, Modules: modules, Entitlements: views}
+	subscription, err := s.repo.GetTenantSubscription(ctx, tenantID)
+	if err != nil && !errors.Is(err, ErrEntitlementNotFound) {
+		return nil, err
+	}
+	if subscription != nil {
+		summary.Subscription = subscription
+		if plan, ok, err := s.getPlan(ctx, subscription.PlanCode); err != nil {
+			return nil, err
+		} else if ok {
+			summary.CurrentPlan = &plan
+		}
+	}
+	return summary, nil
 }
 
 func (s *Service) GetTenantSummary(ctx context.Context, tenantID string) (*Summary, error) {
@@ -153,6 +228,171 @@ func (s *Service) UpsertEntitlementWithAudit(ctx context.Context, tenantID, modu
 	}
 	_ = s.createAudit(ctx, tenantID, moduleCode, "entitlement_upsert", actorID, reason, input)
 	return entitlement, nil
+}
+
+func (s *Service) ApplyPlan(ctx context.Context, tenantID string, input PlanApplyInput, actorID string) (*TenantSubscription, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	input.PlanCode = strings.TrimSpace(input.PlanCode)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if input.PlanCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if input.Status == "" {
+		input.Status = StatusActive
+	}
+	if !isValidStatus(input.Status) {
+		return nil, errors.New("invalid subscription status")
+	}
+	plan, ok, err := s.getPlan(ctx, input.PlanCode)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || !plan.Plan.Active {
+		return nil, ErrModuleNotFound
+	}
+	subscription, err := s.repo.UpsertTenantSubscription(ctx, &TenantSubscription{
+		TenantID:  tenantID,
+		PlanCode:  input.PlanCode,
+		Status:    input.Status,
+		StartsAt:  input.StartsAt,
+		ExpiresAt: input.ExpiresAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, module := range plan.Modules {
+		if _, err := s.UpsertEntitlement(ctx, tenantID, module.ModuleCode, EntitlementInput{
+			Status:    input.Status,
+			StartsAt:  input.StartsAt,
+			ExpiresAt: input.ExpiresAt,
+			Limits:    module.Limits,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	_ = s.createAudit(ctx, tenantID, "", "plan_apply", actorID, input.PlanCode, input)
+	return subscription, nil
+}
+
+func (s *Service) UpsertPlan(ctx context.Context, input PlanInput, actorID string) (*PlanBundle, error) {
+	input.Code = strings.TrimSpace(input.Code)
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Code == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if input.Name == "" {
+		return nil, errors.New("plan name is required")
+	}
+	modules := make([]PlanModule, 0, len(input.Modules))
+	for _, moduleInput := range input.Modules {
+		moduleCode := strings.TrimSpace(moduleInput.ModuleCode)
+		if moduleCode == "" {
+			return nil, errors.New("module code is required")
+		}
+		if !s.moduleExists(ctx, moduleCode) {
+			return nil, ErrModuleNotFound
+		}
+		modules = append(modules, PlanModule{
+			PlanCode:   input.Code,
+			ModuleCode: moduleCode,
+			Limits:     cloneLimits(moduleInput.Limits),
+			SortOrder:  moduleInput.SortOrder,
+		})
+	}
+	now := time.Now().UTC()
+	bundle, err := s.repo.UpsertPlan(ctx, Plan{
+		Code:        input.Code,
+		Name:        input.Name,
+		Description: strings.TrimSpace(input.Description),
+		SortOrder:   input.SortOrder,
+		Active:      input.Active,
+		UpdatedAt:   now,
+	}, modules)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", "", "plan_upsert", actorID, input.Code, input)
+	return bundle, nil
+}
+
+func (s *Service) UpsertPlanModule(ctx context.Context, planCode, moduleCode string, input PlanModuleInput, actorID string) (*PlanBundle, error) {
+	planCode = strings.TrimSpace(planCode)
+	moduleCode = strings.TrimSpace(moduleCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if _, ok, err := s.getPlan(ctx, planCode); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, ErrModuleNotFound
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	bundle, err := s.repo.UpsertPlanModule(ctx, PlanModule{
+		PlanCode:   planCode,
+		ModuleCode: moduleCode,
+		Limits:     cloneLimits(input.Limits),
+		SortOrder:  input.SortOrder,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", moduleCode, "plan_module_upsert", actorID, planCode, input)
+	return bundle, nil
+}
+
+func (s *Service) DeletePlanModule(ctx context.Context, planCode, moduleCode, actorID string) (*PlanBundle, error) {
+	planCode = strings.TrimSpace(planCode)
+	moduleCode = strings.TrimSpace(moduleCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	bundle, err := s.repo.DeletePlanModule(ctx, planCode, moduleCode)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", moduleCode, "plan_module_delete", actorID, planCode, nil)
+	return bundle, nil
+}
+
+func (s *Service) SetPlanActive(ctx context.Context, planCode string, active bool, actorID string) (*PlanBundle, error) {
+	plan, ok, err := s.getPlan(ctx, strings.TrimSpace(planCode))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrModuleNotFound
+	}
+	input := PlanInput{
+		Code:        plan.Plan.Code,
+		Name:        plan.Plan.Name,
+		Description: plan.Plan.Description,
+		SortOrder:   plan.Plan.SortOrder,
+		Active:      active,
+		Modules:     make([]PlanModuleInput, 0, len(plan.Modules)),
+	}
+	for _, module := range plan.Modules {
+		input.Modules = append(input.Modules, PlanModuleInput{
+			ModuleCode: module.ModuleCode,
+			Limits:     module.Limits,
+			SortOrder:  module.SortOrder,
+		})
+	}
+	bundle, err := s.UpsertPlan(ctx, input, actorID)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", "", "plan_status_update", actorID, planCode, map[string]bool{"active": active})
+	return bundle, nil
 }
 
 func (s *Service) SetUsage(ctx context.Context, tenantID, moduleCode string, input UsageAdjustmentInput, actorID string) (*UsageCounter, error) {
@@ -307,6 +547,19 @@ func (s *Service) moduleExists(ctx context.Context, moduleCode string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Service) getPlan(ctx context.Context, planCode string) (PlanBundle, bool, error) {
+	plans, err := s.ListPlans(ctx)
+	if err != nil {
+		return PlanBundle{}, false, err
+	}
+	for _, plan := range plans {
+		if plan.Plan.Code == planCode {
+			return plan, true, nil
+		}
+	}
+	return PlanBundle{}, false, nil
 }
 
 func (s *Service) createAudit(ctx context.Context, tenantID, moduleCode, action, actorID, reason string, payload any) error {

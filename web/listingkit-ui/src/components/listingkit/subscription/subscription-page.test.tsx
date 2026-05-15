@@ -28,6 +28,22 @@ describe("SubscriptionPage", () => {
     vi.clearAllMocks();
     mockedGetCurrentSubscription.mockResolvedValue({
       tenant_id: "org-286",
+      subscription: {
+        id: 10,
+        tenant_id: "org-286",
+        plan_code: "professional",
+        status: "active",
+      },
+      current_plan: {
+        plan: {
+          code: "professional",
+          name: "专业版",
+          description: "Professional",
+          sort_order: 20,
+          active: true,
+        },
+        modules: [],
+      },
       modules: [
         {
           code: "studio",
@@ -100,6 +116,7 @@ describe("SubscriptionPage", () => {
     renderWithQueryClient(<SubscriptionPage />);
 
     expect(await screen.findByText("Studio")).toBeInTheDocument();
+    expect(screen.getByText("当前套餐：专业版")).toBeInTheDocument();
     expect(screen.getAllByText("已开通").length).toBeGreaterThan(0);
     expect(screen.getByText("design_jobs: 10")).toBeInTheDocument();
     expect(screen.getByText("design_jobs: 2")).toBeInTheDocument();

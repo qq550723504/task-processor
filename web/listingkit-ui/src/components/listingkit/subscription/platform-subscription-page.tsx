@@ -5,7 +5,9 @@ import { CheckCircle2, Power, RefreshCw, Save, Search, XCircle } from "lucide-re
 import { FormEvent, useMemo, useState } from "react";
 
 import {
+  applyPlatformTenantSubscriptionPlan,
   formatSubscriptionApiError,
+  getPlatformSubscriptionPlans,
   getPlatformTenantSubscriptionAuditLogs,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
@@ -46,8 +48,11 @@ export function PlatformSubscriptionPage() {
   const [usagePeriod, setUsagePeriod] = useState(currentPeriodKey());
   const [usageUsed, setUsageUsed] = useState("0");
   const [usageReason, setUsageReason] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState("");
+  const [planExpiresAt, setPlanExpiresAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingUsage, setSavingUsage] = useState(false);
+  const [applyingPlan, setApplyingPlan] = useState(false);
   const [error, setError] = useState("");
 
   const normalizedTenantId = useMemo(() => tenantId.trim(), [tenantId]);
@@ -59,6 +64,10 @@ export function PlatformSubscriptionPage() {
   const tenantListQuery = useQuery({
     queryKey: ["listingkit-platform-subscriptions"],
     queryFn: getPlatformTenantSubscriptions,
+  });
+  const planQuery = useQuery({
+    queryKey: ["listingkit-platform-subscription-plans"],
+    queryFn: getPlatformSubscriptionPlans,
   });
   const auditQuery = useQuery({
     queryKey: ["listingkit-platform-subscription-audit", normalizedTenantId],
@@ -73,6 +82,7 @@ export function PlatformSubscriptionPage() {
     (tenantListQuery.error
       ? formatSubscriptionApiError(tenantListQuery.error)
       : "") ||
+    (planQuery.error ? formatSubscriptionApiError(planQuery.error) : "") ||
     (auditQuery.error
       ? formatSubscriptionApiError(auditQuery.error)
       : "");
@@ -82,6 +92,29 @@ export function PlatformSubscriptionPage() {
     setError("");
     setEditingModule("");
     setTenantId(tenantInput);
+  }
+
+  async function handlePlanApply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!normalizedTenantId || !selectedPlan) {
+      return;
+    }
+    setApplyingPlan(true);
+    setError("");
+    try {
+      await applyPlatformTenantSubscriptionPlan(normalizedTenantId, {
+        plan_code: selectedPlan,
+        status: "active",
+        expires_at: planExpiresAt ? new Date(planExpiresAt).toISOString() : undefined,
+      });
+      await tenantListQuery.refetch();
+      await query.refetch();
+      await auditQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    } finally {
+      setApplyingPlan(false);
+    }
   }
 
   function beginEdit(view: SubscriptionEntitlementView) {
@@ -309,6 +342,50 @@ export function PlatformSubscriptionPage() {
           </div>
         </div>
 
+        <div className="space-y-4">
+          <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <form onSubmit={handlePlanApply}>
+              <div className="mb-4">
+                <h2 className="text-base font-semibold text-zinc-950">套餐开通</h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  当前套餐：{summary?.current_plan?.plan.name ?? "未配置"}
+                </p>
+              </div>
+              <label className="mb-3 block text-xs font-medium text-zinc-500">
+                套餐
+                <select
+                  value={selectedPlan}
+                  onChange={(event) => setSelectedPlan(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                >
+                  <option value="">选择套餐</option>
+                  {(planQuery.data ?? []).map((bundle) => (
+                    <option key={bundle.plan.code} value={bundle.plan.code}>
+                      {bundle.plan.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="mb-3 block text-xs font-medium text-zinc-500">
+                过期时间
+                <input
+                  type="datetime-local"
+                  value={planExpiresAt}
+                  onChange={(event) => setPlanExpiresAt(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={!normalizedTenantId || !selectedPlan || applyingPlan}
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              >
+                {applyingPlan ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                应用套餐
+              </button>
+            </form>
+          </div>
+
         <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <form onSubmit={handleSave}>
             <div className="mb-4">
@@ -447,6 +524,7 @@ export function PlatformSubscriptionPage() {
               </button>
             </div>
           </form>
+        </div>
         </div>
       </section>
       {normalizedTenantId ? (

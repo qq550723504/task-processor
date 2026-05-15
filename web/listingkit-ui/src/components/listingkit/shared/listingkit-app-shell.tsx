@@ -81,8 +81,17 @@ const SYSTEM_NAV_ITEMS = [
     href: "/listing-kits/platform/subscriptions",
     match: "prefix",
   },
+  {
+    label: "套餐管理",
+    href: "/listing-kits/platform/subscription-plans",
+    match: "prefix",
+  },
   { label: "设置", href: "/listing-kits/settings", match: "prefix" },
 ] as const satisfies readonly NavItem[];
+
+const ZITADEL_CONSOLE_URL =
+  process.env.NEXT_PUBLIC_ZITADEL_CONSOLE_URL ??
+  "http://localhost:8080/ui/console";
 
 const NAV_GROUPS = [
   { label: "主流程", items: PRIMARY_NAV_ITEMS },
@@ -125,6 +134,19 @@ function NavLink({
     >
       {item.label}
     </Link>
+  );
+}
+
+function ExternalNavLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+    >
+      {label}
+    </a>
   );
 }
 
@@ -183,6 +205,12 @@ export function ListingKitAppShell({
                           {group.items.map((item) => (
                             <NavLink key={item.href} item={item} pathname={pathname} />
                           ))}
+                          {group.label === "系统" ? (
+                            <ExternalNavLink
+                              href={ZITADEL_CONSOLE_URL}
+                              label="用户管理"
+                            />
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -214,6 +242,12 @@ export function ListingKitAppShell({
                       {group.items.map((item) => (
                         <NavLink key={item.href} item={item} pathname={pathname} />
                       ))}
+                      {group.label === "系统" ? (
+                        <ExternalNavLink
+                          href={ZITADEL_CONSOLE_URL}
+                          label="用户管理"
+                        />
+                      ) : null}
                     </div>
                   </div>
                 );

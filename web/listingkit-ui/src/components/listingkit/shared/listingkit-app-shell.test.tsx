@@ -50,6 +50,14 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/settings",
     );
+    expect(screen.getByRole("link", { name: "用户管理" })).toHaveAttribute(
+      "href",
+      "http://localhost:8080/ui/console",
+    );
+    expect(screen.getByRole("link", { name: "用户管理" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
     expect(screen.getByRole("link", { name: "店铺" })).toHaveAttribute(
       "href",
       "/listing-kits/admin/stores",

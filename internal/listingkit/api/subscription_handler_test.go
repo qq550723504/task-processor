@@ -88,6 +88,135 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	}
 }
 
+func TestPlatformSubscriptionCanApplyPlanForTenant(t *testing.T) {
+	router := platformSubscriptionTestRouter(t)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/platform/subscription-plans", nil)
+	listReq.Header.Set("X-User-Roles", "platform_admin")
+	listResp := httptest.NewRecorder()
+	router.ServeHTTP(listResp, listReq)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("list plans status = %d, want %d; body=%s", listResp.Code, http.StatusOK, listResp.Body.String())
+	}
+	var listBody struct {
+		Items []listingsubscription.PlanBundle `json:"items"`
+	}
+	if err := json.Unmarshal(listResp.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode plans: %v", err)
+	}
+	if len(listBody.Items) == 0 {
+		t.Fatal("plans response is empty")
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"plan_code": listingsubscription.PlanProfessional,
+		"status":    listingsubscription.StatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/plan", bytes.NewReader(body))
+	applyReq.Header.Set("Content-Type", "application/json")
+	applyReq.Header.Set("X-User-Roles", "platform_admin")
+	applyResp := httptest.NewRecorder()
+	router.ServeHTTP(applyResp, applyReq)
+	if applyResp.Code != http.StatusOK {
+		t.Fatalf("apply plan status = %d, want %d; body=%s", applyResp.Code, http.StatusOK, applyResp.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
+	getReq.Header.Set("X-User-Roles", "platform_admin")
+	getResp := httptest.NewRecorder()
+	router.ServeHTTP(getResp, getReq)
+	if getResp.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want %d; body=%s", getResp.Code, http.StatusOK, getResp.Body.String())
+	}
+	var summary listingsubscription.Summary
+	if err := json.Unmarshal(getResp.Body.Bytes(), &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary.Subscription == nil || summary.Subscription.PlanCode != listingsubscription.PlanProfessional {
+		t.Fatalf("summary subscription = %#v", summary.Subscription)
+	}
+	if summary.CurrentPlan == nil || summary.CurrentPlan.Plan.Code != listingsubscription.PlanProfessional {
+		t.Fatalf("summary current plan = %#v", summary.CurrentPlan)
+	}
+}
+
+func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
+	router := platformSubscriptionTestRouter(t)
+
+	createBody, err := json.Marshal(map[string]any{
+		"code":        "growth",
+		"name":        "增长版",
+		"description": "面向增长期租户",
+		"sort_order":  25,
+		"active":      true,
+		"modules": []map[string]any{
+			{"module_code": listingsubscription.ModuleStudio, "limits": map[string]int{"design_jobs": 50}, "sort_order": 10},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createReq := httptest.NewRequest(http.MethodPost, "/platform/subscription-plans", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-User-Roles", "platform_admin")
+	createResp := httptest.NewRecorder()
+	router.ServeHTTP(createResp, createReq)
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create plan status = %d, want %d; body=%s", createResp.Code, http.StatusOK, createResp.Body.String())
+	}
+
+	moduleBody, err := json.Marshal(map[string]any{
+		"limits":     map[string]int{"storage_bytes": 5368709120},
+		"sort_order": 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moduleReq := httptest.NewRequest(http.MethodPut, "/platform/subscription-plans/growth/modules/oss_storage", bytes.NewReader(moduleBody))
+	moduleReq.Header.Set("Content-Type", "application/json")
+	moduleReq.Header.Set("X-User-Roles", "platform_admin")
+	moduleResp := httptest.NewRecorder()
+	router.ServeHTTP(moduleResp, moduleReq)
+	if moduleResp.Code != http.StatusOK {
+		t.Fatalf("module status = %d, want %d; body=%s", moduleResp.Code, http.StatusOK, moduleResp.Body.String())
+	}
+
+	statusBody, err := json.Marshal(map[string]any{"active": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusReq := httptest.NewRequest(http.MethodPut, "/platform/subscription-plans/growth/status", bytes.NewReader(statusBody))
+	statusReq.Header.Set("Content-Type", "application/json")
+	statusReq.Header.Set("X-User-Roles", "platform_admin")
+	statusResp := httptest.NewRecorder()
+	router.ServeHTTP(statusResp, statusReq)
+	if statusResp.Code != http.StatusOK {
+		t.Fatalf("status update = %d, want %d; body=%s", statusResp.Code, http.StatusOK, statusResp.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/platform/subscription-plans/growth/modules/studio", nil)
+	deleteReq.Header.Set("X-User-Roles", "platform_admin")
+	deleteResp := httptest.NewRecorder()
+	router.ServeHTTP(deleteResp, deleteReq)
+	if deleteResp.Code != http.StatusOK {
+		t.Fatalf("delete module status = %d, want %d; body=%s", deleteResp.Code, http.StatusOK, deleteResp.Body.String())
+	}
+
+	var bundle listingsubscription.PlanBundle
+	if err := json.Unmarshal(deleteResp.Body.Bytes(), &bundle); err != nil {
+		t.Fatalf("decode bundle: %v", err)
+	}
+	if bundle.Plan.Code != "growth" || bundle.Plan.Active {
+		t.Fatalf("bundle plan = %#v", bundle.Plan)
+	}
+	if len(bundle.Modules) != 1 || bundle.Modules[0].ModuleCode != listingsubscription.ModuleOSSStorage {
+		t.Fatalf("bundle modules = %#v", bundle.Modules)
+	}
+}
+
 func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 	repo := listingsubscription.NewMemRepository()
@@ -101,7 +230,14 @@ func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
 	}
 	router := gin.New()
 	router.GET("/platform/subscriptions", h.ListPlatformTenantSubscriptions)
+	router.GET("/platform/subscription-plans", h.ListPlatformSubscriptionPlans)
+	router.POST("/platform/subscription-plans", h.UpsertPlatformSubscriptionPlan)
+	router.PUT("/platform/subscription-plans/:plan_code", h.UpsertPlatformSubscriptionPlan)
+	router.PUT("/platform/subscription-plans/:plan_code/modules/:module_code", h.UpsertPlatformSubscriptionPlanModule)
+	router.DELETE("/platform/subscription-plans/:plan_code/modules/:module_code", h.DeletePlatformSubscriptionPlanModule)
+	router.PUT("/platform/subscription-plans/:plan_code/status", h.SetPlatformSubscriptionPlanStatus)
 	router.GET("/platform/subscriptions/:tenant_id", h.GetPlatformTenantSubscription)
+	router.PUT("/platform/subscriptions/:tenant_id/plan", h.ApplyPlatformTenantSubscriptionPlan)
 	router.PUT("/platform/subscriptions/:tenant_id/entitlements/:module_code", h.UpsertPlatformTenantSubscriptionEntitlement)
 	return router
 }

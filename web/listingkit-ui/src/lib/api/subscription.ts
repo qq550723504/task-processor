@@ -22,6 +22,47 @@ export const subscriptionModuleSchema = z
   })
   .passthrough();
 
+export const subscriptionPlanSchema = z
+  .object({
+    code: z.string(),
+    name: z.string(),
+    description: z.string().optional(),
+    sort_order: z.number(),
+    active: z.boolean(),
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+  })
+  .passthrough();
+
+export const subscriptionPlanModuleSchema = z
+  .object({
+    plan_code: z.string(),
+    module_code: z.string(),
+    limits: z.record(z.string(), z.number()).optional(),
+    sort_order: z.number(),
+  })
+  .passthrough();
+
+export const subscriptionPlanBundleSchema = z
+  .object({
+    plan: subscriptionPlanSchema,
+    modules: z.array(subscriptionPlanModuleSchema),
+  })
+  .passthrough();
+
+export const tenantSubscriptionSchema = z
+  .object({
+    id: z.number(),
+    tenant_id: z.string(),
+    plan_code: z.string(),
+    status: subscriptionStatusSchema,
+    starts_at: z.string().optional(),
+    expires_at: z.string().optional(),
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+  })
+  .passthrough();
+
 export const subscriptionEntitlementSchema = z
   .object({
     id: z.number(),
@@ -81,6 +122,8 @@ export const subscriptionEntitlementViewSchema = z
 export const subscriptionSummarySchema = z
   .object({
     tenant_id: z.string(),
+    subscription: tenantSubscriptionSchema.optional(),
+    current_plan: subscriptionPlanBundleSchema.optional(),
     modules: z.array(subscriptionModuleSchema),
     entitlements: z.array(subscriptionEntitlementViewSchema),
   })
@@ -98,6 +141,12 @@ export const subscriptionTenantOverviewSchema = z
 const subscriptionModuleListSchema = z
   .object({
     items: z.array(subscriptionModuleSchema),
+  })
+  .passthrough();
+
+const subscriptionPlanListSchema = z
+  .object({
+    items: z.array(subscriptionPlanBundleSchema),
   })
   .passthrough();
 
@@ -127,6 +176,9 @@ const subscriptionRequiredPayloadSchema = z
 
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 export type SubscriptionModule = z.infer<typeof subscriptionModuleSchema>;
+export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>;
+export type SubscriptionPlanBundle = z.infer<typeof subscriptionPlanBundleSchema>;
+export type TenantSubscription = z.infer<typeof tenantSubscriptionSchema>;
 export type SubscriptionEntitlement = z.infer<
   typeof subscriptionEntitlementSchema
 >;
@@ -159,6 +211,28 @@ export type SubscriptionUsageAdjustmentInput = {
   reason?: string;
 };
 
+export type SubscriptionPlanApplyInput = {
+  plan_code: string;
+  status: SubscriptionStatus;
+  starts_at?: string;
+  expires_at?: string;
+};
+
+export type SubscriptionPlanInput = {
+  code: string;
+  name: string;
+  description?: string;
+  sort_order: number;
+  active: boolean;
+  modules?: SubscriptionPlanModuleInput[];
+};
+
+export type SubscriptionPlanModuleInput = {
+  module_code?: string;
+  limits?: Record<string, number>;
+  sort_order: number;
+};
+
 export function parseSubscriptionSummary(payload: unknown): SubscriptionSummary {
   return parseApiResponseShape(
     payload,
@@ -175,6 +249,26 @@ export function parseSubscriptionModuleList(
     subscriptionModuleListSchema,
     "ListingKit API returned an unexpected subscription module response",
   ).items;
+}
+
+export function parseSubscriptionPlanList(
+  payload: unknown,
+): SubscriptionPlanBundle[] {
+  return parseApiResponseShape(
+    payload,
+    subscriptionPlanListSchema,
+    "ListingKit API returned an unexpected subscription plan response",
+  ).items;
+}
+
+export function parseSubscriptionPlanBundle(
+  payload: unknown,
+): SubscriptionPlanBundle {
+  return parseApiResponseShape(
+    payload,
+    subscriptionPlanBundleSchema,
+    "ListingKit API returned an unexpected subscription plan response",
+  );
 }
 
 export function parseSubscriptionTenantOverviewList(
@@ -217,6 +311,14 @@ export function parseSubscriptionEntitlement(
   );
 }
 
+export function parseTenantSubscription(payload: unknown): TenantSubscription {
+  return parseApiResponseShape(
+    payload,
+    tenantSubscriptionSchema,
+    "ListingKit API returned an unexpected tenant subscription response",
+  );
+}
+
 export function parseSubscriptionRequiredPayload(
   payload: unknown,
 ): SubscriptionRequiredPayload | null {
@@ -249,6 +351,77 @@ export async function getCurrentSubscription(): Promise<SubscriptionSummary> {
 export async function getSubscriptionModules(): Promise<SubscriptionModule[]> {
   const payload = await apiRequest<unknown>("/admin/subscription/modules");
   return parseSubscriptionModuleList(payload);
+}
+
+export async function getPlatformSubscriptionPlans(): Promise<
+  SubscriptionPlanBundle[]
+> {
+  const payload = await apiRequest<unknown>("/platform/subscription-plans");
+  return parseSubscriptionPlanList(payload);
+}
+
+export async function upsertPlatformSubscriptionPlan(
+  input: SubscriptionPlanInput,
+): Promise<SubscriptionPlanBundle> {
+  const payload = await apiRequest<unknown>("/platform/subscription-plans", {
+    method: "POST",
+    body: input,
+  });
+  return parseSubscriptionPlanBundle(payload);
+}
+
+export async function updatePlatformSubscriptionPlan(
+  planCode: string,
+  input: SubscriptionPlanInput,
+): Promise<SubscriptionPlanBundle> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscription-plans/${encodeURIComponent(planCode)}`,
+    {
+      method: "PUT",
+      body: input,
+    },
+  );
+  return parseSubscriptionPlanBundle(payload);
+}
+
+export async function updatePlatformSubscriptionPlanModule(
+  planCode: string,
+  moduleCode: string,
+  input: SubscriptionPlanModuleInput,
+): Promise<SubscriptionPlanBundle> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscription-plans/${encodeURIComponent(planCode)}/modules/${encodeURIComponent(moduleCode)}`,
+    {
+      method: "PUT",
+      body: input,
+    },
+  );
+  return parseSubscriptionPlanBundle(payload);
+}
+
+export async function deletePlatformSubscriptionPlanModule(
+  planCode: string,
+  moduleCode: string,
+): Promise<SubscriptionPlanBundle> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscription-plans/${encodeURIComponent(planCode)}/modules/${encodeURIComponent(moduleCode)}`,
+    { method: "DELETE" },
+  );
+  return parseSubscriptionPlanBundle(payload);
+}
+
+export async function setPlatformSubscriptionPlanStatus(
+  planCode: string,
+  active: boolean,
+): Promise<SubscriptionPlanBundle> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscription-plans/${encodeURIComponent(planCode)}/status`,
+    {
+      method: "PUT",
+      body: { active },
+    },
+  );
+  return parseSubscriptionPlanBundle(payload);
 }
 
 export async function updateSubscriptionEntitlement(
@@ -294,6 +467,20 @@ export async function updatePlatformTenantSubscriptionEntitlement(
     },
   );
   return parseSubscriptionEntitlement(payload);
+}
+
+export async function applyPlatformTenantSubscriptionPlan(
+  tenantId: string,
+  input: SubscriptionPlanApplyInput,
+): Promise<TenantSubscription> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscriptions/${encodeURIComponent(tenantId)}/plan`,
+    {
+      method: "PUT",
+      body: input,
+    },
+  );
+  return parseTenantSubscription(payload);
 }
 
 export async function updatePlatformTenantSubscriptionUsage(

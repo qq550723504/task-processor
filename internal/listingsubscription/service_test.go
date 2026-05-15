@@ -253,6 +253,120 @@ func TestDefaultModulesIncludesOSSStorage(t *testing.T) {
 	t.Fatal("default modules missing oss_storage")
 }
 
+func TestSubscriptionPlanApplyCreatesEntitlements(t *testing.T) {
+	svc := newTestService(t)
+	expiresAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	subscription, err := svc.ApplyPlan(context.Background(), "org-286", PlanApplyInput{
+		PlanCode:  PlanProfessional,
+		Status:    StatusActive,
+		ExpiresAt: &expiresAt,
+	}, "admin-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subscription.PlanCode != PlanProfessional || subscription.TenantID != "org-286" {
+		t.Fatalf("subscription = %#v", subscription)
+	}
+
+	summary, err := svc.GetSummary(context.Background(), "org-286")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Subscription == nil || summary.Subscription.PlanCode != PlanProfessional {
+		t.Fatalf("summary subscription = %#v, want professional plan", summary.Subscription)
+	}
+	if summary.CurrentPlan == nil || summary.CurrentPlan.Plan.Code != PlanProfessional {
+		t.Fatalf("summary current plan = %#v, want professional plan", summary.CurrentPlan)
+	}
+	var studio, storage *EntitlementView
+	for i := range summary.Entitlements {
+		switch summary.Entitlements[i].Module.Code {
+		case ModuleStudio:
+			studio = &summary.Entitlements[i]
+		case ModuleOSSStorage:
+			storage = &summary.Entitlements[i]
+		}
+	}
+	if studio == nil || !studio.Allowed || studio.Limits["design_jobs"] != 100 {
+		t.Fatalf("studio entitlement = %#v", studio)
+	}
+	if storage == nil || !storage.Allowed || storage.Limits["storage_bytes"] != 10*1024*1024*1024 {
+		t.Fatalf("storage entitlement = %#v", storage)
+	}
+}
+
+func TestDefaultPlansIncludeModuleBundles(t *testing.T) {
+	svc := newTestService(t)
+	plans, err := svc.ListPlans(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) < 3 {
+		t.Fatalf("plans = %d, want at least 3", len(plans))
+	}
+	for _, plan := range plans {
+		if plan.Plan.Code == PlanProfessional {
+			if len(plan.Modules) == 0 {
+				t.Fatal("professional plan has no modules")
+			}
+			return
+		}
+	}
+	t.Fatal("default plans missing professional")
+}
+
+func TestSubscriptionPlanManagementUpdatesPlanAndModules(t *testing.T) {
+	svc := newTestService(t)
+
+	bundle, err := svc.UpsertPlan(context.Background(), PlanInput{
+		Code:        "growth",
+		Name:        "增长版",
+		Description: "面向增长期租户",
+		SortOrder:   25,
+		Active:      true,
+		Modules: []PlanModuleInput{
+			{ModuleCode: ModuleStoreManagement, SortOrder: 10},
+			{ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 50}, SortOrder: 20},
+		},
+	}, "operator-1")
+	if err != nil {
+		t.Fatalf("upsert plan: %v", err)
+	}
+	if bundle.Plan.Code != "growth" || bundle.Plan.Name != "增长版" || len(bundle.Modules) != 2 {
+		t.Fatalf("bundle = %#v", bundle)
+	}
+
+	updated, err := svc.UpsertPlanModule(context.Background(), "growth", ModuleOSSStorage, PlanModuleInput{
+		Limits:    map[string]int{"storage_bytes": 5 * 1024 * 1024},
+		SortOrder: 30,
+	}, "operator-1")
+	if err != nil {
+		t.Fatalf("upsert plan module: %v", err)
+	}
+	if len(updated.Modules) != 3 {
+		t.Fatalf("modules after add = %#v", updated.Modules)
+	}
+
+	updated, err = svc.DeletePlanModule(context.Background(), "growth", ModuleStoreManagement, "operator-1")
+	if err != nil {
+		t.Fatalf("delete plan module: %v", err)
+	}
+	for _, module := range updated.Modules {
+		if module.ModuleCode == ModuleStoreManagement {
+			t.Fatalf("deleted module still present: %#v", updated.Modules)
+		}
+	}
+
+	updated, err = svc.SetPlanActive(context.Background(), "growth", false, "operator-1")
+	if err != nil {
+		t.Fatalf("set plan active: %v", err)
+	}
+	if updated.Plan.Active {
+		t.Fatalf("plan active = true, want false")
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	svc, err := NewService(NewMemRepository())

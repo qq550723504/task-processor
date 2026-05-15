@@ -5,6 +5,8 @@ import type { ReactElement } from "react";
 
 import { PlatformSubscriptionPage } from "@/components/listingkit/subscription/platform-subscription-page";
 import {
+  applyPlatformTenantSubscriptionPlan,
+  getPlatformSubscriptionPlans,
   getPlatformTenantSubscriptionAuditLogs,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
@@ -17,6 +19,8 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/api/subscription")>();
   return {
     ...actual,
+    applyPlatformTenantSubscriptionPlan: vi.fn(),
+    getPlatformSubscriptionPlans: vi.fn(),
     getPlatformTenantSubscriptionAuditLogs: vi.fn(),
     getPlatformTenantSubscriptions: vi.fn(),
     getPlatformTenantSubscription: vi.fn(),
@@ -25,6 +29,10 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
   };
 });
 
+const mockedApplyPlatformTenantSubscriptionPlan = vi.mocked(
+  applyPlatformTenantSubscriptionPlan,
+);
+const mockedGetPlatformSubscriptionPlans = vi.mocked(getPlatformSubscriptionPlans);
 const mockedGetPlatformTenantSubscriptionAuditLogs = vi.mocked(
   getPlatformTenantSubscriptionAuditLogs,
 );
@@ -42,10 +50,30 @@ const mockedUpdatePlatformTenantSubscriptionEntitlement = vi.mocked(
 describe("PlatformSubscriptionPage", () => {
   beforeEach(() => {
     mockedGetPlatformTenantSubscriptionAuditLogs.mockReset();
+    mockedApplyPlatformTenantSubscriptionPlan.mockReset();
+    mockedGetPlatformSubscriptionPlans.mockReset();
     mockedGetPlatformTenantSubscriptions.mockReset();
     mockedGetPlatformTenantSubscription.mockReset();
     mockedUpdatePlatformTenantSubscriptionUsage.mockReset();
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockReset();
+    mockedGetPlatformSubscriptionPlans.mockResolvedValue([
+      {
+        plan: {
+          code: "professional",
+          name: "专业版",
+          sort_order: 20,
+          active: true,
+        },
+        modules: [
+          {
+            plan_code: "professional",
+            module_code: "studio",
+            limits: { design_jobs: 100 },
+            sort_order: 50,
+          },
+        ],
+      },
+    ]);
     mockedGetPlatformTenantSubscriptionAuditLogs.mockResolvedValue([]);
     mockedGetPlatformTenantSubscriptions.mockResolvedValue([
       {
@@ -105,6 +133,43 @@ describe("PlatformSubscriptionPage", () => {
         expect.objectContaining({
           status: "active",
           limits: { design_jobs: 10 },
+        }),
+      );
+    });
+  });
+
+  it("applies a subscription plan to a tenant", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedApplyPlatformTenantSubscriptionPlan.mockResolvedValue({
+      id: 1,
+      tenant_id: "org-target",
+      plan_code: "professional",
+      status: "active",
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+      target: { value: "org-target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查询" }));
+
+    await screen.findByText("专业版");
+    fireEvent.change(screen.getByLabelText("套餐"), {
+      target: { value: "professional" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "应用套餐" }));
+
+    await waitFor(() => {
+      expect(mockedApplyPlatformTenantSubscriptionPlan).toHaveBeenCalledWith(
+        "org-target",
+        expect.objectContaining({
+          plan_code: "professional",
+          status: "active",
         }),
       );
     });

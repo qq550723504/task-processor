@@ -16,6 +16,12 @@ const (
 )
 
 const (
+	PlanBasic        = "basic"
+	PlanProfessional = "professional"
+	PlanEnterprise   = "enterprise"
+)
+
+const (
 	StatusActive   = "active"
 	StatusTrialing = "trialing"
 	StatusExpired  = "expired"
@@ -37,6 +43,39 @@ type Module struct {
 	Active      bool      `json:"active"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Plan struct {
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	SortOrder   int       `json:"sort_order"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type PlanModule struct {
+	PlanCode   string         `json:"plan_code"`
+	ModuleCode string         `json:"module_code"`
+	Limits     map[string]int `json:"limits,omitempty"`
+	SortOrder  int            `json:"sort_order"`
+}
+
+type PlanBundle struct {
+	Plan    Plan         `json:"plan"`
+	Modules []PlanModule `json:"modules"`
+}
+
+type TenantSubscription struct {
+	ID        int64      `json:"id"`
+	TenantID  string     `json:"tenant_id"`
+	PlanCode  string     `json:"plan_code"`
+	Status    string     `json:"status"`
+	StartsAt  *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type Entitlement struct {
@@ -86,6 +125,28 @@ type UsageAdjustmentInput struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
+type PlanApplyInput struct {
+	PlanCode  string     `json:"plan_code"`
+	Status    string     `json:"status"`
+	StartsAt  *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+type PlanInput struct {
+	Code        string            `json:"code"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	SortOrder   int               `json:"sort_order"`
+	Active      bool              `json:"active"`
+	Modules     []PlanModuleInput `json:"modules,omitempty"`
+}
+
+type PlanModuleInput struct {
+	ModuleCode string         `json:"module_code,omitempty"`
+	Limits     map[string]int `json:"limits,omitempty"`
+	SortOrder  int            `json:"sort_order"`
+}
+
 type EntitlementView struct {
 	Module      Module         `json:"module"`
 	Entitlement *Entitlement   `json:"entitlement,omitempty"`
@@ -97,9 +158,11 @@ type EntitlementView struct {
 }
 
 type Summary struct {
-	TenantID     string            `json:"tenant_id"`
-	Modules      []Module          `json:"modules"`
-	Entitlements []EntitlementView `json:"entitlements"`
+	TenantID     string              `json:"tenant_id"`
+	Modules      []Module            `json:"modules"`
+	Entitlements []EntitlementView   `json:"entitlements"`
+	Subscription *TenantSubscription `json:"subscription,omitempty"`
+	CurrentPlan  *PlanBundle         `json:"current_plan,omitempty"`
 }
 
 type TenantOverview struct {
@@ -121,6 +184,13 @@ type GuardResult struct {
 type Repository interface {
 	ListModules(ctx context.Context) ([]Module, error)
 	UpsertDefaultModules(ctx context.Context, modules []Module) error
+	ListPlans(ctx context.Context) ([]PlanBundle, error)
+	UpsertDefaultPlans(ctx context.Context, plans []PlanBundle) error
+	UpsertPlan(ctx context.Context, plan Plan, modules []PlanModule) (*PlanBundle, error)
+	UpsertPlanModule(ctx context.Context, module PlanModule) (*PlanBundle, error)
+	DeletePlanModule(ctx context.Context, planCode, moduleCode string) (*PlanBundle, error)
+	GetTenantSubscription(ctx context.Context, tenantID string) (*TenantSubscription, error)
+	UpsertTenantSubscription(ctx context.Context, subscription *TenantSubscription) (*TenantSubscription, error)
 	GetEntitlement(ctx context.Context, tenantID, moduleCode string) (*Entitlement, error)
 	ListEntitlements(ctx context.Context, tenantID string) ([]Entitlement, error)
 	ListTenantOverviews(ctx context.Context) ([]TenantOverview, error)

@@ -569,8 +569,32 @@ func (s *stubListingKitHandler) ListPlatformTenantSubscriptions(c *gin.Context) 
 	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"tenant_id": "org-286"}}})
 }
 
+func (s *stubListingKitHandler) ListPlatformSubscriptionPlans(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"plan": gin.H{"code": "professional"}}}})
+}
+
+func (s *stubListingKitHandler) UpsertPlatformSubscriptionPlan(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"plan": gin.H{"code": c.Param("plan_code")}})
+}
+
+func (s *stubListingKitHandler) UpsertPlatformSubscriptionPlanModule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"plan": gin.H{"code": c.Param("plan_code")}, "modules": []gin.H{{"module_code": c.Param("module_code")}}})
+}
+
+func (s *stubListingKitHandler) DeletePlatformSubscriptionPlanModule(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"plan": gin.H{"code": c.Param("plan_code")}})
+}
+
+func (s *stubListingKitHandler) SetPlatformSubscriptionPlanStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"plan": gin.H{"code": c.Param("plan_code"), "active": false}})
+}
+
 func (s *stubListingKitHandler) GetPlatformTenantSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tenant_id": c.Param("tenant_id")})
+}
+
+func (s *stubListingKitHandler) ApplyPlatformTenantSubscriptionPlan(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"tenant_id": c.Param("tenant_id"), "plan_code": "professional"})
 }
 
 func (s *stubListingKitHandler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {

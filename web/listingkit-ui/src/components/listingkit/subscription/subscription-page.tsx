@@ -35,6 +35,9 @@ export function SubscriptionPage() {
             <p className="mt-1 text-sm text-zinc-500">
               当前租户 {summary?.tenant_id ?? "-"}，按模块开通 ListingKit 能力。
             </p>
+            <p className="mt-2 inline-flex rounded-md bg-zinc-100 px-2.5 py-1 text-sm font-medium text-zinc-700">
+              当前套餐：{summary?.current_plan?.plan.name ?? "未配置"}
+            </p>
           </div>
           <button
             type="button"

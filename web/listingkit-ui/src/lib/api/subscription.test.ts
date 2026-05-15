@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api/client";
 import {
   formatSubscriptionApiError,
   parseSubscriptionEntitlement,
+  parseSubscriptionPlanList,
   parseSubscriptionRequiredPayload,
   parseSubscriptionSummary,
 } from "@/lib/api/subscription";
@@ -12,6 +13,28 @@ describe("subscription API schema", () => {
   it("parses a tenant subscription summary", () => {
     const parsed = parseSubscriptionSummary({
       tenant_id: "org-286",
+      subscription: {
+        id: 1,
+        tenant_id: "org-286",
+        plan_code: "professional",
+        status: "active",
+      },
+      current_plan: {
+        plan: {
+          code: "professional",
+          name: "专业版",
+          sort_order: 20,
+          active: true,
+        },
+        modules: [
+          {
+            plan_code: "professional",
+            module_code: "studio",
+            limits: { design_jobs: 100 },
+            sort_order: 50,
+          },
+        ],
+      },
       modules: [
         {
           code: "studio",
@@ -44,8 +67,35 @@ describe("subscription API schema", () => {
     });
 
     expect(parsed.tenant_id).toBe("org-286");
+    expect(parsed.current_plan?.plan.name).toBe("专业版");
     expect(parsed.entitlements[0]?.allowed).toBe(true);
     expect(parsed.entitlements[0]?.limits?.design_jobs).toBe(10);
+  });
+
+  it("parses subscription plans", () => {
+    const plans = parseSubscriptionPlanList({
+      items: [
+        {
+          plan: {
+            code: "professional",
+            name: "专业版",
+            sort_order: 20,
+            active: true,
+          },
+          modules: [
+            {
+              plan_code: "professional",
+              module_code: "studio",
+              limits: { design_jobs: 100 },
+              sort_order: 50,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(plans[0]?.plan.code).toBe("professional");
+    expect(plans[0]?.modules[0]?.limits?.design_jobs).toBe(100);
   });
 
   it("normalizes empty backend usage from null to an empty list", () => {
