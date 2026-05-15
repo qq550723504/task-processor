@@ -60,11 +60,29 @@ type UsageCounter struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type AuditLog struct {
+	ID         int64     `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	ModuleCode string    `json:"module_code,omitempty"`
+	Action     string    `json:"action"`
+	ActorID    string    `json:"actor_id,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+	Payload    string    `json:"payload,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type EntitlementInput struct {
 	Status    string         `json:"status"`
 	StartsAt  *time.Time     `json:"starts_at,omitempty"`
 	ExpiresAt *time.Time     `json:"expires_at,omitempty"`
 	Limits    map[string]int `json:"limits,omitempty"`
+}
+
+type UsageAdjustmentInput struct {
+	PeriodKey string `json:"period_key"`
+	Metric    string `json:"metric"`
+	Used      int    `json:"used"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type EntitlementView struct {
@@ -108,4 +126,7 @@ type Repository interface {
 	UpsertEntitlement(ctx context.Context, entitlement *Entitlement) (*Entitlement, error)
 	ListUsage(ctx context.Context, tenantID string) ([]UsageCounter, error)
 	IncrementUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int) (*UsageCounter, error)
+	SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error)
+	CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error)
+	ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error)
 }

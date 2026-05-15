@@ -74,6 +74,39 @@ func TestSubscriptionGuardRejectsQuotaExceeded(t *testing.T) {
 	}
 }
 
+func TestSubscriptionUsageAdjustmentWritesAuditLog(t *testing.T) {
+	svc := newTestService(t)
+	_, err := svc.UpsertEntitlementWithAudit(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+		Limits: map[string]int{"design_jobs": 10},
+	}, "admin-1", "manual open")
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter, err := svc.SetUsage(context.Background(), "org-286", ModuleStudio, UsageAdjustmentInput{
+		PeriodKey: "2026-05",
+		Metric:    "design_jobs",
+		Used:      3,
+		Reason:    "manual correction",
+	}, "admin-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counter.Used != 3 {
+		t.Fatalf("used = %d, want 3", counter.Used)
+	}
+	logs, err := svc.ListAuditLogs(context.Background(), "org-286", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("audit logs = %d, want 2", len(logs))
+	}
+	if logs[0].Action != "usage_set" || logs[0].ActorID != "admin-1" || logs[0].Reason != "manual correction" {
+		t.Fatalf("latest audit log = %#v", logs[0])
+	}
+}
+
 func TestSubscriptionSummaryIncludesUnconfiguredModules(t *testing.T) {
 	svc := newTestService(t)
 	summary, err := svc.GetSummary(context.Background(), "org-286")

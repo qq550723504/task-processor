@@ -573,6 +573,14 @@ func (s *stubListingKitHandler) UpsertPlatformTenantSubscriptionEntitlement(c *g
 	c.JSON(http.StatusOK, gin.H{"tenant_id": c.Param("tenant_id"), "module_code": c.Param("module_code")})
 }
 
+func (s *stubListingKitHandler) SetPlatformTenantSubscriptionUsage(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"tenant_id": c.Param("tenant_id"), "module_code": c.Param("module_code"), "metric": c.Param("metric")})
+}
+
+func (s *stubListingKitHandler) ListPlatformTenantSubscriptionAuditLogs(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{}})
+}
+
 func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
 	s.getResultCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})

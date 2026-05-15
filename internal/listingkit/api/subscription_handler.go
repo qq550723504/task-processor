@@ -40,7 +40,21 @@ func (h *handler) UpsertSubscriptionEntitlement(c *gin.Context) {
 	if !h.requirePlatformSubscriptionAccess(c) {
 		return
 	}
-	h.subscriptionHandler.UpsertEntitlement(c)
+	var req listingsubscription.EntitlementInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_entitlement", "message": err.Error()})
+		return
+	}
+	entitlement, err := h.subscriptionService.UpsertEntitlementWithAudit(c.Request.Context(), requestTenantID(c), strings.TrimSpace(c.Param("module_code")), req, c.GetHeader("X-User-ID"), "")
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "subscription_entitlement_update_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, entitlement)
 }
 
 func (h *handler) ListPlatformTenantSubscriptions(c *gin.Context) {
@@ -96,7 +110,7 @@ func (h *handler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_entitlement", "message": err.Error()})
 		return
 	}
-	entitlement, err := h.subscriptionService.UpsertEntitlement(c.Request.Context(), tenantID, moduleCode, req)
+	entitlement, err := h.subscriptionService.UpsertEntitlementWithAudit(c.Request.Context(), tenantID, moduleCode, req, c.GetHeader("X-User-ID"), "")
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
@@ -106,6 +120,53 @@ func (h *handler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, entitlement)
+}
+
+func (h *handler) SetPlatformTenantSubscriptionUsage(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	tenantID := strings.TrimSpace(c.Param("tenant_id"))
+	moduleCode := strings.TrimSpace(c.Param("module_code"))
+	var req listingsubscription.UsageAdjustmentInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_usage", "message": err.Error()})
+		return
+	}
+	if req.PeriodKey == "" {
+		req.PeriodKey = strings.TrimSpace(c.Param("period_key"))
+	}
+	if req.Metric == "" {
+		req.Metric = strings.TrimSpace(c.Param("metric"))
+	}
+	counter, err := h.subscriptionService.SetUsage(c.Request.Context(), tenantID, moduleCode, req, c.GetHeader("X-User-ID"))
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "subscription_usage_update_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, counter)
+}
+
+func (h *handler) ListPlatformTenantSubscriptionAuditLogs(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	items, err := h.subscriptionService.ListAuditLogs(c.Request.Context(), strings.TrimSpace(c.Param("tenant_id")), 50)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "subscription_audit_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 func (h *handler) requireSubscription(c *gin.Context, moduleCode string) bool {

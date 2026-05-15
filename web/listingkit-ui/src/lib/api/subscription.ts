@@ -48,6 +48,19 @@ export const subscriptionUsageCounterSchema = z
   })
   .passthrough();
 
+export const subscriptionAuditLogSchema = z
+  .object({
+    id: z.number(),
+    tenant_id: z.string(),
+    module_code: z.string().optional(),
+    action: z.string(),
+    actor_id: z.string().optional(),
+    reason: z.string().optional(),
+    payload: z.string().optional(),
+    created_at: z.string(),
+  })
+  .passthrough();
+
 export const subscriptionEntitlementViewSchema = z
   .object({
     module: subscriptionModuleSchema,
@@ -89,6 +102,12 @@ const subscriptionTenantOverviewListSchema = z
   })
   .passthrough();
 
+const subscriptionAuditLogListSchema = z
+  .object({
+    items: z.array(subscriptionAuditLogSchema),
+  })
+  .passthrough();
+
 const subscriptionRequiredPayloadSchema = z
   .object({
     error: z.enum(["subscription_required", "quota_exceeded"]),
@@ -113,6 +132,10 @@ export type SubscriptionSummary = z.infer<typeof subscriptionSummarySchema>;
 export type SubscriptionTenantOverview = z.infer<
   typeof subscriptionTenantOverviewSchema
 >;
+export type SubscriptionUsageCounter = z.infer<
+  typeof subscriptionUsageCounterSchema
+>;
+export type SubscriptionAuditLog = z.infer<typeof subscriptionAuditLogSchema>;
 export type SubscriptionRequiredPayload = z.infer<
   typeof subscriptionRequiredPayloadSchema
 >;
@@ -122,6 +145,13 @@ export type SubscriptionEntitlementInput = {
   starts_at?: string;
   expires_at?: string;
   limits?: Record<string, number>;
+};
+
+export type SubscriptionUsageAdjustmentInput = {
+  period_key: string;
+  metric: string;
+  used: number;
+  reason?: string;
 };
 
 export function parseSubscriptionSummary(payload: unknown): SubscriptionSummary {
@@ -150,6 +180,26 @@ export function parseSubscriptionTenantOverviewList(
     subscriptionTenantOverviewListSchema,
     "ListingKit API returned an unexpected subscription tenant list response",
   ).items;
+}
+
+export function parseSubscriptionAuditLogList(
+  payload: unknown,
+): SubscriptionAuditLog[] {
+  return parseApiResponseShape(
+    payload,
+    subscriptionAuditLogListSchema,
+    "ListingKit API returned an unexpected subscription audit log response",
+  ).items;
+}
+
+export function parseSubscriptionUsageCounter(
+  payload: unknown,
+): SubscriptionUsageCounter {
+  return parseApiResponseShape(
+    payload,
+    subscriptionUsageCounterSchema,
+    "ListingKit API returned an unexpected subscription usage response",
+  );
 }
 
 export function parseSubscriptionEntitlement(
@@ -239,4 +289,28 @@ export async function updatePlatformTenantSubscriptionEntitlement(
     },
   );
   return parseSubscriptionEntitlement(payload);
+}
+
+export async function updatePlatformTenantSubscriptionUsage(
+  tenantId: string,
+  moduleCode: string,
+  input: SubscriptionUsageAdjustmentInput,
+): Promise<SubscriptionUsageCounter> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscriptions/${encodeURIComponent(tenantId)}/usage/${encodeURIComponent(moduleCode)}/${encodeURIComponent(input.period_key)}/${encodeURIComponent(input.metric)}`,
+    {
+      method: "PUT",
+      body: input,
+    },
+  );
+  return parseSubscriptionUsageCounter(payload);
+}
+
+export async function getPlatformTenantSubscriptionAuditLogs(
+  tenantId: string,
+): Promise<SubscriptionAuditLog[]> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscriptions/${encodeURIComponent(tenantId)}/audit-logs`,
+  );
+  return parseSubscriptionAuditLogList(payload);
 }

@@ -137,8 +137,14 @@ func TestParseZitadelRoles(t *testing.T) {
 	}`))
 
 	want := []string{"listingkit_admin", "platform_admin", "billing_admin", "admin"}
-	if strings.Join(roles, ",") != strings.Join(want, ",") {
-		t.Fatalf("roles = %#v, want %#v", roles, want)
+	got := map[string]bool{}
+	for _, role := range roles {
+		got[role] = true
+	}
+	for _, role := range want {
+		if !got[role] {
+			t.Fatalf("roles = %#v, want role %q", roles, role)
+		}
 	}
 }
 

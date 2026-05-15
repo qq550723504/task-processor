@@ -48,6 +48,19 @@ type usageCounterRow struct {
 
 func (usageCounterRow) TableName() string { return "saas_usage_counters" }
 
+type auditLogRow struct {
+	ID         int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	TenantID   string    `gorm:"column:tenant_id;not null;size:128;index"`
+	ModuleCode string    `gorm:"column:module_code;size:64;index"`
+	Action     string    `gorm:"column:action;not null;size:64;index"`
+	ActorID    string    `gorm:"column:actor_id;size:128;index"`
+	Reason     string    `gorm:"column:reason;type:text"`
+	Payload    string    `gorm:"column:payload;type:text"`
+	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime;index"`
+}
+
+func (auditLogRow) TableName() string { return "saas_subscription_audit_logs" }
+
 type GormRepository struct {
 	db *gorm.DB
 }
@@ -60,7 +73,7 @@ func AutoMigrateRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&subscriptionModuleRow{}, &tenantEntitlementRow{}, &usageCounterRow{})
+	return db.AutoMigrate(&subscriptionModuleRow{}, &tenantEntitlementRow{}, &usageCounterRow{}, &auditLogRow{})
 }
 
 func (r *GormRepository) ListModules(ctx context.Context) ([]Module, error) {
@@ -204,6 +217,47 @@ func (r *GormRepository) IncrementUsage(ctx context.Context, tenantID, moduleCod
 		return nil, err
 	}
 	return &UsageCounter{ID: out.ID, TenantID: out.TenantID, ModuleCode: out.ModuleCode, PeriodKey: out.PeriodKey, Metric: out.Metric, Used: out.Used, UpdatedAt: out.UpdatedAt}, nil
+}
+
+func (r *GormRepository) SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error) {
+	row := usageCounterRow{TenantID: tenantID, ModuleCode: moduleCode, PeriodKey: periodKey, Metric: metric, Used: used}
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "module_code"}, {Name: "period_key"}, {Name: "metric"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"used":       used,
+			"updated_at": time.Now().UTC(),
+		}),
+	}).Create(&row).Error; err != nil {
+		return nil, err
+	}
+	var out usageCounterRow
+	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, periodKey, metric).Take(&out).Error; err != nil {
+		return nil, err
+	}
+	return &UsageCounter{ID: out.ID, TenantID: out.TenantID, ModuleCode: out.ModuleCode, PeriodKey: out.PeriodKey, Metric: out.Metric, Used: out.Used, UpdatedAt: out.UpdatedAt}, nil
+}
+
+func (r *GormRepository) CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error) {
+	row := auditLogRow{TenantID: log.TenantID, ModuleCode: log.ModuleCode, Action: log.Action, ActorID: log.ActorID, Reason: log.Reason, Payload: log.Payload}
+	if !log.CreatedAt.IsZero() {
+		row.CreatedAt = log.CreatedAt
+	}
+	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return nil, err
+	}
+	return &AuditLog{ID: row.ID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Action: row.Action, ActorID: row.ActorID, Reason: row.Reason, Payload: row.Payload, CreatedAt: row.CreatedAt}, nil
+}
+
+func (r *GormRepository) ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error) {
+	var rows []auditLogRow
+	if err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]AuditLog, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, AuditLog{ID: row.ID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Action: row.Action, ActorID: row.ActorID, Reason: row.Reason, Payload: row.Payload, CreatedAt: row.CreatedAt})
+	}
+	return items, nil
 }
 
 func (row tenantEntitlementRow) toEntitlement() (*Entitlement, error) {

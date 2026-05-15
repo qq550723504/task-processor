@@ -12,6 +12,7 @@ type MemRepository struct {
 	modules      map[string]Module
 	entitlements map[string]Entitlement
 	usage        map[string]UsageCounter
+	auditLogs    []AuditLog
 }
 
 func NewMemRepository() *MemRepository {
@@ -20,6 +21,7 @@ func NewMemRepository() *MemRepository {
 		modules:      map[string]Module{},
 		entitlements: map[string]Entitlement{},
 		usage:        map[string]UsageCounter{},
+		auditLogs:    []AuditLog{},
 	}
 }
 
@@ -153,6 +155,50 @@ func (r *MemRepository) IncrementUsage(_ context.Context, tenantID, moduleCode, 
 	counter.UpdatedAt = time.Now().UTC()
 	r.usage[key] = counter
 	return &counter, nil
+}
+
+func (r *MemRepository) SetUsage(_ context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := usageKey(tenantID, moduleCode, periodKey, metric)
+	counter := r.usage[key]
+	if counter.ID == 0 {
+		counter.ID = r.nextID
+		r.nextID++
+		counter.TenantID = tenantID
+		counter.ModuleCode = moduleCode
+		counter.PeriodKey = periodKey
+		counter.Metric = metric
+	}
+	counter.Used = used
+	counter.UpdatedAt = time.Now().UTC()
+	r.usage[key] = counter
+	return &counter, nil
+}
+
+func (r *MemRepository) CreateAuditLog(_ context.Context, log AuditLog) (*AuditLog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	log.ID = r.nextID
+	r.nextID++
+	if log.CreatedAt.IsZero() {
+		log.CreatedAt = time.Now().UTC()
+	}
+	r.auditLogs = append(r.auditLogs, log)
+	out := log
+	return &out, nil
+}
+
+func (r *MemRepository) ListAuditLogs(_ context.Context, tenantID string, limit int) ([]AuditLog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := []AuditLog{}
+	for i := len(r.auditLogs) - 1; i >= 0 && len(items) < limit; i-- {
+		if r.auditLogs[i].TenantID == tenantID {
+			items = append(items, r.auditLogs[i])
+		}
+	}
+	return items, nil
 }
 
 func entitlementKey(tenantID, moduleCode string) string {

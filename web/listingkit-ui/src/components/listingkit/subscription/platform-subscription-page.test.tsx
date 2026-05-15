@@ -5,8 +5,10 @@ import type { ReactElement } from "react";
 
 import { PlatformSubscriptionPage } from "@/components/listingkit/subscription/platform-subscription-page";
 import {
+  getPlatformTenantSubscriptionAuditLogs,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
+  updatePlatformTenantSubscriptionUsage,
   updatePlatformTenantSubscriptionEntitlement,
 } from "@/lib/api/subscription";
 
@@ -15,25 +17,36 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/api/subscription")>();
   return {
     ...actual,
+    getPlatformTenantSubscriptionAuditLogs: vi.fn(),
     getPlatformTenantSubscriptions: vi.fn(),
     getPlatformTenantSubscription: vi.fn(),
+    updatePlatformTenantSubscriptionUsage: vi.fn(),
     updatePlatformTenantSubscriptionEntitlement: vi.fn(),
   };
 });
 
+const mockedGetPlatformTenantSubscriptionAuditLogs = vi.mocked(
+  getPlatformTenantSubscriptionAuditLogs,
+);
 const mockedGetPlatformTenantSubscriptions = vi.mocked(
   getPlatformTenantSubscriptions,
 );
 const mockedGetPlatformTenantSubscription = vi.mocked(getPlatformTenantSubscription);
+const mockedUpdatePlatformTenantSubscriptionUsage = vi.mocked(
+  updatePlatformTenantSubscriptionUsage,
+);
 const mockedUpdatePlatformTenantSubscriptionEntitlement = vi.mocked(
   updatePlatformTenantSubscriptionEntitlement,
 );
 
 describe("PlatformSubscriptionPage", () => {
   beforeEach(() => {
+    mockedGetPlatformTenantSubscriptionAuditLogs.mockReset();
     mockedGetPlatformTenantSubscriptions.mockReset();
     mockedGetPlatformTenantSubscription.mockReset();
+    mockedUpdatePlatformTenantSubscriptionUsage.mockReset();
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockReset();
+    mockedGetPlatformTenantSubscriptionAuditLogs.mockResolvedValue([]);
     mockedGetPlatformTenantSubscriptions.mockResolvedValue([
       {
         tenant_id: "org-target",
@@ -111,6 +124,75 @@ describe("PlatformSubscriptionPage", () => {
     await waitFor(() => {
       expect(mockedGetPlatformTenantSubscription).toHaveBeenCalledWith(
         "org-target",
+      );
+    });
+  });
+
+  it("adjusts module usage for a billing period", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [
+        {
+          module: {
+            code: "studio",
+            name: "Studio",
+            sort_order: 50,
+            active: true,
+          },
+          entitlement: {
+            id: 1,
+            tenant_id: "org-target",
+            module_code: "studio",
+            status: "active",
+            limits: { design_jobs: 10 },
+          },
+          usage: [
+            {
+              id: 1,
+              tenant_id: "org-target",
+              module_code: "studio",
+              period_key: "2026-05",
+              metric: "design_jobs",
+              used: 4,
+            },
+          ],
+          allowed: true,
+          used: { design_jobs: 4 },
+          limits: { design_jobs: 10 },
+        },
+      ],
+    });
+    mockedUpdatePlatformTenantSubscriptionUsage.mockResolvedValue({
+      id: 1,
+      tenant_id: "org-target",
+      module_code: "studio",
+      period_key: "2026-05",
+      metric: "design_jobs",
+      used: 0,
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+      target: { value: "org-target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查询" }));
+
+    await screen.findByText("Studio");
+    fireEvent.click(screen.getByRole("button", { name: "配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "重置为 0" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存用量" }));
+
+    await waitFor(() => {
+      expect(mockedUpdatePlatformTenantSubscriptionUsage).toHaveBeenCalledWith(
+        "org-target",
+        "studio",
+        expect.objectContaining({
+          metric: "design_jobs",
+          period_key: "2026-05",
+          used: 0,
+        }),
       );
     });
   });

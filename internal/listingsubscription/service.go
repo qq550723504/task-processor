@@ -2,6 +2,7 @@ package listingsubscription
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -144,6 +145,53 @@ func (s *Service) UpsertEntitlement(ctx context.Context, tenantID, moduleCode st
 	})
 }
 
+func (s *Service) UpsertEntitlementWithAudit(ctx context.Context, tenantID, moduleCode string, input EntitlementInput, actorID, reason string) (*Entitlement, error) {
+	entitlement, err := s.UpsertEntitlement(ctx, tenantID, moduleCode, input)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, tenantID, moduleCode, "entitlement_upsert", actorID, reason, input)
+	return entitlement, nil
+}
+
+func (s *Service) SetUsage(ctx context.Context, tenantID, moduleCode string, input UsageAdjustmentInput, actorID string) (*UsageCounter, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	moduleCode = strings.TrimSpace(moduleCode)
+	input.PeriodKey = strings.TrimSpace(input.PeriodKey)
+	input.Metric = strings.TrimSpace(input.Metric)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if input.PeriodKey == "" {
+		input.PeriodKey = s.now().UTC().Format("2006-01")
+	}
+	if input.Metric == "" {
+		return nil, errors.New("usage metric is required")
+	}
+	if input.Used < 0 {
+		return nil, errors.New("usage used must be non-negative")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	counter, err := s.repo.SetUsage(ctx, tenantID, moduleCode, input.PeriodKey, input.Metric, input.Used)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, tenantID, moduleCode, "usage_set", actorID, input.Reason, input)
+	return counter, nil
+}
+
+func (s *Service) ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.ListAuditLogs(ctx, strings.TrimSpace(tenantID), limit)
+}
+
 func (s *Service) Check(ctx context.Context, tenantID, moduleCode string) (GuardResult, error) {
 	return s.CheckUsage(ctx, tenantID, moduleCode, "", 0)
 }
@@ -200,6 +248,20 @@ func (s *Service) moduleExists(ctx context.Context, moduleCode string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Service) createAudit(ctx context.Context, tenantID, moduleCode, action, actorID, reason string, payload any) error {
+	data, _ := json.Marshal(payload)
+	_, err := s.repo.CreateAuditLog(ctx, AuditLog{
+		TenantID:   strings.TrimSpace(tenantID),
+		ModuleCode: strings.TrimSpace(moduleCode),
+		Action:     action,
+		ActorID:    strings.TrimSpace(actorID),
+		Reason:     strings.TrimSpace(reason),
+		Payload:    string(data),
+		CreatedAt:  s.now().UTC(),
+	})
+	return err
 }
 
 func evaluateEntitlement(entitlement *Entitlement, now time.Time) (bool, string) {

@@ -6,8 +6,10 @@ import { FormEvent, useMemo, useState } from "react";
 
 import {
   formatSubscriptionApiError,
+  getPlatformTenantSubscriptionAuditLogs,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
+  updatePlatformTenantSubscriptionUsage,
   updatePlatformTenantSubscriptionEntitlement,
   type SubscriptionEntitlementView,
   type SubscriptionStatus,
@@ -34,7 +36,12 @@ export function PlatformSubscriptionPage() {
   const [status, setStatus] = useState<SubscriptionStatus>("active");
   const [expiresAt, setExpiresAt] = useState("");
   const [limitsText, setLimitsText] = useState("{}");
+  const [usageMetric, setUsageMetric] = useState("");
+  const [usagePeriod, setUsagePeriod] = useState(currentPeriodKey());
+  const [usageUsed, setUsageUsed] = useState("0");
+  const [usageReason, setUsageReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingUsage, setSavingUsage] = useState(false);
   const [error, setError] = useState("");
 
   const normalizedTenantId = useMemo(() => tenantId.trim(), [tenantId]);
@@ -47,6 +54,11 @@ export function PlatformSubscriptionPage() {
     queryKey: ["listingkit-platform-subscriptions"],
     queryFn: getPlatformTenantSubscriptions,
   });
+  const auditQuery = useQuery({
+    queryKey: ["listingkit-platform-subscription-audit", normalizedTenantId],
+    queryFn: () => getPlatformTenantSubscriptionAuditLogs(normalizedTenantId),
+    enabled: Boolean(normalizedTenantId),
+  });
 
   const summary = query.data;
   const visibleError =
@@ -54,6 +66,9 @@ export function PlatformSubscriptionPage() {
     (query.error ? formatSubscriptionApiError(query.error) : "") ||
     (tenantListQuery.error
       ? formatSubscriptionApiError(tenantListQuery.error)
+      : "") ||
+    (auditQuery.error
+      ? formatSubscriptionApiError(auditQuery.error)
       : "");
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {
@@ -68,6 +83,12 @@ export function PlatformSubscriptionPage() {
     setStatus(view.entitlement?.status ?? "active");
     setExpiresAt(toLocalDateTimeInput(view.entitlement?.expires_at));
     setLimitsText(JSON.stringify(view.entitlement?.limits ?? {}, null, 2));
+    const firstLimit = Object.keys(view.entitlement?.limits ?? {})[0] ?? "";
+    const firstUsage = view.usage.find((item) => item.metric === firstLimit) ?? view.usage[0];
+    setUsageMetric(firstUsage?.metric ?? firstLimit);
+    setUsagePeriod(firstUsage?.period_key ?? currentPeriodKey());
+    setUsageUsed(String(firstUsage?.used ?? 0));
+    setUsageReason("");
     setError("");
   }
 
@@ -91,10 +112,39 @@ export function PlatformSubscriptionPage() {
       setEditingModule("");
       await tenantListQuery.refetch();
       await query.refetch();
+      await auditQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleUsageSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingModule || !normalizedTenantId || !usageMetric.trim()) {
+      return;
+    }
+    const used = Number(usageUsed);
+    if (!Number.isInteger(used) || used < 0) {
+      setError("用量必须是非负整数");
+      return;
+    }
+    setSavingUsage(true);
+    setError("");
+    try {
+      await updatePlatformTenantSubscriptionUsage(normalizedTenantId, editingModule, {
+        period_key: usagePeriod || currentPeriodKey(),
+        metric: usageMetric,
+        used,
+        reason: usageReason || undefined,
+      });
+      await query.refetch();
+      await auditQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    } finally {
+      setSavingUsage(false);
     }
   }
 
@@ -253,64 +303,162 @@ export function PlatformSubscriptionPage() {
           </div>
         </div>
 
-        <form
-          onSubmit={handleSave}
-          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
-        >
-          <div className="mb-4">
-            <h2 className="text-base font-semibold text-zinc-950">模块开通</h2>
-          </div>
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
-            模块
-            <input
-              value={editingModule}
-              readOnly
-              className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-900"
-              placeholder="选择模块"
-            />
-          </label>
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
-            状态
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value as SubscriptionStatus)}
-              className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+        <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <form onSubmit={handleSave}>
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-zinc-950">模块开通</h2>
+            </div>
+            <label className="mb-3 block text-xs font-medium text-zinc-500">
+              模块
+              <input
+                value={editingModule}
+                readOnly
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-900"
+                placeholder="选择模块"
+              />
+            </label>
+            <label className="mb-3 block text-xs font-medium text-zinc-500">
+              状态
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value as SubscriptionStatus)}
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {STATUS_LABEL[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="mb-3 block text-xs font-medium text-zinc-500">
+              过期时间
+              <input
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(event) => setExpiresAt(event.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+              />
+            </label>
+            <label className="mb-3 block text-xs font-medium text-zinc-500">
+              额度 JSON
+              <textarea
+                value={limitsText}
+                onChange={(event) => setLimitsText(event.target.value)}
+                rows={7}
+                className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 font-mono text-xs text-zinc-900"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!editingModule || !normalizedTenantId || saving}
+              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {STATUS_LABEL[option]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
-            过期时间
-            <input
-              type="datetime-local"
-              value={expiresAt}
-              onChange={(event) => setExpiresAt(event.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
-            />
-          </label>
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
-            额度 JSON
-            <textarea
-              value={limitsText}
-              onChange={(event) => setLimitsText(event.target.value)}
-              rows={7}
-              className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 font-mono text-xs text-zinc-900"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={!editingModule || !normalizedTenantId || saving}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
-          >
-            {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-            保存配置
-          </button>
-        </form>
+              {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+              保存配置
+            </button>
+          </form>
+          <div className="my-4 border-t border-zinc-200" />
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-zinc-950">用量调整</h2>
+          </div>
+          <form onSubmit={handleUsageSave} className="space-y-3">
+            <label className="block text-xs font-medium text-zinc-500">
+              周期
+              <input
+                value={usagePeriod}
+                onChange={(event) => setUsagePeriod(event.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 font-mono text-sm text-zinc-900"
+                placeholder="YYYY-MM"
+              />
+            </label>
+            <label className="block text-xs font-medium text-zinc-500">
+              指标
+              <input
+                value={usageMetric}
+                onChange={(event) => setUsageMetric(event.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 font-mono text-sm text-zinc-900"
+                placeholder="design_jobs"
+              />
+            </label>
+            <label className="block text-xs font-medium text-zinc-500">
+              已用
+              <input
+                type="number"
+                min={0}
+                value={usageUsed}
+                onChange={(event) => setUsageUsed(event.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+              />
+            </label>
+            <label className="block text-xs font-medium text-zinc-500">
+              原因
+              <input
+                value={usageReason}
+                onChange={(event) => setUsageReason(event.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                placeholder="运营调整"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={!editingModule || !normalizedTenantId || savingUsage}
+                onClick={() => setUsageUsed("0")}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300 disabled:cursor-not-allowed disabled:text-zinc-400"
+              >
+                重置为 0
+              </button>
+              <button
+                type="submit"
+                disabled={!editingModule || !normalizedTenantId || savingUsage}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              >
+                {savingUsage ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                保存用量
+              </button>
+            </div>
+          </form>
+        </div>
       </section>
+      {normalizedTenantId ? (
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-zinc-950">审计日志</h2>
+            <button
+              type="button"
+              onClick={() => void auditQuery.refetch()}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-200 px-3 text-xs font-medium text-zinc-700 hover:border-zinc-300"
+            >
+              <RefreshCw className={`size-3.5 ${auditQuery.isFetching ? "animate-spin" : ""}`} />
+              刷新
+            </button>
+          </div>
+          <div className="divide-y divide-zinc-100 text-sm">
+            {auditQuery.isLoading ? (
+              <div className="py-3 text-zinc-500">加载中...</div>
+            ) : (auditQuery.data ?? []).length === 0 ? (
+              <div className="py-3 text-zinc-500">暂无日志</div>
+            ) : (
+              auditQuery.data?.map((item) => (
+                <div key={item.id} className="grid gap-1 py-3 md:grid-cols-[180px_1fr_160px]">
+                  <div className="text-zinc-500">{formatDate(item.created_at)}</div>
+                  <div>
+                    <span className="font-medium text-zinc-950">{item.action}</span>
+                    {item.module_code ? (
+                      <span className="ml-2 font-mono text-xs text-zinc-500">{item.module_code}</span>
+                    ) : null}
+                    {item.reason ? (
+                      <div className="mt-1 text-xs text-zinc-500">{item.reason}</div>
+                    ) : null}
+                  </div>
+                  <div className="font-mono text-xs text-zinc-500">{item.actor_id || "-"}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -373,4 +521,8 @@ function parseLimits(value: string): Record<string, number> {
     out[key] = raw;
   }
   return out;
+}
+
+function currentPeriodKey() {
+  return new Date().toISOString().slice(0, 7);
 }
