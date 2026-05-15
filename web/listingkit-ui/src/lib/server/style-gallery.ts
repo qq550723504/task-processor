@@ -58,6 +58,19 @@ export function isAIGeneratedGallerySource(source: StyleGallerySource) {
   return source === "studio_saved" || source === "studio_legacy" || source === "published_input";
 }
 
+export function normalizeStyleGalleryImageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const prefix = "/api/v1/listing-kits/uploads/files/";
+    if (!parsed.pathname.startsWith(prefix)) {
+      return url;
+    }
+    return `${parsed.pathname.replace(prefix, "/api/listing-kits/uploads/files/")}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
 export function resolveGalleryImagePath(source: string, segments: string[]) {
   const roots = getGalleryImageRoots();
   const root = source === "legacy" ? roots.legacy : source === "published" ? roots.published : "";
@@ -113,7 +126,9 @@ async function listStoredStudioItems(): Promise<StyleGalleryItem[]> {
 
   return groups.flatMap((group) =>
     group.designs.flatMap((design, index) => {
-      const imageUrl = design.imageUrl?.trim() || design.dataUrl?.trim();
+      const imageUrl = normalizeStyleGalleryImageUrl(
+        design.imageUrl?.trim() || design.dataUrl?.trim() || "",
+      );
       if (!imageUrl) {
         return [];
       }
@@ -124,7 +139,7 @@ async function listStoredStudioItems(): Promise<StyleGalleryItem[]> {
           imageUrl,
           source: "studio_saved",
           sourceLabel: "AI style",
-          originalUrl: imageUrl,
+          originalUrl: design.imageUrl?.trim() || design.dataUrl?.trim(),
           fileName: design.id,
           prompt: design.prompt ?? group.prompt,
           imageModel: design.imageModel,
@@ -171,9 +186,12 @@ async function listDatabaseStudioItems(): Promise<StyleGalleryItem[]> {
     return (payload.items ?? [])
       .filter((item) => Boolean(item.design_id && item.image_url))
       .map((item, index) => ({
+        // Image URLs returned by the Go API may point at the internal API host.
+        // Route uploaded assets through the UI proxy so browser smoke works
+        // without exposing or depending on the backend origin.
         id: `db:${item.session_id}:${item.design_id}`,
         title: `AI style ${index + 1}`,
-        imageUrl: item.image_url!,
+        imageUrl: normalizeStyleGalleryImageUrl(item.image_url!),
         source: "studio_saved",
         sourceLabel: "AI style",
         originalUrl: item.image_url,
