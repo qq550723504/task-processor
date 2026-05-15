@@ -183,7 +183,6 @@ func setSDSDefaults(v *viper.Viper, p *SDSPlatformConfig) {
 	v.SetDefault("platforms.sds.loginService.profileRootDir", p.LoginService.ProfileRootDir)
 	v.SetDefault("platforms.sds.loginService.artifactDir", p.LoginService.ArtifactDir)
 	v.SetDefault("platforms.sds.loginService.defaultHeadless", p.LoginService.DefaultHeadless)
-	v.SetDefault("platforms.sds.loginService.adminPageEnabled", p.LoginService.AdminPageEnabled)
 }
 
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
@@ -248,7 +247,6 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.loginService.profileRootDir", p.LoginService.ProfileRootDir)
 	v.SetDefault("platforms.shein.loginService.artifactDir", p.LoginService.ArtifactDir)
 	v.SetDefault("platforms.shein.loginService.defaultHeadless", p.LoginService.DefaultHeadless)
-	v.SetDefault("platforms.shein.loginService.adminPageEnabled", p.LoginService.AdminPageEnabled)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

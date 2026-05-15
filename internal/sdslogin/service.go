@@ -73,7 +73,6 @@ func (s *Service) Health(context.Context) ServiceHealth {
 	return ServiceHealth{
 		Initialized:        true,
 		MaxConcurrentLogin: max(1, s.loginCfg.MaxConcurrentLogins),
-		AdminPageEnabled:   s.loginCfg.AdminPageEnabled,
 	}
 }
 

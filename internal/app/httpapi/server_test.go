@@ -69,6 +69,32 @@ func (s *stubSheinLoginHandler) ClearLastFailure(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+type stubSDSLoginHandler struct{}
+
+func (s *stubSDSLoginHandler) Health(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *stubSDSLoginHandler) Status(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSDSLoginHandler) Login(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSDSLoginHandler) ManualLogin(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSDSLoginHandler) GetAuthState(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *stubSDSLoginHandler) ClearState(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 func (s *stubTaskRPCHandler) GetHealth(c *gin.Context) {
 	s.healthCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -710,6 +736,18 @@ func (s *stubListingKitHandler) GetAIClientSettings(c *gin.Context) {
 
 func (s *stubListingKitHandler) UpdateAIClientSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"client_name": "default", "api_key_set": true})
+}
+
+func (s *stubListingKitHandler) ListPromptSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}})
+}
+
+func (s *stubListingKitHandler) UpsertPromptSetting(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"key": "prompt-key"})
+}
+
+func (s *stubListingKitHandler) SetPromptSettingStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"key": c.Param("key")})
 }
 
 func (s *stubListingKitHandler) PreviewSheinPrice(c *gin.Context) {
@@ -1603,6 +1641,24 @@ func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 	}
 	if _, ok := index[http.MethodGet+" /shein-login"]; ok {
 		t.Fatal("legacy embedded SHEIN login HTML route should not be registered")
+	}
+}
+
+func TestBuildRouteDescriptorsWithSDSLoginExposesOnlyAPI(t *testing.T) {
+	t.Parallel()
+
+	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, &stubSDSLoginHandler{}, nil)
+
+	index := make(map[string]struct{}, len(routes))
+	for _, route := range routes {
+		index[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	if _, ok := index[http.MethodGet+" /api/v1/sds-login/status"]; !ok {
+		t.Fatal("expected SDS login status API route to remain registered")
+	}
+	if _, ok := index[http.MethodGet+" /sds-login"]; ok {
+		t.Fatal("legacy embedded SDS login HTML route should not be registered")
 	}
 }
 

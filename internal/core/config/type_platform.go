@@ -61,7 +61,6 @@ type LoginServiceConfig struct {
 	ProfileRootDir      string `mapstructure:"profileRootDir" yaml:"profileRootDir"`
 	ArtifactDir         string `mapstructure:"artifactDir" yaml:"artifactDir"`
 	DefaultHeadless     bool   `mapstructure:"defaultHeadless" yaml:"defaultHeadless"`
-	AdminPageEnabled    bool   `mapstructure:"adminPageEnabled" yaml:"adminPageEnabled"`
 }
 
 type SDSLoginServiceConfig = LoginServiceConfig

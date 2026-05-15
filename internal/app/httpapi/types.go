@@ -261,7 +261,6 @@ type sdsLoginRouteHandler interface {
 	ManualLogin(c *gin.Context)
 	GetAuthState(c *gin.Context)
 	ClearState(c *gin.Context)
-	AdminPage(c *gin.Context)
 }
 
 type routeDescriptor struct {

@@ -64,5 +64,4 @@ type Status struct {
 type ServiceHealth struct {
 	Initialized        bool `json:"initialized"`
 	MaxConcurrentLogin int  `json:"max_concurrent_logins"`
-	AdminPageEnabled   bool `json:"admin_page_enabled"`
 }

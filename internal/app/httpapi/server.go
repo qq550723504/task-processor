@@ -247,7 +247,6 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/sds-login/manual-login", Module: "sds-login", Handler: sdsLoginHandler.ManualLogin},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds-login/auth-state", Module: "sds-login", Handler: sdsLoginHandler.GetAuthState},
 			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/sds-login/state", Module: "sds-login", Handler: sdsLoginHandler.ClearState},
-			routeDescriptor{Method: http.MethodGet, Path: "/sds-login", Module: "sds-login", Handler: sdsLoginHandler.AdminPage},
 		)
 	}
 
