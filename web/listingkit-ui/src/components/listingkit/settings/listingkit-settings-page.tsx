@@ -1,6 +1,7 @@
 "use client";
 
 import { AIClientSettingsCard } from "@/components/listingkit/settings/ai-client-settings-card";
+import { ZitadelSessionCard } from "@/components/listingkit/settings/zitadel-session-card";
 import { SheinSettingsCard } from "@/components/listingkit/shein/shein-settings-card";
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 
@@ -19,6 +20,7 @@ export function ListingKitSettingsPage() {
         </p>
       </section>
 
+      <ZitadelSessionCard />
       <AIClientSettingsCard />
       <SheinSettingsCard />
     </ListingKitPageShell>
