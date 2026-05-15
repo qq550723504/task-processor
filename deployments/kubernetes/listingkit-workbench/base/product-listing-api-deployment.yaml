@@ -34,6 +34,8 @@ spec:
               mountPath: /app/tmp
             - name: logs
               mountPath: /app/logs
+            - name: listingkit-data
+              mountPath: /data
           readinessProbe:
             httpGet:
               path: /health
@@ -68,4 +70,6 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: logs
+          emptyDir: {}
+        - name: listingkit-data
           emptyDir: {}

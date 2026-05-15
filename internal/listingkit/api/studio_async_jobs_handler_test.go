@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -117,5 +119,82 @@ func TestStudioAsyncJobReturnsNotFoundForMissingJob(t *testing.T) {
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.Code)
+	}
+}
+
+func TestStudioAsyncJobFileStorePersistsCompletedJobs(t *testing.T) {
+	t.Parallel()
+
+	storePath := filepath.Join(t.TempDir(), "studio-async-jobs.json")
+	store, err := newStudioAsyncJobFileStore(storePath, studioAsyncJobTTL, studioAsyncJobMaxLen)
+	if err != nil {
+		t.Fatalf("new file store: %v", err)
+	}
+	job := store.create("/studio/designs")
+	store.succeed(job.ID, map[string]any{
+		"images": []map[string]any{{
+			"id":        "design-1",
+			"image_url": "https://example.com/design.png",
+		}},
+	})
+
+	reloaded, err := newStudioAsyncJobFileStore(storePath, studioAsyncJobTTL, studioAsyncJobMaxLen)
+	if err != nil {
+		t.Fatalf("reload file store: %v", err)
+	}
+	persisted, ok := reloaded.get(job.ID)
+	if !ok {
+		t.Fatalf("persisted job %q not found after reload", job.ID)
+	}
+	if persisted.Status != studioAsyncJobSucceeded || persisted.Result == nil {
+		t.Fatalf("persisted job = %+v, want succeeded result", persisted)
+	}
+}
+
+func TestStudioAsyncJobHandlerUsesConfiguredFileStore(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "configured-studio-async-jobs.json")
+	t.Setenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH", storePath)
+	store, err := newStudioAsyncJobFileStore(storePath, studioAsyncJobTTL, studioAsyncJobMaxLen)
+	if err != nil {
+		t.Fatalf("new file store: %v", err)
+	}
+	job := store.create("/studio/designs")
+	store.succeed(job.ID, map[string]any{"prompt": "persisted"})
+
+	gin.SetMode(gin.TestMode)
+	h, err := NewHandler(&stubGenerationTaskService{})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/studio/async-jobs/:job_id", h.GetStudioAsyncJob)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/async-jobs/"+job.ID, nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	var payload struct {
+		JobID  string `json:"job_id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.JobID != job.ID || payload.Status != "succeeded" {
+		t.Fatalf("payload = %+v, want persisted succeeded job", payload)
+	}
+}
+
+func TestStudioAsyncJobHandlerRejectsInvalidConfiguredFileStore(t *testing.T) {
+	parentFile := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(parentFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write parent file: %v", err)
+	}
+	t.Setenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH", filepath.Join(parentFile, "jobs.json"))
+
+	if _, err := NewHandler(&stubGenerationTaskService{}); err == nil {
+		t.Fatal("NewHandler returned nil error, want invalid file store error")
 	}
 }

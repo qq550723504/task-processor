@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -46,10 +48,11 @@ type studioAsyncJob struct {
 }
 
 type studioAsyncJobStore struct {
-	mu   sync.Mutex
-	jobs map[string]*studioAsyncJob
-	ttl  time.Duration
-	max  int
+	mu       sync.Mutex
+	jobs     map[string]*studioAsyncJob
+	ttl      time.Duration
+	max      int
+	filePath string
 }
 
 func newStudioAsyncJobStore() *studioAsyncJobStore {
@@ -58,6 +61,33 @@ func newStudioAsyncJobStore() *studioAsyncJobStore {
 		ttl:  studioAsyncJobTTL,
 		max:  studioAsyncJobMaxLen,
 	}
+}
+
+func newDefaultStudioAsyncJobStore() (*studioAsyncJobStore, error) {
+	if path := strings.TrimSpace(os.Getenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH")); path != "" {
+		store, err := newStudioAsyncJobFileStore(path, studioAsyncJobTTL, studioAsyncJobMaxLen)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	}
+	return newStudioAsyncJobStore(), nil
+}
+
+func newStudioAsyncJobFileStore(path string, ttl time.Duration, max int) (*studioAsyncJobStore, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	store := &studioAsyncJobStore{
+		jobs:     make(map[string]*studioAsyncJob),
+		ttl:      ttl,
+		max:      max,
+		filePath: path,
+	}
+	if err := store.loadFromFile(); err != nil {
+		return nil, err
+	}
+	return store, nil
 }
 
 func (s *studioAsyncJobStore) create(path string) studioAsyncJob {
@@ -73,6 +103,7 @@ func (s *studioAsyncJobStore) create(path string) studioAsyncJob {
 		UpdatedAt: time.Now().UTC(),
 	}
 	s.jobs[job.ID] = job
+	s.persistLocked()
 	return cloneStudioAsyncJob(job)
 }
 
@@ -115,6 +146,7 @@ func (s *studioAsyncJobStore) update(id string, status studioAsyncJobStatus, res
 	job.UpstreamStatus = upstreamStatus
 	job.UpdatedAt = now
 	job.FinishedAt = &now
+	s.persistLocked()
 }
 
 func (s *studioAsyncJobStore) cleanupLocked(now time.Time) {
@@ -132,6 +164,57 @@ func (s *studioAsyncJobStore) cleanupLocked(now time.Time) {
 			return
 		}
 	}
+}
+
+func (s *studioAsyncJobStore) loadFromFile() error {
+	if strings.TrimSpace(s.filePath) == "" {
+		return nil
+	}
+	data, err := os.ReadFile(s.filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var payload struct {
+		Jobs []*studioAsyncJob `json:"jobs"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, job := range payload.Jobs {
+		if job == nil || job.ID == "" || now.Sub(job.UpdatedAt) > s.ttl {
+			continue
+		}
+		cloned := cloneStudioAsyncJob(job)
+		s.jobs[cloned.ID] = &cloned
+	}
+	return nil
+}
+
+func (s *studioAsyncJobStore) persistLocked() {
+	if strings.TrimSpace(s.filePath) == "" {
+		return
+	}
+	payload := struct {
+		Jobs []*studioAsyncJob `json:"jobs"`
+	}{
+		Jobs: make([]*studioAsyncJob, 0, len(s.jobs)),
+	}
+	for _, job := range s.jobs {
+		cloned := cloneStudioAsyncJob(job)
+		payload.Jobs = append(payload.Jobs, &cloned)
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(s.filePath), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(s.filePath, data, 0o644)
 }
 
 func cloneStudioAsyncJob(job *studioAsyncJob) studioAsyncJob {

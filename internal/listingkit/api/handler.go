@@ -19,7 +19,11 @@ func NewHandler(service listingkit.HandlerService) (listingkit.Handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
-	return &handler{service: service, studioAsyncJobs: newStudioAsyncJobStore()}, nil
+	studioAsyncJobs, err := newDefaultStudioAsyncJobStore()
+	if err != nil {
+		return nil, err
+	}
+	return &handler{service: service, studioAsyncJobs: studioAsyncJobs}, nil
 }
 
 func (h *handler) GenerateListingKit(c *gin.Context) {

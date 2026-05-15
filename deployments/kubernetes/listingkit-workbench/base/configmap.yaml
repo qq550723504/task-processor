@@ -13,5 +13,7 @@ data:
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION: "us-east-1"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT: "https://oss.shuomiai.com"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE: "true"
+  # Mount this path to persistent storage if API restarts must retain Studio async job status.
+  LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH: "/data/listingkit-studio-async-jobs.json"
   # Set ZITADEL_ISSUER_URL and ZITADEL_CLIENT_ID to enable ZITADEL OIDC login.
   ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:org:project:id:zitadel:aud"
