@@ -48,6 +48,11 @@ export const subscriptionUsageCounterSchema = z
   })
   .passthrough();
 
+const subscriptionUsageListSchema = z
+  .array(subscriptionUsageCounterSchema)
+  .nullish()
+  .transform((value) => value ?? []);
+
 export const subscriptionAuditLogSchema = z
   .object({
     id: z.number(),
@@ -65,7 +70,7 @@ export const subscriptionEntitlementViewSchema = z
   .object({
     module: subscriptionModuleSchema,
     entitlement: subscriptionEntitlementSchema.optional(),
-    usage: z.array(subscriptionUsageCounterSchema),
+    usage: subscriptionUsageListSchema,
     allowed: z.boolean(),
     reason: z.string().optional(),
     limits: z.record(z.string(), z.number()).optional(),

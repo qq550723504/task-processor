@@ -3,16 +3,27 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const NAV_ITEMS = [
+type NavItem = {
+  label: string;
+  href: string;
+  match: "exact" | "prefix";
+};
+
+const PRIMARY_NAV_ITEMS = [
   { label: "首页", href: "/", match: "exact" },
   { label: "新建任务", href: "/listing-kits/new", match: "exact" },
   { label: "POD", href: "/listing-kits/sds", match: "prefix" },
   { label: "款式图库", href: "/listing-kits/style-gallery", match: "prefix" },
+  { label: "SHEIN 工作台", href: "/listing-kits/shein", match: "prefix" },
   {
     label: "标准商品",
     href: "/listing-kits/canonical-products",
     match: "prefix",
   },
+  { label: "任务列表", href: "/listing-kits", match: "exact" },
+] as const satisfies readonly NavItem[];
+
+const OPERATIONS_NAV_ITEMS = [
   { label: "店铺", href: "/listing-kits/admin/stores", match: "prefix" },
   {
     label: "上架统计",
@@ -61,26 +72,60 @@ const NAV_ITEMS = [
     match: "prefix",
   },
   { label: "SHEIN 登录", href: "/listing-kits/shein-login", match: "prefix" },
+] as const satisfies readonly NavItem[];
+
+const SYSTEM_NAV_ITEMS = [
   { label: "订阅", href: "/listing-kits/subscription", match: "prefix" },
   {
     label: "平台订阅",
     href: "/listing-kits/platform/subscriptions",
     match: "prefix",
   },
-  { label: "任务列表", href: "/listing-kits", match: "exact" },
   { label: "设置", href: "/listing-kits/settings", match: "prefix" },
+] as const satisfies readonly NavItem[];
+
+const NAV_GROUPS = [
+  { label: "主流程", items: PRIMARY_NAV_ITEMS },
+  { label: "运营管理", items: OPERATIONS_NAV_ITEMS },
+  { label: "系统", items: SYSTEM_NAV_ITEMS },
 ] as const;
 
 const APP_RAIL_CLASS = "mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8";
 
-function isActiveNavItem(
-  pathname: string,
-  item: (typeof NAV_ITEMS)[number],
-) {
+function isActiveNavItem(pathname: string, item: NavItem) {
   if (item.match === "prefix") {
     return pathname === item.href || pathname.startsWith(`${item.href}/`);
   }
   return pathname === item.href;
+}
+
+function isActiveGroup(pathname: string, group: (typeof NAV_GROUPS)[number]) {
+  return group.items.some((item) => isActiveNavItem(pathname, item));
+}
+
+function NavLink({
+  item,
+  pathname,
+}: {
+  item: NavItem;
+  pathname: string;
+}) {
+  const active = isActiveNavItem(pathname, item);
+
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={[
+        "inline-flex h-9 shrink-0 items-center justify-center rounded-lg border px-3 text-sm font-medium transition",
+        active
+          ? "border-zinc-950 bg-zinc-950 text-white"
+          : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:text-zinc-950",
+      ].join(" ")}
+    >
+      {item.label}
+    </Link>
+  );
 }
 
 export function ListingKitAppShell({
@@ -112,33 +157,67 @@ export function ListingKitAppShell({
 
             <nav
               aria-label="ListingKit 主导航"
-              className="flex flex-wrap items-center gap-2"
+              className="flex w-full flex-col gap-3 xl:max-w-[980px]"
             >
-              {NAV_ITEMS.map((item) => {
-                const active = isActiveNavItem(pathname, item);
+              <span className="text-xs font-semibold text-zinc-500">
+                主流程
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {PRIMARY_NAV_ITEMS.map((item) => (
+                  <NavLink key={item.href} item={item} pathname={pathname} />
+                ))}
+                <details className="group relative shrink-0">
+                  <summary className="inline-flex h-9 cursor-pointer list-none items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950">
+                    更多
+                    <span className="ml-1 text-xs text-zinc-400 transition group-open:rotate-180">
+                      v
+                    </span>
+                  </summary>
+                  <div className="absolute left-0 z-20 mt-2 grid w-72 gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg md:left-auto md:right-0">
+                    {NAV_GROUPS.slice(1).map((group) => (
+                      <div key={group.label} className="grid gap-2">
+                        <span className="text-xs font-semibold text-zinc-500">
+                          {group.label}
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {group.items.map((item) => (
+                            <NavLink key={item.href} item={item} pathname={pathname} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="grid gap-2 border-t border-zinc-100 pt-3">
+                      <Link
+                        href="/api/zitadel-auth/logout"
+                        className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+                      >
+                        退出登录
+                      </Link>
+                    </div>
+                  </div>
+                </details>
+              </div>
+              {NAV_GROUPS.slice(1).map((group) => {
+                if (!isActiveGroup(pathname, group)) {
+                  return null;
+                }
 
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={[
-                      "inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition",
-                      active
-                        ? "border-zinc-950 bg-zinc-950 text-white"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:text-zinc-950",
-                    ].join(" ")}
+                  <div
+                    key={group.label}
+                    className="flex min-w-0 items-center gap-2 border-t border-zinc-100 pt-3"
                   >
-                    {item.label}
-                  </Link>
+                    <span className="shrink-0 text-xs font-semibold text-zinc-500">
+                      {group.label}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {group.items.map((item) => (
+                        <NavLink key={item.href} item={item} pathname={pathname} />
+                      ))}
+                    </div>
+                  </div>
                 );
               })}
-              <Link
-                href="/api/zitadel-auth/logout"
-                className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
-              >
-                退出登录
-              </Link>
             </nav>
           </div>
         </header>

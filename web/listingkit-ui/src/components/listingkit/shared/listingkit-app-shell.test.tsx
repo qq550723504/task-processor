@@ -18,6 +18,9 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByText("ListingKit")).toBeInTheDocument();
     expect(screen.getByText("源信息 -> 标准商品 -> 平台资料")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "ListingKit 主导航" })).toBeInTheDocument();
+    expect(screen.getByText("主流程")).toBeInTheDocument();
+    expect(screen.getByText("运营管理")).toBeInTheDocument();
+    expect(screen.getByText("系统")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "新建任务" })).toHaveAttribute("href", "/listing-kits/new");
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("href", "/listing-kits/sds");
@@ -46,6 +49,14 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute(
       "href",
       "/listing-kits/settings",
+    );
+    expect(screen.getByRole("link", { name: "店铺" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/stores",
+    );
+    expect(screen.getByRole("link", { name: "运营策略" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/operation-strategies",
     );
     expect(screen.getByRole("link", { name: "退出登录" })).toHaveAttribute(
       "href",

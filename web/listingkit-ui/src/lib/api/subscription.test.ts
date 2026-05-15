@@ -48,6 +48,36 @@ describe("subscription API schema", () => {
     expect(parsed.entitlements[0]?.limits?.design_jobs).toBe(10);
   });
 
+  it("normalizes empty backend usage from null to an empty list", () => {
+    const parsed = parseSubscriptionSummary({
+      tenant_id: "org-286",
+      modules: [
+        {
+          code: "oss_storage",
+          name: "OSS 存储",
+          sort_order: 60,
+          active: true,
+        },
+      ],
+      entitlements: [
+        {
+          module: {
+            code: "oss_storage",
+            name: "OSS 存储",
+            sort_order: 60,
+            active: true,
+          },
+          usage: null,
+          allowed: false,
+          reason: "not_configured",
+          used: {},
+        },
+      ],
+    });
+
+    expect(parsed.entitlements[0]?.usage).toEqual([]);
+  });
+
   it("rejects an invalid entitlement status", () => {
     expect(() =>
       parseSubscriptionEntitlement({
