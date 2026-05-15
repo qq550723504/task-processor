@@ -39,6 +39,10 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/settings",
     );
+    expect(screen.getByRole("link", { name: "退出登录" })).toHaveAttribute(
+      "href",
+      "/api/zitadel-auth/logout",
+    );
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
       "aria-current",
       "page",

@@ -80,6 +80,12 @@ export function ListingKitAppShell({
                   </Link>
                 );
               })}
+              <Link
+                href="/api/zitadel-auth/logout"
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+              >
+                退出登录
+              </Link>
             </nav>
           </div>
         </header>
