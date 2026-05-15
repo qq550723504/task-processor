@@ -17,11 +17,41 @@ async function loadStorageModule() {
 describe("shein studio server storage", () => {
   afterEach(async () => {
     process.chdir(originalCwd);
+    delete process.env.LISTINGKIT_UI_STORAGE_DIR;
     vi.resetModules();
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true });
       tempDir = null;
     }
+  });
+
+  it("uses LISTINGKIT_UI_STORAGE_DIR when configured", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "shein-studio-workspace-"));
+    const storageDir = await mkdtemp(path.join(os.tmpdir(), "shein-studio-storage-dir-"));
+    tempDir = workspace;
+    process.chdir(workspace);
+    process.env.LISTINGKIT_UI_STORAGE_DIR = storageDir;
+    vi.resetModules();
+
+    const { saveSheinStudioDraft } = await import("@/lib/server/shein-studio-storage");
+
+    await saveSheinStudioDraft({
+      prompt: "persistent storage",
+      styleCount: "1",
+      sheinStoreId: "869",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+
+    const raw = await readFile(
+      path.join(storageDir, "shein-studio-storage.json"),
+      "utf8",
+    );
+    const stored = JSON.parse(raw) as { draft?: { prompt?: string } };
+    expect(stored.draft?.prompt).toBe("persistent storage");
+
+    await rm(storageDir, { recursive: true, force: true });
   });
 
   it("preserves concurrent batch saves", async () => {

@@ -112,7 +112,7 @@ func (m *StoreAPIClient) UpdateStoreId(req *api.StoreIdUpdateReqDTO) (bool, erro
 // UpdateStoreStatus 更新店铺状态
 func (m *StoreAPIClient) UpdateStoreStatus(req *api.StoreStatusUpdateReqDTO) (bool, error) {
 	if m.localDataProvider != nil {
-		if ok, err := m.localDataProvider.UpdateStoreStatus(req.ID, req.Status, ""); err != nil || ok {
+		if ok, err := m.localDataProvider.UpdateStoreStatus(req.ID, req.Status, req.Remark); err != nil || ok {
 			return ok, err
 		}
 	}

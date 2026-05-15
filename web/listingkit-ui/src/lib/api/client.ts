@@ -12,7 +12,6 @@ import {
   ResponseJsonParseError,
 } from "@/lib/api/response-json";
 import type { ConditionalState, QueueQuery } from "@/lib/types/listingkit";
-import { applyYudaoAuthHeaders } from "@/lib/api/yudao-auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_LISTINGKIT_API_BASE ?? "/api/listing-kits";
@@ -40,6 +39,8 @@ type AsyncJobResponse<T> = {
   upstream_status?: number;
 };
 
+type AsyncJobSource = "backend" | "next";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -61,7 +62,7 @@ function buildHeaders(conditional?: ConditionalState | null) {
     headers.set("If-None-Match", conditional.delta_token);
   }
 
-  return applyYudaoAuthHeaders(headers);
+  return headers;
 }
 
 function buildApiUrl(path: string, query?: QueueQuery) {
@@ -122,8 +123,7 @@ export async function apiRequest<T>(
     } as T;
   }
 
-  const text = await response.text();
-  const payload = text ? (JSON.parse(text) as unknown) : undefined;
+  const payload = await parseApiJsonResponse(response);
 
   if (!response.ok) {
     throw new ApiError(
@@ -153,50 +153,21 @@ export async function apiAsyncRequest<T>(
   const resumeKey = buildAsyncJobResumeKey(path, body ?? {});
   const resumed = loadAsyncJobResumeEntry(resumeKey);
   let startedJobId = resumed?.jobId ?? "";
+  let startedJobSource: AsyncJobSource = resumed?.source ?? "next";
   let resumedFromStorage = Boolean(startedJobId);
 
   if (!startedJobId) {
-    const staged = await stageAsyncJobRequestIfNeeded({ path, body });
-    const started = await fetchWithRetry(
-      staged.staged
-        ? "/api/listing-kits/async-jobs/staged"
-        : "/api/listing-kits/async-jobs",
-      {
-        method: staged.staged ? "PATCH" : "POST",
-        headers: applyYudaoAuthHeaders(new Headers({
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        })),
-        body: staged.staged
-          ? JSON.stringify({ stage_id: staged.stageId })
-          : JSON.stringify({ path, body: JSON.parse(staged.bodyText) }),
-      },
-    );
-    let startedPayload: (AsyncJobResponse<T> & { message?: string }) | undefined;
-    try {
-      startedPayload = await parseJsonResponse<AsyncJobResponse<T> & {
-        message?: string;
-      }>(started);
-    } catch (error) {
-      if (error instanceof ResponseJsonParseError) {
-        throw new ApiError(
-          "ListingKit async job start returned invalid JSON",
-          started.status,
-          { message: error.message },
-        );
-      }
-      throw error;
+    const backendJob = await startBackendAsyncJob<T>(path, body);
+    if (backendJob) {
+      startedJobId = backendJob.jobId;
+      startedJobSource = "backend";
+    } else {
+      const localJob = await startNextAsyncJob<T>(path, body);
+      startedJobId = localJob.jobId;
+      startedJobSource = "next";
     }
-    if (!started.ok || !startedPayload?.job_id) {
-      throw new ApiError(
-        startedPayload?.message ?? `ListingKit async job start failed: ${started.status}`,
-        started.status,
-        startedPayload,
-      );
-    }
-    startedJobId = startedPayload.job_id;
     onJobStarted?.(startedJobId);
-    saveAsyncJobResumeEntry(resumeKey, startedJobId);
+    saveAsyncJobResumeEntry(resumeKey, startedJobId, startedJobSource);
   }
 
   const deadline = Date.now() + timeoutMs;
@@ -205,11 +176,11 @@ export async function apiAsyncRequest<T>(
     await sleep(2000);
     try {
       const response = await fetchWithRetry(
-        `/api/listing-kits/async-jobs?id=${encodeURIComponent(startedJobId)}`,
+        buildAsyncJobPollUrl(startedJobId, startedJobSource),
         {
-          headers: applyYudaoAuthHeaders(new Headers({
+          headers: new Headers({
             Accept: "application/json",
-          })),
+          }),
           cache: "no-store",
         },
         { retries: 1, retryDelayMs: 1200 },
@@ -295,12 +266,11 @@ export async function apiFormRequest<T>(
 ): Promise<T> {
   const response = await fetch(buildApiUrl(path), {
     method,
-    headers: applyYudaoAuthHeaders(new Headers()),
+    headers: new Headers(),
     body: formData,
   });
 
-  const text = await response.text();
-  const payload = text ? (JSON.parse(text) as unknown) : undefined;
+  const payload = await parseApiJsonResponse(response);
 
   if (!response.ok) {
     throw new ApiError(
@@ -315,4 +285,120 @@ export async function apiFormRequest<T>(
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function startBackendAsyncJob<T>(path: string, body: unknown) {
+  let response: Response;
+  try {
+    response = await fetchWithRetry(
+      buildApiUrl("/studio/async-jobs"),
+      {
+        method: "POST",
+        headers: new Headers({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ path, body }),
+      },
+      { retries: 0 },
+    );
+  } catch {
+    return null;
+  }
+
+  if (isBackendAsyncJobUnavailable(response.status)) {
+    return null;
+  }
+
+  let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
+  try {
+    payload = await parseJsonResponse<AsyncJobResponse<T> & {
+      message?: string;
+    }>(response);
+  } catch (error) {
+    if (error instanceof ResponseJsonParseError) {
+      throw new ApiError(
+        "ListingKit backend async job start returned invalid JSON",
+        response.status,
+        { message: error.message },
+      );
+    }
+    throw error;
+  }
+
+  if (!response.ok || !payload?.job_id) {
+    throw new ApiError(
+      payload?.message ?? `ListingKit backend async job start failed: ${response.status}`,
+      response.status,
+      payload,
+    );
+  }
+
+  return { jobId: payload.job_id };
+}
+
+async function startNextAsyncJob<T>(path: string, body: unknown) {
+  const staged = await stageAsyncJobRequestIfNeeded({ path, body });
+  const response = await fetchWithRetry(
+    staged.staged
+      ? "/api/listing-kits/async-jobs/staged"
+      : "/api/listing-kits/async-jobs",
+    {
+      method: staged.staged ? "PATCH" : "POST",
+      headers: new Headers({
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: staged.staged
+        ? JSON.stringify({ stage_id: staged.stageId })
+        : JSON.stringify({ path, body: JSON.parse(staged.bodyText) }),
+    },
+  );
+  let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
+  try {
+    payload = await parseJsonResponse<AsyncJobResponse<T> & {
+      message?: string;
+    }>(response);
+  } catch (error) {
+    if (error instanceof ResponseJsonParseError) {
+      throw new ApiError(
+        "ListingKit async job start returned invalid JSON",
+        response.status,
+        { message: error.message },
+      );
+    }
+    throw error;
+  }
+  if (!response.ok || !payload?.job_id) {
+    throw new ApiError(
+      payload?.message ?? `ListingKit async job start failed: ${response.status}`,
+      response.status,
+      payload,
+    );
+  }
+  return { jobId: payload.job_id };
+}
+
+function buildAsyncJobPollUrl(jobId: string, source: AsyncJobSource) {
+  if (source === "backend") {
+    return buildApiUrl(`/studio/async-jobs/${encodeURIComponent(jobId)}`);
+  }
+  return `/api/listing-kits/async-jobs?id=${encodeURIComponent(jobId)}`;
+}
+
+function isBackendAsyncJobUnavailable(status: number) {
+  return status === 404 || status === 405 || status === 501;
+}
+
+async function parseApiJsonResponse(response: Response) {
+  try {
+    return await parseJsonResponse<unknown>(response);
+  } catch (error) {
+    if (error instanceof ResponseJsonParseError) {
+      throw new ApiError("ListingKit API returned invalid JSON", response.status, {
+        message: error.message,
+      });
+    }
+    throw error;
+  }
 }

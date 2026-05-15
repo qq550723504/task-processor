@@ -80,6 +80,8 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/ai", Module: "listing-kit", Handler: listingKitHandler.UpdateAIClientSettings},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: listingKitHandler.GenerateStudioDesigns},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: listingKitHandler.GenerateStudioProductImages},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/async-jobs", Module: "listing-kit", Handler: listingKitHandler.StartStudioAsyncJob},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/async-jobs/:job_id", Module: "listing-kit", Handler: listingKitHandler.GetStudioAsyncJob},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: listingKitHandler.RegenerateSheinDataImage},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/uploads/images", Module: "listing-kit", Handler: listingKitHandler.UploadListingKitImages},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/uploads/files/*key", Module: "listing-kit", Handler: listingKitHandler.GetUploadedListingKitImage},

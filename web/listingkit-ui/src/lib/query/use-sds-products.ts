@@ -31,7 +31,7 @@ export function useSDSProducts({
   cycleBand?: string;
 }) {
   return useQuery({
-    queryKey: listingKitKeys.sdsProducts(
+    queryKey: listingKitKeys.sdsProducts({
       keyword,
       page,
       size,
@@ -43,7 +43,7 @@ export function useSDSProducts({
       sortType,
       weightBand,
       cycleBand,
-    ),
+    }),
     queryFn: () =>
       getSDSProducts({
         keyword,

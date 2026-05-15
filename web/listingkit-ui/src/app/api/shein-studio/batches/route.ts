@@ -14,6 +14,7 @@ import type {
 } from "@/lib/types/shein-studio";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type BatchPayload = {
   id?: string;

@@ -8,7 +8,10 @@ import { useSheinSettings, useUpdateSheinSettings } from "@/lib/query/use-shein-
 export function SheinSettingsCard() {
   const settings = useSheinSettings();
   const update = useUpdateSheinSettings();
-  const availableStores = settings.data?.available_stores ?? [];
+  const availableStores = useMemo(
+    () => settings.data?.available_stores ?? [],
+    [settings.data?.available_stores],
+  );
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const loadedForm = useMemo(() => {
     const data = settings.data;

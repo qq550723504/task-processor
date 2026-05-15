@@ -1,4 +1,3 @@
-import { applyYudaoAuthHeaders } from "@/lib/api/yudao-auth";
 import type {
   SheinLoginAccountStatus,
   SheinLoginFailureDetail,
@@ -12,14 +11,12 @@ async function readJSON<T>(response: Response): Promise<T> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/shein-login${path}`, {
     ...init,
-    headers: applyYudaoAuthHeaders(
-      new Headers({
-        Accept: "application/json",
-        ...(init?.headers instanceof Headers
-          ? Object.fromEntries(init.headers.entries())
-          : (init?.headers as Record<string, string> | undefined)),
-      }),
-    ),
+    headers: new Headers({
+      Accept: "application/json",
+      ...(init?.headers instanceof Headers
+        ? Object.fromEntries(init.headers.entries())
+        : (init?.headers as Record<string, string> | undefined)),
+    }),
     cache: "no-store",
   });
   const payload = await readJSON<{ success?: boolean; data?: T; message?: string }>(response);

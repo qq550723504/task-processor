@@ -105,6 +105,8 @@ type listingKitRouteHandler interface {
 	GenerateListingKit(c *gin.Context)
 	GenerateStudioDesigns(c *gin.Context)
 	GenerateStudioProductImages(c *gin.Context)
+	StartStudioAsyncJob(c *gin.Context)
+	GetStudioAsyncJob(c *gin.Context)
 	RegenerateSheinDataImage(c *gin.Context)
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)

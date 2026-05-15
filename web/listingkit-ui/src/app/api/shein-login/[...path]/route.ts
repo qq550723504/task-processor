@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildSheinLoginURL } from "@/app/api/shein-login/shared";
+import { getZitadelBearerToken } from "@/lib/server/zitadel-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,6 @@ export function buildSheinLoginUpstreamHeaders(requestHeaders: Headers) {
   copyHeader(requestHeaders, headers, "accept", "Accept");
   copyHeader(requestHeaders, headers, "content-type", "Content-Type");
   copyHeader(requestHeaders, headers, "authorization", "Authorization");
-  copyHeader(requestHeaders, headers, "tenant-id", "tenant-id");
-  copyHeader(requestHeaders, headers, "visit-tenant-id", "visit-tenant-id");
-  copyHeader(requestHeaders, headers, "login-user", "login-user");
   return headers;
 }
 
@@ -29,6 +27,10 @@ async function proxyRequest(
   const { path } = await params;
   const url = buildSheinLoginURL(`/${path.join("/")}`);
   const headers = buildSheinLoginUpstreamHeaders(request.headers);
+  const zitadelToken = getZitadelBearerToken(request);
+  if (zitadelToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${zitadelToken}`);
+  }
 
   const response = await fetch(url, {
     method: request.method,

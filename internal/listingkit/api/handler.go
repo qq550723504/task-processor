@@ -11,14 +11,15 @@ import (
 )
 
 type handler struct {
-	service listingkit.HandlerService
+	service         listingkit.HandlerService
+	studioAsyncJobs *studioAsyncJobStore
 }
 
 func NewHandler(service listingkit.HandlerService) (listingkit.Handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
-	return &handler{service: service}, nil
+	return &handler{service: service, studioAsyncJobs: newStudioAsyncJobStore()}, nil
 }
 
 func (h *handler) GenerateListingKit(c *gin.Context) {

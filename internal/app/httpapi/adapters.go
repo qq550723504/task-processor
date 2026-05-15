@@ -22,6 +22,7 @@ import (
 	"task-processor/internal/productenrich/store"
 	productimage "task-processor/internal/productimage"
 	productimagestore "task-processor/internal/productimage/store"
+	"task-processor/internal/prompt"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -55,6 +56,23 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 	resolver := openaiclient.NewGormCredentialResolver(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return resolver, closer, nil
+}
+
+func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (prompt.TenantPromptStore, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
+		return nil, nil, fmt.Errorf("tenant prompt auto-migrate failed: %w", err)
+	}
+	store := prompt.NewGormTenantPromptStore(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return store, closer, nil
 }
 
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {

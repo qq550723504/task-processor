@@ -89,6 +89,13 @@ func absolutizeUploadedImageURLs(c *gin.Context, urls []string) []string {
 	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 		scheme = "https"
 	}
+	return absolutizeUploadedImageURLsWithBase(scheme+"://"+c.Request.Host, urls)
+}
+
+func absolutizeUploadedImageURLsWithBase(baseURL string, urls []string) []string {
+	if len(urls) == 0 {
+		return nil
+	}
 	absolute := make([]string, 0, len(urls))
 	for _, rawURL := range urls {
 		parsed, err := url.Parse(rawURL)
@@ -96,7 +103,7 @@ func absolutizeUploadedImageURLs(c *gin.Context, urls []string) []string {
 			absolute = append(absolute, rawURL)
 			continue
 		}
-		absolute = append(absolute, scheme+"://"+c.Request.Host+rawURL)
+		absolute = append(absolute, baseURL+rawURL)
 	}
 	return absolute
 }

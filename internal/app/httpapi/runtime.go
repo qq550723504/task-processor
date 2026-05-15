@@ -38,6 +38,17 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	closers := make([]func() error, 0)
 	var aiCredentialStore *openaiclient.GormCredentialResolver
 	if cfg.Database != nil {
+		tenantPromptStore, closer, err := newDBTenantPromptStore(cfg.Database, logger)
+		if err != nil {
+			return nil, fmt.Errorf("create tenant prompt store: %w", err)
+		}
+		if err := prompt.SetTenantPromptStore(tenantPromptStore); err != nil {
+			return nil, fmt.Errorf("attach tenant prompt store: %w", err)
+		}
+		if closer != nil {
+			closers = append(closers, closer)
+		}
+
 		credentialResolver, closer, err := newDBOpenAICredentialResolver(cfg.Database, logger)
 		if err != nil {
 			return nil, fmt.Errorf("create OpenAI credential resolver: %w", err)

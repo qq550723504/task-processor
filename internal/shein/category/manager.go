@@ -79,31 +79,18 @@ func (s *OpenAISelector) selectCategoryByAI(
 	categoryInfo string,
 	categoryType string,
 ) (int, error) {
-	// 从 prompt registry 获取系统提示词
-	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinCategorySelectorSelectCategorySystem,
-		`你是一个专业的电商产品分类专家。根据产品标题，从给定的分类列表中选择最合适的分类ID。
+	systemPrompt, err := prompt.GetTenantFromContext(ctx, prompt.KSheinCategorySelectorSelectCategorySystem)
+	if err != nil {
+		return 0, fmt.Errorf("读取租户分类系统提示词失败: %w", err)
+	}
 
-分析原则：
-1. 仔细分析产品标题中的关键词
-2. 理解产品的类型、用途、材质等特征
-3. 从分类路径中找到最精确匹配的分类
-4. 优先选择更具体、更精准的分类
-5. 考虑产品的主要功能和用途
-
-返回格式：
-请返回JSON格式，包含选中的分类ID和选择理由：
-{
-  "category_id": 12345,
-  "reason": "选择该分类的详细理由"
-}
-
-注意：category_id必须是给定列表中的有效ID。`)
-
-	// 从 prompt registry 渲染用户提示词
-	userPrompt, _ := prompt.GlobalRegistry.Render(prompt.KSheinCategorySelectorSelectCategoryUser, map[string]any{
+	userPrompt, err := prompt.RenderTenantFromContext(ctx, prompt.KSheinCategorySelectorSelectCategoryUser, map[string]any{
 		"title":        title,
 		"categoryInfo": categoryInfo,
-	}, fmt.Sprintf("产品标题：%s\n\n%s\n\n请分析产品标题，选择最合适的分类ID（必须从上述列表中选择）：", title, categoryInfo))
+	})
+	if err != nil {
+		return 0, fmt.Errorf("渲染租户分类用户提示词失败: %w", err)
+	}
 
 	// 设置seed确保结果一致性
 	seed := 42
@@ -186,14 +173,10 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 
 // ExtractCoreItemByAI 通过AI从商品上下文中提取适合 SuggestCategoryByText 的核心检索词。
 func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, input CoreItemInput) (string, error) {
-	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinCategorySelectorExtractCoreItemSystem,
-		`你是一个电商产品分类检索专家。请基于输入商品信息，提取一个最适合用于类目检索的核心商品名。
-要求：
-1. 优先输出标准、通用、最像电商类目词的商品名，而不是标题摘要
-2. 如果输入中有产品类别或类目叶子，优先服从这些更标准的词
-3. 只保留必要的品类本体和少量关键限定词，去掉品牌、数量、营销词、颜色、尺寸等噪音
-4. 输出尽量简短，优先 2-8 个汉字；如中文不自然可输出很短英文商品名
-5. 只返回一个商品名，不要任何解释`)
+	systemPrompt, err := prompt.GetTenantFromContext(ctx, prompt.KSheinCategorySelectorExtractCoreItemSystem)
+	if err != nil {
+		return "", fmt.Errorf("读取租户核心类目提示词失败: %w", err)
+	}
 
 	userPrompt := buildCoreItemPromptInput(input)
 

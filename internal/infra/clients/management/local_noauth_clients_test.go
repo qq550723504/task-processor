@@ -52,7 +52,9 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			remark TEXT,
 			status INTEGER,
 			valid_from DATETIME,
-			valid_until DATETIME
+			valid_until DATETIME,
+			create_time DATETIME,
+			creator TEXT
 		)`,
 		`CREATE TABLE listing_product_import_mapping (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +156,36 @@ func TestLocalDataProviderPageStoresFiltersByTenantAndPlatform(t *testing.T) {
 	}
 	if page.List[0].ID != 101 {
 		t.Fatalf("PageStores()[0].ID = %d, want 101", page.List[0].ID)
+	}
+}
+
+func TestLocalDataProviderGetStoreMapsListingStoreMetadata(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	createdAt := time.Date(2026, 5, 15, 1, 2, 3, 0, time.UTC)
+	row := localListingStore{
+		ID:         201,
+		TenantID:   1,
+		StoreID:    "SHEIN-US-201",
+		Name:       "Tenant1 Shein",
+		Platform:   "shein",
+		Region:     "us",
+		Status:     0,
+		CreateTime: &createdAt,
+		Creator:    "admin",
+	}
+	if err := provider.db.Table("listing_store").Create(&row).Error; err != nil {
+		t.Fatalf("seed listing_store: %v", err)
+	}
+
+	store, err := provider.GetStore(201)
+	if err != nil {
+		t.Fatalf("GetStore() error = %v", err)
+	}
+	if store == nil {
+		t.Fatal("GetStore() returned nil")
+	}
+	if store.Creator != "admin" || store.CreateTime == nil || !store.CreateTime.Time.Equal(createdAt) {
+		t.Fatalf("GetStore() metadata = creator %q createTime %#v", store.Creator, store.CreateTime)
 	}
 }
 

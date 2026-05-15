@@ -1,5 +1,3 @@
-import { applyYudaoAuthHeaders } from "@/lib/api/yudao-auth";
-
 const MAX_INLINE_ASYNC_JOB_BYTES = 1024;
 const MAX_STAGED_CHUNK_BYTES = 700;
 
@@ -26,10 +24,10 @@ export async function stageAsyncJobRequestIfNeeded(
   const chunks = chunkStringByUtf8Bytes(payloadText, MAX_STAGED_CHUNK_BYTES);
   const created = await fetch("/api/listing-kits/async-jobs/staged", {
     method: "POST",
-    headers: applyYudaoAuthHeaders(new Headers({
+    headers: new Headers({
       Accept: "application/json",
       "Content-Type": "application/json",
-    })),
+    }),
     body: JSON.stringify({
       path: input.path,
       chunk_count: chunks.length,
@@ -49,10 +47,10 @@ export async function stageAsyncJobRequestIfNeeded(
   for (const [index, chunk] of chunks.entries()) {
     const response = await fetch("/api/listing-kits/async-jobs/staged", {
       method: "PUT",
-      headers: applyYudaoAuthHeaders(new Headers({
+      headers: new Headers({
         Accept: "application/json",
         "Content-Type": "application/json",
-      })),
+      }),
       body: JSON.stringify({
         stage_id: createdPayload.stage_id,
         chunk_index: index,

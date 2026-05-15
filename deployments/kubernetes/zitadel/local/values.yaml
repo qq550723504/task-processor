@@ -1,0 +1,63 @@
+# Local ZITADEL stack for development.
+# Uses bundled PostgreSQL and TLS terminated by the local ingress controller.
+# Do not use these values for staging or production.
+
+postgresql:
+  enabled: false
+
+env:
+  - name: ZITADEL_DATABASE_POSTGRES_DSN
+    valueFrom:
+      secretKeyRef:
+        name: zitadel-postgres16
+        key: dsn
+
+zitadel:
+  # Dev-only 32 character master key. Replace before any non-local deployment.
+  masterkey: "MasterkeyNeedsToHave32Characters"
+  configmapConfig:
+    ExternalDomain: auth.shuomiai.com
+    ExternalPort: 443
+    ExternalSecure: true
+    TLS:
+      Enabled: false
+    FirstInstance:
+      Org:
+        Human:
+          UserName: zitadel-admin
+          Email: zitadel-admin@zitadel.localhost
+          Password: "Password1!"
+          PasswordChangeRequired: false
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  hosts:
+    - host: auth.shuomiai.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - auth.shuomiai.com
+      secretName: auth-shuomiai-com-tls
+
+login:
+  ingress:
+    enabled: true
+    className: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    hosts:
+      - host: auth.shuomiai.com
+        paths:
+          - path: /ui/v2/login
+            pathType: Prefix
+    tls:
+      - hosts:
+          - auth.shuomiai.com
+        secretName: auth-shuomiai-com-tls

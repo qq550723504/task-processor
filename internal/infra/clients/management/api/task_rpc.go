@@ -8,6 +8,8 @@ type TaskSubmitReqDTO struct {
 	TenantID         int64  `json:"tenantId"`
 	StoreID          int64  `json:"storeId"`
 	Platform         string `json:"platform"`
+	TargetPlatform   string `json:"targetPlatform,omitempty"`
+	SourcePlatform   string `json:"sourcePlatform,omitempty"`
 	Region           string `json:"region"`
 	CategoryID       int64  `json:"categoryId"`
 	ProductID        string `json:"productId"`
@@ -61,7 +63,10 @@ type TaskBatchSubmitRespDTO struct {
 
 // TaskStatusReqDTO 任务状态查询请求。
 type TaskStatusReqDTO struct {
-	TaskID int64 `json:"taskId"`
+	TaskID         int64 `json:"taskId"`
+	TenantID       int64 `json:"tenantId,omitempty"`
+	IncludeDetails bool  `json:"includeDetails,omitempty"`
+	IncludeLogs    bool  `json:"includeLogs,omitempty"`
 }
 
 // TaskStatusRespDTO 任务状态响应。

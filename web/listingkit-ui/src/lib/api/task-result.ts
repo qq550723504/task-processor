@@ -1,6 +1,9 @@
 import { apiRequest } from "@/lib/api/client";
+import { parseTaskResultResponse } from "@/lib/api/listingkit-response-schema";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
-export function getListingKitTaskResult(taskId: string) {
-  return apiRequest<ListingKitTaskResult>(`/tasks/${taskId}`);
+export async function getListingKitTaskResult(taskId: string) {
+  return parseTaskResultResponse(
+    await apiRequest<ListingKitTaskResult>(`/tasks/${taskId}`),
+  );
 }

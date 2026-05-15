@@ -1,20 +1,23 @@
 import { apiRequest } from "@/lib/api/client";
+import { parseReviewPreviewResponse } from "@/lib/api/listingkit-response-schema";
 import type {
   ConditionalState,
   QueueQuery,
   ReviewPreviewResponse,
 } from "@/lib/types/listingkit";
 
-export function getReviewPreview(
+export async function getReviewPreview(
   taskId: string,
   query: QueueQuery,
   conditional?: ConditionalState | null,
 ) {
-  return apiRequest<ReviewPreviewResponse>(
-    `/tasks/${taskId}/generation-review-preview`,
-    {
-      query,
-      conditional,
-    },
+  return parseReviewPreviewResponse(
+    await apiRequest<ReviewPreviewResponse>(
+      `/tasks/${taskId}/generation-review-preview`,
+      {
+        query,
+        conditional,
+      },
+    ),
   );
 }

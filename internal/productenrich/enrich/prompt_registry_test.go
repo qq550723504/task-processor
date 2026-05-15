@@ -32,6 +32,14 @@ func (s *productenrichPromptRegistryStub) Render(key string, vars map[string]any
 	return fallback, nil
 }
 
+func (s *productenrichPromptRegistryStub) GetTenant(tenantID string, key string) (string, error) {
+	return s.Get(key, ""), nil
+}
+
+func (s *productenrichPromptRegistryStub) RenderTenant(tenantID string, key string, vars map[string]any) (string, error) {
+	return s.Render(key, vars, "")
+}
+
 func (s *productenrichPromptRegistryStub) Keys() []string {
 	keys := make([]string, 0, len(s.templates))
 	for key := range s.templates {

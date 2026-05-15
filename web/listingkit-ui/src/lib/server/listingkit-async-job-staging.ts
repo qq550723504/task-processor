@@ -1,4 +1,8 @@
 import { startListingKitAsyncJob } from "@/lib/server/listingkit-async-jobs";
+import {
+  readLocalJsonFileSync,
+  writeLocalJsonFileSync,
+} from "@/lib/server/local-json-file";
 
 type ListingKitAsyncJobStage = {
   id: string;
@@ -11,6 +15,7 @@ type ListingKitAsyncJobStage = {
 
 const MAX_STAGES = 100;
 const STAGE_TTL_MS = 30 * 60 * 1000;
+const ASYNC_JOB_STAGES_FILE_NAME = "listingkit-async-job-stages.json";
 const stages = new Map<string, ListingKitAsyncJobStage>();
 
 export function createListingKitAsyncJobStage(input: {
@@ -34,6 +39,7 @@ export function createListingKitAsyncJobStage(input: {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   });
+  persistStages();
   return { stage_id: id };
 }
 
@@ -42,6 +48,7 @@ export function appendListingKitAsyncJobStageChunk(input: {
   chunkIndex: number;
   chunk: string;
 }) {
+  loadStagesFromStorage();
   cleanupStages();
   const stage = stages.get(input.stageId);
   if (!stage) {
@@ -57,10 +64,12 @@ export function appendListingKitAsyncJobStageChunk(input: {
 
   stage.chunks[input.chunkIndex] = input.chunk;
   stage.updatedAt = Date.now();
+  persistStages();
   return { ok: true };
 }
 
 export function startListingKitAsyncJobFromStage(stageId: string) {
+  loadStagesFromStorage();
   cleanupStages();
   const stage = stages.get(stageId);
   if (!stage) {
@@ -76,6 +85,7 @@ export function startListingKitAsyncJobFromStage(stageId: string) {
 
   const payloadText = stage.chunks.join("");
   stages.delete(stageId);
+  persistStages();
 
   let body: unknown;
   try {
@@ -95,11 +105,53 @@ export function startListingKitAsyncJobFromStage(stageId: string) {
 }
 
 function cleanupStages() {
+  loadStagesFromStorage();
   const now = Date.now();
+  let changed = false;
   for (const [id, stage] of stages) {
     if (stages.size <= MAX_STAGES && now - stage.updatedAt <= STAGE_TTL_MS) {
       continue;
     }
     stages.delete(id);
+    changed = true;
   }
+  if (changed) {
+    persistStages();
+  }
+}
+
+function loadStagesFromStorage() {
+  const parsed = readLocalJsonFileSync<{ stages?: ListingKitAsyncJobStage[] }>(
+    ASYNC_JOB_STAGES_FILE_NAME,
+    {},
+  );
+  if (!Array.isArray(parsed.stages)) {
+    return;
+  }
+  for (const stage of parsed.stages) {
+    if (isPersistedStage(stage)) {
+      stages.set(stage.id, stage);
+    }
+  }
+}
+
+function persistStages() {
+  writeLocalJsonFileSync(ASYNC_JOB_STAGES_FILE_NAME, {
+    stages: [...stages.values()],
+  });
+}
+
+function isPersistedStage(stage: unknown): stage is ListingKitAsyncJobStage {
+  if (!stage || typeof stage !== "object") {
+    return false;
+  }
+  const record = stage as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.path === "string" &&
+    typeof record.chunkCount === "number" &&
+    Array.isArray(record.chunks) &&
+    typeof record.createdAt === "number" &&
+    typeof record.updatedAt === "number"
+  );
 }

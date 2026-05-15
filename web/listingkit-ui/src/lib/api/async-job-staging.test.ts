@@ -1,7 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { stageAsyncJobRequestIfNeeded } from "@/lib/api/async-job-staging";
-import { rememberYudaoAuth } from "@/lib/api/yudao-auth";
 
 describe("stageAsyncJobRequestIfNeeded", () => {
   beforeEach(() => {
@@ -12,13 +11,7 @@ describe("stageAsyncJobRequestIfNeeded", () => {
     vi.restoreAllMocks();
   });
 
-  it("adds yudao auth headers to staged async job uploads", async () => {
-    rememberYudaoAuth({
-      accessToken: "access-token-1",
-      tenantId: 286,
-      visitTenantId: 389,
-    });
-
+  it("uses plain JSON headers for staged async job uploads", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -44,9 +37,9 @@ describe("stageAsyncJobRequestIfNeeded", () => {
 
     for (const [, init] of fetchMock.mock.calls) {
       const headers = new Headers(init?.headers);
-      expect(headers.get("Authorization")).toBe("Bearer access-token-1");
-      expect(headers.get("tenant-id")).toBe("286");
-      expect(headers.get("visit-tenant-id")).toBe("389");
+      expect(headers.get("Accept")).toBe("application/json");
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBeNull();
     }
   });
 });

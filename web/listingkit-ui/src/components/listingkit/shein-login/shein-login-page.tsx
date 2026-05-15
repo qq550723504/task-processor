@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowUpRight,
   CheckCircle2,
   ChevronRight,
@@ -29,7 +28,6 @@ import { cn } from "@/lib/utils/cn";
 import type {
   SheinLoginAccountStatus,
   SheinLoginFailureDetail,
-  SheinLoginFailureSummary,
 } from "@/lib/types/shein-login";
 
 type AccountFilter = "all" | "attention" | "verify" | "failed" | "healthy";
@@ -494,7 +492,7 @@ export function SheinLoginPage() {
   const [activeFilter, setActiveFilter] = useState<AccountFilter>("attention");
   const failureDetail = useSheinLastFailure(failureStoreID);
 
-  const accountItems = accounts.data ?? [];
+  const accountItems = useMemo(() => accounts.data ?? [], [accounts.data]);
   const summary = useMemo(() => metricCards(accountItems), [accountItems]);
   const filters = useMemo(() => accountFilterItems(accountItems), [accountItems]);
   const filteredAccounts = useMemo(

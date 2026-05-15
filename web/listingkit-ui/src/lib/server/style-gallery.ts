@@ -5,6 +5,7 @@ import {
   buildListingKitProxyUrl,
   getListingKitUpstreamBase,
 } from "@/app/api/listing-kits/proxy-url";
+import { resolveListingKitUILocalStoragePath } from "@/lib/server/local-storage-path";
 import { readSheinStudioStorage } from "@/lib/server/shein-studio-storage";
 import type {
   StyleGalleryItem,
@@ -17,7 +18,7 @@ const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 export function getGalleryImageRoots() {
   const workspaceRoot = path.resolve(process.cwd(), "..", "..");
   return {
-    legacy: path.join(process.cwd(), ".data", "shein-studio-assets"),
+    legacy: resolveListingKitUILocalStoragePath("shein-studio-assets"),
     published: path.join(
       workspaceRoot,
       "tmp",

@@ -153,8 +153,6 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(publish.NewPublishProductHandler(cfg.Debug.SavePublishJSON))
 	// 标记变体构建成功
 	pipeline.AddHandler(publish.NewMarkVariantPublishSuccessHandler())
-	// 错误时收集分类限制及敏感词
-	pipeline.AddHandler(category.NewCollectCategoryRestrictionsHandler())
 	// 保存发品成功后返回的信息
 	pipeline.AddHandler(publish.NewSavePublishResultHandler())
 

@@ -1,33 +1,19 @@
 import { useEffect, useRef } from "react";
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   evaluateImportedGalleryDesigns,
   mergeSheinStudioDraftState,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import {
   consumeSheinStudioGalleryHandoff,
   galleryHandoffToDesign,
-  type SDSRatioMatch,
 } from "@/lib/shein-studio/gallery-handoff";
-import {
-  DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
-  DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-  DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
-} from "@/lib/shein-studio/storage-shared";
 import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type {
-  SheinStudioArtworkModel,
-  SheinStudioCreatedTask,
-  SheinStudioGeneratedDesign,
-  SheinStudioImageStrategy,
-  SheinStudioProductImagePrompt,
-  SheinStudioSavedBatch,
-  SheinStudioSelectedSDSImage,
-  SheinStudioVariationIntensity,
-} from "@/lib/types/shein-studio";
+import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 import {
   deleteSheinStudioBatch,
   listSheinStudioBatches,
@@ -36,36 +22,6 @@ import {
   type SheinStudioSaveInput,
 } from "@/lib/utils/shein-studio-batches";
 
-type WorkbenchSetters = {
-  setArtworkModel: (value: SheinStudioArtworkModel) => void;
-  setCreatedTasks: Dispatch<SetStateAction<SheinStudioCreatedTask[]>>;
-  setCreatingError: (value: string) => void;
-  setCreatingMessage: (value: string) => void;
-  setDesigns: Dispatch<SetStateAction<SheinStudioGeneratedDesign[]>>;
-  setDraftWarning: (value: string) => void;
-  setGalleryRatioCheck: Dispatch<SetStateAction<SDSRatioMatch | null>>;
-  setGenerationError: (value: string) => void;
-  setImageStrategy: (value: SheinStudioImageStrategy) => void;
-  setIsLoadingWorkspace: (value: boolean) => void;
-  setProductImageCount: (value: string) => void;
-  setProductImagePrompt: (value: string) => void;
-  setProductImagePrompts: (
-    value: SheinStudioProductImagePrompt[],
-  ) => void;
-  setPrompt: (value: string) => void;
-  setRenderSizeImagesWithSds: (value: boolean) => void;
-  setSavedBatches: Dispatch<SetStateAction<SheinStudioSavedBatch[]>>;
-  setSaveMessage: (value: string) => void;
-  setSelectedIds: Dispatch<SetStateAction<string[]>>;
-  setSelectedSdsImages: (
-    value: SheinStudioSelectedSDSImage[],
-  ) => void;
-  setSheinStoreId: (value: string) => void;
-  setStyleCount: (value: string) => void;
-  setTransparentBackground: (value: boolean) => void;
-  setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
-};
-
 export function useSheinStudioWorkspaceLoader({
   activeSelection,
   activeSelectionKey,
@@ -73,7 +29,7 @@ export function useSheinStudioWorkspaceLoader({
   hasCustomizedSdsSelectionRef,
   hasLocalWorkflowStateRef,
   setEffectiveStep,
-  setters,
+  workbench,
 }: {
   activeSelection?: SDSProductVariantSelection;
   activeSelectionKey: string;
@@ -81,7 +37,7 @@ export function useSheinStudioWorkspaceLoader({
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   setEffectiveStep: (step: SheinStudioStepKey) => void;
-  setters: WorkbenchSetters;
+  workbench: SheinStudioWorkbenchController;
 }) {
   const activeSelectionRef = useRef(activeSelection);
 
@@ -93,7 +49,7 @@ export function useSheinStudioWorkspaceLoader({
     let cancelled = false;
 
     async function loadWorkspaceState() {
-      setters.setIsLoadingWorkspace(true);
+      workbench.setField("isLoadingWorkspace", true);
       try {
         const [draft, batches] = await Promise.all([
           loadSheinStudioDraft(activeSelectionRef.current),
@@ -121,31 +77,29 @@ export function useSheinStudioWorkspaceLoader({
             galleryPrompt: galleryHandoff?.prompt || galleryHandoff?.title,
           });
 
-          setters.setPrompt(draftState.prompt);
-          setters.setStyleCount(draftState.styleCount);
-          setters.setVariationIntensity(draftState.variationIntensity);
-          setters.setProductImageCount(draftState.productImageCount);
-          setters.setProductImagePrompt(draftState.productImagePrompt);
-          setters.setProductImagePrompts(draftState.productImagePrompts);
-          setters.setArtworkModel(draftState.artworkModel);
-          setters.setTransparentBackground(draftState.transparentBackground);
-          setters.setSheinStoreId(draftState.sheinStoreId);
-          setters.setImageStrategy(draftState.imageStrategy);
-          setters.setSelectedSdsImages(draftState.selectedSdsImages);
           hasCustomizedSdsSelectionRef.current =
             draftState.hasCustomizedSdsSelection;
-          setters.setRenderSizeImagesWithSds(
-            draftState.renderSizeImagesWithSds,
-          );
-          setters.setDesigns(draftState.designs);
-          setters.setSelectedIds(draftState.selectedIds);
-          setters.setCreatedTasks(draftState.createdTasks);
-          setters.setGalleryRatioCheck(
-            evaluateImportedGalleryDesigns(
+          workbench.applyDraft({
+            prompt: draftState.prompt,
+            styleCount: draftState.styleCount,
+            variationIntensity: draftState.variationIntensity,
+            productImageCount: draftState.productImageCount,
+            productImagePrompt: draftState.productImagePrompt,
+            productImagePrompts: draftState.productImagePrompts,
+            artworkModel: draftState.artworkModel,
+            transparentBackground: draftState.transparentBackground,
+            sheinStoreId: draftState.sheinStoreId,
+            imageStrategy: draftState.imageStrategy,
+            selectedSdsImages: draftState.selectedSdsImages,
+            renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
+            designs: draftState.designs,
+            selectedIds: draftState.selectedIds,
+            createdTasks: draftState.createdTasks,
+            galleryRatioCheck: evaluateImportedGalleryDesigns(
               draftState.designs,
               activeSelectionRef.current,
             ),
-          );
+          });
           nextEffectiveDesignCount = draftState.designCount;
           nextEffectiveCreatedTaskCount = draftState.createdTaskCount;
           if (draftState.importedGalleryDesign) {
@@ -153,7 +107,7 @@ export function useSheinStudioWorkspaceLoader({
             importedGalleryDesign = true;
           }
         }
-        setters.setSavedBatches(batches);
+        workbench.setField("savedBatches", batches);
         if (draft || importedGalleryDesign) {
           setEffectiveStep(
             resolveSheinStudioEffectiveStep({
@@ -163,14 +117,14 @@ export function useSheinStudioWorkspaceLoader({
             }),
           );
         }
-        setters.setGenerationError("");
-        setters.setCreatingError("");
-        setters.setCreatingMessage("");
-        setters.setSaveMessage("");
-        setters.setDraftWarning("");
+        workbench.setField("generationError", "");
+        workbench.setField("creatingError", "");
+        workbench.setField("creatingMessage", "");
+        workbench.setField("saveMessage", "");
+        workbench.setField("draftWarning", "");
       } finally {
         if (!cancelled) {
-          setters.setIsLoadingWorkspace(false);
+          workbench.setField("isLoadingWorkspace", false);
         }
       }
     }
@@ -186,7 +140,7 @@ export function useSheinStudioWorkspaceLoader({
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
     setEffectiveStep,
-    setters,
+    workbench,
   ]);
 }
 
@@ -196,60 +150,38 @@ export function useSheinStudioBatchActions({
   hasCustomizedSdsSelectionRef,
   hasLocalWorkflowStateRef,
   setEffectiveStep,
-  setters,
+  workbench,
 }: {
   activeStep: SheinStudioStepKey;
   buildDraftInput: () => SheinStudioSaveInput;
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   setEffectiveStep: (step: SheinStudioStepKey) => void;
-  setters: WorkbenchSetters;
+  workbench: SheinStudioWorkbenchController;
 }) {
   async function handleSaveBatch() {
     const draftInput = buildDraftInput();
     if (!draftInput.prompt?.trim()) {
-      setters.setSaveMessage("保存批次前请先填写主题提示词。");
+      workbench.setField("saveMessage", "保存批次前请先填写主题提示词。");
       return;
     }
 
     const saved = await saveSheinStudioBatch(draftInput);
 
     if (!saved) {
-      setters.setSaveMessage("批次保存失败。");
+      workbench.setField("saveMessage", "批次保存失败。");
       return;
     }
 
-    setters.setSavedBatches(await listSheinStudioBatches());
-    setters.setSaveMessage(`批次已保存：${saved.name}`);
+    workbench.setField("savedBatches", await listSheinStudioBatches());
+    workbench.setField("saveMessage", `批次已保存：${saved.name}`);
   }
 
   function handleLoadBatch(batch: SheinStudioSavedBatch) {
     hasLocalWorkflowStateRef.current = true;
-    setters.setPrompt(batch.prompt);
-    setters.setStyleCount(batch.styleCount);
-    setters.setVariationIntensity(
-      batch.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
-    );
-    setters.setProductImageCount(
-      batch.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-    );
-    setters.setProductImagePrompt(batch.productImagePrompt ?? "");
-    setters.setProductImagePrompts(batch.productImagePrompts ?? []);
-    setters.setArtworkModel(
-      batch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
-    );
-    setters.setTransparentBackground(batch.transparentBackground ?? false);
-    setters.setSheinStoreId(batch.sheinStoreId);
-    setters.setImageStrategy(batch.imageStrategy ?? "sds_official");
-    setters.setSelectedSdsImages(batch.selectedSdsImages ?? []);
+    workbench.applyBatch(batch);
     hasCustomizedSdsSelectionRef.current =
       (batch.selectedSdsImages?.length ?? 0) > 0;
-    setters.setRenderSizeImagesWithSds(
-      batch.renderSizeImagesWithSds ?? true,
-    );
-    setters.setDesigns(batch.designs);
-    setters.setSelectedIds(batch.selectedIds);
-    setters.setCreatedTasks(batch.createdTasks);
     setEffectiveStep(
       resolveSheinStudioEffectiveStep({
         activeStep,
@@ -257,12 +189,12 @@ export function useSheinStudioBatchActions({
         designCount: batch.designs.length,
       }),
     );
-    setters.setSaveMessage(`已载入批次：${batch.name}`);
+    workbench.setField("saveMessage", `已载入批次：${batch.name}`);
   }
 
   async function handleDeleteBatch(batchID: string) {
     await deleteSheinStudioBatch(batchID);
-    setters.setSavedBatches(await listSheinStudioBatches());
+    workbench.setField("savedBatches", await listSheinStudioBatches());
   }
 
   return {

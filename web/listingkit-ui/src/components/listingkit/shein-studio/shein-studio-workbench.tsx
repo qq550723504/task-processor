@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
@@ -27,29 +27,20 @@ import {
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
-import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
+import {
+  applySheinStudioWorkbenchBatch,
+  applySheinStudioWorkbenchDraft,
+  buildInitialSheinStudioWorkbenchState,
+  setSheinStudioWorkbenchField,
+  sheinStudioWorkbenchReducer,
+  type SheinStudioWorkbenchState,
+  type SheinStudioWorkbenchStateUpdater,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
-import {
-  DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
-  DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
-  DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-  DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
-} from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type {
-  SheinStudioArtworkModel,
-  SheinStudioCreatedTask,
-  SheinStudioGeneratedDesign,
-  SheinStudioImageStrategy,
-  SheinStudioProductImagePrompt,
-  SheinStudioSavedBatch,
-  SheinStudioSelectedSDSImage,
-  SheinStudioVariationIntensity,
-} from "@/lib/types/shein-studio";
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -58,43 +49,145 @@ export function SheinStudioWorkbench({
   activeStep?: SheinStudioStepKey;
   selection?: SDSProductVariantSelection;
 }) {
-  const [prompt, setPrompt] = useState("");
-  const [styleCount, setStyleCount] = useState("1");
-  const [variationIntensity, setVariationIntensity] =
-    useState<SheinStudioVariationIntensity>(
-      DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
-    );
-  const [productImageCount, setProductImageCount] = useState(
-    DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+  const [workbenchState, dispatchWorkbenchState] = useReducer(
+    sheinStudioWorkbenchReducer,
+    undefined,
+    buildInitialSheinStudioWorkbenchState,
   );
-  const [productImagePrompt, setProductImagePrompt] = useState("");
-  const [productImagePrompts, setProductImagePrompts] = useState<
-    SheinStudioProductImagePrompt[]
-  >([]);
-  const [artworkModel, setArtworkModel] = useState<SheinStudioArtworkModel>(
-    DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+  const setWorkbenchField = useCallback(
+    <K extends keyof SheinStudioWorkbenchState>(
+      field: K,
+      value: SheinStudioWorkbenchStateUpdater<K>,
+    ) => {
+      dispatchWorkbenchState(setSheinStudioWorkbenchField(field, value));
+    },
+    [],
   );
-  const [transparentBackground, setTransparentBackground] = useState(false);
-  const [sheinStoreId, setSheinStoreId] = useState(DEFAULT_SHEIN_STORE_ID);
-  const [imageStrategy, setImageStrategy] = useState<SheinStudioImageStrategy>(
-    DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+  const workbenchController = useMemo(
+    () => ({
+      applyBatch: (batch: Parameters<typeof applySheinStudioWorkbenchBatch>[0]) =>
+        dispatchWorkbenchState(applySheinStudioWorkbenchBatch(batch)),
+      applyDraft: (draft: Parameters<typeof applySheinStudioWorkbenchDraft>[0]) =>
+        dispatchWorkbenchState(applySheinStudioWorkbenchDraft(draft)),
+      setField: setWorkbenchField,
+    }),
+    [setWorkbenchField],
   );
-  const [selectedSdsImages, setSelectedSdsImages] = useState<SheinStudioSelectedSDSImage[]>([]);
-  const [renderSizeImagesWithSds, setRenderSizeImagesWithSds] = useState(true);
-  const [designs, setDesigns] = useState<SheinStudioGeneratedDesign[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [generationError, setGenerationError] = useState<string>("");
-  const [creatingError, setCreatingError] = useState<string>("");
-  const [creatingMessage, setCreatingMessage] = useState<string>("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isCreatingTasks, setIsCreatingTasks] = useState(false);
-  const [regeneratingId, setRegeneratingId] = useState<string>("");
-  const [createdTasks, setCreatedTasks] = useState<SheinStudioCreatedTask[]>([]);
-  const [galleryRatioCheck, setGalleryRatioCheck] = useState<SDSRatioMatch | null>(null);
-  const [savedBatches, setSavedBatches] = useState<SheinStudioSavedBatch[]>([]);
-  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
-  const [saveMessage, setSaveMessage] = useState("");
-  const [draftWarning, setDraftWarning] = useState("");
+  const workbenchSetters = useMemo(
+    () => ({
+      setArtworkModel: (value: SheinStudioWorkbenchStateUpdater<"artworkModel">) =>
+        setWorkbenchField("artworkModel", value),
+      setCreatedTasks: (value: SheinStudioWorkbenchStateUpdater<"createdTasks">) =>
+        setWorkbenchField("createdTasks", value),
+      setCreatingError: (value: SheinStudioWorkbenchStateUpdater<"creatingError">) =>
+        setWorkbenchField("creatingError", value),
+      setCreatingMessage: (
+        value: SheinStudioWorkbenchStateUpdater<"creatingMessage">,
+      ) => setWorkbenchField("creatingMessage", value),
+      setDesigns: (value: SheinStudioWorkbenchStateUpdater<"designs">) =>
+        setWorkbenchField("designs", value),
+      setDraftWarning: (value: SheinStudioWorkbenchStateUpdater<"draftWarning">) =>
+        setWorkbenchField("draftWarning", value),
+      setGalleryRatioCheck: (
+        value: SheinStudioWorkbenchStateUpdater<"galleryRatioCheck">,
+      ) => setWorkbenchField("galleryRatioCheck", value),
+      setGenerationError: (
+        value: SheinStudioWorkbenchStateUpdater<"generationError">,
+      ) => setWorkbenchField("generationError", value),
+      setImageStrategy: (value: SheinStudioWorkbenchStateUpdater<"imageStrategy">) =>
+        setWorkbenchField("imageStrategy", value),
+      setIsCreatingTasks: (
+        value: SheinStudioWorkbenchStateUpdater<"isCreatingTasks">,
+      ) => setWorkbenchField("isCreatingTasks", value),
+      setIsGenerating: (value: SheinStudioWorkbenchStateUpdater<"isGenerating">) =>
+        setWorkbenchField("isGenerating", value),
+      setIsLoadingWorkspace: (
+        value: SheinStudioWorkbenchStateUpdater<"isLoadingWorkspace">,
+      ) => setWorkbenchField("isLoadingWorkspace", value),
+      setProductImageCount: (
+        value: SheinStudioWorkbenchStateUpdater<"productImageCount">,
+      ) => setWorkbenchField("productImageCount", value),
+      setProductImagePrompt: (
+        value: SheinStudioWorkbenchStateUpdater<"productImagePrompt">,
+      ) => setWorkbenchField("productImagePrompt", value),
+      setProductImagePrompts: (
+        value: SheinStudioWorkbenchStateUpdater<"productImagePrompts">,
+      ) => setWorkbenchField("productImagePrompts", value),
+      setPrompt: (value: SheinStudioWorkbenchStateUpdater<"prompt">) =>
+        setWorkbenchField("prompt", value),
+      setRegeneratingId: (
+        value: SheinStudioWorkbenchStateUpdater<"regeneratingId">,
+      ) => setWorkbenchField("regeneratingId", value),
+      setRenderSizeImagesWithSds: (
+        value: SheinStudioWorkbenchStateUpdater<"renderSizeImagesWithSds">,
+      ) => setWorkbenchField("renderSizeImagesWithSds", value),
+      setSavedBatches: (value: SheinStudioWorkbenchStateUpdater<"savedBatches">) =>
+        setWorkbenchField("savedBatches", value),
+      setSaveMessage: (value: SheinStudioWorkbenchStateUpdater<"saveMessage">) =>
+        setWorkbenchField("saveMessage", value),
+      setSelectedIds: (value: SheinStudioWorkbenchStateUpdater<"selectedIds">) =>
+        setWorkbenchField("selectedIds", value),
+      setSelectedSdsImages: (
+        value: SheinStudioWorkbenchStateUpdater<"selectedSdsImages">,
+      ) => setWorkbenchField("selectedSdsImages", value),
+      setSheinStoreId: (value: SheinStudioWorkbenchStateUpdater<"sheinStoreId">) =>
+        setWorkbenchField("sheinStoreId", value),
+      setStyleCount: (value: SheinStudioWorkbenchStateUpdater<"styleCount">) =>
+        setWorkbenchField("styleCount", value),
+      setTransparentBackground: (
+        value: SheinStudioWorkbenchStateUpdater<"transparentBackground">,
+      ) => setWorkbenchField("transparentBackground", value),
+      setVariationIntensity: (
+        value: SheinStudioWorkbenchStateUpdater<"variationIntensity">,
+      ) => setWorkbenchField("variationIntensity", value),
+    }),
+    [setWorkbenchField],
+  );
+  const {
+    artworkModel,
+    createdTasks,
+    creatingError,
+    creatingMessage,
+    designs,
+    draftWarning,
+    galleryRatioCheck,
+    generationError,
+    imageStrategy,
+    isCreatingTasks,
+    isGenerating,
+    isLoadingWorkspace,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
+    prompt,
+    regeneratingId,
+    renderSizeImagesWithSds,
+    savedBatches,
+    saveMessage,
+    selectedIds,
+    selectedSdsImages,
+    sheinStoreId,
+    styleCount,
+    transparentBackground,
+    variationIntensity,
+  } = workbenchState;
+  const {
+    setArtworkModel,
+    setDesigns,
+    setDraftWarning,
+    setImageStrategy,
+    setProductImageCount,
+    setProductImagePrompt,
+    setProductImagePrompts,
+    setPrompt,
+    setRenderSizeImagesWithSds,
+    setSelectedIds,
+    setSelectedSdsImages,
+    setSheinStoreId,
+    setStyleCount,
+    setTransparentBackground,
+    setVariationIntensity,
+  } = workbenchSetters;
   const hasLocalWorkflowStateRef = useRef(false);
   const hasCustomizedSdsSelectionRef = useRef(false);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
@@ -142,35 +235,6 @@ export function SheinStudioWorkbench({
     variationIntensity,
   });
 
-  const workbenchSetters = useMemo(
-    () => ({
-      setArtworkModel,
-      setCreatedTasks,
-      setCreatingError,
-      setCreatingMessage,
-      setDesigns,
-      setDraftWarning,
-      setGalleryRatioCheck,
-      setGenerationError,
-      setImageStrategy,
-      setIsLoadingWorkspace,
-      setProductImageCount,
-      setProductImagePrompt,
-      setProductImagePrompts,
-      setPrompt,
-      setRenderSizeImagesWithSds,
-      setSavedBatches,
-      setSaveMessage,
-      setSelectedIds,
-      setSelectedSdsImages,
-      setSheinStoreId,
-      setStyleCount,
-      setTransparentBackground,
-      setVariationIntensity,
-    }),
-    [],
-  );
-
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
     hasCustomizedSdsSelectionRef.current = false;
@@ -183,7 +247,7 @@ export function SheinStudioWorkbench({
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
     setEffectiveStep,
-    setters: workbenchSetters,
+    workbench: workbenchController,
   });
 
   useEffect(() => {
@@ -212,6 +276,7 @@ export function SheinStudioWorkbench({
     imageStrategy,
     renderSizeImagesWithSds,
     selectedSdsImages,
+    setSelectedSdsImages,
   ]);
 
   const { handleCreateTasks, handleGenerate, handleRegenerate } =
@@ -230,17 +295,7 @@ export function SheinStudioWorkbench({
       renderSizeImagesWithSds,
       selectedIds,
       selectedSdsImages,
-      setCreatedTasks,
-      setCreatingError,
-      setCreatingMessage,
-      setDesigns,
-      setDraftWarning,
-      setGalleryRatioCheck,
-      setGenerationError,
-      setIsCreatingTasks,
-      setIsGenerating,
-      setRegeneratingId,
-      setSelectedIds,
+      workbench: workbenchController,
       sheinStoreId,
       styleCount,
       transparentBackground,
@@ -255,7 +310,7 @@ export function SheinStudioWorkbench({
       hasCustomizedSdsSelectionRef,
       hasLocalWorkflowStateRef,
       setEffectiveStep,
-      setters: workbenchSetters,
+      workbench: workbenchController,
     });
 
   function toggleSelection(designId: string) {

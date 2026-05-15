@@ -60,6 +60,14 @@ func (s *promptRegistryStub) Render(key string, vars map[string]any, fallback st
 	return fallback, nil
 }
 
+func (s *promptRegistryStub) GetTenant(tenantID string, key string) (string, error) {
+	return s.Get(key, ""), nil
+}
+
+func (s *promptRegistryStub) RenderTenant(tenantID string, key string, vars map[string]any) (string, error) {
+	return s.Render(key, vars, "")
+}
+
 func (s *promptRegistryStub) Keys() []string {
 	keys := make([]string, 0, len(s.templates))
 	for key := range s.templates {

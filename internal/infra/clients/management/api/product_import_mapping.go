@@ -1,5 +1,7 @@
 package api
 
+import "task-processor/internal/pkg/types"
+
 // ProductImportMappingCreateReqDTO 产品导入映射关系创建请求DTO
 type ProductImportMappingCreateReqDTO struct {
 	ID                      *int64   `json:"id,omitempty"`
@@ -38,25 +40,26 @@ type ProductImportMappingCheckReqDTO struct {
 
 // ProductImportMappingRespDTO 产品导入映射关系响应DTO
 type ProductImportMappingRespDTO struct {
-	ID                      int64    `json:"id"`
-	ImportTaskId            int64    `json:"importTaskId"`
-	StoreId                 int64    `json:"storeId"`
-	Platform                string   `json:"platform"`
-	Region                  string   `json:"region"`
-	ProductId               string   `json:"productId"`
-	ParentProductId         *string  `json:"parentProductId"`
-	PlatformProductId       *string  `json:"platformProductId"`
-	PlatformParentProductId *string  `json:"platformParentProductId"`
-	Sku                     *string  `json:"sku"`
-	CostPrice               *float64 `json:"costPrice"`
-	FilterRuleId            *int64   `json:"filterRuleId"`
-	FilterRuleRange         *string  `json:"filterRuleRange"`
-	ProfitRuleId            *int64   `json:"profitRuleId"`
-	SalePriceMultiplier     *float64 `json:"salePriceMultiplier"`
-	DiscountPriceMultiplier *float64 `json:"discountPriceMultiplier"`
-	Status                  int16    `json:"status"`
-	Remark                  *string  `json:"remark"`
-	TenantId                int64    `json:"tenantId"`
+	ID                      int64               `json:"id"`
+	ImportTaskId            int64               `json:"importTaskId"`
+	StoreId                 int64               `json:"storeId"`
+	Platform                string              `json:"platform"`
+	Region                  string              `json:"region"`
+	ProductId               string              `json:"productId"`
+	ParentProductId         *string             `json:"parentProductId"`
+	PlatformProductId       *string             `json:"platformProductId"`
+	PlatformParentProductId *string             `json:"platformParentProductId"`
+	Sku                     *string             `json:"sku"`
+	CostPrice               *float64            `json:"costPrice"`
+	FilterRuleId            *int64              `json:"filterRuleId"`
+	FilterRuleRange         *string             `json:"filterRuleRange"`
+	ProfitRuleId            *int64              `json:"profitRuleId"`
+	SalePriceMultiplier     *float64            `json:"salePriceMultiplier"`
+	DiscountPriceMultiplier *float64            `json:"discountPriceMultiplier"`
+	Status                  int16               `json:"status"`
+	Remark                  *string             `json:"remark"`
+	CreateTime              *types.FlexibleTime `json:"createTime"`
+	TenantId                int64               `json:"tenantId"`
 }
 
 // ProductImportMappingGetBySkuReqDTO 通过SKU获取映射关系请求DTO

@@ -1,38 +1,30 @@
 import type { ListingKitTaskListQuery, QueueQuery } from "@/lib/types/listingkit";
 
+export type SDSProductsKeyQuery = {
+  keyword: string;
+  page: number;
+  size: number;
+  shipmentArea: string;
+  categoryId?: number;
+  onSaleStatus?: number;
+  hotSellStatus?: number;
+  sortField?: string;
+  sortType?: string;
+  weightBand?: string;
+  cycleBand?: string;
+};
+
 export const listingKitKeys = {
   tasks: (query: ListingKitTaskListQuery) =>
     ["listingkit", "tasks", query] as const,
   preview: (taskId: string) => ["listingkit", taskId, "preview"] as const,
   taskResult: (taskId: string) => ["listingkit", taskId, "task-result"] as const,
-  sdsProducts: (
-    keyword: string,
-    page: number,
-    size: number,
-    shipmentArea: string,
-    categoryId?: number,
-    onSaleStatus?: number,
-    hotSellStatus?: number,
-    sortField?: string,
-    sortType?: string,
-    weightBand?: string,
-    cycleBand?: string,
-  ) =>
+  sdsProducts: (query: SDSProductsKeyQuery) =>
     [
       "listingkit",
       "sds",
       "products",
-      keyword,
-      page,
-      size,
-      shipmentArea,
-      categoryId,
-      onSaleStatus,
-      hotSellStatus,
-      sortField,
-      sortType,
-      weightBand,
-      cycleBand,
+      compactQueryKeyObject(query),
     ] as const,
   sdsShipmentAreas: () => ["listingkit", "sds", "shipment-areas"] as const,
   sdsCategories: (shipmentArea: string) =>
@@ -46,3 +38,9 @@ export const listingKitKeys = {
   reviewPreview: (taskId: string, query: QueueQuery) =>
     ["listingkit", taskId, "review-preview", query] as const,
 };
+
+function compactQueryKeyObject<T extends Record<string, unknown>>(query: T) {
+  return Object.fromEntries(
+    Object.entries(query).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}

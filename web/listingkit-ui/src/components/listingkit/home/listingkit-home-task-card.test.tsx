@@ -91,7 +91,7 @@ describe("ListingKitHomeTaskCard", () => {
     expect(screen.getByRole("link", { name: "继续处理 Task" })).toBeInTheDocument();
   });
 
-  it("shows shein work queues, action queues, and overview guidance", () => {
+  it("uses the SHEIN overview headline as the compact next step fallback", () => {
     render(
       <ListingKitHomeTaskCard
         taxonomy={{
@@ -107,7 +107,6 @@ describe("ListingKitHomeTaskCard", () => {
           shein_action_queue: "final_review_queue",
           shein_status_overview: {
             headline: "SHEIN 资料包暂不能直接提交",
-            primary_action: "最终确认",
           },
         })}
       />,
@@ -116,7 +115,7 @@ describe("ListingKitHomeTaskCard", () => {
     expect(screen.getByText("修复队列")).toBeInTheDocument();
     expect(screen.getAllByText("最终确认").length).toBeGreaterThan(0);
     expect(screen.getByText("SHEIN 资料包暂不能直接提交")).toBeInTheDocument();
-    expect(screen.getByText("下一步：最终确认")).toBeInTheDocument();
+    expect(screen.getByText("下一步")).toBeInTheDocument();
   });
 
   it("uses the SHEIN workspace query for resumable mixed-platform tasks", () => {

@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/shein-studio-storage";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(
   _request: Request,

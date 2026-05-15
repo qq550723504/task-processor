@@ -1,6 +1,7 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
-
+import {
+  readLocalJsonFile,
+  writeLocalJsonFile,
+} from "@/lib/server/local-json-file";
 import {
   buildSelectionSummary,
   deriveBatchName,
@@ -19,8 +20,9 @@ import type {
   SheinStudioStorageData,
 } from "@/lib/types/shein-studio";
 
-const STORAGE_DIR = path.join(process.cwd(), ".data");
-const STORAGE_PATH = path.join(STORAGE_DIR, "shein-studio-storage.json");
+const STORAGE_FILE_NAME = "shein-studio-storage.json";
+// Local JSON storage is a development/single-instance backend. Use shared
+// durable storage before deploying SHEIN Studio drafts across multiple replicas.
 let storageQueue: Promise<unknown> = Promise.resolve();
 
 type SaveDraftInput = {
@@ -44,19 +46,8 @@ type SaveBatchInput = SaveDraftInput & {
   id?: string;
 };
 
-async function ensureStorageDir() {
-  await mkdir(STORAGE_DIR, { recursive: true });
-}
-
 async function writeStorage(data: SheinStudioStorageData) {
-  const payload = JSON.stringify(data, null, 2);
-
-  await ensureStorageDir();
-  const tempPath = `${STORAGE_PATH}.${process.pid}.${Date.now()}.${Math.random()
-    .toString(16)
-    .slice(2)}.tmp`;
-  await writeFile(tempPath, payload, "utf8");
-  await rename(tempPath, STORAGE_PATH);
+  await writeLocalJsonFile(STORAGE_FILE_NAME, data);
 }
 
 function updateStorage<T>(
@@ -79,12 +70,12 @@ function updateStorage<T>(
 }
 
 export async function readSheinStudioStorage() {
-  try {
-    const raw = await readFile(STORAGE_PATH, "utf8");
-    return normalizeStorageData(JSON.parse(raw));
-  } catch {
-    return { draft: null, batches: [] } satisfies SheinStudioStorageData;
-  }
+  return normalizeStorageData(
+    await readLocalJsonFile(STORAGE_FILE_NAME, {
+      draft: null,
+      batches: [],
+    } satisfies SheinStudioStorageData),
+  );
 }
 
 export async function getSheinStudioDraft(selection?: SDSProductVariantSelection) {

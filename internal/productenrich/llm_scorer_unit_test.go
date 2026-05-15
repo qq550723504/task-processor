@@ -387,6 +387,14 @@ func (s *scorerPromptRegistryStub) Render(key string, vars map[string]any, fallb
 	return fallback, nil
 }
 
+func (s *scorerPromptRegistryStub) GetTenant(tenantID string, key string) (string, error) {
+	return s.Get(key, ""), nil
+}
+
+func (s *scorerPromptRegistryStub) RenderTenant(tenantID string, key string, vars map[string]any) (string, error) {
+	return s.Render(key, vars, "")
+}
+
 func (s *scorerPromptRegistryStub) Keys() []string {
 	keys := make([]string, 0, len(s.templates))
 	for key := range s.templates {

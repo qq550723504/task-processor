@@ -157,6 +157,8 @@ type Handler interface {
 	GetUploadedListingKitImage(c *gin.Context)
 	GenerateStudioDesigns(c *gin.Context)
 	GenerateStudioProductImages(c *gin.Context)
+	StartStudioAsyncJob(c *gin.Context)
+	GetStudioAsyncJob(c *gin.Context)
 	RegenerateSheinDataImage(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)

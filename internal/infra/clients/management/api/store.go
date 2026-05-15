@@ -1,33 +1,37 @@
 package api
 
+import "task-processor/internal/pkg/types"
+
 // StoreRespDTO 店铺信息响应DTO
 type StoreRespDTO struct {
-	ID                      int64  `json:"id"`
-	TenantID                int64  `json:"tenantId"`
-	StoreID                 string `json:"storeId"`
-	Name                    string `json:"name"`
-	Username                string `json:"username"`
-	Password                string `json:"password"`
-	LoginUrl                string `json:"loginUrl"`
-	ShopType                string `json:"shopType"`
-	Region                  string `json:"region"`
-	Platform                string `json:"platform"`
-	DailyLimit              *int   `json:"dailyLimit,omitempty"`
-	DailyLimitType          string `json:"dailyLimitType,omitempty"`
-	FixedStockCount         *int   `json:"fixedStockCount,omitempty"`
-	SkuGenerateStrategy     string `json:"skuGenerateStrategy"`
-	Prefix                  string `json:"prefix"`
-	Suffix                  string `json:"suffix"`
-	Proxy                   string `json:"proxy"`
-	EnableAutoListing       *bool  `json:"enableAutoListing,omitempty"`
-	EnableAutoLogin         *bool  `json:"enableAutoLogin,omitempty"`
-	EnableDraft             *bool  `json:"enableDraft,omitempty"`
-	EnableAutoPrice         *bool  `json:"enableAutoPrice,omitempty"`
-	EnableRebargain         *bool  `json:"enableRebargain,omitempty"`
-	TemuPriceRejectStrategy string `json:"temuPriceRejectStrategy,omitempty"`
-	PriceType               string `json:"priceType,omitempty"`
-	Remark                  string `json:"remark"`
-	Status                  int16  `json:"status"`
+	ID                      int64               `json:"id"`
+	TenantID                int64               `json:"tenantId"`
+	StoreID                 string              `json:"storeId"`
+	Name                    string              `json:"name"`
+	Username                string              `json:"username"`
+	Password                string              `json:"password"`
+	LoginUrl                string              `json:"loginUrl"`
+	ShopType                string              `json:"shopType"`
+	Region                  string              `json:"region"`
+	Platform                string              `json:"platform"`
+	DailyLimit              *int                `json:"dailyLimit,omitempty"`
+	DailyLimitType          string              `json:"dailyLimitType,omitempty"`
+	FixedStockCount         *int                `json:"fixedStockCount,omitempty"`
+	SkuGenerateStrategy     string              `json:"skuGenerateStrategy"`
+	Prefix                  string              `json:"prefix"`
+	Suffix                  string              `json:"suffix"`
+	Proxy                   string              `json:"proxy"`
+	EnableAutoListing       *bool               `json:"enableAutoListing,omitempty"`
+	EnableAutoLogin         *bool               `json:"enableAutoLogin,omitempty"`
+	EnableDraft             *bool               `json:"enableDraft,omitempty"`
+	EnableAutoPrice         *bool               `json:"enableAutoPrice,omitempty"`
+	EnableRebargain         *bool               `json:"enableRebargain,omitempty"`
+	TemuPriceRejectStrategy string              `json:"temuPriceRejectStrategy,omitempty"`
+	PriceType               string              `json:"priceType,omitempty"`
+	Remark                  string              `json:"remark"`
+	Status                  int16               `json:"status"`
+	CreateTime              *types.FlexibleTime `json:"createTime"`
+	Creator                 string              `json:"creator"`
 }
 
 // StorePageReqDTO 分页查询店铺请求
@@ -41,8 +45,9 @@ type StorePageReqDTO struct {
 
 // StoreStatusUpdateReqDTO 店铺状态更新请求DTO
 type StoreStatusUpdateReqDTO struct {
-	ID     int64 `json:"id"`
-	Status int16 `json:"status"`
+	ID     int64  `json:"id"`
+	Status int16  `json:"status"`
+	Remark string `json:"remark,omitempty"`
 }
 
 // StoreIdUpdateReqDTO 修改店铺StoreID请求DTO

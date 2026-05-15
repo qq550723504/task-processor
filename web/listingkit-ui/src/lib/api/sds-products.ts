@@ -4,6 +4,12 @@ import type {
   SDSProductListResponse,
   SDSShipmentArea,
 } from "@/lib/types/sds";
+import {
+  parseSDSCategoriesResponse,
+  parseSDSProductDetailResponse,
+  parseSDSProductListResponse,
+  parseSDSShipmentAreasResponse,
+} from "@/lib/api/sds-products-schema";
 
 type ListQuery = {
   keyword?: string;
@@ -58,50 +64,40 @@ function buildSearch(query?: ListQuery) {
   return suffix ? `?${suffix}` : "";
 }
 
-export async function getSDSProducts(query?: ListQuery) {
+export async function getSDSProducts(
+  query?: ListQuery,
+): Promise<SDSProductListResponse> {
   const response = await fetch(`/api/sds/products${buildSearch(query)}`, {
     method: "GET",
     cache: "no-store",
   });
-  const payload = (await response.json()) as SDSProductListResponse;
-  if (!response.ok) {
-    throw new Error("Failed to load SDS products");
-  }
-  return payload;
+  return parseSDSProductListResponse(response);
 }
 
-export async function getSDSProductDetail(productId: number) {
+export async function getSDSProductDetail(
+  productId: number,
+): Promise<SDSProductDetail> {
   const response = await fetch(`/api/sds/products/${productId}`, {
     method: "GET",
     cache: "no-store",
   });
-  const payload = (await response.json()) as SDSProductDetail;
-  if (!response.ok) {
-    throw new Error("Failed to load SDS product detail");
-  }
-  return payload;
+  return parseSDSProductDetailResponse(response);
 }
 
-export async function getSDSShipmentAreas() {
+export async function getSDSShipmentAreas(): Promise<SDSShipmentArea[]> {
   const response = await fetch("/api/sds/shipment-areas", {
     method: "GET",
     cache: "no-store",
   });
-  const payload = (await response.json()) as SDSShipmentArea[];
-  if (!response.ok) {
-    throw new Error("Failed to load SDS shipment areas");
-  }
-  return payload;
+  return parseSDSShipmentAreasResponse(response);
 }
 
-export async function getSDSCategories(shipmentArea: string) {
+export async function getSDSCategories(
+  shipmentArea: string,
+): Promise<SDSCategory[]> {
   const response = await fetch(`/api/sds/categories?shipmentArea=${encodeURIComponent(shipmentArea)}`, {
     method: "GET",
     cache: "no-store",
   });
-  const payload = (await response.json()) as SDSCategory[];
-  if (!response.ok) {
-    throw new Error("Failed to load SDS categories");
-  }
-  return payload;
+  return parseSDSCategoriesResponse(response);
 }

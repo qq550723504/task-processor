@@ -2,15 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
+  getSheinStudioSession,
   mapStudioSessionDetailToDraft,
   replaceSheinStudioSessionDesigns,
 } from "@/lib/api/shein-studio-sessions";
 import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 
-vi.mock("@/lib/api/client", () => ({
-  apiAsyncRequest: vi.fn(),
-  apiRequest: vi.fn(),
-}));
+vi.mock("@/lib/api/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/client")>(
+    "@/lib/api/client",
+  );
+  return {
+    ...actual,
+    apiAsyncRequest: vi.fn(),
+    apiRequest: vi.fn(),
+  };
+});
 
 const mockedApiAsyncRequest = vi.mocked(apiAsyncRequest);
 const mockedApiRequest = vi.mocked(apiRequest);
@@ -161,6 +168,30 @@ describe("shein studio design metadata", () => {
       imageModel: "gpt-image-2",
       transparentBackground: true,
       variationIntensity: "light",
+    });
+  });
+
+  it("rejects studio session responses without a string session id", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: 123 },
+      designs: [],
+    });
+
+    await expect(getSheinStudioSession("session-1")).rejects.toMatchObject({
+      message: "ListingKit API returned an unexpected studio session response",
+      status: 502,
+    });
+  });
+
+  it("rejects studio session designs without a string design id", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "session-1" },
+      designs: [{ id: 123, image_url: "https://oss.example.com/design.png" }],
+    });
+
+    await expect(getSheinStudioSession("session-1")).rejects.toMatchObject({
+      message: "ListingKit API returned an unexpected studio session response",
+      status: 502,
     });
   });
 });

@@ -3,6 +3,10 @@ import {
   getListingKitUpstreamBase,
 } from "@/app/api/listing-kits/proxy-url";
 import {
+  readLocalJsonFileSync,
+  writeLocalJsonFileSync,
+} from "@/lib/server/local-json-file";
+import {
   logRequestInfo,
   logRequestWarn,
   newRequestLogId,
@@ -25,6 +29,10 @@ type AsyncJob = {
 
 const MAX_JOBS = 100;
 const JOB_TTL_MS = 60 * 60 * 1000;
+const DEFAULT_RUNNING_JOB_TIMEOUT_MS = 60 * 60 * 1000;
+const ASYNC_JOBS_FILE_NAME = "listingkit-async-jobs.json";
+// Jobs are executed by the process that starts them. Status is mirrored to local
+// JSON storage so refreshes and sibling instances with a shared volume can poll.
 const jobs = new Map<string, AsyncJob>();
 
 export function startListingKitAsyncJob(input: {
@@ -44,12 +52,14 @@ export function startListingKitAsyncJob(input: {
     requestId: newRequestLogId(),
   };
   jobs.set(job.id, job);
+  persistJobs();
 
   void runListingKitAsyncJob(job, input.body);
   return snapshotJob(job);
 }
 
 export function getListingKitAsyncJob(id: string) {
+  loadJobsFromStorage();
   cleanupJobs();
   const job = jobs.get(id);
   return job ? snapshotJob(job) : null;
@@ -79,14 +89,24 @@ async function runListingKitAsyncJob(job: AsyncJob, body: unknown) {
       body: JSON.stringify(body ?? {}),
       cache: "no-store",
     });
+    if (!isCurrentRunningJob(job)) {
+      logLateAsyncJobResponseIgnored(job, startedAt);
+      return;
+    }
     job.upstreamStatus = upstream.status;
+    persistJobs();
     const text = await upstream.text();
+    if (!isCurrentRunningJob(job)) {
+      logLateAsyncJobResponseIgnored(job, startedAt, upstream.status);
+      return;
+    }
     const payload = parseJsonPayload(text);
     job.finishedAt = Date.now();
     if (!upstream.ok) {
       job.status = "failed";
       job.error = extractPayloadMessage(payload) ?? `ListingKit API request failed: ${upstream.status}`;
       job.result = payload;
+      persistJobs();
       logRequestWarn("listingkit async job failed", {
         requestId: job.requestId,
         jobId: job.id,
@@ -101,6 +121,7 @@ async function runListingKitAsyncJob(job: AsyncJob, body: unknown) {
 
     job.status = "succeeded";
     job.result = payload;
+    persistJobs();
     logRequestInfo("listingkit async job succeeded", {
       requestId: job.requestId,
       jobId: job.id,
@@ -110,10 +131,15 @@ async function runListingKitAsyncJob(job: AsyncJob, body: unknown) {
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
+    if (!isCurrentRunningJob(job)) {
+      logLateAsyncJobResponseIgnored(job, startedAt);
+      return;
+    }
     job.status = "failed";
     job.finishedAt = Date.now();
     job.error =
       error instanceof Error ? error.message : "ListingKit async job failed";
+    persistJobs();
     logRequestWarn("listingkit async job crashed", {
       requestId: job.requestId,
       jobId: job.id,
@@ -141,13 +167,69 @@ function snapshotJob(job: AsyncJob) {
 }
 
 function cleanupJobs() {
+  loadJobsFromStorage();
   const now = Date.now();
+  let changed = false;
   for (const [id, job] of jobs) {
+    if (job.status === "running" && now - job.startedAt > getRunningJobTimeoutMs()) {
+      job.status = "failed";
+      job.finishedAt = now;
+      job.error = "ListingKit async job timed out before completion";
+      changed = true;
+      continue;
+    }
     if (jobs.size <= MAX_JOBS && now - job.startedAt <= JOB_TTL_MS) {
       continue;
     }
     jobs.delete(id);
+    changed = true;
   }
+  if (changed) {
+    persistJobs();
+  }
+}
+
+function loadJobsFromStorage() {
+  const parsed = readLocalJsonFileSync<{ jobs?: AsyncJob[] }>(
+    ASYNC_JOBS_FILE_NAME,
+    {},
+  );
+  if (!Array.isArray(parsed.jobs)) {
+    return;
+  }
+  for (const job of parsed.jobs) {
+    if (isPersistedJob(job)) {
+      jobs.set(job.id, job);
+    }
+  }
+}
+
+function persistJobs() {
+  writeLocalJsonFileSync(ASYNC_JOBS_FILE_NAME, { jobs: [...jobs.values()] });
+}
+
+function getRunningJobTimeoutMs() {
+  const configured = Number(process.env.LISTINGKIT_UI_ASYNC_JOB_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_RUNNING_JOB_TIMEOUT_MS;
+}
+
+function isPersistedJob(job: unknown): job is AsyncJob {
+  if (!job || typeof job !== "object") {
+    return false;
+  }
+  const record = job as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.path === "string" &&
+    record.method === "POST" &&
+    (record.status === "running" ||
+      record.status === "succeeded" ||
+      record.status === "failed") &&
+    typeof record.startedAt === "number" &&
+    typeof record.requestId === "string"
+  );
 }
 
 function normalizeAsyncPath(path: string) {
@@ -179,4 +261,23 @@ function extractPayloadMessage(payload: unknown) {
   }
   const record = payload as Record<string, unknown>;
   return typeof record.message === "string" ? record.message : undefined;
+}
+
+function isCurrentRunningJob(job: AsyncJob) {
+  return jobs.get(job.id) === job && job.status === "running";
+}
+
+function logLateAsyncJobResponseIgnored(
+  job: AsyncJob,
+  startedAt: number,
+  status?: number,
+) {
+  logRequestWarn("listingkit async job late response ignored", {
+    requestId: job.requestId,
+    jobId: job.id,
+    method: job.method,
+    path: job.path,
+    status,
+    durationMs: Date.now() - startedAt,
+  });
 }

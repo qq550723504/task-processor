@@ -2,27 +2,44 @@ package api
 
 import (
 	"net/http"
-	"net/url"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
-func TestRequestContextUsesYudaoGatewayHeaders(t *testing.T) {
+func TestRequestContextUsesVerifiedIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(nil)
 	req, err := http.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("tenant-id", "286")
-	req.Header.Set("login-user", url.QueryEscape(`{"id":42,"tenantId":286,"userType":2}`))
+	req.Header.Set("X-Tenant-ID", "org-286")
+	req.Header.Set("X-User-ID", "user-42")
 	c.Request = req
 
-	if got := requestTenantID(c); got != "286" {
-		t.Fatalf("tenant id = %q, want 286", got)
+	if got := requestTenantID(c); got != "org-286" {
+		t.Fatalf("tenant id = %q, want org-286", got)
 	}
-	if got := requestUserID(c); got != "42" {
-		t.Fatalf("user id = %q, want 42", got)
+	if got := requestUserID(c); got != "user-42" {
+		t.Fatalf("user id = %q, want user-42", got)
+	}
+}
+
+func TestRequestContextIgnoresLegacyLoginUserHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("login-user", `{"id":42,"tenantId":286}`)
+	c.Request = req
+
+	if got := requestTenantID(c); got != "default" {
+		t.Fatalf("tenant id = %q, want default", got)
+	}
+	if got := requestUserID(c); got != "" {
+		t.Fatalf("user id = %q, want empty", got)
 	}
 }

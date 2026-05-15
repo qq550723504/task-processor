@@ -32,19 +32,19 @@ Default:
 LISTINGKIT_API_BASE=http://localhost:8080/api/v1/listing-kits
 ```
 
-When embedding ListingKit in yudao Vben, configure the yudao token verifier:
+Configure ZITADEL for the ListingKit UI session and proxy identity:
 
 ```bash
-YUDAO_CHECK_TOKEN_URL=http://127.0.0.1:48081/admin-api/system/oauth2/check-token
-YUDAO_OAUTH_CLIENT_ID=default
-YUDAO_OAUTH_CLIENT_SECRET=your_oauth_client_secret
-NEXT_PUBLIC_YUDAO_PARENT_ORIGINS=http://127.0.0.1:5666,http://localhost:5666
+ZITADEL_ISSUER_URL=https://your-zitadel-instance
+ZITADEL_CLIENT_ID=your_client_id
+ZITADEL_CLIENT_SECRET=your_client_secret
+ZITADEL_REDIRECT_URI=http://localhost:3000/api/zitadel-auth/callback
+ZITADEL_POST_LOGOUT_REDIRECT_URI=http://localhost:3000
 ```
 
-If `YUDAO_CHECK_TOKEN_URL`, `YUDAO_OAUTH_CLIENT_ID`, and
-`YUDAO_OAUTH_CLIENT_SECRET` are all set, the Next.js proxy verifies the browser
-Bearer token with yudao before forwarding requests to the ListingKit Go API.
-The verified `user_id` and `tenant_id` override browser-supplied tenant headers.
+The Next.js proxy verifies the ZITADEL session or bearer token before forwarding
+requests to the ListingKit Go API. The verified ZITADEL user and resource owner
+are forwarded as ListingKit identity headers.
 
 如果只是本地联调，想暂时跳过页面授权门禁，可以额外设置：
 
@@ -52,7 +52,7 @@ The verified `user_id` and `tenant_id` override browser-supplied tenant headers.
 LISTINGKIT_UI_BYPASS_AUTH_GATE=1
 ```
 
-这个开关只在非生产环境生效，只跳过前端 `YudaoAuthGate`，不会修改后端 API 的实际鉴权逻辑。
+这个开关只在非生产环境生效，只跳过前端 ZITADEL 页面授权门禁，不会修改后端 API 的实际鉴权逻辑。
 
 如果要使用 ListingKit 里的 AI 能力，需要先在 ListingKit 设置页为当前租户或用户保存 AI 配置。
 后端不再回退到仓库级别的默认 OpenAI / 图片环境变量。
@@ -75,6 +75,15 @@ TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL=nano-banana-fast
 ```bash
 LISTINGKIT_UI_USE_MOCK=1
 ```
+
+SHEIN Studio 草稿、批次、UI 侧 async job 状态和大请求分片 stage 默认写入当前工作目录下的 `.data`。部署到需要保留状态的环境时，显式配置并挂载持久目录：
+
+```bash
+LISTINGKIT_UI_STORAGE_DIR=/var/lib/listingkit-ui
+LISTINGKIT_UI_ASYNC_JOB_TIMEOUT_MS=3600000
+```
+
+该本地 JSON 存储可以缓解刷新和同机重启后的状态丢失；超时未完成的 UI async job 会转为失败，避免一直停在 `running`。多副本部署前仍建议替换成共享数据库或对象存储。
 
 4. Start the app:
 

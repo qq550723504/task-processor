@@ -3,6 +3,7 @@ const ENTRY_TTL_MS = 2 * 60 * 60 * 1000;
 
 type AsyncJobResumeEntry = {
   jobId: string;
+  source: "backend" | "next";
   updatedAt: number;
 };
 
@@ -37,6 +38,7 @@ export function loadAsyncJobResumeEntry(key: string): AsyncJobResumeEntry | null
     }
     return {
       jobId: parsed.jobId,
+      source: parsed.source === "backend" ? "backend" : "next",
       updatedAt: parsed.updatedAt,
     };
   } catch {
@@ -45,7 +47,11 @@ export function loadAsyncJobResumeEntry(key: string): AsyncJobResumeEntry | null
   }
 }
 
-export function saveAsyncJobResumeEntry(key: string, jobId: string) {
+export function saveAsyncJobResumeEntry(
+  key: string,
+  jobId: string,
+  source: AsyncJobResumeEntry["source"] = "next",
+) {
   const storage = getStorage();
   if (!storage || !jobId.trim()) {
     return;
@@ -54,6 +60,7 @@ export function saveAsyncJobResumeEntry(key: string, jobId: string) {
     key,
     JSON.stringify({
       jobId,
+      source,
       updatedAt: Date.now(),
     } satisfies AsyncJobResumeEntry),
   );

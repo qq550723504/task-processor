@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  buildListingKitUpstreamHeaders,
   resolveListingKitProxyTimeoutMs,
-  shouldBypassYudaoTokenVerification,
   shouldProxyListingKitResponseAsBinary,
-  verifyYudaoAccessToken,
-} from "@/app/api/listing-kits/[...path]/route";
+} from "@/app/api/listing-kits/proxy-response";
+import {
+  buildListingKitUpstreamHeaders,
+  shouldBypassListingKitProxyAuth,
+} from "@/app/api/listing-kits/proxy-auth";
+import { verifyZitadelAccessToken } from "@/lib/server/zitadel-auth";
 
 describe("resolveListingKitProxyTimeoutMs", () => {
   it("keeps the default timeout for regular listingkit requests", () => {
@@ -47,86 +49,70 @@ describe("shouldProxyListingKitResponseAsBinary", () => {
 });
 
 describe("buildListingKitUpstreamHeaders", () => {
-  it("maps yudao gateway login-user and tenant-id headers to listingkit identity headers", () => {
-    const loginUser = encodeURIComponent(
-      JSON.stringify({ id: 42, tenantId: 286, userType: 2 }),
-    );
+  it("maps verified ZITADEL identity to listingkit identity headers", () => {
     const request = new Request("http://localhost/api/listing-kits/tasks", {
       headers: {
         accept: "application/json",
         authorization: "Bearer user-token",
-        "tenant-id": "286",
-        "login-user": loginUser,
+      },
+    });
+
+    const headers = buildListingKitUpstreamHeaders(request.headers, {
+      tenantId: "org-286",
+      userId: "user-42",
+      userType: "zitadel",
+    });
+
+    expect(headers.get("Authorization")).toBe("Bearer user-token");
+    expect(headers.get("tenant-id")).toBe("org-286");
+    expect(headers.get("X-Tenant-ID")).toBe("org-286");
+    expect(headers.get("X-User-ID")).toBe("user-42");
+    expect(headers.get("X-User-Type")).toBe("zitadel");
+  });
+
+  it("does not forward legacy gateway-only headers", () => {
+    const request = new Request("http://localhost/api/listing-kits/tasks", {
+      headers: {
+        accept: "application/json",
+        "visit-tenant-id": "389",
+        "login-user": encodeURIComponent(JSON.stringify({ id: 42 })),
       },
     });
 
     const headers = buildListingKitUpstreamHeaders(request.headers);
 
-    expect(headers.get("Authorization")).toBe("Bearer user-token");
-    expect(headers.get("tenant-id")).toBe("286");
-    expect(headers.get("login-user")).toBe(loginUser);
-    expect(headers.get("X-Tenant-ID")).toBe("286");
-    expect(headers.get("X-User-ID")).toBe("42");
-    expect(headers.get("X-User-Type")).toBe("2");
-  });
-
-  it("prefers verified yudao token identity over browser-supplied tenant headers", () => {
-    const request = new Request("http://localhost/api/listing-kits/tasks", {
-      headers: {
-        accept: "application/json",
-        authorization: "Bearer user-token",
-        "tenant-id": "999",
-      },
-    });
-
-    const headers = buildListingKitUpstreamHeaders(request.headers, {
-      tenantId: 286,
-      userId: 42,
-      userType: 2,
-    });
-
-    expect(headers.get("Authorization")).toBe("Bearer user-token");
-    expect(headers.get("tenant-id")).toBe("286");
-    expect(headers.get("X-Tenant-ID")).toBe("286");
-    expect(headers.get("X-User-ID")).toBe("42");
-    expect(headers.get("X-User-Type")).toBe("2");
+    expect(headers.get("visit-tenant-id")).toBeNull();
+    expect(headers.get("login-user")).toBeNull();
   });
 });
 
-describe("verifyYudaoAccessToken", () => {
+describe("shouldBypassListingKitProxyAuth", () => {
   afterEach(() => {
-    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
-  it("can bypass token verification in non-production local dev", async () => {
+  it("only allows proxy auth bypass outside production with the local bypass flag", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("YUDAO_DEV_BYPASS_TOKEN_VERIFICATION", "1");
+    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
+    expect(shouldBypassListingKitProxyAuth()).toBe(true);
 
-    await expect(
-      verifyYudaoAccessToken("Bearer access-token-1", {
-        checkTokenUrl: "http://127.0.0.1:48080/admin-api/system/oauth2/check-token",
-        clientId: "default",
-        clientSecret: "secret",
-        tenantId: "286",
-      }),
-    ).resolves.toEqual({
-      tenantId: "286",
-      userId: "dev-user",
-      userType: "1",
-    });
+    vi.stubEnv("NODE_ENV", "production");
+    expect(shouldBypassListingKitProxyAuth()).toBe(false);
+  });
+});
+
+describe("verifyZitadelAccessToken", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("checks bearer token through yudao oauth check-token", async () => {
+  it("checks bearer token through ZITADEL introspection", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          code: 0,
-          data: {
-            user_id: 42,
-            user_type: 2,
-            tenant_id: 286,
-          },
+          active: true,
+          sub: "user-42",
+          "urn:zitadel:iam:user:resourceowner:id": "org-286",
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -134,46 +120,40 @@ describe("verifyYudaoAccessToken", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      verifyYudaoAccessToken("Bearer access-token-1", {
-        checkTokenUrl: "http://127.0.0.1:48080/admin-api/system/oauth2/check-token",
-        clientId: "default",
-        clientSecret: "secret",
-        tenantId: "286",
-      }),
+      verifyZitadelAccessToken(
+        "access-token-1",
+        {
+          issuerUrl: "https://issuer.example.com",
+          clientId: "client-1",
+          clientSecret: "secret-1",
+          scopes: "openid profile",
+        },
+        {
+          authorization_endpoint: "https://issuer.example.com/oauth/v2/authorize",
+          token_endpoint: "https://issuer.example.com/oauth/v2/token",
+          introspection_endpoint:
+            "https://issuer.example.com/oauth/v2/introspect",
+        },
+      ),
     ).resolves.toEqual({
-      tenantId: 286,
-      userId: 42,
-      userType: 2,
+      tenantId: "org-286",
+      userId: "user-42",
+      userType: "zitadel",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:48080/admin-api/system/oauth2/check-token",
+      "https://issuer.example.com/oauth/v2/introspect",
       expect.objectContaining({
-        body: "client_id=default&client_secret=secret&token=access-token-1",
+        body: "token=access-token-1&token_type_hint=access_token",
         method: "POST",
       }),
     );
     const init = fetchMock.mock.calls[0]?.[1];
     const headers = new Headers(init?.headers);
-    expect(headers.has("Authorization")).toBe(false);
-    expect(headers.get("tenant-id")).toBe("286");
+    expect(headers.get("Authorization")).toMatch(/^Basic /);
     expect(headers.get("Content-Type")).toBe(
       "application/x-www-form-urlencoded",
     );
   });
 });
 
-describe("shouldBypassYudaoTokenVerification", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("only enables bypass outside production when the env flag is set", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("YUDAO_DEV_BYPASS_TOKEN_VERIFICATION", "1");
-    expect(shouldBypassYudaoTokenVerification()).toBe(true);
-
-    vi.stubEnv("NODE_ENV", "production");
-    expect(shouldBypassYudaoTokenVerification()).toBe(false);
-  });
-});

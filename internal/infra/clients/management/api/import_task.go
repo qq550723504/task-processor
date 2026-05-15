@@ -58,6 +58,7 @@ type ProductImportTaskUpdateReqDTO struct {
 	ErrorMessage          string `json:"errorMessage,omitempty"`
 	ReasonCode            string `json:"reasonCode,omitempty"`
 	Stage                 string `json:"stage,omitempty"`
+	Remark                string `json:"remark,omitempty"`
 	ExpectedCurrentStatus *int16 `json:"expectedCurrentStatus,omitempty"`
 	RetryCount            *int   `json:"retryCount,omitempty"`
 	Priority              *int   `json:"priority,omitempty"`

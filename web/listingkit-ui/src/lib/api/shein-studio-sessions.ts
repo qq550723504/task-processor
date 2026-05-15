@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
+import { parseStudioSessionDetailResponse } from "@/lib/api/shein-studio-session-schema";
 import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
@@ -21,7 +22,7 @@ export type StudioSessionStatus =
   | "failed"
   | "tasks_created";
 
-type StudioSessionDetailResponse = {
+export type StudioSessionDetailResponse = {
   session?: {
     id: string;
     tenant_id?: string;
@@ -93,14 +94,14 @@ export async function ensureSheinStudioSession(
   if (!selection?.variantId) {
     return null;
   }
-  const detail = await apiRequest<StudioSessionDetailResponse>("/studio/sessions", {
+  const detail = parseStudioSessionDetailResponse(await apiRequest<unknown>("/studio/sessions", {
     method: "POST",
     body: {
       selection: selectionToPayload(selection),
     },
     signal: options?.signal,
     timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-  });
+  }));
   cacheStudioSession(detail, selection);
   return detail;
 }
@@ -109,10 +110,12 @@ export async function getSheinStudioSession(
   sessionId: string,
   options?: StudioSessionRequestOptions,
 ) {
-  return apiRequest<StudioSessionDetailResponse>(`/studio/sessions/${sessionId}`, {
-    signal: options?.signal,
-    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-  });
+  return parseStudioSessionDetailResponse(
+    await apiRequest<unknown>(`/studio/sessions/${sessionId}`, {
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    }),
+  );
 }
 
 export async function updateSheinStudioSession(
@@ -138,30 +141,32 @@ export async function updateSheinStudioSession(
   },
   options?: StudioSessionRequestOptions,
 ) {
-  return apiRequest<StudioSessionDetailResponse>(`/studio/sessions/${sessionId}`, {
-    method: "PATCH",
-    body: {
-      status: patch.status,
-      prompt: patch.prompt,
-      style_count: patch.styleCount,
-      variation_intensity: patch.variationIntensity,
-      product_image_count: patch.productImageCount,
-      product_image_prompt: patch.productImagePrompt,
-      product_image_prompts: patch.productImagePrompts,
-      artwork_model: patch.artworkModel,
-      image_strategy: patch.imageStrategy,
-      selected_sds_images: patch.selectedSdsImages,
-      transparent_background: patch.transparentBackground,
-      render_size_images_with_sds: patch.renderSizeImagesWithSds,
-      shein_store_id: patch.sheinStoreId,
-      generation_job_id: patch.generationJobId,
-      generation_error: patch.generationError,
-      approved_design_ids: patch.approvedDesignIds,
-      created_tasks: patch.createdTasks,
-    },
-    signal: options?.signal,
-    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-  });
+  return parseStudioSessionDetailResponse(
+    await apiRequest<unknown>(`/studio/sessions/${sessionId}`, {
+      method: "PATCH",
+      body: {
+        status: patch.status,
+        prompt: patch.prompt,
+        style_count: patch.styleCount,
+        variation_intensity: patch.variationIntensity,
+        product_image_count: patch.productImageCount,
+        product_image_prompt: patch.productImagePrompt,
+        product_image_prompts: patch.productImagePrompts,
+        artwork_model: patch.artworkModel,
+        image_strategy: patch.imageStrategy,
+        selected_sds_images: patch.selectedSdsImages,
+        transparent_background: patch.transparentBackground,
+        render_size_images_with_sds: patch.renderSizeImagesWithSds,
+        shein_store_id: patch.sheinStoreId,
+        generation_job_id: patch.generationJobId,
+        generation_error: patch.generationError,
+        approved_design_ids: patch.approvedDesignIds,
+        created_tasks: patch.createdTasks,
+      },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    }),
+  );
 }
 
 export async function replaceSheinStudioSessionDesigns(
@@ -173,28 +178,30 @@ export async function replaceSheinStudioSessionDesigns(
   },
   options?: StudioSessionRequestOptions,
 ) {
-  return apiRequest<StudioSessionDetailResponse>(`/studio/sessions/${sessionId}/designs`, {
-    method: "POST",
-    body: {
-      status: input.status,
-      approved_design_ids: input.approvedDesignIds,
-      designs: input.designs.map((design) => ({
-        id: design.id,
-        image_url: design.imageUrl ?? design.dataUrl,
-        prompt: design.prompt,
-        revised_prompt: design.revisedPrompt,
-        image_model: design.imageModel,
-        transparent_background: design.transparentBackground,
-        variation_intensity: design.variationIntensity,
-        review_note: design.reviewNote,
-        role: design.role,
-        role_label: design.roleLabel,
-        product_image_urls: design.productImageUrls,
-      })),
-    },
-    signal: options?.signal,
-    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-  });
+  return parseStudioSessionDetailResponse(
+    await apiRequest<unknown>(`/studio/sessions/${sessionId}/designs`, {
+      method: "POST",
+      body: {
+        status: input.status,
+        approved_design_ids: input.approvedDesignIds,
+        designs: input.designs.map((design) => ({
+          id: design.id,
+          image_url: design.imageUrl ?? design.dataUrl,
+          prompt: design.prompt,
+          revised_prompt: design.revisedPrompt,
+          image_model: design.imageModel,
+          transparent_background: design.transparentBackground,
+          variation_intensity: design.variationIntensity,
+          review_note: design.reviewNote,
+          role: design.role,
+          role_label: design.roleLabel,
+          product_image_urls: design.productImageUrls,
+        })),
+      },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    }),
+  );
 }
 
 export function mapStudioSessionDetailToDraft(

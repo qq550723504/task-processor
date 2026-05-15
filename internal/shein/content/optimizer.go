@@ -64,38 +64,18 @@ func (o *ContentOptimizer) OptimizeTitleAndDescription(ctx context.Context, titl
 		return title, description, fmt.Errorf("OpenAI客户端未初始化")
 	}
 
-	// 从 prompt registry 获取系统提示词
-	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinContentOptimizerOptimizeTitleDescriptionSystem,
-		`你是一个专业的电商产品内容生成专家。请为Amazon产品生成适合SHEIN平台的英文标题和描述。
+	systemPrompt, err := prompt.GetTenantFromContext(ctx, prompt.KSheinContentOptimizerOptimizeTitleDescriptionSystem)
+	if err != nil {
+		return title, description, fmt.Errorf("读取租户系统提示词失败: %w", err)
+	}
 
-要求：
-1. 标题和描述都必须是英文,不要有表情符号
-2. 标题长度在80-800个字符之间，突出产品主要特征和卖点
-3. 描述长度在100-2000个字符之间，详细介绍产品特征、材质、用途（注意：描述最多不能超过5000个字符）
-4. 避免使用品牌名称
-5. 使用简洁、吸引人的描述
-6. 避免敏感词汇
-7. 返回JSON格式，包含title和description字段
-
-JSON格式示例：
-{
-  "title": "Women's Casual Cotton T-Shirt with Round Neck",
-  "description": "This comfortable cotton blend t-shirt features a classic design perfect for casual wear. Soft fabric ensures all-day comfort while maintaining shape after washing. Available in multiple colors and sizes."
-}`)
-
-	// 从 prompt registry 渲染用户提示词
-	userPrompt, err := prompt.GlobalRegistry.Render(prompt.KSheinContentOptimizerOptimizeTitleDescriptionUser, map[string]any{
+	userPrompt, err := prompt.RenderTenantFromContext(ctx, prompt.KSheinContentOptimizerOptimizeTitleDescriptionUser, map[string]any{
 		"title":       title,
 		"description": description,
 		"features":    features,
-	}, `Amazon产品信息：
-标题：{{.title}}
-详情：{{.description}}
-要点：{{.features}}
-
-请生成SHEIN平台的英文标题和描述（JSON格式）：`)
+	})
 	if err != nil {
-		return title, description, fmt.Errorf("渲染用户提示词失败: %w", err)
+		return title, description, fmt.Errorf("渲染租户用户提示词失败: %w", err)
 	}
 
 	// 设置参数

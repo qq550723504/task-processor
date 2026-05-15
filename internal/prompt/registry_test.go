@@ -35,7 +35,7 @@ func TestRegistry_Get_Miss(t *testing.T) {
 	r := newTestRegistry()
 
 	got := r.Get("not.exist", "fallback value")
-	assert.Equal(t, "fallback value", got)
+	assert.Equal(t, "", got)
 }
 
 func TestRegistry_Get_EmptyFallback(t *testing.T) {
@@ -57,10 +57,68 @@ func TestRegistry_Render_WithVars(t *testing.T) {
 func TestRegistry_Render_Fallback(t *testing.T) {
 	r := newTestRegistry()
 
-	// key 不存在，用 fallback 渲染
 	got, err := r.Render("not.exist", map[string]any{"Name": "Go"}, "Hi, {{.Name}}!")
+	require.Error(t, err)
+	assert.Empty(t, got)
+}
+
+func TestRegistry_RenderTenant_UsesOnlyTenantScopedPrompt(t *testing.T) {
+	r := newTestRegistry()
+	r.cache["tmpl.key"] = "global {{.Name}}"
+	r.tenantCache = map[string]map[string]string{
+		"zitadel-org-a": {
+			"tmpl.key": "tenant {{.Name}}",
+		},
+	}
+
+	got, err := r.RenderTenant("zitadel-org-a", "tmpl.key", map[string]any{"Name": "Alice"})
+
 	require.NoError(t, err)
-	assert.Equal(t, "Hi, Go!", got)
+	assert.Equal(t, "tenant Alice", got)
+}
+
+func TestRegistry_RenderTenant_MissingTenantPromptReturnsError(t *testing.T) {
+	r := newTestRegistry()
+	r.cache["tmpl.key"] = "global {{.Name}}"
+
+	got, err := r.RenderTenant("zitadel-org-a", "tmpl.key", map[string]any{"Name": "Alice"})
+
+	require.Error(t, err)
+	assert.Empty(t, got)
+}
+
+func TestRegistry_RenderTenant_RenderErrorDoesNotReturnFallbackTemplate(t *testing.T) {
+	r := newTestRegistry()
+	r.tenantCache = map[string]map[string]string{
+		"zitadel-org-a": {
+			"tmpl.key": "tenant {{.Missing}}",
+		},
+	}
+
+	got, err := r.RenderTenant("zitadel-org-a", "tmpl.key", map[string]any{"Name": "Alice"})
+
+	require.Error(t, err)
+	assert.Empty(t, got)
+}
+
+func TestRegistry_Integration_LoadsTenantScopedPrompts(t *testing.T) {
+	dir := t.TempDir()
+	promptsDir := filepath.Join(dir, "prompts")
+	tenantDir := filepath.Join(promptsDir, "tenants", "zitadel-org-a", "shein")
+	require.NoError(t, os.MkdirAll(tenantDir, 0755))
+
+	yamlContent := `content_optimizer:
+  optimize_title_description_user:
+    content: "Tenant title {{.Title}}"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tenantDir, "content_optimizer.yaml"), []byte(yamlContent), 0644))
+
+	r := newTestRegistry()
+	require.NoError(t, r.Init(context.Background(), promptsDir, false))
+
+	got, err := r.RenderTenant("zitadel-org-a", "shein.content_optimizer.optimize_title_description_user", map[string]any{"Title": "Dress"})
+	require.NoError(t, err)
+	assert.Equal(t, "Tenant title Dress", got)
 }
 
 func TestRegistry_Keys(t *testing.T) {
@@ -111,7 +169,7 @@ func TestRegistry_Integration_LoadAndGet(t *testing.T) {
 
 	assert.Equal(t, "你是属性映射专家", r.Get("temu.attribute_mapping.system", ""))
 	assert.Equal(t, "{{.Title}}", r.Get("temu.attribute_mapping.user", ""))
-	assert.Equal(t, "fallback", r.Get("not.exist", "fallback"))
+	assert.Equal(t, "", r.Get("not.exist", "fallback"))
 }
 
 func TestRegistry_Integration_HotReload(t *testing.T) {

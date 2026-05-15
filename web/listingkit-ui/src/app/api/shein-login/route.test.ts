@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSheinLoginUpstreamHeaders } from "@/app/api/shein-login/[...path]/route";
 
 describe("buildSheinLoginUpstreamHeaders", () => {
-  it("forwards tenant and login headers without injecting defaults", () => {
+  it("forwards only generic request headers", () => {
     const headers = buildSheinLoginUpstreamHeaders(
       new Headers({
         accept: "application/json",
@@ -15,9 +15,9 @@ describe("buildSheinLoginUpstreamHeaders", () => {
     );
 
     expect(headers.get("Authorization")).toBe("Bearer token-1");
-    expect(headers.get("tenant-id")).toBe("286");
-    expect(headers.get("visit-tenant-id")).toBe("389");
-    expect(headers.get("login-user")).toContain("tenantId");
+    expect(headers.get("tenant-id")).toBeNull();
+    expect(headers.get("visit-tenant-id")).toBeNull();
+    expect(headers.get("login-user")).toBeNull();
   });
 
   it("does not add a fallback tenant header when the request has no tenant context", () => {

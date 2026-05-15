@@ -15,11 +15,12 @@ type RawJsonDataReqDTO struct {
 
 // RawJsonDataRespDTO 原始JSON数据响应DTO
 type RawJsonDataRespDTO struct {
-	ID          int64  `json:"id"`
-	Platform    string `json:"platform"`
-	ProductID   string `json:"productId"`
-	Region      string `json:"region"`
-	RawJSONData string `json:"rawJsonData"`
+	ID          int64              `json:"id"`
+	TaskID      int64              `json:"taskId"`
+	Platform    string             `json:"platform"`
+	ProductID   string             `json:"productId"`
+	Region      string             `json:"region"`
+	RawJSONData string             `json:"rawJsonData"`
 	CreateTime  types.FlexibleTime `json:"createTime"`
 	UpdateTime  types.FlexibleTime `json:"updateTime"`
 }

@@ -7,6 +7,7 @@
 - `amazon-crawler-external-lb`
 - `monitoring/alertmanager-wecom`
 - `monitoring/amazon-crawler-api`
+- `zitadel/local`
 - `shein-listing`
 - `temu-listing`
 - `amazon-listing`
@@ -15,10 +16,11 @@
 
 1. `yudao-cloud`
 2. RabbitMQ / Redis
-3. `amazon-crawler-api`（如果 Amazon 上架依赖远程爬虫）
-4. `shein-listing`
-5. `temu-listing`
-6. `amazon-listing`
+3. `zitadel/local`（如果本地验证 ListingKit OIDC 登录）
+4. `amazon-crawler-api`（如果 Amazon 上架依赖远程爬虫）
+5. `shein-listing`
+6. `temu-listing`
+7. `amazon-listing`
 
 示例：
 

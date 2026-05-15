@@ -164,6 +164,8 @@ type stubListingKitHandler struct {
 	generateCalled                     bool
 	generateStudioDesignsCalled        bool
 	generateStudioProductImagesCalled  bool
+	startStudioAsyncJobCalled          bool
+	getStudioAsyncJobCalled            bool
 	uploadImagesCalled                 bool
 	getUploadedImageCalled             bool
 	listTasksCalled                    bool
@@ -198,6 +200,16 @@ func (s *stubListingKitHandler) GenerateStudioDesigns(c *gin.Context) {
 func (s *stubListingKitHandler) GenerateStudioProductImages(c *gin.Context) {
 	s.generateStudioProductImagesCalled = true
 	c.JSON(http.StatusOK, gin.H{"images": []any{}})
+}
+
+func (s *stubListingKitHandler) StartStudioAsyncJob(c *gin.Context) {
+	s.startStudioAsyncJobCalled = true
+	c.JSON(http.StatusAccepted, gin.H{"job_id": "studio-job-1", "status": "running"})
+}
+
+func (s *stubListingKitHandler) GetStudioAsyncJob(c *gin.Context) {
+	s.getStudioAsyncJobCalled = true
+	c.JSON(http.StatusOK, gin.H{"job_id": c.Param("job_id"), "status": "succeeded"})
 }
 
 func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {
@@ -568,6 +580,29 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.generateStudioProductImagesCalled {
 		t.Fatal("listing kit GenerateStudioProductImages handler was not called")
+	}
+
+	handler.startStudioAsyncJobCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/async-jobs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("POST /api/v1/listing-kits/studio/async-jobs = %d, want 202", resp.Code)
+	}
+	if !handler.startStudioAsyncJobCalled {
+		t.Fatal("listing kit StartStudioAsyncJob handler was not called")
+	}
+
+	handler.getStudioAsyncJobCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/async-jobs/studio-job-1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/studio/async-jobs/:job_id = %d, want 200", resp.Code)
+	}
+	if !handler.getStudioAsyncJobCalled {
+		t.Fatal("listing kit GetStudioAsyncJob handler was not called")
 	}
 
 	handler.uploadImagesCalled = false

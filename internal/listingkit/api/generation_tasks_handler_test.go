@@ -17,25 +17,29 @@ import (
 )
 
 type stubGenerationTaskService struct {
-	page               *listingkit.GenerationTaskPage
-	queue              *listingkit.GenerationQueuePage
-	action             *listingkit.GenerationActionExecutionResult
-	navigation         *listingkit.GenerationReviewNavigationDispatchResponse
-	reviewSession      *listingkit.GenerationReviewSessionResponse
-	reviewPreview      *listingkit.GenerationReviewPreviewResponse
-	uploadResponse     *listingkit.UploadImagesResponse
-	uploadedImageFile  *listingkit.UploadedImageFile
-	err                error
-	lastTask           string
-	uploadedImageKey   string
-	query              *listingkit.GenerationTaskQuery
-	queueQuery         *listingkit.GenerationQueueQuery
-	retryReq           *listingkit.RetryGenerationTasksRequest
-	actionReq          *listingkit.ExecuteGenerationActionRequest
-	navigationReq      *listingkit.GenerationReviewNavigationDispatchRequest
-	reviewSessionQuery *listingkit.GenerationQueueQuery
-	reviewPreviewQuery *listingkit.GenerationQueueQuery
-	uploadImagesReq    *listingkit.UploadImagesRequest
+	page                  *listingkit.GenerationTaskPage
+	queue                 *listingkit.GenerationQueuePage
+	action                *listingkit.GenerationActionExecutionResult
+	navigation            *listingkit.GenerationReviewNavigationDispatchResponse
+	reviewSession         *listingkit.GenerationReviewSessionResponse
+	reviewPreview         *listingkit.GenerationReviewPreviewResponse
+	uploadResponse        *listingkit.UploadImagesResponse
+	uploadedImageFile     *listingkit.UploadedImageFile
+	studioDesigns         *listingkit.StudioDesignResponse
+	studioProductImages   *listingkit.StudioProductImageResponse
+	err                   error
+	lastTask              string
+	uploadedImageKey      string
+	query                 *listingkit.GenerationTaskQuery
+	queueQuery            *listingkit.GenerationQueueQuery
+	retryReq              *listingkit.RetryGenerationTasksRequest
+	actionReq             *listingkit.ExecuteGenerationActionRequest
+	navigationReq         *listingkit.GenerationReviewNavigationDispatchRequest
+	reviewSessionQuery    *listingkit.GenerationQueueQuery
+	reviewPreviewQuery    *listingkit.GenerationQueueQuery
+	uploadImagesReq       *listingkit.UploadImagesRequest
+	studioDesignReq       *listingkit.StudioDesignRequest
+	studioProductImageReq *listingkit.StudioProductImageRequest
 }
 
 func (s *stubGenerationTaskService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {

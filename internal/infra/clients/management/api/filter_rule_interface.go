@@ -19,22 +19,23 @@ type FilterRuleReqDTO struct {
 
 // FilterRuleRespDTO 筛选规则响应DTO
 type FilterRuleRespDTO struct {
-	ID              int64    `json:"id"`
-	Name            string   `json:"name"`
-	RuleCode        string   `json:"ruleCode"`
-	Description     string   `json:"description"`
-	TenantID        int64    `json:"tenantId"`
-	StoreID         int64    `json:"storeId"`
-	CategoryID      int64    `json:"categoryId"`
-	PriceMin        *float64 `json:"priceMin"`
-	PriceMax        *float64 `json:"priceMax"`
-	StockMin        *int     `json:"stockMin"`
-	RatingMin       *float64 `json:"ratingMin"`
-	ReviewCountMin  *int     `json:"reviewCountMin"`
-	DeliveryTimeMax *int     `json:"deliveryTimeMax"`
-	FulfillmentType string   `json:"fulfillmentType"`
-	Status          int16    `json:"status"`
-	Remark          string   `json:"remark"`
+	ID              int64              `json:"id"`
+	Name            string             `json:"name"`
+	RuleCode        string             `json:"ruleCode"`
+	Description     string             `json:"description"`
+	TenantID        int64              `json:"tenantId"`
+	StoreID         int64              `json:"storeId"`
+	PriceType       string             `json:"priceType"`
+	CategoryID      int64              `json:"categoryId"`
+	PriceMin        *float64           `json:"priceMin"`
+	PriceMax        *float64           `json:"priceMax"`
+	StockMin        *int               `json:"stockMin"`
+	RatingMin       *float64           `json:"ratingMin"`
+	ReviewCountMin  *int               `json:"reviewCountMin"`
+	DeliveryTimeMax *int               `json:"deliveryTimeMax"`
+	FulfillmentType string             `json:"fulfillmentType"`
+	Status          int16              `json:"status"`
+	Remark          string             `json:"remark"`
 	CreateTime      types.FlexibleTime `json:"createTime"`
 }
 

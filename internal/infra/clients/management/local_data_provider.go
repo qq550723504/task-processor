@@ -119,6 +119,8 @@ type localListingStore struct {
 	Status                  int16      `gorm:"column:status"`
 	ValidFrom               *time.Time `gorm:"column:valid_from"`
 	ValidUntil              *time.Time `gorm:"column:valid_until"`
+	CreateTime              *time.Time `gorm:"column:create_time"`
+	Creator                 string     `gorm:"column:creator"`
 }
 
 func (s localListingStore) toDTO() *api.StoreRespDTO {
@@ -149,6 +151,8 @@ func (s localListingStore) toDTO() *api.StoreRespDTO {
 		PriceType:               s.PriceType,
 		Remark:                  s.Remark,
 		Status:                  s.Status,
+		CreateTime:              types.ToFlexibleTime(s.CreateTime),
+		Creator:                 s.Creator,
 	}
 }
 
@@ -859,6 +863,7 @@ func (r localProductImportMappingRow) toDTO() *api.ProductImportMappingRespDTO {
 		DiscountPriceMultiplier: parseOptionalFloat(r.DiscountPriceMultRaw),
 		Status:                  r.Status,
 		Remark:                  r.Remark,
+		CreateTime:              types.ToFlexibleTime(r.CreateTime),
 		TenantId:                r.TenantID,
 	}
 }
@@ -1171,6 +1176,7 @@ func (p *LocalDataProvider) UpdateImportTaskStatus(req *api.ProductImportTaskUpd
 		"error_message": req.ErrorMessage,
 		"reason_code":   req.ReasonCode,
 		"stage":         req.Stage,
+		"remark":        req.Remark,
 		"update_time":   time.Now(),
 	}
 	if req.RetryCount != nil {

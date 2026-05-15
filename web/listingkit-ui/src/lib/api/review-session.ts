@@ -1,20 +1,22 @@
 import { apiRequest } from "@/lib/api/client";
+import { parseReviewSessionResponse } from "@/lib/api/review-session-schema";
 import type {
   ConditionalState,
   QueueQuery,
   ReviewSessionResponse,
 } from "@/lib/types/listingkit";
 
-export function getReviewSession(
+export async function getReviewSession(
   taskId: string,
   query: QueueQuery,
   conditional?: ConditionalState | null,
-) {
-  return apiRequest<ReviewSessionResponse>(
+) : Promise<ReviewSessionResponse> {
+  const payload = await apiRequest<unknown>(
     `/tasks/${taskId}/generation-review-session`,
     {
       query,
       conditional,
     },
   );
+  return parseReviewSessionResponse(payload);
 }

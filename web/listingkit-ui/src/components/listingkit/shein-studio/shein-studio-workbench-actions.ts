@@ -2,9 +2,9 @@ import type { MutableRefObject, RefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { useSheinStudioTaskCreationAction } from "@/components/listingkit/shein-studio/shein-studio-task-creation-actions";
+import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import {
   buildSheinStudioGenerateRequest,
-  evaluateImportedGalleryDesigns,
   STUDIO_SESSION_SYNC_TIMEOUT_MS,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
@@ -53,25 +53,7 @@ type UseSheinStudioDesignActionsParams = {
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
-  setCreatedTasks: (value: SheinStudioCreatedTask[]) => void;
-  setCreatingError: (value: string) => void;
-  setCreatingMessage: (value: string) => void;
-  setDesigns: (
-    value:
-      | SheinStudioGeneratedDesign[]
-      | ((
-          current: SheinStudioGeneratedDesign[],
-        ) => SheinStudioGeneratedDesign[]),
-  ) => void;
-  setDraftWarning: (value: string) => void;
-  setGalleryRatioCheck: (
-    value: ReturnType<typeof evaluateImportedGalleryDesigns>,
-  ) => void;
-  setGenerationError: (value: string) => void;
-  setIsCreatingTasks: (value: boolean) => void;
-  setIsGenerating: (value: boolean) => void;
-  setRegeneratingId: (value: string) => void;
-  setSelectedIds: (value: string[] | ((current: string[]) => string[])) => void;
+  workbench: Pick<SheinStudioWorkbenchController, "setField">;
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
@@ -94,17 +76,7 @@ export function useSheinStudioDesignActions({
   renderSizeImagesWithSds,
   selectedIds,
   selectedSdsImages,
-  setCreatedTasks,
-  setCreatingError,
-  setCreatingMessage,
-  setDesigns,
-  setDraftWarning,
-  setGalleryRatioCheck,
-  setGenerationError,
-  setIsCreatingTasks,
-  setIsGenerating,
-  setRegeneratingId,
-  setSelectedIds,
+  workbench,
   sheinStoreId,
   styleCount,
   transparentBackground,
@@ -124,22 +96,23 @@ export function useSheinStudioDesignActions({
     renderSizeImagesWithSds,
     selectedIds,
     selectedSdsImages,
-    setCreatedTasks,
-    setCreatingError,
-    setCreatingMessage,
-    setGalleryRatioCheck,
-    setIsCreatingTasks,
+    setCreatedTasks: (value) => workbench.setField("createdTasks", value),
+    setCreatingError: (value) => workbench.setField("creatingError", value),
+    setCreatingMessage: (value) => workbench.setField("creatingMessage", value),
+    setGalleryRatioCheck: (value) =>
+      workbench.setField("galleryRatioCheck", value),
+    setIsCreatingTasks: (value) => workbench.setField("isCreatingTasks", value),
     sheinStoreId,
     hasLocalWorkflowStateRef,
   });
 
   async function handleGenerate() {
     if (!activeSelection?.variantId) {
-      setGenerationError("请先选择 SDS 变体。");
+      workbench.setField("generationError", "请先选择 SDS 变体。");
       return;
     }
     if (!prompt.trim()) {
-      setGenerationError("请先填写主题提示词。");
+      workbench.setField("generationError", "请先填写主题提示词。");
       promptInputRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "center",
@@ -148,12 +121,12 @@ export function useSheinStudioDesignActions({
       return;
     }
 
-    setGenerationError("");
-    setCreatingError("");
-    setCreatingMessage("");
-    setCreatedTasks([]);
-    setDraftWarning("");
-    setIsGenerating(true);
+    workbench.setField("generationError", "");
+    workbench.setField("creatingError", "");
+    workbench.setField("creatingMessage", "");
+    workbench.setField("createdTasks", []);
+    workbench.setField("draftWarning", "");
+    workbench.setField("isGenerating", true);
 
     const sessionSyncPromise = (async () => {
       try {
@@ -246,8 +219,8 @@ export function useSheinStudioDesignActions({
         selectionVariantId: activeSelection.variantId,
       });
       hasLocalWorkflowStateRef.current = true;
-      setDesigns(response.images);
-      setSelectedIds(nextSelectedIds);
+      workbench.setField("designs", response.images);
+      workbench.setField("selectedIds", nextSelectedIds);
       navigateToStep("review");
       void persistDraft(
         {
@@ -261,8 +234,8 @@ export function useSheinStudioDesignActions({
         },
       ).catch(() => undefined);
     } catch (error) {
-      setDesigns([]);
-      setSelectedIds([]);
+      workbench.setField("designs", []);
+      workbench.setField("selectedIds", []);
       void sessionSyncPromise
         .then((sessionId) => {
           if (!sessionId) {
@@ -281,21 +254,22 @@ export function useSheinStudioDesignActions({
           );
         })
         .catch(() => undefined);
-      setGenerationError(
+      workbench.setField(
+        "generationError",
         error instanceof Error ? error.message : "款式图生成失败。",
       );
     } finally {
-      setIsGenerating(false);
+      workbench.setField("isGenerating", false);
     }
   }
 
   async function handleRegenerate(designId: string) {
     if (!activeSelection?.variantId) {
-      setGenerationError("请先选择 SDS 变体。");
+      workbench.setField("generationError", "请先选择 SDS 变体。");
       return;
     }
     if (!prompt.trim()) {
-      setGenerationError("请先填写主题提示词。");
+      workbench.setField("generationError", "请先填写主题提示词。");
       promptInputRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "center",
@@ -304,8 +278,8 @@ export function useSheinStudioDesignActions({
       return;
     }
 
-    setGenerationError("");
-    setRegeneratingId(designId);
+    workbench.setField("generationError", "");
+    workbench.setField("regeneratingId", designId);
 
     try {
       const response = await generateSheinStudioDesigns(
@@ -327,7 +301,7 @@ export function useSheinStudioDesignActions({
       }
 
       hasLocalWorkflowStateRef.current = true;
-      setDesigns((current) =>
+      workbench.setField("designs", (current) =>
         current.map((design) =>
           design.id === designId ? { ...replacement, id: designId } : design,
         ),
@@ -335,7 +309,7 @@ export function useSheinStudioDesignActions({
       const nextSelectedIds = selectedIds.includes(designId)
         ? selectedIds
         : [...selectedIds, designId];
-      setSelectedIds(nextSelectedIds);
+      workbench.setField("selectedIds", nextSelectedIds);
       void persistDraft(
         {
           designs: designs.map((design) =>
@@ -348,11 +322,12 @@ export function useSheinStudioDesignActions({
         },
       ).catch(() => undefined);
     } catch (error) {
-      setGenerationError(
+      workbench.setField(
+        "generationError",
         error instanceof Error ? error.message : "重新生成款式失败。",
       );
     } finally {
-      setRegeneratingId("");
+      workbench.setField("regeneratingId", "");
     }
   }
 
