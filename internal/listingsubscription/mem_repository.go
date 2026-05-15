@@ -171,6 +171,18 @@ func (r *MemRepository) GetTenantSubscription(_ context.Context, tenantID string
 	return cloneTenantSubscription(subscription), nil
 }
 
+func (r *MemRepository) ListTenantSubscriptionsByPlan(_ context.Context, planCode string) ([]TenantSubscription, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := []TenantSubscription{}
+	for _, subscription := range r.subscriptions {
+		if subscription.PlanCode == planCode {
+			items = append(items, *cloneTenantSubscription(subscription))
+		}
+	}
+	return items, nil
+}
+
 func (r *MemRepository) UpsertTenantSubscription(_ context.Context, subscription *TenantSubscription) (*TenantSubscription, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -328,6 +340,18 @@ func (r *MemRepository) ListAuditLogs(_ context.Context, tenantID string, limit 
 	items := []AuditLog{}
 	for i := len(r.auditLogs) - 1; i >= 0 && len(items) < limit; i-- {
 		if r.auditLogs[i].TenantID == tenantID {
+			items = append(items, r.auditLogs[i])
+		}
+	}
+	return items, nil
+}
+
+func (r *MemRepository) ListPlanAuditLogs(_ context.Context, planCode string, limit int) ([]AuditLog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := []AuditLog{}
+	for i := len(r.auditLogs) - 1; i >= 0 && len(items) < limit; i-- {
+		if r.auditLogs[i].Reason == planCode {
 			items = append(items, r.auditLogs[i])
 		}
 	}

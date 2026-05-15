@@ -205,6 +205,8 @@ type listingKitRouteHandler interface {
 	UpsertPlatformSubscriptionPlanModule(c *gin.Context)
 	DeletePlatformSubscriptionPlanModule(c *gin.Context)
 	SetPlatformSubscriptionPlanStatus(c *gin.Context)
+	ListPlatformSubscriptionPlanTenants(c *gin.Context)
+	ListPlatformSubscriptionPlanAuditLogs(c *gin.Context)
 	GetPlatformTenantSubscription(c *gin.Context)
 	ApplyPlatformTenantSubscriptionPlan(c *gin.Context)
 	UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context)

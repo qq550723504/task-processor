@@ -162,6 +162,12 @@ const subscriptionAuditLogListSchema = z
   })
   .passthrough();
 
+const tenantSubscriptionListSchema = z
+  .object({
+    items: z.array(tenantSubscriptionSchema),
+  })
+  .passthrough();
+
 const subscriptionRequiredPayloadSchema = z
   .object({
     error: z.enum(["subscription_required", "quota_exceeded"]),
@@ -291,6 +297,16 @@ export function parseSubscriptionAuditLogList(
   ).items;
 }
 
+export function parseTenantSubscriptionList(
+  payload: unknown,
+): TenantSubscription[] {
+  return parseApiResponseShape(
+    payload,
+    tenantSubscriptionListSchema,
+    "ListingKit API returned an unexpected tenant subscription list response",
+  ).items;
+}
+
 export function parseSubscriptionUsageCounter(
   payload: unknown,
 ): SubscriptionUsageCounter {
@@ -358,6 +374,24 @@ export async function getPlatformSubscriptionPlans(): Promise<
 > {
   const payload = await apiRequest<unknown>("/platform/subscription-plans");
   return parseSubscriptionPlanList(payload);
+}
+
+export async function getPlatformSubscriptionPlanTenants(
+  planCode: string,
+): Promise<TenantSubscription[]> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscription-plans/${encodeURIComponent(planCode)}/tenants`,
+  );
+  return parseTenantSubscriptionList(payload);
+}
+
+export async function getPlatformSubscriptionPlanAuditLogs(
+  planCode: string,
+): Promise<SubscriptionAuditLog[]> {
+  const payload = await apiRequest<unknown>(
+    `/platform/subscription-plans/${encodeURIComponent(planCode)}/audit-logs`,
+  );
+  return parseSubscriptionAuditLogList(payload);
 }
 
 export async function upsertPlatformSubscriptionPlan(

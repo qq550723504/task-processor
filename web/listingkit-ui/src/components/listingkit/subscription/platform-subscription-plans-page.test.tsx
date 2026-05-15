@@ -7,6 +7,8 @@ import { PlatformSubscriptionPlansPage } from "@/components/listingkit/subscript
 import {
   deletePlatformSubscriptionPlanModule,
   getPlatformSubscriptionPlans,
+  getPlatformSubscriptionPlanAuditLogs,
+  getPlatformSubscriptionPlanTenants,
   getSubscriptionModules,
   setPlatformSubscriptionPlanStatus,
   updatePlatformSubscriptionPlanModule,
@@ -20,6 +22,8 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     ...actual,
     deletePlatformSubscriptionPlanModule: vi.fn(),
     getPlatformSubscriptionPlans: vi.fn(),
+    getPlatformSubscriptionPlanAuditLogs: vi.fn(),
+    getPlatformSubscriptionPlanTenants: vi.fn(),
     getSubscriptionModules: vi.fn(),
     setPlatformSubscriptionPlanStatus: vi.fn(),
     updatePlatformSubscriptionPlanModule: vi.fn(),
@@ -31,6 +35,12 @@ const mockedDeletePlatformSubscriptionPlanModule = vi.mocked(
   deletePlatformSubscriptionPlanModule,
 );
 const mockedGetPlatformSubscriptionPlans = vi.mocked(getPlatformSubscriptionPlans);
+const mockedGetPlatformSubscriptionPlanAuditLogs = vi.mocked(
+  getPlatformSubscriptionPlanAuditLogs,
+);
+const mockedGetPlatformSubscriptionPlanTenants = vi.mocked(
+  getPlatformSubscriptionPlanTenants,
+);
 const mockedGetSubscriptionModules = vi.mocked(getSubscriptionModules);
 const mockedSetPlatformSubscriptionPlanStatus = vi.mocked(
   setPlatformSubscriptionPlanStatus,
@@ -46,6 +56,8 @@ describe("PlatformSubscriptionPlansPage", () => {
   beforeEach(() => {
     mockedDeletePlatformSubscriptionPlanModule.mockReset();
     mockedGetPlatformSubscriptionPlans.mockReset();
+    mockedGetPlatformSubscriptionPlanAuditLogs.mockReset();
+    mockedGetPlatformSubscriptionPlanTenants.mockReset();
     mockedGetSubscriptionModules.mockReset();
     mockedSetPlatformSubscriptionPlanStatus.mockReset();
     mockedUpdatePlatformSubscriptionPlanModule.mockReset();
@@ -81,6 +93,23 @@ describe("PlatformSubscriptionPlansPage", () => {
             sort_order: 50,
           },
         ],
+      },
+    ]);
+    mockedGetPlatformSubscriptionPlanTenants.mockResolvedValue([
+      {
+        id: 1,
+        tenant_id: "org-alpha",
+        plan_code: "professional",
+        status: "active",
+      },
+    ]);
+    mockedGetPlatformSubscriptionPlanAuditLogs.mockResolvedValue([
+      {
+        id: 1,
+        tenant_id: "org-alpha",
+        action: "plan_apply",
+        reason: "professional",
+        created_at: "2026-05-16T00:00:00Z",
       },
     ]);
   });
@@ -201,6 +230,22 @@ describe("PlatformSubscriptionPlansPage", () => {
         false,
       );
     });
+  });
+
+  it("shows tenants and audit logs for the selected plan", async () => {
+    renderWithQueryClient(<PlatformSubscriptionPlansPage />);
+
+    await screen.findByText("专业版");
+    fireEvent.click(screen.getByRole("button", { name: "编辑 professional" }));
+
+    expect((await screen.findAllByText("org-alpha")).length).toBeGreaterThan(0);
+    expect(screen.getByText("plan_apply")).toBeInTheDocument();
+    expect(mockedGetPlatformSubscriptionPlanTenants).toHaveBeenCalledWith(
+      "professional",
+    );
+    expect(mockedGetPlatformSubscriptionPlanAuditLogs).toHaveBeenCalledWith(
+      "professional",
+    );
   });
 });
 

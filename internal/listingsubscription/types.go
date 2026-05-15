@@ -190,6 +190,7 @@ type Repository interface {
 	UpsertPlanModule(ctx context.Context, module PlanModule) (*PlanBundle, error)
 	DeletePlanModule(ctx context.Context, planCode, moduleCode string) (*PlanBundle, error)
 	GetTenantSubscription(ctx context.Context, tenantID string) (*TenantSubscription, error)
+	ListTenantSubscriptionsByPlan(ctx context.Context, planCode string) ([]TenantSubscription, error)
 	UpsertTenantSubscription(ctx context.Context, subscription *TenantSubscription) (*TenantSubscription, error)
 	GetEntitlement(ctx context.Context, tenantID, moduleCode string) (*Entitlement, error)
 	ListEntitlements(ctx context.Context, tenantID string) ([]Entitlement, error)
@@ -200,4 +201,5 @@ type Repository interface {
 	SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error)
 	CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error)
 	ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error)
+	ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error)
 }

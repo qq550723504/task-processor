@@ -217,6 +217,60 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 	}
 }
 
+func TestPlatformSubscriptionPlanTenantsAndAuditLogs(t *testing.T) {
+	router := platformSubscriptionTestRouter(t)
+
+	applyBody, err := json.Marshal(map[string]any{
+		"plan_code": listingsubscription.PlanProfessional,
+		"status":    listingsubscription.StatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-alpha/plan", bytes.NewReader(applyBody))
+	applyReq.Header.Set("Content-Type", "application/json")
+	applyReq.Header.Set("X-User-Roles", "platform_admin")
+	applyResp := httptest.NewRecorder()
+	router.ServeHTTP(applyResp, applyReq)
+	if applyResp.Code != http.StatusOK {
+		t.Fatalf("apply status = %d, want %d; body=%s", applyResp.Code, http.StatusOK, applyResp.Body.String())
+	}
+
+	tenantsReq := httptest.NewRequest(http.MethodGet, "/platform/subscription-plans/professional/tenants", nil)
+	tenantsReq.Header.Set("X-User-Roles", "platform_admin")
+	tenantsResp := httptest.NewRecorder()
+	router.ServeHTTP(tenantsResp, tenantsReq)
+	if tenantsResp.Code != http.StatusOK {
+		t.Fatalf("tenants status = %d, want %d; body=%s", tenantsResp.Code, http.StatusOK, tenantsResp.Body.String())
+	}
+	var tenantsBody struct {
+		Items []listingsubscription.TenantSubscription `json:"items"`
+	}
+	if err := json.Unmarshal(tenantsResp.Body.Bytes(), &tenantsBody); err != nil {
+		t.Fatalf("decode tenants: %v", err)
+	}
+	if len(tenantsBody.Items) != 1 || tenantsBody.Items[0].TenantID != "org-alpha" {
+		t.Fatalf("tenants body = %#v", tenantsBody.Items)
+	}
+
+	auditReq := httptest.NewRequest(http.MethodGet, "/platform/subscription-plans/professional/audit-logs", nil)
+	auditReq.Header.Set("X-User-Roles", "platform_admin")
+	auditResp := httptest.NewRecorder()
+	router.ServeHTTP(auditResp, auditReq)
+	if auditResp.Code != http.StatusOK {
+		t.Fatalf("audit status = %d, want %d; body=%s", auditResp.Code, http.StatusOK, auditResp.Body.String())
+	}
+	var auditBody struct {
+		Items []listingsubscription.AuditLog `json:"items"`
+	}
+	if err := json.Unmarshal(auditResp.Body.Bytes(), &auditBody); err != nil {
+		t.Fatalf("decode audit: %v", err)
+	}
+	if len(auditBody.Items) == 0 || auditBody.Items[0].Action != "plan_apply" {
+		t.Fatalf("audit body = %#v", auditBody.Items)
+	}
+}
+
 func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 	repo := listingsubscription.NewMemRepository()
@@ -236,6 +290,8 @@ func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
 	router.PUT("/platform/subscription-plans/:plan_code/modules/:module_code", h.UpsertPlatformSubscriptionPlanModule)
 	router.DELETE("/platform/subscription-plans/:plan_code/modules/:module_code", h.DeletePlatformSubscriptionPlanModule)
 	router.PUT("/platform/subscription-plans/:plan_code/status", h.SetPlatformSubscriptionPlanStatus)
+	router.GET("/platform/subscription-plans/:plan_code/tenants", h.ListPlatformSubscriptionPlanTenants)
+	router.GET("/platform/subscription-plans/:plan_code/audit-logs", h.ListPlatformSubscriptionPlanAuditLogs)
 	router.GET("/platform/subscriptions/:tenant_id", h.GetPlatformTenantSubscription)
 	router.PUT("/platform/subscriptions/:tenant_id/plan", h.ApplyPlatformTenantSubscriptionPlan)
 	router.PUT("/platform/subscriptions/:tenant_id/entitlements/:module_code", h.UpsertPlatformTenantSubscriptionEntitlement)

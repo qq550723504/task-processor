@@ -367,6 +367,45 @@ func TestSubscriptionPlanManagementUpdatesPlanAndModules(t *testing.T) {
 	}
 }
 
+func TestSubscriptionPlanUsageAndAudit(t *testing.T) {
+	svc := newTestService(t)
+
+	if _, err := svc.ApplyPlan(context.Background(), "org-alpha", PlanApplyInput{
+		PlanCode: PlanProfessional,
+		Status:   StatusActive,
+	}, "operator-1"); err != nil {
+		t.Fatalf("apply alpha: %v", err)
+	}
+	if _, err := svc.ApplyPlan(context.Background(), "org-beta", PlanApplyInput{
+		PlanCode: PlanBasic,
+		Status:   StatusTrialing,
+	}, "operator-1"); err != nil {
+		t.Fatalf("apply beta: %v", err)
+	}
+
+	tenants, err := svc.ListPlanTenants(context.Background(), PlanProfessional)
+	if err != nil {
+		t.Fatalf("list plan tenants: %v", err)
+	}
+	if len(tenants) != 1 || tenants[0].TenantID != "org-alpha" {
+		t.Fatalf("professional tenants = %#v", tenants)
+	}
+
+	if _, err := svc.UpsertPlanModule(context.Background(), PlanProfessional, ModuleOSSStorage, PlanModuleInput{
+		Limits:    map[string]int{"storage_bytes": 20 * 1024 * 1024},
+		SortOrder: 60,
+	}, "operator-2"); err != nil {
+		t.Fatalf("update plan module: %v", err)
+	}
+	logs, err := svc.ListPlanAuditLogs(context.Background(), PlanProfessional, 20)
+	if err != nil {
+		t.Fatalf("list plan audit logs: %v", err)
+	}
+	if len(logs) == 0 || logs[0].Action != "plan_module_upsert" || logs[0].Reason != PlanProfessional {
+		t.Fatalf("plan logs = %#v", logs)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	svc, err := NewService(NewMemRepository())

@@ -589,6 +589,14 @@ func (s *stubListingKitHandler) SetPlatformSubscriptionPlanStatus(c *gin.Context
 	c.JSON(http.StatusOK, gin.H{"plan": gin.H{"code": c.Param("plan_code"), "active": false}})
 }
 
+func (s *stubListingKitHandler) ListPlatformSubscriptionPlanTenants(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"tenant_id": "org-286", "plan_code": c.Param("plan_code")}}})
+}
+
+func (s *stubListingKitHandler) ListPlatformSubscriptionPlanAuditLogs(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"action": "plan_apply", "reason": c.Param("plan_code")}}})
+}
+
 func (s *stubListingKitHandler) GetPlatformTenantSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tenant_id": c.Param("tenant_id")})
 }

@@ -395,6 +395,25 @@ func (s *Service) SetPlanActive(ctx context.Context, planCode string, active boo
 	return bundle, nil
 }
 
+func (s *Service) ListPlanTenants(ctx context.Context, planCode string) ([]TenantSubscription, error) {
+	planCode = strings.TrimSpace(planCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	return s.repo.ListTenantSubscriptionsByPlan(ctx, planCode)
+}
+
+func (s *Service) ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error) {
+	planCode = strings.TrimSpace(planCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.ListPlanAuditLogs(ctx, planCode, limit)
+}
+
 func (s *Service) SetUsage(ctx context.Context, tenantID, moduleCode string, input UsageAdjustmentInput, actorID string) (*UsageCounter, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	moduleCode = strings.TrimSpace(moduleCode)

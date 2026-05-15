@@ -8,6 +8,8 @@ import {
   deletePlatformSubscriptionPlanModule,
   formatSubscriptionApiError,
   getPlatformSubscriptionPlans,
+  getPlatformSubscriptionPlanAuditLogs,
+  getPlatformSubscriptionPlanTenants,
   getSubscriptionModules,
   setPlatformSubscriptionPlanStatus,
   type SubscriptionPlanBundle,
@@ -68,6 +70,16 @@ export function PlatformSubscriptionPlansPage() {
     queryKey: ["listingkit-subscription-modules"],
     queryFn: getSubscriptionModules,
   });
+  const planTenantsQuery = useQuery({
+    queryKey: ["listingkit-platform-subscription-plan-tenants", selectedCode],
+    queryFn: () => getPlatformSubscriptionPlanTenants(selectedCode),
+    enabled: Boolean(selectedCode),
+  });
+  const planAuditQuery = useQuery({
+    queryKey: ["listingkit-platform-subscription-plan-audit", selectedCode],
+    queryFn: () => getPlatformSubscriptionPlanAuditLogs(selectedCode),
+    enabled: Boolean(selectedCode),
+  });
 
   const plans = useMemo(() => planQuery.data ?? [], [planQuery.data]);
   const selectedPlan = useMemo(
@@ -77,7 +89,13 @@ export function PlatformSubscriptionPlansPage() {
   const visibleError =
     error ||
     (planQuery.error ? formatSubscriptionApiError(planQuery.error) : "") ||
-    (moduleQuery.error ? formatSubscriptionApiError(moduleQuery.error) : "");
+    (moduleQuery.error ? formatSubscriptionApiError(moduleQuery.error) : "") ||
+    (planTenantsQuery.error
+      ? formatSubscriptionApiError(planTenantsQuery.error)
+      : "") ||
+    (planAuditQuery.error
+      ? formatSubscriptionApiError(planAuditQuery.error)
+      : "");
 
   function selectPlan(bundle: SubscriptionPlanBundle) {
     setSelectedCode(bundle.plan.code);
@@ -120,6 +138,7 @@ export function PlatformSubscriptionPlansPage() {
         : await upsertPlatformSubscriptionPlan(input);
       setSelectedCode(result.plan.code);
       await refreshPlans();
+      await planAuditQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
@@ -135,6 +154,7 @@ export function PlatformSubscriptionPlansPage() {
         !bundle.plan.active,
       );
       await refreshPlans();
+      await planAuditQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     }
@@ -153,6 +173,7 @@ export function PlatformSubscriptionPlansPage() {
         sort_order: Number(moduleSortOrder || 0),
       });
       await refreshPlans();
+      await planAuditQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
@@ -171,6 +192,7 @@ export function PlatformSubscriptionPlansPage() {
         moduleCodeToDelete,
       );
       await refreshPlans();
+      await planAuditQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     }
@@ -429,6 +451,61 @@ export function PlatformSubscriptionPlansPage() {
               </div>
             ) : null}
           </form>
+
+          {selectedCode ? (
+            <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+              <h2 className="text-base font-semibold text-zinc-950">
+                使用租户
+              </h2>
+              <div className="mt-3 space-y-2">
+                {(planTenantsQuery.data ?? []).length === 0 ? (
+                  <p className="text-sm text-zinc-500">暂无租户使用该套餐</p>
+                ) : (
+                  (planTenantsQuery.data ?? []).map((tenant) => (
+                    <div
+                      key={tenant.tenant_id}
+                      className="rounded-md border border-zinc-100 px-3 py-2"
+                    >
+                      <p className="font-mono text-xs text-zinc-900">
+                        {tenant.tenant_id}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {tenant.status}
+                        {tenant.expires_at ? ` · ${tenant.expires_at}` : ""}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          {selectedCode ? (
+            <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+              <h2 className="text-base font-semibold text-zinc-950">
+                套餐审计
+              </h2>
+              <div className="mt-3 space-y-2">
+                {(planAuditQuery.data ?? []).length === 0 ? (
+                  <p className="text-sm text-zinc-500">暂无套餐变更记录</p>
+                ) : (
+                  (planAuditQuery.data ?? []).map((log) => (
+                    <div
+                      key={log.id}
+                      className="rounded-md border border-zinc-100 px-3 py-2"
+                    >
+                      <p className="text-sm font-medium text-zinc-900">
+                        {log.action}
+                      </p>
+                      <p className="mt-1 font-mono text-xs text-zinc-500">
+                        {log.tenant_id || log.module_code || log.reason}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
         </div>
       </section>
     </div>

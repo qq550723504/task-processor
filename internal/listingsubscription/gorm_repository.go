@@ -293,6 +293,18 @@ func (r *GormRepository) GetTenantSubscription(ctx context.Context, tenantID str
 	return row.toTenantSubscription(), nil
 }
 
+func (r *GormRepository) ListTenantSubscriptionsByPlan(ctx context.Context, planCode string) ([]TenantSubscription, error) {
+	var rows []tenantSubscriptionRow
+	if err := r.db.WithContext(ctx).Where("plan_code = ?", planCode).Order("updated_at DESC, tenant_id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]TenantSubscription, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, *row.toTenantSubscription())
+	}
+	return items, nil
+}
+
 func (r *GormRepository) UpsertTenantSubscription(ctx context.Context, subscription *TenantSubscription) (*TenantSubscription, error) {
 	row := tenantSubscriptionRow{
 		TenantID: subscription.TenantID, PlanCode: subscription.PlanCode, Status: subscription.Status,
@@ -457,6 +469,18 @@ func (r *GormRepository) CreateAuditLog(ctx context.Context, log AuditLog) (*Aud
 func (r *GormRepository) ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error) {
 	var rows []auditLogRow
 	if err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]AuditLog, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, AuditLog{ID: row.ID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Action: row.Action, ActorID: row.ActorID, Reason: row.Reason, Payload: row.Payload, CreatedAt: row.CreatedAt})
+	}
+	return items, nil
+}
+
+func (r *GormRepository) ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error) {
+	var rows []auditLogRow
+	if err := r.db.WithContext(ctx).Where("reason = ?", planCode).Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	items := make([]AuditLog, 0, len(rows))

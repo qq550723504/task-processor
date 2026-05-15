@@ -175,6 +175,36 @@ func (h *handler) SetPlatformSubscriptionPlanStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, bundle)
 }
 
+func (h *handler) ListPlatformSubscriptionPlanTenants(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	items, err := h.subscriptionService.ListPlanTenants(c.Request.Context(), strings.TrimSpace(c.Param("plan_code")))
+	if err != nil {
+		h.writeSubscriptionPlanError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *handler) ListPlatformSubscriptionPlanAuditLogs(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	items, err := h.subscriptionService.ListPlanAuditLogs(c.Request.Context(), strings.TrimSpace(c.Param("plan_code")), 50)
+	if err != nil {
+		h.writeSubscriptionPlanError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *handler) writeSubscriptionPlanError(c *gin.Context, err error) {
 	status := http.StatusBadRequest
 	if errors.Is(err, listingsubscription.ErrModuleNotFound) {
