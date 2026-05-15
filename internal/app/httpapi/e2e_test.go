@@ -199,6 +199,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	routerServer := buildHTTPServer(0, productModule.handler, nil, nil, listingKitModule.handler, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
+	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
 
 	taskID := createTaskViaAPI[map[string]any](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
 		"product_url": "https://detail.1688.com/offer/123456789.html",
@@ -335,6 +336,19 @@ func writeE2EPNG(w http.ResponseWriter) {
 	}
 	w.Header().Set("Content-Type", "image/png")
 	_ = png.Encode(w, img)
+}
+
+func enableListingKitSubscriptionModule(t *testing.T, client *http.Client, baseURL, moduleCode string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{"status": "active", "limits": map[string]int{}})
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodPut, baseURL+"/api/v1/listing-kits/admin/subscription/entitlements/"+moduleCode, bytes.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func createTaskViaAPI[T any](t *testing.T, client *http.Client, url string, payload any, idFn func(T) string) string {

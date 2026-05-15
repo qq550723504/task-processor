@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminStores(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminStore(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
+		return
+	}
 	h.storeHandler.CreateStore(c)
 }
 
 func (h *handler) UpdateAdminStore(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
 		return
 	}
 	h.storeHandler.UpdateStore(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminStoreStatus(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
+		return
+	}
 	h.storeHandler.UpdateStoreStatus(c)
 }
 
 func (h *handler) DeleteAdminStore(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
 		return
 	}
 	h.storeHandler.DeleteStore(c)
@@ -73,6 +87,9 @@ func (h *handler) RestoreAdminStore(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
+		return
+	}
 	h.storeHandler.RestoreStore(c)
 }
 
@@ -80,11 +97,17 @@ func (h *handler) PermanentlyDeleteAdminStore(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
+		return
+	}
 	h.storeHandler.PermanentlyDeleteStore(c)
 }
 
 func (h *handler) ExtendAdminStoreValidity(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleStoreManagement) {
 		return
 	}
 	h.storeHandler.ExtendStoreValidity(c)

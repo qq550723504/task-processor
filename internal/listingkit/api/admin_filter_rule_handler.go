@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminFilterRules(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminFilterRule(c *gin.Context) {
 	if !h.requireFilterRuleHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.filterRuleHandler.CreateFilterRule(c)
 }
 
 func (h *handler) UpdateAdminFilterRule(c *gin.Context) {
 	if !h.requireFilterRuleHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.filterRuleHandler.UpdateFilterRule(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminFilterRuleStatus(c *gin.Context) {
 	if !h.requireFilterRuleHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.filterRuleHandler.UpdateFilterRuleStatus(c)
 }
 
 func (h *handler) DeleteAdminFilterRule(c *gin.Context) {
 	if !h.requireFilterRuleHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.filterRuleHandler.DeleteFilterRule(c)

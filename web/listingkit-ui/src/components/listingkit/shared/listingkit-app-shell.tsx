@@ -61,6 +61,7 @@ const NAV_ITEMS = [
     match: "prefix",
   },
   { label: "SHEIN 登录", href: "/listing-kits/shein-login", match: "prefix" },
+  { label: "订阅", href: "/listing-kits/subscription", match: "prefix" },
   { label: "任务列表", href: "/listing-kits", match: "exact" },
   { label: "设置", href: "/listing-kits/settings", match: "prefix" },
 ] as const;

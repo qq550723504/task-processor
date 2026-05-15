@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
@@ -28,7 +29,8 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 			}},
 		},
 	}
-	h, err := NewHandler(svc)
+	subscriptionService := activeStudioSubscriptionService(t)
+	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -81,6 +83,18 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 	if svc.studioDesignReq == nil || svc.studioDesignReq.Prompt != "retro cherries" {
 		t.Fatalf("studio design req = %+v, want bound prompt", svc.studioDesignReq)
 	}
+}
+
+func activeStudioSubscriptionService(t *testing.T) *listingsubscription.Service {
+	t.Helper()
+	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{Status: listingsubscription.StatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	return svc
 }
 
 func TestStudioAsyncJobRejectsUnknownPath(t *testing.T) {

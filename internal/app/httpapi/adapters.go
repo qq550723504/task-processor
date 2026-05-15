@@ -18,6 +18,7 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingkit/studiostore"
+	"task-processor/internal/listingsubscription"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productenrich/store"
@@ -440,6 +441,23 @@ func newDBListingKitStudioSessionRepository(cfg *config.DatabaseConfig, logger *
 	}
 
 	repo := studiostore.NewGormRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBListingSubscriptionRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingsubscription.Repository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingsubscription.AutoMigrateRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit subscription auto-migrate failed: %w", err)
+	}
+	repo := listingsubscription.NewGormRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }

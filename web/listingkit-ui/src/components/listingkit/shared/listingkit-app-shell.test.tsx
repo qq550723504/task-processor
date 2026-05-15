@@ -33,6 +33,10 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/shein-login",
     );
+    expect(screen.getByRole("link", { name: "订阅" })).toHaveAttribute(
+      "href",
+      "/listing-kits/subscription",
+    );
     expect(screen.queryByRole("link", { name: "SHEIN 上架" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "任务列表" })).toHaveAttribute("href", "/listing-kits");
     expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute(

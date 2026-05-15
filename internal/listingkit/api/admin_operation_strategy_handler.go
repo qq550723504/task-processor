@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminOperationStrategies(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminOperationStrategy(c *gin.Context) {
 	if !h.requireOperationStrategyHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleOperationStrategy) {
+		return
+	}
 	h.operationStrategyHandler.CreateOperationStrategy(c)
 }
 
 func (h *handler) UpdateAdminOperationStrategy(c *gin.Context) {
 	if !h.requireOperationStrategyHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleOperationStrategy) {
 		return
 	}
 	h.operationStrategyHandler.UpdateOperationStrategy(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminOperationStrategyStatus(c *gin.Context) {
 	if !h.requireOperationStrategyHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleOperationStrategy) {
+		return
+	}
 	h.operationStrategyHandler.UpdateOperationStrategyStatus(c)
 }
 
 func (h *handler) DeleteAdminOperationStrategy(c *gin.Context) {
 	if !h.requireOperationStrategyHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleOperationStrategy) {
 		return
 	}
 	h.operationStrategyHandler.DeleteOperationStrategy(c)

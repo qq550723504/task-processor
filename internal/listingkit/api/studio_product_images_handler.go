@@ -7,9 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) GenerateStudioProductImages(c *gin.Context) {
+	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, "product_image_jobs", 1) {
+		return
+	}
 	var req listingkit.StudioProductImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})

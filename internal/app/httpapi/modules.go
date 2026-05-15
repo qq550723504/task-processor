@@ -23,6 +23,7 @@ import (
 	listingkitapi "task-processor/internal/listingkit/api"
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
+	"task-processor/internal/listingsubscription"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
@@ -649,6 +650,16 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, productDataClosers...)
 
+	subscriptionRepo, subscriptionClosers, err := buildListingSubscriptionRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, subscriptionClosers...)
+	subscriptionService, err := listingsubscription.NewService(subscriptionRepo)
+	if err != nil {
+		return nil, fmt.Errorf("create listing subscription service: %w", err)
+	}
+
 	assetRepository, assetClosers, err := buildAssetRepository(deps.cfg, logger)
 	if err != nil {
 		return nil, err
@@ -744,6 +755,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		listingkitapi.WithProductImportMappingRepository(productImportMappingRepo),
 		listingkitapi.WithCategoryRepository(categoryRepo),
 		listingkitapi.WithProductDataRepository(productDataRepo),
+		listingkitapi.WithSubscriptionService(subscriptionService),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
@@ -900,6 +912,19 @@ func buildListingAdminProductDataRepository(cfg *config.Config, logger *logrus.L
 
 	logger.Warn("database not configured, ListingKit product data admin API disabled")
 	return nil, nil, nil
+}
+
+func buildListingSubscriptionRepository(cfg *config.Config, logger *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingSubscriptionRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing subscription repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory ListingKit subscription repository")
+	return listingsubscription.NewMemRepository(), nil, nil
 }
 
 func buildListingKitSheinPricingPolicy(cfg *config.Config) sheinpub.PricingPolicy {

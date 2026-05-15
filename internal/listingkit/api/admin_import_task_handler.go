@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminImportTasks(c *gin.Context) {
@@ -17,11 +19,17 @@ func (h *handler) BatchCreateAdminImportTasks(c *gin.Context) {
 	if !h.requireImportTaskHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	h.importTaskHandler.BatchCreateImportTasks(c)
 }
 
 func (h *handler) DeleteAdminImportTask(c *gin.Context) {
 	if !h.requireImportTaskHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
 		return
 	}
 	h.importTaskHandler.DeleteImportTask(c)

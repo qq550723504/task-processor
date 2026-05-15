@@ -545,6 +545,22 @@ func (s *stubListingKitHandler) DeleteAdminProductData(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
+func (s *stubListingKitHandler) GetCurrentSubscription(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"tenant_id": "test"})
+}
+
+func (s *stubListingKitHandler) ListSubscriptionModules(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}})
+}
+
+func (s *stubListingKitHandler) ListSubscriptionEntitlements(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"tenant_id": "test"})
+}
+
+func (s *stubListingKitHandler) UpsertSubscriptionEntitlement(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"module_code": c.Param("module_code")})
+}
+
 func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
 	s.getResultCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})

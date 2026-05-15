@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 const (
@@ -250,6 +251,13 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	}
 	if len(req.Body) == 0 {
 		req.Body = json.RawMessage(`{}`)
+	}
+	metric := "design_jobs"
+	if req.Path == "/studio/product-images" {
+		metric = "product_image_jobs"
+	}
+	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, metric, 1) {
+		return
 	}
 
 	job := h.studioAsyncJobs.create(req.Path)

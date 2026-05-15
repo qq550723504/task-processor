@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminPricingRules(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminPricingRule(c *gin.Context) {
 	if !h.requirePricingRuleHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.pricingRuleHandler.CreatePricingRule(c)
 }
 
 func (h *handler) UpdateAdminPricingRule(c *gin.Context) {
 	if !h.requirePricingRuleHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.pricingRuleHandler.UpdatePricingRule(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminPricingRuleStatus(c *gin.Context) {
 	if !h.requirePricingRuleHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.pricingRuleHandler.UpdatePricingRuleStatus(c)
 }
 
 func (h *handler) DeleteAdminPricingRule(c *gin.Context) {
 	if !h.requirePricingRuleHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.pricingRuleHandler.DeletePricingRule(c)

@@ -112,6 +112,7 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, nil, listingKitModule.handler, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
+	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
 
 	imageServer := newE2EImageServer()
 	defer imageServer.Close()

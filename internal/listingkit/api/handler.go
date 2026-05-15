@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 type handler struct {
@@ -25,6 +26,8 @@ type handler struct {
 	productImportMappingHandler *listingadmin.ProductImportMappingHandler
 	categoryHandler             *listingadmin.CategoryHandler
 	productDataHandler          *listingadmin.ProductDataHandler
+	subscriptionService         *listingsubscription.Service
+	subscriptionHandler         *listingsubscription.Handler
 }
 
 type HandlerOption func(*handler)
@@ -117,6 +120,15 @@ func WithProductDataRepository(repo listingadmin.ProductDataRepository) HandlerO
 	}
 }
 
+func WithSubscriptionService(service *listingsubscription.Service) HandlerOption {
+	return func(h *handler) {
+		if service != nil {
+			h.subscriptionService = service
+			h.subscriptionHandler = listingsubscription.NewHandler(service)
+		}
+	}
+}
+
 func NewHandler(service listingkit.HandlerService, opts ...HandlerOption) (listingkit.Handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
@@ -135,6 +147,9 @@ func NewHandler(service listingkit.HandlerService, opts ...HandlerOption) (listi
 }
 
 func (h *handler) GenerateListingKit(c *gin.Context) {
+	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+		return
+	}
 	var req listingkit.GenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})

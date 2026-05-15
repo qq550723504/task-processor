@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminSensitiveWords(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminSensitiveWord(c *gin.Context) {
 	if !h.requireSensitiveWordHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.sensitiveWordHandler.CreateSensitiveWord(c)
 }
 
 func (h *handler) UpdateAdminSensitiveWord(c *gin.Context) {
 	if !h.requireSensitiveWordHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.sensitiveWordHandler.UpdateSensitiveWord(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminSensitiveWordStatus(c *gin.Context) {
 	if !h.requireSensitiveWordHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.sensitiveWordHandler.UpdateSensitiveWordStatus(c)
 }
 
 func (h *handler) DeleteAdminSensitiveWord(c *gin.Context) {
 	if !h.requireSensitiveWordHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.sensitiveWordHandler.DeleteSensitiveWord(c)

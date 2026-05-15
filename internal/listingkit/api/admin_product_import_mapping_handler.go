@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminProductImportMappings(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminProductImportMapping(c *gin.Context) {
 	if !h.requireProductImportMappingHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	h.productImportMappingHandler.CreateProductImportMapping(c)
 }
 
 func (h *handler) UpdateAdminProductImportMapping(c *gin.Context) {
 	if !h.requireProductImportMappingHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
 		return
 	}
 	h.productImportMappingHandler.UpdateProductImportMapping(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminProductImportMappingStatus(c *gin.Context) {
 	if !h.requireProductImportMappingHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
+		return
+	}
 	h.productImportMappingHandler.UpdateProductImportMappingStatus(c)
 }
 
 func (h *handler) DeleteAdminProductImportMapping(c *gin.Context) {
 	if !h.requireProductImportMappingHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleTaskImport) {
 		return
 	}
 	h.productImportMappingHandler.DeleteProductImportMapping(c)

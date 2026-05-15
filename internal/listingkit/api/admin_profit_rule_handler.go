@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminProfitRules(c *gin.Context) {
@@ -24,11 +26,17 @@ func (h *handler) CreateAdminProfitRule(c *gin.Context) {
 	if !h.requireProfitRuleHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.profitRuleHandler.CreateProfitRule(c)
 }
 
 func (h *handler) UpdateAdminProfitRule(c *gin.Context) {
 	if !h.requireProfitRuleHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.profitRuleHandler.UpdateProfitRule(c)
@@ -38,11 +46,17 @@ func (h *handler) UpdateAdminProfitRuleStatus(c *gin.Context) {
 	if !h.requireProfitRuleHandler(c) {
 		return
 	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
+		return
+	}
 	h.profitRuleHandler.UpdateProfitRuleStatus(c)
 }
 
 func (h *handler) DeleteAdminProfitRule(c *gin.Context) {
 	if !h.requireProfitRuleHandler(c) {
+		return
+	}
+	if !h.requireSubscription(c, listingsubscription.ModuleRules) {
 		return
 	}
 	h.profitRuleHandler.DeleteProfitRule(c)
