@@ -17,7 +17,12 @@ describe("ListingKitAppShell", () => {
 
     expect(screen.getByText("ListingKit")).toBeInTheDocument();
     expect(screen.getByText("源信息 -> 标准商品 -> 平台资料")).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "ListingKit 主导航" })).toBeInTheDocument();
+    const sidebarNav = screen.getByRole("navigation", {
+      name: "ListingKit 侧边栏导航",
+    });
+
+    expect(sidebarNav).toBeInTheDocument();
+    expect(sidebarNav.closest("[data-slot='sidebar']")).toBeInTheDocument();
     expect(screen.getByText("主流程")).toBeInTheDocument();
     expect(screen.getByText("运营管理")).toBeInTheDocument();
     expect(screen.getByText("系统")).toBeInTheDocument();
@@ -83,20 +88,17 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByText("workspace content")).toBeInTheDocument();
   });
 
-  it("places the navigation and main content on the same layout rail", () => {
+  it("renders main content in the sidebar inset layout", () => {
     render(
       <ListingKitAppShell>
         <div>workspace content</div>
       </ListingKitAppShell>,
     );
 
-    const headerRail = screen.getByRole("banner").parentElement;
     const mainRail = screen.getByRole("main");
 
-    expect(headerRail).toHaveClass("max-w-[1600px]");
-    expect(headerRail).toHaveClass("px-4");
-    expect(headerRail).toHaveClass("sm:px-6");
-    expect(headerRail).toHaveClass("lg:px-8");
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(mainRail.closest("[data-slot='sidebar-inset']")).toBeInTheDocument();
     expect(mainRail).toHaveClass("max-w-[1600px]");
     expect(mainRail).toHaveClass("px-4");
     expect(mainRail).toHaveClass("sm:px-6");

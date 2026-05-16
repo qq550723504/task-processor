@@ -3,14 +3,13 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
-import { Clock, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Clock, Pencil, Plus, RefreshCw, RotateCcw, Search, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -29,6 +28,7 @@ import {
   getListingStores,
   permanentlyDeleteListingStore,
   restoreListingStore,
+  updateListingStore,
   type ListingStore,
   type ListingStoreInput,
 } from "@/lib/api/admin-stores";
@@ -56,6 +56,7 @@ export function StoreAdminPage() {
   const [platform, setPlatform] = useState("");
   const [keyword, setKeyword] = useState("");
   const [form, setForm] = useState<ListingStoreInput>(DEFAULT_FORM);
+  const [editingStoreId, setEditingStoreId] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -89,19 +90,59 @@ export function StoreAdminPage() {
       ? deletedStoreQuery.error.message
       : "");
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
-      await createListingStore(form);
-      setForm(DEFAULT_FORM);
+      if (editingStoreId) {
+        await updateListingStore(editingStoreId, form);
+      } else {
+        await createListingStore(form);
+      }
+      resetForm();
       await storeQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
       setSaving(false);
     }
+  }
+
+  function resetForm() {
+    setForm(DEFAULT_FORM);
+    setEditingStoreId(undefined);
+  }
+
+  function handleEdit(store: ListingStore) {
+    setError("");
+    setEditingStoreId(store.id);
+    setForm({
+      storeId: store.storeId,
+      name: store.name,
+      username: store.username,
+      password: store.password ?? "",
+      loginUrl: store.loginUrl,
+      shopType: store.shopType,
+      region: store.region,
+      platform: store.platform,
+      dailyLimit: store.dailyLimit,
+      dailyLimitType: store.dailyLimitType,
+      fixedStockCount: store.fixedStockCount,
+      skuGenerateStrategy: store.skuGenerateStrategy,
+      prefix: store.prefix,
+      suffix: store.suffix,
+      proxy: store.proxy,
+      enableAutoListing: store.enableAutoListing,
+      enableAutoLogin: store.enableAutoLogin,
+      enableDraft: store.enableDraft,
+      enableAutoPrice: store.enableAutoPrice,
+      enableRebargain: store.enableRebargain,
+      temuPriceRejectStrategy: store.temuPriceRejectStrategy,
+      priceType: store.priceType,
+      remark: store.remark,
+      status: store.status,
+    });
   }
 
   async function handleDelete(id: number) {
@@ -254,6 +295,16 @@ export function StoreAdminPage() {
                       <TableCell className="px-4 py-3 text-right">
                         <Button
                           type="button"
+                          aria-label={`编辑 ${store.name}`}
+                          onClick={() => handleEdit(store)}
+                          className="mr-2"
+                          size="icon"
+                          variant="ghost"
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
                           aria-label={`延长 ${store.name} 有效期`}
                           onClick={() => void handleExtendValidity(store.id)}
                           className="mr-2"
@@ -281,12 +332,32 @@ export function StoreAdminPage() {
         </div>
 
         <form
-          onSubmit={handleCreate}
+          aria-label="店铺表单"
+          onSubmit={handleSave}
           className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
         >
-          <div className="mb-4 flex items-center gap-2">
-            <Plus className="size-4 text-zinc-500" />
-            <h2 className="text-base font-semibold text-zinc-950">新增店铺</h2>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {editingStoreId ? (
+                <Pencil className="size-4 text-zinc-500" />
+              ) : (
+                <Plus className="size-4 text-zinc-500" />
+              )}
+              <h2 className="text-base font-semibold text-zinc-950">
+                {editingStoreId ? "编辑店铺" : "新增店铺"}
+              </h2>
+            </div>
+            {editingStoreId ? (
+              <Button
+                type="button"
+                aria-label="取消编辑"
+                onClick={resetForm}
+                size="icon"
+                variant="ghost"
+              >
+                <X className="size-4" />
+              </Button>
+            ) : null}
           </div>
           <StoreInput label="店铺名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
           <StoreInput label="登录用户名" value={form.username} onChange={(username) => setForm({ ...form, username })} />
@@ -310,8 +381,14 @@ export function StoreAdminPage() {
             disabled={saving}
             className="w-full"
           >
-            {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            保存店铺
+            {saving ? (
+              <RefreshCw className="size-4 animate-spin" />
+            ) : editingStoreId ? (
+              <Pencil className="size-4" />
+            ) : (
+              <Plus className="size-4" />
+            )}
+            {editingStoreId ? "保存修改" : "保存店铺"}
           </Button>
         </form>
       </section>
