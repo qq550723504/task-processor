@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+
 type QuickNote = {
   label: string;
   value: string;
@@ -33,18 +36,19 @@ export function SheinDesignReviewNote({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {QUICK_NOTES.map((item) => (
-          <button
-            className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-100"
+          <Button
+            className="h-auto rounded-full px-2 py-1 text-[11px] text-zinc-600"
             key={item.label}
             onClick={() => onChange?.(item.value)}
             type="button"
+            variant="outline"
           >
             {item.label}
-          </button>
+          </Button>
         ))}
       </div>
-      <textarea
-        className="min-h-20 w-full rounded-[1rem] border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-700 outline-none transition focus:border-zinc-950"
+      <Textarea
+        className="min-h-20 rounded-[1rem] px-3 py-3 text-xs"
         disabled={disabled}
         onChange={(event) => onChange?.(event.target.value)}
         placeholder="可选：填写这个款式的问题或修改建议。"

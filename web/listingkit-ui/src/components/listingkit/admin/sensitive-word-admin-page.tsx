@@ -1,9 +1,24 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, ShieldAlert, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 
 import {
@@ -136,10 +151,11 @@ export function SensitiveWordAdminPage() {
                 ["0", "禁用"],
               ]}
             />
-            <button
+            <Button
               type="button"
               onClick={() => void sensitiveWordQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               {loading ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -147,91 +163,95 @@ export function SensitiveWordAdminPage() {
                 <Search className="size-4" />
               )}
               查询
-            </button>
+            </Button>
           </form>
         </div>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <Alert className="mt-4" variant="destructive">
+            <AlertDescription>{visibleError}</AlertDescription>
+          </Alert>
         ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">敏感词</th>
-                  <th className="px-4 py-3">语言</th>
-                  <th className="px-4 py-3">级别</th>
-                  <th className="px-4 py-3">标签</th>
-                  <th className="px-4 py-3">替换词</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+              <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
+                <TableRow>
+                  <TableHead className="px-4 py-3">敏感词</TableHead>
+                  <TableHead className="px-4 py-3">语言</TableHead>
+                  <TableHead className="px-4 py-3">级别</TableHead>
+                  <TableHead className="px-4 py-3">标签</TableHead>
+                  <TableHead className="px-4 py-3">替换词</TableHead>
+                  <TableHead className="px-4 py-3">状态</TableHead>
+                  <TableHead className="px-4 py-3 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : words.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
                       暂无敏感词
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   words.map((item) => (
-                    <tr key={item.id} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={item.id} className="align-top">
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">
                           {item.word}
                         </div>
                         <div className="text-xs text-zinc-500">
                           {item.remark || "-"}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {item.language}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {LEVEL_LABEL[item.level] ?? item.level}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {item.tags || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {item.replaceWord || "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <Button
                           type="button"
                           onClick={() => void handleToggle(item)}
-                          className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
+                          variant="ghost"
+                          className="h-auto p-0 hover:bg-transparent"
                         >
-                          {item.status === 1 ? "启用" : "禁用"}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                          <Badge variant={item.status === 1 ? "success" : "neutral"}>
+                            {item.status === 1 ? "启用" : "禁用"}
+                          </Badge>
+                        </Button>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
                           type="button"
                           aria-label={`删除 ${item.word}`}
                           onClick={() => void handleDelete(item.id)}
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
@@ -293,10 +313,10 @@ export function SensitiveWordAdminPage() {
             value={form.remark ?? ""}
             onChange={(remark) => setForm({ ...form, remark })}
           />
-          <button
+          <Button
             type="submit"
             disabled={saving || !form.word.trim() || !form.language.trim()}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="w-full"
           >
             {saving ? (
               <RefreshCw className="size-4 animate-spin" />
@@ -304,7 +324,7 @@ export function SensitiveWordAdminPage() {
               <Plus className="size-4" />
             )}
             保存敏感词
-          </button>
+          </Button>
         </form>
       </section>
     </div>
@@ -323,15 +343,15 @@ function SensitiveInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <input
+      <Input
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
-    </label>
+    </Label>
   );
 }
 
@@ -347,9 +367,9 @@ function SensitiveSelect({
   options: Array<[string, string]>;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
@@ -359,7 +379,7 @@ function SensitiveSelect({
             {labelText}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }

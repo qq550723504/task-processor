@@ -1,9 +1,23 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { FolderTree, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 
 import {
@@ -121,10 +135,11 @@ export function CategoryAdminPage() {
                 ["0", "禁用"],
               ]}
             />
-            <button
+            <Button
               type="button"
               onClick={() => void categoryQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               {loading ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -132,92 +147,94 @@ export function CategoryAdminPage() {
                 <Search className="size-4" />
               )}
               查询
-            </button>
+            </Button>
           </form>
         </div>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <Alert className="mt-4" variant="destructive">
+            <AlertDescription>{visibleError}</AlertDescription>
+          </Alert>
         ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">分类</th>
-                  <th className="px-4 py-3">编码</th>
-                  <th className="px-4 py-3">父级</th>
-                  <th className="px-4 py-3">层级</th>
-                  <th className="px-4 py-3">排序</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+          <Table className="min-w-full">
+              <TableHeader className="bg-zinc-50">
+                <TableRow className="text-xs uppercase tracking-[0.2em] hover:bg-transparent">
+                  <TableHead>分类</TableHead>
+                  <TableHead>编码</TableHead>
+                  <TableHead>父级</TableHead>
+                  <TableHead>层级</TableHead>
+                  <TableHead>排序</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {loading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableRow>
+                    <TableCell className="py-6 text-zinc-500" colSpan={7}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : categories.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableRow>
+                    <TableCell className="py-6 text-zinc-500" colSpan={7}>
                       暂无分类
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   categories.map((category) => (
-                    <tr key={category.id} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={category.id} className="align-top">
+                      <TableCell>
                         <div className="font-medium text-zinc-950">
                           {category.name}
                         </div>
                         <div className="text-xs text-zinc-500">
                           {category.description || "-"}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-zinc-700">
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-zinc-700">
                         {category.code}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="text-zinc-700">
                         {category.parentId > 0 ? `#${category.parentId}` : "顶级"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="text-zinc-700">
                         {category.level}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="text-zinc-700">
                         {category.sort}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
+                      </TableCell>
+                      <TableCell>
+                        <Button
                           type="button"
                           onClick={() => void handleToggle(category)}
-                          className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
+                          variant="ghost"
+                          className="h-auto p-0 hover:bg-transparent"
                         >
-                          {category.status === 1 ? "启用" : "禁用"}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                          <Badge variant={category.status === 1 ? "success" : "neutral"}>
+                            {category.status === 1 ? "启用" : "禁用"}
+                          </Badge>
+                        </Button>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
                           type="button"
                           aria-label={`删除 ${category.name}`}
                           onClick={() => void handleDelete(category.id)}
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         </div>
 
         <form
@@ -267,10 +284,10 @@ export function CategoryAdminPage() {
             value={form.description ?? ""}
             onChange={(description) => setForm({ ...form, description })}
           />
-          <button
+          <Button
             type="submit"
             disabled={saving || !form.name.trim() || !form.code.trim()}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="w-full"
           >
             {saving ? (
               <RefreshCw className="size-4 animate-spin" />
@@ -278,7 +295,7 @@ export function CategoryAdminPage() {
               <Plus className="size-4" />
             )}
             保存分类
-          </button>
+          </Button>
         </form>
       </section>
     </div>
@@ -299,16 +316,16 @@ function CategoryInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <input
+      <Input
+        className="mt-1 h-9"
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
-    </label>
+    </Label>
   );
 }
 
@@ -324,19 +341,19 @@ function CategorySelect({
   options: Array<[string, string]>;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <select
+      <Select
+        className="mt-1 h-9"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
       >
         {options.map(([optionValue, labelText]) => (
           <option key={optionValue} value={optionValue}>
             {labelText}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }

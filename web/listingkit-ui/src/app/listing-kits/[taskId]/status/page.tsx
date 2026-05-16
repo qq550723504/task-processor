@@ -6,7 +6,7 @@ import { LoaderCircle } from "lucide-react";
 import { TaskStatusScreen } from "@/components/listingkit/tasks/task-status-screen";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 
 export default function ListingKitTaskStatusPage({
   params,
@@ -31,7 +31,7 @@ export default function ListingKitTaskStatusPage({
         description="当前无法读取任务状态。你可以刷新重试，或先回到任务列表稍后重新进入。"
         action={
           <div className="flex flex-wrap gap-3">
-            <Button tone="secondary" onClick={() => task.refetch()}>
+            <Button variant="secondary" onClick={() => task.refetch()}>
               刷新当前页面
             </Button>
             <a
@@ -53,7 +53,7 @@ export default function ListingKitTaskStatusPage({
         description="当前任务还没有返回完整状态数据。你可以稍后刷新，或先回到任务列表继续查看。"
         action={
           <div className="flex flex-wrap gap-3">
-            <Button tone="secondary" onClick={() => task.refetch()}>
+            <Button variant="secondary" onClick={() => task.refetch()}>
               重新加载
             </Button>
             <a

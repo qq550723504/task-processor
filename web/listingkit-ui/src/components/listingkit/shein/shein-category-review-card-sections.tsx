@@ -1,4 +1,4 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import {
   formatCategoryLabel,
   joinPath,
@@ -108,7 +108,7 @@ export function ManualCategorySearchResults({
             </div>
             <div className="mt-3 flex justify-end">
               <Button
-                tone="secondary"
+                variant="secondary"
                 disabled={!candidate.category_id || applyingCategoryId === categoryId}
                 onClick={() => onApply(candidate)}
               >

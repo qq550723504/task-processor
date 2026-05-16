@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   buildSheinCategoryReviewModel,
   formatCategoryLabel,
@@ -137,7 +138,7 @@ export function SheinCategoryReviewCard({
           <div className="flex flex-wrap justify-end gap-3">
             {model.currentCategory?.category_id && onConfirmCurrentCategory ? (
               <Button
-                tone="ghost"
+                variant="ghost"
                 disabled={isApplying}
                 onClick={onConfirmCurrentCategory}
               >
@@ -145,7 +146,7 @@ export function SheinCategoryReviewCard({
               </Button>
             ) : null}
             <Button
-              tone="secondary"
+              variant="secondary"
               disabled={isApplying}
               onClick={onApplySuggestedCategory}
             >
@@ -160,7 +161,7 @@ export function SheinCategoryReviewCard({
         onConfirmCurrentCategory ? (
           <div className="flex justify-end">
             <Button
-              tone="secondary"
+              variant="secondary"
               disabled={isApplying}
               onClick={onConfirmCurrentCategory}
             >
@@ -180,8 +181,8 @@ export function SheinCategoryReviewCard({
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <input
-              className="h-10 flex-1 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400"
+            <Input
+              className="h-10 flex-1 rounded-xl"
               placeholder="例如：sleep mask、eye mask、家居装饰"
               value={manualQuery}
               onChange={(event) => setManualQuery(event.target.value)}
@@ -193,7 +194,7 @@ export function SheinCategoryReviewCard({
               }}
             />
             <Button
-              tone="secondary"
+              variant="secondary"
               disabled={manualSearchLoading}
               onClick={() => void handleSearch()}
             >

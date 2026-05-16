@@ -2,6 +2,11 @@
 
 import type { ReactNode } from "react";
 
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+
 type SDSFieldRegistration = Record<string, unknown>;
 
 function Field({
@@ -14,16 +19,16 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block space-y-2">
+    <Label className="block space-y-2">
       <span className="text-sm font-medium text-zinc-700">{label}</span>
       {children}
       <p className="text-sm leading-6 text-zinc-500">{hint}</p>
-    </label>
+    </Label>
   );
 }
 
 function inputClassName() {
-  return "w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950";
+  return "rounded-2xl px-4 py-3";
 }
 
 export function TaskSDSOptions({
@@ -56,15 +61,13 @@ export function TaskSDSOptions({
             如果你需要把设计素材回写到 SDS，可以在这里补充对应的商品和图层信息。
           </p>
         </div>
-        <label className="inline-flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
-          <input
+        <Label className="inline-flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
+          <Checkbox
             checked={enabled}
-            className="h-4 w-4 rounded border-zinc-300"
             onChange={(event) => onEnabledChange(event.target.checked)}
-            type="checkbox"
           />
           <span>启用 SDS 同步</span>
-        </label>
+        </Label>
       </div>
 
       {enabled ? (
@@ -73,7 +76,7 @@ export function TaskSDSOptions({
             label="Variant ID"
             hint="Required. SDS child SKU ID. Sync will not run unless this value is a positive integer."
           >
-            <input
+            <Input
               className={inputClassName()}
               inputMode="numeric"
               placeholder="89764"
@@ -85,7 +88,7 @@ export function TaskSDSOptions({
             label="Parent product ID"
             hint="Optional. Parent SDS product ID. Leave blank when you want the backend to infer it from the variant."
           >
-            <input
+            <Input
               className={inputClassName()}
               inputMode="numeric"
               placeholder="89763"
@@ -97,7 +100,7 @@ export function TaskSDSOptions({
             label="Prototype group ID"
             hint="Optional. When blank, the backend will use the current design page default template group."
           >
-            <input
+            <Input
               className={inputClassName()}
               inputMode="numeric"
               placeholder="14555"
@@ -109,7 +112,7 @@ export function TaskSDSOptions({
             label="Layer ID"
             hint="Optional. Target print layer. Leave blank to let the backend choose the main design layer."
           >
-            <input
+            <Input
               className={inputClassName()}
               placeholder="698744758333792256"
               {...layerIdRegistration}
@@ -120,17 +123,17 @@ export function TaskSDSOptions({
             label="Design type"
             hint="Use material for the current SDS design page workflow unless the backend contract changes."
           >
-            <select className={inputClassName()} {...designTypeRegistration}>
+            <Select className={inputClassName()} {...designTypeRegistration}>
               <option value="material">material</option>
               <option value="image">image</option>
-            </select>
+            </Select>
           </Field>
 
           <Field
             label="Fit level"
             hint="Optional scaling level. The live SDS flow has been validated with 1."
           >
-            <input
+            <Input
               className={inputClassName()}
               inputMode="decimal"
               placeholder="1"
@@ -142,7 +145,7 @@ export function TaskSDSOptions({
             label="Resize mode"
             hint="Optional scaling mode. The live SDS flow has been validated with 0."
           >
-            <input
+            <Input
               className={inputClassName()}
               inputMode="numeric"
               placeholder="0"

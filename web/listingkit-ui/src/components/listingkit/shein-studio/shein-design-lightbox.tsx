@@ -3,7 +3,7 @@
 import { MouseEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
@@ -131,13 +131,13 @@ export function SheinDesignLightbox({
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => onViewChange("design")}
-              tone={activeView === "design" ? "primary" : "secondary"}
+              variant={activeView === "design" ? "primary" : "secondary"}
             >
               原图
             </Button>
             <Button
               onClick={() => onViewChange("mockup")}
-              tone={activeView === "mockup" ? "primary" : "secondary"}
+              variant={activeView === "mockup" ? "primary" : "secondary"}
             >
               效果图
             </Button>
@@ -146,12 +146,12 @@ export function SheinDesignLightbox({
                 onClick={() =>
                   setZoomMode((current) => (current === "fit" ? "detail" : "fit"))
                 }
-                tone="secondary"
+                variant="secondary"
               >
                 {zoomMode === "fit" ? "细节放大" : "适应视图"}
               </Button>
             ) : null}
-            <Button onClick={onClose} tone="ghost">
+            <Button onClick={onClose} variant="ghost">
               关闭
             </Button>
           </div>
@@ -196,22 +196,26 @@ export function SheinDesignLightbox({
                 </div>
                 {hasMultipleSurfaces ? (
                   <>
-                    <button
+                    <Button
                       aria-label="上一张效果图"
-                      className="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/12 bg-zinc-950/70 text-lg font-semibold text-white shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition hover:bg-zinc-900"
+                      className="absolute left-4 top-1/2 size-11 -translate-y-1/2 rounded-full bg-zinc-950/70 text-lg text-white shadow-[0_10px_25px_rgba(0,0,0,0.25)] hover:bg-zinc-900"
                       onClick={showPreviousSurface}
+                      size="icon"
                       type="button"
+                      variant="outline"
                     >
                       ‹
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       aria-label="下一张效果图"
-                      className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/12 bg-zinc-950/70 text-lg font-semibold text-white shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition hover:bg-zinc-900"
+                      className="absolute right-4 top-1/2 size-11 -translate-y-1/2 rounded-full bg-zinc-950/70 text-lg text-white shadow-[0_10px_25px_rgba(0,0,0,0.25)] hover:bg-zinc-900"
                       onClick={showNextSurface}
+                      size="icon"
                       type="button"
+                      variant="outline"
                     >
                       ›
-                    </button>
+                    </Button>
                   </>
                 ) : null}
                 {hasMultipleSurfaces ? (
@@ -228,8 +232,8 @@ export function SheinDesignLightbox({
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {surfaces.map((imageUrl, index) => (
-                      <button
-                        className={`relative overflow-hidden rounded-[1rem] border transition ${
+                      <Button
+                        className={`relative h-auto overflow-hidden rounded-[1rem] border p-0 transition ${
                           index === activeSurfaceIndex
                             ? "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.18)]"
                             : "border-white/10 hover:border-white/30"
@@ -237,6 +241,7 @@ export function SheinDesignLightbox({
                         key={`${imageUrl}:${index}`}
                         onClick={() => setActiveSurfaceIndex(index)}
                         type="button"
+                        variant="ghost"
                       >
                         <div className="relative aspect-square bg-zinc-900">
                           <Image
@@ -250,7 +255,7 @@ export function SheinDesignLightbox({
                         <div className="border-t border-white/10 bg-zinc-950/90 px-3 py-2 text-left text-xs font-medium text-zinc-200">
                           视图 {index + 1}
                         </div>
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>

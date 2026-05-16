@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 
 export function SDSPagination({
   page,
@@ -24,7 +24,7 @@ export function SDSPagination({
         <Button
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          tone="secondary"
+          variant="secondary"
           type="button"
         >
           Previous
@@ -32,7 +32,7 @@ export function SDSPagination({
         <Button
           disabled={page >= pageCount}
           onClick={() => onPageChange(page + 1)}
-          tone="secondary"
+          variant="secondary"
           type="button"
         >
           Next

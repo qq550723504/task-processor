@@ -1,6 +1,6 @@
 "use client";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import type { QueueSummary } from "@/lib/types/listingkit";
 
 const metrics = [

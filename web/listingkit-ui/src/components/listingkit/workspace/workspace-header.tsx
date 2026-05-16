@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
 import { ResolvedActionCard } from "@/components/listingkit/review/resolved-action-card";
+import { Badge } from "@/components/ui/badge";
 import type {
   RecoveryDescriptor,
   RecoverySummary,
@@ -60,16 +61,16 @@ export function WorkspaceHeader({
           {statusLabel || updatedAtLabel ? (
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-600">
               {statusLabel ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5">
+                <Badge className="gap-2 rounded-full px-3 py-1.5" variant="neutral">
                   <span className="font-semibold text-zinc-700">任务状态</span>
                   <span>{statusLabel}</span>
-                </span>
+                </Badge>
               ) : null}
               {updatedAtLabel ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5">
+                <Badge className="gap-2 rounded-full px-3 py-1.5" variant="neutral">
                   <span className="font-semibold text-zinc-700">最近更新</span>
                   <span>{updatedAtLabel}</span>
-                </span>
+                </Badge>
               ) : null}
             </div>
           ) : null}

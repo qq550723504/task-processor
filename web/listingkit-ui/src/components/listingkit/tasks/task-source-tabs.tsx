@@ -2,6 +2,7 @@
 
 import { ImageIcon, Link2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 
 export type TaskSourceTab = "imageUrls" | "productUrl";
@@ -51,14 +52,13 @@ export function TaskSourceTabs({
           const Icon = tab.icon;
           const labelId = `task-source-tab-${tab.key}-label`;
           return (
-            <button
+            <Button
               aria-labelledby={labelId}
               aria-selected={selected}
+              variant={selected ? "default" : "outline"}
               className={cn(
-                "flex min-h-[76px] items-start gap-3 rounded-xl border px-4 py-3 text-left transition",
-                selected
-                  ? "border-zinc-950 bg-zinc-950 text-white"
-                  : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300",
+                "h-auto min-h-[76px] justify-start gap-3 rounded-xl px-4 py-3 text-left",
+                selected ? "text-white" : "text-zinc-800",
               )}
               key={tab.key}
               onClick={() => onTabChange(tab.key as TaskSourceTab)}
@@ -87,7 +87,7 @@ export function TaskSourceTabs({
                   {tab.description}
                 </span>
               </span>
-            </button>
+            </Button>
           );
         })}
       </div>

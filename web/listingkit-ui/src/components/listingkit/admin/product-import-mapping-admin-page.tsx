@@ -1,9 +1,24 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { GitBranch, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 
 import {
@@ -142,10 +157,11 @@ export function ProductImportMappingAdminPage() {
                 ["AMAZON", "AMAZON"],
               ]}
             />
-            <button
+            <Button
               type="button"
               onClick={() => void mappingQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               {loading ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -153,96 +169,100 @@ export function ProductImportMappingAdminPage() {
                 <Search className="size-4" />
               )}
               查询
-            </button>
+            </Button>
           </form>
         </div>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <Alert className="mt-4" variant="destructive">
+            <AlertDescription>{visibleError}</AlertDescription>
+          </Alert>
         ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">产品</th>
-                  <th className="px-4 py-3">任务/店铺</th>
-                  <th className="px-4 py-3">平台</th>
-                  <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">平台产品</th>
-                  <th className="px-4 py-3">倍数</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+              <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
+                <TableRow>
+                  <TableHead className="px-4 py-3">产品</TableHead>
+                  <TableHead className="px-4 py-3">任务/店铺</TableHead>
+                  <TableHead className="px-4 py-3">平台</TableHead>
+                  <TableHead className="px-4 py-3">SKU</TableHead>
+                  <TableHead className="px-4 py-3">平台产品</TableHead>
+                  <TableHead className="px-4 py-3">倍数</TableHead>
+                  <TableHead className="px-4 py-3">状态</TableHead>
+                  <TableHead className="px-4 py-3 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={8}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : mappings.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={8}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       暂无导入映射
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   mappings.map((mapping) => (
-                    <tr key={mapping.id} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={mapping.id} className="align-top">
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">
                           {mapping.productId}
                         </div>
                         <div className="text-xs text-zinc-500">
                           {mapping.parentProductId || "-"}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         #{mapping.importTaskId} / #{mapping.storeId}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {mapping.platform} {mapping.region}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {mapping.sku || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {mapping.platformProductId || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {mapping.salePriceMultiplier} /{" "}
                         {mapping.discountPriceMultiplier}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <Button
                           type="button"
                           onClick={() => void handleAdvanceStatus(mapping)}
-                          className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
+                          variant="ghost"
+                          className="h-auto p-0 hover:bg-transparent"
                         >
-                          {STATUS_LABEL[mapping.status] ?? mapping.status}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                          <Badge variant="neutral">
+                            {STATUS_LABEL[mapping.status] ?? mapping.status}
+                          </Badge>
+                        </Button>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
                           type="button"
                           aria-label={`删除 ${mapping.productId}`}
                           onClick={() => void handleDelete(mapping.id)}
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
@@ -332,7 +352,7 @@ export function ProductImportMappingAdminPage() {
             value={form.remark ?? ""}
             onChange={(remark) => setForm({ ...form, remark })}
           />
-          <button
+          <Button
             type="submit"
             disabled={
               saving ||
@@ -340,7 +360,7 @@ export function ProductImportMappingAdminPage() {
               form.storeId <= 0 ||
               !form.productId.trim()
             }
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="w-full"
           >
             {saving ? (
               <RefreshCw className="size-4 animate-spin" />
@@ -348,7 +368,7 @@ export function ProductImportMappingAdminPage() {
               <Plus className="size-4" />
             )}
             保存映射
-          </button>
+          </Button>
         </form>
       </section>
     </div>
@@ -369,16 +389,16 @@ function MappingInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <input
+      <Input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
-    </label>
+    </Label>
   );
 }
 
@@ -394,9 +414,9 @@ function MappingSelect({
   options: Array<[string, string]>;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
@@ -406,7 +426,7 @@ function MappingSelect({
             {labelText}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }

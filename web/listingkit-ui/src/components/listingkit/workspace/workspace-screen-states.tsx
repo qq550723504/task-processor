@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LoaderCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 
 type RetryHandler = () => Promise<unknown> | void;
@@ -42,19 +43,15 @@ function WorkspaceRetryActions({
 }) {
   return (
     <div className="flex flex-wrap gap-3">
-      <button
-        className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+      <Button
         onClick={() => void onRetry()}
         type="button"
       >
         {label}
-      </button>
-      <Link
-        href="/listing-kits"
-        className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
-      >
-        返回任务列表
-      </Link>
+      </Button>
+      <Button asChild variant="outline">
+        <Link href="/listing-kits">返回任务列表</Link>
+      </Button>
     </div>
   );
 }

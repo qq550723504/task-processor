@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   buildSelectedAttributes,
   pendingCandidatesSignature,
@@ -163,7 +163,7 @@ function SheinAttributeReviewContent({
               className="h-9"
               disabled={!canConfirm || isApplying}
               onClick={() => onConfirmAttributes?.(selectedAttributes)}
-              tone="secondary"
+              variant="secondary"
             >
               {isApplying ? "保存中..." : "保存已选择属性"}
             </Button>
@@ -201,7 +201,7 @@ function SheinAttributeReviewContent({
                 className="h-9"
                 disabled={!canConfirm || isApplying}
                 onClick={() => onConfirmAttributes?.(selectedAttributes)}
-                tone="secondary"
+                variant="secondary"
               >
                 {isApplying ? "保存中..." : "保存已选择属性"}
               </Button>
@@ -235,7 +235,7 @@ function SheinAttributeReviewContent({
                 className="mt-3 h-9"
                 disabled={!canConfirm || isApplying}
                 onClick={() => onConfirmAttributes?.(selectedAttributes)}
-                tone="secondary"
+                variant="secondary"
               >
                 {isApplying ? "保存中..." : "保存已选择属性"}
               </Button>
@@ -300,7 +300,7 @@ function SheinAttributeReviewContent({
               className="h-9"
               disabled={!canConfirmFallback || isApplying}
               onClick={() => onConfirmFallbackAttributes?.()}
-              tone="secondary"
+              variant="secondary"
             >
               {isApplying ? "保存中..." : "按当前 SDS 属性确认"}
             </Button>

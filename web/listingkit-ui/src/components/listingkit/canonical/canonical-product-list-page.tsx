@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Database, LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import { useCanonicalProducts } from "@/lib/query/use-canonical-products";
@@ -47,7 +48,7 @@ export function CanonicalProductListPage() {
             从最近的 ListingKit 任务结果中聚合标准商品，用于检查 1688、POD 到 SHEIN 前的统一商品事实。
           </p>
         </div>
-        <Button tone="secondary" onClick={() => products.refetch()}>
+        <Button variant="secondary" onClick={() => products.refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
@@ -71,7 +72,7 @@ export function CanonicalProductListPage() {
           title="标准商品加载失败"
           description="任务列表或任务详情接口暂时不可用。"
           action={
-            <Button tone="secondary" onClick={() => products.refetch()}>
+            <Button variant="secondary" onClick={() => products.refetch()}>
               <RefreshCw className="mr-2 h-4 w-4" />
               刷新
             </Button>
@@ -111,19 +112,19 @@ function CanonicalProductRow({ item }: { item: CanonicalProductListItem }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {item.needsReview ? (
-              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+              <Badge className="gap-1 rounded-full text-[11px]" variant="warning">
                 <ShieldAlert className="mr-1 h-3.5 w-3.5" />
                 需审核
-              </span>
+              </Badge>
             ) : (
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+              <Badge className="rounded-full text-[11px]" variant="success">
                 已校验
-              </span>
+              </Badge>
             )}
             {item.platformLabels.map((platform) => (
-              <span key={platform} className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+              <Badge key={platform} className="rounded-full text-[11px] uppercase tracking-[0.14em]" variant="neutral">
                 {platform}
-              </span>
+              </Badge>
             ))}
           </div>
           <h2 className="mt-2 truncate text-lg font-semibold text-zinc-950">{item.title}</h2>

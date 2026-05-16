@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils/cn";
 
 export type SheinFlowStepState = "done" | "active" | "blocked" | "pending";
@@ -82,9 +83,12 @@ export function SheinFlowNav({
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/20 text-xs font-semibold">
                 {index + 1}
               </span>
-              <span className="rounded-full border border-current/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">
+              <Badge
+                className="rounded-full border-current/20 bg-transparent px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-current"
+                variant="outline"
+              >
                 {stateLabel(step.state)}
-              </span>
+              </Badge>
             </div>
             <div className="mt-3 space-y-1">
               <p className="text-sm font-semibold">{step.label}</p>

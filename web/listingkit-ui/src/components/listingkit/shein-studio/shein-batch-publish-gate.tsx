@@ -5,8 +5,9 @@ import { useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 
 import { shouldPollTaskResult } from "@/components/listingkit/tasks/task-status-query";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { getListingKitPreview } from "@/lib/api/preview";
 import { submitTask } from "@/lib/api/submit";
 import { getListingKitTaskResult } from "@/lib/api/task-result";
@@ -200,7 +201,7 @@ export function SheinBatchPublishGate({
           <Button
             disabled={isSavingDrafts || draftEligible.length === 0}
             onClick={() => handleBatchSubmit("save_draft")}
-            tone="secondary"
+            variant="secondary"
           >
             {isSavingDrafts ? "正在保存草稿..." : "保存可用草稿"}
           </Button>
@@ -234,25 +235,24 @@ export function SheinBatchPublishGate({
               }`,
             ],
           ].map(([filter, label]) => (
-            <button
-              className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                activeFilter === filter
-                  ? "border-zinc-950 bg-zinc-950 text-white"
-                  : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
+            <Button
+              className={`h-auto rounded-xl px-3 py-2 text-xs ${
+                activeFilter === filter ? "text-white" : "text-zinc-700"
               }`}
               key={filter}
               onClick={() => setActiveFilter(filter as GateFilter)}
               type="button"
+              variant={activeFilter === filter ? "default" : "outline"}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
 
         {error ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
         {message ? (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -302,10 +302,10 @@ export function SheinBatchPublishGate({
 
                 <div className="flex flex-wrap gap-2">
                   <Link href={`/listing-kits/${item.task.id}/status`}>
-                    <Button tone="ghost">状态</Button>
+                    <Button variant="ghost">状态</Button>
                   </Link>
                   <Link href={`/listing-kits/${item.task.id}/workspace`}>
-                    <Button tone="secondary">工作区</Button>
+                    <Button variant="secondary">工作区</Button>
                   </Link>
                 </div>
               </div>

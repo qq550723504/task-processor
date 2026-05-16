@@ -2,8 +2,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink, ImageIcon, RefreshCw, Send } from "lucide-react";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   DIMENSION_FILTER_OPTIONS,
   formatDate,
@@ -36,7 +40,7 @@ export function StyleGalleryHero() {
         </p>
       </div>
       <div className="flex flex-wrap gap-3">
-        <Button tone="secondary" onClick={() => window.location.reload()}>
+        <Button variant="secondary" onClick={() => window.location.reload()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
@@ -103,12 +107,12 @@ export function StyleGalleryDimensionFilters({
 }) {
   return (
     <section className="grid gap-3 rounded-[1.25rem] border border-white/70 bg-white/82 p-4 shadow-sm md:grid-cols-[minmax(12rem,0.8fr)_minmax(10rem,0.45fr)_minmax(10rem,0.45fr)_auto] md:items-end">
-      <label className="space-y-1.5 text-sm">
+      <Label className="space-y-1.5 text-sm">
         <span className="block text-xs font-semibold text-zinc-600">
           尺寸筛选
         </span>
-        <select
-          className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 disabled:bg-zinc-100 disabled:text-zinc-400"
+        <Select
+          className="rounded-lg"
           disabled={itemCount === 0}
           value={dimensionPreset}
           onChange={(event) =>
@@ -120,14 +124,14 @@ export function StyleGalleryDimensionFilters({
               {option.label}
             </option>
           ))}
-        </select>
-      </label>
-      <label className="space-y-1.5 text-sm">
+        </Select>
+      </Label>
+      <Label className="space-y-1.5 text-sm">
         <span className="block text-xs font-semibold text-zinc-600">
           最小宽度
         </span>
-        <input
-          className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 disabled:bg-zinc-100 disabled:text-zinc-400"
+        <Input
+          className="rounded-lg"
           disabled={itemCount === 0}
           inputMode="numeric"
           min={0}
@@ -136,13 +140,13 @@ export function StyleGalleryDimensionFilters({
           value={minWidth}
           onChange={(event) => setMinWidth(event.target.value)}
         />
-      </label>
-      <label className="space-y-1.5 text-sm">
+      </Label>
+      <Label className="space-y-1.5 text-sm">
         <span className="block text-xs font-semibold text-zinc-600">
           最小高度
         </span>
-        <input
-          className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 disabled:bg-zinc-100 disabled:text-zinc-400"
+        <Input
+          className="rounded-lg"
           disabled={itemCount === 0}
           inputMode="numeric"
           min={0}
@@ -151,7 +155,7 @@ export function StyleGalleryDimensionFilters({
           value={minHeight}
           onChange={(event) => setMinHeight(event.target.value)}
         />
-      </label>
+      </Label>
       <p className="text-sm text-zinc-500 md:pb-2">
         显示 {visibleCount} / {itemCount}
       </p>
@@ -264,15 +268,19 @@ function GalleryCard({
       </a>
       <div className="space-y-3 p-4">
         <div className="flex flex-wrap gap-2">
-          <span
-            className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${sourceTone(item.source)}`}
+          <Badge
+            className={`rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${sourceTone(item.source)}`}
+            variant="outline"
           >
             {item.sourceLabel}
-          </span>
+          </Badge>
           {item.taskStatus ? (
-            <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
+            <Badge
+              className="rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]"
+              variant="neutral"
+            >
               {item.taskStatus}
-            </span>
+            </Badge>
           ) : null}
         </div>
         <div>

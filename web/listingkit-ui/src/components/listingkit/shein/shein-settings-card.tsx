@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Input as TextInput } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { useSheinSettings, useUpdateSheinSettings } from "@/lib/query/use-shein-settings";
 
 export function SheinSettingsCard() {
@@ -88,13 +91,13 @@ export function SheinSettingsCard() {
         </Button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-5">
-        <label className="space-y-1">
+        <Label className="space-y-1">
           <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
             默认店铺
           </span>
-          <select
+          <Select
             aria-label="默认店铺"
-            className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm"
+            className="rounded-xl"
             value={form.default_store_id}
             onChange={(event) => set("default_store_id", event.target.value)}
           >
@@ -106,11 +109,11 @@ export function SheinSettingsCard() {
                 {formatStoreOptionLabel(store)}
               </option>
             ))}
-          </select>
+          </Select>
           <span className="block text-[11px] leading-4 text-zinc-500">
             店铺列表从当前登录租户的 `listing_store` 数据读取
           </span>
-        </label>
+        </Label>
         <Input
           label="站点"
           hint="例如 US，美国站"
@@ -129,18 +132,18 @@ export function SheinSettingsCard() {
           value={form.default_stock}
           onChange={(value) => set("default_stock", value)}
         />
-        <label className="space-y-1">
+        <Label className="space-y-1">
           <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
             默认提交方式
           </span>
-          <select className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm" value={form.default_submit_mode} onChange={(event) => set("default_submit_mode", event.target.value)}>
+          <Select className="rounded-xl" value={form.default_submit_mode} onChange={(event) => set("default_submit_mode", event.target.value)}>
             <option value="publish">直接发布</option>
             <option value="save_draft">保存草稿</option>
-          </select>
+          </Select>
           <span className="block text-[11px] leading-4 text-zinc-500">
             客户仍可在最终确认页临时切换
           </span>
-        </label>
+        </Label>
         <Input
           label="人民币转美元汇率"
           hint="例：7.2 表示 1 USD = 7.2 CNY"
@@ -204,18 +207,18 @@ function Input({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="space-y-1">
+    <Label className="space-y-1">
       <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
         {label}
       </span>
-      <input
-        className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
+      <TextInput
+        className="rounded-xl"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
       {hint ? (
         <span className="block text-[11px] leading-4 text-zinc-500">{hint}</span>
       ) : null}
-    </label>
+    </Label>
   );
 }

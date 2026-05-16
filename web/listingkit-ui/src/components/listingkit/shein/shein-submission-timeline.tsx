@@ -4,7 +4,8 @@ import {
   sheinSubmissionStatusLabel,
   sheinSubmitPhaseLabel,
 } from "@/lib/shein-studio/shein-submission-display";
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 function formatTime(value?: string) {
   if (!value) return "";
@@ -47,9 +48,12 @@ function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; inde
         <div className="text-sm font-semibold text-zinc-950">
           {eventTitle(event)}
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${tone(event.status)}`}>
+        <Badge
+          className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${tone(event.status)}`}
+          variant="outline"
+        >
           {sheinSubmissionStatusLabel(event.status)}
-        </span>
+        </Badge>
       </div>
       <div className="mt-1 text-xs text-zinc-500">
         {formatTime(event.started_at)}
@@ -128,7 +132,7 @@ export function SheinSubmissionTimeline({
           <Button
             className="h-8 px-3 text-xs"
             disabled={isRefreshing}
-            tone="secondary"
+            variant="secondary"
             onClick={onRefresh}
           >
             {isRefreshing ? "刷新中..." : "刷新状态"}

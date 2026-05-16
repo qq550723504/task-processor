@@ -1,4 +1,5 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   cacheSourceLabel,
   cacheUpdatedLabel,
@@ -48,7 +49,7 @@ export function ResolutionCacheRow({
           <Button
             className="h-8 shrink-0 px-3 text-xs"
             disabled={isClearing}
-            tone="secondary"
+            variant="secondary"
             onClick={() => onClear(kind)}
           >
             清除
@@ -111,14 +112,17 @@ export function ReadinessItems({
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 {item.suggested_action ? (
-                  <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
+                  <Badge
+                    className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+                    variant="neutral"
+                  >
                     {item.suggested_action}
-                  </span>
+                  </Badge>
                 ) : null}
                 {canAct && onSelectItem ? (
                   <Button
                     className="h-8 px-3 text-xs"
-                    tone="secondary"
+                    variant="secondary"
                     onClick={() => onSelectItem(item)}
                   >
                     {actionLabel}
@@ -209,9 +213,12 @@ export function ChecklistSection({
                 <p className="text-xs leading-5 text-zinc-600">{item.message}</p>
               ) : null}
             </div>
-            <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
+            <Badge
+              className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+              variant="neutral"
+            >
               {item.status ?? "未知"}
-            </span>
+            </Badge>
           </div>
         ))}
       </div>

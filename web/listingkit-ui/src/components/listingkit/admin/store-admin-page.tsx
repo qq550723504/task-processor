@@ -1,9 +1,24 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Clock, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 
 import {
@@ -142,17 +157,18 @@ export function StoreAdminPage() {
             </p>
           </div>
           <form className="flex flex-wrap gap-2" onSubmit={(event) => event.preventDefault()}>
-            <button
+            <Button
               type="button"
               onClick={() => void deletedStoreQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               <RotateCcw className="size-4" />
               回收站
-            </button>
-            <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+            </Button>
+            <Label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
               平台
-              <select
+              <Select
                 value={platform}
                 onChange={(event) => setPlatform(event.target.value)}
                 className="h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
@@ -160,103 +176,107 @@ export function StoreAdminPage() {
                 <option value="">全部</option>
                 <option value="SHEIN">SHEIN</option>
                 <option value="TEMU">TEMU</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+              </Select>
+            </Label>
+            <Label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
               店铺名称
-              <input
+              <Input
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
                 className="h-9 w-52 rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
                 placeholder="搜索店铺"
               />
-            </label>
-            <button
+            </Label>
+            <Button
               type="button"
               onClick={() => void storeQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               {loading ? <RefreshCw className="size-4 animate-spin" /> : <Search className="size-4" />}
               查询
-            </button>
+            </Button>
           </form>
         </div>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <Alert className="mt-4" variant="destructive">
+            <AlertDescription>{visibleError}</AlertDescription>
+          </Alert>
         ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">店铺</th>
-                  <th className="px-4 py-3">账号</th>
-                  <th className="px-4 py-3">平台</th>
-                  <th className="px-4 py-3">地区</th>
-                  <th className="px-4 py-3">每日限制</th>
-                  <th className="px-4 py-3">自动上架</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+              <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
+                <TableRow>
+                  <TableHead className="px-4 py-3">店铺</TableHead>
+                  <TableHead className="px-4 py-3">账号</TableHead>
+                  <TableHead className="px-4 py-3">平台</TableHead>
+                  <TableHead className="px-4 py-3">地区</TableHead>
+                  <TableHead className="px-4 py-3">每日限制</TableHead>
+                  <TableHead className="px-4 py-3">自动上架</TableHead>
+                  <TableHead className="px-4 py-3 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : stores.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
                       暂无店铺
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   stores.map((store) => (
-                    <tr key={store.id} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={store.id} className="align-top">
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">{store.name}</div>
                         <div className="font-mono text-xs text-zinc-500">#{store.id}</div>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">{store.username}</td>
-                      <td className="px-4 py-3 text-zinc-700">{store.platform}</td>
-                      <td className="px-4 py-3 text-zinc-700">{store.region || "-"}</td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">{store.region || "-"}</TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {store.dailyLimit ?? "-"} {store.dailyLimitType ?? ""}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <Badge variant={store.enableAutoListing ? "success" : "neutral"}>
                           {store.enableAutoListing ? "启用" : "关闭"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
                           type="button"
                           aria-label={`延长 ${store.name} 有效期`}
                           onClick={() => void handleExtendValidity(store.id)}
-                          className="mr-2 inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+                          className="mr-2"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Clock className="size-4" />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           aria-label={`删除 ${store.name}`}
                           onClick={() => void handleDelete(store.id)}
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
@@ -277,22 +297,22 @@ export function StoreAdminPage() {
           </div>
           <StoreInput label="店铺类型" value={form.shopType} onChange={(shopType) => setForm({ ...form, shopType })} />
           <StoreInput label="每日上架限制" type="number" value={String(form.dailyLimit ?? "")} onChange={(dailyLimit) => setForm({ ...form, dailyLimit: Number(dailyLimit) || undefined })} />
-          <label className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
-            <input
+          <Label className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
+            <Input
               type="checkbox"
               checked={Boolean(form.enableAutoListing)}
               onChange={(event) => setForm({ ...form, enableAutoListing: event.target.checked })}
             />
             启用自动上架
-          </label>
-          <button
+          </Label>
+          <Button
             type="submit"
             disabled={saving}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="w-full"
           >
             {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
             保存店铺
-          </button>
+          </Button>
         </form>
       </section>
 
@@ -304,74 +324,77 @@ export function StoreAdminPage() {
               共 {deletedStores.length} 个已删除店铺。
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={() => void deletedStoreQuery.refetch()}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+            variant="secondary"
           >
             <RefreshCw
               className={`size-4 ${deletedStoreQuery.isFetching ? "animate-spin" : ""}`}
             />
             刷新
-          </button>
+          </Button>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-              <tr>
-                <th className="px-4 py-3">店铺</th>
-                <th className="px-4 py-3">账号</th>
-                <th className="px-4 py-3">平台</th>
-                <th className="px-4 py-3">地区</th>
-                <th className="px-4 py-3 text-right">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
+          <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+            <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
+              <TableRow>
+                <TableHead className="px-4 py-3">店铺</TableHead>
+                <TableHead className="px-4 py-3">账号</TableHead>
+                <TableHead className="px-4 py-3">平台</TableHead>
+                <TableHead className="px-4 py-3">地区</TableHead>
+                <TableHead className="px-4 py-3 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y divide-zinc-100">
               {deletedStoreQuery.isLoading ? (
-                <tr>
-                  <td className="px-4 py-6 text-zinc-500" colSpan={5}>
+                <TableRow>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={5}>
                     加载中...
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : deletedStores.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-6 text-zinc-500" colSpan={5}>
+                <TableRow>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={5}>
                     回收站为空
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 deletedStores.map((store) => (
-                  <tr key={store.id} className="align-top">
-                    <td className="px-4 py-3">
+                  <TableRow key={store.id} className="align-top">
+                    <TableCell className="px-4 py-3">
                       <div className="font-medium text-zinc-950">{store.name}</div>
                       <div className="font-mono text-xs text-zinc-500">#{store.id}</div>
-                    </td>
-                    <td className="px-4 py-3 text-zinc-700">{store.username}</td>
-                    <td className="px-4 py-3 text-zinc-700">{store.platform}</td>
-                    <td className="px-4 py-3 text-zinc-700">{store.region || "-"}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
+                    <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
+                    <TableCell className="px-4 py-3 text-zinc-700">{store.region || "-"}</TableCell>
+                    <TableCell className="px-4 py-3 text-right">
+                      <Button
                         type="button"
                         aria-label={`恢复 ${store.name}`}
                         onClick={() => void handleRestore(store.id)}
-                        className="mr-2 inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+                        className="mr-2"
+                        size="icon"
+                        variant="ghost"
                       >
                         <RotateCcw className="size-4" />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
                         aria-label={`彻底删除 ${store.name}`}
                         onClick={() => void handlePermanentDelete(store.id)}
-                        className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                        size="icon"
+                        variant="ghost"
                       >
                         <Trash2 className="size-4" />
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </section>
     </div>
@@ -390,15 +413,15 @@ function StoreInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <input
+      <Input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
-    </label>
+    </Label>
   );
 }
 
@@ -414,9 +437,9 @@ function StoreSelect({
   options: string[];
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
@@ -426,7 +449,7 @@ function StoreSelect({
             {option}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }

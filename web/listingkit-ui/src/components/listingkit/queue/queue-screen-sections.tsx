@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { LoaderCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { QueueFiltersBar, type QueueFilterValue } from "@/components/listingkit/queue/queue-filters-bar";
 import { QueueSummaryStrip } from "@/components/listingkit/queue/queue-summary-strip";
 import { QueueTable } from "@/components/listingkit/queue/queue-table";
@@ -38,18 +41,14 @@ export function QueueErrorState({ taskId }: { taskId: string }) {
       description="当前无法读取生成队列或任务状态。你可以返回工作台继续查看，或回到任务列表稍后重试。"
       action={
         <div className="flex flex-wrap gap-3">
-          <Link
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-            href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
-          >
-            打开工作台
-          </Link>
-          <Link
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-            href="/listing-kits"
-          >
-            返回任务列表
-          </Link>
+          <Button asChild variant="outline">
+            <Link href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}>
+              打开工作台
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/listing-kits">返回任务列表</Link>
+          </Button>
         </div>
       }
     />
@@ -62,12 +61,11 @@ export function QueuePendingDataState({ taskId }: { taskId: string }) {
       title="队列数据暂未准备完成"
       description="当前任务还没有返回完整的生成队列。你可以先打开工作台查看处理进度，或稍后回到这里继续。"
       action={
-        <Link
-          className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-          href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
-        >
-          打开工作台
-        </Link>
+        <Button asChild variant="outline">
+          <Link href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}>
+            打开工作台
+          </Link>
+        </Button>
       }
     />
   );
@@ -85,18 +83,14 @@ export function QueueTaskNavigation({ taskId }: { taskId: string }) {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Link
-          className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-          href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
-        >
-          打开工作区
-        </Link>
-        <Link
-          className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-          href="/listing-kits/shein"
-        >
-          返回 SHEIN 工作室
-        </Link>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}>
+            打开工作区
+          </Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/listing-kits/shein">返回 SHEIN 工作室</Link>
+        </Button>
       </div>
     </div>
   );
@@ -210,34 +204,36 @@ function QueuePagination({
         第 {page} / {totalPages} 页 · 显示 {start}-{end} / {total} 条
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2">
+        <Label className="flex items-center gap-2">
           <span>每页</span>
-          <select
-            className="h-9 rounded-xl border border-zinc-200 bg-white px-2 text-sm"
+          <Select
+            className="h-9 w-auto rounded-xl px-2 text-sm"
             value={pageSize}
             onChange={(event) => onChange(1, Number(event.target.value))}
           >
             <option value={10}>10</option>
             <option value={20}>20</option>
             <option value={50}>50</option>
-          </select>
-        </label>
-        <button
-          className="h-9 rounded-xl border border-zinc-200 px-3 font-medium text-zinc-800 disabled:text-zinc-300"
+          </Select>
+        </Label>
+        <Button
+          variant="outline"
+          size="sm"
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
           type="button"
         >
           上一页
-        </button>
-        <button
-          className="h-9 rounded-xl border border-zinc-200 px-3 font-medium text-zinc-800 disabled:text-zinc-300"
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
           type="button"
         >
           下一页
-        </button>
+        </Button>
       </div>
     </div>
   );

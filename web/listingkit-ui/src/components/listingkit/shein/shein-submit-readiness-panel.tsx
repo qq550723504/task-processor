@@ -1,4 +1,4 @@
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import { SheinCustomerIssueSummary } from "@/components/listingkit/shein/shein-customer-issue-summary";
 import {
   checklistLabel,

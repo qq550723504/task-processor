@@ -10,7 +10,8 @@ import {
   parsePositiveInteger,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-sections";
 import { SheinSavedBatchesPanel } from "@/components/listingkit/shein-studio/shein-saved-batches-panel";
-import { Button } from "@/components/shared/button";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import type {
   SheinStudioArtworkModel,
@@ -128,9 +129,9 @@ export function SheinStudioGenerationPanel({
             款式图和商品图设置
           </h2>
         </div>
-        <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
+        <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
           {selectionReady ? "商品已选择" : "请先选择商品"}
-        </div>
+        </Badge>
       </div>
 
       <div className="grid gap-4">
@@ -182,7 +183,7 @@ export function SheinStudioGenerationPanel({
           <Button disabled={isGenerating} onClick={onGenerate}>
             {isGenerating ? "生成中..." : "生成款式图"}
           </Button>
-          <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} tone="ghost">
+          <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} variant="ghost">
             保存批次
           </Button>
           <Button
@@ -193,7 +194,7 @@ export function SheinStudioGenerationPanel({
               !selectionReady
             }
             onClick={onCreateTasks}
-            tone="secondary"
+            variant="secondary"
           >
             {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
           </Button>

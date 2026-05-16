@@ -1,8 +1,8 @@
 "use client";
 
 import { presentRecoveryDescriptor } from "@/components/listingkit/shared/hint-presentation";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { RecoveryDescriptor } from "@/lib/types/listingkit";
 
 export function RecoveryActionList({
@@ -39,7 +39,7 @@ export function RecoveryActionList({
                   {copy.metaLabel}
                 </p>
               </div>
-              <Button tone="secondary" onClick={() => onSelect(descriptor)}>
+              <Button variant="secondary" onClick={() => onSelect(descriptor)}>
                 {copy.ctaLabel}
               </Button>
             </div>

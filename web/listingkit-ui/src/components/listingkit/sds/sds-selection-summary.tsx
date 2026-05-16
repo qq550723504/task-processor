@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 export function SDSSelectionSummary({
@@ -37,10 +37,10 @@ export function SDSSelectionSummary({
           </div>
         </div>
         <div className="flex gap-3">
-          <Button onClick={onClear} tone="ghost">
+          <Button onClick={onClear} variant="ghost">
             清除
           </Button>
-          <Button onClick={onChange} tone="secondary">
+          <Button onClick={onChange} variant="secondary">
             更换变体
           </Button>
         </div>

@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { SheinBatchPublishGate } from "@/components/listingkit/shein-studio/shein-batch-publish-gate";
 import { SheinBatchTaskTracker } from "@/components/listingkit/shein-studio/shein-batch-task-tracker";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
-import { Button } from "@/components/shared/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -221,28 +222,28 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
               <Button>返回工作室</Button>
             </Link>
             <Link href={studioHref}>
-              <Button tone="secondary">用当前选择打开</Button>
+              <Button variant="secondary">用当前选择打开</Button>
             </Link>
             <Button
               disabled={isCreatingTasks || Boolean(createActionDisabledReason)}
               onClick={handleCreateTasks}
-              tone="secondary"
+              variant="secondary"
             >
               {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
             </Button>
-            <Button onClick={handleDelete} tone="ghost">
+            <Button onClick={handleDelete} variant="ghost">
               删除批次
             </Button>
           </div>
           {actionError ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {actionError}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{actionError}</AlertDescription>
+            </Alert>
           ) : null}
           {actionMessage ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {actionMessage}
-            </div>
+            <Alert variant="success">
+              <AlertDescription>{actionMessage}</AlertDescription>
+            </Alert>
           ) : null}
         </div>
 

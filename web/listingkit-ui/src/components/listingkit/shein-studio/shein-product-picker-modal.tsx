@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { SDSProductBrowser } from "@/components/listingkit/sds/sds-product-browser";
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 export function SheinProductPickerModal({
@@ -52,7 +52,7 @@ export function SheinProductPickerModal({
                 : ""}
             </p>
           </div>
-          <Button onClick={() => setOpen(true)} tone="secondary">
+          <Button onClick={() => setOpen(true)} variant="secondary">
             更换商品
           </Button>
         </div>
@@ -74,7 +74,7 @@ export function SheinProductPickerModal({
                   选择其他商品或变体。
                 </h2>
               </div>
-              <Button onClick={() => setOpen(false)} tone="ghost">
+              <Button onClick={() => setOpen(false)} variant="ghost">
                 关闭
               </Button>
             </div>

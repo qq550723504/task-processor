@@ -3,8 +3,9 @@
 import { AlertTriangle } from "lucide-react";
 
 import { presentRecoverySummary } from "@/components/listingkit/shared/action-presentation";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { RecoveryDescriptor, RecoverySummary } from "@/lib/types/listingkit";
 
 export function RecoverySummaryCard({
@@ -40,14 +41,14 @@ export function RecoverySummaryCard({
           ) : null}
           <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
             <span>{presentation.metaLabel}</span>
-            <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-1 text-[10px] font-semibold tracking-[0.16em] text-amber-800">
+            <Badge className="rounded-full text-[10px] tracking-[0.16em]" variant="warning">
               {presentation.ctaLabel}
-            </span>
+            </Badge>
           </div>
           {summary.primary_descriptor ? (
             <div className="pt-2">
               <Button
-                tone="secondary"
+                variant="secondary"
                 onClick={() => onSelect?.(summary.primary_descriptor!)}
               >
                 {presentation.ctaLabel}

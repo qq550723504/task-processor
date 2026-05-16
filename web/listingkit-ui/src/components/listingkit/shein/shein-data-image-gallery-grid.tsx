@@ -1,4 +1,7 @@
 import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Select } from "@/components/ui/select";
 import {
   buildImageRoleOverrides,
   moveItem,
@@ -57,14 +60,15 @@ export function FinalImageGrid({
             ].join(" ")}
             key={`${image.id}-${image.url}`}
           >
-            <button
-              className="block w-full text-left"
+            <Button
+              className="block h-auto w-full justify-start p-0 text-left hover:bg-transparent"
               onClick={() => {
                 onSelect(image);
                 onSetActiveImage(image);
                 onSetRegenerationPrompt("");
               }}
               type="button"
+              variant="ghost"
             >
               <div className="relative aspect-square overflow-hidden rounded-xl bg-zinc-50">
                 {/* The URLs come from SHEIN/SDS payloads and may not be known to Next image config. */}
@@ -86,11 +90,11 @@ export function FinalImageGrid({
                   {image.url}
                 </p>
               </div>
-            </button>
+            </Button>
             {hasImageControls ? (
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  className="rounded-xl border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700 disabled:text-zinc-300"
+                <Button
+                  className="h-auto rounded-xl px-2 py-1 text-xs"
                   disabled={index === 0}
                   onClick={() =>
                     onSetOrderOverride((current) =>
@@ -98,11 +102,12 @@ export function FinalImageGrid({
                     )
                   }
                   type="button"
+                  variant="outline"
                 >
                   上移
-                </button>
-                <button
-                  className="rounded-xl border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700 disabled:text-zinc-300"
+                </Button>
+                <Button
+                  className="h-auto rounded-xl px-2 py-1 text-xs"
                   disabled={index === visibleImages.length - 1}
                   onClick={() =>
                     onSetOrderOverride((current) =>
@@ -110,18 +115,20 @@ export function FinalImageGrid({
                     )
                   }
                   type="button"
+                  variant="outline"
                 >
                   下移
-                </button>
-                <button
-                  className="rounded-xl border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700"
+                </Button>
+                <Button
+                  className="h-auto rounded-xl px-2 py-1 text-xs"
                   onClick={() => updateRole(image.url, "main")}
                   type="button"
+                  variant="outline"
                 >
                   设为主图
-                </button>
-                <select
-                  className="rounded-xl border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700"
+                </Button>
+                <Select
+                  className="h-auto rounded-xl px-2 py-1 text-xs font-medium"
                   value={role}
                   onChange={(event) =>
                     updateRole(image.url, event.target.value as ImageRole)
@@ -132,14 +139,15 @@ export function FinalImageGrid({
                   <option value="swatch">色块图</option>
                   <option value="size_map">尺寸图</option>
                   <option value="skc">SKC 图</option>
-                </select>
-                <button
-                  className="col-span-2 rounded-xl border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600"
+                </Select>
+                <Button
+                  className="col-span-2 h-auto rounded-xl px-2 py-1 text-xs"
                   onClick={() => onSetDeletedUrls((current) => [...current, image.url])}
                   type="button"
+                  variant="destructive"
                 >
                   从提交中移除
-                </button>
+                </Button>
               </div>
             ) : null}
           </div>
@@ -165,7 +173,9 @@ export function MockupReferenceGrid({
   }
 
   return (
-    <div className="space-y-3 border-t border-zinc-100 pt-4">
+    <div className="space-y-4">
+      <Separator />
+      <div className="space-y-3">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
@@ -181,8 +191,8 @@ export function MockupReferenceGrid({
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {mockupImages.map((image) => (
-          <button
-            className="group min-w-0 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-2 text-left transition hover:border-zinc-400"
+          <Button
+            className="group h-auto min-w-0 justify-start rounded-2xl border-dashed bg-zinc-50 p-2 text-left hover:border-zinc-400"
             key={`${image.id}-${image.url}`}
             onClick={() => {
               onSelect(image);
@@ -190,6 +200,7 @@ export function MockupReferenceGrid({
               onSetRegenerationPrompt("");
             }}
             type="button"
+            variant="outline"
           >
             <div className="relative aspect-square overflow-hidden rounded-xl bg-white">
               {/* The URLs come from SDS payloads and may not be known to Next image config. */}
@@ -211,8 +222,9 @@ export function MockupReferenceGrid({
                 {image.url}
               </p>
             </div>
-          </button>
+          </Button>
         ))}
+      </div>
       </div>
     </div>
   );
@@ -251,25 +263,29 @@ export function ImageControlActions({
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-100 pt-4">
+    <div className="space-y-4">
+      <Separator />
+      <div className="flex flex-wrap justify-end gap-2">
       {deletedUrls.length ? (
-        <button
-          className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700"
+        <Button
+          className="h-auto rounded-xl px-3 py-2 text-xs"
           onClick={() => onSetDeletedUrls([])}
           type="button"
+          variant="outline"
         >
           恢复已移除图片
-        </button>
+        </Button>
       ) : null}
-      <button
-        className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700"
+      <Button
+        className="h-auto rounded-xl px-3 py-2 text-xs"
         onClick={onApplySuggestedRoles}
         type="button"
+        variant="outline"
       >
         自动建议图片角色
-      </button>
-      <button
-        className="rounded-xl bg-zinc-950 px-4 py-2 text-xs font-semibold text-white disabled:bg-zinc-300"
+      </Button>
+      <Button
+        className="h-auto rounded-xl px-4 py-2 text-xs"
         disabled={!canSaveImageControls}
         onClick={() =>
           onSaveImageControls({
@@ -286,12 +302,13 @@ export function ImageControlActions({
         type="button"
       >
         {isSavingControls ? "保存中..." : "保存图片设置"}
-      </button>
+      </Button>
       {saveDisabledReason ? (
         <p className="basis-full text-right text-xs text-amber-700">
           {saveDisabledReason}
         </p>
       ) : null}
+      </div>
     </div>
   );
 }

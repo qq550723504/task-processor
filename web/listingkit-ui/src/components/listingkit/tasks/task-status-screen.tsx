@@ -10,8 +10,8 @@ import { loadTaskCreateDraft } from "@/components/listingkit/tasks/task-create-d
 import { TaskSourceSummary } from "@/components/listingkit/tasks/task-source-summary";
 import { shouldAutoOpenWorkspace } from "@/components/listingkit/tasks/task-status-transition";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function formatStatusDate(value?: string) {
@@ -149,7 +149,7 @@ export function TaskStatusScreen({
             </ul>
             <div>
               <Button
-                tone="secondary"
+                variant="secondary"
                 onClick={() =>
                   router.push(
                     `/listing-kits/new?fromTask=${taskId}${taskDraftFocus ? `&focus=${taskDraftFocus}` : ""}${taskDraftIssues.length > 0 ? `&issues=${taskDraftIssues.join(",")}` : ""}`,
@@ -189,7 +189,7 @@ export function TaskStatusScreen({
                 </p>
                 {autoOpenEnabled ? (
                   <Button
-                    tone="secondary"
+                    variant="secondary"
                     onClick={() => setAutoOpenEnabled(false)}
                     type="button"
                   >
@@ -203,7 +203,7 @@ export function TaskStatusScreen({
                 打开工作台
               </Button>
               <Button
-                tone="secondary"
+                variant="secondary"
                 onClick={() => router.push(`/listing-kits/${taskId}/queue`)}
               >
                 打开队列

@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
 type NavItem = {
   label: string;
   href: string;
@@ -172,9 +175,9 @@ export function ListingKitAppShell({
               </p>
               <p className="text-sm text-zinc-500">
                 当前页面
-                <span className="ml-2 rounded-full bg-zinc-100 px-2.5 py-1 font-mono text-xs text-zinc-700">
+                <Badge className="ml-2 rounded-full px-2.5 py-1 font-mono text-xs" variant="neutral">
                   {pathname}
-                </span>
+                </Badge>
               </p>
             </div>
 
@@ -215,7 +218,8 @@ export function ListingKitAppShell({
                         </div>
                       </div>
                     ))}
-                    <div className="grid gap-2 border-t border-zinc-100 pt-3">
+                    <div className="grid gap-2">
+                      <Separator />
                       <Link
                         href="/api/zitadel-auth/logout"
                         className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"

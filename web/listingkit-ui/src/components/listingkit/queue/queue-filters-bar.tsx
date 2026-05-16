@@ -4,8 +4,12 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 
 const schema = z.object({
   platform: z.string(),
@@ -37,54 +41,54 @@ export function QueueFiltersBar({
         className="grid gap-4 lg:grid-cols-6"
         onSubmit={form.handleSubmit((nextValue) => onApply(nextValue))}
       >
-        <label className="space-y-2 text-sm text-zinc-700">
+        <Label className="space-y-2 text-sm text-zinc-700">
           <span>Platform</span>
-          <select className="w-full rounded-xl border border-zinc-200 px-3 py-2" {...form.register("platform")} aria-label="Platform">
+          <Select {...form.register("platform")} aria-label="Platform">
             <option value="">All</option>
             <option value="amazon">Amazon</option>
             <option value="shein">Shein</option>
             <option value="temu">Temu</option>
             <option value="walmart">Walmart</option>
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-zinc-700">
+          </Select>
+        </Label>
+        <Label className="space-y-2 text-sm text-zinc-700">
           <span>Slot</span>
-          <input className="w-full rounded-xl border border-zinc-200 px-3 py-2" placeholder="main / gallery" {...form.register("slot")} />
-        </label>
-        <label className="space-y-2 text-sm text-zinc-700">
+          <Input placeholder="main / gallery" {...form.register("slot")} />
+        </Label>
+        <Label className="space-y-2 text-sm text-zinc-700">
           <span>Quality Grade</span>
-          <select className="w-full rounded-xl border border-zinc-200 px-3 py-2" {...form.register("quality_grade")} aria-label="Quality Grade">
+          <Select {...form.register("quality_grade")} aria-label="Quality Grade">
             <option value="">All</option>
             <option value="ideal">Ideal</option>
             <option value="provisional">Provisional</option>
             <option value="missing">Missing</option>
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-zinc-700">
+          </Select>
+        </Label>
+        <Label className="space-y-2 text-sm text-zinc-700">
           <span>Preview Capability</span>
-          <select className="w-full rounded-xl border border-zinc-200 px-3 py-2" {...form.register("preview_capability")} aria-label="Preview Capability">
+          <Select {...form.register("preview_capability")} aria-label="Preview Capability">
             <option value="">All</option>
             <option value="detail_preview">Detail</option>
             <option value="measurement_preview">Measurement</option>
             <option value="badge_preview">Badge</option>
             <option value="copy_preview">Copy</option>
             <option value="subject_preview">Subject</option>
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-zinc-700">
+          </Select>
+        </Label>
+        <Label className="space-y-2 text-sm text-zinc-700">
           <span>Review Status</span>
-          <select className="w-full rounded-xl border border-zinc-200 px-3 py-2" {...form.register("review_status")} aria-label="Review Status">
+          <Select {...form.register("review_status")} aria-label="Review Status">
             <option value="">All</option>
             <option value="approved">Approved</option>
             <option value="deferred">Deferred</option>
             <option value="pending">Pending</option>
-          </select>
-        </label>
+          </Select>
+        </Label>
         <div className="flex items-end gap-3">
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 px-3 text-sm text-zinc-700">
-            <input type="checkbox" aria-label="Has Preview" {...form.register("render_preview_available")} />
+          <Label className="flex h-10 items-center gap-2 rounded-md border border-input px-3 text-sm text-foreground">
+            <Checkbox aria-label="Has Preview" {...form.register("render_preview_available")} />
             <span>Has Preview</span>
-          </label>
+          </Label>
           <Button className="flex-1" type="submit">
             Apply Filters
           </Button>

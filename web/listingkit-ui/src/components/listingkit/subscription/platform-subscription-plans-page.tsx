@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
@@ -17,6 +18,18 @@ import {
   updatePlatformSubscriptionPlanModule,
   upsertPlatformSubscriptionPlan,
 } from "@/lib/api/subscription";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type PlanFormState = {
   code: string;
@@ -207,8 +220,9 @@ export function PlatformSubscriptionPlansPage() {
             套餐管理
           </h1>
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => {
             setSelectedCode("");
             setPlanForm(EMPTY_PLAN);
@@ -216,21 +230,21 @@ export function PlatformSubscriptionPlansPage() {
             setModuleSortOrder("0");
             setModuleLimits("{}");
           }}
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 hover:border-zinc-300"
+          className="h-9 gap-2 px-3"
         >
           <Plus className="size-4" />
           新建套餐
-        </button>
+        </Button>
       </section>
 
       {visibleError ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {visibleError}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription>{visibleError}</AlertDescription>
+        </Alert>
       ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <Card className="overflow-hidden p-0">
           <div className="grid grid-cols-[1fr_96px_88px_190px] border-b border-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-500">
             <span>套餐</span>
             <span>状态</span>
@@ -260,37 +274,42 @@ export function PlatformSubscriptionPlansPage() {
                 {bundle.modules.length}
               </span>
               <div className="flex justify-end gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   aria-label={`编辑 ${bundle.plan.code}`}
                   onClick={() => selectPlan(bundle)}
-                  className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-200 px-3 text-sm text-zinc-700 hover:border-zinc-300"
+                  className="h-8 px-3"
                 >
                   编辑
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
                   aria-label={`${bundle.plan.active ? "禁用" : "启用"} ${bundle.plan.code}`}
                   onClick={() => handleStatusChange(bundle)}
-                  className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-200 px-3 text-sm text-zinc-700 hover:border-zinc-300"
+                  className="h-8 px-3"
                 >
                   {bundle.plan.active ? "禁用" : "启用"}
-                </button>
+                </Button>
               </div>
             </div>
           ))}
-        </div>
+        </Card>
 
         <div className="space-y-4">
           <form
             onSubmit={handlePlanSubmit}
-            className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
+            className="block"
           >
-            <h2 className="text-base font-semibold text-zinc-950">套餐资料</h2>
-            <div className="mt-4 grid gap-3">
-              <label className="text-xs font-medium text-zinc-500">
+            <Card>
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-base">套餐资料</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 p-4">
+              <Label className="text-xs text-zinc-500">
                 套餐编码
-                <input
+                <Input
                   value={planForm.code}
                   onChange={(event) =>
                     setPlanForm((current) => ({
@@ -299,12 +318,12 @@ export function PlatformSubscriptionPlansPage() {
                     }))
                   }
                   disabled={Boolean(selectedCode)}
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900 disabled:bg-zinc-100"
+                  className="mt-1 h-9 disabled:bg-zinc-100"
                 />
-              </label>
-              <label className="text-xs font-medium text-zinc-500">
+              </Label>
+              <Label className="text-xs text-zinc-500">
                 套餐名称
-                <input
+                <Input
                   value={planForm.name}
                   onChange={(event) =>
                     setPlanForm((current) => ({
@@ -312,12 +331,12 @@ export function PlatformSubscriptionPlansPage() {
                       name: event.target.value,
                     }))
                   }
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                  className="mt-1 h-9"
                 />
-              </label>
-              <label className="text-xs font-medium text-zinc-500">
+              </Label>
+              <Label className="text-xs text-zinc-500">
                 描述
-                <textarea
+                <Textarea
                   value={planForm.description}
                   onChange={(event) =>
                     setPlanForm((current) => ({
@@ -326,12 +345,12 @@ export function PlatformSubscriptionPlansPage() {
                     }))
                   }
                   rows={2}
-                  className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900"
+                  className="mt-1 min-h-20"
                 />
-              </label>
-              <label className="text-xs font-medium text-zinc-500">
+              </Label>
+              <Label className="text-xs text-zinc-500">
                 排序
-                <input
+                <Input
                   type="number"
                   value={planForm.sortOrder}
                   onChange={(event) =>
@@ -340,12 +359,11 @@ export function PlatformSubscriptionPlansPage() {
                       sortOrder: event.target.value,
                     }))
                   }
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                  className="mt-1 h-9"
                 />
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
-                <input
-                  type="checkbox"
+              </Label>
+              <Label className="inline-flex items-center gap-2 text-sm text-zinc-700">
+                <Checkbox
                   checked={planForm.active}
                   onChange={(event) =>
                     setPlanForm((current) => ({
@@ -355,12 +373,11 @@ export function PlatformSubscriptionPlansPage() {
                   }
                 />
                 启用套餐
-              </label>
-            </div>
-            <button
+              </Label>
+            <Button
               type="submit"
               disabled={savingPlan || !planForm.code.trim() || !planForm.name.trim()}
-              className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className="h-9 w-full gap-2 px-3"
             >
               {savingPlan ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -368,21 +385,26 @@ export function PlatformSubscriptionPlansPage() {
                 <Save className="size-4" />
               )}
               保存套餐
-            </button>
+            </Button>
+              </CardContent>
+            </Card>
           </form>
 
           <form
             onSubmit={handleModuleSubmit}
-            className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
+            className="block"
           >
-            <h2 className="text-base font-semibold text-zinc-950">套餐模块</h2>
-            <div className="mt-4 grid gap-3">
-              <label className="text-xs font-medium text-zinc-500">
+            <Card>
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-base">套餐模块</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 p-4">
+              <Label className="text-xs text-zinc-500">
                 模块
-                <select
+                <Select
                   value={moduleCode}
                   onChange={(event) => setModuleCode(event.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                  className="mt-1 h-9"
                 >
                   <option value="">选择模块</option>
                   {(moduleQuery.data ?? []).map((module) => (
@@ -390,31 +412,30 @@ export function PlatformSubscriptionPlansPage() {
                       {module.name}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label className="text-xs font-medium text-zinc-500">
+                </Select>
+              </Label>
+              <Label className="text-xs text-zinc-500">
                 模块排序
-                <input
+                <Input
                   type="number"
                   value={moduleSortOrder}
                   onChange={(event) => setModuleSortOrder(event.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                  className="mt-1 h-9"
                 />
-              </label>
-              <label className="text-xs font-medium text-zinc-500">
+              </Label>
+              <Label className="text-xs text-zinc-500">
                 模块额度 JSON
-                <textarea
+                <Textarea
                   value={moduleLimits}
                   onChange={(event) => setModuleLimits(event.target.value)}
                   rows={3}
-                  className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 font-mono text-sm text-zinc-900"
+                  className="mt-1 font-mono"
                 />
-              </label>
-            </div>
-            <button
+              </Label>
+            <Button
               type="submit"
               disabled={savingModule || !selectedCode || !moduleCode}
-              className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className="h-9 w-full gap-2 px-3"
             >
               {savingModule ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -422,7 +443,7 @@ export function PlatformSubscriptionPlansPage() {
                 <Save className="size-4" />
               )}
               保存模块
-            </button>
+            </Button>
             {selectedPlan ? (
               <div className="mt-4 space-y-2">
                 {selectedPlan.modules.map((module) => (
@@ -438,26 +459,29 @@ export function PlatformSubscriptionPlansPage() {
                         {formatLimits(module.limits)}
                       </p>
                     </div>
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       aria-label={`移除 ${module.module_code}`}
                       onClick={() => handleModuleDelete(module.module_code)}
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 hover:border-red-200 hover:text-red-600"
+                      className="size-8 p-0 text-zinc-600 hover:border-red-200 hover:text-red-600"
                     >
                       <Trash2 className="size-4" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
             ) : null}
+              </CardContent>
+            </Card>
           </form>
 
           {selectedCode ? (
-            <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-zinc-950">
-                使用租户
-              </h2>
-              <div className="mt-3 space-y-2">
+            <Card>
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-base">使用租户</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
                 {(planTenantsQuery.data ?? []).length === 0 ? (
                   <p className="text-sm text-zinc-500">暂无租户使用该套餐</p>
                 ) : (
@@ -476,16 +500,16 @@ export function PlatformSubscriptionPlansPage() {
                     </div>
                   ))
                 )}
-              </div>
-            </section>
+              </CardContent>
+            </Card>
           ) : null}
 
           {selectedCode ? (
-            <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-zinc-950">
-                套餐审计
-              </h2>
-              <div className="mt-3 space-y-2">
+            <Card>
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-base">套餐审计</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
                 {(planAuditQuery.data ?? []).length === 0 ? (
                   <p className="text-sm text-zinc-500">暂无套餐变更记录</p>
                 ) : (
@@ -503,8 +527,8 @@ export function PlatformSubscriptionPlansPage() {
                     </div>
                   ))
                 )}
-              </div>
-            </section>
+              </CardContent>
+            </Card>
           ) : null}
         </div>
       </section>

@@ -13,6 +13,7 @@ import {
   taxonomySeverity,
 } from "@/components/listingkit/tasks/task-list-page-model";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   pickContinueTask,
   sortRecentTasksForHomepage,
@@ -135,10 +136,10 @@ export function ListingKitHomeRecentWork({
         aria-label="最近任务加载中"
         className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]"
       >
-        <div className="h-44 animate-pulse rounded-2xl border border-slate-200 bg-white/80" />
+        <Skeleton className="h-44 rounded-2xl border border-slate-200 bg-white/80" />
         <div className="grid gap-4">
-          <div className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white/80" />
-          <div className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white/80" />
+          <Skeleton className="h-32 rounded-2xl border border-slate-200 bg-white/80" />
+          <Skeleton className="h-32 rounded-2xl border border-slate-200 bg-white/80" />
         </div>
       </section>
     );

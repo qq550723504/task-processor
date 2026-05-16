@@ -1,4 +1,4 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import { SubmitFailureGuidance } from "@/components/listingkit/shein/shein-submit-readiness-sections";
 import type {
   SheinImageUploadPreflight,
@@ -40,7 +40,7 @@ export function SubmitActionCard({
               <Button
                 className="h-8 px-3 text-xs"
                 disabled={isSubmitting}
-                tone="secondary"
+                variant="secondary"
                 onClick={onSaveDraft}
               >
                 {isSavingDraft ? "保存草稿中..." : "保存到 SHEIN 草稿箱"}
@@ -91,7 +91,7 @@ export function PrimaryActionCard({
         {canRunPrimary && onRunPrimaryAction ? (
           <Button
             className="h-8 px-3 text-xs"
-            tone="secondary"
+            variant="secondary"
             onClick={() => onRunPrimaryAction(primaryActionKey)}
           >
             去处理

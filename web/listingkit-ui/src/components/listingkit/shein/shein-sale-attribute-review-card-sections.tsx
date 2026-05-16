@@ -1,4 +1,5 @@
 import { scopeLabel } from "@/components/listingkit/shein/shein-sale-attribute-review-card-model";
+import { Badge } from "@/components/ui/badge";
 import type {
   SheinResolvedSaleAttribute,
   SheinSaleAttributeCandidateInfo,
@@ -50,9 +51,12 @@ function SaleAttributeRow({
     <div className="rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
         {scope ? (
-          <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
+          <Badge
+            className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+            variant="neutral"
+          >
             {scopeLabel(scope)}
-          </span>
+          </Badge>
         ) : null}
         <p className="text-sm font-medium text-zinc-900">{name}</p>
       </div>

@@ -1,7 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { UseFormRegister, UseFormSetValue } from "react-hook-form";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   audienceHintOptions,
   backgroundToneOptions,
@@ -89,7 +92,7 @@ export function TaskSceneSettingsSection({
                 return next;
               });
             }}
-            tone="secondary"
+            variant="secondary"
             type="button"
           >
             {showSceneCustomization ? "收起场景设置" : "显示场景设置"}
@@ -102,11 +105,11 @@ export function TaskSceneSettingsSection({
 
       {sceneFieldsVisible ? (
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="block space-y-2">
+          <Label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">场景类目</span>
-            <select
+            <Select
               aria-label="场景类目"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="rounded-2xl px-4 py-3"
               {...register("sceneCategory")}
             >
               {sceneCategoryOptions.map((option) => (
@@ -114,14 +117,14 @@ export function TaskSceneSettingsSection({
                   {option.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="block space-y-2">
+          <Label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">场景风格</span>
-            <select
+            <Select
               aria-label="场景风格"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="rounded-2xl px-4 py-3"
               {...register("sceneStyle")}
             >
               {sceneStyleOptions.map((option) => (
@@ -129,14 +132,14 @@ export function TaskSceneSettingsSection({
                   {option.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="block space-y-2">
+          <Label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">背景色调</span>
-            <select
+            <Select
               aria-label="背景色调"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="rounded-2xl px-4 py-3"
               {...register("backgroundTone")}
             >
               {backgroundToneOptions.map((option) => (
@@ -144,14 +147,14 @@ export function TaskSceneSettingsSection({
                   {option.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="block space-y-2">
+          <Label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">构图方式</span>
-            <select
+            <Select
               aria-label="构图方式"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="rounded-2xl px-4 py-3"
               {...register("composition")}
             >
               {compositionOptions.map((option) => (
@@ -159,14 +162,14 @@ export function TaskSceneSettingsSection({
                   {option.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="block space-y-2">
+          <Label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">道具强度</span>
-            <select
+            <Select
               aria-label="道具强度"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="rounded-2xl px-4 py-3"
               {...register("propsLevel")}
             >
               {propsLevelOptions.map((option) => (
@@ -174,14 +177,14 @@ export function TaskSceneSettingsSection({
                   {option.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="block space-y-2">
+          <Label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">风格倾向</span>
-            <select
+            <Select
               aria-label="风格倾向"
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="rounded-2xl px-4 py-3"
               {...register("audienceHint")}
             >
               {audienceHintOptions.map((option) => (
@@ -189,18 +192,18 @@ export function TaskSceneSettingsSection({
                   {option.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="block space-y-2 md:col-span-2">
+          <Label className="block space-y-2 md:col-span-2">
             <span className="text-sm font-medium text-zinc-700">自定义场景说明</span>
-            <textarea
+            <Textarea
               aria-label="自定义场景说明"
-              className="min-h-28 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              className="min-h-28 rounded-2xl px-4 py-3"
               placeholder="补充一句你希望系统遵循的画面要求。"
               {...register("customSceneHint")}
             />
-          </label>
+          </Label>
         </div>
       ) : null}
     </section>

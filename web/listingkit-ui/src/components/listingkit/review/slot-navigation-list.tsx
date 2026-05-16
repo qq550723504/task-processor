@@ -1,7 +1,8 @@
 "use client";
 
-import { Badge } from "@/components/shared/badge";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import type { ReviewSlot } from "@/lib/types/listingkit";
 
@@ -27,9 +28,10 @@ export function SlotNavigationList({
   return (
     <div className="space-y-2">
       {(slots ?? []).map((slot, index) => (
-        <button
+        <Button
           key={slotNavigationKey(slot, index)}
-          className="w-full text-left"
+          variant="ghost"
+          className="h-auto w-full justify-start p-0 text-left"
           onClick={() => onSelect(slot)}
           type="button"
         >
@@ -55,14 +57,14 @@ export function SlotNavigationList({
               </div>
               <div className="shrink-0 self-start">
                 {slot.render_preview_available ? (
-                  <Badge tone="success">Preview</Badge>
+                  <Badge variant="success">Preview</Badge>
                 ) : (
-                  <Badge tone="neutral">No Preview</Badge>
+                  <Badge variant="neutral">No Preview</Badge>
                 )}
               </div>
             </div>
           </Card>
-        </button>
+        </Button>
       ))}
     </div>
   );

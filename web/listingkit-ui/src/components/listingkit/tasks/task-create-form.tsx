@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Sparkles, Store } from "lucide-react";
-import { Card } from "@/components/shared/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import {
   type TaskCreateDraft,
 } from "@/components/listingkit/tasks/task-create-draft";
@@ -300,7 +302,8 @@ export function TaskCreateForm({
                 }}
               />
 
-              <div className="border-t border-zinc-200 pt-5">
+              <Separator />
+              <div>
                 <div className="mb-4">
                   <h2 className="text-base font-semibold text-zinc-950">来源信息</h2>
                   <p className="mt-1 text-sm text-zinc-500">
@@ -409,7 +412,8 @@ export function TaskCreateForm({
               {selectedPlatforms?.includes("shein") ? (
                 <TaskSheinStoreField register={register} />
               ) : null}
-              <div className="border-t border-zinc-200 pt-5">
+              <Separator />
+              <div>
                 <div className="flex items-center gap-3">
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700">
                     <Sparkles className="h-4 w-4" />
@@ -438,7 +442,8 @@ export function TaskCreateForm({
                 />
                 </div>
 
-                <div className="mt-4 border-t border-zinc-200 pt-4">
+                <Separator className="my-4" />
+                <div>
                   <TaskInputGuidance
                     embedded
                     imageCount={imageCount}
@@ -454,7 +459,8 @@ export function TaskCreateForm({
                 ) : null}
               </div>
 
-              <div className="border-t border-zinc-200 pt-5">
+              <Separator />
+              <div>
                 <div className="mb-4 flex items-center gap-3">
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
                     <CheckCircle2 className="h-4 w-4" />
@@ -470,9 +476,9 @@ export function TaskCreateForm({
                   submitLabel={pageCopy.submitLabel}
                 />
                 {errors.root?.message ? (
-                  <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
-                    {errors.root.message}
-                  </p>
+                  <Alert className="mt-4" variant="destructive">
+                    <AlertDescription>{errors.root.message}</AlertDescription>
+                  </Alert>
                 ) : null}
               </div>
             </section>

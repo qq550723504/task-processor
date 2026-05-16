@@ -1,7 +1,10 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import { SHEIN_STUDIO_PRODUCT_IMAGE_ROLES } from "@/lib/shein-studio/storage-shared";
 import type {
@@ -57,17 +60,17 @@ export function NumberInput({
   value: string;
 }) {
   return (
-    <label className="space-y-2">
+    <Label className="space-y-2">
       <span className="text-sm font-medium text-zinc-700">{label}</span>
-      <input
-        className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
+      <Input
+        className="rounded-2xl bg-zinc-50 px-4 py-3 focus:bg-white"
         inputMode="numeric"
         max={max}
         min={min}
         onChange={(event) => setValue(event.target.value)}
         value={value}
       />
-    </label>
+    </Label>
   );
 }
 
@@ -210,7 +213,7 @@ export function SDSImagePicker({
                 <Button
                   className="h-9 px-3 text-xs"
                   onClick={() => includeImage(image, true)}
-                  tone={selectedIndex === 0 ? "secondary" : "primary"}
+                  variant={selectedIndex === 0 ? "secondary" : "primary"}
                   type="button"
                 >
                   {selectedIndex === 0 ? "已设为主图" : "设为主图"}
@@ -220,7 +223,7 @@ export function SDSImagePicker({
                   onClick={() =>
                     selected ? removeImage(image.imageUrl) : includeImage(image, false)
                   }
-                  tone="secondary"
+                  variant="secondary"
                   type="button"
                 >
                   {selected ? "移除" : "加入图库"}
@@ -264,7 +267,7 @@ export function ProductImagePromptPlanner({
       </div>
       <div className="grid gap-3">
         {roles.map((role, index) => (
-          <label
+          <Label
             className="rounded-2xl border border-zinc-200 bg-white px-3 py-3"
             key={role.role}
           >
@@ -274,15 +277,15 @@ export function ProductImagePromptPlanner({
               </span>
               <span className="text-[10px] text-zinc-400">{role.role}</span>
             </span>
-            <textarea
-              className="mt-2 min-h-20 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
+            <Textarea
+              className="mt-2 min-h-20 rounded-xl bg-zinc-50 focus:bg-white"
               onChange={(event) =>
                 updatePrompt(role.role, role.label, event.target.value)
               }
               placeholder={role.hint}
               value={promptByRole.get(role.role)?.prompt ?? ""}
             />
-          </label>
+          </Label>
         ))}
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { TaskCreateDraft } from "@/components/listingkit/tasks/task-create-draft";
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 
 function summarizeSource(draft?: Partial<TaskCreateDraft> | null) {
   const hasProductUrl = Boolean(draft?.productUrl?.trim());

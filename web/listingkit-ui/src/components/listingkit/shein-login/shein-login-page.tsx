@@ -14,8 +14,19 @@ import {
 } from "lucide-react";
 
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   useClearSheinCookie,
   useClearSheinLastFailure,
@@ -328,25 +339,25 @@ function VerifyCodeDialog({
             <h2 className="mt-2 text-xl font-semibold text-zinc-950">提交验证码</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">店铺 {storeID} 当前停在验证码阶段，提交后会刷新登录状态。</p>
           </div>
-          <Button tone="ghost" className="h-9 px-3" onClick={onClose} disabled={pending}>
+          <Button variant="ghost" className="h-9 px-3" onClick={onClose} disabled={pending}>
             关闭
           </Button>
         </div>
 
-        <label className="mt-5 grid gap-2">
+        <Label className="mt-5 grid gap-2">
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
             验证码
           </span>
-          <input
+          <Input
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm outline-none focus:border-zinc-400"
+            className="h-11 rounded-2xl px-4"
             placeholder="输入短信或邮箱验证码"
           />
-        </label>
+        </Label>
 
         <div className="mt-5 flex justify-end gap-3">
-          <Button tone="secondary" onClick={onClose} disabled={pending}>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
             取消
           </Button>
           <Button
@@ -405,7 +416,7 @@ function FailureDialog({
               {detail?.error_code || "最近失败记录"} {detail?.captured_at ? `· ${formatDateTime(detail.captured_at)}` : ""}
             </p>
           </div>
-          <Button tone="ghost" className="h-9 px-3" onClick={onClose}>
+          <Button variant="ghost" className="h-9 px-3" onClick={onClose}>
             关闭
           </Button>
         </div>
@@ -520,11 +531,14 @@ export function SheinLoginPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <span className="inline-flex h-10 items-center rounded-full border border-zinc-200 bg-white px-4 text-sm text-zinc-600">
+                <Badge
+                  className="h-10 rounded-full border-zinc-200 bg-white px-4 text-sm text-zinc-600"
+                  variant="outline"
+                >
                   <Clock3 className="mr-2 h-4 w-4 text-zinc-400" />
                   自动刷新 15s
-                </span>
-                <Button tone="secondary" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
+                </Badge>
+                <Button variant="secondary" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
                   <RefreshCw className={cn("mr-2 h-4 w-4", accounts.isFetching && "animate-spin")} />
                   刷新状态
                 </Button>
@@ -549,19 +563,15 @@ export function SheinLoginPage() {
               {filters.map((filter) => {
                 const active = filter.key === activeFilter;
                 return (
-                  <button
+                  <Button
                     key={filter.key}
                     type="button"
+                    variant={active ? "default" : "outline"}
                     onClick={() => setActiveFilter(filter.key)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                      active
-                        ? "border-zinc-950 bg-zinc-950 text-white"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:text-zinc-950",
-                    )}
+                    className={cn("h-auto rounded-full px-3 py-1.5 text-xs", !active && "text-zinc-700")}
                   >
                     {filter.label} · {filter.count}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -589,140 +599,139 @@ export function SheinLoginPage() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-[980px] w-full">
-              <thead>
-                <tr className="border-b border-zinc-200 bg-zinc-50/90 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                  <th className="px-6 py-4">店铺</th>
-                  <th className="px-6 py-4">当前状态</th>
-                  <th className="px-6 py-4">建议动作</th>
-                  <th className="px-6 py-4">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAccounts.map((item) => (
-                  <tr key={item.account.store_id} className="border-b border-zinc-200 align-top last:border-b-0">
-                    <td className="px-6 py-5">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-xl bg-zinc-100 p-2 text-zinc-700">
-                          <Store className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-zinc-950">{storeDisplay(item)}</div>
-                          <div className="mt-1 text-sm text-zinc-500">
-                            账号 {item.account.username || "-"} · ID {item.account.store_id}
-                            {item.account.proxy ? " · 已配置代理" : ""}
+              <Table className="min-w-[980px]">
+                <TableHeader>
+                  <TableRow className="bg-zinc-50/90 text-[11px] uppercase tracking-[0.16em] hover:bg-zinc-50/90">
+                    <TableHead className="px-6 py-4">店铺</TableHead>
+                    <TableHead className="px-6 py-4">当前状态</TableHead>
+                    <TableHead className="px-6 py-4">建议动作</TableHead>
+                    <TableHead className="px-6 py-4">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAccounts.map((item) => (
+                    <TableRow key={item.account.store_id} className="align-top">
+                      <TableCell className="px-6 py-5">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 rounded-xl bg-zinc-100 p-2 text-zinc-700">
+                            <Store className="h-4 w-4" />
                           </div>
-                          {item.account.login_url ? (
-                            <a
-                              href={item.account.login_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 transition hover:text-zinc-900"
-                            >
-                              登录页
-                              <ArrowUpRight className="h-3.5 w-3.5" />
-                            </a>
-                          ) : null}
+                          <div>
+                            <div className="font-semibold text-zinc-950">{storeDisplay(item)}</div>
+                            <div className="mt-1 text-sm text-zinc-500">
+                              账号 {item.account.username || "-"} · ID {item.account.store_id}
+                              {item.account.proxy ? " · 已配置代理" : ""}
+                            </div>
+                            {item.account.login_url ? (
+                              <a
+                                href={item.account.login_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 transition hover:text-zinc-900"
+                              >
+                                登录页
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                              </a>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="grid gap-2">
-                        <div className="flex flex-wrap gap-2">
-                          <span className={cn("rounded-full border px-3 py-1 text-xs font-semibold", summaryTone(item))}>
-                            {storeStatusSummary(item)}
-                          </span>
-                          {item.login_in_progress ? (
-                            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
-                              登录中
-                            </span>
-                          ) : null}
-                          {item.last_login_time && !item.waiting_for_verify_code ? (
-                            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-700">
-                              最近登录 {formatDateTime(item.last_login_time)}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-sm text-zinc-500">
-                          {storeStatusNote(item)}
-                        </p>
-                        {item.last_failure ? (
-                          <p className="text-xs text-zinc-500">
-                            {[formatDateTime(item.last_failure.captured_at), item.last_failure.stage]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      {item.recommended_action?.key || item.recommended_action?.message ? (
+                      </TableCell>
+                      <TableCell className="px-6 py-5">
                         <div className="grid gap-2">
-                          <div className="flex items-start gap-2">
-                            <ChevronRight className="mt-0.5 h-4 w-4 text-zinc-400" />
-                            <div className="grid gap-1">
-                              {item.recommended_action?.key ? (
-                                <div className="font-semibold text-zinc-900">{item.recommended_action.key}</div>
-                              ) : null}
-                              {item.recommended_action?.message ? (
-                                <p className="text-sm text-zinc-500">{item.recommended_action.message}</p>
-                              ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            <Badge
+                              className={cn("rounded-full px-3 py-1 text-xs", summaryTone(item))}
+                              variant="outline"
+                            >
+                              {storeStatusSummary(item)}
+                            </Badge>
+                            {item.login_in_progress ? (
+                              <Badge className="rounded-full px-3 py-1 text-xs" variant="warning">
+                                登录中
+                              </Badge>
+                            ) : null}
+                            {item.last_login_time && !item.waiting_for_verify_code ? (
+                              <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
+                                最近登录 {formatDateTime(item.last_login_time)}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="text-sm text-zinc-500">{storeStatusNote(item)}</p>
+                          {item.last_failure ? (
+                            <p className="text-xs text-zinc-500">
+                              {[formatDateTime(item.last_failure.captured_at), item.last_failure.stage]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-5">
+                        {item.recommended_action?.key || item.recommended_action?.message ? (
+                          <div className="grid gap-2">
+                            <div className="flex items-start gap-2">
+                              <ChevronRight className="mt-0.5 h-4 w-4 text-zinc-400" />
+                              <div className="grid gap-1">
+                                {item.recommended_action?.key ? (
+                                  <div className="font-semibold text-zinc-900">{item.recommended_action.key}</div>
+                                ) : null}
+                                {item.recommended_action?.message ? (
+                                  <p className="text-sm text-zinc-500">{item.recommended_action.message}</p>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
+                        ) : (
+                          <span className="text-sm text-zinc-400">无建议动作</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-6 py-5">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant={actionTone(item, "login")}
+                            className="h-9 px-3"
+                            onClick={() => login.mutate(item.account.store_id)}
+                            disabled={login.isPending}
+                          >
+                            重新登录
+                          </Button>
+                          <Button
+                            variant={actionTone(item, "code")}
+                            className="h-9 px-3"
+                            onClick={() => setVerifyStoreID(item.account.store_id)}
+                          >
+                            <KeyRound className="mr-2 h-4 w-4" />
+                            验证码
+                          </Button>
+                          <Button
+                            variant={actionTone(item, "failure")}
+                            className="h-9 px-3"
+                            onClick={() => setFailureStoreID(item.account.store_id)}
+                          >
+                            详情
+                          </Button>
+                          <Button
+                            variant={actionTone(item, "cookie")}
+                            className="h-9 px-3"
+                            onClick={() => clearCookie.mutate(item.account.store_id)}
+                            disabled={clearCookie.isPending}
+                          >
+                            清 Cookie
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            className="h-9 px-3"
+                            onClick={() => clearFailure.mutate(item.account.store_id)}
+                            disabled={clearFailure.isPending}
+                          >
+                            清失败
+                          </Button>
                         </div>
-                      ) : (
-                        <span className="text-sm text-zinc-400">无建议动作</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          tone={actionTone(item, "login")}
-                          className="h-9 px-3"
-                          onClick={() => login.mutate(item.account.store_id)}
-                          disabled={login.isPending}
-                        >
-                          重新登录
-                        </Button>
-                        <Button
-                          tone={actionTone(item, "code")}
-                          className="h-9 px-3"
-                          onClick={() => setVerifyStoreID(item.account.store_id)}
-                        >
-                          <KeyRound className="mr-2 h-4 w-4" />
-                          验证码
-                        </Button>
-                        <Button
-                          tone={actionTone(item, "failure")}
-                          className="h-9 px-3"
-                          onClick={() => setFailureStoreID(item.account.store_id)}
-                        >
-                          详情
-                        </Button>
-                        <Button
-                          tone={actionTone(item, "cookie")}
-                          className="h-9 px-3"
-                          onClick={() => clearCookie.mutate(item.account.store_id)}
-                          disabled={clearCookie.isPending}
-                        >
-                          清 Cookie
-                        </Button>
-                        <Button
-                          tone="secondary"
-                          className="h-9 px-3"
-                          onClick={() => clearFailure.mutate(item.account.store_id)}
-                          disabled={clearFailure.isPending}
-                        >
-                          清失败
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </Card>
         </div>
@@ -769,11 +778,11 @@ export function SheinLoginPage() {
               </div>
               <p className="mt-4 text-sm leading-6 text-zinc-600">{statusNote}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button tone="secondary" className="h-9 px-3" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
+                <Button variant="secondary" className="h-9 px-3" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
                   立即刷新
                 </Button>
                 {failureStoreID ? (
-                  <Button tone="ghost" className="h-9 px-3" onClick={() => setFailureStoreID(null)}>
+                  <Button variant="ghost" className="h-9 px-3" onClick={() => setFailureStoreID(null)}>
                     关闭详情
                   </Button>
                 ) : null}

@@ -1,4 +1,6 @@
 import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
 
 export function ImagePreviewDialog({
@@ -46,21 +48,17 @@ export function ImagePreviewDialog({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
-              href={activeImage.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              打开原图
-            </a>
-            <button
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+            <Button asChild variant="outline">
+              <a href={activeImage.url} rel="noreferrer" target="_blank">
+                打开原图
+              </a>
+            </Button>
+            <Button
               onClick={onClose}
               type="button"
             >
               关闭
-            </button>
+            </Button>
           </div>
         </div>
         <div className="grid min-h-0 flex-1 gap-4 overflow-auto bg-zinc-100 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -95,8 +93,8 @@ export function ImagePreviewDialog({
                   描述这张图哪里不合适。系统会把当前图片作为问题参考一起发给模型。
                 </p>
               </div>
-              <textarea
-                className="min-h-32 w-full resize-y rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
+              <Textarea
+                className="min-h-32 resize-y rounded-2xl px-3 py-3"
                 onChange={(event) => setRegenerationPrompt(event.target.value)}
                 placeholder="例如：保持图案不变，去掉多余文字，商品放大一点，修复边缘裁切。"
                 value={regenerationPrompt}
@@ -106,13 +104,13 @@ export function ImagePreviewDialog({
                   {regenerationError}
                 </p>
               ) : null}
-              <button
-                className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              <Button
+                className="w-full"
                 disabled={!canRegenerate}
                 type="submit"
               >
                 {isRegenerating ? "重新生成中..." : "重新生成并替换"}
-              </button>
+              </Button>
             </form>
           ) : null}
         </div>

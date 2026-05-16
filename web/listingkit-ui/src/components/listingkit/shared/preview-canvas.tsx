@@ -1,6 +1,6 @@
 "use client";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import type { PreviewSlot, ReviewPreviewResponse } from "@/lib/types/listingkit";
 

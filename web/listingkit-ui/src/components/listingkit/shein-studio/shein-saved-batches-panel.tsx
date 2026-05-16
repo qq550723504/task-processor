@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
 export function SheinSavedBatchesPanel({
@@ -42,14 +42,14 @@ export function SheinSavedBatchesPanel({
             <div className="flex flex-wrap gap-2">
               <Button
                 onClick={() => router.push(`/listing-kits/shein/batches/${batch.id}`)}
-                tone="ghost"
+                variant="ghost"
               >
                 打开批次
               </Button>
-              <Button onClick={() => onLoad(batch)} tone="secondary">
+              <Button onClick={() => onLoad(batch)} variant="secondary">
                 载入
               </Button>
-              <Button onClick={() => onDelete(batch.id)} tone="ghost">
+              <Button onClick={() => onDelete(batch.id)} variant="ghost">
                 删除
               </Button>
             </div>

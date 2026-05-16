@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { LoaderCircle } from "lucide-react";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import { getListingKitTaskResult } from "@/lib/api/task-result";
 import { listingKitKeys } from "@/lib/query/keys";
 import { shouldPollTaskResult } from "@/components/listingkit/tasks/task-status-query";
@@ -132,10 +132,10 @@ export function SheinBatchTaskTracker({
 
               <div className="flex flex-wrap gap-2">
                 <Link href={`/listing-kits/${task.id}/status`}>
-                  <Button tone="secondary">查看状态</Button>
+                  <Button variant="secondary">查看状态</Button>
                 </Link>
                 <Link href={`/listing-kits/${task.id}/workspace`}>
-                  <Button tone="ghost">打开工作区</Button>
+                  <Button variant="ghost">打开工作区</Button>
                 </Link>
               </div>
             </article>

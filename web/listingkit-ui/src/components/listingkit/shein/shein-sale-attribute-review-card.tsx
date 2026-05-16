@@ -1,5 +1,5 @@
-import { Card } from "@/components/shared/card";
-import { Button } from "@/components/shared/button";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   matchingCandidates,
   presentSaleReviewStatus,
@@ -93,7 +93,7 @@ export function SheinSaleAttributeReviewCard({
             <Button
               className="h-9 shrink-0 px-3 text-xs"
               disabled={isApplying}
-              tone="secondary"
+              variant="secondary"
               onClick={() => onConfirmCurrentSaleAttributes?.()}
             >
               确认当前规格

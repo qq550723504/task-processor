@@ -1,6 +1,8 @@
 import type { FormEvent } from "react";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import {
   sdsCycleBands,
   sdsWeightBands,
@@ -81,8 +83,8 @@ export function SDSProductBrowserFilters({
           applySearch(String(formData.get("keyword") ?? ""));
         }}
       >
-        <select
-          className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        <Select
+          className="h-11 min-w-0"
           disabled={shipmentAreasLoading || availableShipmentAreas.length === 0}
           defaultValue={shipmentArea}
           key={shipmentArea}
@@ -101,9 +103,9 @@ export function SDSProductBrowserFilters({
               {area.label} ({area.totalCount})
             </option>
           ))}
-        </select>
-        <select
-          className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        </Select>
+        <Select
+          className="h-11 min-w-0"
           disabled={categoriesLoading}
           key={`${shipmentArea}:${categoryId ?? 0}`}
           name="categoryId"
@@ -122,9 +124,9 @@ export function SDSProductBrowserFilters({
               {category.name} ({category.count})
             </option>
           ))}
-        </select>
-        <select
-          className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        </Select>
+        <Select
+          className="h-11 min-w-0"
           defaultValue={sortValue}
           key={`sort:${sortValue || "default"}`}
           name="sort"
@@ -138,9 +140,9 @@ export function SDSProductBrowserFilters({
           <option value="">默认排序</option>
           <option value="min_price:asc">价格从低到高</option>
           <option value="min_price:desc">价格从高到低</option>
-        </select>
-        <select
-          className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        </Select>
+        <Select
+          className="h-11 min-w-0"
           defaultValue={weightBand}
           key={`weight:${weightBand || "all"}`}
           name="weightBand"
@@ -156,9 +158,9 @@ export function SDSProductBrowserFilters({
               {band.label}
             </option>
           ))}
-        </select>
-        <select
-          className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        </Select>
+        <Select
+          className="h-11 min-w-0"
           defaultValue={cycleBand}
           key={`cycle:${cycleBand || "all"}`}
           name="cycleBand"
@@ -174,9 +176,9 @@ export function SDSProductBrowserFilters({
               {band.label}
             </option>
           ))}
-        </select>
-        <input
-          className="h-11 min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:col-span-2 xl:col-span-5"
+        </Select>
+        <Input
+          className="h-11 min-w-0 md:col-span-2 xl:col-span-5"
           defaultValue={queryKeyword}
           key={queryKeyword}
           name="keyword"
@@ -188,12 +190,8 @@ export function SDSProductBrowserFilters({
       </form>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
-            onSaleOnly
-              ? "border-emerald-800 bg-emerald-900 text-white"
-              : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-          }`}
+        <Button
+          variant={onSaleOnly ? "default" : "outline"}
           onClick={() =>
             updateQuery({
               onSaleStatus: onSaleOnly ? undefined : "2",
@@ -203,13 +201,9 @@ export function SDSProductBrowserFilters({
           type="button"
         >
           只看在售
-        </button>
-        <button
-          className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
-            hotSellOnly
-              ? "border-rose-800 bg-rose-900 text-white"
-              : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-          }`}
+        </Button>
+        <Button
+          variant={hotSellOnly ? "default" : "outline"}
           onClick={() =>
             updateQuery({
               hotSellStatus: hotSellOnly ? undefined : "1",
@@ -219,7 +213,7 @@ export function SDSProductBrowserFilters({
           type="button"
         >
           只看热卖
-        </button>
+        </Button>
       </div>
     </>
   );

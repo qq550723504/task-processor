@@ -1,4 +1,4 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import type { CustomerIssue } from "@/lib/shein-studio/shein-customer-issues";
 
 function severityLabel(severity: CustomerIssue["severity"]) {
@@ -108,7 +108,7 @@ export function SheinCustomerIssueSummary({
                 {canAct ? (
                   <Button
                     className="h-8 shrink-0 px-3 text-xs"
-                    tone="secondary"
+                    variant="secondary"
                     onClick={() => onSelectIssue?.(issue)}
                   >
                     {issue.actionLabel}

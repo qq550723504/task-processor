@@ -1,8 +1,16 @@
 "use client";
 
-import { Badge } from "@/components/shared/badge";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { presentScenePresetCompact } from "@/components/listingkit/shared/scene-preset-presentation";
 import {
   deriveQueueItemAction,
@@ -28,22 +36,22 @@ export function QueueTable({
 }) {
   return (
     <Card className="overflow-hidden">
-      <table className="min-w-full divide-y divide-zinc-200">
-        <thead className="bg-zinc-50">
-          <tr className="text-left text-xs uppercase tracking-[0.2em] text-zinc-500">
-            <th className="px-4 py-3">Platform</th>
-            <th className="px-4 py-3">Slot</th>
-            <th className="px-4 py-3">State</th>
-            <th className="px-4 py-3">Quality</th>
-            <th className="px-4 py-3">Preview</th>
-            <th className="px-4 py-3">Review</th>
-            <th className="px-4 py-3">Scene</th>
-            <th className="px-4 py-3">Retry Hint</th>
-            <th className="px-4 py-3">Recovery</th>
-            <th className="px-4 py-3">Action</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-100 bg-white">
+      <Table className="min-w-full">
+        <TableHeader className="bg-zinc-50">
+          <TableRow className="text-xs uppercase tracking-[0.2em] hover:bg-transparent">
+            <TableHead>Platform</TableHead>
+            <TableHead>Slot</TableHead>
+            <TableHead>State</TableHead>
+            <TableHead>Quality</TableHead>
+            <TableHead>Preview</TableHead>
+            <TableHead>Review</TableHead>
+            <TableHead>Scene</TableHead>
+            <TableHead>Retry Hint</TableHead>
+            <TableHead>Recovery</TableHead>
+            <TableHead>Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody className="bg-white">
           {(items ?? []).map((item) => {
             const action = deriveQueueItemAction(item);
             const primaryRecovery = derivePrimaryRecoveryDescriptor(
@@ -56,30 +64,30 @@ export function QueueTable({
             const scenePreset = presentScenePresetCompact(item.scene_preset);
 
             return (
-              <tr key={`${item.platform}-${item.slot}-${item.generation_task}`}>
-                <td className="px-4 py-3 text-sm capitalize text-zinc-900">
+              <TableRow key={`${item.platform}-${item.slot}-${item.generation_task}`}>
+                <TableCell className="text-sm capitalize text-zinc-900">
                   {item.platform}
-                </td>
-                <td className="px-4 py-3 text-sm capitalize text-zinc-700">
+                </TableCell>
+                <TableCell className="text-sm capitalize text-zinc-700">
                   {item.slot}
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
-                  <Badge tone={state.tone}>{state.label}</Badge>
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
+                  <Badge variant={state.tone}>{state.label}</Badge>
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
                   {item.quality_grade_label ?? item.quality_grade}
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
                   {item.render_preview_available ? (
-                    <Badge tone="success">Ready</Badge>
+                    <Badge variant="success">Ready</Badge>
                   ) : (
-                    <Badge tone="neutral">Pending</Badge>
+                    <Badge variant="neutral">Pending</Badge>
                   )}
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
-                  <Badge tone={reviewStatus.tone}>{reviewStatus.label}</Badge>
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
+                  <Badge variant={reviewStatus.tone}>{reviewStatus.label}</Badge>
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
                   {scenePreset ? (
                     <div className="space-y-1">
                       <div className="font-medium text-zinc-900">{scenePreset.title}</div>
@@ -90,16 +98,16 @@ export function QueueTable({
                   ) : (
                     "—"
                   )}
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
                   <div className="space-y-1">
                     <div className="font-medium text-zinc-900">{retryHint.label}</div>
                     <div className="text-xs leading-5 text-zinc-500">
                       {retryHint.description}
                     </div>
                   </div>
-                </td>
-                <td className="px-4 py-3 text-sm text-zinc-700">
+                </TableCell>
+                <TableCell className="text-sm text-zinc-700">
                   {primaryRecovery ? (
                     <div className="space-y-1">
                       <div className="font-medium text-zinc-900">{recovery.title}</div>
@@ -110,17 +118,17 @@ export function QueueTable({
                   ) : (
                     "—"
                   )}
-                </td>
-                <td className="px-4 py-3">
-                  <Button tone="secondary" onClick={() => onAction(item, action)}>
+                </TableCell>
+                <TableCell>
+                  <Button variant="secondary" onClick={() => onAction(item, action)}>
                     {action.label}
                   </Button>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </Card>
   );
 }

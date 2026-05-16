@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 
 const QUICK_TOOLS = [
   {

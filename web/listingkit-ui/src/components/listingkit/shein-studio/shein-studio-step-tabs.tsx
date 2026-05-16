@@ -1,6 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+
+import { Button } from "@/components/ui/button";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
@@ -66,16 +68,16 @@ export function SheinStudioStepTabs({
         const locked = step.key !== "select" && !hasSelection;
         const href = locked ? hrefForStep("select") : hrefForStep(step.key);
         return (
-          <button
+          <Button
             aria-disabled={locked}
             aria-current={active ? "step" : undefined}
+            variant={active ? "default" : "outline"}
             className={[
+              "h-auto justify-start text-left",
               compact
-                ? "rounded-lg border px-3 py-2 transition"
-                : "rounded-[1.25rem] border px-4 py-3 transition",
-              active
-                ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
-                : "border-zinc-200 bg-white text-zinc-900 hover:border-zinc-400",
+                ? "rounded-lg px-3 py-2"
+                : "rounded-[1.25rem] px-4 py-3",
+              active ? "text-white shadow-sm" : "text-zinc-900",
               locked ? "pointer-events-none opacity-45" : "",
             ].join(" ")}
             key={step.key}
@@ -96,7 +98,7 @@ export function SheinStudioStepTabs({
             >
               {locked ? "请先选择商品。" : step.description}
             </div>
-          </button>
+          </Button>
         );
       })}
     </nav>

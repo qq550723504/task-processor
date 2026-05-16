@@ -7,8 +7,8 @@ import {
   presentResolvedActionSummary,
   presentResolvedActionTitle,
 } from "@/components/listingkit/shared/action-presentation";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { ResolvedActionSummary } from "@/lib/types/listingkit";
 
 export function ResolvedActionCard({

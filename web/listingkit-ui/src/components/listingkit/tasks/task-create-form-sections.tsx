@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { platformOptions } from "@/components/listingkit/tasks/task-create-form-model";
 import type { UseFormRegister, FieldErrors } from "react-hook-form";
 import type { FormValues } from "@/components/listingkit/tasks/task-create-form-model";
@@ -18,16 +22,14 @@ export function TaskPlatformFieldset({
       <legend className="text-sm font-medium text-zinc-700">目标平台</legend>
       <div className="grid gap-2">
         {platformOptions.map((platform) => (
-          <label
+          <Label
             className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 transition hover:border-zinc-300"
             key={platform.value}
           >
             <span className="flex items-center gap-3">
-              <input
+              <Checkbox
                 aria-label={platform.label}
-                className="h-4 w-4 rounded border-zinc-300 accent-zinc-950"
                 defaultChecked={selectedPlatforms?.includes(platform.value)}
-                type="checkbox"
                 value={platform.value}
                 {...register("platforms")}
               />
@@ -36,7 +38,7 @@ export function TaskPlatformFieldset({
             <span className="text-xs text-zinc-500">
               {selectedPlatforms?.includes(platform.value) ? "已选择" : "可启用"}
             </span>
-          </label>
+          </Label>
         ))}
       </div>
       <p className="text-sm text-zinc-500">
@@ -55,11 +57,11 @@ export function TaskSheinStoreField({
   register: UseFormRegister<FormValues>;
 }) {
   return (
-    <label className="block space-y-2">
+    <Label className="block space-y-2">
       <span className="text-sm font-medium text-zinc-700">SHEIN 店铺 ID</span>
-      <input
+      <Input
         aria-label="SHEIN 店铺 ID"
-        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        className="rounded-xl px-4 py-3"
         inputMode="numeric"
         placeholder="869"
         {...register("sheinStoreId")}
@@ -67,7 +69,7 @@ export function TaskSheinStoreField({
       <p className="text-sm leading-6 text-zinc-500">
         如果当前环境只对应一个店铺，可以先留空；多个 SHEIN 店铺共用时再填写。
       </p>
-    </label>
+    </Label>
   );
 }
 
@@ -96,14 +98,17 @@ export function TaskAdvancedSettingsToggle({
         <Button
           className="min-w-[112px]"
           onClick={() => setShowAdvancedSettings((current) => !current)}
-          tone="secondary"
+          variant="secondary"
           type="button"
         >
           {showAdvancedSettings ? "收起高级设置" : "显示高级设置"}
         </Button>
       </div>
       {showAdvancedSettings && children ? (
-        <div className="border-t border-zinc-200 pt-4">{children}</div>
+        <>
+          <Separator />
+          <div>{children}</div>
+        </>
       ) : null}
     </section>
   );
@@ -123,7 +128,7 @@ export function TaskCreateFormActions({
       <Button className="min-w-[140px]" disabled={isCreating} type="submit">
         {isCreating ? "创建中..." : submitLabel}
       </Button>
-      <Button className="min-w-[112px]" tone="secondary" onClick={onBack} type="button">
+      <Button className="min-w-[112px]" variant="secondary" onClick={onBack} type="button">
         返回首页
       </Button>
     </div>

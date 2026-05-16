@@ -4,7 +4,17 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Images, LoaderCircle, ShieldAlert } from "lucide-react";
 
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useCanonicalProductDetail } from "@/lib/query/use-canonical-products";
 import type { CanonicalAttribute, CanonicalProduct } from "@/lib/types/listingkit";
@@ -72,15 +82,15 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
             <div className="break-all font-mono text-xs text-zinc-400">{detail.data.taskId}</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {detail.data.summary.needsReview ? (
-                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                <Badge className="gap-1 rounded-full" variant="warning">
                   <ShieldAlert className="mr-1 h-3.5 w-3.5" />
                   需要人工审核
-                </span>
+                </Badge>
               ) : (
-                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <Badge className="gap-1 rounded-full" variant="success">
                   <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
                   字段可信
-                </span>
+                </Badge>
               )}
             </div>
           </div>
@@ -118,7 +128,8 @@ function CanonicalImages({ product }: { product: CanonicalProduct }) {
         )}
       </div>
 
-      <div className="border-t border-zinc-200 p-4">
+      <Separator />
+      <div className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center text-sm font-semibold text-zinc-950">
             <Images className="mr-2 h-4 w-4 text-teal-700" />
@@ -225,26 +236,26 @@ function CanonicalVariants({ product }: { product: CanonicalProduct }) {
     <Card className="p-5">
       <h2 className="text-base font-semibold text-zinc-950">变体</h2>
       <div className="mt-4 overflow-hidden rounded-lg border border-zinc-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase tracking-[0.14em] text-zinc-500">
-            <tr>
-              <th className="px-3 py-2">SKU</th>
-              <th className="px-3 py-2">标题</th>
-              <th className="px-3 py-2">库存</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader className="bg-zinc-50">
+            <TableRow className="text-xs uppercase tracking-[0.14em] hover:bg-transparent">
+              <TableHead className="px-3 py-2">SKU</TableHead>
+              <TableHead className="px-3 py-2">标题</TableHead>
+              <TableHead className="px-3 py-2">库存</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {variants.length === 0 ? (
-              <tr><td colSpan={3} className="px-3 py-4 text-zinc-500">暂无变体</td></tr>
+              <TableRow><TableCell colSpan={3} className="px-3 py-4 text-zinc-500">暂无变体</TableCell></TableRow>
             ) : variants.map((variant, index) => (
-              <tr key={`${variant.sku ?? "variant"}-${index}`} className="border-t border-zinc-200">
-                <td className="px-3 py-2 font-mono text-xs text-zinc-700">{variant.sku || "-"}</td>
-                <td className="px-3 py-2 text-zinc-700">{variant.title || "-"}</td>
-                <td className="px-3 py-2 text-zinc-700">{variant.stock ?? "-"}</td>
-              </tr>
+              <TableRow key={`${variant.sku ?? "variant"}-${index}`}>
+                <TableCell className="px-3 py-2 font-mono text-xs text-zinc-700">{variant.sku || "-"}</TableCell>
+                <TableCell className="px-3 py-2 text-zinc-700">{variant.title || "-"}</TableCell>
+                <TableCell className="px-3 py-2 text-zinc-700">{variant.stock ?? "-"}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </Card>
   );

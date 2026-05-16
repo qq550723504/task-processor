@@ -4,9 +4,9 @@ import {
   presentActionCtaKind,
 } from "@/components/listingkit/shared/action-presentation";
 import { derivePlatformRecoveryPresentation } from "@/components/listingkit/shared/platform-recovery";
-import { Badge } from "@/components/shared/badge";
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { presentPlatformStatus } from "@/components/listingkit/shared/status-presentation";
 import { cn } from "@/lib/utils/cn";
 import type { PlatformCard, RecoveryDescriptor } from "@/lib/types/listingkit";
@@ -55,11 +55,14 @@ export function PlatformCardRail({
                       <span className="break-words text-sm font-medium text-zinc-900">
                         {card.resolved_action_summary.title}
                       </span>
-                      <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
+                      <Badge
+                        className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+                        variant="neutral"
+                      >
                         {presentActionCtaKind(card.resolved_action_summary.cta_kind)}
-                      </span>
+                      </Badge>
                     </div>
-                    <Button tone="secondary" onClick={() => onSelect(card)}>
+                    <Button variant="secondary" onClick={() => onSelect(card)}>
                       {card.resolved_action_summary.title}
                     </Button>
                   </div>
@@ -77,7 +80,7 @@ export function PlatformCardRail({
                     </p>
                     {recovery.descriptor ? (
                       <Button
-                        tone="secondary"
+                        variant="secondary"
                         onClick={() =>
                           onSelectRecovery?.(
                             recovery.descriptor,
@@ -92,7 +95,7 @@ export function PlatformCardRail({
                 ) : null}
               </div>
               <div className="shrink-0 self-start">
-                <Badge tone={status.tone}>{status.label}</Badge>
+                <Badge variant={status.tone}>{status.label}</Badge>
               </div>
             </div>
           </Card>

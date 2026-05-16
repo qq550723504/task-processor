@@ -1,6 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import { Button } from "@/components/shared/button";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   imageRoleLabel,
   imageRoleTone,
@@ -79,16 +81,19 @@ export function ReviewSummaryGrid({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold">{item.title}</p>
-                  <span className="rounded-full bg-white/75 px-2 py-1 text-[10px] font-semibold">
+                  <Badge
+                    className="rounded-full bg-white/75 px-2 py-1 text-[10px]"
+                    variant="neutral"
+                  >
                     {summaryStatusLabel(item.status)}
-                  </span>
+                  </Badge>
                 </div>
                 <p className="mt-1 text-sm leading-6">{item.message}</p>
               </div>
               {item.status !== "done" && onSelectItem ? (
                 <Button
                   className="h-8 shrink-0 px-3 text-xs"
-                  tone="secondary"
+                  variant="secondary"
                   onClick={() => onSelectItem(item)}
                 >
                   {item.actionLabel ?? "去修复"}
@@ -137,7 +142,7 @@ export function ImageSubmitSummary({
         {imageBlocked && onSelectImages ? (
           <Button
             className="h-8 px-3 text-xs"
-            tone="secondary"
+            variant="secondary"
             onClick={onSelectImages}
           >
             去检查图片
@@ -174,13 +179,13 @@ export function ImageStructureDetails({
           </p>
         </div>
         {imageBlocked ? (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+          <Badge className="rounded-full px-3 py-1 text-xs" variant="warning">
             图片资料需处理
-          </span>
+          </Badge>
         ) : (
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+          <Badge className="rounded-full px-3 py-1 text-xs" variant="success">
             图片结构完整
-          </span>
+          </Badge>
         )}
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -190,11 +195,12 @@ export function ImageStructureDetails({
             key={`${image.url}-${index}`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span
-                className={`rounded-full px-2 py-1 text-[10px] font-semibold ${imageRoleTone(image)}`}
+              <Badge
+                className={`rounded-full px-2 py-1 text-[10px] ${imageRoleTone(image)}`}
+                variant="neutral"
               >
                 {imageRoleLabel(image)}
-              </span>
+              </Badge>
               <span className="text-[11px] text-zinc-500">
                 排序 {image.sort ?? index + 1}
               </span>
@@ -317,8 +323,8 @@ export function SkuPricingTable({
               <span className="text-zinc-600">
                 {money(sku.calculated_price, sku.currency)}
               </span>
-              <input
-                className="h-9 rounded-xl border border-zinc-200 px-3 text-sm outline-none focus:border-zinc-400"
+              <Input
+                className="h-9 rounded-xl"
                 value={priceOverrides[sku.supplier_sku ?? ""] ?? ""}
                 onChange={(event) =>
                   setPriceOverrides((current) => ({

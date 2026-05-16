@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
-import { Card } from "@/components/shared/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import { ImagePreviewDialog } from "@/components/listingkit/shein/shein-data-image-gallery-dialog";
 import {
   FinalImageGrid,
@@ -177,9 +178,11 @@ export function SheinDataImageGallery({
         </div>
 
         {images.length === 0 ? (
-          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-            暂未生成 SHEIN 成品图。下方 SDS mockup 仅作为渲染参考，不会自动进入最终提交图包。
-          </p>
+          <Alert variant="warning">
+            <AlertDescription>
+              暂未生成 SHEIN 成品图。下方 SDS mockup 仅作为渲染参考，不会自动进入最终提交图包。
+            </AlertDescription>
+          </Alert>
         ) : null}
 
         {onSaveImageControls && images.length > 0 ? (
@@ -248,14 +251,14 @@ export function SheinDataImageGallery({
           />
         ) : null}
         {saveMessage ? (
-          <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {saveMessage}
-          </p>
+          <Alert variant="success">
+            <AlertDescription>{saveMessage}</AlertDescription>
+          </Alert>
         ) : null}
         {saveErrorMessage ? (
-          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {saveErrorMessage}
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>{saveErrorMessage}</AlertDescription>
+          </Alert>
         ) : null}
       </div>
 

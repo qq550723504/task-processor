@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react";
 import { Braces, FileText, Save, ToggleLeft, ToggleRight } from "lucide-react";
 
-import { Button } from "@/components/shared/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   usePromptSettings,
   useSetPromptSettingStatus,
@@ -114,8 +119,9 @@ export function PromptSettingsCard() {
                       : "border-zinc-200 bg-white/70",
                   ].join(" ")}
                 >
-                  <button
-                    className="min-w-0 text-left"
+                  <Button
+                    variant="ghost"
+                    className="h-auto min-w-0 justify-start p-0 text-left hover:bg-transparent"
                     type="button"
                     onClick={() => selectPrompt(item)}
                   >
@@ -126,15 +132,17 @@ export function PromptSettingsCard() {
                     <span className="mt-1 block truncate text-xs text-zinc-500">
                       {item.version ? `版本 ${item.version}` : "未设置版本"}
                     </span>
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     aria-label={enabled ? "禁用提示词" : "启用提示词"}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600"
+                    variant="outline"
+                    size="icon"
+                    className="size-8 text-zinc-600"
                     type="button"
                     onClick={() => toggleEnabled(item)}
                   >
                     {enabled ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-                  </button>
+                  </Button>
                 </div>
               );
             })}
@@ -143,49 +151,45 @@ export function PromptSettingsCard() {
 
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4">
           <div className="grid gap-3 md:grid-cols-[1fr_160px_auto]">
-            <label className="space-y-1">
+            <Label className="space-y-1">
               <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
                 Prompt Key
               </span>
-              <input
+              <Input
                 aria-label="Prompt Key"
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
                 value={draft.key}
                 onChange={(event) => updateDraft("key", event.target.value)}
               />
-            </label>
-            <label className="space-y-1">
+            </Label>
+            <Label className="space-y-1">
               <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
                 版本
               </span>
-              <input
+              <Input
                 aria-label="版本"
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
                 value={draft.version}
                 onChange={(event) => updateDraft("version", event.target.value)}
               />
-            </label>
-            <label className="mt-5 flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-700">
-              <input
+            </Label>
+            <Label className="mt-5 flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
+              <Checkbox
                 checked={draft.enabled}
-                className="h-4 w-4"
-                type="checkbox"
                 onChange={(event) => updateDraft("enabled", event.target.checked)}
               />
               启用
-            </label>
+            </Label>
           </div>
-          <label className="mt-3 block space-y-1">
+          <Label className="mt-3 block space-y-1">
             <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
               Prompt 内容
             </span>
-            <textarea
+            <Textarea
               aria-label="Prompt 内容"
-              className="min-h-[300px] w-full resize-y rounded-xl border border-zinc-200 bg-white px-3 py-3 font-mono text-sm leading-6 outline-none focus:border-zinc-400"
+              className="min-h-[300px] resize-y font-mono leading-6"
               value={draft.content}
               onChange={(event) => updateDraft("content", event.target.value)}
             />
-          </label>
+          </Label>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-zinc-500">
               {draft.key ? "保存后当前租户立即使用该模板" : "填写 key 后保存新模板"}
@@ -196,10 +200,14 @@ export function PromptSettingsCard() {
             </Button>
           </div>
           {prompts.isError ? (
-            <p className="mt-3 text-sm text-rose-600">提示词列表读取失败。</p>
+            <Alert className="mt-3" variant="destructive">
+              <AlertDescription>提示词列表读取失败。</AlertDescription>
+            </Alert>
           ) : null}
           {upsert.error || setStatus.error ? (
-            <p className="mt-3 text-sm text-rose-600">提示词保存失败。</p>
+            <Alert className="mt-3" variant="destructive">
+              <AlertDescription>提示词保存失败。</AlertDescription>
+            </Alert>
           ) : null}
         </div>
       </div>

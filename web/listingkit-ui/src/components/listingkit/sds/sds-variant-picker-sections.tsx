@@ -1,4 +1,7 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { formatSDSPrice } from "@/lib/sds/format";
 import type { SDSProductSummary, SDSProductVariant } from "@/lib/types/sds";
 import { formatVariantWeight } from "@/components/listingkit/sds/sds-variant-picker-model";
@@ -29,7 +32,7 @@ export function SDSVariantPickerHeader({
           ) : null}
         </div>
       </div>
-      <Button className="shrink-0" onClick={onClose} tone="secondary">
+      <Button className="shrink-0" onClick={onClose} variant="secondary">
         关闭
       </Button>
     </div>
@@ -88,8 +91,8 @@ export function SDSVariantFilters({
 }) {
   return (
     <div className="grid gap-3 rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-      <select
-        className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+      <Select
+        className="h-11 rounded-2xl px-4"
         onChange={(event) => setSizeFilter(event.target.value)}
         value={sizeFilter}
       >
@@ -99,9 +102,9 @@ export function SDSVariantFilters({
             {size}
           </option>
         ))}
-      </select>
-      <select
-        className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+      </Select>
+      <Select
+        className="h-11 rounded-2xl px-4"
         onChange={(event) => setColorFilter(event.target.value)}
         value={colorFilter}
       >
@@ -111,7 +114,7 @@ export function SDSVariantFilters({
             {color}
           </option>
         ))}
-      </select>
+      </Select>
       <div className="flex items-center text-sm text-zinc-500">
         {filteredCount} 个变体
       </div>
@@ -141,10 +144,10 @@ export function SDSVariantSelectionSummary({
         {selectedSizeCount} 个尺码
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={selectFilteredVariants} tone="secondary" type="button">
+        <Button onClick={selectFilteredVariants} variant="secondary" type="button">
           选中当前筛选
         </Button>
-        <Button onClick={clearFilteredVariants} tone="ghost" type="button">
+        <Button onClick={clearFilteredVariants} variant="ghost" type="button">
           清除当前筛选
         </Button>
         <Button
@@ -219,17 +222,15 @@ function SDSVariantCard({
       <div className="space-y-3">
         <div className="space-y-1">
           <div className="text-sm font-semibold">
-            <label className="flex items-center gap-2">
-              <input
+            <Label className="flex items-center gap-2">
+              <Checkbox
                 checked={active}
-                className="h-4 w-4 rounded border-zinc-300"
                 onChange={toggleVariant}
-                type="checkbox"
               />
               <span>
                 {variant.size || "均码"} · {variant.color_name || "默认"}
               </span>
-            </label>
+            </Label>
           </div>
           <div className={active ? "text-emerald-100" : "text-zinc-500"}>
             变体 ID {variant.id} · SKU {variant.sku ?? "-"}
@@ -287,7 +288,7 @@ function SDSVariantCard({
         <Button
           className="w-full"
           onClick={onSelectAsPrimary}
-          tone={primary ? "secondary" : "primary"}
+          variant={primary ? "secondary" : "primary"}
           type="button"
         >
           {primary ? "主变体" : "设为主变体"}

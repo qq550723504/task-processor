@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function TaskLauncher() {
   const router = useRouter();
@@ -35,24 +37,24 @@ export function TaskLauncher() {
           </p>
         </div>
 
-        <label className="block space-y-2">
+        <Label className="block space-y-2">
           <span className="text-sm font-medium text-zinc-700">Task ID</span>
-          <input
-            className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none ring-0 transition focus:border-zinc-950"
+          <Input
+            className="rounded-2xl px-4 py-3"
             value={taskId}
             onChange={(event) => setTaskId(event.target.value)}
             placeholder="task_123456"
           />
-        </label>
+        </Label>
 
         <div className="flex flex-wrap gap-3">
-          <Button tone="secondary" onClick={() => router.push("/listing-kits/new")}>
+          <Button variant="secondary" onClick={() => router.push("/listing-kits/new")}>
             Create New Task
           </Button>
-          <Button tone="secondary" onClick={() => router.push("/listing-kits/sds")}>
+          <Button variant="secondary" onClick={() => router.push("/listing-kits/sds")}>
             Open POD
           </Button>
-          <Button tone="secondary" onClick={() => router.push("/listing-kits/shein")}>
+          <Button variant="secondary" onClick={() => router.push("/listing-kits/shein")}>
             Open SHEIN Studio
           </Button>
           <Button
@@ -62,14 +64,14 @@ export function TaskLauncher() {
             Open Workspace
           </Button>
           <Button
-            tone="secondary"
+            variant="secondary"
             disabled={!normalizedTaskId}
             onClick={() => openTask("queue", normalizedTaskId)}
           >
             Open Queue
           </Button>
           <Button
-            tone="ghost"
+            variant="ghost"
             disabled={!normalizedTaskId}
             onClick={() => router.push(`/listing-kits/${normalizedTaskId}/status`)}
           >
@@ -98,10 +100,10 @@ export function TaskLauncher() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button tone="ghost" onClick={() => openTask("workspace", "demo-task")}>
+              <Button variant="ghost" onClick={() => openTask("workspace", "demo-task")}>
                 Open Demo Workspace
               </Button>
-              <Button tone="ghost" onClick={() => openTask("queue", "demo-task")}>
+              <Button variant="ghost" onClick={() => openTask("queue", "demo-task")}>
                 Open Demo Queue
               </Button>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { ReviewToolbar as ReviewToolbarType, ToolbarAction } from "@/lib/types/listingkit";
 
 export function ReviewToolbar({
@@ -35,7 +35,7 @@ export function ReviewToolbar({
           {actions.map((action) => (
             <Button
               key={action.key}
-              tone={action.kind === "workflow" ? "primary" : "secondary"}
+              variant={action.kind === "workflow" ? "primary" : "secondary"}
               disabled={!action.enabled}
               onClick={() => onAction(action)}
             >

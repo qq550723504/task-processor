@@ -1,4 +1,4 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import { formatSDSPrice } from "@/lib/sds/format";
 import { formatProductionCycle, formatWeight } from "@/lib/sds/product-filters";
 import type { SDSProductSummary } from "@/lib/types/sds";
@@ -98,7 +98,7 @@ export function SDSProductCard({
             <Button
               className="flex-1"
               onClick={onOpenVariants}
-              tone={isSelected ? "secondary" : "primary"}
+              variant={isSelected ? "secondary" : "primary"}
               type="button"
             >
               {isVariantSelected ? "更换变体" : "选择变体"}

@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { Image, KeyRound, ServerCog, Sparkles, Tags } from "lucide-react";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input as TextInput } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { useAIClientSettings, useUpdateAIClientSettings } from "@/lib/query/use-ai-client-settings";
 
 const aiClientOptions = [
@@ -124,14 +128,10 @@ export function AIClientSettingsCard() {
           const Icon = option.icon;
           const active = option.name === clientName;
           return (
-            <button
+            <Button
               key={option.name}
-              className={[
-                "min-w-[160px] rounded-xl border px-3 py-3 text-left transition",
-                active
-                  ? "border-zinc-900 bg-zinc-950 text-white shadow-sm"
-                  : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300",
-              ].join(" ")}
+              variant={active ? "default" : "outline"}
+              className="h-auto min-w-[160px] justify-start rounded-xl px-3 py-3 text-left"
               type="button"
               onClick={() => {
                 setClientName(option.name);
@@ -150,7 +150,7 @@ export function AIClientSettingsCard() {
               >
                 {option.description}
               </div>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -167,13 +167,12 @@ export function AIClientSettingsCard() {
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr_140px]">
-          <label className="space-y-1">
+          <Label className="space-y-1">
             <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
               配置范围
             </span>
-            <select
+            <Select
               aria-label="配置范围"
-              className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm"
               value={form.scope}
               onChange={(event) => {
                 const nextScope = event.target.value as "tenant" | "user";
@@ -183,11 +182,11 @@ export function AIClientSettingsCard() {
             >
               <option value="tenant">当前客户</option>
               <option value="user">当前用户</option>
-            </select>
+            </Select>
             <span className="block text-[11px] leading-4 text-zinc-500">
               用户配置优先于客户配置
             </span>
-          </label>
+          </Label>
           {form.scope === "user" ? (
             <Input
               label="User ID"
@@ -226,15 +225,13 @@ export function AIClientSettingsCard() {
             value={form.api_key}
             onChange={(value) => set("api_key", value)}
           />
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-700">
-            <input
+          <Label className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
+            <Checkbox
               checked={form.enabled}
-              className="h-4 w-4"
-              type="checkbox"
               onChange={(event) => set("enabled", event.target.checked)}
             />
             启用配置
-          </label>
+          </Label>
         </div>
       </div>
       {settings.isError ? (
@@ -261,13 +258,12 @@ function Input({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="space-y-1">
+    <Label className="space-y-1">
       <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
         {label}
       </span>
-      <input
+      <TextInput
         aria-label={label}
-        className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -275,6 +271,6 @@ function Input({
       {hint ? (
         <span className="block text-[11px] leading-4 text-zinc-500">{hint}</span>
       ) : null}
-    </label>
+    </Label>
   );
 }

@@ -1,9 +1,24 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 
 import {
@@ -129,10 +144,11 @@ export function ImportTaskAdminPage() {
               onChange={setProductId}
               placeholder="搜索商品"
             />
-            <button
+            <Button
               type="button"
               onClick={() => void importTaskQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               {loading ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -140,91 +156,92 @@ export function ImportTaskAdminPage() {
                 <Search className="size-4" />
               )}
               查询
-            </button>
+            </Button>
           </form>
         </div>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <Alert className="mt-4" variant="destructive">
+            <AlertDescription>{visibleError}</AlertDescription>
+          </Alert>
         ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">商品</th>
-                  <th className="px-4 py-3">店铺</th>
-                  <th className="px-4 py-3">平台</th>
-                  <th className="px-4 py-3">地区</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3">重试</th>
-                  <th className="px-4 py-3">优先级</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+              <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
+                <TableRow>
+                  <TableHead className="px-4 py-3">商品</TableHead>
+                  <TableHead className="px-4 py-3">店铺</TableHead>
+                  <TableHead className="px-4 py-3">平台</TableHead>
+                  <TableHead className="px-4 py-3">地区</TableHead>
+                  <TableHead className="px-4 py-3">状态</TableHead>
+                  <TableHead className="px-4 py-3">重试</TableHead>
+                  <TableHead className="px-4 py-3">优先级</TableHead>
+                  <TableHead className="px-4 py-3 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={8}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : tasks.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={8}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       暂无导入任务
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   tasks.map((task) => (
-                    <tr key={task.id} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={task.id} className="align-top">
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">
                           {task.productId}
                         </div>
                         <div className="font-mono text-xs text-zinc-500">
                           #{task.id}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {storeName(stores, task.storeId)}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {task.platform}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {task.region || "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <Badge className="rounded-full px-2 py-1 text-xs" variant="neutral">
                           {STATUS_TEXT[task.status] ?? `状态 ${task.status}`}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {task.retryCount ?? 0}/{task.maxRetryCount ?? 3}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {task.priority ?? 5}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
                           type="button"
                           aria-label={`删除 ${task.productId}`}
                           onClick={() => void handleDelete(task.id)}
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
@@ -236,9 +253,9 @@ export function ImportTaskAdminPage() {
             <Upload className="size-4 text-zinc-500" />
             <h2 className="text-base font-semibold text-zinc-950">批量导入</h2>
           </div>
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
+          <Label className="mb-3 block text-xs font-medium text-zinc-500">
             店铺
-            <select
+            <Select
               value={form.storeId}
               onChange={(event) =>
                 setForm({ ...form, storeId: Number(event.target.value) })
@@ -251,8 +268,8 @@ export function ImportTaskAdminPage() {
                   {store.name}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
           <div className="grid grid-cols-2 gap-3">
             <ImportTaskInput
               label="类目 ID"
@@ -286,19 +303,19 @@ export function ImportTaskAdminPage() {
               onChange={(region) => setForm({ ...form, region })}
             />
           </div>
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
+          <Label className="mb-3 block text-xs font-medium text-zinc-500">
             商品 ID
-            <textarea
+            <Textarea
               value={productText}
               onChange={(event) => setProductText(event.target.value)}
               className="mt-1 min-h-32 w-full resize-y rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900"
               placeholder="每行一个商品 ID"
             />
-          </label>
-          <button
+          </Label>
+          <Button
             type="submit"
             disabled={saving}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="w-full"
           >
             {saving ? (
               <RefreshCw className="size-4 animate-spin" />
@@ -306,7 +323,7 @@ export function ImportTaskAdminPage() {
               <Plus className="size-4" />
             )}
             创建任务
-          </button>
+          </Button>
         </form>
       </section>
     </div>
@@ -337,16 +354,16 @@ function ImportTaskInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <input
+      <Input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
-    </label>
+    </Label>
   );
 }
 
@@ -364,9 +381,9 @@ function ImportTaskSelect({
   labels?: Record<string, string>;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
@@ -376,7 +393,7 @@ function ImportTaskSelect({
             {labels[option] ?? option}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }

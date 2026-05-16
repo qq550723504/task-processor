@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio";
 
 export function SheinCreatedTasksList({
@@ -39,13 +39,13 @@ export function SheinCreatedTasksList({
             <div className="flex gap-2">
               <Button
                 onClick={() => router.push(`/listing-kits/${task.id}/status`)}
-                tone="secondary"
+                variant="secondary"
               >
                 状态
               </Button>
               <Button
                 onClick={() => router.push(`/listing-kits/${task.id}/queue?platform=shein`)}
-                tone="secondary"
+                variant="secondary"
               >
                 队列
               </Button>
@@ -55,7 +55,7 @@ export function SheinCreatedTasksList({
                     `/listing-kits/${task.id}/workspace?platform=shein&section_key=general_review`,
                   )
                 }
-                tone="ghost"
+                variant="ghost"
               >
                 审核 SHEIN 资料
               </Button>

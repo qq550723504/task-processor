@@ -5,7 +5,7 @@ import Image from "next/image";
 
 import { SheinDesignLightbox } from "@/components/listingkit/shein-studio/shein-design-lightbox";
 import { SheinDesignReviewNote } from "@/components/listingkit/shein-studio/shein-design-review-note";
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
@@ -119,7 +119,7 @@ export function SheinDesignPreviewGrid({
                       ) : (
                         <Button
                           onClick={() => onToggle(design.id)}
-                          tone={selected ? "primary" : "secondary"}
+                          variant={selected ? "primary" : "secondary"}
                         >
                           {selected ? "取消批准" : "批准"}
                         </Button>
@@ -131,7 +131,7 @@ export function SheinDesignPreviewGrid({
                       <Button
                         className="flex-1"
                         onClick={() => onRegenerate(design.id)}
-                        tone="ghost"
+                        variant="ghost"
                       >
                         {regeneratingId === design.id ? "重新生成中..." : "重新生成"}
                       </Button>
@@ -139,13 +139,14 @@ export function SheinDesignPreviewGrid({
                   )}
 
                   <div className="space-y-3">
-                    <button
-                      className="relative block w-full overflow-hidden rounded-[1.25rem] border border-zinc-200 bg-white transition hover:border-zinc-400"
+                    <Button
+                      className="relative block h-auto w-full overflow-hidden rounded-[1.25rem] p-0"
                       onClick={() => {
                         setActivePreviewId(design.id);
                         setActivePreviewView("design");
                       }}
                       type="button"
+                      variant="outline"
                     >
                       <Image
                         alt={`生成款式 ${index + 1}`}
@@ -155,7 +156,7 @@ export function SheinDesignPreviewGrid({
                         unoptimized
                         width={1024}
                       />
-                    </button>
+                    </Button>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Button
                         className="w-full"
@@ -163,7 +164,7 @@ export function SheinDesignPreviewGrid({
                           setActivePreviewId(design.id);
                           setActivePreviewView("design");
                         }}
-                        tone="secondary"
+                        variant="secondary"
                       >
                         查看原图
                       </Button>
@@ -173,7 +174,7 @@ export function SheinDesignPreviewGrid({
                           setActivePreviewId(design.id);
                           setActivePreviewView("mockup");
                         }}
-                        tone="ghost"
+                        variant="ghost"
                       >
                         查看效果图
                       </Button>
@@ -220,7 +221,7 @@ export function SheinDesignPreviewGrid({
             </div>
             <div className="flex flex-wrap gap-3">
               {onBackToGenerate ? (
-                <Button onClick={onBackToGenerate} tone="ghost">
+                <Button onClick={onBackToGenerate} variant="ghost">
                   修改商品图设置
                 </Button>
               ) : null}

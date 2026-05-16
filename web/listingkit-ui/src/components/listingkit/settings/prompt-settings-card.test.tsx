@@ -5,6 +5,12 @@ import { PromptSettingsCard } from "@/components/listingkit/settings/prompt-sett
 
 const upsertMock = vi.fn();
 const statusMock = vi.fn();
+const promptQueryState = {
+  isError: false,
+};
+const upsertState = {
+  error: null as Error | null,
+};
 
 vi.mock("@/lib/query/use-prompt-settings", () => ({
   usePromptSettings: () => ({
@@ -19,12 +25,12 @@ vi.mock("@/lib/query/use-prompt-settings", () => ({
       ],
     },
     isLoading: false,
-    isError: false,
+    isError: promptQueryState.isError,
   }),
   useUpsertPromptSetting: () => ({
     mutate: upsertMock,
     isPending: false,
-    error: null,
+    error: upsertState.error,
   }),
   useSetPromptSettingStatus: () => ({
     mutate: statusMock,
@@ -34,6 +40,13 @@ vi.mock("@/lib/query/use-prompt-settings", () => ({
 }));
 
 describe("PromptSettingsCard", () => {
+  beforeEach(() => {
+    promptQueryState.isError = false;
+    upsertState.error = null;
+    upsertMock.mockClear();
+    statusMock.mockClear();
+  });
+
   it("loads a prompt into the editor and saves changes", () => {
     render(<PromptSettingsCard />);
 
@@ -55,5 +68,14 @@ describe("PromptSettingsCard", () => {
         enabled: true,
       }),
     );
+  });
+
+  it("renders prompt failures as alerts", () => {
+    promptQueryState.isError = true;
+    upsertState.error = new Error("save failed");
+
+    render(<PromptSettingsCard />);
+
+    expect(screen.getAllByRole("status")).toHaveLength(2);
   });
 });

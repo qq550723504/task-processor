@@ -1,4 +1,6 @@
 import type { SheinPendingAttributeCandidate } from "@/lib/types/listingkit";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 
 export function AttributeRow({
   name,
@@ -43,7 +45,7 @@ export function PendingCandidateRow({
       ? "border-sky-200"
       : "border-amber-200";
   return (
-    <label className={`block rounded-xl border ${borderClass} bg-white px-3 py-2`}>
+    <Label className={`block rounded-xl border ${borderClass} bg-white px-3 py-2`}>
       <span className="block text-sm font-medium text-zinc-950">
         {candidate.name ?? candidate.attribute_name_en ?? candidate.attribute_name}
       </span>
@@ -60,8 +62,8 @@ export function PendingCandidateRow({
             : "建议属性，不影响提交。"}
       </span>
       {options.length > 0 ? (
-        <select
-          className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800"
+        <Select
+          className="mt-2 rounded-xl"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         >
@@ -75,12 +77,12 @@ export function PendingCandidateRow({
               {option.value && option.value_en ? ` / ${option.value}` : ""}
             </option>
           ))}
-        </select>
+        </Select>
       ) : (
         <p className="mt-2 text-sm text-zinc-600">
           这个模板属性没有可选值。当前 MVP 暂不支持手工文本录入。
         </p>
       )}
-    </label>
+    </Label>
   );
 }

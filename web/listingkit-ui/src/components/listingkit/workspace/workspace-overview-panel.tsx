@@ -6,7 +6,8 @@ import {
   presentResolvedActionTitle,
   presentRecoverySummary,
 } from "@/components/listingkit/shared/action-presentation";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import type {
   AssetGenerationOverview,
   ReviewSummary,
@@ -79,9 +80,12 @@ export function WorkspaceOverviewPanel({
             <p className="text-lg font-semibold text-zinc-950">
               {presentResolvedActionTitle(overview.resolved_action_summary.title)}
             </p>
-            <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
+            <Badge
+              className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+              variant="neutral"
+            >
               {presentActionCtaKind(overview.resolved_action_summary.cta_kind)}
-            </span>
+            </Badge>
           </div>
           {overview.resolved_action_summary.summary ? (
             <p className="mt-2 text-sm leading-6 text-zinc-600">
@@ -112,9 +116,12 @@ export function WorkspaceOverviewPanel({
               ) : null}
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
                 <span>{recovery.metaLabel}</span>
-                <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-1 text-[10px] font-semibold tracking-[0.16em] text-amber-800">
+                <Badge
+                  className="rounded-full px-2 py-1 text-[10px] tracking-[0.16em]"
+                  variant="warning"
+                >
                   {recovery.ctaLabel}
-                </span>
+                </Badge>
               </div>
             </Card>
           );

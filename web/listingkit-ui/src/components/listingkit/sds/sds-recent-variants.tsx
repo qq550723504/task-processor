@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 export function SDSRecentVariants({
@@ -44,7 +44,7 @@ export function SDSRecentVariants({
                 <Button
                   className="w-full"
                   onClick={() => onSelect(item)}
-                  tone={active ? "secondary" : "primary"}
+                  variant={active ? "secondary" : "primary"}
                   type="button"
                 >
                   {active ? "已选择" : "使用这个变体"}

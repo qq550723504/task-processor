@@ -1,6 +1,6 @@
 "use client";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 

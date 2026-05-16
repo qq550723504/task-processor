@@ -1,4 +1,5 @@
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
+import { Badge } from "@/components/ui/badge";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio";
 
 export function SheinStudioTasksStep({
@@ -23,9 +24,9 @@ export function SheinStudioTasksStep({
             打开每个任务的工作区，完成最终图片、价格、属性和提交确认。
           </p>
         </div>
-        <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
+        <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
           {createdTasks.length} 个任务
-        </span>
+        </Badge>
       </div>
       {createdTasks.length ? (
         <SheinCreatedTasksList tasks={createdTasks} />

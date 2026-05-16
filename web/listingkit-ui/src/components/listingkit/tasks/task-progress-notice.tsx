@@ -1,6 +1,6 @@
 import { Clock3, LoaderCircle } from "lucide-react";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function noticeCopy(status?: string) {

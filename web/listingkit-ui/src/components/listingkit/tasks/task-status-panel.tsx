@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import { presentTaskStatus } from "@/components/listingkit/shared/status-presentation";
 import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";

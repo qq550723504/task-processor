@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
-import { Card } from "@/components/shared/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function statusPresentation(status?: string) {
@@ -140,17 +141,17 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
         </div>
 
         {authIssue?.message ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-900">
-            <div className="font-semibold">SDS 登录状态需要处理</div>
-            <div>{authIssue.message}</div>
+          <Alert variant="destructive">
+            <AlertTitle>SDS 登录状态需要处理</AlertTitle>
+            <AlertDescription>{authIssue.message}</AlertDescription>
             {authIssue.detail ? (
               <div className="mt-1 break-all font-mono text-xs text-red-800">{authIssue.detail}</div>
             ) : null}
-          </div>
+          </Alert>
         ) : sync.error ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-            {sync.error}
-          </div>
+          <Alert variant="warning">
+            <AlertDescription>{sync.error}</AlertDescription>
+          </Alert>
         ) : warning ? (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
             {warning}

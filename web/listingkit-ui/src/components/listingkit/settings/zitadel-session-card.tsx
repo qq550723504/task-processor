@@ -3,6 +3,9 @@
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+
 type ZitadelIdentity = {
   tenantId?: string | number;
   userId?: string | number;
@@ -94,30 +97,29 @@ export function ZitadelSessionCard() {
           </h2>
         </div>
         {session.status === "loading" ? (
-          <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
+          <Badge className="gap-2" variant="neutral">
             <RefreshCw className="size-3 animate-spin" />
             读取中
-          </span>
+          </Badge>
         ) : (
-          <span
-            className={[
-              "inline-flex rounded-full px-3 py-1 text-xs font-medium",
+          <Badge
+            variant={
               session.status === "ready" && hasPlatformAccess
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700",
-            ].join(" ")}
+                ? "success"
+                : "warning"
+            }
           >
             {session.status === "ready" && hasPlatformAccess
               ? "具备平台管理权限"
               : "缺少平台管理权限"}
-          </span>
+          </Badge>
         )}
       </div>
 
       {session.status === "error" ? (
-        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {session.error}
-        </p>
+        <Alert className="mt-4" variant="destructive">
+          <AlertDescription>{session.error}</AlertDescription>
+        </Alert>
       ) : null}
 
       {session.status === "ready" ? (

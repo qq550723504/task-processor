@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 
 export function EmptyState({
   title,

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { SDSPagination } from "@/components/listingkit/sds/sds-pagination";
 import { SDSProductCard } from "@/components/listingkit/sds/sds-product-card";
 import { SDSProductBrowserFilters } from "@/components/listingkit/sds/sds-product-browser-filters";
@@ -182,15 +183,15 @@ export function SDSProductBrowser({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-700">
+            <Badge className="rounded-md px-3 py-2 text-sm" variant="neutral">
               {activeShipmentAreaLabel}
-            </span>
-            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-700">
+            </Badge>
+            <Badge className="rounded-md px-3 py-2 text-sm" variant="neutral">
               {products.data?.totalCount ?? 0} 个商品
-            </span>
-            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-700">
+            </Badge>
+            <Badge className="rounded-md px-3 py-2 text-sm" variant="neutral">
               变体 {selectedVariantId > 0 ? selectedVariantId : "未选择"}
-            </span>
+            </Badge>
           </div>
         </div>
 

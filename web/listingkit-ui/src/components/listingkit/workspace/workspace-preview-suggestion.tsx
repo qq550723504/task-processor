@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { ReviewSlot } from "@/lib/types/listingkit";
 
 export type WorkspacePreviewSuggestion = {
@@ -34,7 +34,7 @@ export function WorkspacePreviewSuggestionCard({
           </h3>
           <p className="text-sm leading-6 text-zinc-700">{suggestion.summary}</p>
         </div>
-        <Button tone="secondary" onClick={() => onSelect(suggestion.slot)}>
+        <Button variant="secondary" onClick={() => onSelect(suggestion.slot)}>
           {suggestion.ctaLabel}
         </Button>
       </div>

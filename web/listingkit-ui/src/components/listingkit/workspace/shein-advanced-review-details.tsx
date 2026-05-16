@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import { SheinAttributeReviewCard } from "@/components/listingkit/shein/shein-attribute-review-card";
 import { SheinCategoryReviewCard } from "@/components/listingkit/shein/shein-category-review-card";
 import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein/shein-sale-attribute-review-card";
+import { Badge } from "@/components/ui/badge";
 
 type SheinCategoryReviewCardProps = ComponentProps<
   typeof SheinCategoryReviewCard
@@ -51,9 +52,9 @@ export function SheinAdvancedReviewDetails({
               : "这里是内部排查信息，默认收起。需要处理类目、普通属性或销售属性时再展开。"}
           </p>
         </div>
-        <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600">
+        <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
           {open ? "已自动展开" : "点击展开"}
-        </span>
+        </Badge>
       </summary>
       <div className="mt-5 grid min-w-0 items-start gap-4 xl:grid-cols-2">
         {showCategoryReview ? (

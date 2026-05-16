@@ -1,9 +1,24 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Calculator, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 
 import {
@@ -147,10 +162,11 @@ export function PricingRuleAdminPage() {
                 ["fixed_price", "固定价格"],
               ]}
             />
-            <button
+            <Button
               type="button"
               onClick={() => void pricingRuleQuery.refetch()}
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+              className="mt-5"
+              variant="secondary"
             >
               {loading ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -158,95 +174,99 @@ export function PricingRuleAdminPage() {
                 <Search className="size-4" />
               )}
               查询
-            </button>
+            </Button>
           </form>
         </div>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <Alert className="mt-4" variant="destructive">
+            <AlertDescription>{visibleError}</AlertDescription>
+          </Alert>
         ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">规则</th>
-                  <th className="px-4 py-3">店铺</th>
-                  <th className="px-4 py-3">价格区间</th>
-                  <th className="px-4 py-3">类型</th>
-                  <th className="px-4 py-3">规则值</th>
-                  <th className="px-4 py-3">固定值</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+              <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
+                <TableRow>
+                  <TableHead className="px-4 py-3">规则</TableHead>
+                  <TableHead className="px-4 py-3">店铺</TableHead>
+                  <TableHead className="px-4 py-3">价格区间</TableHead>
+                  <TableHead className="px-4 py-3">类型</TableHead>
+                  <TableHead className="px-4 py-3">规则值</TableHead>
+                  <TableHead className="px-4 py-3">固定值</TableHead>
+                  <TableHead className="px-4 py-3">状态</TableHead>
+                  <TableHead className="px-4 py-3 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={8}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : rules.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={8}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       暂无核价规则
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   rules.map((rule) => (
-                    <tr key={rule.id} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={rule.id} className="align-top">
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">
                           {rule.name}
                         </div>
                         <div className="font-mono text-xs text-zinc-500">
                           {rule.ruleCode}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {storeName(stores, rule.storeId)}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {rule.priceMin}-{rule.priceMax}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {RULE_TYPE_LABEL[rule.ruleType] ?? rule.ruleType}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {rule.ruleValue}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {rule.fixedValue ?? "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <Button
                           type="button"
                           onClick={() => void handleToggle(rule)}
-                          className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
+                          variant="ghost"
+                          className="h-auto p-0 hover:bg-transparent"
                         >
-                          {rule.status === 1 ? "启用" : "禁用"}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                          <Badge variant={rule.status === 1 ? "success" : "neutral"}>
+                            {rule.status === 1 ? "启用" : "禁用"}
+                          </Badge>
+                        </Button>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
                           type="button"
                           aria-label={`删除 ${rule.name}`}
                           onClick={() => void handleDelete(rule.id)}
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:border-red-200 hover:text-red-600"
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
@@ -270,9 +290,9 @@ export function PricingRuleAdminPage() {
               setForm({ ...form, ruleCode: nextRuleCode })
             }
           />
-          <label className="mb-3 block text-xs font-medium text-zinc-500">
+          <Label className="mb-3 block text-xs font-medium text-zinc-500">
             店铺
-            <select
+            <Select
               value={form.storeId ?? 0}
               onChange={(event) =>
                 setForm({
@@ -288,8 +308,8 @@ export function PricingRuleAdminPage() {
                   {store.name}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
           <div className="grid grid-cols-2 gap-3">
             <RuleInput
               label="最低价格"
@@ -339,10 +359,10 @@ export function PricingRuleAdminPage() {
               }
             />
           </div>
-          <button
+          <Button
             type="submit"
             disabled={saving}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="w-full"
           >
             {saving ? (
               <RefreshCw className="size-4 animate-spin" />
@@ -350,7 +370,7 @@ export function PricingRuleAdminPage() {
               <Plus className="size-4" />
             )}
             保存规则
-          </button>
+          </Button>
         </form>
       </section>
     </div>
@@ -381,16 +401,16 @@ function RuleInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <input
+      <Input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
-    </label>
+    </Label>
   );
 }
 
@@ -406,9 +426,9 @@ function RuleSelect({
   options: Array<[string, string]>;
 }) {
   return (
-    <label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
@@ -418,7 +438,7 @@ function RuleSelect({
             {labelText}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }

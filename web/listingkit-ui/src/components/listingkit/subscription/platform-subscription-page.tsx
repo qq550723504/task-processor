@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Power, RefreshCw, Save, Search, XCircle } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
@@ -16,6 +17,27 @@ import {
   type SubscriptionEntitlementView,
   type SubscriptionStatus,
 } from "@/lib/api/subscription";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Select } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
 const STATUS_OPTIONS: SubscriptionStatus[] = [
   "active",
@@ -189,62 +211,66 @@ export function PlatformSubscriptionPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <Card>
+        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-950">平台订阅</h1>
-            <p className="mt-1 text-sm text-zinc-500">
+            <CardTitle className="text-2xl">平台订阅</CardTitle>
+            <CardDescription className="mt-1">
               租户 {summary?.tenant_id || normalizedTenantId || "-"}
-            </p>
+            </CardDescription>
           </div>
           <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row">
-            <input
+            <Input
               value={tenantInput}
               onChange={(event) => setTenantInput(event.target.value)}
-              className="h-9 min-w-[260px] rounded-md border border-zinc-200 px-3 font-mono text-sm text-zinc-900"
+              className="h-9 min-w-[260px] font-mono"
               placeholder="ZITADEL resource owner id"
             />
-            <button
+            <Button
               type="submit"
               disabled={!tenantInput.trim()}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className="h-9 gap-2 px-3"
             >
               <Search className="size-4" />
               查询
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
               disabled={!normalizedTenantId}
               onClick={() => void query.refetch()}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300 disabled:cursor-not-allowed disabled:text-zinc-400"
+              className="h-9 gap-2 px-3"
             >
               <RefreshCw className={`size-4 ${query.isFetching ? "animate-spin" : ""}`} />
               刷新
-            </button>
+            </Button>
           </form>
-        </div>
+        </CardHeader>
         {visibleError ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {visibleError}
-          </div>
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertDescription>{visibleError}</AlertDescription>
+            </Alert>
+          </CardContent>
         ) : null}
-      </section>
+      </Card>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+        <Card className="overflow-hidden p-0">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-zinc-900">已配置租户</h2>
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => void tenantListQuery.refetch()}
-                className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:border-zinc-300"
+                className="h-8 gap-2 px-3 text-xs"
               >
                 <RefreshCw
                   className={`size-3.5 ${tenantListQuery.isFetching ? "animate-spin" : ""}`}
                 />
                 刷新
-              </button>
+              </Button>
             </div>
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {tenantListQuery.isLoading ? (
@@ -253,9 +279,10 @@ export function PlatformSubscriptionPage() {
                 <span className="text-sm text-zinc-500">暂无租户</span>
               ) : (
                 tenantListQuery.data?.map((tenant) => (
-                  <button
+                  <Button
                     key={tenant.tenant_id}
                     type="button"
+                    variant={tenant.tenant_id === normalizedTenantId ? "default" : "outline"}
                     onClick={() => {
                       setTenantInput(tenant.tenant_id);
                       setTenantId(tenant.tenant_id);
@@ -263,100 +290,100 @@ export function PlatformSubscriptionPage() {
                       setError("");
                     }}
                     className={[
-                      "shrink-0 rounded-md border px-3 py-2 text-left text-xs",
+                      "h-auto shrink-0 justify-start px-3 py-2 text-left text-xs",
                       tenant.tenant_id === normalizedTenantId
-                        ? "border-zinc-900 bg-zinc-950 text-white"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300",
+                        ? "text-white"
+                        : "text-zinc-700",
                     ].join(" ")}
                   >
                     <div className="font-mono">{tenant.tenant_id}</div>
                     <div className="mt-1 opacity-80">
                       {tenant.active_count}/{tenant.entitlement_count} 已开通
                     </div>
-                  </button>
+                  </Button>
                 ))
               )}
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">模块</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3">有效期</th>
-                  <th className="px-4 py-3">额度</th>
-                  <th className="px-4 py-3">用量</th>
-                  <th className="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-zinc-50 text-xs font-semibold uppercase text-zinc-500 hover:bg-zinc-50">
+                <TableHead className="px-4 py-3">模块</TableHead>
+                <TableHead className="px-4 py-3">状态</TableHead>
+                <TableHead className="px-4 py-3">有效期</TableHead>
+                <TableHead className="px-4 py-3">额度</TableHead>
+                <TableHead className="px-4 py-3">用量</TableHead>
+                <TableHead className="px-4 py-3 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
                 {query.isLoading ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={6}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
                       加载中...
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (summary?.entitlements ?? []).length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-zinc-500" colSpan={6}>
+                  <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
                       暂无模块
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   summary?.entitlements.map((view) => (
-                    <tr key={view.module.code} className="align-top">
-                      <td className="px-4 py-3">
+                    <TableRow key={view.module.code} className="align-top">
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">{view.module.name}</div>
                         <div className="font-mono text-xs text-zinc-500">
                           {view.module.code}
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <StatusBadge view={view} />
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-zinc-700">
                         {formatDate(view.entitlement?.expires_at)}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-zinc-600">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 font-mono text-xs text-zinc-600">
                         {formatRecord(view.limits)}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-zinc-600">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 font-mono text-xs text-zinc-600">
                         {formatRecord(view.used)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
                           type="button"
+                          variant="outline"
                           onClick={() => beginEdit(view)}
-                          className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300"
+                          className="h-8 gap-2 px-3"
                         >
                           <Power className="size-4" />
                           配置
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <Card>
             <form onSubmit={handlePlanApply}>
-              <div className="mb-4">
-                <h2 className="text-base font-semibold text-zinc-950">套餐开通</h2>
-                <p className="mt-1 text-xs text-zinc-500">
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-base">套餐开通</CardTitle>
+                <CardDescription className="mt-1 text-xs">
                   当前套餐：{summary?.current_plan?.plan.name ?? "未配置"}
-                </p>
-              </div>
-              <label className="mb-3 block text-xs font-medium text-zinc-500">
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4">
+              <Label className="mb-3 block text-xs text-zinc-500">
                 套餐
-                <select
+                <Select
                   value={selectedPlan}
                   onChange={(event) => setSelectedPlan(event.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                  className="mt-1 h-9"
                 >
                   <option value="">选择套餐</option>
                   {(planQuery.data ?? []).map((bundle) => (
@@ -364,183 +391,191 @@ export function PlatformSubscriptionPage() {
                       {bundle.plan.name}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label className="mb-3 block text-xs font-medium text-zinc-500">
+                </Select>
+              </Label>
+              <Label className="mb-3 block text-xs text-zinc-500">
                 过期时间
-                <input
+                <Input
                   type="datetime-local"
                   value={planExpiresAt}
                   onChange={(event) => setPlanExpiresAt(event.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                  className="mt-1 h-9"
                 />
-              </label>
-              <button
+              </Label>
+              <Button
                 type="submit"
                 disabled={!normalizedTenantId || !selectedPlan || applyingPlan}
-                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                className="h-9 w-full gap-2 px-3"
               >
                 {applyingPlan ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
                 应用套餐
-              </button>
+              </Button>
+              </CardContent>
             </form>
-          </div>
+          </Card>
 
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+        <Card>
           <form onSubmit={handleSave}>
-            <div className="mb-4">
-              <h2 className="text-base font-semibold text-zinc-950">模块开通</h2>
-            </div>
-            <label className="mb-3 block text-xs font-medium text-zinc-500">
+            <CardHeader className="p-4 pb-0">
+              <CardTitle className="text-base">模块开通</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+            <Label className="mb-3 block text-xs text-zinc-500">
               模块
-              <input
+              <Input
                 value={editingModule}
                 readOnly
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-900"
+                className="mt-1 h-9 bg-zinc-50 font-mono"
                 placeholder="选择模块"
               />
-            </label>
-            <label className="mb-3 block text-xs font-medium text-zinc-500">
+            </Label>
+            <Label className="mb-3 block text-xs text-zinc-500">
               状态
-              <select
+              <Select
                 value={status}
                 onChange={(event) => setStatus(event.target.value as SubscriptionStatus)}
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                className="mt-1 h-9"
               >
                 {STATUS_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {STATUS_LABEL[option]}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="mb-3 block text-xs font-medium text-zinc-500">
+              </Select>
+            </Label>
+            <Label className="mb-3 block text-xs text-zinc-500">
               过期时间
-              <input
+              <Input
                 type="datetime-local"
                 value={expiresAt}
                 onChange={(event) => setExpiresAt(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                className="mt-1 h-9"
               />
-            </label>
+            </Label>
             <div className="mb-3">
-              <label
+              <Label
                 htmlFor="subscription-limits-json"
-                className="block text-xs font-medium text-zinc-500"
+                className="block text-xs text-zinc-500"
               >
                 额度 JSON
-              </label>
+              </Label>
               {editingModule === "oss_storage" ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {OSS_STORAGE_LIMIT_PRESETS.map((preset) => (
-                    <button
+                    <Button
                       key={preset.label}
                       type="button"
+                      variant="outline"
                       onClick={() =>
                         setLimitsText(setStorageLimitPresetBytes(limitsText, preset.bytes))
                       }
-                      className="inline-flex h-8 items-center rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:border-zinc-300"
+                      className="h-8 px-3 text-xs"
                     >
                       {preset.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : null}
-              <textarea
+              <Textarea
                 id="subscription-limits-json"
                 value={limitsText}
                 onChange={(event) => setLimitsText(event.target.value)}
                 rows={7}
-                className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 font-mono text-xs text-zinc-900"
+                className="mt-1 font-mono text-xs"
               />
             </div>
-            <button
+            <Button
               type="submit"
               disabled={!editingModule || !normalizedTenantId || saving}
-              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className="h-9 w-full gap-2 px-3"
             >
               {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
               保存配置
-            </button>
+            </Button>
+            </CardContent>
           </form>
-          <div className="my-4 border-t border-zinc-200" />
-          <div className="mb-3">
-            <h2 className="text-base font-semibold text-zinc-950">用量调整</h2>
-          </div>
+          <Separator className="my-4" />
+          <CardHeader className="p-4 pb-0">
+            <CardTitle className="text-base">用量调整</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
           <form onSubmit={handleUsageSave} className="space-y-3">
-            <label className="block text-xs font-medium text-zinc-500">
+            <Label className="block text-xs text-zinc-500">
               周期
-              <input
+              <Input
                 value={usagePeriod}
                 onChange={(event) => setUsagePeriod(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 font-mono text-sm text-zinc-900"
+                className="mt-1 h-9 font-mono"
                 placeholder="YYYY-MM"
               />
-            </label>
-            <label className="block text-xs font-medium text-zinc-500">
+            </Label>
+            <Label className="block text-xs text-zinc-500">
               指标
-              <input
+              <Input
                 value={usageMetric}
                 onChange={(event) => setUsageMetric(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 font-mono text-sm text-zinc-900"
+                className="mt-1 h-9 font-mono"
                 placeholder="design_jobs"
               />
-            </label>
-            <label className="block text-xs font-medium text-zinc-500">
+            </Label>
+            <Label className="block text-xs text-zinc-500">
               已用
-              <input
+              <Input
                 type="number"
                 min={0}
                 value={usageUsed}
                 onChange={(event) => setUsageUsed(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                className="mt-1 h-9"
               />
-            </label>
-            <label className="block text-xs font-medium text-zinc-500">
+            </Label>
+            <Label className="block text-xs text-zinc-500">
               原因
-              <input
+              <Input
                 value={usageReason}
                 onChange={(event) => setUsageReason(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                className="mt-1 h-9"
                 placeholder="运营调整"
               />
-            </label>
+            </Label>
             <div className="grid grid-cols-2 gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 disabled={!editingModule || !normalizedTenantId || savingUsage}
                 onClick={() => setUsageUsed("0")}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:border-zinc-300 disabled:cursor-not-allowed disabled:text-zinc-400"
+                className="h-9 px-3"
               >
                 重置为 0
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={!editingModule || !normalizedTenantId || savingUsage}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                className="h-9 gap-2 px-3"
               >
                 {savingUsage ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
                 保存用量
-              </button>
+              </Button>
             </div>
           </form>
-        </div>
+          </CardContent>
+        </Card>
         </div>
       </section>
       {normalizedTenantId ? (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-zinc-950">审计日志</h2>
-            <button
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between p-4 pb-0">
+            <CardTitle className="text-base">审计日志</CardTitle>
+            <Button
               type="button"
+              variant="outline"
               onClick={() => void auditQuery.refetch()}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-200 px-3 text-xs font-medium text-zinc-700 hover:border-zinc-300"
+              className="h-8 gap-2 px-3 text-xs"
             >
               <RefreshCw className={`size-3.5 ${auditQuery.isFetching ? "animate-spin" : ""}`} />
               刷新
-            </button>
-          </div>
-          <div className="divide-y divide-zinc-100 text-sm">
+            </Button>
+          </CardHeader>
+          <CardContent className="divide-y divide-zinc-100 p-4 text-sm">
             {auditQuery.isLoading ? (
               <div className="py-3 text-zinc-500">加载中...</div>
             ) : (auditQuery.data ?? []).length === 0 ? (
@@ -562,8 +597,8 @@ export function PlatformSubscriptionPage() {
                 </div>
               ))
             )}
-          </div>
-        </section>
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );

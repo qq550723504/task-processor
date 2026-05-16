@@ -1,4 +1,4 @@
-import { Button } from "@/components/shared/button";
+import { Button } from "@/components/ui/button";
 
 type FinalReviewSubmitAction = "publish" | "save_draft";
 
@@ -114,7 +114,7 @@ export function FinalReviewPublishConfirmCard({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button tone="secondary" onClick={onCancel} type="button">
+          <Button variant="secondary" onClick={onCancel} type="button">
             取消
           </Button>
           <Button disabled={isSubmitting} onClick={onConfirm} type="button">
@@ -162,7 +162,7 @@ export function FinalReviewSubmitActions({
         </p>
       </div>
       <Button
-        tone="secondary"
+        variant="secondary"
         disabled={isSaving}
         onClick={() =>
           onSaveFinalDraft?.({
@@ -175,7 +175,7 @@ export function FinalReviewSubmitActions({
         确认最终草稿
       </Button>
       <Button
-        tone="secondary"
+        variant="secondary"
         disabled={!confirmed || !ready || isSubmitting}
         onClick={() => onSubmit?.("save_draft")}
       >

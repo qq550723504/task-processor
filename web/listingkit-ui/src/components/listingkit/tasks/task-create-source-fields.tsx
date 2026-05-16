@@ -5,7 +5,11 @@ import type {
   UseFormSetValue,
 } from "react-hook-form";
 
-import { Button } from "@/components/shared/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   parseImageUrls,
   type FormValues,
@@ -25,11 +29,11 @@ export function TaskTitleField({
   titleCopy: { label: string; helper: string };
 }) {
   return (
-    <label className="block space-y-2">
+    <Label className="block space-y-2">
       <span className="text-sm font-medium text-zinc-700">{titleCopy.label}</span>
-      <input
+      <Input
         aria-label="商品标题"
-        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        className="rounded-2xl px-4 py-3"
         placeholder="例如：女士针织开衫"
         {...registration}
         ref={(element) => {
@@ -42,11 +46,13 @@ export function TaskTitleField({
         <p className="text-sm text-red-600">{errors.text.message}</p>
       ) : null}
       {fieldIssues?.includes("text") ? (
-        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          上一次任务失败在文案质量不足，请补充更完整的标题或描述。
-        </p>
+        <Alert variant="warning">
+          <AlertDescription>
+            上一次任务失败在文案质量不足，请补充更完整的标题或描述。
+          </AlertDescription>
+        </Alert>
       ) : null}
-    </label>
+    </Label>
   );
 }
 
@@ -82,11 +88,11 @@ export function TaskImageUrlField({
   variant: "default" | "sds";
 }) {
   return (
-    <label className="block space-y-2">
+    <Label className="block space-y-2">
       <span className="text-sm font-medium text-zinc-700">图片链接</span>
       <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-4">
         <div className="flex flex-wrap items-center gap-3">
-          <input
+          <Input
             aria-label="上传图片"
             className="block text-sm text-zinc-600 file:mr-4 file:rounded-xl file:border-0 file:bg-zinc-950 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
             multiple
@@ -129,9 +135,9 @@ export function TaskImageUrlField({
           </p>
         ) : null}
       </div>
-      <textarea
+      <Textarea
         aria-label="图片链接"
-        className={`w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 ${
+        className={`rounded-2xl px-4 py-3 ${
           variant === "sds" ? "min-h-28" : "min-h-40"
         }`}
         placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg"}
@@ -149,11 +155,13 @@ export function TaskImageUrlField({
         <p className="text-sm text-red-600">{uploadImages.error.message}</p>
       ) : null}
       {fieldIssues?.includes("imageUrls") ? (
-        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          上一次任务失败在图片覆盖不足，请至少补充 3 张清晰商品图。
-        </p>
+        <Alert variant="warning">
+          <AlertDescription>
+            上一次任务失败在图片覆盖不足，请至少补充 3 张清晰商品图。
+          </AlertDescription>
+        </Alert>
       ) : null}
-    </label>
+    </Label>
   );
 }
 
@@ -167,11 +175,11 @@ export function TaskProductUrlField({
   registration: UseFormRegisterReturn<"productUrl">;
 }) {
   return (
-    <label className="block space-y-2">
+    <Label className="block space-y-2">
       <span className="text-sm font-medium text-zinc-700">商品链接</span>
-      <input
+      <Input
         aria-label="商品链接"
-        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+        className="rounded-2xl px-4 py-3"
         placeholder="https://detail.1688.com/offer/123456789.html"
         {...registration}
         ref={(element) => {
@@ -183,10 +191,12 @@ export function TaskProductUrlField({
         适合已有原始商品页的场景。支持 1688 等商品链接，系统会从原始商品资料开始处理。
       </p>
       {fieldIssues?.includes("productUrl") ? (
-        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          上一次任务缺少足够强的商品来源，建议补充商品链接后再重试。
-        </p>
+        <Alert variant="warning">
+          <AlertDescription>
+            上一次任务缺少足够强的商品来源，建议补充商品链接后再重试。
+          </AlertDescription>
+        </Alert>
       ) : null}
-    </label>
+    </Label>
   );
 }

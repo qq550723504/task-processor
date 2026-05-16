@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { ArrowRight, Boxes, Clock, LoaderCircle, Plus, RefreshCw } from "lucide-react";
 
-import { Button } from "@/components/shared/button";
-import { Card } from "@/components/shared/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   buildFacetSummarySections,
@@ -59,7 +61,7 @@ export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
         </p>
       </div>
       <div className="flex flex-wrap gap-3">
-        <Button tone="secondary" onClick={onRefresh}>
+        <Button variant="secondary" onClick={onRefresh}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
@@ -227,8 +229,8 @@ export function TaskListFilters({
   return (
     <Card className="border-white/70 bg-white/82 p-4">
       <div className="flex flex-wrap gap-3">
-        <select
-          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+        <Select
+          className="h-11 w-auto rounded-2xl px-4 text-sm"
           value={status}
           onChange={(event) => updateFilter("status", event.target.value)}
         >
@@ -237,9 +239,9 @@ export function TaskListFilters({
               {option.label}
             </option>
           ))}
-        </select>
-        <select
-          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+        </Select>
+        <Select
+          className="h-11 w-auto rounded-2xl px-4 text-sm"
           value={sheinWorkflowStatus}
           onChange={(event) =>
             updateFilter("shein_workflow_status", event.target.value)
@@ -250,9 +252,9 @@ export function TaskListFilters({
               {option.label}
             </option>
             ))}
-        </select>
-        <select
-          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+        </Select>
+        <Select
+          className="h-11 w-auto rounded-2xl px-4 text-sm"
           value={sheinWorkQueue}
           onChange={(event) => updateFilter("shein_work_queue", event.target.value)}
         >
@@ -261,9 +263,9 @@ export function TaskListFilters({
               {option.label}
             </option>
           ))}
-        </select>
-        <select
-          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+        </Select>
+        <Select
+          className="h-11 w-auto rounded-2xl px-4 text-sm"
           value={sheinActionQueue}
           onChange={(event) => updateFilter("shein_action_queue", event.target.value)}
         >
@@ -272,9 +274,9 @@ export function TaskListFilters({
               {option.label}
             </option>
           ))}
-        </select>
-        <select
-          className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+        </Select>
+        <Select
+          className="h-11 w-auto rounded-2xl px-4 text-sm"
           value={platform}
           onChange={(event) => updateFilter("platform", event.target.value)}
         >
@@ -283,10 +285,10 @@ export function TaskListFilters({
               {option.label}
             </option>
           ))}
-        </select>
+        </Select>
         {blockerOptions.length > 1 ? (
-          <select
-            className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+          <Select
+            className="h-11 w-auto rounded-2xl px-4 text-sm"
             value={sheinBlockerKey}
             onChange={(event) => updateFilter("shein_blocker_key", event.target.value)}
           >
@@ -295,11 +297,11 @@ export function TaskListFilters({
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         ) : null}
         {warningOptions.length > 1 ? (
-          <select
-            className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+          <Select
+            className="h-11 w-auto rounded-2xl px-4 text-sm"
             value={sheinWarningKey}
             onChange={(event) => updateFilter("shein_warning_key", event.target.value)}
           >
@@ -308,7 +310,7 @@ export function TaskListFilters({
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         ) : null}
         <div className="ml-auto flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
           <Boxes className="h-4 w-4" />
@@ -321,18 +323,20 @@ export function TaskListFilters({
             当前筛选
           </p>
           {activeFilters.map((filter) => (
-            <button
+            <Button
               key={filter.key}
               type="button"
+              variant="outline"
               onClick={() => updateFilter(filter.key, "")}
-              className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-950 hover:text-zinc-950"
+              className="h-auto rounded-full bg-zinc-50 px-3 py-1 text-xs text-zinc-700"
             >
               {filter.label}
-            </button>
+            </Button>
           ))}
           {activeFilters.length > 1 ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={() =>
                 updateFilters({
                   platform: null,
@@ -344,10 +348,10 @@ export function TaskListFilters({
                   status: null,
                 })
               }
-              className="text-xs font-medium text-zinc-500 transition hover:text-zinc-900"
+              className="h-auto px-2 py-1 text-xs text-zinc-500"
             >
               清空全部
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -360,15 +364,16 @@ export function TaskListFilters({
                   {section.title}
                 </p>
                 {activeFacetValueByKey[section.filterKey] ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     onClick={() =>
                       updateFilter(section.filterKey, "")
                     }
-                    className="text-[11px] font-medium text-zinc-500 transition hover:text-zinc-900"
+                    className="h-auto px-2 py-1 text-[11px] text-zinc-500"
                   >
                     清除
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -376,21 +381,18 @@ export function TaskListFilters({
                   const active =
                     activeFacetValueByKey[section.filterKey] === entry.key;
                   return (
-                    <button
+                    <Button
                       key={entry.key}
                       type="button"
+                      variant={active ? "default" : "outline"}
                       onClick={() =>
                         applySummaryFilter(section.filterKey, entry.key)
                       }
                       aria-pressed={active}
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                        active
-                          ? "border-zinc-950 bg-zinc-950 text-white"
-                          : queueTone(entry.severity)
-                      }`}
+                      className={`h-auto rounded-full px-3 py-1 text-xs ${active ? "text-white" : queueTone(entry.severity)}`}
                     >
                       {entry.label} · {entry.count}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -436,7 +438,7 @@ export function TaskListContent({
         title="任务列表加载失败"
         description="后端列表接口暂时不可用，可以刷新重试。"
         action={
-          <Button tone="secondary" onClick={onRefresh}>
+          <Button variant="secondary" onClick={onRefresh}>
             <RefreshCw className="mr-2 h-4 w-4" />
             刷新
           </Button>
@@ -477,14 +479,14 @@ export function TaskListContent({
             </div>
             <div className="flex items-center gap-2">
               <Button
-                tone="secondary"
+                variant="secondary"
                 disabled={page <= 1}
                 onClick={() => updatePage(page - 1)}
               >
                 上一页
               </Button>
               <Button
-                tone="secondary"
+                variant="secondary"
                 disabled={page >= totalPages}
                 onClick={() => updatePage(page + 1)}
               >
@@ -524,49 +526,62 @@ function TaskRow({
       <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${statusTone(task.status)}`}
+            <Badge
+              className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] ${statusTone(task.status)}`}
+              variant="outline"
             >
               {taskStatusLabel(task.status)}
-            </span>
+            </Badge>
             {task.sds_sync_status ? (
-              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">
+              <Badge
+                className="rounded-full border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-teal-700"
+                variant="outline"
+              >
                 SDS {task.sds_sync_status}
-              </span>
+              </Badge>
             ) : null}
             {task.shein_workflow_status ? (
-              <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-700">
+              <Badge
+                className="rounded-full border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-orange-700"
+                variant="outline"
+              >
                 {sheinWorkflowStatusLabel(task.shein_workflow_status)}
-              </span>
+              </Badge>
             ) : null}
             {task.shein_work_queue ? (
-              <span
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${queueTone(workQueueSeverity)}`}
+              <Badge
+                className={`rounded-full px-2.5 py-1 text-[11px] ${queueTone(workQueueSeverity)}`}
+                variant="outline"
               >
                 {sheinWorkQueueLabel(task.shein_work_queue, taxonomy)}
-              </span>
+              </Badge>
             ) : null}
             {task.shein_action_queue ? (
-              <span
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${queueTone(actionQueueSeverity)}`}
+              <Badge
+                className={`rounded-full px-2.5 py-1 text-[11px] ${queueTone(actionQueueSeverity)}`}
+                variant="outline"
               >
                 {sheinActionQueueLabel(task.shein_action_queue, taxonomy)}
-              </span>
+              </Badge>
             ) : null}
             {task.shein_submission_remote_status ? (
-              <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+              <Badge
+                className="rounded-full border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-sky-700"
+                variant="outline"
+              >
                 {sheinSubmissionRemoteStatusLabel(
                   task.shein_submission_remote_status,
                 )}
-              </span>
+              </Badge>
             ) : null}
             {(task.platforms ?? []).map((platform) => (
-              <span
+              <Badge
                 key={platform}
-                className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-600"
+                className="rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]"
+                variant="neutral"
               >
                 {platform}
-              </span>
+              </Badge>
             ))}
           </div>
           <h2 className="mt-3 truncate text-xl font-semibold tracking-tight text-zinc-950">

@@ -1,4 +1,4 @@
-import { Card } from "@/components/shared/card";
+import { Card } from "@/components/ui/card";
 import { formatSDSPrice } from "@/lib/sds/format";
 import type { SheinPreviewPayload } from "@/lib/types/listingkit";
 
