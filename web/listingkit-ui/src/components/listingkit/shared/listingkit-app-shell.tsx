@@ -412,10 +412,10 @@ export function ListingKitAppShell({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <Link href="/api/zitadel-auth/logout">
+                <a href="/api/zitadel-auth/logout">
                   <LogOut data-icon="inline-start" />
                   <span>退出登录</span>
-                </Link>
+                </a>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
