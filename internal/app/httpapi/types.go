@@ -287,8 +287,9 @@ type sdsLoginRouteHandler interface {
 }
 
 type routeDescriptor struct {
-	Method  string
-	Path    string
-	Module  string
-	Handler gin.HandlerFunc
+	Method     string
+	Path       string
+	Module     string
+	Permission string
+	Handler    gin.HandlerFunc
 }

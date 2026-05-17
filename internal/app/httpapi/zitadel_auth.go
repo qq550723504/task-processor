@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 )
 
@@ -57,6 +58,7 @@ type zitadelAuthorizationConfig struct {
 type listingKitZitadelRuntimeConfig struct {
 	AuthConfig  zitadelAuthConfig
 	AuthzConfig zitadelAuthorizationConfig
+	Authorizer  *authz.ListingKitAuthorizer
 }
 
 var (
@@ -109,6 +111,24 @@ func currentListingKitZitadelRuntimeConfig() *listingKitZitadelRuntimeConfig {
 	}
 	cfg := *listingKitZitadelRuntimeConfigV
 	return &cfg
+}
+
+func ConfigureListingKitAuthorization(platformAdminUsers []string, platformAdminRoles []string) error {
+	listingKitZitadelRuntimeConfigMu.Lock()
+	defer listingKitZitadelRuntimeConfigMu.Unlock()
+
+	current := listingKitZitadelRuntimeConfigV
+	if current == nil {
+		current = &listingKitZitadelRuntimeConfig{}
+	}
+	authorizer, err := authz.NewListingKitAuthorizer(platformAdminUsers, platformAdminRoles)
+	if err != nil {
+		return err
+	}
+	next := *current
+	next.Authorizer = authorizer
+	listingKitZitadelRuntimeConfigV = &next
+	return nil
 }
 
 func newListingKitZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
@@ -265,38 +285,76 @@ func listingKitRouteRequiresZitadelAuth(route routeDescriptor) bool {
 		route.Module == "sds-login"
 }
 
-func listingKitRouteRequiredRoles(route routeDescriptor) []string {
-	_ = route
-	return nil
+func listingKitRouteRequiredPermission(route routeDescriptor) string {
+	if value := strings.TrimSpace(route.Permission); value != "" {
+		return value
+	}
+	switch route.Module {
+	case "listing-kit-admin":
+		if route.Method == http.MethodGet {
+			return authz.PermissionListingKitAdminRead
+		}
+		return authz.PermissionListingKitAdminWrite
+	case "listing-kit-platform-admin":
+		return authz.PermissionListingKitPlatformAdm
+	default:
+		return ""
+	}
 }
 
 func newListingKitRoleMiddleware(route routeDescriptor) gin.HandlerFunc {
-	requiredRoles := listingKitRouteRequiredRoles(route)
-	if len(requiredRoles) == 0 {
+	requiredPermission := listingKitRouteRequiredPermission(route)
+	if requiredPermission == "" {
 		return nil
 	}
-	return func(c *gin.Context) {
-		userRoles := parseRoleHeader(c.GetHeader("X-User-Roles"))
-		for _, requiredRole := range requiredRoles {
-			if _, ok := userRoles[requiredRole]; ok {
-				c.Next()
-				return
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	var authorizer *authz.ListingKitAuthorizer
+	if runtimeCfg != nil {
+		authorizer = runtimeCfg.Authorizer
+	}
+	if authorizer == nil {
+		var err error
+		authorizer, err = authz.NewListingKitAuthorizer(nil, nil)
+		if err != nil {
+			return func(c *gin.Context) {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"error":   "listingkit_authorization_unavailable",
+					"message": "ListingKit authorization is not available",
+				})
 			}
 		}
+	}
+	return func(c *gin.Context) {
+		userRoles := roleHeaderValues(c.GetHeader("X-User-Roles"))
+		if len(userRoles) == 0 {
+			userRoles = roleHeaderValues(c.GetHeader("X-Zitadel-Roles"))
+		}
+		if authorizer.Authorize(c.GetHeader("X-User-ID"), userRoles, requiredPermission) {
+			c.Next()
+			return
+		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error":          "listingkit_role_denied",
-			"message":        "ZITADEL role is not allowed to access this ListingKit route",
-			"required_roles": requiredRoles,
+			"error":               "listingkit_permission_denied",
+			"message":             "ZITADEL identity is not allowed to access this ListingKit route",
+			"required_permission": requiredPermission,
 		})
 	}
 }
 
-func parseRoleHeader(value string) map[string]struct{} {
-	roles := map[string]struct{}{}
+func roleHeaderValues(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	roles := make([]string, 0, 4)
+	seen := map[string]struct{}{}
 	for _, item := range strings.Split(value, ",") {
 		role := strings.TrimSpace(item)
 		if role != "" {
-			roles[role] = struct{}{}
+			if _, ok := seen[role]; ok {
+				continue
+			}
+			seen[role] = struct{}{}
+			roles = append(roles, role)
 		}
 	}
 	return roles

@@ -257,7 +257,7 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthAllowsAuthenticatedUserForOperationalAdminRoutes(t *testing.T) {
+func TestListingKitZitadelAuthRejectsAuthenticatedUserForOperationalAdminRoutesWithoutRole(t *testing.T) {
 	zitadel := newZitadelRoleServer(t)
 	defer zitadel.Close()
 
@@ -285,8 +285,11 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForOperationalAdminRoutes(t
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "listingkit_permission_denied") {
+		t.Fatalf("body = %s, want listingkit_permission_denied", resp.Body.String())
 	}
 }
 
@@ -488,7 +491,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForRuleAdminRoutes(t *testi
 	}
 }
 
-func TestListingKitZitadelAuthAllowsAuthenticatedUserForPlatformRoutes(t *testing.T) {
+func TestListingKitZitadelAuthAllowsListingKitAdminForPlatformRoutes(t *testing.T) {
 	zitadel := newZitadelRoleServer(t, "listingkit_admin")
 	defer zitadel.Close()
 
@@ -518,6 +521,42 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForPlatformRoutes(t *testin
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthRejectsOperatorForPlatformRoutes(t *testing.T) {
+	zitadel := newZitadelRoleServer(t, "listingkit_operator")
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/platform/subscriptions",
+			Module: "listing-kit-platform-admin",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/platform/subscriptions", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "listingkit_permission_denied") {
+		t.Fatalf("body = %s, want listingkit_permission_denied", resp.Body.String())
 	}
 }
 

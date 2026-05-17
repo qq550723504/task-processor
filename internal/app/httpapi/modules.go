@@ -736,6 +736,9 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	listingkit.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
 	listingadmin.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
 	ConfigureListingKitZitadelAuth(deps.cfg.ListingKit.Zitadel)
+	if err := ConfigureListingKitAuthorization(deps.cfg.ListingKit.PlatformAdminUsers, deps.cfg.ListingKit.PlatformAdminRoles); err != nil {
+		return nil, fmt.Errorf("configure listing kit authorization: %w", err)
+	}
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Repository:              repo,
