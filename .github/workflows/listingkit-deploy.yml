@@ -1,0 +1,185 @@
+name: ListingKit Deploy
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/listingkit-deploy.yml"
+      - "cmd/product-listing-api/**"
+      - "config/**"
+      - "deployments/docker/Dockerfile.product-listing-api"
+      - "deployments/docker/Dockerfile.listingkit-ui"
+      - "deployments/kubernetes/listingkit-workbench/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
+      - "prompts/**"
+      - "scripts/build-push-deploy-listingkit-workbench.ps1"
+      - "web/listingkit-ui/**"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag override. Defaults to the current commit SHA."
+        required: false
+        type: string
+      publish_latest:
+        description: "Also push the latest tag for both images."
+        required: false
+        default: false
+        type: boolean
+      skip_apply:
+        description: "Skip kubectl apply -k before updating deployment images."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: listingkit-deploy-production
+  cancel-in-progress: false
+
+env:
+  GO_VERSION_FILE: go.mod
+  NODE_VERSION: "22"
+  REGISTRY: docker.io
+  DOCKERHUB_NAMESPACE: xuwei190
+  API_IMAGE_NAME: task-processor-product-listing-api
+  UI_IMAGE_NAME: task-processor-listingkit-ui
+  K8S_NAMESPACE: task-processor
+  K8S_OVERLAY_PATH: deployments/kubernetes/listingkit-workbench/overlays/prod
+
+jobs:
+  deploy:
+    name: Build and Deploy ListingKit
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://pod.shuomiai.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.image_tag }}" ]]; then
+            tag="${{ inputs.image_tag }}"
+          else
+            tag="${GITHUB_SHA::8}"
+          fi
+          publish_latest="false"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish_latest }}" == "true" ]]; then
+            publish_latest="true"
+          fi
+          api_image="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:$tag"
+          ui_image="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.UI_IMAGE_NAME }}:$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
+          echo "ui_image=$ui_image" >> "$GITHUB_OUTPUT"
+          {
+            echo "api_tags<<EOF"
+            echo "$api_image"
+            if [[ "$publish_latest" == "true" ]]; then
+              echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "ui_tags<<EOF"
+            echo "$ui_image"
+            if [[ "$publish_latest" == "true" ]]; then
+              echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.UI_IMAGE_NAME }}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: Run backend tests
+        run: |
+          go test ./internal/app/httpapi ./internal/listingkit
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/listingkit-ui/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web/listingkit-ui
+        run: npm ci
+
+      - name: Run frontend build
+        working-directory: web/listingkit-ui
+        run: npm run build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployments/docker/Dockerfile.product-listing-api
+          push: true
+          tags: ${{ steps.meta.outputs.api_tags }}
+          cache-from: type=gha,scope=listingkit-api
+          cache-to: type=gha,mode=max,scope=listingkit-api
+
+      - name: Build and push UI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployments/docker/Dockerfile.listingkit-ui
+          push: true
+          tags: ${{ steps.meta.outputs.ui_tags }}
+          cache-from: type=gha,scope=listingkit-ui
+          cache-to: type=gha,mode=max,scope=listingkit-ui
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Write kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Apply Kubernetes manifests
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
+        run: kubectl apply -k ${{ env.K8S_OVERLAY_PATH }}
+
+      - name: Update deployment images
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ steps.meta.outputs.api_image }}
+          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/listingkit-ui listingkit-ui=${{ steps.meta.outputs.ui_image }}
+
+      - name: Wait for rollout
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/listingkit-ui --timeout=5m
+
+      - name: Show running images
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} get deployment product-listing-api listingkit-ui -o jsonpath='{range .items[*]}{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\n"}{end}'

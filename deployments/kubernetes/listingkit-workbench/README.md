@@ -97,7 +97,46 @@ The Go API enforces the same role model as the sidebar. If a user can sign in
 but receives `listingkit_role_denied`, confirm the OIDC runtime uses the printed
 `ZITADEL_SCOPES` value so access tokens contain the ZITADEL project role claim.
 
-## Deploy
+## CI/CD deploy
+
+GitHub Actions is now the preferred release path for ListingKit Workbench.
+
+Workflow file:
+
+- [D:/code/task-processor/.github/workflows/listingkit-deploy.yml](D:/code/task-processor/.github/workflows/listingkit-deploy.yml)
+
+Trigger rules:
+
+- push to `master`: run backend tests, frontend build, build/push both images, then deploy to K3S
+- manual dispatch: optional custom image tag, optional `latest` publish, optional `skip_apply`
+
+Required GitHub repository secrets:
+
+```text
+DOCKERHUB_USERNAME
+DOCKERHUB_TOKEN
+KUBE_CONFIG
+```
+
+`KUBE_CONFIG` should be the full kubeconfig content for the target cluster, not a path.
+
+Recommended GitHub environment setup:
+
+```text
+Environment name: production
+Environment URL:  https://pod.shuomiai.com
+```
+
+If you want manual approval before production deployment, add protection rules to the `production` environment in GitHub.
+
+The workflow uses:
+
+- image tag: current commit short SHA by default
+- Docker Hub namespace: `xuwei190`
+- Kubernetes namespace: `task-processor`
+- overlay: `deployments/kubernetes/listingkit-workbench/overlays/prod`
+
+## Manual deploy fallback
 
 ```powershell
 .\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1 -PublishLatest
