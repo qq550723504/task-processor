@@ -27,7 +27,10 @@ export function ZitadelAuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    if (window.location.pathname.startsWith("/unauthorized")) {
+    if (
+      window.location.pathname.startsWith("/unauthorized") ||
+      window.location.pathname.startsWith("/login")
+    ) {
       setStatus("ready");
       return;
     }

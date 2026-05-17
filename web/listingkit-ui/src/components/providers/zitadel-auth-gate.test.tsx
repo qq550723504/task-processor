@@ -17,6 +17,22 @@ describe("ZitadelAuthGate", () => {
     vi.restoreAllMocks();
   });
 
+  it("bypasses session verification on the login page", () => {
+    vi.spyOn(window, "fetch");
+    window.history.replaceState({}, "", "/login?returnTo=%2F");
+
+    render(
+      <ZitadelAuthGate>
+        <div>login page</div>
+      </ZitadelAuthGate>,
+    );
+
+    expect(screen.getByText("login page")).toBeInTheDocument();
+    expect(window.fetch).not.toHaveBeenCalled();
+
+    window.history.replaceState({}, "", "/");
+  });
+
   it("provides verified session identity to descendants", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
