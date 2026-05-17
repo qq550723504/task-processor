@@ -40,7 +40,7 @@ describe("ListingKit ZITADEL proxy", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/api/zitadel-auth/login?returnTo=%2Flisting-kits%2Fshein%3Fstep%3Dgenerate",
+      "http://localhost/login?returnTo=%2Flisting-kits%2Fshein%3Fstep%3Dgenerate",
     );
   });
 

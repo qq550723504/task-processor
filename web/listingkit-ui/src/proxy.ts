@@ -70,7 +70,7 @@ function shouldBypassListingKitAuth() {
 
 function redirectToZitadelLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = "/api/zitadel-auth/login";
+  loginUrl.pathname = "/login";
   loginUrl.search = "";
   loginUrl.searchParams.set("returnTo", buildReturnTo(request));
   return NextResponse.redirect(loginUrl);
