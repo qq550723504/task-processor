@@ -4,6 +4,7 @@ import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioSavedBatch,
   SheinStudioCreatedTask,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
@@ -60,6 +61,29 @@ export type StudioSessionDetailResponse = {
     role_label?: string;
     product_image_urls?: string[];
     approved?: boolean;
+  }>;
+};
+
+type StudioBatchListResponse = {
+  items?: Array<{
+    id: string;
+    batch_name?: string;
+    prompt?: string;
+    style_count?: string;
+    variation_intensity?: SheinStudioVariationIntensity;
+    product_image_count?: string;
+    product_image_prompt?: string;
+    product_image_prompts?: SheinStudioProductImagePrompt[];
+    artwork_model?: SheinStudioArtworkModel;
+    image_strategy?: SheinStudioImageStrategy;
+    transparent_background?: boolean;
+    render_size_images_with_sds?: boolean;
+    shein_store_id?: string;
+    selection?: Record<string, unknown>;
+    approved_design_ids?: string[];
+    created_tasks?: SheinStudioCreatedTask[];
+    design_count?: number;
+    updated_at?: string;
   }>;
 };
 
@@ -204,6 +228,103 @@ export async function replaceSheinStudioSessionDesigns(
   );
 }
 
+export async function listSheinStudioSessionBatches(options?: StudioSessionRequestOptions) {
+  const payload = await apiRequest<unknown>("/studio/batches", {
+    signal: options?.signal,
+    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+  });
+  const response = payload as StudioBatchListResponse;
+  return (response.items ?? []).map(mapStudioBatchListItemToBatch);
+}
+
+export async function getSheinStudioSessionBatch(
+  batchId: string,
+  options?: StudioSessionRequestOptions,
+) {
+  const detail = parseStudioSessionDetailResponse(
+    await apiRequest<unknown>(`/studio/batches/${batchId}`, {
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    }),
+  );
+  return mapStudioSessionDetailToBatch(detail);
+}
+
+export async function upsertSheinStudioSessionBatch(
+  input: {
+    id?: string;
+    prompt: string;
+    styleCount: string;
+    variationIntensity?: SheinStudioVariationIntensity;
+    productImageCount?: string;
+    productImagePrompt?: string;
+    productImagePrompts?: SheinStudioProductImagePrompt[];
+    artworkModel?: string;
+    imageStrategy?: string;
+    selectedSdsImages?: SheinStudioSelectedSDSImage[];
+    transparentBackground?: boolean;
+    renderSizeImagesWithSds?: boolean;
+    sheinStoreId?: string;
+    selection?: SDSProductVariantSelection;
+    approvedDesignIds: string[];
+    createdTasks: SheinStudioCreatedTask[];
+    designs: SheinStudioGeneratedDesign[];
+  },
+  options?: StudioSessionRequestOptions,
+) {
+  const detail = parseStudioSessionDetailResponse(
+    await apiRequest<unknown>("/studio/batches", {
+      method: "POST",
+      body: {
+        id: input.id,
+        batch_name: deriveBatchName(input.prompt),
+        prompt: input.prompt,
+        style_count: input.styleCount,
+        variation_intensity: input.variationIntensity,
+        product_image_count: input.productImageCount,
+        product_image_prompt: input.productImagePrompt,
+        product_image_prompts: input.productImagePrompts,
+        artwork_model: input.artworkModel,
+        image_strategy: input.imageStrategy,
+        selected_sds_images: input.selectedSdsImages,
+        transparent_background: input.transparentBackground,
+        render_size_images_with_sds: input.renderSizeImagesWithSds,
+        shein_store_id: input.sheinStoreId,
+        selection: input.selection ? selectionToPayload(input.selection) : undefined,
+        approved_design_ids: input.approvedDesignIds,
+        created_tasks: input.createdTasks,
+        designs: input.designs.map((design) => ({
+          id: design.id,
+          image_url: design.imageUrl ?? design.dataUrl,
+          prompt: design.prompt,
+          revised_prompt: design.revisedPrompt,
+          image_model: design.imageModel,
+          transparent_background: design.transparentBackground,
+          variation_intensity: design.variationIntensity,
+          review_note: design.reviewNote,
+          role: design.role,
+          role_label: design.roleLabel,
+          product_image_urls: design.productImageUrls,
+        })),
+      },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    }),
+  );
+  return mapStudioSessionDetailToBatch(detail);
+}
+
+export async function deleteSheinStudioSessionBatch(
+  batchId: string,
+  options?: StudioSessionRequestOptions,
+) {
+  await apiRequest<unknown>(`/studio/batches/${batchId}`, {
+    method: "DELETE",
+    signal: options?.signal,
+    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+  });
+}
+
 export function mapStudioSessionDetailToDraft(
   detail: StudioSessionDetailResponse | null | undefined,
 ): SheinStudioDraft | null {
@@ -253,6 +374,20 @@ export function mapStudioSessionDetailToDraft(
     createdTasks: detail.session.created_tasks ?? [],
     updatedAt: detail.session.updated_at ?? new Date().toISOString(),
   });
+}
+
+export function mapStudioSessionDetailToBatch(
+  detail: StudioSessionDetailResponse | null | undefined,
+): SheinStudioSavedBatch | null {
+  const draft = mapStudioSessionDetailToDraft(detail);
+  if (!draft || !detail?.session?.id) {
+    return null;
+  }
+  return {
+    id: detail.session.id,
+    name: deriveBatchName(detail.session.prompt ?? draft.prompt),
+    ...draft,
+  };
 }
 
 export function getCachedStudioSessionId(selection?: SDSProductVariantSelection) {
@@ -340,6 +475,39 @@ function normalizeSelectionResponse(
     ),
     variants,
   };
+}
+
+function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse["items"]>[number]) {
+  return {
+    id: item.id,
+    name: item.batch_name ?? deriveBatchName(item.prompt ?? ""),
+    prompt: item.prompt ?? "",
+    styleCount: item.style_count ?? "1",
+    variationIntensity: item.variation_intensity ?? "medium",
+    productImageCount: item.product_image_count ?? "5",
+    productImagePrompt: item.product_image_prompt ?? "",
+    productImagePrompts: item.product_image_prompts ?? [],
+    artworkModel: item.artwork_model ?? "",
+    transparentBackground: item.transparent_background ?? false,
+    sheinStoreId: item.shein_store_id ?? "",
+    imageStrategy: item.image_strategy,
+    selectedSdsImages: normalizeSelectedSDSImages(undefined),
+    renderSizeImagesWithSds: item.render_size_images_with_sds ?? true,
+    selectionVariantId: normalizeSelectionResponse(item.selection)?.variantId,
+    selection: normalizeSelectionResponse(item.selection),
+    designs: [],
+    selectedIds: item.approved_design_ids ?? [],
+    createdTasks: item.created_tasks ?? [],
+    updatedAt: item.updated_at ?? new Date().toISOString(),
+  } satisfies SheinStudioSavedBatch;
+}
+
+function deriveBatchName(prompt: string) {
+  const trimmed = prompt.trim();
+  if (!trimmed) {
+    return "未命名批次";
+  }
+  return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
 }
 
 function asString(value: unknown) {

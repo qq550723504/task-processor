@@ -244,6 +244,10 @@ type studioSessionRouteHandler interface {
 	UpdateStudioSession(c *gin.Context)
 	ReplaceStudioSessionDesigns(c *gin.Context)
 	ListStudioSessionGallery(c *gin.Context)
+	ListStudioBatches(c *gin.Context)
+	GetStudioBatch(c *gin.Context)
+	UpsertStudioBatch(c *gin.Context)
+	DeleteStudioBatch(c *gin.Context)
 }
 
 type sdsCatalogRouteHandler interface {

@@ -209,6 +209,10 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 	if studioSessionHandler != nil {
 		routes = append(routes,
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/gallery", Module: "listing-kit-studio", Handler: studioSessionHandler.ListStudioSessionGallery},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batches", Module: "listing-kit-studio", Handler: studioSessionHandler.ListStudioBatches},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batches/:batch_id", Module: "listing-kit-studio", Handler: studioSessionHandler.GetStudioBatch},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches", Module: "listing-kit-studio", Handler: studioSessionHandler.UpsertStudioBatch},
+			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/studio/batches/:batch_id", Module: "listing-kit-studio", Handler: studioSessionHandler.DeleteStudioBatch},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions", Module: "listing-kit-studio", Handler: studioSessionHandler.EnsureStudioSession},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: studioSessionHandler.GetStudioSession},
 			routeDescriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: studioSessionHandler.UpdateStudioSession},

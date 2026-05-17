@@ -12,6 +12,10 @@ type StudioSessionHandlerService interface {
 	UpdateStudioSession(ctx context.Context, sessionID string, req *UpdateStudioSessionRequest) (*SheinStudioSessionDetail, error)
 	ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error)
 	ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error)
+	ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error)
+	GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error)
+	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*SheinStudioSessionDetail, error)
+	DeleteStudioBatch(ctx context.Context, batchID string) error
 }
 
 type StudioSessionHandler interface {
@@ -20,4 +24,8 @@ type StudioSessionHandler interface {
 	UpdateStudioSession(c *gin.Context)
 	ReplaceStudioSessionDesigns(c *gin.Context)
 	ListStudioSessionGallery(c *gin.Context)
+	ListStudioBatches(c *gin.Context)
+	GetStudioBatch(c *gin.Context)
+	UpsertStudioBatch(c *gin.Context)
+	DeleteStudioBatch(c *gin.Context)
 }

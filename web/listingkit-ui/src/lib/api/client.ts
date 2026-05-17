@@ -5,7 +5,6 @@ import {
   loadAsyncJobResumeEntry,
   saveAsyncJobResumeEntry,
 } from "@/lib/api/async-job-resume";
-import { stageAsyncJobRequestIfNeeded } from "@/lib/api/async-job-staging";
 import { fetchWithRetry } from "@/lib/api/fetch-retry";
 import {
   parseJsonResponse,
@@ -38,8 +37,6 @@ type AsyncJobResponse<T> = {
   error?: string;
   upstream_status?: number;
 };
-
-type AsyncJobSource = "backend" | "next";
 
 export class ApiError extends Error {
   constructor(
@@ -153,21 +150,13 @@ export async function apiAsyncRequest<T>(
   const resumeKey = buildAsyncJobResumeKey(path, body ?? {});
   const resumed = loadAsyncJobResumeEntry(resumeKey);
   let startedJobId = resumed?.jobId ?? "";
-  let startedJobSource: AsyncJobSource = resumed?.source ?? "next";
   let resumedFromStorage = Boolean(startedJobId);
 
   if (!startedJobId) {
     const backendJob = await startBackendAsyncJob<T>(path, body);
-    if (backendJob) {
-      startedJobId = backendJob.jobId;
-      startedJobSource = "backend";
-    } else {
-      const localJob = await startNextAsyncJob<T>(path, body);
-      startedJobId = localJob.jobId;
-      startedJobSource = "next";
-    }
+    startedJobId = backendJob.jobId;
     onJobStarted?.(startedJobId);
-    saveAsyncJobResumeEntry(resumeKey, startedJobId, startedJobSource);
+    saveAsyncJobResumeEntry(resumeKey, startedJobId, "backend");
   }
 
   const deadline = Date.now() + timeoutMs;
@@ -176,7 +165,7 @@ export async function apiAsyncRequest<T>(
     await sleep(2000);
     try {
       const response = await fetchWithRetry(
-        buildAsyncJobPollUrl(startedJobId, startedJobSource),
+        buildApiUrl(`/studio/async-jobs/${encodeURIComponent(startedJobId)}`),
         {
           headers: new Headers({
             Accept: "application/json",
@@ -288,27 +277,18 @@ function sleep(ms: number) {
 }
 
 async function startBackendAsyncJob<T>(path: string, body: unknown) {
-  let response: Response;
-  try {
-    response = await fetchWithRetry(
-      buildApiUrl("/studio/async-jobs"),
-      {
-        method: "POST",
-        headers: new Headers({
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        }),
-        body: JSON.stringify({ path, body }),
-      },
-      { retries: 0 },
-    );
-  } catch {
-    return null;
-  }
-
-  if (isBackendAsyncJobUnavailable(response.status)) {
-    return null;
-  }
+  const response = await fetchWithRetry(
+    buildApiUrl("/studio/async-jobs"),
+    {
+      method: "POST",
+      headers: new Headers({
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({ path, body }),
+    },
+    { retries: 0 },
+  );
 
   let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
   try {
@@ -335,59 +315,6 @@ async function startBackendAsyncJob<T>(path: string, body: unknown) {
   }
 
   return { jobId: payload.job_id };
-}
-
-async function startNextAsyncJob<T>(path: string, body: unknown) {
-  const staged = await stageAsyncJobRequestIfNeeded({ path, body });
-  const response = await fetchWithRetry(
-    staged.staged
-      ? "/api/listing-kits/async-jobs/staged"
-      : "/api/listing-kits/async-jobs",
-    {
-      method: staged.staged ? "PATCH" : "POST",
-      headers: new Headers({
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      }),
-      body: staged.staged
-        ? JSON.stringify({ stage_id: staged.stageId })
-        : JSON.stringify({ path, body: JSON.parse(staged.bodyText) }),
-    },
-  );
-  let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
-  try {
-    payload = await parseJsonResponse<AsyncJobResponse<T> & {
-      message?: string;
-    }>(response);
-  } catch (error) {
-    if (error instanceof ResponseJsonParseError) {
-      throw new ApiError(
-        "ListingKit async job start returned invalid JSON",
-        response.status,
-        { message: error.message },
-      );
-    }
-    throw error;
-  }
-  if (!response.ok || !payload?.job_id) {
-    throw new ApiError(
-      payload?.message ?? `ListingKit async job start failed: ${response.status}`,
-      response.status,
-      payload,
-    );
-  }
-  return { jobId: payload.job_id };
-}
-
-function buildAsyncJobPollUrl(jobId: string, source: AsyncJobSource) {
-  if (source === "backend") {
-    return buildApiUrl(`/studio/async-jobs/${encodeURIComponent(jobId)}`);
-  }
-  return `/api/listing-kits/async-jobs?id=${encodeURIComponent(jobId)}`;
-}
-
-function isBackendAsyncJobUnavailable(status: number) {
-  return status === 404 || status === 405 || status === 501;
 }
 
 async function parseApiJsonResponse(response: Response) {

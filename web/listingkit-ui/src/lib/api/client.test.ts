@@ -57,7 +57,7 @@ describe("apiAsyncRequest", () => {
 
   it("resumes an existing async job instead of starting a duplicate one", async () => {
     const key = buildAsyncJobResumeKey("/studio/designs", { prompt: "flag" });
-    saveAsyncJobResumeEntry(key, "job-123");
+    saveAsyncJobResumeEntry(key, "job-123", "backend");
 
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
@@ -89,59 +89,32 @@ describe("apiAsyncRequest", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "/api/listing-kits/async-jobs?id=job-123",
+      "/api/listing-kits/studio/async-jobs/job-123",
     );
   });
 
-  it("falls back to the Next async job endpoint when backend async jobs are unavailable", async () => {
+  it("fails when the backend async job endpoint rejects the request", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ message: "not found" }), {
-          status: 404,
+        new Response(JSON.stringify({ message: "backend unavailable" }), {
+          status: 503,
           headers: { "content-type": "application/json" },
         }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ job_id: "next-job-1", status: "running" }), {
-          status: 202,
-          headers: { "content-type": "application/json" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            job_id: "next-job-1",
-            status: "succeeded",
-            result: { images: [{ id: "1" }] },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        ),
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const promise = apiAsyncRequest<{ images: Array<{ id: string }> }>(
-      "/studio/designs",
-      {
-        body: { prompt: "flag" },
-        timeoutMs: 20_000,
-      },
-    );
+    const promise = apiAsyncRequest<{ images: Array<{ id: string }> }>("/studio/designs", {
+      body: { prompt: "flag" },
+      timeoutMs: 20_000,
+    });
 
-    await vi.advanceTimersByTimeAsync(2_100);
-
-    await expect(promise).resolves.toEqual({
-      images: [{ id: "1" }],
+    await expect(promise).rejects.toMatchObject({
+      message: "backend unavailable",
+      status: 503,
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/api/listing-kits/studio/async-jobs",
-    );
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/listing-kits/async-jobs");
-    expect(fetchMock.mock.calls[2]?.[0]).toBe(
-      "/api/listing-kits/async-jobs?id=next-job-1",
     );
   });
 

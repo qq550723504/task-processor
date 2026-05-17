@@ -59,6 +59,15 @@ func (r *GormRepository) UpdateSession(ctx context.Context, session *listingkit.
 	return applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "user_id").Save(session).Error
 }
 
+func (r *GormRepository) DeleteSession(ctx context.Context, sessionID string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := applySessionAccessScope(tx, ctx, "tenant_id", "").Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
+			return err
+		}
+		return applySessionAccessScope(tx, ctx, "tenant_id", "user_id").Where("id = ?", sessionID).Delete(&listingkit.SheinStudioSession{}).Error
+	})
+}
+
 func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []listingkit.SheinStudioDesign) error {
 	tenantID := tenantctx.TenantIDFromContext(ctx)
 	for i := range designs {
@@ -177,6 +186,21 @@ func applyTenantScope(db *gorm.DB, ctx context.Context, column string) *gorm.DB 
 		return db.Where("("+column+" = ? OR "+column+" = '' OR "+column+" IS NULL)", tenantID)
 	}
 	return db.Where(column+" = ?", tenantID)
+}
+
+func (r *GormRepository) ListBatchSessions(ctx context.Context, limit int) ([]listingkit.SheinStudioSession, error) {
+	if limit <= 0 {
+		limit = 24
+	}
+	var sessions []listingkit.SheinStudioSession
+	if err := applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "user_id").
+		Where("saved_as_batch = ?", true).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&sessions).Error; err != nil {
+		return nil, err
+	}
+	return sessions, nil
 }
 
 func applySessionAccessScope(db *gorm.DB, ctx context.Context, tenantColumn string, userColumn string) *gorm.DB {

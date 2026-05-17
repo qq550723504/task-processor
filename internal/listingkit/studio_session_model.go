@@ -177,6 +177,8 @@ type SheinStudioSession struct {
 	ApprovedDesignIDs       SheinStudioStringList             `json:"approved_design_ids,omitempty" gorm:"type:text"`
 	CreatedTaskIDs          SheinStudioStringList             `json:"created_task_ids,omitempty" gorm:"type:text"`
 	CreatedTasks            SheinStudioCreatedTaskList        `json:"created_tasks,omitempty" gorm:"type:text"`
+	SavedAsBatch            bool                              `json:"saved_as_batch,omitempty" gorm:"index"`
+	BatchName               string                            `json:"batch_name,omitempty" gorm:"type:varchar(255)"`
 	CreatedAt               time.Time                         `json:"created_at"`
 	UpdatedAt               time.Time                         `json:"updated_at"`
 }
@@ -221,4 +223,51 @@ type SheinStudioSessionGalleryItem struct {
 	ImageModel            string `json:"image_model,omitempty"`
 	TransparentBackground bool   `json:"transparent_background,omitempty"`
 	VariationIntensity    string `json:"variation_intensity,omitempty"`
+}
+
+type UpsertStudioBatchRequest struct {
+	ID                      string                        `json:"id,omitempty"`
+	BatchName               string                        `json:"batch_name,omitempty"`
+	Prompt                  string                        `json:"prompt"`
+	StyleCount              string                        `json:"style_count,omitempty"`
+	VariationIntensity      string                        `json:"variation_intensity,omitempty"`
+	ProductImageCount       string                        `json:"product_image_count,omitempty"`
+	ProductImagePrompt      string                        `json:"product_image_prompt,omitempty"`
+	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
+	ArtworkModel            string                        `json:"artwork_model,omitempty"`
+	ImageStrategy           string                        `json:"image_strategy,omitempty"`
+	SelectedSDSImages       []SheinStudioSelectedSDSImage `json:"selected_sds_images,omitempty"`
+	TransparentBackground   bool                          `json:"transparent_background,omitempty"`
+	RenderSizeImagesWithSDS bool                          `json:"render_size_images_with_sds,omitempty"`
+	SheinStoreID            string                        `json:"shein_store_id,omitempty"`
+	Selection               *SheinStudioSelection         `json:"selection,omitempty"`
+	ApprovedDesignIDs       []string                      `json:"approved_design_ids,omitempty"`
+	CreatedTasks            []SheinStudioCreatedTask      `json:"created_tasks,omitempty"`
+	Designs                 []SheinStudioDesign           `json:"designs,omitempty"`
+}
+
+type SheinStudioBatchListItem struct {
+	ID                      string                        `json:"id"`
+	BatchName               string                        `json:"batch_name,omitempty"`
+	Prompt                  string                        `json:"prompt,omitempty"`
+	StyleCount              string                        `json:"style_count,omitempty"`
+	VariationIntensity      string                        `json:"variation_intensity,omitempty"`
+	ProductImageCount       string                        `json:"product_image_count,omitempty"`
+	ProductImagePrompt      string                        `json:"product_image_prompt,omitempty"`
+	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
+	ArtworkModel            string                        `json:"artwork_model,omitempty"`
+	ImageStrategy           string                        `json:"image_strategy,omitempty"`
+	TransparentBackground   bool                          `json:"transparent_background,omitempty"`
+	RenderSizeImagesWithSDS bool                          `json:"render_size_images_with_sds,omitempty"`
+	SheinStoreID            string                        `json:"shein_store_id,omitempty"`
+	Selection               *SheinStudioSelection         `json:"selection,omitempty"`
+	ApprovedDesignIDs       []string                      `json:"approved_design_ids,omitempty"`
+	CreatedTasks            []SheinStudioCreatedTask      `json:"created_tasks,omitempty"`
+	DesignCount             int                           `json:"design_count"`
+	UpdatedAt               string                        `json:"updated_at,omitempty"`
+}
+
+type StudioBatchListResponse struct {
+	Items []SheinStudioBatchListItem `json:"items,omitempty"`
+	Total int                        `json:"total"`
 }

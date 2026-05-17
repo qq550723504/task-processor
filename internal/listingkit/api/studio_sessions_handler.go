@@ -96,3 +96,56 @@ func (h *studioSessionHandler) ListStudioSessionGallery(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, response)
 }
+
+func (h *studioSessionHandler) ListStudioBatches(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "24"))
+	response, err := h.service.ListStudioBatches(requestContext(c), limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "studio_batch_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+func (h *studioSessionHandler) GetStudioBatch(c *gin.Context) {
+	detail, err := h.service.GetStudioBatch(requestContext(c), c.Param("batch_id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "studio_batch_query_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *studioSessionHandler) UpsertStudioBatch(c *gin.Context) {
+	var req listingkit.UpsertStudioBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	detail, err := h.service.UpsertStudioBatch(requestContext(c), &req)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "studio_batch_save_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *studioSessionHandler) DeleteStudioBatch(c *gin.Context) {
+	if err := h.service.DeleteStudioBatch(requestContext(c), c.Param("batch_id")); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "studio_batch_delete_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}

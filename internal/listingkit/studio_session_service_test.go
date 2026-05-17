@@ -87,6 +87,29 @@ func (r *studioSessionRepoStub) ListGalleryItems(_ context.Context, _ int) ([]Sh
 	return nil, nil
 }
 
+func (r *studioSessionRepoStub) ListBatchSessions(_ context.Context, limit int) ([]SheinStudioSession, error) {
+	items := make([]SheinStudioSession, 0, len(r.sessions))
+	for _, session := range r.sessions {
+		if !session.SavedAsBatch {
+			continue
+		}
+		items = append(items, *cloneSession(session))
+	}
+	slices.SortFunc(items, func(a, b SheinStudioSession) int {
+		return b.UpdatedAt.Compare(a.UpdatedAt)
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func (r *studioSessionRepoStub) DeleteSession(_ context.Context, sessionID string) error {
+	delete(r.sessions, sessionID)
+	delete(r.designs, sessionID)
+	return nil
+}
+
 func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 	if session == nil {
 		return nil
@@ -97,6 +120,7 @@ func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 	cloned.ApprovedDesignIDs = append(SheinStudioStringList(nil), session.ApprovedDesignIDs...)
 	cloned.CreatedTaskIDs = append(SheinStudioStringList(nil), session.CreatedTaskIDs...)
 	cloned.CreatedTasks = append(SheinStudioCreatedTaskList(nil), session.CreatedTasks...)
+	cloned.Selection = session.Selection
 	return &cloned
 }
 
@@ -243,6 +267,82 @@ func TestStudioSessionServiceUsesContextUserIDWhenRequestOmitted(t *testing.T) {
 	}
 	if detail.Session.UserID != "user-42" {
 		t.Fatalf("session user id = %q, want user-42", detail.Session.UserID)
+	}
+}
+
+func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:       "retro cherries",
+		StyleCount:   "2",
+		SheinStoreID: "store-1",
+		Selection:    testStudioSelection(),
+		Designs: []SheinStudioDesign{
+			{ID: "design-1", ImageURL: "https://oss.example.com/design-1.png", Prompt: "retro cherries"},
+		},
+		ApprovedDesignIDs: []string{"design-1"},
+		BatchName:         "retro cherries",
+	})
+	if err != nil {
+		t.Fatalf("upsert batch: %v", err)
+	}
+	if detail.Session == nil || !detail.Session.SavedAsBatch {
+		t.Fatalf("session = %#v, want saved batch session", detail.Session)
+	}
+	if detail.Session.BatchName != "retro cherries" {
+		t.Fatalf("batch name = %q, want retro cherries", detail.Session.BatchName)
+	}
+
+	list, err := svc.ListStudioBatches(ctx, 10)
+	if err != nil {
+		t.Fatalf("list batches: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("batch count = %d, want 1", len(list.Items))
+	}
+	if list.Items[0].ID != detail.Session.ID {
+		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Session.ID)
+	}
+
+	loaded, err := svc.GetStudioBatch(ctx, detail.Session.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	if loaded.Session == nil || loaded.Session.ID != detail.Session.ID {
+		t.Fatalf("loaded session = %#v, want %q", loaded.Session, detail.Session.ID)
+	}
+	if len(loaded.Designs) != 1 || loaded.Designs[0].ID != "design-1" {
+		t.Fatalf("loaded designs = %#v, want design-1", loaded.Designs)
+	}
+}
+
+func TestStudioSessionServiceDeleteBatchRemovesSession(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:       "retro cherries",
+		StyleCount:   "2",
+		SheinStoreID: "store-1",
+		Selection:    testStudioSelection(),
+		BatchName:    "retro cherries",
+	})
+	if err != nil {
+		t.Fatalf("upsert batch: %v", err)
+	}
+
+	if err := svc.DeleteStudioBatch(ctx, detail.Session.ID); err != nil {
+		t.Fatalf("delete batch: %v", err)
+	}
+
+	loaded, err := svc.GetStudioBatch(ctx, detail.Session.ID)
+	if err == nil {
+		t.Fatalf("get deleted batch = %#v, want error", loaded)
+	}
+	if err != ErrStudioSessionNotFound {
+		t.Fatalf("delete batch error = %v, want ErrStudioSessionNotFound", err)
 	}
 }
 
