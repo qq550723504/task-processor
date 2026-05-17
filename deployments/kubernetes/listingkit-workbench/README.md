@@ -136,6 +136,41 @@ The workflow uses:
 - Kubernetes namespace: `task-processor`
 - overlay: `deployments/kubernetes/listingkit-workbench/overlays/prod`
 
+## Rollback
+
+Use the same GitHub Actions workflow for rollback. Do not bypass it unless the
+workflow or GitHub itself is unavailable.
+
+Standard rollback path:
+
+1. Open the `ListingKit Deploy` workflow in GitHub Actions.
+2. Choose `Run workflow`.
+3. Set `image_tag` to a previously deployed commit tag, for example `496ca069`.
+4. Keep `skip_apply=false`.
+5. Run the workflow and wait for rollout to finish.
+
+This reuses the same deployment logic as a normal release and keeps the
+rollback auditable.
+
+To find a rollback target:
+
+- Check prior successful runs of `ListingKit Deploy`.
+- Or inspect the currently deployed / previously deployed image tags in Docker
+  Hub or Kubernetes rollout history.
+
+Emergency fallback from a workstation:
+
+```powershell
+kubectl -n task-processor set image deployment/product-listing-api product-listing-api=docker.io/xuwei190/task-processor-product-listing-api:496ca069
+kubectl -n task-processor set image deployment/listingkit-ui listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:496ca069
+kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
+```
+
+Use the emergency path only when GitHub Actions cannot be used. If you do use
+it, follow up with a normal workflow-driven deploy so the release history stays
+consistent.
+
 ## Manual deploy fallback
 
 ```powershell
