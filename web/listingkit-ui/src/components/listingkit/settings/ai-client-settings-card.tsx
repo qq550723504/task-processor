@@ -46,7 +46,6 @@ type AIClientName = (typeof aiClientOptions)[number]["name"];
 
 type AISettingsForm = {
   scope: "tenant" | "user";
-  user_id: string;
   client_name: AIClientName;
   api_key: string;
   base_url: string;
@@ -57,9 +56,8 @@ type AISettingsForm = {
 
 export function AIClientSettingsCard() {
   const [scope, setScope] = useState<"tenant" | "user">("tenant");
-  const [userId, setUserId] = useState("");
   const [clientName, setClientName] = useState<AIClientName>("default");
-  const settings = useAIClientSettings(scope, clientName, userId);
+  const settings = useAIClientSettings(scope, clientName);
   const update = useUpdateAIClientSettings();
   const [draft, setDraft] = useState<AISettingsForm | null>(null);
   const selectedClient =
@@ -69,7 +67,6 @@ export function AIClientSettingsCard() {
     const data = settings.data;
     return {
       scope,
-      user_id: userId,
       client_name: (data?.client_name as AIClientName | undefined) ?? clientName,
       api_key: "",
       base_url: data?.base_url ?? "",
@@ -77,7 +74,7 @@ export function AIClientSettingsCard() {
       timeout_second: String(data?.timeout_second ?? 60),
       enabled: data?.enabled ?? true,
     };
-  }, [clientName, scope, settings.data, userId]);
+  }, [clientName, scope, settings.data]);
   const form = draft ?? loadedForm;
 
   const set = <Key extends keyof AISettingsForm>(
@@ -88,7 +85,6 @@ export function AIClientSettingsCard() {
   const submit = () => {
     update.mutate({
       scope: form.scope,
-      user_id: form.scope === "user" ? form.user_id.trim() : undefined,
       client_name: form.client_name || "default",
       api_key: form.api_key.trim() || undefined,
       base_url: form.base_url.trim(),
@@ -102,8 +98,8 @@ export function AIClientSettingsCard() {
     <ListingKitSettingsSection
       id="ai"
       eyebrow="AI 配置"
-      title="客户自有模型接口"
-      description="每个租户或用户可以配置自己的 OpenAI 兼容 endpoint、API Key 和默认模型。任务运行时会优先使用用户配置，再回退到租户配置。"
+      title="租户与用户模型接口"
+      description="每个租户或当前登录用户可以配置自己的 OpenAI 兼容 endpoint、API Key 和默认模型。任务运行时会优先使用当前登录用户配置，再回退到当前租户配置。"
       actions={
         <>
           <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-medium text-zinc-600">
@@ -174,24 +170,13 @@ export function AIClientSettingsCard() {
                 setDraft(null);
               }}
             >
-              <option value="tenant">当前客户</option>
-              <option value="user">当前用户</option>
+              <option value="tenant">当前租户</option>
+              <option value="user">当前登录用户</option>
             </Select>
             <span className="block text-[11px] leading-4 text-zinc-500">
-              用户配置优先于客户配置
+              当前登录用户配置优先于当前租户配置
             </span>
           </Label>
-          {form.scope === "user" ? (
-            <Input
-              label="User ID"
-              hint="用于给指定用户覆盖客户默认配置"
-              value={form.user_id}
-              onChange={(value) => {
-                setUserId(value);
-                set("user_id", value);
-              }}
-            />
-          ) : null}
           <Input
             label="Endpoint"
             hint="OpenAI 兼容接口地址，例如 https://api.openai.com/v1"

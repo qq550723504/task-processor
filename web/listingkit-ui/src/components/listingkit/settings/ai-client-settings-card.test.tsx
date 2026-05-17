@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/query/use-ai-client-settings", () => ({
-  useAIClientSettings: (scope: string, clientName: string, userId?: string) =>
-    mocks.useAIClientSettings(scope, clientName, userId),
+  useAIClientSettings: (scope: string, clientName: string) =>
+    mocks.useAIClientSettings(scope, clientName),
   useUpdateAIClientSettings: () => mocks.useUpdateAIClientSettings(),
 }));
 
@@ -58,7 +58,7 @@ describe("AIClientSettingsCard", () => {
     expect(screen.getByDisplayValue("gpt-4.1-mini")).toBeInTheDocument();
   });
 
-  it("saves customer managed endpoint and model settings", () => {
+  it("saves tenant scoped endpoint and model settings", () => {
     render(<AIClientSettingsCard />);
 
     fireEvent.change(screen.getByLabelText("API Key"), {
@@ -83,14 +83,11 @@ describe("AIClientSettingsCard", () => {
     });
   });
 
-  it("passes user id when saving user scoped settings", () => {
+  it("saves current-user scoped settings without a custom user id field", () => {
     render(<AIClientSettingsCard />);
 
     fireEvent.change(screen.getByLabelText("配置范围"), {
       target: { value: "user" },
-    });
-    fireEvent.change(screen.getByLabelText("User ID"), {
-      target: { value: "user-1" },
     });
     fireEvent.change(screen.getByLabelText("API Key"), {
       target: { value: "user-secret" },
@@ -100,10 +97,10 @@ describe("AIClientSettingsCard", () => {
     expect(mocks.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
         scope: "user",
-        user_id: "user-1",
         api_key: "user-secret",
       }),
     );
+    expect(screen.queryByLabelText("User ID")).not.toBeInTheDocument();
   });
 
   it("switches to Nano Banana settings and saves with image client name", () => {

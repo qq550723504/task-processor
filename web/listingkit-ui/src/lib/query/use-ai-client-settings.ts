@@ -9,14 +9,10 @@ import {
 import { listingKitSettingsKeys } from "@/lib/query/listingkit-settings";
 import type { AIClientSettings } from "@/lib/types/listingkit";
 
-export function useAIClientSettings(
-  scope = "tenant",
-  clientName = "default",
-  userId = "",
-) {
+export function useAIClientSettings(scope = "tenant", clientName = "default") {
   return useQuery({
-    queryKey: listingKitSettingsKeys.aiClient(scope, clientName, userId),
-    queryFn: () => getAIClientSettings(scope, clientName, userId),
+    queryKey: listingKitSettingsKeys.aiClient(scope, clientName),
+    queryFn: () => getAIClientSettings(scope, clientName),
   });
 }
 
@@ -29,7 +25,6 @@ export function useUpdateAIClientSettings() {
         queryKey: listingKitSettingsKeys.aiClient(
           settings.scope ?? "tenant",
           settings.client_name ?? "default",
-          request.user_id ?? "",
         ),
       });
     },

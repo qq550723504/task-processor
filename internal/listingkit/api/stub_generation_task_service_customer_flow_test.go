@@ -17,11 +17,27 @@ func (s *stubGenerationTaskService) UpdateSheinSettings(ctx context.Context, req
 }
 
 func (s *stubGenerationTaskService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
-	return nil, errors.New("not implemented")
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.aiSettings != nil {
+		return s.aiSettings, nil
+	}
+	return &listingkit.AIClientSettings{
+		Scope:      scope,
+		ClientName: clientName,
+	}, nil
 }
 
 func (s *stubGenerationTaskService) UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
-	return nil, errors.New("not implemented")
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.aiSettingsReq = req
+	if s.aiSettings != nil {
+		return s.aiSettings, nil
+	}
+	return req, nil
 }
 
 func (s *stubGenerationTaskService) PreviewSheinPrice(ctx context.Context, taskID string, req *listingkit.SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {

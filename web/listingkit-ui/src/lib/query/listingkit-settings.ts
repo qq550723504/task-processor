@@ -18,8 +18,8 @@ export const listingKitSettingsKeys = {
   schema(namespace: string) {
     return this.namespace("schema", namespace);
   },
-  aiClient(scope: string, clientName: string, userId = "") {
-    return this.namespace("ai", scope, clientName, userId);
+  aiClient(scope: string, clientName: string) {
+    return this.namespace("ai", scope, clientName);
   },
   prompts() {
     return this.namespace("prompts");

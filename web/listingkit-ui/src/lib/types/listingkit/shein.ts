@@ -517,7 +517,6 @@ export type SheinSettings = {
 
 export type AIClientSettings = {
   scope?: "tenant" | "user" | string;
-  user_id?: string;
   client_name?: string;
   api_key?: string;
   api_key_set?: boolean;

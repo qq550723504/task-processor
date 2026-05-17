@@ -28,6 +28,7 @@ type stubGenerationTaskService struct {
 	deletedUploadedImage    *listingkit.DeletedUploadedImage
 	studioDesigns           *listingkit.StudioDesignResponse
 	studioProductImages     *listingkit.StudioProductImageResponse
+	aiSettings              *listingkit.AIClientSettings
 	err                     error
 	lastTask                string
 	uploadedImageKey        string
@@ -42,6 +43,7 @@ type stubGenerationTaskService struct {
 	uploadImagesReq         *listingkit.UploadImagesRequest
 	studioDesignReq         *listingkit.StudioDesignRequest
 	studioProductImageReq   *listingkit.StudioProductImageRequest
+	aiSettingsReq           *listingkit.AIClientSettings
 }
 
 func (s *stubGenerationTaskService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
