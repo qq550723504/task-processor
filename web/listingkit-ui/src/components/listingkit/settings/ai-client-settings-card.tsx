@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Image, KeyRound, ServerCog, Sparkles, Tags } from "lucide-react";
+import { Image, KeyRound, Sparkles, Tags } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

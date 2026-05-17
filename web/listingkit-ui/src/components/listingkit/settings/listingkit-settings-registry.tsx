@@ -28,10 +28,12 @@ function resolveSummary(id: string, schema?: ListingKitSettingsNamespaceSchema) 
 
 export function useListingKitSettingsSections() {
   const metadata = useListingKitSettingsNamespaces();
-  const schemas = metadata.data?.items ?? [];
   const byNamespace = useMemo(
-    () => new Map(schemas.map((schema) => [schema.namespace, schema])),
-    [schemas],
+    () =>
+      new Map(
+        (metadata.data?.items ?? []).map((schema) => [schema.namespace, schema]),
+      ),
+    [metadata.data?.items],
   );
 
   const sections: ListingKitSettingsSectionDefinition[] = [

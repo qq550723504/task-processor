@@ -1,4 +1,4 @@
-import type { NextAuthConfig, Session } from "next-auth";
+import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
 

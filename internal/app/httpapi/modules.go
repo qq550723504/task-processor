@@ -149,8 +149,12 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 	if deps == nil || deps.cfg == nil || deps.managementClient == nil {
 		return nil, nil, nil
 	}
+	redisCfg := deps.cfg.EffectiveSheinCookieRedis()
+	if strings.TrimSpace(redisCfg.Host) == "" {
+		return nil, nil, nil
+	}
 	provider := sheinlogin.NewManagementAccountProvider(deps.managementClient)
-	svc, err := sheinlogin.NewService(deps.cfg.Platforms.Shein.LoginService, deps.cfg.EffectiveSheinCookieRedis(), deps.cfg.Browser, provider)
+	svc, err := sheinlogin.NewService(deps.cfg.Platforms.Shein.LoginService, redisCfg, deps.cfg.Browser, provider)
 	if err != nil {
 		return nil, nil, err
 	}

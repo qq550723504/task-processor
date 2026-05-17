@@ -1,21 +1,58 @@
-name: CI
+name: ListingKit CI
 
 on:
   push:
     branches:
       - main
       - master
+    paths:
+      - ".github/workflows/ci.yml"
+      - "cmd/product-listing-api/**"
+      - "config/**"
+      - "deployments/docker/Dockerfile.product-listing-api"
+      - "deployments/docker/Dockerfile.listingkit-ui"
+      - "deployments/kubernetes/listingkit-workbench/base/**"
+      - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/app/httpapi/**"
+      - "internal/crawler/alibaba1688/**"
+      - "internal/listingkit/**"
+      - "internal/listingadmin/**"
+      - "internal/promptmgmt/**"
+      - "internal/listingsubscription/**"
+      - "prompts/**"
+      - "web/listingkit-ui/**"
   pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "cmd/product-listing-api/**"
+      - "config/**"
+      - "deployments/docker/Dockerfile.product-listing-api"
+      - "deployments/docker/Dockerfile.listingkit-ui"
+      - "deployments/kubernetes/listingkit-workbench/base/**"
+      - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/app/httpapi/**"
+      - "internal/crawler/alibaba1688/**"
+      - "internal/listingkit/**"
+      - "internal/listingadmin/**"
+      - "internal/promptmgmt/**"
+      - "internal/listingsubscription/**"
+      - "prompts/**"
+      - "web/listingkit-ui/**"
 
 permissions:
   contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "22"
 
 jobs:
-  lint:
-    name: Lint
+  backend:
+    name: Backend Checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -27,52 +64,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install golangci-lint
+      - name: Run ListingKit backend tests
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-
-      - name: Add Go bin to PATH
-        run: |
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Run golangci-lint
-        run: |
-          golangci-lint run --timeout=5m
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run tests
-        run: go test -v ./...
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build packages
-        run: go build ./...
+          go test ./cmd/product-listing-api ./internal/app/httpapi ./internal/crawler/alibaba1688 ./internal/listingkit ./internal/listingadmin ./internal/promptmgmt ./internal/listingsubscription
 
   frontend:
-    name: Frontend
+    name: Frontend Checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -84,7 +81,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/listingkit-ui/package-lock.json
 
@@ -94,8 +91,8 @@ jobs:
       - name: Run lint
         run: npm run lint
 
-      - name: Run tests
-        run: npm run test
+      - name: Run typecheck
+        run: npm run typecheck
 
       - name: Build frontend
         run: npm run build

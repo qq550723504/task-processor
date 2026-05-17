@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function UnauthorizedPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6">
@@ -14,12 +16,12 @@ export default function UnauthorizedPage() {
           >
             Sign out
           </a>
-          <a
+          <Link
             href="/"
             className="inline-flex items-center rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700"
           >
             Back
-          </a>
+          </Link>
         </div>
       </section>
     </main>

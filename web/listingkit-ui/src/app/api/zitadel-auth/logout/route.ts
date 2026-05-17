@@ -1,5 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
-
 import {
   auth,
   signOut,
@@ -13,7 +11,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const options = getZitadelAuthOptions();
   const postLogoutTarget = options?.postLogoutRedirectUri || resolvePublicAppOrigin();
 

@@ -2,6 +2,7 @@ package alibaba1688
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -158,7 +159,7 @@ func (tr *trackRecorder) RecordAndPlay(page playwright.Page, box *playwright.Rec
 				msg = m
 			}
 		}
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	// 解析轨迹数据

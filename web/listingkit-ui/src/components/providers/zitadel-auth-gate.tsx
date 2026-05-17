@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
 export type ZitadelClientIdentity = {
@@ -22,16 +23,17 @@ export function useZitadelIdentity() {
 }
 
 export function ZitadelAuthGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const bypassRoute =
+    pathname.startsWith("/unauthorized") || pathname.startsWith("/login");
   const [identity, setIdentity] = useState<ZitadelClientIdentity | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready">("loading");
+  const [status, setStatus] = useState<"loading" | "ready">(
+    bypassRoute ? "ready" : "loading",
+  );
 
   useEffect(() => {
     let cancelled = false;
-    if (
-      window.location.pathname.startsWith("/unauthorized") ||
-      window.location.pathname.startsWith("/login")
-    ) {
-      setStatus("ready");
+    if (bypassRoute) {
       return;
     }
 
@@ -67,7 +69,7 @@ export function ZitadelAuthGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [bypassRoute]);
 
   if (status !== "ready") {
     return (

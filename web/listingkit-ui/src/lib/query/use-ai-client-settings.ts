@@ -20,7 +20,7 @@ export function useUpdateAIClientSettings() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (request: AIClientSettings) => updateAIClientSettings(request),
-    onSuccess: async (settings, request) => {
+    onSuccess: async (settings) => {
       await client.invalidateQueries({
         queryKey: listingKitSettingsKeys.aiClient(
           settings.scope ?? "tenant",
