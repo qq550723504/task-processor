@@ -216,12 +216,20 @@ export function PromptTemplatesPanel() {
           </div>
           <div className="grid gap-2 border-b border-zinc-200 bg-white px-3 py-3 md:grid-cols-5">
             <Input
+              id="prompt-template-search"
+              name="prompt-template-search"
               aria-label="搜索提示词模板"
               placeholder="搜索 key 或名称"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
-            <Select aria-label="用途分组" value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
+            <Select
+              id="prompt-template-group-filter"
+              name="prompt-template-group-filter"
+              aria-label="用途分组"
+              value={groupFilter}
+              onChange={(event) => setGroupFilter(event.target.value)}
+            >
               <option value="all">全部用途</option>
               {availableGroups.map((group) => (
                 <option key={group.value} value={group.value}>
@@ -230,6 +238,8 @@ export function PromptTemplatesPanel() {
               ))}
             </Select>
             <Select
+              id="prompt-template-coverage-filter"
+              name="prompt-template-coverage-filter"
               aria-label="覆盖状态"
               value={coverageFilter}
               onChange={(event) => setCoverageFilter(event.target.value)}
@@ -240,6 +250,8 @@ export function PromptTemplatesPanel() {
               <option value="overridden_disabled">仅已覆盖但禁用</option>
             </Select>
             <Select
+              id="prompt-template-default-content-filter"
+              name="prompt-template-default-content-filter"
               aria-label="默认模板"
               value={defaultContentFilter}
               onChange={(event) => setDefaultContentFilter(event.target.value)}
@@ -249,6 +261,8 @@ export function PromptTemplatesPanel() {
               <option value="missing">默认模板：缺失</option>
             </Select>
             <Select
+              id="prompt-template-variable-filter"
+              name="prompt-template-variable-filter"
               aria-label="模板变量"
               value={variableFilter}
               onChange={(event) => setVariableFilter(event.target.value)}

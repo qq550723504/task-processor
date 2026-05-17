@@ -207,4 +207,28 @@ describe("PromptTemplatesPanel", () => {
       }),
     ).not.toBeInTheDocument();
   });
+
+  it("assigns stable form ids and names to prompt catalog filters", () => {
+    render(<PromptTemplatesPanel />);
+
+    expect(screen.getByLabelText("搜索提示词模板")).toHaveAttribute("id", "prompt-template-search");
+    expect(screen.getByLabelText("搜索提示词模板")).toHaveAttribute("name", "prompt-template-search");
+    expect(screen.getByLabelText("用途分组")).toHaveAttribute("id", "prompt-template-group-filter");
+    expect(screen.getByLabelText("用途分组")).toHaveAttribute("name", "prompt-template-group-filter");
+    expect(screen.getByLabelText("覆盖状态")).toHaveAttribute("id", "prompt-template-coverage-filter");
+    expect(screen.getByLabelText("覆盖状态")).toHaveAttribute("name", "prompt-template-coverage-filter");
+    expect(screen.getByLabelText("默认模板")).toHaveAttribute(
+      "id",
+      "prompt-template-default-content-filter",
+    );
+    expect(screen.getByLabelText("默认模板")).toHaveAttribute(
+      "name",
+      "prompt-template-default-content-filter",
+    );
+    expect(screen.getByLabelText("模板变量")).toHaveAttribute("id", "prompt-template-variable-filter");
+    expect(screen.getByLabelText("模板变量")).toHaveAttribute(
+      "name",
+      "prompt-template-variable-filter",
+    );
+  });
 });
