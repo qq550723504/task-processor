@@ -43,6 +43,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   GO_VERSION_FILE: go.mod
   NODE_VERSION: "22"
   REGISTRY: docker.io
