@@ -10,6 +10,7 @@ vi.mock("@/auth", () => ({
 }));
 
 import {
+  PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
   resolveListingKitProxyTimeoutMs,
   shouldProxyListingKitResponseAsBinary,
 } from "@/app/api/listing-kits/proxy-response";
@@ -32,6 +33,15 @@ describe("resolveListingKitProxyTimeoutMs", () => {
   it("extends the timeout for task submit requests", () => {
     expect(resolveListingKitProxyTimeoutMs("POST", ["tasks", "123", "submit"])).toBe(
       180_000,
+    );
+  });
+
+  it("extends the timeout for slow admin collection reads", () => {
+    expect(resolveListingKitProxyTimeoutMs("GET", ["admin", "product-import-mappings"])).toBe(
+      PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
+    );
+    expect(resolveListingKitProxyTimeoutMs("GET", ["admin", "product-data"])).toBe(
+      PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
     );
   });
 });

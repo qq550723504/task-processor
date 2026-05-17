@@ -1,4 +1,5 @@
 export const PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
+export const PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS = 30_000;
 export const PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS = 180_000;
 
 export function resolveListingKitProxyTimeoutMs(
@@ -12,6 +13,14 @@ export function resolveListingKitProxyTimeoutMs(
     path[2] === "submit"
   ) {
     return PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
+    method.toUpperCase() === "GET" &&
+    path.length === 2 &&
+    path[0] === "admin" &&
+    (path[1] === "product-import-mappings" || path[1] === "product-data")
+  ) {
+    return PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS;
   }
   return PROXY_UPSTREAM_TIMEOUT_MS;
 }
