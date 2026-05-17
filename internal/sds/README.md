@@ -84,12 +84,12 @@
 
 ## 自动获取登录态
 
-当前客户端会按下面顺序自动引导 SDS 登录态：
+当前 SDS 集成链路会按下面顺序自动引导登录态：
 
 1. 本地文件
    - `data/sds/auth_state.json`
    - `data/sds/session_cookies.json`
-2. 环境变量静态注入
+2. 应用配置注入的静态认证信息
    - `TASK_PROCESSOR_SDS_ACCESS_TOKEN`
    - `TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN`
    - `TASK_PROCESSOR_SDS_MERCHANT_ID`
@@ -98,7 +98,7 @@
    - `TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID`
    - 通过 management `store/get-cookie` 拉取 cookie
    - 若 management 店铺记录带 `username/password`，会继续自动登录换取新 token
-4. 环境变量账号密码自动登录
+4. 应用配置注入的账号密码自动登录
    - `TASK_PROCESSOR_SDS_USERNAME`
    - `TASK_PROCESSOR_SDS_PASSWORD`
    - 可选：
@@ -106,6 +106,11 @@
      - `TASK_PROCESSOR_SDS_DOMAIN_NAME`
      - `TASK_PROCESSOR_SDS_VERIFY_CAPTCHA_PARAM`
      - `TASK_PROCESSOR_SDS_EXTRA_INFO`
+
+说明：
+
+- `internal/app/httpapi` 会通过 `internal/core/config` 把上述环境变量注入到 SDS 客户端配置。
+- 直接调用 `sds/client.DefaultConfig()` 只会返回静态默认值，不再隐式读取环境变量。
 
 当 SDS 接口返回以下任一鉴权失效信号时，客户端会自动重拉登录态并重试一次：
 

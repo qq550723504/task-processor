@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getZitadelAuthOptions } from "@/lib/server/zitadel-auth";
+import {
+  authorizeZitadelIdentity,
+  getZitadelAuthOptions,
+  readZitadelIdentityFromSession,
+} from "@/lib/server/zitadel-auth";
 
 describe("getZitadelAuthOptions", () => {
   afterEach(() => {
@@ -14,5 +18,66 @@ describe("getZitadelAuthOptions", () => {
     expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toContain(
       "urn:zitadel:iam:user:resourceowner",
     );
+  });
+});
+
+describe("authorizeZitadelIdentity", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("allows a configured username allowlist entry", () => {
+    vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin");
+
+    expect(
+      authorizeZitadelIdentity({
+        tenantId: "org-1",
+        userId: "user-1",
+        username: "1-admin",
+        roles: ["listingkit_viewer"],
+      }),
+    ).toEqual({ authorized: true, required: true });
+  });
+
+  it("denies access when authorization is required but identity does not match", () => {
+    vi.stubEnv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "1");
+    vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin");
+
+    expect(
+      authorizeZitadelIdentity({
+        tenantId: "org-2",
+        userId: "user-2",
+        username: "2-guest",
+        roles: ["listingkit_viewer"],
+      }),
+    ).toEqual({
+      authorized: false,
+      required: true,
+      reason: "ZITADEL identity is not allowed to access ListingKit",
+    });
+  });
+});
+
+describe("readZitadelIdentityFromSession", () => {
+  it("maps Auth.js session identity into the ListingKit identity contract", () => {
+    expect(
+      readZitadelIdentityFromSession({
+        expires: "2026-05-17T00:00:00.000Z",
+        accessToken: "access-token-1",
+        identity: {
+          tenantId: "org-1",
+          userId: "user-1",
+          username: "admin",
+          userType: "zitadel",
+          roles: ["listingkit_admin"],
+        },
+      }),
+    ).toEqual({
+      tenantId: "org-1",
+      userId: "user-1",
+      username: "admin",
+      userType: "zitadel",
+      roles: ["listingkit_admin"],
+    });
   });
 });

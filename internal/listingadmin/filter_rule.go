@@ -35,6 +35,7 @@ type FilterRule struct {
 
 type FilterRuleQuery struct {
 	TenantID        int64
+	OwnerUserID     string
 	Page            int
 	PageSize        int
 	Name            string
@@ -65,6 +66,7 @@ type FilterRuleRepository interface {
 type listingFilterRule struct {
 	ID              int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID        int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID     string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	Name            string     `gorm:"column:name;not null"`
 	RuleCode        string     `gorm:"column:rule_code;not null;index"`
 	Description     string     `gorm:"column:description"`
@@ -81,8 +83,10 @@ type listingFilterRule struct {
 	Status          int16      `gorm:"column:status;not null;default:0;index"`
 	Remark          string     `gorm:"column:remark"`
 	Creator         string     `gorm:"column:creator"`
+	CreatedBy       string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime      *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater         string     `gorm:"column:updater"`
+	UpdatedBy       string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime      *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted         int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -179,7 +183,7 @@ func AutoMigrateFilterRuleRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingFilterRule{})
+	return ensureOwnerAuditColumns(db, (listingFilterRule{}).TableName())
 }
 
 func (r *GormFilterRuleRepository) ListFilterRules(ctx context.Context, query FilterRuleQuery) (*FilterRulePage, error) {
@@ -205,7 +209,11 @@ func (r *GormFilterRuleRepository) ListFilterRules(ctx context.Context, query Fi
 
 func (r *GormFilterRuleRepository) GetFilterRule(ctx context.Context, tenantID, id int64) (*FilterRule, error) {
 	var row listingFilterRule
-	err := r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrFilterRuleNotFound
 	}
@@ -219,6 +227,13 @@ func (r *GormFilterRuleRepository) GetFilterRule(ctx context.Context, tenantID, 
 func (r *GormFilterRuleRepository) CreateFilterRule(ctx context.Context, rule *FilterRule) (*FilterRule, error) {
 	row := listingFilterRuleFromFilterRule(rule)
 	applyFilterRuleDefaults(&row)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Creator = ownerUserID
+		row.CreatedBy = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	if err := r.db.WithContext(ctx).Table("listing_filter_rule").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -229,7 +244,13 @@ func (r *GormFilterRuleRepository) CreateFilterRule(ctx context.Context, rule *F
 func (r *GormFilterRuleRepository) UpdateFilterRule(ctx context.Context, rule *FilterRule) (*FilterRule, error) {
 	row := listingFilterRuleFromFilterRule(rule)
 	applyFilterRuleDefaults(&row)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	updates := map[string]any{
+		"owner_user_id":     row.OwnerUserID,
 		"name":              row.Name,
 		"rule_code":         row.RuleCode,
 		"description":       row.Description,
@@ -246,7 +267,15 @@ func (r *GormFilterRuleRepository) UpdateFilterRule(ctx context.Context, rule *F
 		"status":            row.Status,
 		"remark":            row.Remark,
 	}
-	res := r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -261,7 +290,15 @@ func (r *GormFilterRuleRepository) UpdateFilterRuleStatus(ctx context.Context, t
 	if strings.TrimSpace(remark) != "" {
 		updates["remark"] = strings.TrimSpace(remark)
 	}
-	res := r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -272,7 +309,16 @@ func (r *GormFilterRuleRepository) UpdateFilterRuleStatus(ctx context.Context, t
 }
 
 func (r *GormFilterRuleRepository) DeleteFilterRule(ctx context.Context, tenantID, id int64) error {
-	res := r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -298,6 +344,9 @@ func applyFilterRuleQuery(db *gorm.DB, query FilterRuleQuery) *gorm.DB {
 	db = db.Where("deleted = 0")
 	if query.TenantID > 0 {
 		db = db.Where("tenant_id = ?", query.TenantID)
+	}
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
 	if query.Name != "" {
 		db = db.Where("name LIKE ?", "%"+query.Name+"%")

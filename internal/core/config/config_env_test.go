@@ -1,14 +1,27 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type stubConfigSource struct {
+	name string
+	data []byte
+}
+
+func (s stubConfigSource) Read() ([]byte, error) { return s.data, nil }
+
+func (s stubConfigSource) Watch(_ context.Context, _ func([]byte)) error { return nil }
+
+func (s stubConfigSource) Name() string { return s.name }
 
 func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_MANAGEMENT_TENANT_ID", "tenant-123")
@@ -128,6 +141,9 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY", "sds-key")
 	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_TENANT_ID", "manual")
 	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_IDENTIFIER", "default")
+	t.Setenv("TASK_PROCESSOR_SDS_MERCHANT_NAME", "merchant")
+	t.Setenv("TASK_PROCESSOR_SDS_USERNAME", "tester")
+	t.Setenv("TASK_PROCESSOR_SDS_PASSWORD", "secret")
 
 	v := newViper()
 
@@ -135,6 +151,73 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "sds-key", v.GetString("platforms.sds.loginService.sharedKey"))
 	assert.Equal(t, "manual", v.GetString("platforms.sds.loginService.tenantID"))
 	assert.Equal(t, "default", v.GetString("platforms.sds.loginService.identifier"))
+	assert.Equal(t, "merchant", v.GetString("platforms.sds.loginService.merchantName"))
+	assert.Equal(t, "tester", v.GetString("platforms.sds.loginService.username"))
+	assert.Equal(t, "secret", v.GetString("platforms.sds.loginService.password"))
+}
+
+func TestNewViper_BindsSDSAuthBootstrapEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_SDS_ACCESS_TOKEN", "access-token")
+	t.Setenv("TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN", "out-token")
+	t.Setenv("TASK_PROCESSOR_SDS_MERCHANT_ID", "12345")
+	t.Setenv("TASK_PROCESSOR_SDS_COOKIE", "cookie=value")
+	t.Setenv("TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID", "67890")
+	t.Setenv("TASK_PROCESSOR_SDS_DOMAIN_NAME", "www.sdsdiy.com")
+	t.Setenv("TASK_PROCESSOR_SDS_VERIFY_CAPTCHA_PARAM", "captcha-param")
+	t.Setenv("TASK_PROCESSOR_SDS_EXTRA_INFO", "{\"risk\":1}")
+
+	v := newViper()
+
+	assert.Equal(t, "access-token", v.GetString("platforms.sds.authBootstrap.staticAccessToken"))
+	assert.Equal(t, "out-token", v.GetString("platforms.sds.authBootstrap.staticOutToken"))
+	assert.Equal(t, int64(12345), v.GetInt64("platforms.sds.authBootstrap.staticMerchantID"))
+	assert.Equal(t, "cookie=value", v.GetString("platforms.sds.authBootstrap.staticCookie"))
+	assert.Equal(t, int64(67890), v.GetInt64("platforms.sds.authBootstrap.managementStoreID"))
+	assert.Equal(t, "www.sdsdiy.com", v.GetString("platforms.sds.authBootstrap.loginDomainName"))
+	assert.Equal(t, "captcha-param", v.GetString("platforms.sds.authBootstrap.loginVerifyCaptchaParam"))
+	assert.Equal(t, "{\"risk\":1}", v.GetString("platforms.sds.authBootstrap.loginExtraInfo"))
+}
+
+func TestNewViper_BindsProductEnrichMockLLMEnvironmentVariable(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM", "true")
+
+	v := newViper()
+
+	assert.True(t, v.GetBool("debug.productEnrichMockLLM"))
+}
+
+func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
+	t.Setenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH", "D:/tmp/studio-jobs.json")
+	t.Setenv("LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR", "D:/tmp/shein-submit-dumps")
+	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-a,user-b")
+	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_ROLES", "role-a,role-b")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "true")
+	t.Setenv("ZITADEL_ISSUER_URL", "https://issuer.example")
+	t.Setenv("ZITADEL_CLIENT_ID", "listingkit-client")
+	t.Setenv("ZITADEL_CLIENT_SECRET", "listingkit-secret")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "true")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "true")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS", "tenant-a,tenant-b")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS", "user-a,user-b")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "alice,bob")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
+
+	v := newViper()
+
+	assert.Equal(t, "D:/tmp/studio-jobs.json", v.GetString("listingkit.studioAsyncJobStorePath"))
+	assert.Equal(t, "D:/tmp/shein-submit-dumps", v.GetString("listingkit.sheinSubmitDebugDumpDir"))
+	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.platformAdminUsers"))
+	assert.Equal(t, []string{"role-a", "role-b"}, getStringSlice(v, "listingkit.platformAdminRoles"))
+	assert.True(t, v.GetBool("listingkit.ownerScopeRequired"))
+	assert.Equal(t, "https://issuer.example", v.GetString("listingkit.zitadel.issuerURL"))
+	assert.Equal(t, "listingkit-client", v.GetString("listingkit.zitadel.clientID"))
+	assert.Equal(t, "listingkit-secret", v.GetString("listingkit.zitadel.clientSecret"))
+	assert.True(t, v.GetBool("listingkit.zitadel.authRequired"))
+	assert.True(t, v.GetBool("listingkit.zitadel.authorizationRequired"))
+	assert.Equal(t, []string{"tenant-a", "tenant-b"}, getStringSlice(v, "listingkit.zitadel.allowedTenantIDs"))
+	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.zitadel.allowedUserIDs"))
+	assert.Equal(t, []string{"alice", "bob"}, getStringSlice(v, "listingkit.zitadel.allowedUsernames"))
+	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, getStringSlice(v, "listingkit.zitadel.allowedRoles"))
 }
 
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {
@@ -239,6 +322,82 @@ func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 	assert.True(t, cfg.RabbitMQ.Node.UseStoreQueues)
 }
 
+func TestLoadFromBytes_AppliesViperManagedEnvironmentOverrides(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_BROWSER_HEADLESS", "false")
+	t.Setenv("TASK_PROCESSOR_BROWSER_POOL_SIZE", "7")
+	t.Setenv("TASK_PROCESSOR_WORKER_CONCURRENCY", "22")
+	t.Setenv("TASK_PROCESSOR_PLATFORM_TEMU_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_REDIS_HOST", "redis.env.local")
+	t.Setenv("TASK_PROCESSOR_REDIS_PORT", "6381")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"management:",
+		"  clientSecret: \"test-secret\"",
+		"  scopes: [\"user.read\"]",
+		"openai:",
+		"  apiKey: \"test-openai-key\"",
+		"  model: \"gemini-2.5-flash\"",
+		"  baseURL: \"https://api.example.test/v1\"",
+		"  timeout: 30",
+		"browser:",
+		"  headless: true",
+		"  poolSize: 1",
+		"worker:",
+		"  concurrency: 1",
+		"  bufferSize: 10",
+		"  taskInterval: 60",
+		"platforms:",
+		"  temu:",
+		"    enabled: false",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.False(t, cfg.Browser.Headless)
+	assert.Equal(t, 7, cfg.Browser.PoolSize)
+	assert.Equal(t, 22, cfg.Worker.Concurrency)
+	assert.True(t, cfg.Platforms.Temu.Enabled)
+	require.NotNil(t, cfg.Redis)
+	assert.Equal(t, "redis.env.local", cfg.Redis.Host)
+	assert.Equal(t, 6381, cfg.Redis.Port)
+}
+
+func TestConfigManagerLoad_UsesSameEnvironmentOverrideBehavior(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_BROWSER_HEADLESS", "false")
+	t.Setenv("TASK_PROCESSOR_WORKER_CONCURRENCY", "19")
+	t.Setenv("TASK_PROCESSOR_PLATFORM_TEMU_ENABLED", "true")
+
+	mgr := NewConfigManager(logrus.New())
+	source := stubConfigSource{
+		name: "memory",
+		data: []byte(strings.Join([]string{
+			"management:",
+			"  clientSecret: \"test-secret\"",
+			"  scopes: [\"user.read\"]",
+			"openai:",
+			"  apiKey: \"test-openai-key\"",
+			"  model: \"gemini-2.5-flash\"",
+			"  baseURL: \"https://api.example.test/v1\"",
+			"  timeout: 30",
+			"browser:",
+			"  headless: true",
+			"worker:",
+			"  concurrency: 1",
+			"  bufferSize: 10",
+			"  taskInterval: 60",
+			"platforms:",
+			"  temu:",
+			"    enabled: false",
+		}, "\n")),
+	}
+
+	cfg, err := mgr.Load(source)
+	require.NoError(t, err)
+
+	assert.False(t, cfg.Browser.Headless)
+	assert.Equal(t, 19, cfg.Worker.Concurrency)
+	assert.True(t, cfg.Platforms.Temu.Enabled)
+}
+
 func TestDotEnvCandidatesForConfig_PrioritizesScopedEnvFile(t *testing.T) {
 	candidates := dotEnvCandidatesForConfig(filepath.Join("config", "config-amazon-crawler-api.yaml"))
 
@@ -277,4 +436,54 @@ func TestLoadDotEnvCandidates_LoadsScopedEnvBeforeSharedDotEnv(t *testing.T) {
 
 	assert.Equal(t, "false", os.Getenv("TASK_PROCESSOR_PLATFORM_1688_ENABLED"))
 	assert.Equal(t, "shared-key", os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY"))
+}
+
+func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config-test.yaml")
+	configBody := strings.Join([]string{
+		"management:",
+		"  baseURL: \"http://example.com\"",
+		"  clientID: \"test-client\"",
+		"  clientSecret: \"test-secret\"",
+		"  tokenURL: \"http://example.com/token\"",
+		"  scopes: [\"user.read\"]",
+		"openai:",
+		"  apiKey: \"test-openai-key\"",
+		"  model: \"gemini-2.5-flash\"",
+		"  baseURL: \"https://api.example.test/v1\"",
+		"  timeout: 30",
+		"listingkit:",
+		"  studioAsyncJobStorePath: \"./data/jobs.json\"",
+		"  sheinSubmitDebugDumpDir: \"./tmp/shein-dumps\"",
+		"  platformAdminUsers: [\"user-a\"]",
+		"  platformAdminRoles: [\"platform_admin\"]",
+		"  ownerScopeRequired: false",
+		"  zitadel:",
+		"    issuerURL: \"https://issuer.file.example\"",
+		"    clientID: \"file-client\"",
+		"    clientSecret: \"file-secret\"",
+		"    authRequired: false",
+		"    authorizationRequired: false",
+		"    allowedUsernames: [\"file-admin\"]",
+	}, "\n")
+	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
+
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "true")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
+	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-b,user-c")
+
+	cfg, err := LoadConfigFromFile(configPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, "./data/jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
+	assert.Equal(t, "./tmp/shein-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
+	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
+	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)
+	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
+	assert.False(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
+	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
+	assert.Equal(t, "file-client", cfg.ListingKit.Zitadel.ClientID)
+	assert.Equal(t, []string{"file-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
+	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }

@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -289,6 +290,46 @@ func TestTaskRepositoryListTaskSummaryTasksReturnsFilteredUniverse(t *testing.T)
 	}
 	if items[0].ID != "task-classification" || items[1].ID != "task-review" || items[2].ID != "task-ready" {
 		t.Fatalf("items order = %+v, want created_at desc filtered universe", items)
+	}
+}
+
+func TestTaskRepositoryOwnerScopeFiltersTasksByUser(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	baseCtx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	adminCtx := openaiclient.WithIdentity(baseCtx, openaiclient.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	taskA := makeTaskRepoFixture("task-user-a", time.Now().UTC(), []string{"shein"}, "published", "")
+	taskA.UserID = "user-a"
+	taskA.Request.UserID = "user-a"
+	taskB := makeTaskRepoFixture("task-user-b", time.Now().UTC().Add(-time.Minute), []string{"shein"}, "published", "")
+	taskB.UserID = "user-b"
+	taskB.Request.UserID = "user-b"
+	for _, task := range []*listingkit.Task{taskA, taskB} {
+		if err := repo.CreateTask(baseCtx, task); err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	items, total, err := repo.ListTasks(adminCtx, &listingkit.TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != "task-user-a" {
+		t.Fatalf("owner scoped tasks = %+v total=%d, want only task-user-a", items, total)
+	}
+
+	if _, err := repo.GetTask(adminCtx, "task-user-b"); err != listingkit.ErrTaskNotFound {
+		t.Fatalf("GetTask err = %v, want ErrTaskNotFound", err)
 	}
 }
 

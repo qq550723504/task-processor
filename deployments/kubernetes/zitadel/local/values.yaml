@@ -24,9 +24,9 @@ zitadel:
     FirstInstance:
       Org:
         Human:
-          UserName: zitadel-admin
-          Email: zitadel-admin@zitadel.localhost
-          Password: "Password1!"
+          UserName: supperadmin
+          Email: supperadmin@zitadel.localhost
+          Password: "Zone5571886$$$"
           PasswordChangeRequired: false
 
 ingress:

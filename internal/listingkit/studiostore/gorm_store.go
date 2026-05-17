@@ -3,6 +3,7 @@ package studiostore
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -13,7 +14,7 @@ import (
 
 func (r *GormRepository) FindLatestSessionBySelectionKey(ctx context.Context, selectionKey string) (*listingkit.SheinStudioSession, error) {
 	var session listingkit.SheinStudioSession
-	err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").
+	err := applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "user_id").
 		Where("selection_key = ?", selectionKey).
 		Order("updated_at DESC").
 		First(&session).Error
@@ -30,12 +31,15 @@ func (r *GormRepository) CreateSession(ctx context.Context, session *listingkit.
 	if session != nil && session.TenantID == "" {
 		session.TenantID = tenantctx.TenantIDFromContext(ctx)
 	}
+	if session != nil && session.UserID == "" {
+		session.UserID = listingkit.RequestUserIDFromContext(ctx)
+	}
 	return r.db.WithContext(ctx).Create(session).Error
 }
 
 func (r *GormRepository) GetSession(ctx context.Context, sessionID string) (*listingkit.SheinStudioSession, error) {
 	var session listingkit.SheinStudioSession
-	err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").Where("id = ?", sessionID).First(&session).Error
+	err := applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "user_id").Where("id = ?", sessionID).First(&session).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -49,7 +53,10 @@ func (r *GormRepository) UpdateSession(ctx context.Context, session *listingkit.
 	if session != nil && session.TenantID == "" {
 		session.TenantID = tenantctx.TenantIDFromContext(ctx)
 	}
-	return r.db.WithContext(ctx).Save(session).Error
+	if session != nil && session.UserID == "" {
+		session.UserID = listingkit.RequestUserIDFromContext(ctx)
+	}
+	return applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "user_id").Save(session).Error
 }
 
 func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []listingkit.SheinStudioDesign) error {
@@ -60,7 +67,7 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 		}
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := applyTenantScope(tx, ctx, "tenant_id").Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
+		if err := applySessionAccessScope(tx, ctx, "tenant_id", "").Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
 			return err
 		}
 		if len(designs) > 0 {
@@ -69,7 +76,7 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 			}
 		}
 		return tx.Model(&listingkit.SheinStudioSession{}).
-			Scopes(func(db *gorm.DB) *gorm.DB { return applyTenantScope(db, ctx, "tenant_id") }).
+			Scopes(func(db *gorm.DB) *gorm.DB { return applySessionAccessScope(db, ctx, "tenant_id", "user_id") }).
 			Where("id = ?", sessionID).
 			Updates(map[string]any{
 				"approved_design_ids": listingkit.SheinStudioStringList(approvedIDs),
@@ -80,7 +87,7 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 
 func (r *GormRepository) ListSessionDesigns(ctx context.Context, sessionID string) ([]listingkit.SheinStudioDesign, error) {
 	var designs []listingkit.SheinStudioDesign
-	if err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").
+	if err := applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "").
 		Where("session_id = ?", sessionID).
 		Order("sort_order ASC, created_at ASC").
 		Find(&designs).Error; err != nil {
@@ -130,7 +137,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.variation_intensity AS variation_intensity",
 		}).
 		Joins("JOIN shein_studio_sessions AS s ON s.id = d.session_id").
-		Scopes(func(db *gorm.DB) *gorm.DB { return applyTenantScope(db, ctx, "s.tenant_id") }).
+		Scopes(func(db *gorm.DB) *gorm.DB { return applySessionAccessScope(db, ctx, "s.tenant_id", "s.user_id") }).
 		Order("d.updated_at DESC").
 		Limit(limit).
 		Scan(&rows).Error; err != nil {
@@ -170,4 +177,16 @@ func applyTenantScope(db *gorm.DB, ctx context.Context, column string) *gorm.DB 
 		return db.Where("("+column+" = ? OR "+column+" = '' OR "+column+" IS NULL)", tenantID)
 	}
 	return db.Where(column+" = ?", tenantID)
+}
+
+func applySessionAccessScope(db *gorm.DB, ctx context.Context, tenantColumn string, userColumn string) *gorm.DB {
+	db = applyTenantScope(db, ctx, tenantColumn)
+	if !listingkit.OwnerScopeEnabled() || strings.TrimSpace(userColumn) == "" {
+		return db
+	}
+	userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))
+	if userID == "" {
+		return db
+	}
+	return db.Where(userColumn+" = ?", userID)
 }

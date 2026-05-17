@@ -1,13 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Session } from "next-auth";
 
-const SESSION_COOKIE = "listingkit_zitadel_session";
+import { auth } from "@/auth";
+import {
+  authorizeZitadelIdentity,
+  isZitadelAuthConfigured,
+  readZitadelAccessTokenFromSession,
+  readZitadelIdentityFromSession,
+  readZitadelSessionError,
+} from "@/lib/server/zitadel-auth";
 
-type ZitadelSessionCookie = {
-  accessToken?: unknown;
-  expiresAt?: unknown;
+type AuthenticatedProxyRequest = NextRequest & {
+  auth?: unknown;
 };
 
-export function proxy(request: NextRequest) {
+const authenticatedProxy = auth(async (request) =>
+  handleProxy(request as AuthenticatedProxyRequest),
+);
+
+export { authenticatedProxy as proxy };
+export default authenticatedProxy;
+
+async function handleProxy(request: AuthenticatedProxyRequest) {
   if (!isListingKitPagePath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
@@ -16,18 +30,31 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!isZitadelConfigured()) {
+  if (!isZitadelAuthConfigured()) {
     return NextResponse.json(
       { error: "ZITADEL auth is not configured" },
       { status: 503 },
     );
   }
 
-  if (hasValidZitadelSession(request)) {
-    return NextResponse.next();
+  const session = (request.auth ?? null) as Session | null;
+  const accessToken = readZitadelAccessTokenFromSession(session);
+  const sessionError = readZitadelSessionError(session);
+  if (!accessToken || sessionError) {
+    return redirectToZitadelLogin(request);
   }
 
-  return redirectToZitadelLogin(request);
+  const identity = readZitadelIdentityFromSession(session);
+  if (!identity) {
+    return redirectToZitadelLogin(request);
+  }
+
+  const authorization = authorizeZitadelIdentity(identity);
+  if (!authorization.authorized) {
+    return NextResponse.redirect(new URL("/unauthorized", request.nextUrl));
+  }
+
+  return NextResponse.next();
 }
 
 function isListingKitPagePath(pathname: string) {
@@ -39,35 +66,6 @@ function shouldBypassListingKitAuth() {
     process.env.NODE_ENV !== "production" &&
     process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE === "1"
   );
-}
-
-function isZitadelConfigured() {
-  return Boolean(
-    process.env.ZITADEL_ISSUER_URL?.trim() && process.env.ZITADEL_CLIENT_ID?.trim(),
-  );
-}
-
-function hasValidZitadelSession(request: NextRequest) {
-  const raw = request.cookies.get(SESSION_COOKIE)?.value;
-  if (!raw) {
-    return false;
-  }
-
-  try {
-    const session = JSON.parse(decodeBase64Url(raw)) as ZitadelSessionCookie;
-    if (typeof session.accessToken !== "string" || session.accessToken.length === 0) {
-      return false;
-    }
-    if (
-      typeof session.expiresAt === "number" &&
-      session.expiresAt <= Math.floor(Date.now() / 1000)
-    ) {
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function redirectToZitadelLogin(request: NextRequest) {
@@ -84,12 +82,6 @@ function buildReturnTo(request: NextRequest) {
     return "/";
   }
   return returnTo;
-}
-
-function decodeBase64Url(value: string) {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
-  return globalThis.atob(padded);
 }
 
 export const config = {

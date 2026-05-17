@@ -1,37 +1,27 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
 )
 
 func LoadFromBytes(data []byte) (*Config, error) {
-	if len(data) == 0 {
-		cfg := NewDefaultConfig()
-		applyEnvOverrides(cfg)
-		if err := cfg.ValidateWithError(); err != nil {
-			return nil, err
+	tryLoadDotEnv()
+	logDeprecatedEnvUsage()
+
+	v := newViper()
+	if len(data) > 0 {
+		if err := v.ReadConfig(bytes.NewReader(data)); err != nil {
+			return nil, fmt.Errorf("parse yaml config: %w", err)
 		}
-		return cfg, nil
 	}
 
-	cfg := &Config{}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parse yaml config: %w", err)
-	}
-
-	applyDefaults(cfg)
-	applyEnvOverrides(cfg)
-	if err := cfg.ValidateWithError(); err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
+	return loadWithViper(v)
 }
 
 func LoadConfigWithFallback(configPath string, logger *logrus.Logger) (*Config, error) {
@@ -248,6 +238,11 @@ func NewDefaultConfig() *Config {
 			CheckInterval:      300,
 			InsecureSkipVerify: false,
 		},
+		Debug: DebugConfig{
+			SavePublishJSON:      false,
+			ProductEnrichMockLLM: false,
+		},
+		ListingKit: ListingKitConfig{},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{
 				Enabled:          false,
@@ -347,187 +342,5 @@ func NewDefaultConfig() *Config {
 				ShutdownTimeout: 30 * time.Second,
 			},
 		},
-	}
-}
-
-func applyDefaults(cfg *Config) {
-	defaultCfg := NewDefaultConfig()
-
-	if cfg.Browser.BrowserPath == "" {
-		cfg.Browser = defaultCfg.Browser
-	}
-	if cfg.Worker.Concurrency == 0 {
-		cfg.Worker = defaultCfg.Worker
-	}
-	if cfg.Processor.MaxRetries == 0 {
-		cfg.Processor = defaultCfg.Processor
-	}
-	if cfg.OpenAI.APIKey == "" {
-		cfg.OpenAI.Model = defaultCfg.OpenAI.Model
-		if cfg.OpenAI.BaseURL == "" {
-			cfg.OpenAI.BaseURL = defaultCfg.OpenAI.BaseURL
-		}
-		if cfg.OpenAI.Timeout == 0 {
-			cfg.OpenAI.Timeout = defaultCfg.OpenAI.Timeout
-		}
-	}
-	if cfg.Management.BaseURL == "" {
-		cfg.Management.BaseURL = defaultCfg.Management.BaseURL
-	}
-	if cfg.Management.ClientID == "" {
-		cfg.Management.ClientID = defaultCfg.Management.ClientID
-	}
-	if cfg.Management.TenantID == "" {
-		cfg.Management.TenantID = defaultCfg.Management.TenantID
-	}
-	if cfg.Management.TokenURL == "" {
-		cfg.Management.TokenURL = defaultCfg.Management.TokenURL
-	}
-	if !cfg.Amazon.Enabled && cfg.Amazon.DataFreshnessDays == 0 {
-		cfg.Amazon = defaultCfg.Amazon
-	} else {
-		if cfg.Amazon.RemoteAPI.Timeout == 0 {
-			cfg.Amazon.RemoteAPI.Timeout = defaultCfg.Amazon.RemoteAPI.Timeout
-		}
-		if cfg.Amazon.ProductDedupe.LockTTLSeconds == 0 {
-			cfg.Amazon.ProductDedupe.LockTTLSeconds = defaultCfg.Amazon.ProductDedupe.LockTTLSeconds
-		}
-		if cfg.Amazon.ProductDedupe.ResultTTLSeconds == 0 {
-			cfg.Amazon.ProductDedupe.ResultTTLSeconds = defaultCfg.Amazon.ProductDedupe.ResultTTLSeconds
-		}
-		if cfg.Amazon.ProductDedupe.WaitTimeoutSeconds == 0 {
-			cfg.Amazon.ProductDedupe.WaitTimeoutSeconds = defaultCfg.Amazon.ProductDedupe.WaitTimeoutSeconds
-		}
-		if cfg.Amazon.ProductDedupe.PollIntervalMillis == 0 {
-			cfg.Amazon.ProductDedupe.PollIntervalMillis = defaultCfg.Amazon.ProductDedupe.PollIntervalMillis
-		}
-		if cfg.Amazon.FailureArtifacts.Directory == "" {
-			cfg.Amazon.FailureArtifacts.Directory = defaultCfg.Amazon.FailureArtifacts.Directory
-		}
-		if cfg.Amazon.FailureArtifacts.MaxHTMLBytes == 0 {
-			cfg.Amazon.FailureArtifacts.MaxHTMLBytes = defaultCfg.Amazon.FailureArtifacts.MaxHTMLBytes
-		}
-		if cfg.Amazon.RiskControl.CaptchaRecreateThreshold == 0 {
-			cfg.Amazon.RiskControl.CaptchaRecreateThreshold = defaultCfg.Amazon.RiskControl.CaptchaRecreateThreshold
-		}
-		if cfg.Amazon.RiskControl.AuthenticationRecreateThreshold == 0 {
-			cfg.Amazon.RiskControl.AuthenticationRecreateThreshold = defaultCfg.Amazon.RiskControl.AuthenticationRecreateThreshold
-		}
-		if cfg.Amazon.RiskControl.BrowserCrashRecreateThreshold == 0 {
-			cfg.Amazon.RiskControl.BrowserCrashRecreateThreshold = defaultCfg.Amazon.RiskControl.BrowserCrashRecreateThreshold
-		}
-		if cfg.Amazon.RiskControl.TimeoutRecreateThreshold == 0 {
-			cfg.Amazon.RiskControl.TimeoutRecreateThreshold = defaultCfg.Amazon.RiskControl.TimeoutRecreateThreshold
-		}
-		if cfg.Amazon.RiskControl.NetworkRecreateThreshold == 0 {
-			cfg.Amazon.RiskControl.NetworkRecreateThreshold = defaultCfg.Amazon.RiskControl.NetworkRecreateThreshold
-		}
-		if cfg.Amazon.RiskControl.ServerErrorRecreateThreshold == 0 {
-			cfg.Amazon.RiskControl.ServerErrorRecreateThreshold = defaultCfg.Amazon.RiskControl.ServerErrorRecreateThreshold
-		}
-		if cfg.Amazon.RegionGuard.FailureThreshold == 0 {
-			cfg.Amazon.RegionGuard.FailureThreshold = defaultCfg.Amazon.RegionGuard.FailureThreshold
-		}
-		if cfg.Amazon.RegionGuard.EvaluationWindowSeconds == 0 {
-			cfg.Amazon.RegionGuard.EvaluationWindowSeconds = defaultCfg.Amazon.RegionGuard.EvaluationWindowSeconds
-		}
-		if cfg.Amazon.RegionGuard.CooldownSeconds == 0 {
-			cfg.Amazon.RegionGuard.CooldownSeconds = defaultCfg.Amazon.RegionGuard.CooldownSeconds
-		}
-		if cfg.Amazon.QualityControl.ValidationRetryMaxAttempts == 0 {
-			cfg.Amazon.QualityControl.ValidationRetryMaxAttempts = defaultCfg.Amazon.QualityControl.ValidationRetryMaxAttempts
-		}
-		if cfg.Amazon.ProxyPool.Strategy == "" {
-			cfg.Amazon.ProxyPool.Strategy = defaultCfg.Amazon.ProxyPool.Strategy
-		}
-		if cfg.Amazon.ProxyPool.FailureCooldownSeconds == 0 {
-			cfg.Amazon.ProxyPool.FailureCooldownSeconds = defaultCfg.Amazon.ProxyPool.FailureCooldownSeconds
-		}
-		if cfg.Amazon.ConcurrencyControl.MaxInFlight == 0 {
-			cfg.Amazon.ConcurrencyControl.MaxInFlight = defaultCfg.Amazon.ConcurrencyControl.MaxInFlight
-		}
-		if cfg.Amazon.ConcurrencyControl.MaxWaiting == 0 {
-			cfg.Amazon.ConcurrencyControl.MaxWaiting = defaultCfg.Amazon.ConcurrencyControl.MaxWaiting
-		}
-		if cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds == 0 {
-			cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds = defaultCfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds
-		}
-	}
-	if cfg.Browser.RandomConfig.MaxUsesPerInstance == 0 {
-		cfg.Browser.RandomConfig.MaxUsesPerInstance = defaultCfg.Browser.RandomConfig.MaxUsesPerInstance
-	}
-	if cfg.ProductImage.WorkDir == "" {
-		cfg.ProductImage.WorkDir = defaultCfg.ProductImage.WorkDir
-	}
-	if cfg.ProductImage.Segmenter.Timeout == 0 {
-		cfg.ProductImage.Segmenter.Timeout = defaultCfg.ProductImage.Segmenter.Timeout
-	}
-	if cfg.ProductImage.WhiteBackground.Timeout == 0 {
-		cfg.ProductImage.WhiteBackground.Timeout = defaultCfg.ProductImage.WhiteBackground.Timeout
-	}
-	if cfg.ProductImage.Scene.Timeout == 0 {
-		cfg.ProductImage.Scene.Timeout = defaultCfg.ProductImage.Scene.Timeout
-	}
-	if cfg.ProductImage.Publisher.Provider == "" {
-		cfg.ProductImage.Publisher.Provider = defaultCfg.ProductImage.Publisher.Provider
-	}
-	if cfg.ProductImage.Publisher.OutputDir == "" {
-		cfg.ProductImage.Publisher.OutputDir = defaultCfg.ProductImage.Publisher.OutputDir
-	}
-	if cfg.ProductImage.Publisher.S3.Region == "" {
-		cfg.ProductImage.Publisher.S3.Region = defaultCfg.ProductImage.Publisher.S3.Region
-	}
-	if cfg.ProductImage.Publisher.S3.Endpoint == "" {
-		cfg.ProductImage.Publisher.S3.Endpoint = defaultCfg.ProductImage.Publisher.S3.Endpoint
-	}
-	if cfg.Updater.UpdateURL == "" {
-		cfg.Updater = defaultCfg.Updater
-	}
-	if cfg.RabbitMQ == nil {
-		rabbitMQCopy := *defaultCfg.RabbitMQ
-		cfg.RabbitMQ = &rabbitMQCopy
-	} else {
-		if cfg.RabbitMQ.URL == "" {
-			cfg.RabbitMQ.URL = defaultCfg.RabbitMQ.URL
-		}
-		if cfg.RabbitMQ.ReconnectInterval == 0 {
-			cfg.RabbitMQ.ReconnectInterval = defaultCfg.RabbitMQ.ReconnectInterval
-		}
-		if cfg.RabbitMQ.MaxReconnectTries == 0 {
-			cfg.RabbitMQ.MaxReconnectTries = defaultCfg.RabbitMQ.MaxReconnectTries
-		}
-		if cfg.RabbitMQ.Consumer.PrefetchCount == 0 {
-			cfg.RabbitMQ.Consumer.PrefetchCount = defaultCfg.RabbitMQ.Consumer.PrefetchCount
-		}
-		if cfg.RabbitMQ.Consumer.RetryDelay == 0 {
-			cfg.RabbitMQ.Consumer.RetryDelay = defaultCfg.RabbitMQ.Consumer.RetryDelay
-		}
-		if cfg.RabbitMQ.Consumer.MaxRetries == 0 {
-			cfg.RabbitMQ.Consumer.MaxRetries = defaultCfg.RabbitMQ.Consumer.MaxRetries
-		}
-		if cfg.RabbitMQ.Node.Role == "" {
-			cfg.RabbitMQ.Node.Role = defaultCfg.RabbitMQ.Node.Role
-		}
-		if cfg.RabbitMQ.Node.MaxConcurrency == 0 {
-			cfg.RabbitMQ.Node.MaxConcurrency = defaultCfg.RabbitMQ.Node.MaxConcurrency
-		}
-		if cfg.RabbitMQ.Node.HealthCheckPort == 0 {
-			cfg.RabbitMQ.Node.HealthCheckPort = defaultCfg.RabbitMQ.Node.HealthCheckPort
-		}
-		if cfg.RabbitMQ.Node.MetricsPort == 0 {
-			cfg.RabbitMQ.Node.MetricsPort = defaultCfg.RabbitMQ.Node.MetricsPort
-		}
-		if cfg.RabbitMQ.Node.LogLevel == "" {
-			cfg.RabbitMQ.Node.LogLevel = defaultCfg.RabbitMQ.Node.LogLevel
-		}
-		if cfg.RabbitMQ.Node.ShutdownTimeout == 0 {
-			cfg.RabbitMQ.Node.ShutdownTimeout = defaultCfg.RabbitMQ.Node.ShutdownTimeout
-		}
-	}
-	if cfg.Platforms.Alibaba1688.Timeout == 0 {
-		cfg.Platforms.Alibaba1688.Timeout = defaultCfg.Platforms.Alibaba1688.Timeout
-	}
-	if cfg.Platforms.Alibaba1688.PoolSize == 0 {
-		cfg.Platforms.Alibaba1688.PoolSize = defaultCfg.Platforms.Alibaba1688.PoolSize
 	}
 }

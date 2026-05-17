@@ -47,19 +47,20 @@ type runtimeDeps struct {
 }
 
 type appBootstrap struct {
-	productHandler       productenrich.ProductHandler
-	imageHandler         productimage.Handler
-	amazonListingHandler amazonlisting.Handler
-	listingKitHandler    listingkit.Handler
-	studioSessionHandler listingkit.StudioSessionHandler
-	sdsCatalogHandler    sdsCatalogRouteHandler
-	sheinLoginHandler    sheinLoginRouteHandler
-	sdsLoginHandler      sdsLoginRouteHandler
-	taskRPCHandler       taskrpcapi.Handler
-	server               *http.Server
-	routes               []routeDescriptor
-	pools                []worker.WorkerPool
-	closers              []func() error
+	productHandler        productenrich.ProductHandler
+	imageHandler          productimage.Handler
+	amazonListingHandler  amazonlisting.Handler
+	listingKitHandler     listingkit.Handler
+	promptTemplateHandler promptTemplateRouteHandler
+	studioSessionHandler  listingkit.StudioSessionHandler
+	sdsCatalogHandler     sdsCatalogRouteHandler
+	sheinLoginHandler     sheinLoginRouteHandler
+	sdsLoginHandler       sdsLoginRouteHandler
+	taskRPCHandler        taskrpcapi.Handler
+	server                *http.Server
+	routes                []routeDescriptor
+	pools                 []worker.WorkerPool
+	closers               []func() error
 }
 
 type productModule struct {
@@ -81,6 +82,10 @@ type listingKitModule struct {
 	handler              listingkit.Handler
 	studioSessionHandler listingkit.StudioSessionHandler
 	pool                 worker.WorkerPool
+}
+
+type promptTemplateModule struct {
+	handler promptTemplateRouteHandler
 }
 
 type productRouteHandler interface {
@@ -130,13 +135,14 @@ type listingKitRouteHandler interface {
 	ValidateTaskRevision(c *gin.Context)
 	SubmitTask(c *gin.Context)
 	RefreshSubmissionStatus(c *gin.Context)
+	ListSettingsNamespaces(c *gin.Context)
+	GetSettingsNamespaceSchema(c *gin.Context)
+	GetSettingsNamespace(c *gin.Context)
+	UpdateSettingsNamespace(c *gin.Context)
 	GetSheinSettings(c *gin.Context)
 	UpdateSheinSettings(c *gin.Context)
 	GetAIClientSettings(c *gin.Context)
 	UpdateAIClientSettings(c *gin.Context)
-	ListPromptSettings(c *gin.Context)
-	UpsertPromptSetting(c *gin.Context)
-	SetPromptSettingStatus(c *gin.Context)
 	ListAdminStores(c *gin.Context)
 	GetAdminStore(c *gin.Context)
 	CreateAdminStore(c *gin.Context)
@@ -222,6 +228,14 @@ type listingKitRouteHandler interface {
 	UpdateSheinFinalDraft(c *gin.Context)
 	GetSubmissionEvents(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)
+}
+
+type promptTemplateRouteHandler interface {
+	ListPromptTemplateCatalog(c *gin.Context)
+	GetPromptTemplateSchema(c *gin.Context)
+	ListPromptTemplates(c *gin.Context)
+	UpsertPromptTemplate(c *gin.Context)
+	SetPromptTemplateStatus(c *gin.Context)
 }
 
 type studioSessionRouteHandler interface {

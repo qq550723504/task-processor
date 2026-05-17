@@ -271,14 +271,33 @@ func TestPlatformSubscriptionPlanTenantsAndAuditLogs(t *testing.T) {
 	}
 }
 
+func TestPlatformSubscriptionCanUseConfiguredAdminUser(t *testing.T) {
+	router := platformSubscriptionTestRouterWithOptions(t, WithPlatformSubscriptionAccess([]string{"admin-user"}, nil))
+
+	req := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
+	req.Header.Set("X-User-ID", "admin-user")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
 func platformSubscriptionTestRouter(t *testing.T) *gin.Engine {
+	return platformSubscriptionTestRouterWithOptions(t)
+}
+
+func platformSubscriptionTestRouterWithOptions(t *testing.T, opts ...HandlerOption) *gin.Engine {
 	t.Helper()
 	repo := listingsubscription.NewMemRepository()
 	service, err := listingsubscription.NewService(repo)
 	if err != nil {
 		t.Fatalf("create subscription service: %v", err)
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithSubscriptionService(service))
+	baseOpts := []HandlerOption{WithSubscriptionService(service)}
+	baseOpts = append(baseOpts, opts...)
+	h, err := NewHandler(&stubGenerationTaskService{}, baseOpts...)
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
 	}

@@ -9,19 +9,19 @@ import (
 )
 
 func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
-	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
+	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, nil, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
 	return server
 }
 
 func buildHTTPServerWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
-	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
+	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, studioSessionHandler, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
 	return server
 }
 
-func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) (*http.Server, []routeDescriptor) {
+func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) (*http.Server, []routeDescriptor) {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	routes := buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandlers...)
+	routes := buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, promptTemplateHandler, studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandlers...)
 	mountRoutes(router, routes)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
@@ -31,14 +31,18 @@ func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandle
 }
 
 func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) {
-	mountRoutes(r, buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, nil, nil, taskRPCHandler, sdsCatalogHandlers...))
+	mountRoutes(r, buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, nil, nil, nil, taskRPCHandler, sdsCatalogHandlers...))
+}
+
+func RegisterRoutesWithPrompt(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) {
+	mountRoutes(r, buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, promptTemplateHandler, nil, nil, nil, taskRPCHandler, sdsCatalogHandlers...))
 }
 
 func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
-	return buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
+	return buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, studioSessionHandler, nil, nil, taskRPCHandler, sdsCatalogHandlers...)
 }
 
-func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
+func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
 	routes := []routeDescriptor{
 		{Method: http.MethodGet, Path: "/health", Module: "system", Handler: func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -74,13 +78,10 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 	if listingKitHandler != nil {
 		routes = append(routes,
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/generate", Module: "listing-kit", Handler: listingKitHandler.GenerateListingKit},
-			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/shein", Module: "listing-kit", Handler: listingKitHandler.GetSheinSettings},
-			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/shein", Module: "listing-kit", Handler: listingKitHandler.UpdateSheinSettings},
-			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/ai", Module: "listing-kit", Handler: listingKitHandler.GetAIClientSettings},
-			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/ai", Module: "listing-kit", Handler: listingKitHandler.UpdateAIClientSettings},
-			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/prompts", Module: "listing-kit", Handler: listingKitHandler.ListPromptSettings},
-			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/prompts", Module: "listing-kit", Handler: listingKitHandler.UpsertPromptSetting},
-			routeDescriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/settings/prompts/:key/status", Module: "listing-kit", Handler: listingKitHandler.SetPromptSettingStatus},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings", Module: "listing-kit", Handler: listingKitHandler.ListSettingsNamespaces},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/:namespace/schema", Module: "listing-kit", Handler: listingKitHandler.GetSettingsNamespaceSchema},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/:namespace", Module: "listing-kit", Handler: listingKitHandler.GetSettingsNamespace},
+			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/:namespace", Module: "listing-kit", Handler: listingKitHandler.UpdateSettingsNamespace},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/subscription/me", Module: "listing-kit", Handler: listingKitHandler.GetCurrentSubscription},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/subscription/modules", Module: "listing-kit-admin", Handler: listingKitHandler.ListSubscriptionModules},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/subscription/entitlements", Module: "listing-kit-admin", Handler: listingKitHandler.ListSubscriptionEntitlements},
@@ -195,6 +196,16 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 		)
 	}
 
+	if promptTemplateHandler != nil {
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/prompts/catalog", Module: "listing-kit-prompts", Handler: promptTemplateHandler.ListPromptTemplateCatalog},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/prompts/schema/:key", Module: "listing-kit-prompts", Handler: promptTemplateHandler.GetPromptTemplateSchema},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/prompts", Module: "listing-kit-prompts", Handler: promptTemplateHandler.ListPromptTemplates},
+			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/prompts", Module: "listing-kit-prompts", Handler: promptTemplateHandler.UpsertPromptTemplate},
+			routeDescriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/prompts/:key/status", Module: "listing-kit-prompts", Handler: promptTemplateHandler.SetPromptTemplateStatus},
+		)
+	}
+
 	if studioSessionHandler != nil {
 		routes = append(routes,
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/gallery", Module: "listing-kit-studio", Handler: studioSessionHandler.ListStudioSessionGallery},
@@ -260,6 +271,10 @@ func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
 	zitadelAuth := newListingKitZitadelAuthMiddlewareFromEnv()
 	for _, route := range routes {
 		if zitadelAuth != nil && listingKitRouteRequiresZitadelAuth(route) {
+			if roleAuth := newListingKitRoleMiddleware(route); roleAuth != nil {
+				r.Handle(route.Method, route.Path, zitadelAuth, roleAuth, route.Handler)
+				continue
+			}
 			r.Handle(route.Method, route.Path, zitadelAuth, route.Handler)
 			continue
 		}

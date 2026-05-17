@@ -10,12 +10,12 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
-	"task-processor/internal/prompt"
 )
 
 type handler struct {
 	service                     listingkit.HandlerService
 	studioAsyncJobs             *studioAsyncJobStore
+	initErr                     error
 	storeHandler                *listingadmin.StoreHandler
 	storeStatisticsHandler      *listingadmin.StoreStatisticsHandler
 	importTaskHandler           *listingadmin.ImportTaskHandler
@@ -29,7 +29,9 @@ type handler struct {
 	productDataHandler          *listingadmin.ProductDataHandler
 	subscriptionService         *listingsubscription.Service
 	subscriptionHandler         *listingsubscription.Handler
-	tenantPromptStore           prompt.TenantPromptStore
+	settingsService             *settingsService
+	platformAdminUsers          []string
+	platformAdminRoles          []string
 }
 
 type HandlerOption func(*handler)
@@ -131,9 +133,27 @@ func WithSubscriptionService(service *listingsubscription.Service) HandlerOption
 	}
 }
 
-func WithTenantPromptStore(store prompt.TenantPromptStore) HandlerOption {
+func WithPlatformSubscriptionAccess(users []string, roles []string) HandlerOption {
 	return func(h *handler) {
-		h.tenantPromptStore = store
+		if h == nil {
+			return
+		}
+		h.platformAdminUsers = append([]string(nil), users...)
+		h.platformAdminRoles = append([]string(nil), roles...)
+	}
+}
+
+func WithStudioAsyncJobStorePath(path string) HandlerOption {
+	return func(h *handler) {
+		if h == nil {
+			return
+		}
+		store, err := newStudioAsyncJobStoreWithPath(path)
+		if err != nil {
+			h.initErr = err
+			return
+		}
+		h.studioAsyncJobs = store
 	}
 }
 
@@ -150,6 +170,10 @@ func NewHandler(service listingkit.HandlerService, opts ...HandlerOption) (listi
 		if opt != nil {
 			opt(h)
 		}
+	}
+	h.settingsService = newSettingsService(service)
+	if h.initErr != nil {
+		return nil, h.initErr
 	}
 	return h, nil
 }

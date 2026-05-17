@@ -16,6 +16,7 @@ data:
   # Mount this path to persistent storage if API restarts must retain Studio async job status.
   LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH: "/data/listingkit-studio-async-jobs.json"
   # Set ZITADEL_ISSUER_URL and ZITADEL_CLIENT_ID to enable ZITADEL OIDC login.
+  # These env vars are bound into Go API core config at listingkit.zitadel.*.
   # The resourceowner scope is required so the Go API can scope ListingKit data by ZITADEL tenant.
   ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud"
   TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED: "1"

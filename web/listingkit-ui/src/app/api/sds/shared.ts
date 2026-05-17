@@ -1,3 +1,10 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import {
+  buildListingKitUpstreamHeaders,
+  verifyListingKitRequestIdentity,
+} from "@/app/api/listing-kits/proxy-auth";
+
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 
 export class SDSAPIError extends Error {
@@ -13,6 +20,10 @@ export class SDSAPIError extends Error {
     this.detail = input.detail;
   }
 }
+
+export type SDSJSONResult<T> = {
+  payload: T;
+};
 
 export function sdsAPIErrorPayload(error: unknown, fallbackCode: string) {
   if (error instanceof SDSAPIError) {
@@ -49,10 +60,28 @@ export function buildSDSURL(pathname: string, query?: URLSearchParams) {
   return `${normalizedBase}${normalizedPath}${suffix}`;
 }
 
-export async function fetchSDSJSON<T>(pathname: string, query?: URLSearchParams) {
+export async function fetchSDSJSON<T>(
+  request: NextRequest,
+  pathname: string,
+  query?: URLSearchParams,
+): Promise<SDSJSONResult<T>> {
+  const auth = await verifyListingKitRequestIdentity(request);
+  if (auth.response) {
+    throw new SDSAPIError({
+      code: "zitadel_proxy_auth_failed",
+      message: await readErrorMessage(auth.response, "ZITADEL authentication failed"),
+      status: auth.response.status,
+    });
+  }
+
+  const headers = buildListingKitUpstreamHeaders(request.headers, auth.identity);
+  if (auth.token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${auth.token}`);
+  }
+
   const response = await fetch(buildSDSURL(pathname, query), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers,
     cache: "no-store",
   });
 
@@ -75,5 +104,17 @@ export async function fetchSDSJSON<T>(pathname: string, query?: URLSearchParams)
     throw new SDSAPIError({ code, message, status: response.status, detail });
   }
 
-  return payload as T;
+  return {
+    payload: payload as T,
+  };
+}
+
+async function readErrorMessage(response: NextResponse, fallback: string) {
+  const payload = (await response.json().catch(() => null)) as
+    | { message?: unknown }
+    | null;
+  if (payload?.message && typeof payload.message === "string") {
+    return payload.message;
+  }
+  return fallback;
 }

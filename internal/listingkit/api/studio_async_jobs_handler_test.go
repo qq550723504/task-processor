@@ -167,7 +167,6 @@ func TestStudioAsyncJobFileStorePersistsCompletedJobs(t *testing.T) {
 
 func TestStudioAsyncJobHandlerUsesConfiguredFileStore(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "configured-studio-async-jobs.json")
-	t.Setenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH", storePath)
 	store, err := newStudioAsyncJobFileStore(storePath, studioAsyncJobTTL, studioAsyncJobMaxLen)
 	if err != nil {
 		t.Fatalf("new file store: %v", err)
@@ -176,7 +175,7 @@ func TestStudioAsyncJobHandlerUsesConfiguredFileStore(t *testing.T) {
 	store.succeed(job.ID, map[string]any{"prompt": "persisted"})
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubGenerationTaskService{})
+	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioAsyncJobStorePath(storePath))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -206,9 +205,33 @@ func TestStudioAsyncJobHandlerRejectsInvalidConfiguredFileStore(t *testing.T) {
 	if err := os.WriteFile(parentFile, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write parent file: %v", err)
 	}
-	t.Setenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH", filepath.Join(parentFile, "jobs.json"))
 
-	if _, err := NewHandler(&stubGenerationTaskService{}); err == nil {
+	if _, err := NewHandler(&stubGenerationTaskService{}, WithStudioAsyncJobStorePath(filepath.Join(parentFile, "jobs.json"))); err == nil {
 		t.Fatal("NewHandler returned nil error, want invalid file store error")
+	}
+}
+
+func TestStudioAsyncJobHandlerUsesExplicitFileStorePathOption(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "option-configured-studio-async-jobs.json")
+	store, err := newStudioAsyncJobFileStore(storePath, studioAsyncJobTTL, studioAsyncJobMaxLen)
+	if err != nil {
+		t.Fatalf("new file store: %v", err)
+	}
+	job := store.create("/studio/designs")
+	store.succeed(job.ID, map[string]any{"prompt": "persisted"})
+
+	gin.SetMode(gin.TestMode)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioAsyncJobStorePath(storePath))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/studio/async-jobs/:job_id", h.GetStudioAsyncJob)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/async-jobs/"+job.ID, nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
 	}
 }

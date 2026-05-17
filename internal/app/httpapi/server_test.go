@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -722,6 +723,22 @@ func (s *stubListingKitHandler) RefreshSubmissionStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "refreshed"})
 }
 
+func (s *stubListingKitHandler) ListSettingsNamespaces(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"namespace": "ai"}, {"namespace": "shein"}}})
+}
+
+func (s *stubListingKitHandler) GetSettingsNamespaceSchema(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"namespace": c.Param("namespace"), "label": "schema"})
+}
+
+func (s *stubListingKitHandler) GetSettingsNamespace(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"namespace": c.Param("namespace"), "method": "GET"})
+}
+
+func (s *stubListingKitHandler) UpdateSettingsNamespace(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"namespace": c.Param("namespace"), "method": "PUT"})
+}
+
 func (s *stubListingKitHandler) GetSheinSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
 }
@@ -738,15 +755,25 @@ func (s *stubListingKitHandler) UpdateAIClientSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"client_name": "default", "api_key_set": true})
 }
 
-func (s *stubListingKitHandler) ListPromptSettings(c *gin.Context) {
+type stubPromptTemplateHandler struct{}
+
+func (s *stubPromptTemplateHandler) ListPromptTemplateCatalog(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"key": "prompt-key"}}})
+}
+
+func (s *stubPromptTemplateHandler) GetPromptTemplateSchema(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"key": c.Param("key"), "category": "shein"})
+}
+
+func (s *stubPromptTemplateHandler) ListPromptTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []any{}})
 }
 
-func (s *stubListingKitHandler) UpsertPromptSetting(c *gin.Context) {
+func (s *stubPromptTemplateHandler) UpsertPromptTemplate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"key": "prompt-key"})
 }
 
-func (s *stubListingKitHandler) SetPromptSettingStatus(c *gin.Context) {
+func (s *stubPromptTemplateHandler) SetPromptTemplateStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"key": c.Param("key")})
 }
 
@@ -967,8 +994,9 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubListingKitHandler{}
+	promptHandler := &stubPromptTemplateHandler{}
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, handler, nil)
+	RegisterRoutesWithPrompt(router, nil, nil, nil, handler, promptHandler, nil)
 
 	body, _ := json.Marshal(map[string]any{
 		"text":      "test",
@@ -1076,6 +1104,67 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.listAdminStoreStatisticsCalled {
 		t.Fatal("listing kit ListAdminStoreStatistics handler was not called")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/settings/ai?scope=tenant&client_name=default", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/settings/ai = %d, want 200", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `"namespace":"ai"`) {
+		t.Fatalf("GET /api/v1/listing-kits/settings/ai body = %s, want namespace response", resp.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/listing-kits/prompts", bytes.NewReader([]byte(`{"key":"tmpl.key"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /api/v1/listing-kits/prompts = %d, want 200", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `"key":"prompt-key"`) {
+		t.Fatalf("PUT /api/v1/listing-kits/prompts body = %s, want prompt response", resp.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/prompts/catalog", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/prompts/catalog = %d, want 200", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `"key":"prompt-key"`) {
+		t.Fatalf("GET /api/v1/listing-kits/prompts/catalog body = %s, want prompt catalog response", resp.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/prompts/schema/prompt-key", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/prompts/schema/:key = %d, want 200", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `"category":"shein"`) {
+		t.Fatalf("GET /api/v1/listing-kits/prompts/schema/:key body = %s, want schema response", resp.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/settings", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/settings = %d, want 200", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `"namespace":"ai"`) {
+		t.Fatalf("GET /api/v1/listing-kits/settings body = %s, want namespace list", resp.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/settings/ai/schema", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/settings/ai/schema = %d, want 200", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `"namespace":"ai"`) {
+		t.Fatalf("GET /api/v1/listing-kits/settings/ai/schema body = %s, want schema response", resp.Body.String())
 	}
 
 	handler.listDeletedAdminStoresCalled = false
@@ -1629,7 +1718,7 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, &stubSheinLoginHandler{}, nil, nil)
+	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, &stubSheinLoginHandler{}, nil, nil)
 
 	index := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
@@ -1647,7 +1736,7 @@ func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 func TestBuildRouteDescriptorsWithSDSLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, &stubSDSLoginHandler{}, nil)
+	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, nil, &stubSDSLoginHandler{}, nil)
 
 	index := make(map[string]struct{}, len(routes))
 	for _, route := range routes {

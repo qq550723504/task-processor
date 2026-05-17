@@ -24,6 +24,10 @@ func (s *service) EnsureStudioSession(ctx context.Context, req *EnsureStudioSess
 	if req == nil || req.Selection == nil || req.Selection.VariantID <= 0 {
 		return nil, fmt.Errorf("selection is required")
 	}
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" {
+		userID = RequestUserIDFromContext(ctx)
+	}
 
 	selectionKey := buildStudioSelectionKey(req.Selection)
 	existing, err := s.studioSessionRepo.FindLatestSessionBySelectionKey(ctx, selectionKey)
@@ -36,7 +40,7 @@ func (s *service) EnsureStudioSession(ctx context.Context, req *EnsureStudioSess
 
 	session := &SheinStudioSession{
 		ID:                      uuid.NewString(),
-		UserID:                  strings.TrimSpace(req.UserID),
+		UserID:                  userID,
 		SelectionKey:            selectionKey,
 		Status:                  SheinStudioSessionStatusSelecting,
 		ProductID:               req.Selection.ProductID,

@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
   const shipmentArea = request.nextUrl.searchParams.get("shipmentArea") ?? "US";
 
   try {
-    const payload = await fetchSDSJSON<SDSCategory[]>(
+    const { payload } = await fetchSDSJSON<SDSCategory[]>(
+      request,
       "/categories",
       new URLSearchParams({ shipmentArea }),
     );

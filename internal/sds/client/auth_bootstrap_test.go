@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+
+	coreconfig "task-processor/internal/core/config"
 )
 
 func TestNewBootstrapsStaticSDSAuth(t *testing.T) {
@@ -627,5 +629,18 @@ func TestAuthBootstrapHasSourceRequiresCompleteLoginServiceConfig(t *testing.T) 
 	}
 	if !complete.HasSource() {
 		t.Fatal("complete login service config should be treated as a refresh source")
+	}
+}
+
+func TestNewManagementClientFromConfigRequiresCompleteConfig(t *testing.T) {
+	if _, err := newManagementClientFromConfig(nil); err == nil {
+		t.Fatal("expected nil config to fail")
+	}
+
+	if _, err := newManagementClientFromConfig(&coreconfig.ManagementConfig{
+		BaseURL:  "https://api.example.test",
+		ClientID: "client-id",
+	}); err == nil {
+		t.Fatal("expected incomplete management config to fail")
 	}
 }

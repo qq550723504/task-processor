@@ -54,7 +54,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const payload = await fetchSDSJSON<SDSProductListResponse>("/products", query);
+    const { payload } = await fetchSDSJSON<SDSProductListResponse>(
+      request,
+      "/products",
+      query,
+    );
     return NextResponse.json(payload);
   } catch (error) {
     const payload = sdsAPIErrorPayload(error, "sds_product_query_failed");

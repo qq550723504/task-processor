@@ -29,6 +29,7 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 	task := &Task{
 		ID:         uuid.New().String(),
 		TenantID:   TenantIDFromContext(ctx),
+		UserID:     strings.TrimSpace(req.UserID),
 		Request:    req,
 		Status:     TaskStatusPending,
 		CreatedAt:  time.Now(),

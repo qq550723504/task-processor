@@ -21,8 +21,9 @@ func (h *StoreStatisticsHandler) ListStoreStatistics(c *gin.Context) {
 		return
 	}
 	items, err := h.repo.ListStoreStatistics(c.Request.Context(), StoreStatisticsQuery{
-		TenantID: tenantID,
-		Date:     c.Query("date"),
+		TenantID:    tenantID,
+		OwnerUserID: requestUserID(c),
+		Date:        c.Query("date"),
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})

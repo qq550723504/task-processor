@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 
@@ -410,10 +409,10 @@ func (h *handler) requireSubscriptionHandler(c *gin.Context) bool {
 
 func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
 	userID := strings.TrimSpace(c.GetHeader("X-User-ID"))
-	if userID != "" && slices.Contains(splitCSVEnv("LISTINGKIT_PLATFORM_ADMIN_USERS"), userID) {
+	if userID != "" && slices.Contains(h.platformAdminUsers, userID) {
 		return true
 	}
-	allowedRoles := splitCSVEnv("LISTINGKIT_PLATFORM_ADMIN_ROLES")
+	allowedRoles := h.platformAdminRoles
 	if len(allowedRoles) == 0 {
 		allowedRoles = []string{"listingkit_admin", "platform_admin", "admin"}
 	}
@@ -447,10 +446,6 @@ func writeQuotaExceeded(c *gin.Context, result listingsubscription.GuardResult) 
 		"used":        result.Used,
 		"message":     "subscription quota exceeded",
 	})
-}
-
-func splitCSVEnv(name string) []string {
-	return splitCSVHeaders(os.Getenv(name))
 }
 
 func splitCSVHeaders(values ...string) []string {

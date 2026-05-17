@@ -1,22 +1,12 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-
-type ZitadelIdentity = {
-  tenantId?: string | number;
-  userId?: string | number;
-  userType?: string | number;
-  roles?: string[];
-};
-
-type SessionState =
-  | { status: "loading"; identity?: never; error?: never }
-  | { status: "ready"; identity: ZitadelIdentity; error?: never }
-  | { status: "error"; identity?: never; error: string };
+import { ListingKitSettingsSection } from "@/components/listingkit/settings/listingkit-settings-section";
+import { useZitadelSession } from "@/lib/query/use-zitadel-session";
 
 const PLATFORM_ADMIN_ROLES = ["platform_admin", "listingkit_admin", "admin"];
 
@@ -31,53 +21,10 @@ function stringify(value: unknown) {
 }
 
 export function ZitadelSessionCard() {
-  const [session, setSession] = useState<SessionState>({ status: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSession() {
-      try {
-        const response = await fetch("/api/zitadel-auth/session", {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-        });
-        const payload = (await response.json()) as {
-          identity?: ZitadelIdentity;
-          message?: string;
-          error?: string;
-        };
-        if (cancelled) {
-          return;
-        }
-        if (!response.ok || !payload.identity) {
-          setSession({
-            status: "error",
-            error: payload.message || payload.error || "ZITADEL 会话不可用",
-          });
-          return;
-        }
-        setSession({ status: "ready", identity: payload.identity });
-      } catch (error) {
-        if (!cancelled) {
-          setSession({
-            status: "error",
-            error: error instanceof Error ? error.message : "ZITADEL 会话读取失败",
-          });
-        }
-      }
-    }
-
-    void loadSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const session = useZitadelSession();
 
   const roles = useMemo(
-    () => (session.status === "ready" ? session.identity.roles ?? [] : []),
+    () => (session.data?.roles ?? []),
     [session],
   );
   const hasPlatformAccess = useMemo(
@@ -86,17 +33,13 @@ export function ZitadelSessionCard() {
   );
 
   return (
-    <section className="rounded-[1.5rem] border border-white/70 bg-white/85 p-5 shadow-[0_18px_70px_rgba(39,39,42,0.08)]">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-teal-700">
-            ZITADEL
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-zinc-950">
-            当前登录态
-          </h2>
-        </div>
-        {session.status === "loading" ? (
+    <ListingKitSettingsSection
+      id="session"
+      eyebrow="ZITADEL"
+      title="当前登录态"
+      description="查看当前 ZITADEL 会话返回的租户、用户和角色信息。后续平台设置会按这组身份做范围判断。"
+      actions={
+        session.isPending ? (
           <Badge className="gap-2" variant="neutral">
             <RefreshCw className="size-3 animate-spin" />
             读取中
@@ -104,42 +47,42 @@ export function ZitadelSessionCard() {
         ) : (
           <Badge
             variant={
-              session.status === "ready" && hasPlatformAccess
+              session.data && hasPlatformAccess
                 ? "success"
                 : "warning"
             }
           >
-            {session.status === "ready" && hasPlatformAccess
+            {session.data && hasPlatformAccess
               ? "具备平台管理权限"
               : "缺少平台管理权限"}
           </Badge>
-        )}
-      </div>
-
-      {session.status === "error" ? (
+        )
+      }
+    >
+      {session.isError ? (
         <Alert className="mt-4" variant="destructive">
-          <AlertDescription>{session.error}</AlertDescription>
+          <AlertDescription>{session.error.message}</AlertDescription>
         </Alert>
       ) : null}
 
-      {session.status === "ready" ? (
+      {session.data ? (
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
             <p className="text-xs font-medium text-zinc-500">租户 ID</p>
             <p className="mt-1 break-all font-mono text-sm text-zinc-950">
-              {stringify(session.identity.tenantId)}
+              {stringify(session.data.tenantId)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
             <p className="text-xs font-medium text-zinc-500">用户 ID</p>
             <p className="mt-1 break-all font-mono text-sm text-zinc-950">
-              {stringify(session.identity.userId)}
+              {stringify(session.data.userId)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
             <p className="text-xs font-medium text-zinc-500">身份类型</p>
             <p className="mt-1 break-all font-mono text-sm text-zinc-950">
-              {stringify(session.identity.userType)}
+              {stringify(session.data.userType)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 md:col-span-3">
@@ -167,6 +110,6 @@ export function ZitadelSessionCard() {
           </div>
         </div>
       ) : null}
-    </section>
+    </ListingKitSettingsSection>
   );
 }

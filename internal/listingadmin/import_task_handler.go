@@ -34,18 +34,19 @@ func NewImportTaskHandler(repo ImportTaskRepository) *ImportTaskHandler {
 
 func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
 	query := ImportTaskQuery{
-		TenantID:  requestTenantID(c),
-		Page:      queryInt(c, "page", queryInt(c, "pageNo", 1)),
-		PageSize:  queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
-		Platform:  strings.TrimSpace(c.Query("platform")),
-		Region:    strings.TrimSpace(c.Query("region")),
-		ProductID: strings.TrimSpace(c.Query("productId")),
+		TenantID:    requestTenantID(c),
+		OwnerUserID: requestUserID(c),
+		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
+		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
+		Platform:    strings.TrimSpace(c.Query("platform")),
+		Region:      strings.TrimSpace(c.Query("region")),
+		ProductID:   strings.TrimSpace(c.Query("productId")),
 	}
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListImportTasks(c.Request.Context(), query)
+	page, err := h.repo.ListImportTasks(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "import_task_list_failed", "message": err.Error()})
 		return
@@ -85,7 +86,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 			Priority:       req.Priority,
 		})
 	}
-	items, err := h.repo.BatchCreateImportTasks(c.Request.Context(), tasks)
+	items, err := h.repo.BatchCreateImportTasks(withRequestUserID(c.Request.Context(), requestUserID(c)), tasks)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "import_task_create_failed", "message": err.Error()})
 		return
@@ -98,7 +99,7 @@ func (h *ImportTaskHandler) DeleteImportTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteImportTask(c.Request.Context(), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteImportTask(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
 		writeImportTaskError(c, err, "import_task_delete_failed")
 		return
 	}

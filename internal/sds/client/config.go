@@ -1,10 +1,10 @@
 package client
 
 import (
-	"os"
-	"strconv"
 	"strings"
 	"time"
+
+	coreconfig "task-processor/internal/core/config"
 )
 
 // EndpointSet 定义 SDS 相关接口路径。
@@ -43,6 +43,7 @@ type Config struct {
 	Referer       string
 	CookieFile    string
 	AuthFile      string
+	Management    *coreconfig.ManagementConfig
 	AuthBootstrap AuthBootstrapConfig
 	Endpoints     EndpointSet
 }
@@ -92,23 +93,7 @@ func DefaultConfig() *Config {
 		Referer:       "https://www.sdsdiy.com/portal/search?sideActiveId=overseas&isOverseas=overseas",
 		CookieFile:    "data/sds/session_cookies.json",
 		AuthFile:      "data/sds/auth_state.json",
-		AuthBootstrap: AuthBootstrapConfig{
-			StaticAccessToken:       strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_ACCESS_TOKEN")),
-			StaticOutToken:          strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN")),
-			StaticMerchantID:        envInt64("TASK_PROCESSOR_SDS_MERCHANT_ID"),
-			StaticCookie:            strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_COOKIE")),
-			LoginServiceBaseURL:     strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_BASE_URL")),
-			LoginServiceSharedKey:   strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY")),
-			LoginServiceTenantID:    strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_TENANT_ID")),
-			LoginServiceIdentifier:  strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_IDENTIFIER")),
-			LoginUsername:           strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_USERNAME")),
-			LoginPassword:           strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_PASSWORD")),
-			LoginMerchantName:       strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_MERCHANT_NAME")),
-			LoginDomainName:         strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_DOMAIN_NAME")),
-			LoginVerifyCaptchaParam: strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_VERIFY_CAPTCHA_PARAM")),
-			LoginExtraInfo:          strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SDS_EXTRA_INFO")),
-			ManagementStoreID:       envInt64("TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID"),
-		},
+		AuthBootstrap: AuthBootstrapConfig{},
 		Endpoints: EndpointSet{
 			TemplateListPath:         "/products/page",
 			TemplateGroupsPath:       "/products/pageOptionGroup",
@@ -130,16 +115,4 @@ func DefaultConfig() *Config {
 			DesignUploadPath:         "",
 		},
 	}
-}
-
-func envInt64(key string) int64 {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return 0
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
 }

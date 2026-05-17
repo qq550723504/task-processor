@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -29,8 +30,14 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *listingkit.Task) 
 		if task.TenantID == "" {
 			task.TenantID = tenantctx.TenantIDFromContext(ctx)
 		}
+		if task.UserID == "" {
+			task.UserID = listingkit.ResolveTaskUserID(task)
+		}
 		if task.Request != nil && task.Request.TenantID == "" {
 			task.Request.TenantID = task.TenantID
+		}
+		if task.Request != nil && task.Request.UserID == "" {
+			task.Request.UserID = task.UserID
 		}
 	}
 	return r.db.WithContext(ctx).Create(task).Error
@@ -38,26 +45,29 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *listingkit.Task) 
 
 func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingkit.Task, error) {
 	var task listingkit.Task
-	db := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id")
+	db := applyTaskAccessScope(r.db.WithContext(ctx), ctx)
 	if err := db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, listingkit.ErrTaskNotFound
 		}
 		return nil, err
 	}
+	if !taskVisibleToUser(ctx, &task) {
+		return nil, listingkit.ErrTaskNotFound
+	}
 	return &task, nil
 }
 
 func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, int64, error) {
 	page, pageSize := normalizeTaskListPage(query)
-	db := applyTenantScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx, "tenant_id")
+	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
 	if query != nil && query.Status != "" {
 		db = db.Where("status = ?", query.Status)
 	}
 
 	if query != nil && (query.Platform != "" || query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var candidates []taskListFilterRow
-		columns := []string{"id", "created_at", "status"}
+		columns := []string{"id", "created_at", "status", "user_id"}
 		if query.Platform != "" || query.SheinWorkQueue != "" {
 			columns = append(columns, "request")
 		}
@@ -69,6 +79,9 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 		}
 		filteredIDs := make([]string, 0, len(candidates))
 		for i := range candidates {
+			if !taskVisibleToUser(ctx, &listingkit.Task{UserID: candidates[i].UserID, Request: &listingkit.GenerateRequest{UserID: candidates[i].RequestUserID}}) {
+				continue
+			}
 			if !matchesTaskListFilterRow(&candidates[i], query) {
 				continue
 			}
@@ -87,25 +100,42 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 	}
 
 	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, err
+	if !listingkit.OwnerScopeEnabled() || listingkit.RequestUserIDFromContext(ctx) == "" {
+		if err := db.Count(&total).Error; err != nil {
+			return nil, 0, err
+		}
+		var tasks []listingkit.Task
+		if err := db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
+			return nil, 0, err
+		}
+		return tasks, total, nil
 	}
 	var tasks []listingkit.Task
-	if err := db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
+	if err := db.Order("created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err
 	}
-	return tasks, total, nil
+	filtered := filterTasksForUser(ctx, tasks)
+	total = int64(len(filtered))
+	start := (page - 1) * pageSize
+	if start >= len(filtered) {
+		return []listingkit.Task{}, total, nil
+	}
+	end := start + pageSize
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], total, nil
 }
 
 func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, error) {
-	db := applyTenantScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx, "tenant_id")
+	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
 	if query != nil && query.Status != "" {
 		db = db.Where("status = ?", query.Status)
 	}
 
 	if query != nil && (query.Platform != "" || query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var candidates []taskListFilterRow
-		columns := []string{"id", "created_at", "status"}
+		columns := []string{"id", "created_at", "status", "user_id"}
 		if query.Platform != "" || query.SheinWorkQueue != "" {
 			columns = append(columns, "request")
 		}
@@ -117,6 +147,9 @@ func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listin
 		}
 		filteredIDs := make([]string, 0, len(candidates))
 		for i := range candidates {
+			if !taskVisibleToUser(ctx, &listingkit.Task{UserID: candidates[i].UserID, Request: &listingkit.GenerateRequest{UserID: candidates[i].RequestUserID}}) {
+				continue
+			}
 			if !matchesTaskListFilterRow(&candidates[i], query) {
 				continue
 			}
@@ -130,19 +163,22 @@ func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listin
 	if err := db.Order("created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
-	return tasks, nil
+	return filterTasksForUser(ctx, tasks), nil
 }
 
 type taskListFilterRow struct {
 	ID        string    `gorm:"column:id"`
+	UserID    string    `gorm:"column:user_id"`
 	Status    string    `gorm:"column:status"`
 	Request   string    `gorm:"column:request"`
 	Result    string    `gorm:"column:result"`
 	CreatedAt time.Time `gorm:"column:created_at"`
+	RequestUserID string `gorm:"-"`
 }
 
 type taskListFilterRequest struct {
 	Platforms []string `json:"platforms,omitempty"`
+	UserID    string   `json:"user_id,omitempty"`
 }
 
 type taskListFilterResult struct {
@@ -158,8 +194,12 @@ func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskList
 	if query != nil && (query.Platform != "" || query.SheinWorkQueue != "") {
 		var request taskListFilterRequest
 		if err := json.Unmarshal([]byte(row.Request), &request); err == nil {
-			task.Request = &listingkit.GenerateRequest{Platforms: request.Platforms}
+			task.Request = &listingkit.GenerateRequest{Platforms: request.Platforms, UserID: request.UserID}
+			row.RequestUserID = request.UserID
 		}
+	}
+	if task.Request == nil {
+		task.Request = &listingkit.GenerateRequest{UserID: row.RequestUserID}
 	}
 	if query != nil && (query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var result taskListFilterResult
@@ -175,29 +215,42 @@ func (r *taskRepository) loadTasksByIDs(ctx context.Context, ids []string, total
 		return []listingkit.Task{}, total, nil
 	}
 	var tasks []listingkit.Task
-	db := applyTenantScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx, "tenant_id")
+	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
 	if err := db.Where("id IN ?", ids).Find(&tasks).Error; err != nil {
 		return nil, 0, err
 	}
+	tasks = filterTasksForUser(ctx, tasks)
 	order := make(map[string]int, len(ids))
 	for i, id := range ids {
 		order[id] = i
 	}
-	ordered := make([]listingkit.Task, len(ids))
+	ordered := make([]listingkit.Task, 0, len(tasks))
 	for _, task := range tasks {
 		index, ok := order[task.ID]
 		if !ok {
 			continue
 		}
+		if len(ordered) <= index {
+			next := make([]listingkit.Task, index+1)
+			copy(next, ordered)
+			ordered = next
+		}
 		ordered[index] = task
 	}
-	return ordered, total, nil
+	compacted := make([]listingkit.Task, 0, len(tasks))
+	for _, task := range ordered {
+		if task.ID == "" {
+			continue
+		}
+		compacted = append(compacted, task)
+	}
+	return compacted, total, nil
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	result := r.db.WithContext(ctx).
 		Model(&listingkit.Task{}).
-		Scopes(tenantScope(ctx, "tenant_id")).
+		Scopes(taskAccessScope(ctx)).
 		Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
 		Updates(map[string]any{
 			"status":     listingkit.TaskStatusProcessing,
@@ -250,7 +303,7 @@ func (r *taskRepository) PrepareRetry(ctx context.Context, taskID string) error 
 }
 
 func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
-	return r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(tenantScope(ctx, "tenant_id")).Where("id = ?", taskID).UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1)).Error
+	return r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ?", taskID).UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1)).Error
 }
 
 func (r *taskRepository) SaveTaskResult(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
@@ -261,7 +314,7 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 	var out *listingkit.Task
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var task listingkit.Task
-		if err := applyTenantScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx, "tenant_id").Where("id = ?", taskID).First(&task).Error; err != nil {
+		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return listingkit.ErrTaskNotFound
 			}
@@ -276,7 +329,7 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 		}
 		task.UpdatedAt = time.Now()
 		if err := tx.Model(&listingkit.Task{}).
-			Scopes(tenantScope(ctx, "tenant_id")).
+			Scopes(taskAccessScope(ctx)).
 			Where("id = ?", taskID).
 			Updates(map[string]any{
 				"result":     task.Result,
@@ -328,7 +381,7 @@ func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerpr
 
 func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, updates map[string]any) error {
 	updates["updated_at"] = gorm.Expr("NOW()")
-	result := r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(tenantScope(ctx, "tenant_id")).Where("id = ?", taskID).Updates(updates)
+	result := r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ?", taskID).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update task: %w", result.Error)
 	}
@@ -344,6 +397,12 @@ func tenantScope(ctx context.Context, column string) func(*gorm.DB) *gorm.DB {
 	}
 }
 
+func taskAccessScope(ctx context.Context) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return applyTaskAccessScope(db, ctx)
+	}
+}
+
 func applyTenantScope(db *gorm.DB, ctx context.Context, column string) *gorm.DB {
 	tenantID, ok := tenantctx.TenantScopeFromContext(ctx)
 	if !ok {
@@ -355,10 +414,50 @@ func applyTenantScope(db *gorm.DB, ctx context.Context, column string) *gorm.DB 
 	return db.Where(column+" = ?", tenantID)
 }
 
+func applyTaskAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
+	db = applyTenantScope(db, ctx, "tenant_id")
+	if !listingkit.OwnerScopeEnabled() {
+		return db
+	}
+	userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))
+	if userID == "" {
+		return db
+	}
+	return db.Where("user_id = ?", userID)
+}
+
 func storedCanonicalFingerprint(ctx context.Context, fingerprint string) string {
 	tenantID := tenantctx.TenantIDFromContext(ctx)
 	if tenantID == tenantctx.DefaultTenantID {
 		return fingerprint
 	}
 	return tenantID + ":" + fingerprint
+}
+
+func filterTasksForUser(ctx context.Context, tasks []listingkit.Task) []listingkit.Task {
+	if !listingkit.OwnerScopeEnabled() {
+		return tasks
+	}
+	userID := listingkit.RequestUserIDFromContext(ctx)
+	if userID == "" {
+		return tasks
+	}
+	filtered := make([]listingkit.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if taskVisibleToUser(ctx, &task) {
+			filtered = append(filtered, task)
+		}
+	}
+	return filtered
+}
+
+func taskVisibleToUser(ctx context.Context, task *listingkit.Task) bool {
+	if !listingkit.OwnerScopeEnabled() {
+		return true
+	}
+	requestUserID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))
+	if requestUserID == "" {
+		return true
+	}
+	return strings.TrimSpace(listingkit.ResolveTaskUserID(task)) == requestUserID
 }

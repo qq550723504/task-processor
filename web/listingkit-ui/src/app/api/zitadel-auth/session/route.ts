@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { auth } from "@/auth";
 import {
-  fetchZitadelDiscovery,
-  getZitadelAuthOptions,
-  getZitadelBearerToken,
-  verifyZitadelAccessToken,
+  authorizeZitadelIdentity,
+  isZitadelAuthConfigured,
+  readZitadelAccessTokenFromSession,
+  readZitadelIdentityFromSession,
+  readZitadelSessionError,
 } from "@/lib/server/zitadel-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-  const options = getZitadelAuthOptions();
-  if (!options) {
+export async function GET(_request: NextRequest) {
+  if (!isZitadelAuthConfigured()) {
     return NextResponse.json(
       {
         error: "zitadel_auth_not_configured",
@@ -22,12 +23,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const discovery = await fetchZitadelDiscovery(options);
-    const identity = await verifyZitadelAccessToken(
-      getZitadelBearerToken(request),
-      options,
-      discovery,
-    );
+    const session = await auth();
+    const sessionError = readZitadelSessionError(session);
+    if (sessionError) {
+      throw new Error(sessionError);
+    }
+    const accessToken = readZitadelAccessTokenFromSession(session);
+    const identity = readZitadelIdentityFromSession(session);
+    if (!accessToken || !identity) {
+      throw new Error("Missing ZITADEL session");
+    }
+    const authorization = authorizeZitadelIdentity(identity);
+    if (!authorization.authorized) {
+      return NextResponse.json(
+        {
+          error: "zitadel_access_denied",
+          message: authorization.reason ?? "ZITADEL access denied",
+          identity,
+        },
+        { status: 403 },
+      );
+    }
     return NextResponse.json({ ok: true, identity });
   } catch (error) {
     return NextResponse.json(

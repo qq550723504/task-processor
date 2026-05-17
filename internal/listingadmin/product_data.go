@@ -50,6 +50,7 @@ type ProductData struct {
 
 type ProductDataQuery struct {
 	TenantID          int64
+	OwnerUserID       string
 	Page              int
 	PageSize          int
 	StoreID           *int64
@@ -84,6 +85,7 @@ type ProductDataRepository interface {
 type listingProductData struct {
 	ID                int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID          int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID       string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	Source            string     `gorm:"column:source"`
 	ImportTaskID      int64      `gorm:"column:import_task_id;index"`
 	RawJSONDataID     int64      `gorm:"column:raw_json_data_id;index"`
@@ -114,8 +116,10 @@ type listingProductData struct {
 	LastSyncTime      *time.Time `gorm:"column:last_sync_time"`
 	PlatformData      string     `gorm:"column:platform_data"`
 	Creator           string     `gorm:"column:creator"`
+	CreatedBy         string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime        *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater           string     `gorm:"column:updater"`
+	UpdatedBy         string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime        *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted           int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -211,7 +215,7 @@ func AutoMigrateProductDataRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingProductData{})
+	return ensureOwnerAuditColumns(db, (listingProductData{}).TableName())
 }
 
 func (r *GormProductDataRepository) ListProductData(ctx context.Context, query ProductDataQuery) (*ProductDataPage, error) {
@@ -237,7 +241,11 @@ func (r *GormProductDataRepository) ListProductData(ctx context.Context, query P
 
 func (r *GormProductDataRepository) GetProductData(ctx context.Context, tenantID, id int64) (*ProductData, error) {
 	var row listingProductData
-	err := r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrProductDataNotFound
 	}
@@ -250,6 +258,13 @@ func (r *GormProductDataRepository) GetProductData(ctx context.Context, tenantID
 
 func (r *GormProductDataRepository) CreateProductData(ctx context.Context, product *ProductData) (*ProductData, error) {
 	row := listingProductDataFromProductData(product)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Creator = ownerUserID
+		row.CreatedBy = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	if err := r.db.WithContext(ctx).Table("listing_product_data").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -259,7 +274,13 @@ func (r *GormProductDataRepository) CreateProductData(ctx context.Context, produ
 
 func (r *GormProductDataRepository) UpdateProductData(ctx context.Context, product *ProductData) (*ProductData, error) {
 	row := listingProductDataFromProductData(product)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	updates := map[string]any{
+		"owner_user_id":       row.OwnerUserID,
 		"source":              row.Source,
 		"import_task_id":      row.ImportTaskID,
 		"raw_json_data_id":    row.RawJSONDataID,
@@ -290,7 +311,15 @@ func (r *GormProductDataRepository) UpdateProductData(ctx context.Context, produ
 		"last_sync_time":      row.LastSyncTime,
 		"platform_data":       row.PlatformData,
 	}
-	res := r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -301,7 +330,16 @@ func (r *GormProductDataRepository) UpdateProductData(ctx context.Context, produ
 }
 
 func (r *GormProductDataRepository) UpdateProductDataStatus(ctx context.Context, tenantID, id int64, status int16) (*ProductData, error) {
-	res := r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("status", status)
+	updates := map[string]any{"status": status}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -312,7 +350,16 @@ func (r *GormProductDataRepository) UpdateProductDataStatus(ctx context.Context,
 }
 
 func (r *GormProductDataRepository) DeleteProductData(ctx context.Context, tenantID, id int64) error {
-	res := r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -324,6 +371,9 @@ func (r *GormProductDataRepository) DeleteProductData(ctx context.Context, tenan
 
 func applyProductDataQuery(db *gorm.DB, query ProductDataQuery) *gorm.DB {
 	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
+	}
 	if query.StoreID != nil {
 		db = db.Where("store_id = ?", *query.StoreID)
 	}

@@ -66,7 +66,7 @@ function Sidebar({
       data-slot="sidebar"
       data-state={open ? "expanded" : "collapsed"}
       className={cn(
-        "hidden min-h-svh shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex",
+        "group/sidebar hidden min-h-svh shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex",
         open ? "w-64" : "w-14",
         className,
       )}
@@ -138,7 +138,7 @@ function SidebarGroupLabel({
     <div
       data-slot="sidebar-group-label"
       className={cn(
-        "flex h-8 items-center px-2 text-xs font-medium text-sidebar-foreground/70",
+        "flex h-8 items-center px-2 text-xs font-medium text-sidebar-foreground/70 transition-opacity group-data-[state=collapsed]/sidebar:sr-only",
         className,
       )}
       {...props}
@@ -197,6 +197,7 @@ function SidebarMenuButton({
       className={cn(
         "flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+        "group-data-[state=collapsed]/sidebar:justify-center group-data-[state=collapsed]/sidebar:px-0 group-data-[state=collapsed]/sidebar:[&>span]:sr-only [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:truncate",
         className,
       )}
       {...props}
@@ -224,11 +225,13 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar();
+  const { open, toggleSidebar } = useSidebar();
+  const fallbackLabel = open ? "折叠菜单" : "展开菜单";
 
   return (
     <Button
       className={cn("size-9", className)}
+      aria-label={props["aria-label"] ?? fallbackLabel}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
@@ -238,7 +241,7 @@ function SidebarTrigger({
       {...props}
     >
       <PanelLeft data-icon="inline-start" />
-      <span className="sr-only">切换侧边栏</span>
+      <span className="sr-only">{fallbackLabel}</span>
     </Button>
   );
 }

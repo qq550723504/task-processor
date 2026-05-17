@@ -37,6 +37,7 @@ type ProductImportMapping struct {
 
 type ProductImportMappingQuery struct {
 	TenantID                int64
+	OwnerUserID             string
 	Page                    int
 	PageSize                int
 	ImportTaskID            *int64
@@ -70,6 +71,7 @@ type ProductImportMappingRepository interface {
 type listingProductImportMapping struct {
 	ID                      int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID                int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID             string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	ImportTaskID            int64      `gorm:"column:import_task_id;not null;index"`
 	StoreID                 int64      `gorm:"column:store_id;not null;index"`
 	Platform                string     `gorm:"column:platform;not null;index"`
@@ -88,8 +90,10 @@ type listingProductImportMapping struct {
 	Status                  int16      `gorm:"column:status;not null;default:0;index"`
 	Remark                  string     `gorm:"column:remark"`
 	Creator                 string     `gorm:"column:creator"`
+	CreatedBy               string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime              *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater                 string     `gorm:"column:updater"`
+	UpdatedBy               string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime              *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted                 int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -161,7 +165,7 @@ func AutoMigrateProductImportMappingRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingProductImportMapping{})
+	return ensureOwnerAuditColumns(db, (listingProductImportMapping{}).TableName())
 }
 
 func (r *GormProductImportMappingRepository) ListProductImportMappings(ctx context.Context, query ProductImportMappingQuery) (*ProductImportMappingPage, error) {
@@ -187,7 +191,11 @@ func (r *GormProductImportMappingRepository) ListProductImportMappings(ctx conte
 
 func (r *GormProductImportMappingRepository) GetProductImportMapping(ctx context.Context, tenantID, id int64) (*ProductImportMapping, error) {
 	var row listingProductImportMapping
-	err := r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrProductImportMappingNotFound
 	}
@@ -201,6 +209,13 @@ func (r *GormProductImportMappingRepository) GetProductImportMapping(ctx context
 func (r *GormProductImportMappingRepository) CreateProductImportMapping(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
 	row := listingProductImportMappingFromProductImportMapping(mapping)
 	applyProductImportMappingDefaults(&row)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Creator = ownerUserID
+		row.CreatedBy = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	if err := r.db.WithContext(ctx).Table("listing_product_import_mapping").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -211,7 +226,13 @@ func (r *GormProductImportMappingRepository) CreateProductImportMapping(ctx cont
 func (r *GormProductImportMappingRepository) UpdateProductImportMapping(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
 	row := listingProductImportMappingFromProductImportMapping(mapping)
 	applyProductImportMappingDefaults(&row)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	updates := map[string]any{
+		"owner_user_id":              row.OwnerUserID,
 		"import_task_id":             row.ImportTaskID,
 		"store_id":                   row.StoreID,
 		"platform":                   row.Platform,
@@ -230,7 +251,15 @@ func (r *GormProductImportMappingRepository) UpdateProductImportMapping(ctx cont
 		"status":                     row.Status,
 		"remark":                     row.Remark,
 	}
-	res := r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -245,7 +274,15 @@ func (r *GormProductImportMappingRepository) UpdateProductImportMappingStatus(ct
 	if strings.TrimSpace(remark) != "" {
 		updates["remark"] = strings.TrimSpace(remark)
 	}
-	res := r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -256,7 +293,16 @@ func (r *GormProductImportMappingRepository) UpdateProductImportMappingStatus(ct
 }
 
 func (r *GormProductImportMappingRepository) DeleteProductImportMapping(ctx context.Context, tenantID, id int64) error {
-	res := r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_import_mapping").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -277,6 +323,9 @@ func applyProductImportMappingDefaults(row *listingProductImportMapping) {
 
 func applyProductImportMappingQuery(db *gorm.DB, query ProductImportMappingQuery) *gorm.DB {
 	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
+	}
 	if query.ImportTaskID != nil {
 		db = db.Where("import_task_id = ?", *query.ImportTaskID)
 	}

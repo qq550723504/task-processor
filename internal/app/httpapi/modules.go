@@ -33,6 +33,8 @@ import (
 	productimageapi "task-processor/internal/productimage/api"
 	productimagepipeline "task-processor/internal/productimage/pipeline"
 	productimagestore "task-processor/internal/productimage/store"
+	"task-processor/internal/promptmgmt"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
@@ -108,6 +110,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
+	promptTemplateModule := buildPromptTemplateModule(deps)
 
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
 		"product_enrich": productModule.pool,
@@ -123,21 +126,22 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	sdsCatalogHandler := buildSDSCatalogHandler(logger, deps.cfg)
 
-	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandler)
+	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, promptTemplateModule.handler, listingKitModule.studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
-		productHandler:       productModule.handler,
-		imageHandler:         imageModule.handler,
-		amazonListingHandler: amazonListingModule.handler,
-		listingKitHandler:    listingKitModule.handler,
-		studioSessionHandler: listingKitModule.studioSessionHandler,
-		sdsCatalogHandler:    sdsCatalogHandler,
-		sheinLoginHandler:    sheinLoginHandler,
-		sdsLoginHandler:      sdsLoginHandler,
-		taskRPCHandler:       taskRPCHandler,
-		server:               server,
-		routes:               routes,
-		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
-		closers:              deps.closers,
+		productHandler:        productModule.handler,
+		imageHandler:          imageModule.handler,
+		amazonListingHandler:  amazonListingModule.handler,
+		listingKitHandler:     listingKitModule.handler,
+		promptTemplateHandler: promptTemplateModule.handler,
+		studioSessionHandler:  listingKitModule.studioSessionHandler,
+		sdsCatalogHandler:     sdsCatalogHandler,
+		sheinLoginHandler:     sheinLoginHandler,
+		sdsLoginHandler:       sdsLoginHandler,
+		taskRPCHandler:        taskRPCHandler,
+		server:                server,
+		routes:                routes,
+		pools:                 []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
+		closers:               deps.closers,
 	}, nil
 }
 
@@ -176,6 +180,32 @@ func buildSDSClientConfig(cfg *config.Config) *sdsclient.Config {
 	clientCfg := sdsclient.DefaultConfig()
 	if cfg == nil {
 		return clientCfg
+	}
+	clientCfg.Management = &cfg.Management
+	authBootstrap := cfg.Platforms.SDS.AuthBootstrap
+	if value := strings.TrimSpace(authBootstrap.StaticAccessToken); value != "" {
+		clientCfg.AuthBootstrap.StaticAccessToken = value
+	}
+	if value := strings.TrimSpace(authBootstrap.StaticOutToken); value != "" {
+		clientCfg.AuthBootstrap.StaticOutToken = value
+	}
+	if authBootstrap.StaticMerchantID > 0 {
+		clientCfg.AuthBootstrap.StaticMerchantID = authBootstrap.StaticMerchantID
+	}
+	if value := strings.TrimSpace(authBootstrap.StaticCookie); value != "" {
+		clientCfg.AuthBootstrap.StaticCookie = value
+	}
+	if authBootstrap.ManagementStoreID > 0 {
+		clientCfg.AuthBootstrap.ManagementStoreID = authBootstrap.ManagementStoreID
+	}
+	if value := strings.TrimSpace(authBootstrap.LoginDomainName); value != "" {
+		clientCfg.AuthBootstrap.LoginDomainName = value
+	}
+	if value := strings.TrimSpace(authBootstrap.LoginVerifyCaptchaParam); value != "" {
+		clientCfg.AuthBootstrap.LoginVerifyCaptchaParam = value
+	}
+	if value := strings.TrimSpace(authBootstrap.LoginExtraInfo); value != "" {
+		clientCfg.AuthBootstrap.LoginExtraInfo = value
 	}
 	loginService := cfg.Platforms.SDS.LoginService
 	if value := strings.TrimSpace(loginService.BaseURL); value != "" {
@@ -698,6 +728,10 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	sheinTranslateAPIBuilder := sheinpub.NewManagedTranslateAPIBuilder(deps.managementClient)
 	sheinPricingPolicy := buildListingKitSheinPricingPolicy(deps.cfg)
 	deps.sdsSyncService = buildSDSSyncService(logger, deps)
+	listingkit.ConfigureSheinSubmitDebugDumpDir(deps.cfg.ListingKit.SheinSubmitDebugDumpDir)
+	listingkit.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
+	listingadmin.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
+	ConfigureListingKitZitadelAuth(deps.cfg.ListingKit.Zitadel)
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Repository:              repo,
@@ -751,6 +785,8 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 
 	handler, err := listingkitapi.NewHandler(
 		svc,
+		listingkitapi.WithStudioAsyncJobStorePath(deps.cfg.ListingKit.StudioAsyncJobStorePath),
+		listingkitapi.WithPlatformSubscriptionAccess(deps.cfg.ListingKit.PlatformAdminUsers, deps.cfg.ListingKit.PlatformAdminRoles),
 		listingkitapi.WithStoreRepository(storeRepo),
 		listingkitapi.WithStoreStatisticsRepository(storeStatisticsRepo),
 		listingkitapi.WithImportTaskRepository(importTaskRepo),
@@ -763,7 +799,6 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		listingkitapi.WithCategoryRepository(categoryRepo),
 		listingkitapi.WithProductDataRepository(productDataRepo),
 		listingkitapi.WithSubscriptionService(subscriptionService),
-		listingkitapi.WithTenantPromptStore(deps.tenantPromptStore),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
@@ -777,6 +812,12 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
 	}
 	return &listingKitModule{handler: handler, studioSessionHandler: studioSessionHandler, pool: pool}, nil
+}
+
+func buildPromptTemplateModule(deps *runtimeDeps) *promptTemplateModule {
+	return &promptTemplateModule{
+		handler: promptmgmtapi.NewHandler(promptmgmt.NewService(deps.tenantPromptStore)),
+	}
 }
 
 func buildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {

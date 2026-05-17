@@ -14,8 +14,6 @@ import (
 )
 
 func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) {
-	t.Parallel()
-
 	router := newStoreStatisticsTestRouter(t)
 	trueValue := true
 	falseValue := false
@@ -68,6 +66,7 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15", nil)
 	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-101")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
 
@@ -87,6 +86,60 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 	}
 	if got.ProgressPercentage != 10 {
 		t.Fatalf("progress = %v, want 10", got.ProgressPercentage)
+	}
+}
+
+func TestStoreStatisticsHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	router := newStoreStatisticsTestRouter(t)
+	trueValue := true
+	seedStore(t, router.db, listingStore{
+		ID:                1,
+		TenantID:          101,
+		OwnerUserID:       "user-a",
+		CreatedBy:         "user-a",
+		UpdatedBy:         "user-a",
+		Name:              "Owned by A",
+		Username:          "a",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStore(t, router.db, listingStore{
+		ID:                2,
+		TenantID:          101,
+		OwnerUserID:       "user-b",
+		CreatedBy:         "user-b",
+		UpdatedBy:         "user-b",
+		Name:              "Owned by B",
+		Username:          "b",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-a")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var items []StoreStatistics
+	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "Owned by A" {
+		t.Fatalf("statistics items = %+v, want only user-a store", items)
 	}
 }
 

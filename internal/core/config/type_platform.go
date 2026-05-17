@@ -46,7 +46,19 @@ type PlatformConfigPaths struct {
 }
 
 type SDSPlatformConfig struct {
-	LoginService SDSLoginServiceConfig `mapstructure:"loginService" yaml:"loginService"` // SDS 统一登录服务配置
+	LoginService  SDSLoginServiceConfig  `mapstructure:"loginService" yaml:"loginService"`   // SDS 统一登录服务配置
+	AuthBootstrap SDSAuthBootstrapConfig `mapstructure:"authBootstrap" yaml:"authBootstrap"` // SDS 静态认证引导配置
+}
+
+type SDSAuthBootstrapConfig struct {
+	StaticAccessToken       string `mapstructure:"staticAccessToken" yaml:"staticAccessToken"`
+	StaticOutToken          string `mapstructure:"staticOutToken" yaml:"staticOutToken"`
+	StaticMerchantID        int64  `mapstructure:"staticMerchantID" yaml:"staticMerchantID"`
+	StaticCookie            string `mapstructure:"staticCookie" yaml:"staticCookie"`
+	LoginDomainName         string `mapstructure:"loginDomainName" yaml:"loginDomainName"`
+	LoginVerifyCaptchaParam string `mapstructure:"loginVerifyCaptchaParam" yaml:"loginVerifyCaptchaParam"`
+	LoginExtraInfo          string `mapstructure:"loginExtraInfo" yaml:"loginExtraInfo"`
+	ManagementStoreID       int64  `mapstructure:"managementStoreID" yaml:"managementStoreID"`
 }
 
 type LoginServiceConfig struct {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -11,7 +12,7 @@ import (
 )
 
 func (h *handler) GetSheinSettings(c *gin.Context) {
-	settings, err := h.service.GetSheinSettings(requestContext(c))
+	settings, err := h.settingsService.Get(requestContext(c), "shein", settingsNamespaceQuery{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "settings_failed", "message": err.Error()})
 		return
@@ -23,12 +24,16 @@ func (h *handler) UpdateSheinSettings(c *gin.Context) {
 	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
 		return
 	}
-	var req listingkit.SheinSettings
-	if err := c.ShouldBindJSON(&req); err != nil {
+	payload, err := c.GetRawData()
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	settings, err := h.service.UpdateSheinSettings(requestContext(c), &req)
+	if !json.Valid(payload) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	settings, err := h.settingsService.Update(requestContext(c), "shein", settingsNamespaceQuery{}, payload)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "settings_failed", "message": err.Error()})
 		return

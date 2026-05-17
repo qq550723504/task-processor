@@ -32,13 +32,14 @@ type OperationStrategy struct {
 }
 
 type OperationStrategyQuery struct {
-	TenantID int64
-	Page     int
-	PageSize int
-	Name     string
-	StoreID  *int64
-	Platform string
-	Status   *int16
+	TenantID    int64
+	OwnerUserID string
+	Page        int
+	PageSize    int
+	Name        string
+	StoreID     *int64
+	Platform    string
+	Status      *int16
 }
 
 type OperationStrategyPage struct {
@@ -60,6 +61,7 @@ type OperationStrategyRepository interface {
 type listingOperationStrategy struct {
 	ID                    int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID              int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID           string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	StoreID               int64      `gorm:"column:store_id;not null;index"`
 	Name                  string     `gorm:"column:name;not null"`
 	Platform              string     `gorm:"column:platform;not null;index"`
@@ -81,8 +83,10 @@ type listingOperationStrategy struct {
 	ActivityMinProfitRate float64    `gorm:"column:activity_min_profit_rate"`
 	ActivityPriceMode     string     `gorm:"column:activity_price_mode"`
 	Creator               string     `gorm:"column:creator"`
+	CreatedBy             string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime            *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater               string     `gorm:"column:updater"`
+	UpdatedBy             string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime            *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted               int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -144,7 +148,7 @@ func AutoMigrateOperationStrategyRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingOperationStrategy{})
+	return ensureOwnerAuditColumns(db, (listingOperationStrategy{}).TableName())
 }
 
 func (r *GormOperationStrategyRepository) ListOperationStrategies(ctx context.Context, query OperationStrategyQuery) (*OperationStrategyPage, error) {
@@ -170,7 +174,11 @@ func (r *GormOperationStrategyRepository) ListOperationStrategies(ctx context.Co
 
 func (r *GormOperationStrategyRepository) GetOperationStrategy(ctx context.Context, tenantID, id int64) (*OperationStrategy, error) {
 	var row listingOperationStrategy
-	err := r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrOperationStrategyNotFound
 	}
@@ -183,6 +191,13 @@ func (r *GormOperationStrategyRepository) GetOperationStrategy(ctx context.Conte
 
 func (r *GormOperationStrategyRepository) CreateOperationStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error) {
 	row := listingOperationStrategyFromOperationStrategy(strategy)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Creator = ownerUserID
+		row.CreatedBy = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	if err := r.db.WithContext(ctx).Table("listing_operation_strategy").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -192,7 +207,13 @@ func (r *GormOperationStrategyRepository) CreateOperationStrategy(ctx context.Co
 
 func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error) {
 	row := listingOperationStrategyFromOperationStrategy(strategy)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	updates := map[string]any{
+		"owner_user_id":           row.OwnerUserID,
 		"store_id":                row.StoreID,
 		"name":                    row.Name,
 		"platform":                row.Platform,
@@ -207,7 +228,15 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Co
 		"stock_update_ratio":      row.StockUpdateRatio,
 		"remark":                  row.Remark,
 	}
-	res := r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -222,7 +251,15 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategyStatus(ctx cont
 	if strings.TrimSpace(remark) != "" {
 		updates["remark"] = strings.TrimSpace(remark)
 	}
-	res := r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -233,7 +270,16 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategyStatus(ctx cont
 }
 
 func (r *GormOperationStrategyRepository) DeleteOperationStrategy(ctx context.Context, tenantID, id int64) error {
-	res := r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -247,6 +293,9 @@ func applyOperationStrategyQuery(db *gorm.DB, query OperationStrategyQuery) *gor
 	db = db.Where("deleted = 0")
 	if query.TenantID > 0 {
 		db = db.Where("tenant_id = ?", query.TenantID)
+	}
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
 	if query.Name != "" {
 		db = db.Where("name LIKE ?", "%"+query.Name+"%")

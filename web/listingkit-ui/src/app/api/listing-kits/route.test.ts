@@ -1,4 +1,13 @@
+import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const mockedAuthState = vi.hoisted(() => ({
+  session: null as Record<string, unknown> | null,
+}));
+
+vi.mock("@/auth", () => ({
+  auth: vi.fn(() => Promise.resolve(mockedAuthState.session)),
+}));
 
 import {
   resolveListingKitProxyTimeoutMs,
@@ -7,6 +16,7 @@ import {
 import {
   buildListingKitUpstreamHeaders,
   shouldBypassListingKitProxyAuth,
+  verifyListingKitRequestIdentity,
 } from "@/app/api/listing-kits/proxy-auth";
 import { verifyZitadelAccessToken } from "@/lib/server/zitadel-auth";
 
@@ -100,6 +110,51 @@ describe("shouldBypassListingKitProxyAuth", () => {
 
     vi.stubEnv("NODE_ENV", "production");
     expect(shouldBypassListingKitProxyAuth()).toBe(false);
+  });
+});
+
+describe("verifyListingKitRequestIdentity", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    mockedAuthState.session = null;
+  });
+
+  it("returns 503 when ZITADEL auth is required but not configured", async () => {
+    const request = new NextRequest("http://localhost/api/sds/products");
+
+    const result = await verifyListingKitRequestIdentity(request);
+
+    expect(result.response?.status).toBe(503);
+  });
+
+  it("returns the Auth.js session identity when a session is present", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedAuthState.session = {
+      accessToken: "session-token-1",
+      identity: {
+        tenantId: "org-286",
+        userId: "user-42",
+        username: "admin",
+        userType: "zitadel",
+        roles: ["listingkit_admin"],
+      },
+    };
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks"),
+    );
+
+    expect(result.response).toBeUndefined();
+    expect(result.token).toBe("session-token-1");
+    expect(result.identity).toEqual({
+      tenantId: "org-286",
+      userId: "user-42",
+      username: "admin",
+      userType: "zitadel",
+      roles: ["listingkit_admin"],
+    });
   });
 });
 

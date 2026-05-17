@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input as TextInput } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { ListingKitSettingsSection } from "@/components/listingkit/settings/listingkit-settings-section";
 import { useAIClientSettings, useUpdateAIClientSettings } from "@/lib/query/use-ai-client-settings";
 
 const aiClientOptions = [
@@ -98,21 +99,13 @@ export function AIClientSettingsCard() {
   };
 
   return (
-    <section className="rounded-[1.5rem] border border-white/70 bg-white/86 p-4 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
-            <ServerCog className="h-4 w-4" />
-            AI 配置
-          </div>
-          <h2 className="mt-1 text-lg font-semibold text-zinc-950">
-            客户自有模型接口
-          </h2>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-600">
-            每个租户或用户可以配置自己的 OpenAI 兼容 endpoint、API Key 和默认模型。任务运行时会优先使用用户配置，再回退到租户配置。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <ListingKitSettingsSection
+      id="ai"
+      eyebrow="AI 配置"
+      title="客户自有模型接口"
+      description="每个租户或用户可以配置自己的 OpenAI 兼容 endpoint、API Key 和默认模型。任务运行时会优先使用用户配置，再回退到租户配置。"
+      actions={
+        <>
           <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-medium text-zinc-600">
             <KeyRound className="h-4 w-4" />
             {settings.data?.api_key_set ? "密钥已配置" : "密钥未配置"}
@@ -120,8 +113,9 @@ export function AIClientSettingsCard() {
           <Button disabled={update.isPending} onClick={submit}>
             {update.isPending ? "保存中..." : `保存 ${selectedClient.label} 配置`}
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       <div className="mt-4 flex flex-wrap gap-2">
         {aiClientOptions.map((option) => {
@@ -240,7 +234,7 @@ export function AIClientSettingsCard() {
       {update.error ? (
         <p className="mt-3 text-sm text-rose-600">AI 配置保存失败，请检查 endpoint、model 和 API Key。</p>
       ) : null}
-    </section>
+    </ListingKitSettingsSection>
   );
 }
 

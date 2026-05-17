@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  listPromptSettings,
-  setPromptSettingStatus,
-  upsertPromptSetting,
-} from "@/lib/api/prompt-settings";
+  getPromptTemplateSchema,
+  listPromptTemplateCatalog,
+  listPromptTemplates,
+  setPromptTemplateStatus,
+  upsertPromptTemplate,
+} from "@/lib/api/prompt-management";
 
-describe("prompt settings api", () => {
+describe("prompt management api", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -20,11 +22,48 @@ describe("prompt settings api", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listPromptSettings()).resolves.toEqual({
+    await expect(listPromptTemplates()).resolves.toEqual({
       items: [{ key: "tmpl.key" }],
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/listing-kits/settings/prompts",
+      "/api/listing-kits/prompts",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("lists prompt template catalog", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ items: [{ key: "tmpl.key" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listPromptTemplateCatalog()).resolves.toEqual({
+      items: [{ key: "tmpl.key" }],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/listing-kits/prompts/catalog",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("reads a prompt template schema", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ key: "tmpl.key", category: "shein" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getPromptTemplateSchema("tmpl.key")).resolves.toEqual({
+      key: "tmpl.key",
+      category: "shein",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/listing-kits/prompts/schema/tmpl.key",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -38,7 +77,7 @@ describe("prompt settings api", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await upsertPromptSetting({
+    await upsertPromptTemplate({
       key: "tmpl.key",
       content: "hello",
       version: "v1",
@@ -46,7 +85,7 @@ describe("prompt settings api", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/listing-kits/settings/prompts",
+      "/api/listing-kits/prompts",
       expect.objectContaining({
         method: "PUT",
         body: JSON.stringify({
@@ -68,10 +107,10 @@ describe("prompt settings api", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await setPromptSettingStatus("tmpl.key", false);
+    await setPromptTemplateStatus("tmpl.key", false);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/listing-kits/settings/prompts/tmpl.key/status",
+      "/api/listing-kits/prompts/tmpl.key/status",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ enabled: false }),

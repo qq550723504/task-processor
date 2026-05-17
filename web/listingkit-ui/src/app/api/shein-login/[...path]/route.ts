@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { shouldBypassListingKitProxyAuth } from "@/app/api/listing-kits/proxy-auth";
+import { verifyListingKitRequestIdentity } from "@/app/api/listing-kits/proxy-auth";
 import { buildSheinLoginURL } from "@/app/api/shein-login/shared";
-import {
-  fetchZitadelDiscovery,
-  getZitadelAuthOptions,
-  getZitadelBearerToken,
-  verifyZitadelAccessToken,
-} from "@/lib/server/zitadel-auth";
 
 export const dynamic = "force-dynamic";
-
-type SheinLoginAuthResult =
-  | { token: string; response?: never }
-  | { response: NextResponse; token?: never };
 
 function copyHeader(source: Headers, target: Headers, sourceName: string, targetName?: string) {
   const value = source.get(sourceName);
@@ -30,53 +20,13 @@ export function buildSheinLoginUpstreamHeaders(requestHeaders: Headers) {
   return headers;
 }
 
-async function authorizeSheinLoginProxy(
-  request: NextRequest,
-): Promise<SheinLoginAuthResult> {
-  const options = getZitadelAuthOptions();
-  if (!options) {
-    if (shouldBypassListingKitProxyAuth()) {
-      return { token: "" };
-    }
-    return {
-      response: NextResponse.json(
-        {
-          error: "zitadel_auth_not_configured",
-          message: "ZITADEL authentication is not configured",
-        },
-        { status: 503 },
-      ),
-    };
-  }
-
-  const token = getZitadelBearerToken(request);
-  try {
-    const discovery = await fetchZitadelDiscovery(options);
-    await verifyZitadelAccessToken(token, options, discovery);
-    return { token };
-  } catch (error) {
-    return {
-      response: NextResponse.json(
-        {
-          error: "zitadel_token_invalid",
-          message:
-            error instanceof Error
-              ? error.message
-              : "ZITADEL token verification failed",
-        },
-        { status: 401 },
-      ),
-    };
-  }
-}
-
 async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
   const url = buildSheinLoginURL(`/${path.join("/")}`);
-  const auth = await authorizeSheinLoginProxy(request);
+  const auth = await verifyListingKitRequestIdentity(request);
   if (auth.response) {
     return auth.response;
   }
@@ -102,10 +52,11 @@ async function proxyRequest(
     responseHeaders.set("Content-Type", contentType);
   }
 
-  return new NextResponse(await response.text(), {
+  const proxyResponse = new NextResponse(await response.text(), {
     status: response.status,
     headers: responseHeaders,
   });
+  return proxyResponse;
 }
 
 export const GET = proxyRequest;

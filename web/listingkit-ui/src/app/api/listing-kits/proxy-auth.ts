@@ -1,12 +1,112 @@
-import type { ZitadelVerifiedIdentity } from "@/lib/server/zitadel-auth";
+import { NextRequest, NextResponse } from "next/server";
+
+import { auth } from "@/auth";
+import {
+  authorizeZitadelIdentity,
+  fetchZitadelDiscovery,
+  getZitadelAuthOptions,
+  readZitadelAccessTokenFromSession,
+  readZitadelIdentityFromSession,
+  readZitadelSessionError,
+  verifyZitadelAccessToken,
+  type ZitadelVerifiedIdentity,
+} from "@/lib/server/zitadel-auth";
 
 export type VerifiedIdentity = ZitadelVerifiedIdentity;
+export type VerifiedIdentityResult =
+  | {
+      identity: VerifiedIdentity;
+      token: string;
+      response?: undefined;
+    }
+  | { identity?: undefined; token?: undefined; response: NextResponse };
 
 export function shouldBypassListingKitProxyAuth() {
   return (
     process.env.NODE_ENV !== "production" &&
     process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE === "1"
   );
+}
+
+export async function verifyListingKitRequestIdentity(
+  request: NextRequest,
+): Promise<VerifiedIdentityResult> {
+  const zitadelOptions = getZitadelAuthOptions();
+  if (!zitadelOptions) {
+    if (shouldBypassListingKitProxyAuth()) {
+      return { identity: {}, token: "" };
+    }
+    return {
+      response: NextResponse.json(
+        {
+          error: "zitadel_auth_not_configured",
+          message: "ZITADEL authentication is not configured",
+        },
+        { status: 503 },
+      ),
+    };
+  }
+
+  try {
+    const headerToken = extractBearerToken(request.headers.get("authorization"));
+    let identity: VerifiedIdentity | null = null;
+    let zitadelToken = headerToken;
+
+    if (headerToken) {
+      const discovery = await fetchZitadelDiscovery(zitadelOptions);
+      identity = await verifyZitadelAccessToken(
+        headerToken,
+        zitadelOptions,
+        discovery,
+      );
+    } else {
+      const session = await auth();
+      const sessionError = readZitadelSessionError(session);
+      if (sessionError) {
+        throw new Error(sessionError);
+      }
+      zitadelToken = readZitadelAccessTokenFromSession(session);
+      identity = readZitadelIdentityFromSession(session);
+    }
+
+    if (!zitadelToken || !identity) {
+      throw new Error("Missing ZITADEL session");
+    }
+
+    const authorization = authorizeZitadelIdentity(identity);
+    if (!authorization.authorized) {
+      return {
+        response: NextResponse.json(
+          {
+            error: "zitadel_access_denied",
+            message: authorization.reason ?? "ZITADEL access denied",
+          },
+          { status: 403 },
+        ),
+      };
+    }
+    return {
+      identity,
+      token: zitadelToken,
+    };
+  } catch (error) {
+    return {
+      response: NextResponse.json(
+        {
+          error: "zitadel_token_invalid",
+          message:
+            error instanceof Error
+              ? error.message
+              : "ZITADEL token verification failed",
+        },
+        { status: 401 },
+      ),
+    };
+  }
+}
+
+export function hasStoredListingKitSession(request: NextRequest) {
+  return Boolean(request.cookies.get("authjs.session-token") || request.cookies.get("__Secure-authjs.session-token"));
 }
 
 export function buildListingKitUpstreamHeaders(
@@ -67,4 +167,9 @@ function stringifyIdentityValue(value: unknown) {
     return value.trim();
   }
   return "";
+}
+
+function extractBearerToken(authorization: string | null) {
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? "";
 }

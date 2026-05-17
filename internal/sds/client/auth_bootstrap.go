@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -293,7 +292,7 @@ func (c *Client) loadManagementBootstrap() (*bootstrapMaterial, error) {
 		return nil, nil
 	}
 
-	mgr, err := newManagementClientFromEnv()
+	mgr, err := newManagementClientFromConfig(c.config.Management)
 	if err != nil {
 		return nil, err
 	}
@@ -456,17 +455,21 @@ func (c *Client) loadLoginServiceBootstrap(ctx context.Context) (*bootstrapMater
 	return material, nil
 }
 
-func newManagementClientFromEnv() (*management.ClientManager, error) {
-	baseURL := strings.TrimSpace(envValue("TASK_PROCESSOR_MANAGEMENT_BASE_URL"))
-	clientID := strings.TrimSpace(envValue("TASK_PROCESSOR_MANAGEMENT_CLIENT_ID"))
-	clientSecret := strings.TrimSpace(envValue("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET"))
-	tenantID := strings.TrimSpace(envValue("TASK_PROCESSOR_MANAGEMENT_TENANT_ID"))
+func newManagementClientFromConfig(cfg *config.ManagementConfig) (*management.ClientManager, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("management config is nil")
+	}
+
+	baseURL := strings.TrimSpace(cfg.BaseURL)
+	clientID := strings.TrimSpace(cfg.ClientID)
+	clientSecret := strings.TrimSpace(cfg.ClientSecret)
+	tenantID := strings.TrimSpace(cfg.TenantID)
 	if tenantID == "" {
 		tenantID = "1"
 	}
 
 	if baseURL == "" || clientID == "" || clientSecret == "" {
-		return nil, fmt.Errorf("management auth env is incomplete")
+		return nil, fmt.Errorf("management config is incomplete")
 	}
 
 	log := logger.GetGlobalLogger("sds/client/bootstrap")
@@ -480,10 +483,6 @@ func newManagementClientFromEnv() (*management.ClientManager, error) {
 	baseClient := mgr.GetClient()
 	baseClient.SetUserToken(accessToken, tenantID)
 	return mgr, nil
-}
-
-func envValue(key string) string {
-	return strings.TrimSpace(strings.TrimSpace(strings.Trim(os.Getenv(key), `"'`)))
 }
 
 func parseLoginServiceCookieExpires(value any) time.Time {

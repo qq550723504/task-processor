@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  createZitadelAuthRequest,
-  fetchZitadelDiscovery,
+  signIn,
+} from "@/auth";
+import {
   getZitadelAuthOptions,
+  normalizeReturnTo,
 } from "@/lib/server/zitadel-auth";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const discovery = await fetchZitadelDiscovery(options);
-  return createZitadelAuthRequest(request, options, discovery);
+  return signIn("zitadel", {
+    redirectTo: normalizeReturnTo(request.nextUrl.searchParams.get("returnTo")),
+  });
 }

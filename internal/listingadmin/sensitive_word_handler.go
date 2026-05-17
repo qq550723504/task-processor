@@ -17,18 +17,19 @@ func NewSensitiveWordHandler(repo SensitiveWordRepository) *SensitiveWordHandler
 
 func (h *SensitiveWordHandler) ListSensitiveWords(c *gin.Context) {
 	query := SensitiveWordQuery{
-		TenantID: requestTenantID(c),
-		Page:     queryInt(c, "page", queryInt(c, "pageNo", 1)),
-		PageSize: queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
-		Word:     strings.TrimSpace(c.Query("word")),
-		Language: strings.TrimSpace(c.Query("language")),
-		Tags:     strings.TrimSpace(c.Query("tags")),
-		Remark:   strings.TrimSpace(c.Query("remark")),
+		TenantID:    requestTenantID(c),
+		OwnerUserID: requestUserID(c),
+		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
+		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
+		Word:        strings.TrimSpace(c.Query("word")),
+		Language:    strings.TrimSpace(c.Query("language")),
+		Tags:        strings.TrimSpace(c.Query("tags")),
+		Remark:      strings.TrimSpace(c.Query("remark")),
 	}
 	query.Level = queryIntPtr(c, "level")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListSensitiveWords(c.Request.Context(), query)
+	page, err := h.repo.ListSensitiveWords(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sensitive_word_list_failed", "message": err.Error()})
 		return
@@ -41,7 +42,7 @@ func (h *SensitiveWordHandler) GetSensitiveWord(c *gin.Context) {
 	if !ok {
 		return
 	}
-	word, err := h.repo.GetSensitiveWord(c.Request.Context(), requestTenantID(c), id)
+	word, err := h.repo.GetSensitiveWord(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
 	if err != nil {
 		writeSensitiveWordError(c, err, "sensitive_word_get_failed")
 		return
@@ -60,7 +61,7 @@ func (h *SensitiveWordHandler) CreateSensitiveWord(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_sensitive_word", "message": err.Error()})
 		return
 	}
-	word, err := h.repo.CreateSensitiveWord(c.Request.Context(), &req)
+	word, err := h.repo.CreateSensitiveWord(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sensitive_word_create_failed", "message": err.Error()})
 		return
@@ -84,7 +85,7 @@ func (h *SensitiveWordHandler) UpdateSensitiveWord(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_sensitive_word", "message": err.Error()})
 		return
 	}
-	word, err := h.repo.UpdateSensitiveWord(c.Request.Context(), &req)
+	word, err := h.repo.UpdateSensitiveWord(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
 	if err != nil {
 		writeSensitiveWordError(c, err, "sensitive_word_update_failed")
 		return
@@ -105,7 +106,7 @@ func (h *SensitiveWordHandler) UpdateSensitiveWordStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	word, err := h.repo.UpdateSensitiveWordStatus(c.Request.Context(), requestTenantID(c), id, req.Status, req.Remark)
+	word, err := h.repo.UpdateSensitiveWordStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writeSensitiveWordError(c, err, "sensitive_word_status_update_failed")
 		return
@@ -118,7 +119,7 @@ func (h *SensitiveWordHandler) DeleteSensitiveWord(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteSensitiveWord(c.Request.Context(), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteSensitiveWord(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
 		writeSensitiveWordError(c, err, "sensitive_word_delete_failed")
 		return
 	}

@@ -75,6 +75,23 @@ management:
   #userID: 1      # 用户ID
   storeIDs: [869] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
 
+listingkit:
+  studioAsyncJobStorePath: ""
+  sheinSubmitDebugDumpDir: ""
+  platformAdminUsers: []
+  platformAdminRoles: []
+  ownerScopeRequired: false
+  zitadel:
+    issuerURL: ""
+    clientID: ""
+    clientSecret: ""
+    authRequired: false
+    authorizationRequired: false
+    allowedTenantIDs: []
+    allowedUserIDs: []
+    allowedUsernames: []
+    allowedRoles: []
+
 platforms:
   # TEMU 平台配置
   temu:

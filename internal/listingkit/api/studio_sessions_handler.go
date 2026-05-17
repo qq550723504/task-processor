@@ -27,6 +27,9 @@ func (h *studioSessionHandler) EnsureStudioSession(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	if req.UserID == "" {
+		req.UserID = requestUserID(c)
+	}
 	detail, err := h.service.EnsureStudioSession(requestContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "studio_session_create_failed", "message": err.Error()})

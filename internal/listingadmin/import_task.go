@@ -34,15 +34,16 @@ type ImportTask struct {
 }
 
 type ImportTaskQuery struct {
-	TenantID   int64
-	Page       int
-	PageSize   int
-	StoreID    *int64
-	Platform   string
-	Region     string
-	CategoryID *int64
-	ProductID  string
-	Status     *int16
+	TenantID    int64
+	OwnerUserID string
+	Page        int
+	PageSize    int
+	StoreID     *int64
+	Platform    string
+	Region      string
+	CategoryID  *int64
+	ProductID   string
+	Status      *int16
 }
 
 type ImportTaskPage struct {
@@ -61,6 +62,7 @@ type ImportTaskRepository interface {
 type listingProductImportTask struct {
 	ID             int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID       int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID    string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	StoreID        int64      `gorm:"column:store_id;not null;index"`
 	Platform       string     `gorm:"column:platform;not null"`
 	TargetPlatform string     `gorm:"column:target_platform"`
@@ -77,8 +79,10 @@ type listingProductImportTask struct {
 	Remark         string     `gorm:"column:remark"`
 	Priority       int        `gorm:"column:priority;not null;default:5"`
 	Creator        string     `gorm:"column:creator"`
+	CreatedBy      string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime     *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater        string     `gorm:"column:updater"`
+	UpdatedBy      string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime     *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted        int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -159,7 +163,7 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingProductImportTask{})
+	return ensureOwnerAuditColumns(db, (listingProductImportTask{}).TableName())
 }
 
 func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error) {
@@ -191,6 +195,13 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	rows := make([]listingProductImportTask, 0, len(tasks))
 	for _, task := range tasks {
 		row := listingProductImportTaskFromImportTask(task)
+		if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+			row.OwnerUserID = ownerUserID
+			row.Creator = ownerUserID
+			row.CreatedBy = ownerUserID
+			row.Updater = ownerUserID
+			row.UpdatedBy = ownerUserID
+		}
 		if row.Region == "" {
 			row.Region = "US"
 		}
@@ -216,7 +227,16 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 }
 
 func (r *GormImportTaskRepository) DeleteImportTask(ctx context.Context, tenantID, id int64) error {
-	res := r.db.WithContext(ctx).Table("listing_product_import_task").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_import_task").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -230,6 +250,9 @@ func applyImportTaskQuery(db *gorm.DB, query ImportTaskQuery) *gorm.DB {
 	db = db.Where("deleted = 0")
 	if query.TenantID > 0 {
 		db = db.Where("tenant_id = ?", query.TenantID)
+	}
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
 	if query.StoreID != nil {
 		db = db.Where("store_id = ?", *query.StoreID)

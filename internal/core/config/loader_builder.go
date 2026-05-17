@@ -47,7 +47,8 @@ func BuildConfig(v *viper.Viper) *Config {
 			Temu:  BuildPlatformConfig(v, "platforms.temu"),
 			Shein: BuildPlatformConfig(v, "platforms.shein"),
 			SDS: SDSPlatformConfig{
-				LoginService: BuildLoginServiceConfig(v, "platforms.sds.loginService"),
+				LoginService:  BuildLoginServiceConfig(v, "platforms.sds.loginService"),
+				AuthBootstrap: BuildSDSAuthBootstrapConfig(v, "platforms.sds.authBootstrap"),
 			},
 			Alibaba1688: Alibaba1688Config{
 				Enabled:  v.GetBool("platforms.alibaba1688.enabled"),
@@ -173,11 +174,31 @@ func BuildConfig(v *viper.Viper) *Config {
 			CheckInterval:      v.GetInt("updater.checkInterval"),
 			InsecureSkipVerify: v.GetBool("updater.insecureSkipVerify"),
 		},
+		Debug: DebugConfig{
+			SavePublishJSON:      v.GetBool("debug.save_publish_json"),
+			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
+		},
+		ListingKit: ListingKitConfig{
+			StudioAsyncJobStorePath: v.GetString("listingkit.studioAsyncJobStorePath"),
+			SheinSubmitDebugDumpDir: v.GetString("listingkit.sheinSubmitDebugDumpDir"),
+			PlatformAdminUsers:      getStringSlice(v, "listingkit.platformAdminUsers"),
+			PlatformAdminRoles:      getStringSlice(v, "listingkit.platformAdminRoles"),
+			OwnerScopeRequired:      v.GetBool("listingkit.ownerScopeRequired"),
+			Zitadel: ListingKitZitadelConfig{
+				IssuerURL:             v.GetString("listingkit.zitadel.issuerURL"),
+				ClientID:              v.GetString("listingkit.zitadel.clientID"),
+				ClientSecret:          v.GetString("listingkit.zitadel.clientSecret"),
+				AuthRequired:          v.GetBool("listingkit.zitadel.authRequired"),
+				AuthorizationRequired: v.GetBool("listingkit.zitadel.authorizationRequired"),
+				AllowedTenantIDs:      getStringSlice(v, "listingkit.zitadel.allowedTenantIDs"),
+				AllowedUserIDs:        getStringSlice(v, "listingkit.zitadel.allowedUserIDs"),
+				AllowedUsernames:      getStringSlice(v, "listingkit.zitadel.allowedUsernames"),
+				AllowedRoles:          getStringSlice(v, "listingkit.zitadel.allowedRoles"),
+			},
+		},
 	}
 
-	if v.GetBool("rabbitmq.enabled") {
-		cfg.RabbitMQ = BuildRabbitMQConfig(v)
-	}
+	cfg.RabbitMQ = BuildRabbitMQConfig(v)
 
 	if v.GetString("database.host") != "" {
 		cfg.Database = &DatabaseConfig{

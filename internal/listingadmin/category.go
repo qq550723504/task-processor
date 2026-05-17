@@ -32,12 +32,13 @@ type Category struct {
 }
 
 type CategoryQuery struct {
-	TenantID int64
-	Name     string
-	Code     string
-	ParentID *int64
-	Level    *int
-	Status   *int16
+	TenantID    int64
+	OwnerUserID string
+	Name        string
+	Code        string
+	ParentID    *int64
+	Level       *int
+	Status      *int16
 }
 
 type CategoryRepository interface {
@@ -52,6 +53,7 @@ type CategoryRepository interface {
 type listingCategory struct {
 	ID          int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID    int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	Name        string     `gorm:"column:name;not null;index"`
 	Code        string     `gorm:"column:code;not null;index"`
 	ParentID    int64      `gorm:"column:parent_id;not null;default:0;index"`
@@ -62,8 +64,10 @@ type listingCategory struct {
 	Description string     `gorm:"column:description"`
 	Status      int16      `gorm:"column:status;not null;default:0;index"`
 	Creator     string     `gorm:"column:creator"`
+	CreatedBy   string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime  *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater     string     `gorm:"column:updater"`
+	UpdatedBy   string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime  *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted     int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -119,7 +123,7 @@ func AutoMigrateCategoryRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingCategory{})
+	return ensureOwnerAuditColumns(db, (listingCategory{}).TableName())
 }
 
 func (r *GormCategoryRepository) ListCategories(ctx context.Context, query CategoryQuery) ([]Category, error) {
@@ -140,7 +144,11 @@ func (r *GormCategoryRepository) ListCategories(ctx context.Context, query Categ
 
 func (r *GormCategoryRepository) GetCategory(ctx context.Context, tenantID, id int64) (*Category, error) {
 	var row listingCategory
-	err := r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrCategoryNotFound
 	}
@@ -154,6 +162,13 @@ func (r *GormCategoryRepository) GetCategory(ctx context.Context, tenantID, id i
 func (r *GormCategoryRepository) CreateCategory(ctx context.Context, category *Category) (*Category, error) {
 	row := listingCategoryFromCategory(category)
 	applyCategoryDefaults(&row)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Creator = ownerUserID
+		row.CreatedBy = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	if row.ParentID > 0 {
 		if _, err := r.GetCategory(ctx, row.TenantID, row.ParentID); err != nil {
 			return nil, err
@@ -169,18 +184,32 @@ func (r *GormCategoryRepository) CreateCategory(ctx context.Context, category *C
 func (r *GormCategoryRepository) UpdateCategory(ctx context.Context, category *Category) (*Category, error) {
 	row := listingCategoryFromCategory(category)
 	applyCategoryDefaults(&row)
-	updates := map[string]any{
-		"name":        row.Name,
-		"code":        row.Code,
-		"parent_id":   row.ParentID,
-		"level":       row.Level,
-		"sort":        row.Sort,
-		"icon":        row.Icon,
-		"image":       row.Image,
-		"description": row.Description,
-		"status":      row.Status,
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
 	}
-	res := r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	updates := map[string]any{
+		"owner_user_id": row.OwnerUserID,
+		"name":          row.Name,
+		"code":          row.Code,
+		"parent_id":     row.ParentID,
+		"level":         row.Level,
+		"sort":          row.Sort,
+		"icon":          row.Icon,
+		"image":         row.Image,
+		"description":   row.Description,
+		"status":        row.Status,
+	}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -191,7 +220,16 @@ func (r *GormCategoryRepository) UpdateCategory(ctx context.Context, category *C
 }
 
 func (r *GormCategoryRepository) UpdateCategoryStatus(ctx context.Context, tenantID, id int64, status int16) (*Category, error) {
-	res := r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("status", status)
+	updates := map[string]any{"status": status}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -203,13 +241,26 @@ func (r *GormCategoryRepository) UpdateCategoryStatus(ctx context.Context, tenan
 
 func (r *GormCategoryRepository) DeleteCategory(ctx context.Context, tenantID, id int64) error {
 	var childCount int64
-	if err := r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND parent_id = ? AND deleted = 0", tenantID, id).Count(&childCount).Error; err != nil {
+	if err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND parent_id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Count(&childCount).Error; err != nil {
 		return err
 	}
 	if childCount > 0 {
 		return ErrCategoryHasChildren
 	}
-	res := r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_category").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -227,6 +278,9 @@ func applyCategoryDefaults(row *listingCategory) {
 
 func applyCategoryQuery(db *gorm.DB, query CategoryQuery) *gorm.DB {
 	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
+	}
 	if query.Name != "" {
 		db = db.Where("name LIKE ?", "%"+query.Name+"%")
 	}

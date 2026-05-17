@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
-	"time"
 
 	"github.com/spf13/viper"
 )
@@ -42,10 +40,12 @@ type Config struct {
 	Redis        *RedisConfig       `yaml:"redis"`
 	Prompts      PromptsConfig      `yaml:"prompts"`
 	Debug        DebugConfig        `yaml:"debug"`
+	ListingKit   ListingKitConfig   `yaml:"listingkit"`
 }
 
 type DebugConfig struct {
-	SavePublishJSON bool `yaml:"save_publish_json"`
+	SavePublishJSON      bool `yaml:"save_publish_json"`
+	ProductEnrichMockLLM bool `yaml:"productEnrichMockLLM"`
 }
 
 type PromptsConfig struct {
@@ -508,6 +508,91 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.sds.loginService.identifier": {
 			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_IDENTIFIER",
 		},
+		"platforms.sds.loginService.merchantName": {
+			Primary: "TASK_PROCESSOR_SDS_MERCHANT_NAME",
+		},
+		"platforms.sds.loginService.username": {
+			Primary: "TASK_PROCESSOR_SDS_USERNAME",
+		},
+		"platforms.sds.loginService.password": {
+			Primary: "TASK_PROCESSOR_SDS_PASSWORD",
+		},
+		"platforms.sds.authBootstrap.staticAccessToken": {
+			Primary: "TASK_PROCESSOR_SDS_ACCESS_TOKEN",
+		},
+		"platforms.sds.authBootstrap.staticOutToken": {
+			Primary: "TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN",
+		},
+		"platforms.sds.authBootstrap.staticMerchantID": {
+			Primary: "TASK_PROCESSOR_SDS_MERCHANT_ID",
+		},
+		"platforms.sds.authBootstrap.staticCookie": {
+			Primary: "TASK_PROCESSOR_SDS_COOKIE",
+		},
+		"platforms.sds.authBootstrap.loginDomainName": {
+			Primary: "TASK_PROCESSOR_SDS_DOMAIN_NAME",
+		},
+		"platforms.sds.authBootstrap.loginVerifyCaptchaParam": {
+			Primary: "TASK_PROCESSOR_SDS_VERIFY_CAPTCHA_PARAM",
+		},
+		"platforms.sds.authBootstrap.loginExtraInfo": {
+			Primary: "TASK_PROCESSOR_SDS_EXTRA_INFO",
+		},
+		"platforms.sds.authBootstrap.managementStoreID": {
+			Primary: "TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID",
+		},
+		"debug.productEnrichMockLLM": {
+			Primary: "TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM",
+		},
+		"listingkit.studioAsyncJobStorePath": {
+			Primary: "LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH",
+		},
+		"listingkit.sheinSubmitDebugDumpDir": {
+			Primary: "LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR",
+		},
+		"listingkit.platformAdminUsers": {
+			Primary: "LISTINGKIT_PLATFORM_ADMIN_USERS",
+		},
+		"listingkit.platformAdminRoles": {
+			Primary: "LISTINGKIT_PLATFORM_ADMIN_ROLES",
+		},
+		"listingkit.ownerScopeRequired": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED"},
+		},
+		"listingkit.zitadel.issuerURL": {
+			Primary: "ZITADEL_ISSUER_URL",
+		},
+		"listingkit.zitadel.clientID": {
+			Primary: "ZITADEL_CLIENT_ID",
+		},
+		"listingkit.zitadel.clientSecret": {
+			Primary: "ZITADEL_CLIENT_SECRET",
+		},
+		"listingkit.zitadel.authRequired": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_AUTH_REQUIRED"},
+		},
+		"listingkit.zitadel.authorizationRequired": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_AUTHZ_REQUIRED"},
+		},
+		"listingkit.zitadel.allowedTenantIDs": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS"},
+		},
+		"listingkit.zitadel.allowedUserIDs": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_ALLOWED_USER_IDS"},
+		},
+		"listingkit.zitadel.allowedUsernames": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES"},
+		},
+		"listingkit.zitadel.allowedRoles": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+			Deprecated: []string{"LISTINGKIT_ZITADEL_ALLOWED_ROLES"},
+		},
 	}
 }
 
@@ -532,340 +617,6 @@ func deprecatedEnvWarnings() []string {
 	}
 
 	return warnings
-}
-
-func lookupKnownEnvValue(key string) (string, bool) {
-	binding, ok := knownEnvBindings()[key]
-	if !ok {
-		return "", false
-	}
-
-	candidates := append([]string{binding.Primary}, binding.Deprecated...)
-	for _, envKey := range candidates {
-		if value, exists := os.LookupEnv(envKey); exists && strings.TrimSpace(value) != "" {
-			return value, true
-		}
-	}
-
-	return "", false
-}
-
-func lookupKnownEnvInt(key string) (int, bool) {
-	binding, ok := knownEnvBindings()[key]
-	if !ok {
-		return 0, false
-	}
-
-	candidates := append([]string{binding.Primary}, binding.Deprecated...)
-	for _, envKey := range candidates {
-		if value, exists := os.LookupEnv(envKey); exists && strings.TrimSpace(value) != "" {
-			i, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil {
-				return 0, false
-			}
-			return i, true
-		}
-	}
-
-	return 0, false
-}
-
-func lookupKnownEnvInt64Slice(key string) ([]int64, bool) {
-	binding, ok := knownEnvBindings()[key]
-	if !ok {
-		return nil, false
-	}
-
-	candidates := append([]string{binding.Primary}, binding.Deprecated...)
-	for _, envKey := range candidates {
-		value, exists := os.LookupEnv(envKey)
-		if !exists || strings.TrimSpace(value) == "" {
-			continue
-		}
-
-		parts := strings.Split(value, ",")
-		result := make([]int64, 0, len(parts))
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-
-			parsed, err := strconv.ParseInt(part, 10, 64)
-			if err != nil {
-				return nil, false
-			}
-			result = append(result, parsed)
-		}
-
-		return result, true
-	}
-
-	return nil, false
-}
-
-func lookupKnownEnvIntSlice(key string) ([]int, bool) {
-	binding, ok := knownEnvBindings()[key]
-	if !ok {
-		return nil, false
-	}
-
-	candidates := append([]string{binding.Primary}, binding.Deprecated...)
-	for _, envKey := range candidates {
-		value, exists := os.LookupEnv(envKey)
-		if !exists || strings.TrimSpace(value) == "" {
-			continue
-		}
-
-		parts := strings.Split(value, ",")
-		result := make([]int, 0, len(parts))
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-
-			parsed, err := strconv.Atoi(part)
-			if err != nil {
-				return nil, false
-			}
-			result = append(result, parsed)
-		}
-
-		return result, true
-	}
-
-	return nil, false
-}
-
-func applyEnvOverrides(cfg *Config) {
-	if cfg == nil {
-		return
-	}
-
-	tryLoadDotEnv()
-
-	if value, ok := lookupKnownEnvValue("management.baseURL"); ok {
-		cfg.Management.BaseURL = value
-	}
-	if value, ok := lookupKnownEnvValue("management.clientID"); ok {
-		cfg.Management.ClientID = value
-	}
-	if value, ok := lookupKnownEnvValue("management.clientSecret"); ok {
-		cfg.Management.ClientSecret = value
-	}
-	if value, ok := lookupKnownEnvValue("management.tokenURL"); ok {
-		cfg.Management.TokenURL = value
-	}
-	if value, ok := lookupKnownEnvValue("management.tenantID"); ok {
-		cfg.Management.TenantID = value
-	}
-	if value, ok := lookupKnownEnvInt64Slice("management.storeIDs"); ok {
-		cfg.Management.StoreIDs = value
-	}
-
-	if value, ok := lookupKnownEnvValue("openai.apiKey"); ok {
-		cfg.OpenAI.APIKey = value
-	}
-	if value, ok := lookupKnownEnvValue("openai.model"); ok {
-		cfg.OpenAI.Model = value
-	}
-	if value, ok := lookupKnownEnvValue("openai.baseURL"); ok {
-		cfg.OpenAI.BaseURL = value
-	}
-
-	if value, ok := lookupKnownEnvValue("amazon.spapi.clientID"); ok {
-		cfg.Amazon.SPAPI.ClientID = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.spapi.clientSecret"); ok {
-		cfg.Amazon.SPAPI.ClientSecret = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.spapi.refreshToken"); ok {
-		cfg.Amazon.SPAPI.RefreshToken = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.spapi.region"); ok {
-		cfg.Amazon.SPAPI.Region = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultMarketplace"); ok {
-		cfg.Amazon.SPAPI.DefaultMarketplace = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultFulfillmentType"); ok {
-		cfg.Amazon.SPAPI.DefaultFulfillmentType = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultCondition"); ok {
-		cfg.Amazon.SPAPI.DefaultCondition = value
-	}
-	if value, ok := lookupKnownEnvValue("amazon.remoteAPI.enabled"); ok {
-		parsed, err := strconv.ParseBool(value)
-		if err == nil {
-			cfg.Amazon.RemoteAPI.Enabled = parsed
-		}
-	}
-	if value, ok := lookupKnownEnvValue("amazon.remoteAPI.baseURL"); ok {
-		cfg.Amazon.RemoteAPI.BaseURL = value
-	}
-	if value, ok := lookupKnownEnvInt("amazon.remoteAPI.timeout"); ok {
-		cfg.Amazon.RemoteAPI.Timeout = value
-	}
-
-	if value, ok := lookupKnownEnvValue("rabbitmq.enabled"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		parsed, err := strconv.ParseBool(value)
-		if err == nil {
-			cfg.RabbitMQ.Enabled = parsed
-		}
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.url"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.URL = value
-	}
-	if value, ok := lookupKnownEnvInt("rabbitmq.node.maxConcurrency"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.Node.MaxConcurrency = value
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.node.nodeID"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.Node.NodeID = value
-	}
-	if value, ok := lookupKnownEnvInt64Slice("rabbitmq.node.ownedStores"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.Node.OwnedStores = value
-	}
-	if value, ok := lookupKnownEnvIntSlice("rabbitmq.node.ownedBuckets"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.Node.OwnedBuckets = value
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.node.useStoreQueues"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		parsed, err := strconv.ParseBool(value)
-		if err == nil {
-			cfg.RabbitMQ.Node.UseStoreQueues = parsed
-		}
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.enabled"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		parsed, err := strconv.ParseBool(value)
-		if err == nil {
-			cfg.RabbitMQ.AutoShard.Enabled = parsed
-		}
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.platform"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.AutoShard.Platform = value
-	}
-	if value, ok := lookupKnownEnvInt("rabbitmq.autoShard.interval"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.AutoShard.Interval = time.Duration(value) * time.Second
-	}
-	if value, ok := lookupKnownEnvInt("rabbitmq.autoShard.pageSize"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.AutoShard.PageSize = value
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.lockKey"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.AutoShard.LockKey = value
-	}
-	if value, ok := lookupKnownEnvInt("rabbitmq.autoShard.lockTTL"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.AutoShard.LockTTL = time.Duration(value) * time.Second
-	}
-	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.candidateNodes"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.AutoShard.CandidateNodes = splitCommaSeparatedStrings(value)
-	}
-	if value, ok := lookupKnownEnvInt("rabbitmq.node.healthCheckPort"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.Node.HealthCheckPort = value
-	}
-	if value, ok := lookupKnownEnvInt("rabbitmq.node.metricsPort"); ok {
-		if cfg.RabbitMQ == nil {
-			cfg.RabbitMQ = &RabbitMQConfig{}
-		}
-		cfg.RabbitMQ.Node.MetricsPort = value
-	}
-	if value, ok := lookupKnownEnvValue("browser.browserPath"); ok {
-		cfg.Browser.BrowserPath = value
-	}
-	if value, ok := lookupKnownEnvValue("browser.userDataDir"); ok {
-		cfg.Browser.UserDataDir = value
-	}
-
-	ensureDatabase := func() {
-		if cfg.Database == nil {
-			cfg.Database = &DatabaseConfig{}
-		}
-	}
-	if value, ok := lookupKnownEnvValue("database.host"); ok {
-		ensureDatabase()
-		cfg.Database.Host = value
-	}
-	if value, ok := lookupKnownEnvInt("database.port"); ok {
-		ensureDatabase()
-		cfg.Database.Port = value
-	}
-	if value, ok := lookupKnownEnvValue("database.user"); ok {
-		ensureDatabase()
-		cfg.Database.User = value
-	}
-	if value, ok := lookupKnownEnvValue("database.password"); ok {
-		ensureDatabase()
-		cfg.Database.Password = value
-	}
-	if value, ok := lookupKnownEnvValue("database.database"); ok {
-		ensureDatabase()
-		cfg.Database.Database = value
-	}
-	if value, ok := lookupKnownEnvInt("database.max_connections"); ok {
-		ensureDatabase()
-		cfg.Database.MaxConnections = value
-	}
-	if value, ok := lookupKnownEnvInt("database.max_idle_connections"); ok {
-		ensureDatabase()
-		cfg.Database.MaxIdleConnections = value
-	}
-}
-
-func splitCommaSeparatedStrings(value string) []string {
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		result = append(result, part)
-	}
-	return result
 }
 
 func logDeprecatedEnvUsage() {

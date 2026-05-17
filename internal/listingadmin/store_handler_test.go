@@ -15,8 +15,6 @@ import (
 )
 
 func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
-	t.Parallel()
-
 	router := newStoreTestRouter(t)
 	seedStore(t, router.db, listingStore{
 		TenantID: 101,
@@ -41,6 +39,7 @@ func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
 	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-101")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
 
@@ -60,8 +59,6 @@ func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
 }
 
 func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
-	t.Parallel()
-
 	router := newStoreTestRouter(t)
 	body := bytes.NewBufferString(`{
 		"name":"SHEIN US",
@@ -75,6 +72,7 @@ func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/stores", body)
 	req.Header.Set("X-Tenant-ID", "303")
+	req.Header.Set("X-User-ID", "user-303")
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
@@ -94,14 +92,61 @@ func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	if err := router.db.Table("listing_store").Where("id = ?", created.ID).Take(&row).Error; err != nil {
 		t.Fatalf("load created row: %v", err)
 	}
-	if row.TenantID != 303 || row.EnableAutoListing == nil || !*row.EnableAutoListing {
+	if row.TenantID != 303 || row.EnableAutoListing == nil || !*row.EnableAutoListing || row.OwnerUserID != "user-303" || row.CreatedBy != "user-303" || row.UpdatedBy != "user-303" {
 		t.Fatalf("row = %+v, want tenant and boolean fields persisted", row)
 	}
 }
 
-func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
-	t.Parallel()
+func TestStoreHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
 
+	router := newStoreTestRouter(t)
+	seedStore(t, router.db, listingStore{
+		TenantID:    101,
+		OwnerUserID: "user-a",
+		CreatedBy:   "user-a",
+		UpdatedBy:   "user-a",
+		Name:        "Owned by A",
+		Username:    "owner-a",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
+	})
+	seedStore(t, router.db, listingStore{
+		TenantID:    101,
+		OwnerUserID: "user-b",
+		CreatedBy:   "user-b",
+		UpdatedBy:   "user-b",
+		Name:        "Owned by B",
+		Username:    "owner-b",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-a")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var page storePageResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].OwnerUserID != "user-a" {
+		t.Fatalf("owner-scoped items = %+v, want only user-a store", page.Items)
+	}
+}
+
+func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	store := seedStore(t, router.db, listingStore{
 		TenantID: 404,
@@ -116,6 +161,7 @@ func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodDelete, "/stores/1", nil)
 	req.Header.Set("X-Tenant-ID", "404")
+	req.Header.Set("X-User-ID", "user-404")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
 
@@ -132,6 +178,7 @@ func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 
 	listReq := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
 	listReq.Header.Set("X-Tenant-ID", "404")
+	listReq.Header.Set("X-User-ID", "user-404")
 	listResp := httptest.NewRecorder()
 	router.engine.ServeHTTP(listResp, listReq)
 
@@ -145,8 +192,6 @@ func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 }
 
 func TestStoreHandlerListsDeletedStoresWithinTenant(t *testing.T) {
-	t.Parallel()
-
 	router := newStoreTestRouter(t)
 	seedStore(t, router.db, listingStore{
 		TenantID: 505,
@@ -171,6 +216,7 @@ func TestStoreHandlerListsDeletedStoresWithinTenant(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/stores/deleted", nil)
 	req.Header.Set("X-Tenant-ID", "505")
+	req.Header.Set("X-User-ID", "user-505")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
 
@@ -187,8 +233,6 @@ func TestStoreHandlerListsDeletedStoresWithinTenant(t *testing.T) {
 }
 
 func TestStoreHandlerRestoresAndPermanentlyDeletesWithinTenant(t *testing.T) {
-	t.Parallel()
-
 	router := newStoreTestRouter(t)
 	store := seedStore(t, router.db, listingStore{
 		TenantID: 707,
@@ -203,6 +247,7 @@ func TestStoreHandlerRestoresAndPermanentlyDeletesWithinTenant(t *testing.T) {
 
 	restoreReq := httptest.NewRequest(http.MethodPut, "/stores/1/restore", nil)
 	restoreReq.Header.Set("X-Tenant-ID", "707")
+	restoreReq.Header.Set("X-User-ID", "user-707")
 	restoreResp := httptest.NewRecorder()
 	router.engine.ServeHTTP(restoreResp, restoreReq)
 
@@ -222,6 +267,7 @@ func TestStoreHandlerRestoresAndPermanentlyDeletesWithinTenant(t *testing.T) {
 	}
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/stores/1/permanent", nil)
 	deleteReq.Header.Set("X-Tenant-ID", "707")
+	deleteReq.Header.Set("X-User-ID", "user-707")
 	deleteResp := httptest.NewRecorder()
 	router.engine.ServeHTTP(deleteResp, deleteReq)
 
@@ -238,8 +284,6 @@ func TestStoreHandlerRestoresAndPermanentlyDeletesWithinTenant(t *testing.T) {
 }
 
 func TestStoreHandlerExtendsValidityFromExistingDate(t *testing.T) {
-	t.Parallel()
-
 	router := newStoreTestRouter(t)
 	validUntil := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
 	seedStore(t, router.db, listingStore{
@@ -255,6 +299,7 @@ func TestStoreHandlerExtendsValidityFromExistingDate(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPut, "/stores/1/extend-validity?days=30", nil)
 	req.Header.Set("X-Tenant-ID", "808")
+	req.Header.Set("X-User-ID", "user-808")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
 
@@ -300,6 +345,12 @@ func newStoreTestRouter(t *testing.T) storeTestRouter {
 
 func seedStore(t *testing.T, db *gorm.DB, store listingStore) listingStore {
 	t.Helper()
+	if store.OwnerUserID != "" && store.CreatedBy == "" {
+		store.CreatedBy = store.OwnerUserID
+	}
+	if store.OwnerUserID != "" && store.UpdatedBy == "" {
+		store.UpdatedBy = store.OwnerUserID
+	}
 	if err := db.Table("listing_store").Create(&store).Error; err != nil {
 		t.Fatalf("seed store: %v", err)
 	}

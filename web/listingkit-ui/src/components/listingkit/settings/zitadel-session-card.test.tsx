@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 
 import { ZitadelSessionCard } from "@/components/listingkit/settings/zitadel-session-card";
@@ -23,7 +24,7 @@ describe("ZitadelSessionCard", () => {
       }),
     } as Response);
 
-    render(<ZitadelSessionCard />);
+    renderWithQueryClient(<ZitadelSessionCard />);
 
     expect(await screen.findByText("org-286")).toBeInTheDocument();
     expect(screen.getByText("user-42")).toBeInTheDocument();
@@ -44,7 +45,7 @@ describe("ZitadelSessionCard", () => {
       }),
     } as Response);
 
-    render(<ZitadelSessionCard />);
+    renderWithQueryClient(<ZitadelSessionCard />);
 
     expect(await screen.findByText("缺少平台管理权限")).toBeInTheDocument();
     expect(screen.getByText(/platform_admin/)).toBeInTheDocument();
@@ -59,10 +60,17 @@ describe("ZitadelSessionCard", () => {
       }),
     } as Response);
 
-    render(<ZitadelSessionCard />);
+    renderWithQueryClient(<ZitadelSessionCard />);
 
     await waitFor(() => {
       expect(screen.getByText("Missing ZITADEL bearer token")).toBeInTheDocument();
     });
   });
 });
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}

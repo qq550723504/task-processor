@@ -65,7 +65,11 @@ func newStudioAsyncJobStore() *studioAsyncJobStore {
 }
 
 func newDefaultStudioAsyncJobStore() (*studioAsyncJobStore, error) {
-	if path := strings.TrimSpace(os.Getenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH")); path != "" {
+	return newStudioAsyncJobStoreWithPath("")
+}
+
+func newStudioAsyncJobStoreWithPath(path string) (*studioAsyncJobStore, error) {
+	if path = strings.TrimSpace(path); path != "" {
 		store, err := newStudioAsyncJobFileStore(path, studioAsyncJobTTL, studioAsyncJobMaxLen)
 		if err != nil {
 			return nil, err

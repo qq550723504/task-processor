@@ -8,12 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/core/config"
 )
 
 type zitadelAuthConfig struct {
@@ -40,31 +41,95 @@ type zitadelIntrospectionResponse struct {
 
 type zitadelAuthMiddleware struct {
 	cfg       zitadelAuthConfig
+	authz     zitadelAuthorizationConfig
 	mu        sync.Mutex
 	discovery zitadelDiscovery
 }
 
-func newListingKitZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
-	cfg := zitadelAuthConfig{
-		IssuerURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("ZITADEL_ISSUER_URL")), "/"),
-		ClientID:     strings.TrimSpace(os.Getenv("ZITADEL_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("ZITADEL_CLIENT_SECRET")),
-		Required:     envBool("LISTINGKIT_ZITADEL_AUTH_REQUIRED") || envBool("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED"),
-		HTTPClient:   &http.Client{Timeout: 5 * time.Second},
+type zitadelAuthorizationConfig struct {
+	Required         bool
+	AllowedTenantIDs map[string]struct{}
+	AllowedUserIDs   map[string]struct{}
+	AllowedUsernames map[string]struct{}
+	AllowedRoles     map[string]struct{}
+}
+
+type listingKitZitadelRuntimeConfig struct {
+	AuthConfig  zitadelAuthConfig
+	AuthzConfig zitadelAuthorizationConfig
+}
+
+var (
+	listingKitZitadelRuntimeConfigMu sync.RWMutex
+	listingKitZitadelRuntimeConfigV  *listingKitZitadelRuntimeConfig
+)
+
+func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
+	authzRequired := cfg.AuthorizationRequired
+	if !authzRequired && (len(cfg.AllowedTenantIDs) > 0 || len(cfg.AllowedUserIDs) > 0 || len(cfg.AllowedUsernames) > 0 || len(cfg.AllowedRoles) > 0) {
+		authzRequired = true
 	}
+	listingKitZitadelRuntimeConfigMu.Lock()
+	defer listingKitZitadelRuntimeConfigMu.Unlock()
+	listingKitZitadelRuntimeConfigV = &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL:    strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/"),
+			ClientID:     strings.TrimSpace(cfg.ClientID),
+			ClientSecret: strings.TrimSpace(cfg.ClientSecret),
+			Required:     cfg.AuthRequired,
+			HTTPClient:   &http.Client{Timeout: 5 * time.Second},
+		},
+		AuthzConfig: zitadelAuthorizationConfig{
+			Required:         authzRequired,
+			AllowedTenantIDs: stringSliceToSet(cfg.AllowedTenantIDs),
+			AllowedUserIDs:   stringSliceToSet(cfg.AllowedUserIDs),
+			AllowedUsernames: stringSliceToSet(cfg.AllowedUsernames),
+			AllowedRoles:     stringSliceToSet(cfg.AllowedRoles),
+		},
+	}
+}
+
+func SetListingKitZitadelAuthConfigForTesting(cfg *listingKitZitadelRuntimeConfig) func() {
+	listingKitZitadelRuntimeConfigMu.Lock()
+	previous := listingKitZitadelRuntimeConfigV
+	listingKitZitadelRuntimeConfigV = cfg
+	listingKitZitadelRuntimeConfigMu.Unlock()
+	return func() {
+		listingKitZitadelRuntimeConfigMu.Lock()
+		listingKitZitadelRuntimeConfigV = previous
+		listingKitZitadelRuntimeConfigMu.Unlock()
+	}
+}
+
+func currentListingKitZitadelRuntimeConfig() *listingKitZitadelRuntimeConfig {
+	listingKitZitadelRuntimeConfigMu.RLock()
+	defer listingKitZitadelRuntimeConfigMu.RUnlock()
+	if listingKitZitadelRuntimeConfigV == nil {
+		return nil
+	}
+	cfg := *listingKitZitadelRuntimeConfigV
+	return &cfg
+}
+
+func newListingKitZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	if runtimeCfg == nil {
+		return nil
+	}
+	cfg := runtimeCfg.AuthConfig
 	if cfg.IssuerURL == "" && cfg.ClientID == "" && !cfg.Required {
 		return nil
 	}
-	return newListingKitZitadelAuthMiddleware(cfg).Handle
+	return newListingKitZitadelAuthMiddleware(cfg, runtimeCfg.AuthzConfig).Handle
 }
 
-func newListingKitZitadelAuthMiddleware(cfg zitadelAuthConfig) *zitadelAuthMiddleware {
+func newListingKitZitadelAuthMiddleware(cfg zitadelAuthConfig, authz zitadelAuthorizationConfig) *zitadelAuthMiddleware {
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
 	}
 	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/")
 	cfg.ClientID = strings.TrimSpace(cfg.ClientID)
-	return &zitadelAuthMiddleware{cfg: cfg}
+	return &zitadelAuthMiddleware{cfg: cfg, authz: authz}
 }
 
 func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
@@ -104,6 +169,15 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 	}
 	if len(identity.Roles) > 0 {
 		c.Request.Header.Set("X-User-Roles", strings.Join(identity.Roles, ","))
+	}
+	if m.authz.Required {
+		if ok, reason := authorizeZitadelIdentity(identity, m.authz); !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":   "zitadel_access_denied",
+				"message": reason,
+			})
+			return
+		}
 	}
 	c.Next()
 }
@@ -182,7 +256,50 @@ func (m *zitadelAuthMiddleware) getDiscovery(r *http.Request) (zitadelDiscovery,
 }
 
 func listingKitRouteRequiresZitadelAuth(route routeDescriptor) bool {
-	return route.Module == "listing-kit" || route.Module == "listing-kit-admin" || route.Module == "listing-kit-platform-admin" || route.Module == "listing-kit-studio" || route.Module == "shein-login"
+	return route.Module == "listing-kit" ||
+		route.Module == "listing-kit-admin" ||
+		route.Module == "listing-kit-platform-admin" ||
+		route.Module == "listing-kit-studio" ||
+		route.Module == "shein-login" ||
+		route.Module == "sds" ||
+		route.Module == "sds-login"
+}
+
+func listingKitRouteRequiredRoles(route routeDescriptor) []string {
+	_ = route
+	return nil
+}
+
+func newListingKitRoleMiddleware(route routeDescriptor) gin.HandlerFunc {
+	requiredRoles := listingKitRouteRequiredRoles(route)
+	if len(requiredRoles) == 0 {
+		return nil
+	}
+	return func(c *gin.Context) {
+		userRoles := parseRoleHeader(c.GetHeader("X-User-Roles"))
+		for _, requiredRole := range requiredRoles {
+			if _, ok := userRoles[requiredRole]; ok {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error":          "listingkit_role_denied",
+			"message":        "ZITADEL role is not allowed to access this ListingKit route",
+			"required_roles": requiredRoles,
+		})
+	}
+}
+
+func parseRoleHeader(value string) map[string]struct{} {
+	roles := map[string]struct{}{}
+	for _, item := range strings.Split(value, ",") {
+		role := strings.TrimSpace(item)
+		if role != "" {
+			roles[role] = struct{}{}
+		}
+	}
+	return roles
 }
 
 func bearerToken(authorization string) string {
@@ -191,15 +308,6 @@ func bearerToken(authorization string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
-}
-
-func envBool(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
 }
 
 func firstNonEmptyZitadelValue(values ...string) string {
@@ -256,4 +364,57 @@ func parseZitadelRoles(data []byte) []string {
 		}
 	}
 	return roles
+}
+
+func authorizeZitadelIdentity(identity *zitadelIntrospectionResponse, cfg zitadelAuthorizationConfig) (bool, string) {
+	if identity == nil {
+		return false, "ZITADEL identity is missing"
+	}
+	if len(cfg.AllowedTenantIDs) == 0 &&
+		len(cfg.AllowedUserIDs) == 0 &&
+		len(cfg.AllowedUsernames) == 0 &&
+		len(cfg.AllowedRoles) == 0 {
+		return false, "ZITADEL authorization is required but no allowlist is configured"
+	}
+	if valueInSet(firstNonEmptyZitadelValue(identity.ResourceID), cfg.AllowedTenantIDs) {
+		return true, ""
+	}
+	if valueInSet(firstNonEmptyZitadelValue(identity.Subject, identity.UserID), cfg.AllowedUserIDs) {
+		return true, ""
+	}
+	if valueInSet(firstNonEmptyZitadelValue(identity.Username), cfg.AllowedUsernames) {
+		return true, ""
+	}
+	for _, role := range identity.Roles {
+		if valueInSet(role, cfg.AllowedRoles) {
+			return true, ""
+		}
+	}
+	return false, "ZITADEL identity is not allowed to access ListingKit"
+}
+
+func stringSliceToSet(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, item := range values {
+		value := strings.TrimSpace(item)
+		if value != "" {
+			set[value] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+func valueInSet(value string, set map[string]struct{}) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+	_, ok := set[trimmed]
+	return ok
 }

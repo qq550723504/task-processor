@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 	"testing"
+
+	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 type studioSessionRepoStub struct {
@@ -226,6 +228,21 @@ func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 	}
 	if len(loaded.Designs) != 0 {
 		t.Fatalf("design count = %d, want 0", len(loaded.Designs))
+	}
+}
+
+func TestStudioSessionServiceUsesContextUserIDWhenRequestOmitted(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "tenant-a", UserID: "user-42"})
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+	if detail.Session.UserID != "user-42" {
+		t.Fatalf("session user id = %q, want user-42", detail.Session.UserID)
 	}
 }
 

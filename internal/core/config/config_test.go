@@ -176,6 +176,52 @@ func TestConfigBuildIncludesProductImagePublisherS3Config(t *testing.T) {
 	assert.True(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
 }
 
+func TestConfigBuildIncludesDebugConfig(t *testing.T) {
+	v := viper.New()
+	v.Set("debug.save_publish_json", true)
+	v.Set("debug.productEnrichMockLLM", true)
+
+	cfg := BuildConfig(v)
+
+	assert.True(t, cfg.Debug.SavePublishJSON)
+	assert.True(t, cfg.Debug.ProductEnrichMockLLM)
+}
+
+func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
+	v := viper.New()
+	v.Set("listingkit.studioAsyncJobStorePath", "./tmp/studio-jobs.json")
+	v.Set("listingkit.sheinSubmitDebugDumpDir", "./tmp/shein-submit-dumps")
+	v.Set("listingkit.platformAdminUsers", []string{"user-a", "user-b"})
+	v.Set("listingkit.platformAdminRoles", []string{"role-a", "role-b"})
+	v.Set("listingkit.ownerScopeRequired", true)
+	v.Set("listingkit.zitadel.issuerURL", "https://issuer.example")
+	v.Set("listingkit.zitadel.clientID", "listingkit-client")
+	v.Set("listingkit.zitadel.clientSecret", "listingkit-secret")
+	v.Set("listingkit.zitadel.authRequired", true)
+	v.Set("listingkit.zitadel.authorizationRequired", true)
+	v.Set("listingkit.zitadel.allowedTenantIDs", []string{"tenant-a", "tenant-b"})
+	v.Set("listingkit.zitadel.allowedUserIDs", []string{"user-a", "user-b"})
+	v.Set("listingkit.zitadel.allowedUsernames", []string{"alice", "bob"})
+	v.Set("listingkit.zitadel.allowedRoles", []string{"listingkit_admin", "platform_admin"})
+
+	cfg := BuildConfig(v)
+
+	assert.Equal(t, "./tmp/studio-jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
+	assert.Equal(t, "./tmp/shein-submit-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
+	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.PlatformAdminUsers)
+	assert.Equal(t, []string{"role-a", "role-b"}, cfg.ListingKit.PlatformAdminRoles)
+	assert.True(t, cfg.ListingKit.OwnerScopeRequired)
+	assert.Equal(t, "https://issuer.example", cfg.ListingKit.Zitadel.IssuerURL)
+	assert.Equal(t, "listingkit-client", cfg.ListingKit.Zitadel.ClientID)
+	assert.Equal(t, "listingkit-secret", cfg.ListingKit.Zitadel.ClientSecret)
+	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
+	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
+	assert.Equal(t, []string{"tenant-a", "tenant-b"}, cfg.ListingKit.Zitadel.AllowedTenantIDs)
+	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.Zitadel.AllowedUserIDs)
+	assert.Equal(t, []string{"alice", "bob"}, cfg.ListingKit.Zitadel.AllowedUsernames)
+	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
+}
+
 func TestConfigValidation(t *testing.T) {
 	validConfig := &Config{
 		Worker: WorkerConfig{

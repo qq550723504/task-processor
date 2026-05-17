@@ -9,6 +9,7 @@ import (
 type Task struct {
 	ID         string            `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	TenantID   string            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID     string            `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	Request    *GenerateRequest  `json:"request" gorm:"type:text"`
 	Status     TaskStatus        `json:"status" gorm:"type:varchar(20);index"`
 	Result     *ListingKitResult `json:"result,omitempty" gorm:"type:text"`

@@ -160,3 +160,69 @@ func TestBuildSDSClientConfigUsesLoginServiceFromConfig(t *testing.T) {
 		t.Fatalf("password = %q", clientCfg.AuthBootstrap.LoginPassword)
 	}
 }
+
+func TestBuildSDSClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
+	cfg := &config.Config{
+		Management: config.ManagementConfig{
+			BaseURL:      "https://api.example.test",
+			ClientID:     "client-id",
+			ClientSecret: "client-secret",
+			TenantID:     "286",
+		},
+		Platforms: config.PlatformsConfig{
+			SDS: config.SDSPlatformConfig{
+				AuthBootstrap: config.SDSAuthBootstrapConfig{
+					StaticAccessToken:       "access-token",
+					StaticOutToken:          "out-token",
+					StaticMerchantID:        12345,
+					StaticCookie:            "cookie=value",
+					ManagementStoreID:       67890,
+					LoginDomainName:         "www.sdsdiy.com",
+					LoginVerifyCaptchaParam: "captcha-param",
+					LoginExtraInfo:          "{\"risk\":1}",
+				},
+			},
+		},
+	}
+
+	clientCfg := buildSDSClientConfig(cfg)
+	if clientCfg.AuthBootstrap.StaticAccessToken != "access-token" {
+		t.Fatalf("access token = %q", clientCfg.AuthBootstrap.StaticAccessToken)
+	}
+	if clientCfg.AuthBootstrap.StaticOutToken != "out-token" {
+		t.Fatalf("out token = %q", clientCfg.AuthBootstrap.StaticOutToken)
+	}
+	if clientCfg.AuthBootstrap.StaticMerchantID != 12345 {
+		t.Fatalf("merchant id = %d", clientCfg.AuthBootstrap.StaticMerchantID)
+	}
+	if clientCfg.AuthBootstrap.StaticCookie != "cookie=value" {
+		t.Fatalf("cookie = %q", clientCfg.AuthBootstrap.StaticCookie)
+	}
+	if clientCfg.AuthBootstrap.ManagementStoreID != 67890 {
+		t.Fatalf("management store id = %d", clientCfg.AuthBootstrap.ManagementStoreID)
+	}
+	if clientCfg.AuthBootstrap.LoginDomainName != "www.sdsdiy.com" {
+		t.Fatalf("domain name = %q", clientCfg.AuthBootstrap.LoginDomainName)
+	}
+	if clientCfg.AuthBootstrap.LoginVerifyCaptchaParam != "captcha-param" {
+		t.Fatalf("verify captcha param = %q", clientCfg.AuthBootstrap.LoginVerifyCaptchaParam)
+	}
+	if clientCfg.AuthBootstrap.LoginExtraInfo != "{\"risk\":1}" {
+		t.Fatalf("extra info = %q", clientCfg.AuthBootstrap.LoginExtraInfo)
+	}
+	if clientCfg.Management == nil {
+		t.Fatal("expected management config to be propagated")
+	}
+	if clientCfg.Management.BaseURL != "https://api.example.test" {
+		t.Fatalf("management base url = %q", clientCfg.Management.BaseURL)
+	}
+	if clientCfg.Management.ClientID != "client-id" {
+		t.Fatalf("management client id = %q", clientCfg.Management.ClientID)
+	}
+	if clientCfg.Management.ClientSecret != "client-secret" {
+		t.Fatalf("management client secret = %q", clientCfg.Management.ClientSecret)
+	}
+	if clientCfg.Management.TenantID != "286" {
+		t.Fatalf("management tenant id = %q", clientCfg.Management.TenantID)
+	}
+}

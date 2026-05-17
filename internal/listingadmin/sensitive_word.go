@@ -26,15 +26,16 @@ type SensitiveWord struct {
 }
 
 type SensitiveWordQuery struct {
-	TenantID int64
-	Page     int
-	PageSize int
-	Word     string
-	Language string
-	Tags     string
-	Level    *int
-	Status   *int16
-	Remark   string
+	TenantID    int64
+	OwnerUserID string
+	Page        int
+	PageSize    int
+	Word        string
+	Language    string
+	Tags        string
+	Level       *int
+	Status      *int16
+	Remark      string
 }
 
 type SensitiveWordPage struct {
@@ -56,6 +57,7 @@ type SensitiveWordRepository interface {
 type listingSensitiveWord struct {
 	ID          int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID    int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID string     `gorm:"column:owner_user_id;type:varchar(128);index"`
 	Word        string     `gorm:"column:word;not null;index"`
 	Language    string     `gorm:"column:language;not null;index"`
 	Tags        string     `gorm:"column:tags"`
@@ -64,8 +66,10 @@ type listingSensitiveWord struct {
 	Remark      string     `gorm:"column:remark"`
 	Status      int16      `gorm:"column:status;not null;default:0;index"`
 	Creator     string     `gorm:"column:creator"`
+	CreatedBy   string     `gorm:"column:created_by;type:varchar(128)"`
 	CreateTime  *time.Time `gorm:"column:create_time;autoCreateTime"`
 	Updater     string     `gorm:"column:updater"`
+	UpdatedBy   string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime  *time.Time `gorm:"column:update_time;autoUpdateTime"`
 	Deleted     int16      `gorm:"column:deleted;not null;default:0;index"`
 }
@@ -117,7 +121,7 @@ func AutoMigrateSensitiveWordRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingSensitiveWord{})
+	return ensureOwnerAuditColumns(db, (listingSensitiveWord{}).TableName())
 }
 
 func (r *GormSensitiveWordRepository) ListSensitiveWords(ctx context.Context, query SensitiveWordQuery) (*SensitiveWordPage, error) {
@@ -143,7 +147,11 @@ func (r *GormSensitiveWordRepository) ListSensitiveWords(ctx context.Context, qu
 
 func (r *GormSensitiveWordRepository) GetSensitiveWord(ctx context.Context, tenantID, id int64) (*SensitiveWord, error) {
 	var row listingSensitiveWord
-	err := r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Take(&row).Error
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrSensitiveWordNotFound
 	}
@@ -157,6 +165,13 @@ func (r *GormSensitiveWordRepository) GetSensitiveWord(ctx context.Context, tena
 func (r *GormSensitiveWordRepository) CreateSensitiveWord(ctx context.Context, word *SensitiveWord) (*SensitiveWord, error) {
 	row := listingSensitiveWordFromSensitiveWord(word)
 	applySensitiveWordDefaults(&row)
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Creator = ownerUserID
+		row.CreatedBy = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
+	}
 	if err := r.db.WithContext(ctx).Table("listing_sensitive_word").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -167,16 +182,30 @@ func (r *GormSensitiveWordRepository) CreateSensitiveWord(ctx context.Context, w
 func (r *GormSensitiveWordRepository) UpdateSensitiveWord(ctx context.Context, word *SensitiveWord) (*SensitiveWord, error) {
 	row := listingSensitiveWordFromSensitiveWord(word)
 	applySensitiveWordDefaults(&row)
-	updates := map[string]any{
-		"word":         row.Word,
-		"language":     row.Language,
-		"tags":         row.Tags,
-		"level":        row.Level,
-		"replace_word": row.ReplaceWord,
-		"remark":       row.Remark,
-		"status":       row.Status,
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		row.OwnerUserID = ownerUserID
+		row.Updater = ownerUserID
+		row.UpdatedBy = ownerUserID
 	}
-	res := r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID).Updates(updates)
+	updates := map[string]any{
+		"owner_user_id": row.OwnerUserID,
+		"word":          row.Word,
+		"language":      row.Language,
+		"tags":          row.Tags,
+		"level":         row.Level,
+		"replace_word":  row.ReplaceWord,
+		"remark":        row.Remark,
+		"status":        row.Status,
+	}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -191,7 +220,15 @@ func (r *GormSensitiveWordRepository) UpdateSensitiveWordStatus(ctx context.Cont
 	if strings.TrimSpace(remark) != "" {
 		updates["remark"] = strings.TrimSpace(remark)
 	}
-	res := r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Updates(updates)
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -202,7 +239,16 @@ func (r *GormSensitiveWordRepository) UpdateSensitiveWordStatus(ctx context.Cont
 }
 
 func (r *GormSensitiveWordRepository) DeleteSensitiveWord(ctx context.Context, tenantID, id int64) error {
-	res := r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id).Update("deleted", 1)
+	updates := map[string]any{"deleted": 1}
+	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
+		updates["updater"] = updatedBy
+		updates["updated_by"] = updatedBy
+	}
+	res := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_sensitive_word").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		"owner_user_id",
+	).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -223,6 +269,9 @@ func applySensitiveWordDefaults(row *listingSensitiveWord) {
 
 func applySensitiveWordQuery(db *gorm.DB, query SensitiveWordQuery) *gorm.DB {
 	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
+	}
 	if query.Word != "" {
 		db = db.Where("word LIKE ?", "%"+query.Word+"%")
 	}

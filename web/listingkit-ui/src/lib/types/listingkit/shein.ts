@@ -528,17 +528,29 @@ export type AIClientSettings = {
   updated_at?: string;
 };
 
-export type PromptSetting = {
-  id?: number;
-  tenant_id?: string;
-  key: string;
-  content: string;
-  version?: string;
-  enabled?: boolean;
-  created_at?: string;
-  updated_at?: string;
+export type ListingKitSettingsScopeDefinition = {
+  id: string;
+  label: string;
+  description?: string;
 };
 
-export type PromptSettingsResponse = {
-  items: PromptSetting[];
+export type ListingKitSettingsFieldDefinition = {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  description?: string;
+};
+
+export type ListingKitSettingsNamespaceSchema = {
+  namespace: string;
+  label: string;
+  description: string;
+  supported_scopes?: ListingKitSettingsScopeDefinition[];
+  fields?: ListingKitSettingsFieldDefinition[];
+  supports_status_toggle?: boolean;
+};
+
+export type ListingKitSettingsNamespaceListResponse = {
+  items: ListingKitSettingsNamespaceSchema[];
 };

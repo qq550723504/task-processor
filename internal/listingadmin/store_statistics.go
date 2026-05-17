@@ -28,8 +28,9 @@ type StoreStatistics struct {
 }
 
 type StoreStatisticsQuery struct {
-	TenantID int64
-	Date     string
+	TenantID    int64
+	OwnerUserID string
+	Date        string
 }
 
 type StoreStatisticsRepository interface {
@@ -48,7 +49,10 @@ func AutoMigrateStoreStatisticsRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return db.AutoMigrate(&listingStore{}, &listingProductImportTask{})
+	if err := ensureOwnerAuditColumns(db, (listingStore{}).TableName()); err != nil {
+		return err
+	}
+	return ensureOwnerAuditColumns(db, (listingProductImportTask{}).TableName())
 }
 
 func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context, query StoreStatisticsQuery) ([]StoreStatistics, error) {
@@ -62,6 +66,9 @@ func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context,
 		Where("enable_auto_listing = ? AND enable_auto_login = ?", true, true)
 	if query.TenantID > 0 {
 		db = db.Where("tenant_id = ?", query.TenantID)
+	}
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
 	if err := db.Order("id asc").Find(&stores).Error; err != nil {
 		return nil, err

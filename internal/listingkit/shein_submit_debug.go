@@ -6,11 +6,33 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"task-processor/internal/core/logger"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
+
+var (
+	sheinSubmitDebugDumpDirMu sync.RWMutex
+	sheinSubmitDebugDumpDir   string
+)
+
+func ConfigureSheinSubmitDebugDumpDir(path string) {
+	sheinSubmitDebugDumpDirMu.Lock()
+	defer sheinSubmitDebugDumpDirMu.Unlock()
+	sheinSubmitDebugDumpDir = strings.TrimSpace(path)
+}
+
+func SetSheinSubmitDebugDumpDirForTesting(path string) func() {
+	sheinSubmitDebugDumpDirMu.Lock()
+	previous := sheinSubmitDebugDumpDir
+	sheinSubmitDebugDumpDir = strings.TrimSpace(path)
+	sheinSubmitDebugDumpDirMu.Unlock()
+	return func() {
+		ConfigureSheinSubmitDebugDumpDir(previous)
+	}
+}
 
 func dumpSheinSubmitPayloadForDebug(taskID, action, requestID, stage string, product *sheinproduct.Product) {
 	dir := resolveSheinSubmitDebugDumpDir()
@@ -43,7 +65,9 @@ func dumpSheinSubmitPayloadForDebug(taskID, action, requestID, stage string, pro
 }
 
 func resolveSheinSubmitDebugDumpDir() string {
-	return strings.TrimSpace(os.Getenv("LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR"))
+	sheinSubmitDebugDumpDirMu.RLock()
+	defer sheinSubmitDebugDumpDirMu.RUnlock()
+	return sheinSubmitDebugDumpDir
 }
 
 func sanitizeDebugFileToken(value string) string {

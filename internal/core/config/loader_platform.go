@@ -80,6 +80,19 @@ func BuildLoginServiceConfig(v *viper.Viper, prefix string) LoginServiceConfig {
 	}
 }
 
+func BuildSDSAuthBootstrapConfig(v *viper.Viper, prefix string) SDSAuthBootstrapConfig {
+	return SDSAuthBootstrapConfig{
+		StaticAccessToken:       v.GetString(prefix + ".staticAccessToken"),
+		StaticOutToken:          v.GetString(prefix + ".staticOutToken"),
+		StaticMerchantID:        v.GetInt64(prefix + ".staticMerchantID"),
+		StaticCookie:            v.GetString(prefix + ".staticCookie"),
+		LoginDomainName:         v.GetString(prefix + ".loginDomainName"),
+		LoginVerifyCaptchaParam: v.GetString(prefix + ".loginVerifyCaptchaParam"),
+		LoginExtraInfo:          v.GetString(prefix + ".loginExtraInfo"),
+		ManagementStoreID:       v.GetInt64(prefix + ".managementStoreID"),
+	}
+}
+
 func normalizePlatformConfig(cfg PlatformConfig) PlatformConfig {
 	if !cfg.ProductSync.Enabled && cfg.SyncProduct.Enabled {
 		cfg.ProductSync.Enabled = true

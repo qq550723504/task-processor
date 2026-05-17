@@ -12,6 +12,7 @@ import { buildListingKitProxyResponse } from "@/app/api/listing-kits/proxy-upstr
 import {
   buildListingKitUpstreamHeaders,
   shouldBypassListingKitProxyAuth,
+  verifyListingKitRequestIdentity,
   type VerifiedIdentity,
 } from "@/app/api/listing-kits/proxy-auth";
 import {
@@ -19,13 +20,6 @@ import {
   logRequestWarn,
   newRequestLogId,
 } from "@/lib/server/request-log";
-import {
-  fetchZitadelDiscovery,
-  getZitadelAuthOptions,
-  getZitadelBearerToken,
-  verifyZitadelAccessToken,
-} from "@/lib/server/zitadel-auth";
-
 export const dynamic = "force-dynamic";
 const PROXY_BODY_READ_TIMEOUT_MS = 15_000;
 
@@ -88,51 +82,42 @@ async function proxyRequest(
     path: proxyPath,
   });
 
-  const zitadelOptions = getZitadelAuthOptions();
-  const zitadelToken = zitadelOptions ? getZitadelBearerToken(request) : "";
   let verifiedIdentity: VerifiedIdentity | undefined;
-  if (zitadelOptions) {
-    try {
-      const discovery = await fetchZitadelDiscovery(zitadelOptions);
-      verifiedIdentity = await verifyZitadelAccessToken(
-        zitadelToken,
-        zitadelOptions,
-        discovery,
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "ZITADEL token verification failed";
-      logRequestWarn("listingkit proxy zitadel token verification failed", {
+  let zitadelToken = "";
+  const auth = await verifyListingKitRequestIdentity(request);
+  if (auth.response) {
+    const status = auth.response.status;
+    const payload = (await auth.response.clone().json().catch(() => null)) as
+      | { message?: string; error?: string }
+      | null;
+    const message =
+      payload?.message ??
+      (status === 403
+        ? "ZITADEL access denied"
+        : status === 503
+          ? "ZITADEL authentication is not configured"
+          : "ZITADEL token verification failed");
+    logRequestWarn(
+      status === 403
+        ? "listingkit proxy zitadel access denied"
+        : status === 503
+          ? "listingkit proxy zitadel auth not configured"
+          : "listingkit proxy zitadel token verification failed",
+      {
         requestId,
         method: request.method,
         path: proxyPath,
-        status: 401,
+        status,
         durationMs: Date.now() - startedAt,
         error: message,
-      });
-      return NextResponse.json(
-        {
-          error: "zitadel_token_invalid",
-          message,
-        },
-        { status: 401 },
-      );
-    }
-  } else if (!shouldBypassListingKitProxyAuth()) {
-    logRequestWarn("listingkit proxy zitadel auth not configured", {
-      requestId,
-      method: request.method,
-      path: proxyPath,
-      status: 503,
-      durationMs: Date.now() - startedAt,
-    });
-    return NextResponse.json(
-      {
-        error: "zitadel_auth_not_configured",
-        message: "ZITADEL authentication is not configured",
       },
-      { status: 503 },
     );
+    if (!shouldBypassListingKitProxyAuth() || status !== 503) {
+      return auth.response;
+    }
+  } else {
+    verifiedIdentity = auth.identity;
+    zitadelToken = auth.token;
   }
 
   const headers = buildListingKitUpstreamHeaders(
@@ -187,7 +172,7 @@ async function proxyRequest(
     );
   }
 
-  return buildListingKitProxyResponse({
+  const response = await buildListingKitProxyResponse({
     durationMs: Date.now() - startedAt,
     requestId,
     method: request.method,
@@ -195,6 +180,7 @@ async function proxyRequest(
     routePath: path,
     upstream,
   });
+  return response;
 }
 
 export async function GET(

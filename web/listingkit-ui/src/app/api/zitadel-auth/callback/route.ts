@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  clearZitadelCookies,
-  exchangeZitadelAuthorizationCode,
-  fetchZitadelDiscovery,
   getZitadelAuthOptions,
-  setZitadelSessionCookie,
+  resolvePublicAppOrigin,
 } from "@/lib/server/zitadel-auth";
 
 export const dynamic = "force-dynamic";
@@ -23,16 +20,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const discovery = await fetchZitadelDiscovery(options);
-    const { session, returnTo } = await exchangeZitadelAuthorizationCode(
-      request,
-      options,
-      discovery,
+    const callbackUrl = new URL(
+      "/api/auth/callback/zitadel",
+      resolvePublicAppOrigin(),
     );
-    const response = NextResponse.redirect(new URL(returnTo, request.nextUrl.origin));
-    clearZitadelCookies(response);
-    setZitadelSessionCookie(response, session);
-    return response;
+    request.nextUrl.searchParams.forEach((value, key) => {
+      callbackUrl.searchParams.set(key, value);
+    });
+    return NextResponse.redirect(callbackUrl);
   } catch (error) {
     return NextResponse.json(
       {
