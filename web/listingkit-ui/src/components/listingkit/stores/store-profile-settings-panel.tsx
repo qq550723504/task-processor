@@ -18,10 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getListingKitSettings } from "@/lib/api/listingkit-settings";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
+import { getTenantListingStores } from "@/lib/api/tenant-stores";
 import { useDeleteStoreProfile, useStoreProfiles, useUpsertStoreProfile } from "@/lib/query/use-store-profiles";
-import type { ListingKitStoreProfile, SheinSettings } from "@/lib/types/listingkit";
+import type { ListingKitStoreProfile } from "@/lib/types/listingkit";
 
 type StoreProfileForm = {
   id?: number;
@@ -42,7 +42,13 @@ type StoreProfileForm = {
   price_ending: string;
 };
 
-type StoreOption = NonNullable<SheinSettings["available_stores"]>[number];
+type StoreOption = {
+  id: number;
+  storeId?: string;
+  name?: string;
+  platform?: string;
+  region?: string;
+};
 
 const DEFAULT_FORM: StoreProfileForm = {
   store_id: "",
@@ -69,17 +75,23 @@ export function StoreProfileSettingsPanel() {
   const [draft, setDraft] = useState<StoreProfileForm>(DEFAULT_FORM);
   const [error, setError] = useState("");
 
-  const sheinSettingsQuery = useQuery({
-    queryKey: ["listingkit-shein-settings"],
-    queryFn: () => getListingKitSettings<SheinSettings>("shein"),
+  const storeOptionsQuery = useQuery({
+    queryKey: ["listingkit-tenant-store-options"],
+    queryFn: () => getTenantListingStores({ page: 1, page_size: 200, platform: "SHEIN" }),
   });
 
   const items = profiles.data ?? [];
   const sheinStores = useMemo(() => {
     const byID = new Map<number, StoreOption>();
-    for (const item of sheinSettingsQuery.data?.available_stores ?? []) {
+    for (const item of storeOptionsQuery.data?.items ?? []) {
       if (item?.id) {
-        byID.set(item.id, item);
+        byID.set(item.id, {
+          id: item.id,
+          storeId: item.storeId,
+          name: item.name,
+          platform: item.platform,
+          region: item.region,
+        });
       }
     }
     for (const item of items) {
@@ -96,7 +108,7 @@ export function StoreProfileSettingsPanel() {
       }
     }
     return Array.from(byID.values()).sort((left, right) => left.id - right.id);
-  }, [items, sheinSettingsQuery.data?.available_stores]);
+  }, [items, storeOptionsQuery.data?.items]);
 
   function resetForm() {
     setDraft(DEFAULT_FORM);
@@ -173,7 +185,7 @@ export function StoreProfileSettingsPanel() {
 
   const visibleError =
     error ||
-    (sheinSettingsQuery.error instanceof Error ? sheinSettingsQuery.error.message : "");
+    (storeOptionsQuery.error instanceof Error ? storeOptionsQuery.error.message : "");
 
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -190,12 +202,12 @@ export function StoreProfileSettingsPanel() {
             variant="secondary"
             onClick={() => {
               void profiles.refetch();
-              void sheinSettingsQuery.refetch();
+              void storeOptionsQuery.refetch();
             }}
           >
             <RefreshCw
               className={`size-4 ${
-                profiles.isFetching || sheinSettingsQuery.isFetching ? "animate-spin" : ""
+                profiles.isFetching || storeOptionsQuery.isFetching ? "animate-spin" : ""
               }`}
             />
             刷新
@@ -423,9 +435,9 @@ export function StoreProfileSettingsPanel() {
           </Label>
         </div>
 
-        {sheinStores.length === 0 && !sheinSettingsQuery.isLoading ? (
+        {sheinStores.length === 0 && !storeOptionsQuery.isLoading ? (
           <p className="mt-3 text-sm text-amber-700">
-            当前租户还没有可用的 SHEIN 店铺主数据，请联系平台管理员先在平台店铺管理里创建店铺。
+            当前租户还没有可用的 SHEIN 店铺，请先在上面的“店铺主数据”里新增店铺。
           </p>
         ) : null}
 
@@ -449,8 +461,8 @@ export function StoreProfileSettingsPanel() {
 }
 
 function formatStoreOptionLabel(store: StoreOption) {
-  const primary = store.name?.trim() || store.store_id?.trim() || `店铺 ${store.id}`;
-  const meta = [store.store_id?.trim(), store.region?.trim()].filter(Boolean).join(" / ");
+  const primary = store.name?.trim() || store.storeId?.trim() || `店铺 ${store.id}`;
+  const meta = [store.storeId?.trim(), store.region?.trim()].filter(Boolean).join(" / ");
   return meta ? `${primary} (${meta})` : primary;
 }
 

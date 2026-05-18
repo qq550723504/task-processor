@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   useStoreProfiles: vi.fn(),
   useUpsertStoreProfile: vi.fn(),
   useDeleteStoreProfile: vi.fn(),
-  getListingKitSettings: vi.fn(),
+  getTenantListingStores: vi.fn(),
 }));
 
 vi.mock("@/lib/query/use-store-profiles", () => ({
@@ -17,8 +17,8 @@ vi.mock("@/lib/query/use-store-profiles", () => ({
   useDeleteStoreProfile: () => mocks.useDeleteStoreProfile(),
 }));
 
-vi.mock("@/lib/api/listingkit-settings", () => ({
-  getListingKitSettings: (...args: unknown[]) => mocks.getListingKitSettings(...args),
+vi.mock("@/lib/api/tenant-stores", () => ({
+  getTenantListingStores: (...args: unknown[]) => mocks.getTenantListingStores(...args),
 }));
 
 describe("StoreProfileSettingsPanel", () => {
@@ -27,7 +27,7 @@ describe("StoreProfileSettingsPanel", () => {
     mocks.useStoreProfiles.mockReset();
     mocks.useUpsertStoreProfile.mockReset();
     mocks.useDeleteStoreProfile.mockReset();
-    mocks.getListingKitSettings.mockReset();
+    mocks.getTenantListingStores.mockReset();
 
     mocks.useStoreProfiles.mockReturnValue({
       data: [
@@ -53,11 +53,14 @@ describe("StoreProfileSettingsPanel", () => {
     mocks.useDeleteStoreProfile.mockReturnValue({
       mutateAsync: vi.fn(),
     });
-    mocks.getListingKitSettings.mockResolvedValue({
-      available_stores: [
-        { id: 869, name: "US 主店", store_id: "SHEIN-US-869", region: "US" },
-        { id: 870, name: "US 备用店", store_id: "SHEIN-US-870", region: "US" },
+    mocks.getTenantListingStores.mockResolvedValue({
+      items: [
+        { id: 869, name: "US 主店", storeId: "SHEIN-US-869", region: "US", platform: "SHEIN" },
+        { id: 870, name: "US 备用店", storeId: "SHEIN-US-870", region: "US", platform: "SHEIN" },
       ],
+      total: 2,
+      page: 1,
+      page_size: 200,
     });
   });
 

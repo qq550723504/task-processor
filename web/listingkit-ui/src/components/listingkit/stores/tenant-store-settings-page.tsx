@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { StoreRoutingSettingsCard } from "@/components/listingkit/settings/store-routing-settings-card";
+import { TenantStoreDirectoryPanel } from "@/components/listingkit/stores/tenant-store-directory-panel";
 import { StoreProfileSettingsPanel } from "@/components/listingkit/stores/store-profile-settings-panel";
 
 export function TenantStoreSettingsPage() {
@@ -22,6 +23,7 @@ export function TenantStoreSettingsPage() {
         </p>
       </section>
 
+      <TenantStoreDirectoryPanel />
       <StoreProfileSettingsPanel />
       <StoreRoutingSettingsCard />
     </div>

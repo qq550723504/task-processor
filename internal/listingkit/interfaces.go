@@ -163,6 +163,11 @@ type HandlerService interface {
 type Handler interface {
 	GenerateListingKit(c *gin.Context)
 	ListTasks(c *gin.Context)
+	ListTenantStores(c *gin.Context)
+	CreateTenantStore(c *gin.Context)
+	UpdateTenantStore(c *gin.Context)
+	DeleteTenantStore(c *gin.Context)
+	ListSimpleTenantStores(c *gin.Context)
 	ListAdminStores(c *gin.Context)
 	GetAdminStore(c *gin.Context)
 	CreateAdminStore(c *gin.Context)
