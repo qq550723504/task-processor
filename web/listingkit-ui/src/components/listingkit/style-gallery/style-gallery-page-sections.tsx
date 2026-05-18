@@ -175,6 +175,23 @@ export function StyleGalleryEmptyState() {
   );
 }
 
+export function StyleGalleryLoadError({
+  message,
+}: {
+  message: string;
+}) {
+  return (
+    <Card className="flex min-h-72 flex-col items-center justify-center border-rose-200 bg-rose-50/80 p-8 text-center">
+      <ImageIcon className="h-8 w-8 text-rose-400" />
+      <h2 className="mt-4 text-lg font-semibold text-zinc-950">图库加载失败</h2>
+      <p className="mt-2 max-w-md text-sm text-zinc-600">{message}</p>
+      <p className="mt-2 max-w-md text-xs text-zinc-500">
+        这通常不是“没有生成图片”，而是图库取数失败。可以先刷新一次再看。
+      </p>
+    </Card>
+  );
+}
+
 export function StyleGalleryNoResults({
   hasActiveDimensionFilter,
 }: {

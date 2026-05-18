@@ -6,10 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreAdminPage } from "@/components/listingkit/admin/store-admin-page";
 import * as adminStoresApi from "@/lib/api/admin-stores";
 
-vi.mock("@/components/listingkit/admin/store-profile-admin-panel", () => ({
-  StoreProfileAdminPanel: () => <div data-testid="store-profile-admin-panel" />,
-}));
-
 describe("StoreAdminPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -55,7 +51,7 @@ describe("StoreAdminPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByRole("heading", { name: "店铺管理" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "平台店铺管理" })).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText("SHEIN US")).toBeInTheDocument();
     });
@@ -74,7 +70,7 @@ describe("StoreAdminPage", () => {
     expect(
       screen.getByRole("button", { name: "彻底删除 Deleted SHEIN" }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("store-profile-admin-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("store-profile-admin-panel")).not.toBeInTheDocument();
   });
 
   it("edits an existing ListingKit store", async () => {

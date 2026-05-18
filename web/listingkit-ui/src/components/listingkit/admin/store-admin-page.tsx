@@ -19,8 +19,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
-import { StoreProfileAdminPanel } from "@/components/listingkit/admin/store-profile-admin-panel";
-
 import {
   createListingStore,
   deleteListingStore,
@@ -193,9 +191,9 @@ export function StoreAdminPage() {
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-950">店铺管理</h1>
+            <h1 className="text-2xl font-semibold text-zinc-950">平台店铺管理</h1>
             <p className="mt-1 text-sm text-zinc-500">
-              共 {total} 个店铺，按当前 ZITADEL 租户隔离。
+              共 {total} 个店铺，按当前 ZITADEL 租户隔离。这里维护平台侧店铺主数据，不负责租户自己的发布配置。
             </p>
           </div>
           <form className="flex flex-wrap gap-2" onSubmit={(event) => event.preventDefault()}>
@@ -475,8 +473,6 @@ export function StoreAdminPage() {
           </Table>
         </div>
       </section>
-
-      <StoreProfileAdminPanel />
     </div>
   );
 }

@@ -18,10 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getListingStores } from "@/lib/api/admin-stores";
+import { getListingKitSettings } from "@/lib/api/listingkit-settings";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useDeleteStoreProfile, useStoreProfiles, useUpsertStoreProfile } from "@/lib/query/use-store-profiles";
-import type { ListingKitStoreProfile } from "@/lib/types/listingkit";
+import type { ListingKitStoreProfile, SheinSettings } from "@/lib/types/listingkit";
 
 type StoreProfileForm = {
   id?: number;
@@ -42,6 +42,8 @@ type StoreProfileForm = {
   price_ending: string;
 };
 
+type StoreOption = NonNullable<SheinSettings["available_stores"]>[number];
+
 const DEFAULT_FORM: StoreProfileForm = {
   store_id: "",
   enabled: true,
@@ -60,24 +62,41 @@ const DEFAULT_FORM: StoreProfileForm = {
   price_ending: "",
 };
 
-export function StoreProfileAdminPanel() {
+export function StoreProfileSettingsPanel() {
   const profiles = useStoreProfiles();
   const upsert = useUpsertStoreProfile();
   const remove = useDeleteStoreProfile();
   const [draft, setDraft] = useState<StoreProfileForm>(DEFAULT_FORM);
   const [error, setError] = useState("");
 
-  const storeOptionsQuery = useQuery({
-    queryKey: ["listingkit-admin-shein-stores"],
-    queryFn: () =>
-      getListingStores({ page: 1, page_size: 200, platform: "SHEIN" }),
+  const sheinSettingsQuery = useQuery({
+    queryKey: ["listingkit-shein-settings"],
+    queryFn: () => getListingKitSettings<SheinSettings>("shein"),
   });
 
   const items = profiles.data ?? [];
-  const sheinStores = useMemo(
-    () => (storeOptionsQuery.data?.items ?? []).filter((item) => item.platform === "SHEIN"),
-    [storeOptionsQuery.data?.items],
-  );
+  const sheinStores = useMemo(() => {
+    const byID = new Map<number, StoreOption>();
+    for (const item of sheinSettingsQuery.data?.available_stores ?? []) {
+      if (item?.id) {
+        byID.set(item.id, item);
+      }
+    }
+    for (const item of items) {
+      if (item.store?.id) {
+        byID.set(item.store.id, item.store);
+      } else if (item.store_id > 0) {
+        byID.set(item.store_id, {
+          id: item.store_id,
+          store_id: item.store?.store_id,
+          name: item.store?.name,
+          platform: item.store?.platform,
+          region: item.store?.region,
+        });
+      }
+    }
+    return Array.from(byID.values()).sort((left, right) => left.id - right.id);
+  }, [items, sheinSettingsQuery.data?.available_stores]);
 
   function resetForm() {
     setDraft(DEFAULT_FORM);
@@ -152,24 +171,39 @@ export function StoreProfileAdminPanel() {
     }
   }
 
+  const visibleError =
+    error ||
+    (sheinSettingsQuery.error instanceof Error ? sheinSettingsQuery.error.message : "");
+
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
-            <h2 className="text-base font-semibold text-zinc-950">ListingKit 店铺配置</h2>
+            <h2 className="text-base font-semibold text-zinc-950">我的店铺配置</h2>
             <p className="text-sm text-zinc-500">
-              为 SHEIN 店铺单独配置站点、仓库、提交方式和价格规则。
+              为当前租户可用的 SHEIN 店铺单独配置站点、仓库、提交方式和价格规则。
             </p>
           </div>
-          <Button type="button" variant="secondary" onClick={() => void profiles.refetch()}>
-            <RefreshCw className={`size-4 ${profiles.isFetching ? "animate-spin" : ""}`} />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void profiles.refetch();
+              void sheinSettingsQuery.refetch();
+            }}
+          >
+            <RefreshCw
+              className={`size-4 ${
+                profiles.isFetching || sheinSettingsQuery.isFetching ? "animate-spin" : ""
+              }`}
+            />
             刷新
           </Button>
         </div>
-        {error ? (
+        {visibleError ? (
           <Alert className="m-4" variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{visibleError}</AlertDescription>
           </Alert>
         ) : null}
         <div className="overflow-x-auto">
@@ -194,7 +228,7 @@ export function StoreProfileAdminPanel() {
               ) : items.length === 0 ? (
                 <TableRow>
                   <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
-                    当前还没有 ListingKit 店铺配置
+                    当前还没有店铺发布配置
                   </TableCell>
                 </TableRow>
               ) : (
@@ -205,10 +239,8 @@ export function StoreProfileAdminPanel() {
                         {item.store?.name?.trim() || item.store?.store_id?.trim() || `店铺 ${item.store_id}`}
                       </div>
                       <div className="text-xs text-zinc-500">
-                        {[
-                          item.store?.store_id?.trim(),
-                          item.store?.region?.trim(),
-                        ].filter(Boolean).join(" / ") || `store_id=${item.store_id}`}
+                        {[item.store?.store_id?.trim(), item.store?.region?.trim()].filter(Boolean).join(" / ") ||
+                          `store_id=${item.store_id}`}
                       </div>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">
@@ -256,7 +288,7 @@ export function StoreProfileAdminPanel() {
           <div className="flex items-center gap-2">
             {draft.id ? <Pencil className="size-4 text-zinc-500" /> : <Plus className="size-4 text-zinc-500" />}
             <h2 className="text-base font-semibold text-zinc-950">
-              {draft.id ? "编辑 ListingKit 配置" : "新增 ListingKit 配置"}
+              {draft.id ? "编辑店铺发布配置" : "新增店铺发布配置"}
             </h2>
           </div>
           {draft.id ? (
@@ -275,7 +307,7 @@ export function StoreProfileAdminPanel() {
             <option value="">请选择店铺</option>
             {sheinStores.map((store) => (
               <option key={store.id} value={String(store.id)}>
-                {store.name} ({store.storeId || store.region || store.id})
+                {formatStoreOptionLabel(store)}
               </option>
             ))}
           </Select>
@@ -283,7 +315,11 @@ export function StoreProfileAdminPanel() {
 
         <div className="grid grid-cols-2 gap-3">
           <TextField label="站点" value={draft.site} onChange={(site) => setDraft((current) => ({ ...current, site }))} />
-          <TextField label="仓库编码" value={draft.warehouse_code} onChange={(warehouse_code) => setDraft((current) => ({ ...current, warehouse_code }))} />
+          <TextField
+            label="仓库编码"
+            value={draft.warehouse_code}
+            onChange={(warehouse_code) => setDraft((current) => ({ ...current, warehouse_code }))}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <TextField
@@ -303,8 +339,18 @@ export function StoreProfileAdminPanel() {
           `国家规则` 会匹配任务里的 `country`；`类目规则` 会匹配类目 hint 或 SDS 类目路径。多个值用逗号分隔。
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <TextField label="优先级" type="number" value={draft.priority} onChange={(priority) => setDraft((current) => ({ ...current, priority }))} />
-          <TextField label="默认库存" type="number" value={draft.default_stock} onChange={(default_stock) => setDraft((current) => ({ ...current, default_stock }))} />
+          <TextField
+            label="优先级"
+            type="number"
+            value={draft.priority}
+            onChange={(priority) => setDraft((current) => ({ ...current, priority }))}
+          />
+          <TextField
+            label="默认库存"
+            type="number"
+            value={draft.default_stock}
+            onChange={(default_stock) => setDraft((current) => ({ ...current, default_stock }))}
+          />
         </div>
         <Field label="默认提交方式">
           <Select
@@ -320,24 +366,55 @@ export function StoreProfileAdminPanel() {
             <option value="save_draft">保存草稿</option>
           </Select>
         </Field>
-
         <div className="grid grid-cols-2 gap-3">
-          <TextField label="汇率" value={draft.exchange_rate} onChange={(exchange_rate) => setDraft((current) => ({ ...current, exchange_rate }))} />
-          <TextField label="倍率" value={draft.markup_multiplier} onChange={(markup_multiplier) => setDraft((current) => ({ ...current, markup_multiplier }))} />
-          <TextField label="最低售价" value={draft.minimum_price} onChange={(minimum_price) => setDraft((current) => ({ ...current, minimum_price }))} />
-          <TextField label="价格步进" value={draft.round_to} onChange={(round_to) => setDraft((current) => ({ ...current, round_to }))} />
+          <TextField
+            label="汇率"
+            type="number"
+            step="0.01"
+            value={draft.exchange_rate}
+            onChange={(exchange_rate) => setDraft((current) => ({ ...current, exchange_rate }))}
+          />
+          <TextField
+            label="加价倍数"
+            type="number"
+            step="0.01"
+            value={draft.markup_multiplier}
+            onChange={(markup_multiplier) => setDraft((current) => ({ ...current, markup_multiplier }))}
+          />
         </div>
-        <TextField label="价格尾数" value={draft.price_ending} onChange={(price_ending) => setDraft((current) => ({ ...current, price_ending }))} />
-
-        <div className="mt-3 grid gap-3">
-          <Label className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground">
+        <div className="grid grid-cols-3 gap-3">
+          <TextField
+            label="最低售价"
+            type="number"
+            step="0.01"
+            value={draft.minimum_price}
+            onChange={(minimum_price) => setDraft((current) => ({ ...current, minimum_price }))}
+          />
+          <TextField
+            label="取整精度"
+            type="number"
+            step="0.01"
+            value={draft.round_to}
+            onChange={(round_to) => setDraft((current) => ({ ...current, round_to }))}
+          />
+          <TextField
+            label="尾数"
+            type="number"
+            step="0.01"
+            value={draft.price_ending}
+            onChange={(price_ending) => setDraft((current) => ({ ...current, price_ending }))}
+            placeholder="可选"
+          />
+        </div>
+        <div className="mt-3 space-y-2">
+          <Label className="flex items-center gap-2 text-sm text-zinc-700">
             <Checkbox
               checked={draft.enabled}
               onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
             />
-            启用该店铺配置
+            启用这个店铺配置
           </Label>
-          <Label className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground">
+          <Label className="flex items-center gap-2 text-sm text-zinc-700">
             <Checkbox
               checked={draft.is_fallback}
               onChange={(event) => setDraft((current) => ({ ...current, is_fallback: event.target.checked }))}
@@ -346,21 +423,67 @@ export function StoreProfileAdminPanel() {
           </Label>
         </div>
 
-        <Button
-          type="button"
-          disabled={upsert.isPending}
-          className="mt-4 w-full"
-          onClick={() => void saveProfile()}
-        >
-          {upsert.isPending ? "保存中..." : draft.id ? "保存配置" : "新增配置"}
-        </Button>
-
-        {storeOptionsQuery.isError ? (
-          <p className="mt-3 text-sm text-rose-600">店铺列表读取失败。</p>
+        {sheinStores.length === 0 && !sheinSettingsQuery.isLoading ? (
+          <p className="mt-3 text-sm text-amber-700">
+            当前租户还没有可用的 SHEIN 店铺主数据，请联系平台管理员先在平台店铺管理里创建店铺。
+          </p>
         ) : null}
+
+        <div className="mt-4 flex gap-2">
+          <Button
+            type="button"
+            disabled={upsert.isPending || !draft.store_id}
+            onClick={() => void saveProfile()}
+          >
+            {upsert.isPending ? "保存中..." : draft.id ? "保存配置" : "新增配置"}
+          </Button>
+          {draft.id ? (
+            <Button type="button" variant="secondary" onClick={resetForm}>
+              取消
+            </Button>
+          ) : null}
+        </div>
       </section>
     </section>
   );
+}
+
+function formatStoreOptionLabel(store: StoreOption) {
+  const primary = store.name?.trim() || store.store_id?.trim() || `店铺 ${store.id}`;
+  const meta = [store.store_id?.trim(), store.region?.trim()].filter(Boolean).join(" / ");
+  return meta ? `${primary} (${meta})` : primary;
+}
+
+function formatMatchRuleValues(profile: ListingKitStoreProfile, kind: string) {
+  const match = profile.match_rules?.find((item) => item.kind === kind);
+  return match?.values?.join(", ") ?? "";
+}
+
+function buildMatchRules(form: StoreProfileForm) {
+  const items = [
+    { kind: "country", values: splitRuleInput(form.country_rules) },
+    { kind: "category", values: splitRuleInput(form.category_rules) },
+  ];
+  return items.filter((item) => item.values.length > 0);
+}
+
+function splitRuleInput(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function summarizeMatchRules(profile: ListingKitStoreProfile) {
+  const parts: string[] = [];
+  for (const rule of profile.match_rules ?? []) {
+    if (!rule.kind || !rule.values?.length) {
+      continue;
+    }
+    const label = rule.kind === "country" ? "国家" : rule.kind === "category" ? "类目" : rule.kind;
+    parts.push(`${label}: ${rule.values.join(", ")}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "未配置";
 }
 
 function Field({
@@ -380,68 +503,30 @@ function Field({
 
 function TextField({
   label,
-  type = "text",
-  placeholder,
   value,
   onChange,
+  type = "text",
+  placeholder,
+  step,
 }: {
   label: string;
-  type?: string;
-  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
+  type?: string;
+  placeholder?: string;
+  step?: string;
 }) {
   return (
     <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
       <Input
+        className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+        placeholder={placeholder}
+        step={step}
         type={type}
         value={value}
-        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
       />
     </Label>
   );
-}
-
-function splitRuleValues(input: string) {
-  return input
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function buildMatchRules(draft: StoreProfileForm) {
-  const rules = [];
-  const countries = splitRuleValues(draft.country_rules);
-  const categories = splitRuleValues(draft.category_rules);
-
-  if (countries.length > 0) {
-    rules.push({ kind: "country", values: countries });
-  }
-  if (categories.length > 0) {
-    rules.push({ kind: "category", values: categories });
-  }
-  return rules;
-}
-
-function formatMatchRuleValues(profile: ListingKitStoreProfile, kind: string) {
-  return (profile.match_rules ?? [])
-    .filter((item) => item.kind === kind)
-    .flatMap((item) => item.values ?? [])
-    .join(", ");
-}
-
-function summarizeMatchRules(profile: ListingKitStoreProfile) {
-  const countries = formatMatchRuleValues(profile, "country");
-  const categories = formatMatchRuleValues(profile, "category");
-  const parts = [];
-  if (countries) {
-    parts.push(`国家: ${countries}`);
-  }
-  if (categories) {
-    parts.push(`类目: ${categories}`);
-  }
-  return parts.join(" · ") || "默认优先级路由";
 }

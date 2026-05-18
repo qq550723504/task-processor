@@ -68,3 +68,63 @@ func TestGormRepositoryOwnerScopeFiltersStudioSessions(t *testing.T) {
 		t.Fatalf("foreign session = %#v, want nil", got)
 	}
 }
+
+func TestGormRepositoryReplaceDesignsAssignsSessionIDForBatchGallery(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SheinStudioSession{}, &listingkit.SheinStudioDesign{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := NewGormRepository(db)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	session := &listingkit.SheinStudioSession{
+		ID:           "batch-1",
+		TenantID:     "tenant-a",
+		UserID:       "user-a",
+		SelectionKey: "selection-a",
+		Status:       listingkit.SheinStudioSessionStatusReviewing,
+		SavedAsBatch: true,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := repo.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if err := repo.ReplaceDesigns(ctx, session.ID, []string{"design-1"}, []listingkit.SheinStudioDesign{
+		{
+			ID:       "design-1",
+			ImageURL: "https://oss.example.com/design-1.png",
+			Prompt:   "retro cherries",
+		},
+	}); err != nil {
+		t.Fatalf("replace designs: %v", err)
+	}
+
+	designs, err := repo.ListSessionDesigns(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list session designs: %v", err)
+	}
+	if len(designs) != 1 {
+		t.Fatalf("design count = %d, want 1", len(designs))
+	}
+	if designs[0].SessionID != session.ID {
+		t.Fatalf("design session id = %q, want %q", designs[0].SessionID, session.ID)
+	}
+
+	items, err := repo.ListGalleryItems(ctx, 10)
+	if err != nil {
+		t.Fatalf("list gallery items: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("gallery item count = %d, want 1", len(items))
+	}
+	if items[0].SessionID != session.ID || items[0].DesignID != "design-1" {
+		t.Fatalf("gallery item = %#v, want linked session/design", items[0])
+	}
+}

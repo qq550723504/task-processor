@@ -7,6 +7,7 @@ import {
   StyleGalleryEmptyState,
   StyleGalleryGrid,
   StyleGalleryHero,
+  StyleGalleryLoadError,
   StyleGalleryMetrics,
   StyleGalleryNoResults,
 } from "@/components/listingkit/style-gallery/style-gallery-page-sections";
@@ -90,7 +91,9 @@ export function StyleGalleryPage({ initialGallery }: GalleryPageProps) {
         visibleCount={visibleItems.length}
       />
 
-      {items.length === 0 ? (
+      {initialGallery.loadError ? (
+        <StyleGalleryLoadError message={initialGallery.loadError} />
+      ) : items.length === 0 ? (
         <StyleGalleryEmptyState />
       ) : visibleItems.length === 0 ? (
         <StyleGalleryNoResults

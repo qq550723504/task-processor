@@ -31,7 +31,7 @@ func TestListSheinStoreProfilesReturnsProfiles(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(svc, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestUpsertSheinStoreProfileBindsRequest(t *testing.T) {
 			DefaultSubmitMode: "save_draft",
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(svc, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestUpdateSheinStoreRoutingSettingsBindsRequest(t *testing.T) {
 			AllowFallback:       true,
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(svc, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}

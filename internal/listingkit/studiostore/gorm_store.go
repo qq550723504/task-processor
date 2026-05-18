@@ -71,6 +71,9 @@ func (r *GormRepository) DeleteSession(ctx context.Context, sessionID string) er
 func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []listingkit.SheinStudioDesign) error {
 	tenantID := tenantctx.TenantIDFromContext(ctx)
 	for i := range designs {
+		if strings.TrimSpace(designs[i].SessionID) == "" {
+			designs[i].SessionID = sessionID
+		}
 		if designs[i].TenantID == "" {
 			designs[i].TenantID = tenantID
 		}

@@ -30,6 +30,7 @@ export type StyleGalleryResponse = {
   generatedAt: string;
   total: number;
   items: StyleGalleryItem[];
+  loadError?: string;
   summary: {
     studioSaved: number;
     studioLegacy: number;

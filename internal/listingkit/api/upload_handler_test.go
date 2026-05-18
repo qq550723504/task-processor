@@ -126,7 +126,7 @@ func TestUploadListingKitImagesReturnsBadRequestWithoutFiles(t *testing.T) {
 	}
 }
 
-func TestUploadListingKitImagesIgnoresStorageQuotaLimit(t *testing.T) {
+func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitIsExceeded(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
@@ -162,11 +162,11 @@ func TestUploadListingKitImagesIgnoresStorageQuotaLimit(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
+	if resp.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402: %s", resp.Code, resp.Body.String())
 	}
-	if svc.uploadImagesReq == nil || len(svc.uploadImagesReq.Files) != 1 {
-		t.Fatalf("upload req = %+v, want 1 file", svc.uploadImagesReq)
+	if svc.uploadImagesReq != nil {
+		t.Fatalf("upload req = %+v, want service not to be called", svc.uploadImagesReq)
 	}
 
 	summary, err := subscriptionService.GetSummary(t.Context(), listingkit.DefaultTenantID)
@@ -175,16 +175,57 @@ func TestUploadListingKitImagesIgnoresStorageQuotaLimit(t *testing.T) {
 	}
 	for _, view := range summary.Entitlements {
 		if view.Module.Code == listingsubscription.ModuleOSSStorage {
-			if view.Used["storage_bytes"] != 4 {
-				t.Fatalf("storage_bytes = %d, want 4", view.Used["storage_bytes"])
+			if view.Used["storage_bytes"] != 0 {
+				t.Fatalf("storage_bytes = %d, want 0", view.Used["storage_bytes"])
 			}
-			if view.Used["uploaded_bytes"] != 4 {
-				t.Fatalf("uploaded_bytes = %d, want 4", view.Used["uploaded_bytes"])
+			if view.Used["uploaded_bytes"] != 0 {
+				t.Fatalf("uploaded_bytes = %d, want 0", view.Used["uploaded_bytes"])
 			}
 			return
 		}
 	}
 	t.Fatal("oss storage entitlement view missing")
+}
+
+func TestUploadListingKitImagesAllowsStudioBackedStorageFallback(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubGenerationTaskService{
+		uploadResponse: &listingkit.UploadImagesResponse{
+			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/style.jpg"},
+		},
+	}
+	subscriptionService := activeStudioOnlySubscriptionService(t)
+	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	file, err := writer.CreateFormFile("files", "style.jpg")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := file.Write([]byte{0xFF, 0xD8, 0xFF, 0x00}); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/uploads/images", h.UploadListingKitImages)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/uploads/images", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
 }
 
 func TestUploadListingKitImagesDoesNotRecordStorageUsageWhenUploadFails(t *testing.T) {
@@ -407,6 +448,20 @@ func activeOSSStorageSubscriptionService(t *testing.T, limits map[string]int) *l
 		Limits: limits,
 	}); err != nil {
 		t.Fatalf("upsert oss storage entitlement: %v", err)
+	}
+	return svc
+}
+
+func activeStudioOnlySubscriptionService(t *testing.T) *listingsubscription.Service {
+	t.Helper()
+	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+	}); err != nil {
+		t.Fatalf("upsert studio entitlement: %v", err)
 	}
 	return svc
 }

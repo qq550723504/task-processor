@@ -105,8 +105,8 @@ const PRIMARY_NAV_ITEMS = [
 ] as const satisfies readonly NavItem[];
 
 const MENU_ROLES = {
-  operator: ["listingkit_admin", "listingkit_operator"],
-  admin: ["listingkit_admin"],
+  operator: ["listingkit_operator", "listingkit_admin", "platform_admin", "admin"],
+  admin: ["listingkit_admin", "platform_admin", "admin"],
 } as const;
 
 const ZITADEL_CONSOLE_URL =
@@ -118,19 +118,27 @@ const OPERATIONS_NAV_ITEMS = [
     icon: Store,
     requiresIdentity: true,
     children: [
-      { label: "店铺", href: "/listing-kits/admin/stores", icon: Store, match: "prefix" },
+      { label: "我的店铺配置", href: "/listing-kits/stores", icon: Store, match: "prefix" },
+      {
+        label: "平台店铺管理",
+        href: "/listing-kits/admin/stores",
+        icon: Store,
+        match: "prefix",
+        requiredRoles: MENU_ROLES.operator,
+      },
       {
         label: "上架统计",
         href: "/listing-kits/admin/store-statistics",
         icon: LayoutDashboard,
         match: "prefix",
+        requiredRoles: MENU_ROLES.operator,
       },
     ],
   },
   {
     label: "数据配置",
     icon: Database,
-    requiresIdentity: true,
+    requiredRoles: MENU_ROLES.operator,
     children: [
       { label: "分类", href: "/listing-kits/admin/categories", icon: Tags, match: "prefix" },
       {
@@ -202,7 +210,6 @@ const SYSTEM_NAV_ITEMS = [
   {
     label: "订阅计费",
     icon: PackageCheck,
-    requiredRoles: MENU_ROLES.admin,
     children: [
       {
         label: "当前租户订阅",
@@ -215,24 +222,37 @@ const SYSTEM_NAV_ITEMS = [
         href: "/listing-kits/platform/subscriptions",
         icon: UserCog,
         match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
       },
       {
         label: "套餐管理",
         href: "/listing-kits/platform/subscription-plans",
         icon: PanelTop,
         match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
       },
     ],
   },
   {
     label: "系统配置",
     icon: Settings,
-    requiredRoles: MENU_ROLES.admin,
     children: [
-      { label: "提示词", href: "/listing-kits/prompts", icon: FileCog, match: "prefix" },
+      {
+        label: "提示词",
+        href: "/listing-kits/prompts",
+        icon: FileCog,
+        match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
+      },
       { label: "设置", href: "/listing-kits/settings", icon: Settings, match: "prefix" },
       ...(ZITADEL_CONSOLE_URL
-        ? [{ label: "用户管理", href: ZITADEL_CONSOLE_URL, icon: UserCog, external: true as const }]
+        ? [{
+            label: "用户管理",
+            href: ZITADEL_CONSOLE_URL,
+            icon: UserCog,
+            external: true as const,
+            requiredRoles: MENU_ROLES.admin,
+          }]
         : []),
     ],
   },
@@ -269,6 +289,52 @@ function isActiveNavTreeItem(pathname: string, item: NavTreeItem): boolean {
     return false;
   }
   return item.children.some((child) => isActiveNavTreeItem(pathname, child));
+}
+
+function hasAnyRole(
+  requiredRoles: readonly string[] | undefined,
+  identity: ZitadelClientIdentity | null | undefined,
+) {
+  if (!requiredRoles?.length) {
+    return true;
+  }
+  const roles = identity?.roles ?? [];
+  return requiredRoles.some((role) => roles.includes(role));
+}
+
+function canAccessNavTreeItem(
+  item: NavTreeItem,
+  identity: ZitadelClientIdentity | null | undefined,
+): boolean {
+  if (item.requiresIdentity && !identity) {
+    return false;
+  }
+  if (!hasAnyRole(item.requiredRoles, identity)) {
+    return false;
+  }
+  if (isNavItem(item) || isExternalNavItem(item)) {
+    return true;
+  }
+  return item.children.some((child) => canAccessNavTreeItem(child, identity));
+}
+
+function filterNavTreeItem(
+  item: NavTreeItem,
+  identity: ZitadelClientIdentity | null | undefined,
+): NavTreeItem | null {
+  if (!canAccessNavTreeItem(item, identity)) {
+    return null;
+  }
+  if (isNavItem(item) || isExternalNavItem(item)) {
+    return item;
+  }
+  const children = item.children
+    .map((child) => filterNavTreeItem(child, identity))
+    .filter((child): child is NavTreeItem => child !== null);
+  if (children.length === 0) {
+    return null;
+  }
+  return { ...item, children };
 }
 
 function NavLink({
@@ -372,9 +438,14 @@ export function ListingKitAppShell({
   identity?: ZitadelClientIdentity | null;
 }>) {
   const pathname = usePathname();
-  useZitadelIdentity();
-  void identityOverride;
-  const navGroups = NAV_GROUPS;
+  const identityFromContext = useZitadelIdentity();
+  const identity = identityOverride ?? identityFromContext;
+  const navGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items
+      .map((item) => filterNavTreeItem(item, identity))
+      .filter((item): item is NavTreeItem => item !== null),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <SidebarProvider>

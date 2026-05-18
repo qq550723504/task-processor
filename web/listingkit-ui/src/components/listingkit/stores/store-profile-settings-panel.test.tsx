@@ -1,14 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { StoreProfileAdminPanel } from "@/components/listingkit/admin/store-profile-admin-panel";
-import * as adminStoresApi from "@/lib/api/admin-stores";
+import { StoreProfileSettingsPanel } from "@/components/listingkit/stores/store-profile-settings-panel";
 
 const mocks = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   useStoreProfiles: vi.fn(),
   useUpsertStoreProfile: vi.fn(),
   useDeleteStoreProfile: vi.fn(),
+  getListingKitSettings: vi.fn(),
 }));
 
 vi.mock("@/lib/query/use-store-profiles", () => ({
@@ -17,13 +17,17 @@ vi.mock("@/lib/query/use-store-profiles", () => ({
   useDeleteStoreProfile: () => mocks.useDeleteStoreProfile(),
 }));
 
-describe("StoreProfileAdminPanel", () => {
+vi.mock("@/lib/api/listingkit-settings", () => ({
+  getListingKitSettings: (...args: unknown[]) => mocks.getListingKitSettings(...args),
+}));
+
+describe("StoreProfileSettingsPanel", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
     mocks.mutateAsync.mockReset();
     mocks.useStoreProfiles.mockReset();
     mocks.useUpsertStoreProfile.mockReset();
     mocks.useDeleteStoreProfile.mockReset();
+    mocks.getListingKitSettings.mockReset();
 
     mocks.useStoreProfiles.mockReturnValue({
       data: [
@@ -35,7 +39,7 @@ describe("StoreProfileAdminPanel", () => {
           site: "US",
           warehouse_code: "WH-US-1",
           match_rules: [{ kind: "country", values: ["US", "CA"] }],
-          store: { name: "US 主店", store_id: "SHEIN-US-869", region: "US" },
+          store: { id: 869, name: "US 主店", store_id: "SHEIN-US-869", region: "US" },
         },
       ],
       isLoading: false,
@@ -49,55 +53,29 @@ describe("StoreProfileAdminPanel", () => {
     mocks.useDeleteStoreProfile.mockReturnValue({
       mutateAsync: vi.fn(),
     });
-    vi.spyOn(adminStoresApi, "getListingStores").mockResolvedValue({
-      items: [
-        {
-          id: 869,
-          name: "US 主店",
-          username: "shein-us",
-          platform: "SHEIN",
-          shopType: "semi",
-          region: "US",
-          status: 0,
-          storeId: "SHEIN-US-869",
-        },
-        {
-          id: 870,
-          name: "US 备用店",
-          username: "shein-us-2",
-          platform: "SHEIN",
-          shopType: "semi",
-          region: "US",
-          status: 0,
-          storeId: "SHEIN-US-870",
-        },
+    mocks.getListingKitSettings.mockResolvedValue({
+      available_stores: [
+        { id: 869, name: "US 主店", store_id: "SHEIN-US-869", region: "US" },
+        { id: 870, name: "US 备用店", store_id: "SHEIN-US-870", region: "US" },
       ],
-      total: 2,
-      page: 1,
-      page_size: 200,
     });
   });
 
-  it("renders existing store profiles", async () => {
-    renderWithQueryClient(<StoreProfileAdminPanel />);
+  it("renders existing tenant store profiles", async () => {
+    renderWithQueryClient(<StoreProfileSettingsPanel />);
 
-    expect(await screen.findByText("ListingKit 店铺配置")).toBeInTheDocument();
+    expect(await screen.findByText("我的店铺配置")).toBeInTheDocument();
     expect(screen.getByText("US 主店")).toBeInTheDocument();
     expect(screen.getByText("WH-US-1")).toBeInTheDocument();
     expect(screen.getByText("国家: US, CA")).toBeInTheDocument();
     expect(screen.getByText("已启用")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "`国家规则` 会匹配任务里的 `country`；`类目规则` 会匹配类目 hint 或 SDS 类目路径。多个值用逗号分隔。",
-      ),
-    ).toBeInTheDocument();
   });
 
-  it("creates a new store profile", async () => {
-    renderWithQueryClient(<StoreProfileAdminPanel />);
+  it("creates a new tenant store profile from tenant-available stores", async () => {
+    renderWithQueryClient(<StoreProfileSettingsPanel />);
 
-    await screen.findByText("ListingKit 店铺配置");
-    await screen.findByRole("option", { name: "US 备用店 (SHEIN-US-870)" });
+    await screen.findByText("我的店铺配置");
+    await screen.findByRole("option", { name: "US 备用店 (SHEIN-US-870 / US)" });
 
     fireEvent.change(screen.getByRole("combobox", { name: "SHEIN 店铺" }), {
       target: { value: "870" },

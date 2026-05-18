@@ -77,11 +77,15 @@ describe("ListingKitAppShell", () => {
       </ListingKitAppShell>,
     );
 
-    expect(screen.queryByRole("link", { name: "店铺" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "我的店铺配置" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "店铺运营" }));
 
-    expect(screen.getByRole("link", { name: "店铺" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "我的店铺配置" })).toHaveAttribute(
+      "href",
+      "/listing-kits/stores",
+    );
+    expect(screen.getByRole("link", { name: "平台店铺管理" })).toHaveAttribute(
       "href",
       "/listing-kits/admin/stores",
     );
@@ -152,10 +156,10 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("link", { name: "POD" })).toBeInTheDocument();
     expect(screen.getByText("运营管理")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "店铺运营" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "数据配置" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "规则策略" })).toBeInTheDocument();
     expect(screen.getByText("系统")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "数据配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "规则策略" })).not.toBeInTheDocument();
   });
 
   it("keeps privileged menu sections visible for administrators", () => {
@@ -222,11 +226,28 @@ describe("ListingKitAppShell", () => {
       </ListingKitAppShell>,
     );
 
-    expect(screen.getByText("运营管理")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "店铺运营" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "数据配置" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "规则策略" })).toBeInTheDocument();
-    expect(screen.getByText("系统")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "店铺运营" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "数据配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "规则策略" })).not.toBeInTheDocument();
+  });
+
+  it("hides platform store links for tenant users", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ListingKitAppShell identity={{ roles: ["listingkit_viewer"] }}>
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "店铺运营" }));
+
+    expect(screen.getByRole("link", { name: "我的店铺配置" })).toHaveAttribute(
+      "href",
+      "/listing-kits/stores",
+    );
+    expect(screen.queryByRole("link", { name: "平台店铺管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "上架统计" })).not.toBeInTheDocument();
   });
 });

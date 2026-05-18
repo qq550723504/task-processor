@@ -141,4 +141,27 @@ describe("StyleGalleryPage", () => {
     expect(screen.queryByText("Square style")).not.toBeInTheDocument();
     expect(screen.queryByText("Landscape style")).not.toBeInTheDocument();
   });
+
+  it("shows a load error instead of pretending the gallery is empty", () => {
+    render(
+      <StyleGalleryPage
+        initialGallery={{
+          items: [],
+          loadError: "图库加载失败：500",
+          summary: {
+            publishedInputs: 0,
+            studioLegacy: 0,
+            studioSaved: 0,
+            taskLinked: 0,
+          },
+          generatedAt: "2026-05-10T00:00:00.000Z",
+          total: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("图库加载失败")).toBeInTheDocument();
+    expect(screen.getByText("图库加载失败：500")).toBeInTheDocument();
+    expect(screen.queryByText("暂无款式图")).not.toBeInTheDocument();
+  });
 });

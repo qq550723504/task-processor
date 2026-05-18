@@ -8,6 +8,7 @@ import { SheinBatchTaskTracker } from "@/components/listingkit/shein-studio/shei
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ApiError } from "@/lib/api/client";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -20,9 +21,11 @@ import {
 export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
   const [batch, setBatch] = useState<SheinStudioSavedBatch | null>(null);
   const [isLoadingBatch, setIsLoadingBatch] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
 
   const approvedCount = useMemo(
     () => batch?.selectedIds.length ?? 0,
@@ -39,10 +42,19 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
 
     async function loadBatch() {
       setIsLoadingBatch(true);
+      setLoadError("");
       try {
         const nextBatch = await getSheinStudioBatch(batchId);
         if (!cancelled) {
           setBatch(nextBatch);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (error instanceof ApiError && error.status === 404) {
+            setBatch(null);
+            return;
+          }
+          setLoadError(formatSubscriptionApiError(error));
         }
       } finally {
         if (!cancelled) {
@@ -56,7 +68,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [batchId]);
+  }, [batchId, reloadToken]);
 
   if (isLoadingBatch) {
     return (
@@ -81,15 +93,31 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
           SHEIN 批次
         </p>
         <h1 className="mt-2 font-serif text-3xl tracking-[-0.04em] text-zinc-950">
-          未找到批次
+          {loadError ? "批次加载失败" : "未找到批次"}
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
-          这个批次已不在服务器上。请回到工作室重新保存。
+          {loadError
+            ? "服务器没有返回这个批次的可用数据。请先重试；如果持续失败，再回到工作室重新打开。"
+            : "这个批次已不在服务器上。请回到工作室重新保存。"}
         </p>
+        {loadError ? (
+          <Alert className="mt-5" variant="destructive">
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        ) : null}
         <div className="mt-5">
-          <Link href="/listing-kits/shein">
-            <Button>返回 SHEIN 工作室</Button>
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            {loadError ? (
+              <Button onClick={() => setReloadToken((value) => value + 1)}>
+                重试加载
+              </Button>
+            ) : null}
+            <Link href="/listing-kits/shein">
+              <Button variant={loadError ? "secondary" : "default"}>
+                返回 SHEIN 工作室
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
     );

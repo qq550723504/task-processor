@@ -104,6 +104,63 @@ func TestSubscriptionUsageRecordsWithoutLimit(t *testing.T) {
 	t.Fatal("oss storage summary missing")
 }
 
+func TestSubscriptionUsageAllowsOSSStorageViaStudioFallback(t *testing.T) {
+	svc := newTestService(t)
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+		Limits: map[string]int{"design_jobs": 10},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.AuthorizeUsage(context.Background(), "org-286", ModuleOSSStorage, "storage_bytes", 2048)
+	if err != nil {
+		t.Fatalf("AuthorizeUsage() error = %v", err)
+	}
+	if !result.Allowed || result.Used != 2048 || result.Limit != 0 {
+		t.Fatalf("authorize result = %#v, want studio-backed unlimited oss access", result)
+	}
+	summary, err := svc.GetSummary(context.Background(), "org-286")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, view := range summary.Entitlements {
+		if view.Module.Code == ModuleOSSStorage {
+			if !view.Allowed {
+				t.Fatalf("oss storage view = %#v, want allowed via studio fallback", view)
+			}
+			if view.Entitlement == nil || view.Entitlement.ModuleCode != ModuleOSSStorage {
+				t.Fatalf("oss storage entitlement = %#v, want synthesized oss entitlement", view.Entitlement)
+			}
+			return
+		}
+	}
+	t.Fatal("oss storage summary missing")
+}
+
+func TestSubscriptionUsagePrefersExplicitOSSStorageEntitlementOverStudioFallback(t *testing.T) {
+	svc := newTestService(t)
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.UpsertEntitlement(context.Background(), "org-286", ModuleOSSStorage, EntitlementInput{
+		Status: StatusDisabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.AuthorizeUsage(context.Background(), "org-286", ModuleOSSStorage, "storage_bytes", 1)
+	if !errors.Is(err, ErrSubscriptionRequired) {
+		t.Fatalf("AuthorizeUsage() error = %v, want subscription required", err)
+	}
+	if result.Reason != StatusDisabled {
+		t.Fatalf("reason = %q, want disabled", result.Reason)
+	}
+}
+
 func TestSubscriptionUsageAuthorizeDoesNotRecordUntilUsageIsRecorded(t *testing.T) {
 	svc := newTestService(t)
 	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleOSSStorage, EntitlementInput{

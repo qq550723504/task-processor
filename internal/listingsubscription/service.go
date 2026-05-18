@@ -152,14 +152,13 @@ func (s *Service) GetSummary(ctx context.Context, tenantID string) (*Summary, er
 	views := make([]EntitlementView, 0, len(modules))
 	for _, module := range modules {
 		view := EntitlementView{Module: module, Usage: usageByModule[module.Code], Used: map[string]int{}}
-		if entitlement, ok := entitlementByModule[module.Code]; ok {
-			entitlementCopy := entitlement
-			view.Entitlement = &entitlementCopy
+		if entitlement, ok := s.resolveEffectiveEntitlement(entitlementByModule, module.Code); ok {
+			view.Entitlement = entitlement
 			view.Limits = cloneLimits(entitlement.Limits)
 			for _, counter := range view.Usage {
 				view.Used[counter.Metric] += counter.Used
 			}
-			view.Allowed, view.Reason = evaluateEntitlement(&entitlementCopy, s.now())
+			view.Allowed, view.Reason = evaluateEntitlement(entitlement, s.now())
 		} else {
 			view.Allowed = false
 			view.Reason = "not_configured"
@@ -511,13 +510,18 @@ func (s *Service) AuthorizeUsage(ctx context.Context, tenantID, moduleCode, metr
 	tenantID = strings.TrimSpace(tenantID)
 	moduleCode = strings.TrimSpace(moduleCode)
 	result := GuardResult{ModuleCode: moduleCode, Metric: metric}
-	entitlement, err := s.repo.GetEntitlement(ctx, tenantID, moduleCode)
+	entitlements, err := s.repo.ListEntitlements(ctx, tenantID)
 	if err != nil {
-		if errors.Is(err, ErrEntitlementNotFound) {
-			result.Reason = "not_configured"
-			return result, ErrSubscriptionRequired
-		}
 		return result, err
+	}
+	entitlementByModule := make(map[string]Entitlement, len(entitlements))
+	for _, entitlement := range entitlements {
+		entitlementByModule[entitlement.ModuleCode] = entitlement
+	}
+	entitlement, ok := s.resolveEffectiveEntitlement(entitlementByModule, moduleCode)
+	if !ok {
+		result.Reason = "not_configured"
+		return result, ErrSubscriptionRequired
 	}
 	allowed, reason := evaluateEntitlement(entitlement, s.now())
 	if !allowed {
@@ -541,6 +545,28 @@ func (s *Service) AuthorizeUsage(ctx context.Context, tenantID, moduleCode, metr
 	}
 	result.Allowed = true
 	return result, nil
+}
+
+func (s *Service) resolveEffectiveEntitlement(entitlementByModule map[string]Entitlement, moduleCode string) (*Entitlement, bool) {
+	if entitlement, ok := entitlementByModule[moduleCode]; ok {
+		entitlementCopy := entitlement
+		return &entitlementCopy, true
+	}
+	if moduleCode != ModuleOSSStorage {
+		return nil, false
+	}
+	studio, ok := entitlementByModule[ModuleStudio]
+	if !ok {
+		return nil, false
+	}
+	// Studio task creation depends on upload storage. When storage is not
+	// configured separately, inherit the studio entitlement as the minimum
+	// capability floor instead of blocking the workflow mid-flight.
+	fallback := studio
+	fallback.ID = 0
+	fallback.ModuleCode = ModuleOSSStorage
+	fallback.Limits = nil
+	return &fallback, true
 }
 
 func (s *Service) RecordUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (*UsageCounter, error) {
