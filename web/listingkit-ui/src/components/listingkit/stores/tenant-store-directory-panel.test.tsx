@@ -160,7 +160,11 @@ describe("TenantStoreDirectoryPanel", () => {
     expect(sheinRow).not.toBeNull();
     expect(temuRow).not.toBeNull();
     expect(within(sheinRow as HTMLElement).getByText("已登录")).toBeInTheDocument();
+    expect(
+      within(sheinRow as HTMLElement).getByRole("link", { name: "去登录" }),
+    ).toHaveAttribute("href", "/listing-kits/shein-login?store_id=1");
     expect(within(temuRow as HTMLElement).getAllByText("-").length).toBeGreaterThan(0);
+    expect(within(temuRow as HTMLElement).queryByRole("link", { name: "去登录" })).toBeNull();
   });
 });
 

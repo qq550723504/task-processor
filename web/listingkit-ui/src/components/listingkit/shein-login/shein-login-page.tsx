@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -492,6 +493,7 @@ function FailureDialog({
 }
 
 export function SheinLoginPage() {
+  const searchParams = useSearchParams();
   const accounts = useSheinLoginAccounts();
   const login = useLoginSheinAccount();
   const verifyCode = useSubmitSheinVerifyCode();
@@ -502,13 +504,24 @@ export function SheinLoginPage() {
   const [failureStoreID, setFailureStoreID] = useState<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<AccountFilter>("attention");
   const failureDetail = useSheinLastFailure(failureStoreID);
+  const focusedStoreID = useMemo(() => {
+    const raw = searchParams.get("store_id");
+    if (!raw) {
+      return null;
+    }
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [searchParams]);
 
   const accountItems = useMemo(() => accounts.data ?? [], [accounts.data]);
   const summary = useMemo(() => metricCards(accountItems), [accountItems]);
   const filters = useMemo(() => accountFilterItems(accountItems), [accountItems]);
   const filteredAccounts = useMemo(
-    () => filterAccounts(accountItems, activeFilter),
-    [accountItems, activeFilter],
+    () =>
+      focusedStoreID
+        ? accountItems.filter((item) => item.account.store_id === focusedStoreID)
+        : filterAccounts(accountItems, activeFilter),
+    [accountItems, activeFilter, focusedStoreID],
   );
   const runbook = useMemo(() => runbookItems(accountItems), [accountItems]);
   const statusNote = mutationStatusNote({ clearCookie, clearFailure, login, verifyCode });
@@ -551,7 +564,9 @@ export function SheinLoginPage() {
               <div>
                 <h2 className="text-lg font-semibold text-zinc-950">店铺列表</h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  按异常优先级筛选，再对单店铺执行登录、验证码或清理动作。
+                  {focusedStoreID
+                    ? `当前仅显示店铺 ${focusedStoreID}，方便直接处理登录。`
+                    : "按异常优先级筛选，再对单店铺执行登录、验证码或清理动作。"}
                 </p>
               </div>
               <div className="text-sm text-zinc-500">
@@ -559,22 +574,24 @@ export function SheinLoginPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 border-b border-zinc-200 px-6 py-4">
-              {filters.map((filter) => {
-                const active = filter.key === activeFilter;
-                return (
-                  <Button
-                    key={filter.key}
-                    type="button"
-                    variant={active ? "default" : "outline"}
-                    onClick={() => setActiveFilter(filter.key)}
-                    className={cn("h-auto rounded-full px-3 py-1.5 text-xs", !active && "text-zinc-700")}
-                  >
-                    {filter.label} · {filter.count}
-                  </Button>
-                );
-              })}
-            </div>
+            {focusedStoreID ? null : (
+              <div className="flex flex-wrap gap-2 border-b border-zinc-200 px-6 py-4">
+                {filters.map((filter) => {
+                  const active = filter.key === activeFilter;
+                  return (
+                    <Button
+                      key={filter.key}
+                      type="button"
+                      variant={active ? "default" : "outline"}
+                      onClick={() => setActiveFilter(filter.key)}
+                      className={cn("h-auto rounded-full px-3 py-1.5 text-xs", !active && "text-zinc-700")}
+                    >
+                      {filter.label} · {filter.count}
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
 
             {accounts.isLoading ? (
               <div className="flex min-h-60 items-center justify-center text-zinc-500">
@@ -610,7 +627,13 @@ export function SheinLoginPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredAccounts.map((item) => (
-                    <TableRow key={item.account.store_id} className="align-top">
+                    <TableRow
+                      key={item.account.store_id}
+                      className={cn(
+                        "align-top",
+                        focusedStoreID === item.account.store_id && "bg-amber-50/70",
+                      )}
+                    >
                       <TableCell className="px-6 py-5">
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 rounded-xl bg-zinc-100 p-2 text-zinc-700">

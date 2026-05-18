@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
@@ -316,6 +318,11 @@ export function StoreAdminPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="px-4 py-3 text-right">
+                        {store.platform === "SHEIN" ? (
+                          <Button asChild type="button" className="mr-2" size="sm" variant="outline">
+                            <Link href={`/listing-kits/shein-login?store_id=${store.id}`}>去登录</Link>
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           aria-label={`编辑 ${store.name}`}

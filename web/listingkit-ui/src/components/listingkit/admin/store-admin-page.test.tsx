@@ -79,6 +79,10 @@ describe("StoreAdminPage", () => {
       expect(screen.getByText("Deleted SHEIN")).toBeInTheDocument();
     });
     expect(screen.getByText("已登录")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "去登录" })).toHaveAttribute(
+      "href",
+      "/listing-kits/shein-login?store_id=1",
+    );
     expect(
       screen.getByRole("button", { name: "恢复 Deleted SHEIN" }),
     ).toBeInTheDocument();
@@ -192,5 +196,6 @@ describe("StoreAdminPage", () => {
     const temuRow = (await screen.findByText("TEMU US")).closest("tr");
     expect(temuRow).not.toBeNull();
     expect(within(temuRow as HTMLElement).getAllByText("-").length).toBeGreaterThan(0);
+    expect(within(temuRow as HTMLElement).queryByRole("link", { name: "去登录" })).toBeNull();
   });
 });
