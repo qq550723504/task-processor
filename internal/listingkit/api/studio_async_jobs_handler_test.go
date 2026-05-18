@@ -83,6 +83,20 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 	if svc.studioDesignReq == nil || svc.studioDesignReq.Prompt != "retro cherries" {
 		t.Fatalf("studio design req = %+v, want bound prompt", svc.studioDesignReq)
 	}
+	summary, err := subscriptionService.GetSummary(t.Context(), listingkit.DefaultTenantID)
+	if err != nil {
+		t.Fatalf("get summary: %v", err)
+	}
+	var studioUsage int
+	for _, item := range summary.Entitlements {
+		if item.Module.Code == listingsubscription.ModuleStudio {
+			studioUsage = item.Used["design_jobs"]
+			break
+		}
+	}
+	if studioUsage != 1 {
+		t.Fatalf("studio design_jobs usage = %d, want 1", studioUsage)
+	}
 }
 
 func activeStudioSubscriptionService(t *testing.T) *listingsubscription.Service {

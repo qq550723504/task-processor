@@ -260,14 +260,14 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	if req.Path == "/studio/product-images" {
 		metric = "product_image_jobs"
 	}
-	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, metric, 1) {
+	if !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, metric, 1) {
 		return
 	}
 
 	job := h.studioAsyncJobs.create(req.Path)
 	ctx := detachedRequestContext(c)
 	baseURL := requestBaseURL(c)
-	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, baseURL)
+	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, baseURL, metric)
 
 	c.JSON(http.StatusAccepted, job)
 }
@@ -281,7 +281,7 @@ func (h *handler) GetStudioAsyncJob(c *gin.Context) {
 	c.JSON(http.StatusOK, job)
 }
 
-func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, baseURL string) {
+func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, baseURL string, usageMetric string) {
 	var result any
 	var err error
 	status := http.StatusInternalServerError
@@ -334,6 +334,9 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		}
 		h.studioAsyncJobs.fail(jobID, err, status)
 		return
+	}
+	if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
+		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
 	}
 	h.studioAsyncJobs.succeed(jobID, result)
 }
