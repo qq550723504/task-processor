@@ -912,6 +912,401 @@ func TestSubmitTaskBlocksDifferentIdempotencyKeyWhileSubmitInFlight(t *testing.T
 	}
 }
 
+func TestSubmitTaskRoutesSheinPublishToTemporalWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	publishCalls := 0
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+		SheinProductAPIBuilder:      stubSheinProductAPIBuilder{api: stubSheinProductAPI{publishHook: func(product *sheinproduct.Product) { publishCalls++ }}},
+		SheinImageAPIBuilder:        stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "temporal-publish-123"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if preview == nil || preview.TaskID != task.ID {
+		t.Fatalf("preview = %+v, want task preview", preview)
+	}
+	if workflowClient.startCalls != 1 {
+		t.Fatalf("workflow start calls = %d, want 1", workflowClient.startCalls)
+	}
+	if workflowClient.lastStart.TaskID != task.ID || workflowClient.lastStart.Action != "publish" || workflowClient.lastStart.RequestID != "temporal-publish-123" {
+		t.Fatalf("workflow start input = %+v, want shein publish request", workflowClient.lastStart)
+	}
+	if publishCalls != 0 {
+		t.Fatalf("publish calls = %d, want inline publish skipped", publishCalls)
+	}
+}
+
+func TestSubmitTaskRoutesConfirmedFinalToTemporalWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "temporal-final-123",
+		ConfirmedFinal: true,
+	}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if !workflowClient.lastStart.ConfirmedFinal {
+		t.Fatalf("workflow start input = %+v, want ConfirmedFinal=true", workflowClient.lastStart)
+	}
+}
+
+func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Minute)
+	record := completeSheinSubmitAttempt(task.Result.Shein, "publish", "temporal-replay-123", &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "success",
+		Success: true,
+		SPUName: "SPU-123",
+	}, nil, now)
+	appendSheinSubmissionEvent(task.Result.Shein, buildSheinSubmissionEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "temporal-replay-123",
+	})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if workflowClient.startCalls != 0 {
+		t.Fatalf("workflow start calls = %d, want replay handled locally", workflowClient.startCalls)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.Submission == nil || preview.Shein.Submission.Publish == nil {
+		t.Fatalf("preview = %+v, want existing publish record", preview)
+	}
+	if preview.Shein.Submission.Publish.RequestID != "temporal-replay-123" {
+		t.Fatalf("publish request id = %q, want temporal-replay-123", preview.Shein.Submission.Publish.RequestID)
+	}
+}
+
+func TestSubmitTaskTemporalReplayReturnsPreviewDuringPendingWorkflowStart(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+			Platform:       "shein",
+			Action:         "publish",
+			IdempotencyKey: "temporal-pending-123",
+		}); err != nil {
+			t.Fatalf("submit task %d: %v", i+1, err)
+		}
+	}
+
+	if workflowClient.startCalls != 1 {
+		t.Fatalf("workflow start calls = %d, want 1 while start is pending", workflowClient.startCalls)
+	}
+}
+
+func TestSubmitTaskKeepsSheinSaveDraftInlineWhenTemporalEnabled(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	saveCalls := 0
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveHook: func(product *sheinproduct.Product) { saveCalls++ },
+				saveResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-DRAFT"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft", IdempotencyKey: "draft-123"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if workflowClient.startCalls != 0 {
+		t.Fatalf("workflow start calls = %d, want save_draft inline", workflowClient.startCalls)
+	}
+	if saveCalls != 1 {
+		t.Fatalf("save draft calls = %d, want 1", saveCalls)
+	}
+}
+
+func TestSubmitTaskMapsTemporalRepeatedPublishToSubmitInProgress(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{startErr: ErrSubmitInProgress}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "repeat-123"})
+
+	if !errors.Is(err, ErrSubmitInProgress) {
+		t.Fatalf("submit err = %v, want ErrSubmitInProgress", err)
+	}
+	if workflowClient.startCalls != 1 {
+		t.Fatalf("workflow start calls = %d, want 1", workflowClient.startCalls)
+	}
+}
+
+func TestSubmitTaskBlocksDifferentTemporalRequestWhileWorkflowStartPending(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "temporal-pending-a",
+	}); err != nil {
+		t.Fatalf("submit task first: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "temporal-pending-b",
+	})
+
+	if !errors.Is(err, ErrSubmitInProgress) {
+		t.Fatalf("submit err = %v, want ErrSubmitInProgress", err)
+	}
+	if workflowClient.startCalls != 1 {
+		t.Fatalf("workflow start calls = %d, want 1 while first start is pending", workflowClient.startCalls)
+	}
+}
+
+func TestSubmitTaskMarksTemporalStartFailureAsFailedInsteadOfLeavingRunningAttempt(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{startErr: errors.New("temporal unavailable")}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "temporal-start-fail-123",
+	})
+	if err == nil || !strings.Contains(err.Error(), "temporal unavailable") {
+		t.Fatalf("submit err = %v, want temporal unavailable", err)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result == nil || saved.Result.Shein == nil || saved.Result.Shein.Submission == nil || saved.Result.Shein.Submission.Publish == nil {
+		t.Fatalf("saved result = %+v, want failed publish record", saved.Result)
+	}
+	record := saved.Result.Shein.Submission.Publish
+	if record.Status != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("publish status = %q, want failed", record.Status)
+	}
+	if record.FinishedAt == nil {
+		t.Fatalf("publish record = %+v, want finished_at recorded on start failure", record)
+	}
+	if saved.Result.Shein.Submission.CurrentAction != "" || saved.Result.Shein.Submission.CurrentPhase != "" || saved.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared after start failure", saved.Result.Shein.Submission)
+	}
+}
+
+func TestSubmitTaskClearsTemporalLeaseWhenPersistingStartFailureFails(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{failSaveWhenCurrentPhaseCleared: true}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{startErr: errors.New("temporal unavailable")}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "temporal-start-fail-save-error",
+	})
+	if err == nil || !strings.Contains(err.Error(), "save task result failed") {
+		t.Fatalf("submit err = %v, want save task result failed", err)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result == nil || saved.Result.Shein == nil || saved.Result.Shein.Submission == nil {
+		t.Fatalf("saved result = %+v, want submission state", saved.Result)
+	}
+	if saved.Result.Shein.Submission.CurrentAction != "" || saved.Result.Shein.Submission.CurrentPhase != "" || saved.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared even when persisting failure fails", saved.Result.Shein.Submission)
+	}
+	if saved.Result.Shein.Submission.Publish == nil || saved.Result.Shein.Submission.Publish.Status != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("publish record = %+v, want failed fallback record", saved.Result.Shein.Submission.Publish)
+	}
+	if saved.Result.Shein.Submission.LastStatus != sheinpub.SubmissionStatusFailed || !strings.Contains(saved.Result.Shein.Submission.LastError, "temporal unavailable") {
+		t.Fatalf("submission summary = %+v, want failed summary after fallback cleanup", saved.Result.Shein.Submission)
+	}
+}
+
+func TestSubmitTaskGeneratesTemporalRequestIDWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	workflowClient := &stubSheinPublishWorkflowClient{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                  repo,
+		ProductService:              stubSubmitProductService{},
+		SheinPublishWorkflowEnabled: true,
+		SheinPublishWorkflowClient:  workflowClient,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform: "shein",
+		Action:   "publish",
+	}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	if strings.TrimSpace(workflowClient.lastStart.RequestID) == "" {
+		t.Fatalf("workflow start input = %+v, want generated non-empty request id", workflowClient.lastStart)
+	}
+	if !strings.HasPrefix(workflowClient.lastStart.RequestID, "temporal:"+task.ID+":publish:") {
+		t.Fatalf("workflow start request id = %q, want temporal-derived audit id", workflowClient.lastStart.RequestID)
+	}
+}
+
 func TestSubmitTaskAllowsNewAttemptWhenInFlightAttemptIsStale(t *testing.T) {
 	t.Parallel()
 

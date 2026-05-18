@@ -2,7 +2,6 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { SheinSettingsCard } from "@/components/listingkit/shein/shein-settings-card";
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import {
   TaskListContent,
@@ -73,7 +72,6 @@ export function TaskListPage() {
       overlayClassName="bg-[linear-gradient(rgba(24,24,27,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.035)_1px,transparent_1px)] bg-[size:34px_34px]"
     >
       <TaskListHero onRefresh={() => tasks.refetch()} />
-      <SheinSettingsCard />
       <TaskListFilters
         platform={platform}
         sheinActionQueue={sheinActionQueue}

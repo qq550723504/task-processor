@@ -40,6 +40,7 @@ import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
+import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 export function SheinStudioWorkbench({
@@ -192,6 +193,7 @@ export function SheinStudioWorkbench({
   const hasCustomizedSdsSelectionRef = useRef(false);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const activeSelection = useHydratedSDSVariantSelection(selection);
+  const { recommendedStoreId } = useSheinStoreSelector();
   const {
     activeStepRef,
     effectiveStep,
@@ -239,6 +241,16 @@ export function SheinStudioWorkbench({
     hasLocalWorkflowStateRef.current = false;
     hasCustomizedSdsSelectionRef.current = false;
   }, [selection?.variantId]);
+
+  useEffect(() => {
+    if ((sheinStoreId ?? "").trim()) {
+      return;
+    }
+    if (!recommendedStoreId) {
+      return;
+    }
+    setSheinStoreId(recommendedStoreId);
+  }, [recommendedStoreId, setSheinStoreId, sheinStoreId]);
 
   useSheinStudioWorkspaceLoader({
     activeSelection,

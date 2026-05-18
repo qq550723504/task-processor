@@ -65,6 +65,40 @@ function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; inde
           {event.remote_record_id ? <span>Record {event.remote_record_id}</span> : null}
         </div>
       ) : null}
+      {event.store_resolution?.store_id ? (
+        <details className="mt-2 rounded-xl border border-zinc-200 bg-white/80 p-2">
+          <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
+            查看本次提交店铺快照
+          </summary>
+          <div className="mt-2 space-y-1 text-xs leading-5 text-zinc-600">
+            <p>
+              SHEIN 店铺 {event.store_resolution.store_id}
+              {event.store_resolution.site ? ` · ${event.store_resolution.site}` : ""}
+            </p>
+            {event.store_resolution.matched_profile_id ? (
+              <p>Profile #{event.store_resolution.matched_profile_id}</p>
+            ) : null}
+            {event.store_resolution.strategy ? (
+              <p>路由策略：{sheinStoreStrategyLabel(event.store_resolution.strategy)}</p>
+            ) : null}
+            {event.store_resolution.matched_rule_kinds?.length ? (
+              <p>
+                命中规则：
+                {event.store_resolution.matched_rule_kinds
+                  .map(sheinStoreRuleLabel)
+                  .filter(Boolean)
+                  .join(" / ")}
+              </p>
+            ) : null}
+            {event.store_resolution.reason ? (
+              <p>{event.store_resolution.reason}</p>
+            ) : null}
+            {event.store_resolution.resolved_at ? (
+              <p>固化时间：{formatTime(event.store_resolution.resolved_at)}</p>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
       {event.detail ? (
         <p className="mt-2 text-xs leading-5 text-zinc-600">{event.detail}</p>
       ) : null}
@@ -98,6 +132,30 @@ function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; inde
       ) : null}
     </article>
   );
+}
+
+function sheinStoreStrategyLabel(strategy?: string) {
+  switch (strategy) {
+    case "priority":
+      return "按优先级";
+    case "country":
+      return "按国家匹配";
+    case "manual":
+      return "手工优先";
+    default:
+      return strategy ?? "";
+  }
+}
+
+function sheinStoreRuleLabel(kind?: string) {
+  switch (kind) {
+    case "country":
+      return "国家规则";
+    case "category":
+      return "类目规则";
+    default:
+      return kind ?? "";
+  }
 }
 
 export function SheinSubmissionTimeline({

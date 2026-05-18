@@ -54,6 +54,65 @@ func TestListingKitSubdomainsDoNotImportRootFacade(t *testing.T) {
 	}
 }
 
+func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit")
+	allowed := map[string]struct{}{
+		"shein_build_validation.go":             {},
+		"shein_color_block_image.go":            {},
+		"shein_final_draft.go":                  {},
+		"shein_image_regeneration.go":           {},
+		"shein_image_regeneration_model.go":     {},
+		"shein_image_strategy.go":               {},
+		"shein_pricing.go":                      {},
+		"shein_repair_center.go":                {},
+		"shein_repair_support.go":               {},
+		"shein_resolution_cache.go":             {},
+		"shein_review_state.go":                 {},
+		"shein_size_reference_images.go":        {},
+		"shein_settings.go":                     {},
+		"shein_studio_ai_product_images.go":     {},
+		"shein_studio_image_helpers.go":         {},
+		"shein_studio_images.go":                {},
+		"shein_studio_size_reference_images.go": {},
+		"shein_studio_variant_coverage.go":      {},
+		"shein_studio_variant_images.go":        {},
+		"shein_submission_events.go":            {},
+		"shein_submit_debug.go":                 {},
+		"shein_submit_images.go":                {},
+		"shein_submit_payload.go":               {},
+		"shein_submit_readiness.go":             {},
+		"shein_submit_readiness_state.go":       {},
+		"shein_submit_retry.go":                 {},
+		"shein_submit_sku_normalization.go":     {},
+		"shein_submit_state.go":                 {},
+		"shein_template_matcher.go":             {},
+		"shein_workspace_editor_bridge.go":      {},
+		"shein_workspace_inspection_bridge.go":  {},
+		"shein_workspace_readiness_support.go":  {},
+		"shein_workspace_repair_bridge.go":      {},
+		"shein_workspace_revision_bridge.go":    {},
+		"shein_workspace_submit_bridge.go":      {},
+		"shein_workspace_types_bridge.go":       {},
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "shein_") || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if _, ok := allowed[name]; !ok {
+			t.Errorf("%s is a new root-level SHEIN helper; move new domain logic into publishing/shein, workspace/shein, or a listingkit subpackage instead", filepath.Join(root, name))
+		}
+	}
+}
+
 func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	assertNoBannedSelectorsOutside(t, filepath.Join("..", "internal"), filepath.Join("..", "internal", "productenrich"), map[string]struct{}{
 		"CanonicalProduct":           {},

@@ -61,6 +61,15 @@ describe("SheinSubmissionTimeline", () => {
             remote_record_id: "record-9",
             detail: "SHEIN remote record confirmed",
             started_at: "2026-04-27T10:00:00Z",
+            store_resolution: {
+              store_id: 903,
+              site: "GB",
+              strategy: "country",
+              matched_profile_id: 17,
+              matched_rule_kinds: ["country"],
+              reason: "根据任务国家信息命中了对应店铺。",
+              resolved_at: "2026-05-18T08:15:00Z",
+            },
           },
           {
             id: "event-2",
@@ -77,6 +86,10 @@ describe("SheinSubmissionTimeline", () => {
     expect(screen.getByText("Record record-9")).toBeInTheDocument();
     expect(screen.getByText("SHEIN remote record confirmed")).toBeInTheDocument();
     expect(screen.getByText("高级日志（1）")).toBeInTheDocument();
+    expect(screen.getByText("查看本次提交店铺快照")).toBeInTheDocument();
+    expect(screen.getByText("Profile #17")).toBeInTheDocument();
+    expect(screen.getByText("路由策略：按国家匹配")).toBeInTheDocument();
+    expect(screen.getByText("命中规则：国家规则")).toBeInTheDocument();
   });
 
   it("shows a refresh status action when available", () => {

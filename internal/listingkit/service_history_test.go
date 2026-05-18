@@ -14,6 +14,15 @@ func TestGetTaskRevisionHistoryReturnsNewestFirstPage(t *testing.T) {
 	repo := &stubApplyRevisionRepo{
 		task: &Task{
 			ID: "task-history-1",
+			SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+				StoreID:          903,
+				Site:             "GB",
+				Strategy:         "country",
+				Reason:           "根据任务国家信息命中了对应店铺。",
+				MatchedRuleKinds: []string{"country"},
+				MatchedProfileID: 17,
+				ResolvedAt:       now,
+			},
 			Result: &ListingKitResult{
 				TaskID:               "task-history-1",
 				RevisionHistoryTotal: 4,
@@ -34,6 +43,9 @@ func TestGetTaskRevisionHistoryReturnsNewestFirstPage(t *testing.T) {
 	}
 	if len(page.Items) != 2 {
 		t.Fatalf("items = %d, want 2", len(page.Items))
+	}
+	if page.Items[0].StoreResolution == nil || page.Items[0].StoreResolution.StoreID != 903 {
+		t.Fatalf("store resolution = %+v, want snapshot-backed history item", page.Items[0].StoreResolution)
 	}
 	if !page.Items[0].UpdatedAt.After(page.Items[1].UpdatedAt) {
 		t.Fatalf("items not newest first: %+v", page.Items)

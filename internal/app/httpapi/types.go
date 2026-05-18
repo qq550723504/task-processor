@@ -81,6 +81,7 @@ type amazonListingModule struct {
 type listingKitModule struct {
 	handler              listingkit.Handler
 	studioSessionHandler listingkit.StudioSessionHandler
+	service              listingkit.Service
 	pool                 worker.WorkerPool
 }
 
@@ -139,6 +140,11 @@ type listingKitRouteHandler interface {
 	GetSettingsNamespaceSchema(c *gin.Context)
 	GetSettingsNamespace(c *gin.Context)
 	UpdateSettingsNamespace(c *gin.Context)
+	ListSheinStoreProfiles(c *gin.Context)
+	UpsertSheinStoreProfile(c *gin.Context)
+	DeleteSheinStoreProfile(c *gin.Context)
+	GetSheinStoreRoutingSettings(c *gin.Context)
+	UpdateSheinStoreRoutingSettings(c *gin.Context)
 	GetSheinSettings(c *gin.Context)
 	UpdateSheinSettings(c *gin.Context)
 	GetAIClientSettings(c *gin.Context)

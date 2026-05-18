@@ -10,5 +10,12 @@ func (s *service) GetTaskRevisionHistoryDetail(ctx context.Context, taskID strin
 	if task.Result == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return buildRevisionHistoryDetail(task.Result, revisionID, query)
+	detail, err := buildRevisionHistoryDetail(task.Result, revisionID, query)
+	if err != nil {
+		return nil, err
+	}
+	if detail != nil && detail.Record != nil {
+		detail.Record.StoreResolution = sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
+	}
+	return detail, nil
 }

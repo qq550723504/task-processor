@@ -1,22 +1,27 @@
 package listingkit
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 type Task struct {
-	ID         string            `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID   string            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID     string            `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	Request    *GenerateRequest  `json:"request" gorm:"type:text"`
-	Status     TaskStatus        `json:"status" gorm:"type:varchar(20);index"`
-	Result     *ListingKitResult `json:"result,omitempty" gorm:"type:text"`
-	Error      string            `json:"error,omitempty" gorm:"type:text"`
-	CreatedAt  time.Time         `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt  time.Time         `json:"updated_at" gorm:"autoUpdateTime"`
-	RetryCount int               `json:"retry_count" gorm:"default:0"`
+	ID                           string                        `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID                     string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID                       string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	Request                      *GenerateRequest              `json:"request" gorm:"type:text"`
+	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
+	Status                       TaskStatus                    `json:"status" gorm:"type:varchar(20);index"`
+	Result                       *ListingKitResult             `json:"result,omitempty" gorm:"type:text"`
+	Error                        string                        `json:"error,omitempty" gorm:"type:text"`
+	CreatedAt                    time.Time                     `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt                    time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
+	RetryCount                   int                           `json:"retry_count" gorm:"default:0"`
 }
 
 type TaskResult struct {
@@ -58,6 +63,15 @@ type TaskListItem struct {
 	SheinWarningKeys               []string                       `json:"shein_warning_keys,omitempty"`
 	SheinWorkQueue                 string                         `json:"shein_work_queue,omitempty"`
 	SheinActionQueue               string                         `json:"shein_action_queue,omitempty"`
+	SheinStoreID                   int64                          `json:"shein_store_id,omitempty"`
+	SheinStoreSite                 string                         `json:"shein_store_site,omitempty"`
+	SheinStoreProfileID            int64                          `json:"shein_store_profile_id,omitempty"`
+	SheinStoreResolvedAt           *time.Time                     `json:"shein_store_resolved_at,omitempty"`
+	SheinStoreStrategy             string                         `json:"shein_store_strategy,omitempty"`
+	SheinStoreReason               string                         `json:"shein_store_reason,omitempty"`
+	SheinStoreMatchedRuleKinds     []string                       `json:"shein_store_matched_rule_kinds,omitempty"`
+	SheinStoreManualOverride       bool                           `json:"shein_store_manual_override,omitempty"`
+	SheinStoreFallback             bool                           `json:"shein_store_fallback,omitempty"`
 	SheinStatusOverview            *sheinworkspace.StatusOverview `json:"shein_status_overview,omitempty"`
 	SheinLatestSubmissionStatus    string                         `json:"shein_latest_submission_status,omitempty"`
 	SheinLatestSubmissionError     string                         `json:"shein_latest_submission_error,omitempty"`
@@ -68,6 +82,22 @@ type TaskListItem struct {
 	CreatedAt                      time.Time                      `json:"created_at"`
 	UpdatedAt                      time.Time                      `json:"updated_at"`
 	CompletedAt                    *time.Time                     `json:"completed_at,omitempty"`
+}
+
+type SheinStoreResolutionSnapshot struct {
+	StoreID           int64                `json:"store_id,omitempty"`
+	Site              string               `json:"site,omitempty"`
+	WarehouseCode     string               `json:"warehouse_code,omitempty"`
+	DefaultStock      int                  `json:"default_stock,omitempty"`
+	DefaultSubmitMode string               `json:"default_submit_mode,omitempty"`
+	Pricing           sheinpub.PricingRule `json:"pricing,omitempty"`
+	Strategy          string               `json:"strategy,omitempty"`
+	Reason            string               `json:"reason,omitempty"`
+	MatchedRuleKinds  []string             `json:"matched_rule_kinds,omitempty"`
+	MatchedProfileID  int64                `json:"matched_profile_id,omitempty"`
+	ManualOverride    bool                 `json:"manual_override,omitempty"`
+	Fallback          bool                 `json:"fallback,omitempty"`
+	ResolvedAt        time.Time            `json:"resolved_at,omitempty"`
 }
 
 type TaskListSummary struct {
@@ -101,4 +131,19 @@ type TaskListPage struct {
 	Summary  *TaskListSummary  `json:"summary,omitempty"`
 	Taxonomy *TaskListTaxonomy `json:"taxonomy,omitempty"`
 	Items    []TaskListItem    `json:"items,omitempty"`
+}
+
+func (r SheinStoreResolutionSnapshot) Value() (driver.Value, error) { return json.Marshal(r) }
+
+func (r *SheinStoreResolutionSnapshot) Scan(value any) error {
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, r)
 }

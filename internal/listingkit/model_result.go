@@ -39,6 +39,7 @@ type ListingKitResult struct {
 	SDSSync                     *SDSSyncSummary                  `json:"sds_sync,omitempty"`
 	Amazon                      *AmazonPackage                   `json:"amazon,omitempty"`
 	Shein                       *sheinpub.Package                `json:"shein,omitempty"`
+	SheinStoreResolution        *SheinStoreResolutionSummary     `json:"shein_store_resolution,omitempty"`
 	Temu                        *TemuPackage                     `json:"temu,omitempty"`
 	Walmart                     *WalmartPackage                  `json:"walmart,omitempty"`
 	Summary                     *GenerationSummary               `json:"summary,omitempty"`

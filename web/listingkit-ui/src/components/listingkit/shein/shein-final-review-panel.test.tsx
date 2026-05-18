@@ -69,6 +69,38 @@ describe("SheinFinalReviewPanel", () => {
     expect(onSelectBlockingItem).not.toHaveBeenCalled();
   });
 
+  it("shows resolved store explanation when preview includes store resolution", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          store_resolution: {
+            store_id: 903,
+            site: "GB",
+            strategy: "country",
+            reason: "根据任务国家信息命中了对应店铺。",
+            matched_rule_kinds: ["country"],
+            matched_profile_id: 17,
+            resolved_at: "2026-05-18T08:15:00Z",
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("店铺解析")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
+    expect(screen.getByText("根据任务国家信息命中了对应店铺。")).toBeInTheDocument();
+    expect(screen.getByText("命中规则：国家规则")).toBeInTheDocument();
+    expect(screen.getByText("按国家匹配")).toBeInTheDocument();
+    expect(screen.getByText("Profile #17")).toBeInTheDocument();
+    expect(screen.getByText(/固化时间：/)).toBeInTheDocument();
+  });
+
   it("does not locally block single-variant final images when swatch and size map are not selected", () => {
     render(
       <SheinFinalReviewPanel

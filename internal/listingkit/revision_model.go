@@ -36,6 +36,7 @@ type ListingKitRevisionRecord struct {
 	Timeline               *ListingKitRevisionTimelineSummary `json:"timeline,omitempty"`
 	AppliedChanges         *RevisionDiffPreview               `json:"applied_changes,omitempty"`
 	EditorContext          *SheinEditorContext                `json:"editor_context_snapshot,omitempty"`
+	StoreResolution        *SheinStoreResolutionSummary       `json:"store_resolution,omitempty"`
 }
 
 type ListingKitRevisionTimelineSummary struct {

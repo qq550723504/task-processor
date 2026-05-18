@@ -743,6 +743,26 @@ func (s *stubListingKitHandler) GetSheinSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
 }
 
+func (s *stubListingKitHandler) ListSheinStoreProfiles(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"id": 1, "store_id": 869}}})
+}
+
+func (s *stubListingKitHandler) UpsertSheinStoreProfile(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": 1, "store_id": 869})
+}
+
+func (s *stubListingKitHandler) DeleteSheinStoreProfile(c *gin.Context) {
+	c.Status(http.StatusNoContent)
+}
+
+func (s *stubListingKitHandler) GetSheinStoreRoutingSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"selection_strategy": "manual"})
+}
+
+func (s *stubListingKitHandler) UpdateSheinStoreRoutingSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"selection_strategy": "manual"})
+}
+
 func (s *stubListingKitHandler) UpdateSheinSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
 }

@@ -354,6 +354,7 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   submission?: SheinSubmissionReport;
   pricing?: SheinPricingReview;
   final_review?: SheinFinalReview;
+  store_resolution?: SheinStoreResolutionSummary;
   submission_events?: SheinSubmissionEvent[];
 };
 
@@ -422,6 +423,18 @@ export type SheinFinalReview = {
   skus?: SheinFinalReviewSKU[];
   images?: SheinFinalReviewImage[];
   blocking_items?: SheinReadinessItem[];
+};
+
+export type SheinStoreResolutionSummary = {
+  store_id?: number;
+  site?: string;
+  strategy?: string;
+  reason?: string;
+  matched_rule_kinds?: string[];
+  matched_profile_id?: number;
+  manual_override?: boolean;
+  fallback?: boolean;
+  resolved_at?: string;
 };
 
 export type SheinImageUploadPreflight = {
@@ -496,10 +509,13 @@ export type SheinSubmissionEvent = {
   error_message?: string;
   validation_notes?: string[];
   response?: SheinSubmissionResponse;
+  store_resolution?: SheinStoreResolutionSummary;
 };
 
 export type SheinSettings = {
   default_store_id?: number;
+  enabled_store_ids?: number[];
+  fallback_store_id?: number;
   available_stores?: Array<{
     id: number;
     store_id?: string;
@@ -524,6 +540,45 @@ export type AIClientSettings = {
   model?: string;
   timeout_second?: number;
   enabled?: boolean;
+  updated_at?: string;
+};
+
+export type ListingKitStoreMatchRule = {
+  kind?: string;
+  values?: string[];
+};
+
+export type ListingKitStoreProfileStoreOption = {
+  id: number;
+  store_id?: string;
+  name?: string;
+  platform?: string;
+  region?: string;
+};
+
+export type ListingKitStoreProfile = {
+  id?: number;
+  tenant_id?: number;
+  store_id: number;
+  enabled?: boolean;
+  priority?: number;
+  is_fallback?: boolean;
+  site?: string;
+  warehouse_code?: string;
+  default_stock?: number;
+  default_submit_mode?: "publish" | "save_draft";
+  pricing?: SheinPricingRule;
+  match_rules?: ListingKitStoreMatchRule[];
+  updated_at?: string;
+  store?: ListingKitStoreProfileStoreOption;
+};
+
+export type ListingKitStoreRoutingSettings = {
+  tenant_id?: number;
+  selection_strategy?: "manual" | "priority" | "country" | string;
+  fallback_store_id?: number;
+  allow_manual_override?: boolean;
+  allow_fallback?: boolean;
   updated_at?: string;
 };
 

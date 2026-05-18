@@ -120,6 +120,15 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
     saveSheinStudioDraftWithOptions(...args),
 }));
 
+vi.mock("@/lib/query/use-shein-store-selector", () => ({
+  useSheinStoreSelector: () => ({
+    enabledProfiles: [],
+    profiles: { isError: false },
+    routing: { isError: false },
+    recommendedStoreId: "",
+  }),
+}));
+
 const selection = {
   layerId: "layer-1",
   parentProductId: 1,

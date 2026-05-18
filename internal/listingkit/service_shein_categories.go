@@ -23,8 +23,8 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 		return nil, err
 	}
 
-	storeID := s.resolveSheinStoreID(task)
-	if storeID <= 0 {
+	storeID, err := s.resolveSheinStoreID(ctx, task)
+	if err != nil || storeID <= 0 {
 		return nil, fmt.Errorf("shein store id is unavailable for category search")
 	}
 	if s.sheinManagementClient == nil {
@@ -61,14 +61,311 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 	}, nil
 }
 
-func (s *service) resolveSheinStoreID(task *Task) int64 {
+func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {
 	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
-		return task.Request.SheinStoreID
+		return task.Request.SheinStoreID, nil
+	}
+	if selection, err := s.resolveSheinStoreSelection(ctx, task); err == nil && selection != nil && selection.Profile != nil && selection.Profile.StoreID > 0 {
+		return selection.Profile.StoreID, nil
 	}
 
 	s.sheinSettingsMu.RLock()
 	defer s.sheinSettingsMu.RUnlock()
-	return s.sheinSettings.DefaultStoreID
+	return s.sheinSettings.DefaultStoreID, nil
+}
+
+func (s *service) resolveSheinStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {
+	selection, err := s.resolveSheinStoreSelection(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	if selection == nil {
+		return nil, fmt.Errorf("store profile is unavailable")
+	}
+	return cloneStoreProfile(selection.Profile), nil
+}
+
+type sheinStoreSelection struct {
+	Profile          *ListingKitStoreProfile
+	Strategy         string
+	Reason           string
+	MatchedRuleKinds []string
+	ManualOverride   bool
+	Fallback         bool
+}
+
+func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {
+	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil && snapshot.StoreID > 0 {
+		return selectionFromSnapshot(snapshot), nil
+	}
+	if s == nil || s.storeProfileRepo == nil {
+		return nil, fmt.Errorf("store profile repository is not configured")
+	}
+	tenantID, ok := tenantIDInt64FromContext(ctx)
+	if !ok {
+		tenantID = tenantIDInt64FromTask(task)
+	}
+	if tenantID <= 0 {
+		return nil, fmt.Errorf("tenant id is unavailable")
+	}
+	items, err := s.storeProfileRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("store profile is unavailable")
+	}
+	enabled := make([]ListingKitStoreProfile, 0, len(items))
+	for idx := range items {
+		if items[idx].Enabled {
+			enabled = append(enabled, items[idx])
+		}
+	}
+	if len(enabled) == 0 {
+		return nil, fmt.Errorf("store profile is unavailable")
+	}
+	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
+		for idx := range enabled {
+			if enabled[idx].StoreID == task.Request.SheinStoreID {
+				return &sheinStoreSelection{
+					Profile:        cloneStoreProfile(&enabled[idx]),
+					Strategy:       "manual",
+					Reason:         "任务显式指定了 SHEIN 店铺。",
+					ManualOverride: true,
+				}, nil
+			}
+		}
+	}
+	settings, err := s.routingSettingsRepo.GetByTenant(ctx, tenantID)
+	var fallback *ListingKitStoreProfile
+	for idx := range enabled {
+		if enabled[idx].IsFallback && fallback == nil {
+			fallback = cloneStoreProfile(&enabled[idx])
+		}
+	}
+	if err == nil && settings != nil && settings.FallbackStoreID > 0 {
+		for idx := range enabled {
+			if enabled[idx].StoreID == settings.FallbackStoreID {
+				fallback = cloneStoreProfile(&enabled[idx])
+				break
+			}
+		}
+	}
+	if settings != nil && settings.SelectionStrategy != "manual" {
+		if matched := matchStoreProfileForTask(enabled, task, settings.SelectionStrategy); matched != nil {
+			return &sheinStoreSelection{
+				Profile:          cloneStoreProfile(matched.profile),
+				Strategy:         settings.SelectionStrategy,
+				Reason:           routeSelectionReason(settings.SelectionStrategy, matched.kinds),
+				MatchedRuleKinds: append([]string(nil), matched.kinds...),
+			}, nil
+		}
+		if settings.AllowFallback && fallback != nil {
+			return &sheinStoreSelection{
+				Profile:  cloneStoreProfile(fallback),
+				Strategy: settings.SelectionStrategy,
+				Reason:   "没有命中路由规则，已回退到 fallback 店铺。",
+				Fallback: true,
+			}, nil
+		}
+	}
+	if settings != nil && settings.AllowFallback && settings.FallbackStoreID > 0 && fallback != nil {
+		return &sheinStoreSelection{
+			Profile:  cloneStoreProfile(fallback),
+			Strategy: firstNonEmpty(strings.TrimSpace(settings.SelectionStrategy), "manual"),
+			Reason:   "当前使用配置的 fallback 店铺作为兜底。",
+			Fallback: true,
+		}, nil
+	}
+	if len(enabled) > 0 {
+		strategy := "priority"
+		reason := "当前未显式指定店铺，使用已启用店铺里的最高优先级项。"
+		if settings != nil && settings.SelectionStrategy == "manual" {
+			strategy = "manual"
+			reason = "当前未显式指定店铺，按优先级选择默认店铺。"
+		}
+		return &sheinStoreSelection{
+			Profile:  cloneStoreProfile(&enabled[0]),
+			Strategy: strategy,
+			Reason:   reason,
+		}, nil
+	}
+	return nil, fmt.Errorf("store profile is unavailable")
+}
+
+func sheinStoreResolutionSnapshotFromTask(task *Task) *SheinStoreResolutionSnapshot {
+	if task == nil || task.SheinStoreResolutionSnapshot == nil || task.SheinStoreResolutionSnapshot.StoreID <= 0 {
+		return nil
+	}
+	return task.SheinStoreResolutionSnapshot
+}
+
+func selectionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinStoreSelection {
+	if snapshot == nil || snapshot.StoreID <= 0 {
+		return nil
+	}
+	return &sheinStoreSelection{
+		Profile: &ListingKitStoreProfile{
+			ID:                snapshot.MatchedProfileID,
+			StoreID:           snapshot.StoreID,
+			Enabled:           true,
+			Site:              snapshot.Site,
+			WarehouseCode:     snapshot.WarehouseCode,
+			DefaultStock:      snapshot.DefaultStock,
+			DefaultSubmitMode: snapshot.DefaultSubmitMode,
+			Pricing:           snapshot.Pricing,
+		},
+		Strategy:         snapshot.Strategy,
+		Reason:           snapshot.Reason,
+		MatchedRuleKinds: append([]string(nil), snapshot.MatchedRuleKinds...),
+		ManualOverride:   snapshot.ManualOverride,
+		Fallback:         snapshot.Fallback,
+	}
+}
+
+type matchedStoreProfile struct {
+	profile *ListingKitStoreProfile
+	kinds   []string
+}
+
+func matchStoreProfileForTask(
+	items []ListingKitStoreProfile,
+	task *Task,
+	strategy string,
+) *matchedStoreProfile {
+	if len(items) == 0 || task == nil || task.Request == nil {
+		return nil
+	}
+	type scoredProfile struct {
+		profile ListingKitStoreProfile
+		score   int
+		kinds   []string
+	}
+	scored := make([]scoredProfile, 0, len(items))
+	for idx := range items {
+		score, kinds := storeProfileMatchScore(&items[idx], task, strategy)
+		if score <= 0 {
+			continue
+		}
+		scored = append(scored, scoredProfile{profile: items[idx], score: score, kinds: kinds})
+	}
+	if len(scored) == 0 {
+		return nil
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score != scored[j].score {
+			return scored[i].score > scored[j].score
+		}
+		if scored[i].profile.Priority != scored[j].profile.Priority {
+			return scored[i].profile.Priority < scored[j].profile.Priority
+		}
+		return scored[i].profile.ID < scored[j].profile.ID
+	})
+	return &matchedStoreProfile{
+		profile: cloneStoreProfile(&scored[0].profile),
+		kinds:   append([]string(nil), scored[0].kinds...),
+	}
+}
+
+func storeProfileMatchScore(profile *ListingKitStoreProfile, task *Task, strategy string) (int, []string) {
+	if profile == nil || task == nil || task.Request == nil {
+		return 0, nil
+	}
+	request := task.Request
+	country := strings.ToLower(strings.TrimSpace(request.Country))
+	categoryText := strings.ToLower(strings.TrimSpace(strings.Join(extractTaskCategoryHints(request), " ")))
+	total := 0
+	matchedRules := 0
+	kinds := make([]string, 0, 2)
+	for _, rule := range profile.MatchRules {
+		kind := strings.ToLower(strings.TrimSpace(rule.Kind))
+		switch kind {
+		case "country":
+			if country != "" && ruleValuesContain(rule.Values, country) {
+				total += 100
+				matchedRules++
+				kinds = append(kinds, "country")
+			}
+		case "category":
+			if categoryText != "" && ruleValuesMatchCategory(rule.Values, categoryText) {
+				total += 40
+				matchedRules++
+				kinds = append(kinds, "category")
+			}
+		}
+	}
+	if matchedRules > 0 {
+		return total + matchedRules, uniqueStrings(kinds)
+	}
+	if strategy != "country" {
+		return 0, nil
+	}
+	if country == "" {
+		return 0, nil
+	}
+	if strings.EqualFold(strings.TrimSpace(profile.Site), country) {
+		return 60, []string{"country"}
+	}
+	if profile.Store != nil && strings.EqualFold(strings.TrimSpace(profile.Store.Region), country) {
+		return 60, []string{"country"}
+	}
+	return 0, nil
+}
+
+func extractTaskCategoryHints(request *GenerateRequest) []string {
+	if request == nil {
+		return nil
+	}
+	hints := make([]string, 0, 4)
+	if trimmed := strings.TrimSpace(request.TargetCategoryHint); trimmed != "" {
+		hints = append(hints, trimmed)
+	}
+	if request.Options != nil && request.Options.SDS != nil && len(request.Options.SDS.CategoryPath) > 0 {
+		hints = append(hints, strings.Join(request.Options.SDS.CategoryPath, " "))
+	}
+	return hints
+}
+
+func ruleValuesContain(values []string, want string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), want) {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleValuesMatchCategory(values []string, categoryText string) bool {
+	if categoryText == "" {
+		return false
+	}
+	for _, value := range values {
+		needle := strings.ToLower(strings.TrimSpace(value))
+		if needle == "" {
+			continue
+		}
+		if strings.Contains(categoryText, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func routeSelectionReason(strategy string, kinds []string) string {
+	switch strategy {
+	case "country":
+		return "根据任务国家信息命中了对应店铺。"
+	case "priority":
+		if len(kinds) > 0 {
+			return "根据店铺匹配规则命中后，再按优先级选中了当前店铺。"
+		}
+		return "根据优先级选中了当前店铺。"
+	default:
+		if len(kinds) > 0 {
+			return "根据店铺匹配规则选中了当前店铺。"
+		}
+		return "系统自动选中了当前店铺。"
+	}
 }
 
 type sheinCategorySearchMatch struct {

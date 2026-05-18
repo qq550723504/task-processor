@@ -47,7 +47,7 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -56,7 +56,7 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 		return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
 	}
 	resolver := openaiclient.NewGormCredentialResolver(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return resolver, closer, nil
 }
 
@@ -64,7 +64,7 @@ func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -73,7 +73,7 @@ func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (
 		return nil, nil, fmt.Errorf("tenant prompt auto-migrate failed: %w", err)
 	}
 	store := prompt.NewGormTenantPromptStore(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return store, closer, nil
 }
 
@@ -102,7 +102,7 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -113,7 +113,7 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	}
 
 	repo := store.NewTaskRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -121,7 +121,7 @@ func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger)
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -132,7 +132,7 @@ func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger)
 	}
 
 	repo := productimagestore.NewTaskRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -140,7 +140,7 @@ func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -151,7 +151,7 @@ func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus
 	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -159,7 +159,7 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -170,7 +170,7 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 	}
 
 	repo := listingkitstore.NewTaskRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -178,7 +178,7 @@ func newDBListingKitUploadedImageRepository(cfg *config.DatabaseConfig, logger *
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -189,7 +189,45 @@ func newDBListingKitUploadedImageRepository(cfg *config.DatabaseConfig, logger *
 	}
 
 	repo := listingkit.NewGormUploadedImageRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitStoreProfileRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StoreProfileRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := listingkit.AutoMigrateStoreProfileRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit store profile auto-migrate failed: %w", err)
+	}
+
+	repo := listingkit.NewGormStoreProfileRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitStoreRoutingSettingsRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := listingkit.AutoMigrateStoreProfileRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit store routing auto-migrate failed: %w", err)
+	}
+
+	repo := listingkit.NewGormStoreRoutingSettingsRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -197,7 +235,7 @@ func newDBListingAdminStoreRepository(cfg *config.DatabaseConfig, logger *logrus
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -208,7 +246,7 @@ func newDBListingAdminStoreRepository(cfg *config.DatabaseConfig, logger *logrus
 	}
 
 	repo := listingadmin.NewGormStoreRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -216,7 +254,7 @@ func newDBListingAdminStoreStatisticsRepository(cfg *config.DatabaseConfig, logg
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -227,7 +265,7 @@ func newDBListingAdminStoreStatisticsRepository(cfg *config.DatabaseConfig, logg
 	}
 
 	repo := listingadmin.NewGormStoreStatisticsRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -235,7 +273,7 @@ func newDBListingAdminImportTaskRepository(cfg *config.DatabaseConfig, logger *l
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -246,7 +284,7 @@ func newDBListingAdminImportTaskRepository(cfg *config.DatabaseConfig, logger *l
 	}
 
 	repo := listingadmin.NewGormImportTaskRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -254,7 +292,7 @@ func newDBListingAdminFilterRuleRepository(cfg *config.DatabaseConfig, logger *l
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -265,7 +303,7 @@ func newDBListingAdminFilterRuleRepository(cfg *config.DatabaseConfig, logger *l
 	}
 
 	repo := listingadmin.NewGormFilterRuleRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -273,7 +311,7 @@ func newDBListingAdminProfitRuleRepository(cfg *config.DatabaseConfig, logger *l
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -282,7 +320,7 @@ func newDBListingAdminProfitRuleRepository(cfg *config.DatabaseConfig, logger *l
 		return nil, nil, fmt.Errorf("listing admin profit rule auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormProfitRuleRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -290,7 +328,7 @@ func newDBListingAdminPricingRuleRepository(cfg *config.DatabaseConfig, logger *
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -299,7 +337,7 @@ func newDBListingAdminPricingRuleRepository(cfg *config.DatabaseConfig, logger *
 		return nil, nil, fmt.Errorf("listing admin pricing rule auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormPricingRuleRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -307,7 +345,7 @@ func newDBListingAdminOperationStrategyRepository(cfg *config.DatabaseConfig, lo
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -316,7 +354,7 @@ func newDBListingAdminOperationStrategyRepository(cfg *config.DatabaseConfig, lo
 		return nil, nil, fmt.Errorf("listing admin operation strategy auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormOperationStrategyRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -324,7 +362,7 @@ func newDBListingAdminSensitiveWordRepository(cfg *config.DatabaseConfig, logger
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -333,7 +371,7 @@ func newDBListingAdminSensitiveWordRepository(cfg *config.DatabaseConfig, logger
 		return nil, nil, fmt.Errorf("listing admin sensitive word auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormSensitiveWordRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -341,7 +379,7 @@ func newDBListingAdminProductImportMappingRepository(cfg *config.DatabaseConfig,
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -350,7 +388,7 @@ func newDBListingAdminProductImportMappingRepository(cfg *config.DatabaseConfig,
 		return nil, nil, fmt.Errorf("listing admin product import mapping auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormProductImportMappingRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -358,7 +396,7 @@ func newDBListingAdminCategoryRepository(cfg *config.DatabaseConfig, logger *log
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -367,7 +405,7 @@ func newDBListingAdminCategoryRepository(cfg *config.DatabaseConfig, logger *log
 		return nil, nil, fmt.Errorf("listing admin category auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormCategoryRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -375,7 +413,7 @@ func newDBListingAdminProductDataRepository(cfg *config.DatabaseConfig, logger *
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -384,7 +422,7 @@ func newDBListingAdminProductDataRepository(cfg *config.DatabaseConfig, logger *
 		return nil, nil, fmt.Errorf("listing admin product data auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormProductDataRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -392,7 +430,7 @@ func newDBSheinResolutionCacheStore(cfg *config.DatabaseConfig, logger *logrus.L
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -403,7 +441,7 @@ func newDBSheinResolutionCacheStore(cfg *config.DatabaseConfig, logger *logrus.L
 	}
 
 	store := sheinpub.NewGormResolutionCacheStore(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return store, closer, nil
 }
 
@@ -411,7 +449,7 @@ func newDBAssetRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (as
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -422,7 +460,7 @@ func newDBAssetRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (as
 	}
 
 	repo := assetrepo.NewGormRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -430,7 +468,7 @@ func newDBListingKitReviewRepository(cfg *config.DatabaseConfig, logger *logrus.
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -441,7 +479,7 @@ func newDBListingKitReviewRepository(cfg *config.DatabaseConfig, logger *logrus.
 	}
 
 	repo := reviewstore.NewGormRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -449,7 +487,7 @@ func newDBListingKitStudioSessionRepository(cfg *config.DatabaseConfig, logger *
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -460,7 +498,7 @@ func newDBListingKitStudioSessionRepository(cfg *config.DatabaseConfig, logger *
 	}
 
 	repo := studiostore.NewGormRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }
 
@@ -468,7 +506,7 @@ func newDBListingSubscriptionRepository(cfg *config.DatabaseConfig, logger *logr
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg)
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -477,6 +515,6 @@ func newDBListingSubscriptionRepository(cfg *config.DatabaseConfig, logger *logr
 		return nil, nil, fmt.Errorf("listingkit subscription auto-migrate failed: %w", err)
 	}
 	repo := listingsubscription.NewGormRepository(db)
-	closer := func() error { return database.CloseDatabase(db) }
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

@@ -5,6 +5,8 @@ import { saveTaskCreateDraft } from "@/components/listingkit/tasks/task-create-d
 import { TaskStatusScreen } from "@/components/listingkit/tasks/task-status-screen";
 
 const push = vi.fn();
+const revisionHistoryMock = vi.fn();
+const revisionHistoryDetailMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -12,9 +14,24 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("@/lib/query/use-revision-history", () => ({
+  useTaskRevisionHistory: (...args: unknown[]) => revisionHistoryMock(...args),
+  useTaskRevisionHistoryDetail: (...args: unknown[]) => revisionHistoryDetailMock(...args),
+}));
+
 describe("TaskStatusScreen", () => {
   beforeEach(() => {
     push.mockReset();
+    revisionHistoryMock.mockReset();
+    revisionHistoryDetailMock.mockReset();
+    revisionHistoryMock.mockReturnValue({
+      data: { items: [] },
+      isLoading: false,
+    });
+    revisionHistoryDetailMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    });
     window.sessionStorage.clear();
   });
 
@@ -176,5 +193,62 @@ describe("TaskStatusScreen", () => {
 
     expect(screen.getByText("任务来源")).toBeInTheDocument();
     expect(screen.getByText("来自商品链接")).toBeInTheDocument();
+  });
+
+  it("shows revision history with store resolution audit when revisions exist", () => {
+    revisionHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            revision_id: "rev-1",
+            updated_at: "2026-05-18T08:15:00Z",
+            action_type: "edit",
+            timeline: { headline: "更新 SHEIN 资料" },
+            store_resolution: {
+              store_id: 903,
+              site: "GB",
+            },
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    revisionHistoryDetailMock.mockReturnValue({
+      data: {
+        record: {
+          revision_id: "rev-1",
+          updated_at: "2026-05-18T08:15:00Z",
+          reason: "manual adjustment",
+          action_type: "edit",
+          timeline: { headline: "更新 SHEIN 资料" },
+          store_resolution: {
+            store_id: 903,
+            site: "GB",
+            strategy: "country",
+            reason: "根据任务国家信息命中了对应店铺。",
+            matched_rule_kinds: ["country"],
+            matched_profile_id: 17,
+            resolved_at: "2026-05-18T08:15:00Z",
+          },
+        },
+      },
+      isLoading: false,
+    });
+
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "processing",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("修订历史")).toBeInTheDocument();
+    expect(screen.getAllByText("更新 SHEIN 资料").length).toBeGreaterThan(0);
+    expect(screen.getByText("店铺快照")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
+    expect(screen.getByText("Profile #17")).toBeInTheDocument();
   });
 });

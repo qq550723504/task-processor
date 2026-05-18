@@ -1,21 +1,40 @@
 package listingkit
 
 import (
+	"context"
 	"strings"
 
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 	sheinclient "task-processor/internal/shein/client"
 )
 
-func (s *service) resolveSheinSubmitSettings(task *Task) SheinSettings {
+func (s *service) resolveSheinSubmitSettings(ctx context.Context, task *Task) SheinSettings {
 	settings := s.currentSheinSubmitSettings()
+	if profile, err := s.resolveSheinStoreProfile(ctx, task); err == nil && profile != nil {
+		if profile.StoreID > 0 {
+			settings.DefaultStoreID = profile.StoreID
+		}
+		if profile.Site != "" {
+			settings.Site = profile.Site
+		}
+		if profile.WarehouseCode != "" {
+			settings.WarehouseCode = profile.WarehouseCode
+		}
+		if profile.DefaultStock > 0 {
+			settings.DefaultStock = profile.DefaultStock
+		}
+		if profile.DefaultSubmitMode != "" {
+			settings.DefaultSubmitMode = profile.DefaultSubmitMode
+		}
+		settings.Pricing = normalizeSheinPricingRule(profile.Pricing, settings.Pricing)
+	}
 	if task != nil && task.Request != nil {
 		if country := strings.ToUpper(strings.TrimSpace(task.Request.Country)); country != "" {
 			settings.Site = country
 		}
 	}
-	storeID := s.resolveSheinStoreID(task)
-	if storeID <= 0 {
+	storeID, err := s.resolveSheinStoreID(ctx, task)
+	if err != nil || storeID <= 0 {
 		return settings
 	}
 	if warehouseCode := s.resolveSheinWarehouseCode(storeID, settings.Site); warehouseCode != "" {

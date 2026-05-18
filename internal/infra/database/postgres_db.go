@@ -4,6 +4,7 @@ package database
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"task-processor/internal/core/config"
@@ -12,6 +13,25 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+type sharedDatabaseEntry struct {
+	db   *gorm.DB
+	refs int
+}
+
+var sharedDatabases = struct {
+	mu      sync.Mutex
+	entries map[string]*sharedDatabaseEntry
+}{
+	entries: make(map[string]*sharedDatabaseEntry),
+}
+
+func sharedDatabaseKey(cfg *config.DatabaseConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%s:%s", cfg.Host, cfg.Port, cfg.User, cfg.Database)
+}
 
 func quoteIdentifier(name string) string {
 	name = strings.ReplaceAll(name, `"`, `""`)
@@ -114,6 +134,43 @@ func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
+// NewSharedDatabaseFromConfig returns a process-local shared *gorm.DB for the
+// given config. Repeated calls with the same config reuse one underlying sql.DB.
+func NewSharedDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	key := sharedDatabaseKey(cfg)
+	sharedDatabases.mu.Lock()
+	if entry := sharedDatabases.entries[key]; entry != nil {
+		entry.refs++
+		db := entry.db
+		sharedDatabases.mu.Unlock()
+		return db, nil
+	}
+	sharedDatabases.mu.Unlock()
+
+	db, err := NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	sharedDatabases.mu.Lock()
+	if entry := sharedDatabases.entries[key]; entry != nil {
+		entry.refs++
+		sharedDatabases.mu.Unlock()
+		_ = CloseDatabase(db)
+		return entry.db, nil
+	}
+	sharedDatabases.entries[key] = &sharedDatabaseEntry{
+		db:   db,
+		refs: 1,
+	}
+	sharedDatabases.mu.Unlock()
+	return db, nil
+}
+
 // CloseDatabase 关闭数据库连接
 func CloseDatabase(db *gorm.DB) error {
 	if db == nil {
@@ -124,4 +181,30 @@ func CloseDatabase(db *gorm.DB) error {
 		return fmt.Errorf("获取 sql.DB 失败: %w", err)
 	}
 	return sqlDB.Close()
+}
+
+// CloseSharedDatabase releases one reference to a shared database handle and
+// closes the underlying sql.DB only when the last caller releases it.
+func CloseSharedDatabase(cfg *config.DatabaseConfig, db *gorm.DB) error {
+	if cfg == nil || db == nil {
+		return nil
+	}
+
+	key := sharedDatabaseKey(cfg)
+	sharedDatabases.mu.Lock()
+	entry := sharedDatabases.entries[key]
+	if entry == nil || entry.db != db {
+		sharedDatabases.mu.Unlock()
+		return CloseDatabase(db)
+	}
+
+	entry.refs--
+	if entry.refs > 0 {
+		sharedDatabases.mu.Unlock()
+		return nil
+	}
+
+	delete(sharedDatabases.entries, key)
+	sharedDatabases.mu.Unlock()
+	return CloseDatabase(db)
 }

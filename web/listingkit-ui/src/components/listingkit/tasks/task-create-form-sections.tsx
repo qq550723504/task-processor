@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { platformOptions } from "@/components/listingkit/tasks/task-create-form-model";
 import type { UseFormRegister, FieldErrors } from "react-hook-form";
 import type { FormValues } from "@/components/listingkit/tasks/task-create-form-model";
+import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 
 export function TaskPlatformFieldset({
   errors,
@@ -56,21 +58,97 @@ export function TaskSheinStoreField({
 }: {
   register: UseFormRegister<FormValues>;
 }) {
+  const { enabledProfiles, profiles, recommendedReason, recommendedStoreId, routing } =
+    useSheinStoreSelector();
+
   return (
     <Label className="block space-y-2">
-      <span className="text-sm font-medium text-zinc-700">SHEIN 店铺 ID</span>
-      <Input
-        aria-label="SHEIN 店铺 ID"
+      <span className="text-sm font-medium text-zinc-700">SHEIN 店铺</span>
+      <Select
+        aria-label="SHEIN 店铺"
         className="rounded-xl px-4 py-3"
-        inputMode="numeric"
-        placeholder="869"
+        defaultValue={recommendedStoreId}
         {...register("sheinStoreId")}
-      />
+      >
+        <option value="">
+          {enabledProfiles.length > 0 ? "按默认路由自动选择" : "当前没有已启用店铺配置"}
+        </option>
+        {enabledProfiles.map((item) => (
+          <option key={item.id ?? item.store_id} value={String(item.store_id)}>
+            {formatStoreProfileOption(item)}
+          </option>
+        ))}
+      </Select>
       <p className="text-sm leading-6 text-zinc-500">
-        如果当前环境只对应一个店铺，可以先留空；多个 SHEIN 店铺共用时再填写。
+        不选时交给后端路由自动选店；只在需要固定到某个店铺时手工指定。
       </p>
+      {routing.data?.selection_strategy ? (
+        <p className="text-sm leading-6 text-zinc-500">
+          当前默认策略：
+          {routeStrategyLabel(routing.data.selection_strategy)}
+          {recommendedReason ? `。${recommendedReason}` : ""}
+        </p>
+      ) : null}
+      {profiles.isError ? (
+        <p className="text-sm text-rose-600">店铺配置读取失败，当前只能依赖后端默认路由。</p>
+      ) : null}
     </Label>
   );
+}
+
+function formatStoreProfileOption(item: {
+  store_id: number;
+  store?: { name?: string; store_id?: string; region?: string };
+  site?: string;
+  priority?: number;
+  is_fallback?: boolean;
+  match_rules?: Array<{ kind?: string }>;
+}) {
+  const primary =
+    item.store?.name?.trim() || item.store?.store_id?.trim() || `店铺 ${item.store_id}`;
+  const meta = [
+    item.store?.region?.trim(),
+    item.site?.trim(),
+    item.priority?.toString(),
+    summarizeRuleKinds(item),
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  return meta ? `${primary} (${meta})` : primary;
+}
+
+function summarizeRuleKinds(item: {
+  is_fallback?: boolean;
+  match_rules?: Array<{ kind?: string }>;
+}) {
+  const labels: string[] = (item.match_rules ?? [])
+    .map((rule) => {
+      switch (rule.kind) {
+        case "country":
+          return "国家规则";
+        case "category":
+          return "类目规则";
+        default:
+          return "";
+      }
+    })
+    .filter(Boolean);
+  if (item.is_fallback) {
+    labels.push("fallback");
+  }
+  return labels.join(" + ");
+}
+
+function routeStrategyLabel(strategy: string) {
+  switch (strategy) {
+    case "priority":
+      return "按优先级";
+    case "country":
+      return "按国家匹配";
+    case "manual":
+    default:
+      return "手工优先";
+  }
 }
 
 export function TaskAdvancedSettingsToggle({

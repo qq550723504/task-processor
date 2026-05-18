@@ -38,11 +38,64 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	if action != "publish" && action != "save_draft" {
 		return nil, fmt.Errorf("unsupported submit action: %s", action)
 	}
-	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":" + action)
-	defer unlockSubmit()
 
 	startedAt := time.Now()
 	requestID := normalizedSubmitIdempotencyKey(req)
+	if s.shouldStartSheinPublishWorkflow(platform, action) && requestID == "" {
+		requestID = derivedSheinSubmitRequestID(taskID, action, startedAt)
+	}
+	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":" + action)
+	defer unlockSubmit()
+	if s.shouldStartSheinPublishWorkflow(platform, action) {
+		task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
+		if errors.Is(err, errSheinSubmitReplayExisting) {
+			return buildListingKitPreview(task, "shein")
+		}
+		if errors.Is(err, errSheinSubmitRecoverRemote) {
+			return s.recoverSheinSubmitRemote(ctx, task, action)
+		}
+		if errors.Is(err, errSheinSubmitMissingPackage) {
+			return nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := s.sheinPublishWorkflowClient.StartSheinPublish(ctx, SheinPublishWorkflowStartInput{
+			TaskID:         strings.TrimSpace(taskID),
+			Platform:       platform,
+			Action:         action,
+			RequestID:      requestID,
+			ConfirmedFinal: req != nil && req.ConfirmedFinal,
+			RequestedAt:    startedAt,
+		}); err != nil {
+			if shouldReplayStartedTemporalSubmit(err, requestID) {
+				return buildListingKitPreview(task, "shein")
+			}
+			failErr := s.recordSheinSubmissionFailureForState(
+				ctx,
+				taskID,
+				task.Result,
+				task.Result.Shein,
+				action,
+				requestID,
+				sheinpub.SubmissionPhaseValidate,
+				err,
+			)
+			clearErr := s.clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, action, requestID, err)
+			if failErr != nil {
+				if clearErr != nil {
+					return nil, errors.Join(failErr, clearErr)
+				}
+				return nil, failErr
+			}
+			if clearErr != nil {
+				return nil, clearErr
+			}
+			return nil, err
+		}
+		return s.GetTaskPreview(ctx, taskID, "shein")
+	}
+
 	task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
 	if errors.Is(err, errSheinSubmitReplayExisting) {
 		return buildListingKitPreview(task, "shein")
@@ -68,7 +121,7 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		return nil, err
 	}
 
-	productAPI, err := s.buildSheinSubmitProductAPI(task)
+	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {
 		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
 			return nil, saveErr
@@ -98,7 +151,7 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 			}
 			return nil, err
 		}
-		prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(task))
+		prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
 		dumpSheinSubmitPayloadForDebug(taskID, action, requestID, "uploaded", submitProduct)
 	}
 
@@ -163,6 +216,14 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	return buildListingKitPreview(task, "shein")
 }
 
+func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {
+	return s != nil &&
+		s.sheinPublishWorkflowEnabled &&
+		s.sheinPublishWorkflowClient != nil &&
+		platform == "shein" &&
+		action == "publish"
+}
+
 func sheinProductAttributesReadyForSubmit(attrs []sheinproduct.ProductAttribute) bool {
 	if len(attrs) == 0 {
 		return false
@@ -186,6 +247,27 @@ func normalizedSubmitIdempotencyKey(req *SubmitTaskRequest) string {
 		return value
 	}
 	return strings.TrimSpace(req.RequestID)
+}
+
+func derivedSheinSubmitRequestID(taskID, action string, requestedAt time.Time) string {
+	taskID = strings.TrimSpace(taskID)
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action == "" {
+		action = "publish"
+	}
+	timestamp := requestedAt.UTC().Format("20060102T150405.000000000Z")
+	if taskID == "" {
+		taskID = "unknown-task"
+	}
+	return fmt.Sprintf("temporal:%s:%s:%s", taskID, action, timestamp)
+}
+
+func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
+	var inProgress *SubmitInProgressError
+	return errors.As(err, &inProgress) &&
+		inProgress != nil &&
+		strings.TrimSpace(inProgress.RequestID) != "" &&
+		inProgress.RequestID == strings.TrimSpace(requestID)
 }
 
 func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
@@ -214,11 +296,15 @@ func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req
 	applySheinVariantImageCoverageGuard(task, pkg)
 }
 
-func (s *service) buildSheinSubmitProductAPI(task *Task) (sheinproduct.ProductAPI, error) {
+func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (sheinproduct.ProductAPI, error) {
 	if s.sheinProductAPIBuilder == nil {
 		return nil, fmt.Errorf("shein product api builder is not configured")
 	}
-	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(task.Request.SheinStoreID)
+	storeID, err := s.resolveSheinStoreID(ctx, task)
+	if err != nil || storeID <= 0 {
+		return nil, fmt.Errorf("shein store id is unavailable for submit")
+	}
+	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(storeID)
 	if productAPI == nil {
 		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
 	}
@@ -237,7 +323,10 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 	if sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, task.Request.Country) {
 		if s.sheinTranslateAPIBuilder != nil {
 			var fallback string
-			translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(task.Request.SheinStoreID)
+			storeID, resolveErr := s.resolveSheinStoreID(ctx, task)
+			if resolveErr == nil && storeID > 0 {
+				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(storeID)
+			}
 			if translateAPI == nil && strings.TrimSpace(fallback) != "" {
 				translateAPI = nil
 			}
@@ -246,7 +335,7 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 	if err := sheinpub.PrepareSubmitProductContent(ctx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
 		return nil, err
 	}
-	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(task))
+	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
 	if action == "publish" {
 		if err := validateSheinProductPublishPayload(submitProduct); err != nil {
 			return nil, err
@@ -259,7 +348,11 @@ func (s *service) uploadSheinSubmitImages(task *Task, pkg *SheinPackage, submitP
 	if s.sheinImageAPIBuilder == nil {
 		return fmt.Errorf("shein image upload api builder is not configured")
 	}
-	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(task.Request.SheinStoreID)
+	storeID, err := s.resolveSheinStoreID(context.Background(), task)
+	if err != nil || storeID <= 0 {
+		return fmt.Errorf("shein store id is unavailable for image upload")
+	}
+	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(storeID)
 	if imageAPI == nil {
 		return fmt.Errorf("shein image upload unavailable: %s", fallback)
 	}
@@ -333,11 +426,20 @@ func (s *service) persistSheinSubmitPhase(ctx context.Context, taskID string, re
 }
 
 func (s *service) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
-	requestID := ""
-	phase := sheinpub.SubmissionPhaseValidate
+	return s.recordSheinSubmissionFailureForState(ctx, taskID, result, pkg, action, "", "", submitErr)
+}
+
+func (s *service) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {
+	requestID := strings.TrimSpace(requestedID)
+	phase = strings.TrimSpace(phase)
+	if phase == "" {
+		phase = sheinpub.SubmissionPhaseValidate
+	}
 	if pkg != nil && pkg.Submission != nil {
-		requestID = pkg.Submission.CurrentRequestID
-		if pkg.Submission.CurrentPhase != "" {
+		if requestID == "" {
+			requestID = pkg.Submission.CurrentRequestID
+		}
+		if phase == sheinpub.SubmissionPhaseValidate && pkg.Submission.CurrentPhase != "" {
 			phase = pkg.Submission.CurrentPhase
 		}
 	}

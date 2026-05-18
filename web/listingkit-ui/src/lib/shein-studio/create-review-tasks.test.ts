@@ -11,7 +11,7 @@ import { DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY } from "@/lib/shein-studio/storage-
 describe("SHEIN studio defaults", () => {
   it("defaults SDS source tasks to official SDS rendering for submit images", () => {
     expect(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY).toBe("sds_official");
-    expect(DEFAULT_SHEIN_STORE_ID).toBe("869");
+    expect(DEFAULT_SHEIN_STORE_ID).toBe("");
   });
 });
 

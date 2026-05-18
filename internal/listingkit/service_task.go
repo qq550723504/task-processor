@@ -36,6 +36,11 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 		UpdatedAt:  time.Now(),
 		RetryCount: 0,
 	}
+	if taskHasPlatform(task, "shein") {
+		if selection, err := s.resolveSheinStoreSelection(ctx, task); err == nil && selection != nil {
+			task.SheinStoreResolutionSnapshot = sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+		}
+	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
@@ -101,6 +106,11 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 			return nil, listErr
 		}
 		decorateListingKitResultGeneration(&copied, tasks)
+		if copied.Shein != nil {
+			if selection, selectionErr := s.resolveSheinStoreSelection(ctx, task); selectionErr == nil {
+				copied.SheinStoreResolution = buildSheinStoreResolutionSummary(selection, task, nil)
+			}
+		}
 		resultPayload = &copied
 	}
 	result := &TaskResult{
@@ -277,6 +287,32 @@ func buildTaskListItem(task *Task) TaskListItem {
 				item.Title = task.Request.Options.SDS.ProductName
 			}
 		}
+		if task.Request.SheinStoreID > 0 {
+			item.SheinStoreID = task.Request.SheinStoreID
+		}
+		if site := strings.TrimSpace(task.Request.Country); site != "" {
+			item.SheinStoreSite = site
+		}
+	}
+	if snapshot := task.SheinStoreResolutionSnapshot; snapshot != nil {
+		if snapshot.StoreID > 0 {
+			item.SheinStoreID = snapshot.StoreID
+		}
+		if site := strings.TrimSpace(snapshot.Site); site != "" {
+			item.SheinStoreSite = site
+		}
+		if snapshot.MatchedProfileID > 0 {
+			item.SheinStoreProfileID = snapshot.MatchedProfileID
+		}
+		if !snapshot.ResolvedAt.IsZero() {
+			resolvedAt := snapshot.ResolvedAt
+			item.SheinStoreResolvedAt = &resolvedAt
+		}
+		item.SheinStoreStrategy = strings.TrimSpace(snapshot.Strategy)
+		item.SheinStoreReason = strings.TrimSpace(snapshot.Reason)
+		item.SheinStoreMatchedRuleKinds = append([]string(nil), snapshot.MatchedRuleKinds...)
+		item.SheinStoreManualOverride = snapshot.ManualOverride
+		item.SheinStoreFallback = snapshot.Fallback
 	}
 	item.ImageCount = taskListImageCount(task)
 	if task.Result != nil && task.Result.SDSSync != nil {
@@ -286,6 +322,11 @@ func buildTaskListItem(task *Task) TaskListItem {
 		item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	}
 	if task.Result != nil && task.Result.Shein != nil {
+		if len(task.Result.Shein.SiteList) > 0 {
+			if site := strings.TrimSpace(task.Result.Shein.SiteList[0].MainSite); site != "" {
+				item.SheinStoreSite = site
+			}
+		}
 		item.SheinWorkflowStatus = deriveSheinWorkflowStatus(task.Result.Shein)
 		item.SheinBlockingKeys = sheinBlockingKeys(task.Result.Shein)
 		item.SheinWarningKeys = sheinWarningKeys(task.Result.Shein)

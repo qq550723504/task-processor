@@ -126,12 +126,17 @@ func TestUploadListingKitImagesReturnsBadRequestWithoutFiles(t *testing.T) {
 	}
 }
 
-func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitExceeded(t *testing.T) {
+func TestUploadListingKitImagesIgnoresStorageQuotaLimit(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{}
-	h, err := NewHandler(svc, WithSubscriptionService(activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 3})))
+	svc := &stubGenerationTaskService{
+		uploadResponse: &listingkit.UploadImagesResponse{
+			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/large.jpg"},
+		},
+	}
+	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 3})
+	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -157,29 +162,29 @@ func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitExceeded(t *t
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402: %s", resp.Code, resp.Body.String())
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
 	}
-	if svc.uploadImagesReq != nil {
-		t.Fatal("upload service should not be called when storage quota is exceeded")
+	if svc.uploadImagesReq == nil || len(svc.uploadImagesReq.Files) != 1 {
+		t.Fatalf("upload req = %+v, want 1 file", svc.uploadImagesReq)
 	}
 
-	var payload struct {
-		Error      string `json:"error"`
-		ModuleCode string `json:"module_code"`
-		Metric     string `json:"metric"`
-		Limit      int    `json:"limit"`
-		Used       int    `json:"used"`
+	summary, err := subscriptionService.GetSummary(t.Context(), listingkit.DefaultTenantID)
+	if err != nil {
+		t.Fatalf("get subscription summary: %v", err)
 	}
-	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("unmarshal body: %v", err)
+	for _, view := range summary.Entitlements {
+		if view.Module.Code == listingsubscription.ModuleOSSStorage {
+			if view.Used["storage_bytes"] != 4 {
+				t.Fatalf("storage_bytes = %d, want 4", view.Used["storage_bytes"])
+			}
+			if view.Used["uploaded_bytes"] != 4 {
+				t.Fatalf("uploaded_bytes = %d, want 4", view.Used["uploaded_bytes"])
+			}
+			return
+		}
 	}
-	if payload.Error != "quota_exceeded" || payload.ModuleCode != listingsubscription.ModuleOSSStorage || payload.Metric != "storage_bytes" {
-		t.Fatalf("payload = %#v", payload)
-	}
-	if payload.Limit != 3 || payload.Used != 4 {
-		t.Fatalf("quota = %d/%d, want 3/4", payload.Limit, payload.Used)
-	}
+	t.Fatal("oss storage entitlement view missing")
 }
 
 func TestUploadListingKitImagesDoesNotRecordStorageUsageWhenUploadFails(t *testing.T) {

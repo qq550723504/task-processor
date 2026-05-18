@@ -7,6 +7,7 @@ import type {
 import type {
   PlatformPreviewPayload,
   SheinPreviewPayload,
+  SheinStoreResolutionSummary,
   SheinStatusOverview,
 } from "./shein";
 import type { AssetGenerationOverview } from "./review";
@@ -91,6 +92,7 @@ export type ListingKitTaskResultData = {
   child_tasks?: ListingKitChildTask[];
   workflow_stages?: ListingKitWorkflowStage[];
   workflow_issues?: ListingKitWorkflowIssue[];
+  shein_store_resolution?: SheinStoreResolutionSummary;
   canonical_product?: CanonicalProduct;
   created_at?: string;
   updated_at?: string;
@@ -142,6 +144,15 @@ export type ListingKitTaskListItem = {
   shein_warning_keys?: string[];
   shein_work_queue?: string;
   shein_action_queue?: string;
+  shein_store_id?: number;
+  shein_store_site?: string;
+  shein_store_profile_id?: number;
+  shein_store_resolved_at?: string;
+  shein_store_strategy?: string;
+  shein_store_reason?: string;
+  shein_store_matched_rule_kinds?: string[];
+  shein_store_manual_override?: boolean;
+  shein_store_fallback?: boolean;
   shein_status_overview?: SheinStatusOverview;
   shein_latest_submission_status?: string;
   shein_latest_submission_error?: string;

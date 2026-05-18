@@ -18,10 +18,6 @@ vi.mock("@/lib/query/use-task-list", () => ({
   useListingKitTasks: (query: unknown) => mocks.useListingKitTasks(query),
 }));
 
-vi.mock("@/components/listingkit/shein/shein-settings-card", () => ({
-  SheinSettingsCard: () => <div data-testid="shein-settings-card" />,
-}));
-
 describe("TaskListPage", () => {
   beforeEach(() => {
     mocks.currentSearch = "";
@@ -114,6 +110,13 @@ describe("TaskListPage", () => {
             status: "completed",
             platforms: ["shein"],
             title: "完整任务 ID",
+            shein_store_id: 903,
+            shein_store_site: "GB",
+            shein_store_profile_id: 17,
+            shein_store_resolved_at: "2026-05-18T08:15:00Z",
+            shein_store_strategy: "country",
+            shein_store_reason: "根据任务国家信息命中了对应店铺。",
+            shein_store_matched_rule_kinds: ["country"],
           },
         ],
       },
@@ -126,6 +129,13 @@ describe("TaskListPage", () => {
 
     expect(screen.getByText("任务 ID")).toBeInTheDocument();
     expect(screen.getByText("10856aa8-7e11-4257-ac11-dd095ed1593d")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
+    expect(screen.getByText(/路由 按国家匹配/)).toBeInTheDocument();
+    expect(screen.getByText(/Profile #17/)).toBeInTheDocument();
+    expect(screen.getByText(/固化/)).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 店铺 903 · GB").getAttribute("title") ?? "").toContain(
+      "根据任务国家信息命中了对应店铺。",
+    );
   });
 
   it("renders shein overview, work queue, and action queue when present", () => {

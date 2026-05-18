@@ -74,6 +74,10 @@ export function useTaskCreateWatchedState({
     control,
     name: "sceneStyle",
   });
+  const currentSheinStoreId = useWatch({
+    control,
+    name: "sheinStoreId",
+  });
   const currentBackgroundTone = useWatch({
     control,
     name: "backgroundTone",
@@ -125,6 +129,7 @@ export function useTaskCreateWatchedState({
     currentPropsLevel,
     currentSceneCategory,
     currentSceneStyle,
+    currentSheinStoreId,
     currentText,
     imageCount,
     pageCopy: taskCreatePageCopy(variant),
