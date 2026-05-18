@@ -115,6 +115,9 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 - **分布式处理架构**
   - RabbitMQ 消息队列驱动，支持异步生成与水平扩展
   - 拆分 crawler、listing consumer、统一 API，便于独立扩缩容
+- **长流程工作流编排**
+  - Temporal 作为长流程 durable workflow 底座，当前 PoC 重点覆盖 SHEIN `publish`
+  - 负责阶段推进、重试恢复、跨节点续跑和运行态查询，不替代具体平台业务规则
 - **平台运营能力**
   - SHEIN、TEMU 当前已接入核价、库存同步、活动报名等运营自动化能力
   - Amazon 目标平台当前以资料生成与上架提交流程为主，不默认表示已具备同等运营自动化覆盖
@@ -135,6 +138,22 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 - [ListingKit 对象存储开发说明](./docs/development/listingkit-object-storage.md)
 - [ListingKit 产品总览](./docs/product/listingkit-product-overview.md)
 - [ListingKit 操作指南](./docs/product/listingkit-operating-guide.md)
+- [ListingKit Temporal PoC Runbook](./docs/architecture/temporal-poc-runbook.md)
+- [ListingKit Temporal 工作流评估](./docs/architecture/temporal-workflow-evaluation.md)
+
+### ListingKit Temporal PoC
+
+- 当前 Temporal 的定位不是替换 RabbitMQ，也不是重写 ListingKit 现有业务逻辑，而是承接“长流程编排”这一层。
+- 现阶段 PoC 重点覆盖 `shein + publish`：
+  - RabbitMQ 仍主要负责普通异步任务分发和平台消费者处理
+  - Temporal 主要负责提交链路里的 durable execution、阶段状态持久化、activity 重试、worker 重启后的续跑，以及后续 signal/query 扩展能力
+  - 商品 payload 组装、图片上传、SHEIN 远端接口调用、结果落库仍复用现有 ListingKit submit 逻辑
+- 这意味着 Temporal 当前解决的是“流程怎么可靠推进和恢复”，不是“平台规则怎么实现”。
+- API 侧启用 Temporal 提交流程：`LISTINGKIT_TEMPORAL_ENABLED=true`
+- 若要把 worker 从 `product-listing-api` 进程里拆开，给 API 增加：`LISTINGKIT_TEMPORAL_START_WORKER=false`
+- 独立 worker 入口：`go run ./cmd/listingkit-temporal-worker -config config/config-dev.yaml`
+- 本地没有 `temporal` CLI 时，可直接用 Docker 脚本启动开发服务：`.\scripts\start-temporal-dev.ps1`
+- 详细运行方式见 [docs/architecture/temporal-poc-runbook.md](./docs/architecture/temporal-poc-runbook.md)
 
 ### 推荐部署形态
 

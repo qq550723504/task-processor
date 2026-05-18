@@ -3,11 +3,12 @@ package api
 
 import (
 	"context"
-	"fmt"
-	"sync"
+	"math"
+	"strings"
 	"time"
 
 	"task-processor/internal/core/logger"
+	infraresilience "task-processor/internal/infra/resilience"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,67 +21,33 @@ type RateLimiter interface {
 
 // TokenBucketLimiter 令牌桶速率限制器
 type TokenBucketLimiter struct {
-	mu       sync.Mutex
-	tokens   float64
-	capacity float64
-	rate     float64
-	lastTime time.Time
-	logger   *logrus.Entry
+	limiter *infraresilience.RateLimiter
 }
 
-// NewTokenBucketLimiter 创建令牌桶限制器
-func NewTokenBucketLimiter(rate, capacity float64) *TokenBucketLimiter {
+// NewTokenBucketLimiter 创建令牌桶限制器。
+//
+// capacity 保持 float64 仅用于兼容 amazon/api 既有调用方；底层
+// golang.org/x/time/rate 只接受整数 burst，因此这里按向上取整映射。
+// 当前调用方传入的都是整数容量值，这个适配仅把历史构造签名显式化。
+func NewTokenBucketLimiter(ratePerSecond, capacity float64) *TokenBucketLimiter {
+	burst := int(math.Ceil(capacity))
+	if burst < 1 {
+		burst = 1
+	}
+
 	return &TokenBucketLimiter{
-		tokens:   capacity,
-		capacity: capacity,
-		rate:     rate,
-		lastTime: time.Now(),
-		logger:   logger.GetGlobalLogger("RateLimiter"),
+		limiter: infraresilience.NewRateLimiter(ratePerSecond, burst),
 	}
 }
 
 // Wait 等待直到可以执行请求
 func (r *TokenBucketLimiter) Wait(ctx context.Context) error {
-	for {
-		if r.Allow() {
-			return nil
-		}
-
-		// 计算需要等待的时间
-		waitTime := time.Duration(1.0/r.rate*1000) * time.Millisecond
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(waitTime):
-			continue
-		}
-	}
+	return r.limiter.Wait(ctx)
 }
 
 // Allow 检查是否允许执行请求
 func (r *TokenBucketLimiter) Allow() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	now := time.Now()
-	elapsed := now.Sub(r.lastTime).Seconds()
-
-	// 添加令牌
-	r.tokens += elapsed * r.rate
-	if r.tokens > r.capacity {
-		r.tokens = r.capacity
-	}
-
-	r.lastTime = now
-
-	// 检查是否有足够的令牌
-	if r.tokens >= 1.0 {
-		r.tokens -= 1.0
-		return true
-	}
-
-	return false
+	return r.limiter.Allow()
 }
 
 // APIRateLimits Amazon SP-API速率限制配置
@@ -115,21 +82,21 @@ func NewAPIRateLimits() *APIRateLimits {
 // GetLimiterForPath 根据API路径获取对应的速率限制器
 func (limits *APIRateLimits) GetLimiterForPath(path string) RateLimiter {
 	switch {
-	case containsSubstring(path, "/feeds/"):
+	case strings.Contains(path, "/feeds/"):
 		return limits.Feeds
-	case containsSubstring(path, "/reports/"):
+	case strings.Contains(path, "/reports/"):
 		return limits.Reports
-	case containsSubstring(path, "/listings/"):
+	case strings.Contains(path, "/listings/"):
 		return limits.Listings
-	case containsSubstring(path, "/pricing/"):
+	case strings.Contains(path, "/pricing/"):
 		return limits.Pricing
-	case containsSubstring(path, "/inventory/"):
+	case strings.Contains(path, "/inventory/"):
 		return limits.Inventory
-	case containsSubstring(path, "/orders/"):
+	case strings.Contains(path, "/orders/"):
 		return limits.Orders
-	case containsSubstring(path, "/catalog/"):
+	case strings.Contains(path, "/catalog/"):
 		return limits.Catalog
-	case containsSubstring(path, "/uploads/"):
+	case strings.Contains(path, "/uploads/"):
 		return limits.Uploads
 	default:
 		return limits.Default
@@ -138,94 +105,50 @@ func (limits *APIRateLimits) GetLimiterForPath(path string) RateLimiter {
 
 // CircuitBreaker 断路器实现
 type CircuitBreaker struct {
-	mu               sync.Mutex
-	state            CircuitState
-	failureCount     int
-	successCount     int
-	failureThreshold int
-	successThreshold int
-	timeout          time.Duration
-	lastFailureTime  time.Time
-	logger           *logrus.Entry
+	breaker *infraresilience.CircuitBreaker
+	logger  *logrus.Entry
 }
-
-// CircuitState 断路器状态
-type CircuitState int
-
-const (
-	StateClosed CircuitState = iota
-	StateOpen
-	StateHalfOpen
-)
 
 // NewCircuitBreaker 创建断路器
 func NewCircuitBreaker(failureThreshold, successThreshold int, timeout time.Duration) *CircuitBreaker {
+	logEntry := logger.GetGlobalLogger("CircuitBreaker")
+
 	return &CircuitBreaker{
-		state:            StateClosed,
-		failureThreshold: failureThreshold,
-		successThreshold: successThreshold,
-		timeout:          timeout,
-		logger:           logger.GetGlobalLogger("CircuitBreaker"),
+		breaker: infraresilience.NewCircuitBreaker(infraresilience.CircuitBreakerConfig{
+			Name:             "amazon-api",
+			MaxRequests:      normalizeThreshold(successThreshold),
+			OpenTimeout:      timeout,
+			ReadyToTripAfter: normalizeThreshold(failureThreshold),
+			OnStateChange: func(from, to infraresilience.CircuitState) {
+				switch to {
+				case infraresilience.StateHalfOpen:
+					logEntry.Info("断路器进入半开状态")
+				case infraresilience.StateClosed:
+					logEntry.Info("断路器关闭")
+				case infraresilience.StateOpen:
+					logEntry.WithFields(logrus.Fields{
+						"from_state":        from,
+						"failure_threshold": failureThreshold,
+						"success_threshold": successThreshold,
+						"open_timeout":      timeout.String(),
+					}).Warn("断路器开启")
+				}
+			},
+		}),
+		logger: logEntry,
 	}
 }
 
 // Execute 执行操作（带断路器保护）
 func (cb *CircuitBreaker) Execute(ctx context.Context, operation func() error) error {
-	if !cb.allowRequest() {
-		return fmt.Errorf("断路器开启，请求被拒绝")
-	}
-
-	err := operation()
-	cb.recordResult(err == nil)
-
-	return err
+	return cb.breaker.Execute(ctx, func(context.Context) error {
+		return operation()
+	})
 }
 
-// allowRequest 检查是否允许请求
-func (cb *CircuitBreaker) allowRequest() bool {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
-	switch cb.state {
-	case StateClosed:
-		return true
-	case StateOpen:
-		// 检查是否可以进入半开状态
-		if time.Since(cb.lastFailureTime) > cb.timeout {
-			cb.state = StateHalfOpen
-			cb.successCount = 0
-			cb.logger.Info("断路器进入半开状态")
-			return true
-		}
-		return false
-	case StateHalfOpen:
-		return true
-	default:
-		return false
+func normalizeThreshold(value int) uint32 {
+	if value < 1 {
+		return 1
 	}
-}
-
-// recordResult 记录操作结果
-func (cb *CircuitBreaker) recordResult(success bool) {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
-	if success {
-		cb.failureCount = 0
-		cb.successCount++
-
-		if cb.state == StateHalfOpen && cb.successCount >= cb.successThreshold {
-			cb.state = StateClosed
-			cb.logger.Info("断路器关闭")
-		}
-	} else {
-		cb.successCount = 0
-		cb.failureCount++
-		cb.lastFailureTime = time.Now()
-
-		if cb.failureCount >= cb.failureThreshold {
-			cb.state = StateOpen
-			cb.logger.WithField("failure_count", cb.failureCount).Warn("断路器开启")
-		}
-	}
+	return uint32(value)
 }

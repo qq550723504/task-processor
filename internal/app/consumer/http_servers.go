@@ -8,12 +8,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"task-processor/internal/core/metrics"
+	coremetrics "task-processor/internal/core/metrics"
 	"time"
 
 	"task-processor/internal/core/config"
+	appmetrics "task-processor/internal/infra/metrics"
 	"task-processor/internal/infra/rabbitmq"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,6 +26,7 @@ type HTTPServerManager struct {
 	rabbitmqService *RabbitMQService
 	statsProvider   func() map[string]any
 	logger          *logrus.Logger
+	consumerMetrics *appmetrics.ConsumerRegistry
 
 	healthServer  *http.Server
 	metricsServer *http.Server
@@ -46,6 +49,7 @@ func NewHTTPServerManager(
 		rabbitmqService: rabbitmqService,
 		statsProvider:   statsProvider,
 		logger:          logger,
+		consumerMetrics: appmetrics.NewConsumerRegistry(),
 		startedAt:       time.Now(),
 	}
 }
@@ -104,7 +108,7 @@ func (h *HTTPServerManager) startMetricsServer() {
 	defer h.wg.Done()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", h.handleMetrics)
+	mux.Handle("/metrics", h.metricsHandler())
 	mux.HandleFunc("/stats", h.handleStats)
 
 	h.metricsServer = &http.Server{
@@ -112,6 +116,14 @@ func (h *HTTPServerManager) startMetricsServer() {
 		Handler: mux,
 	}
 	runServer(h.metricsServer, "指标服务器", h.config.Node.MetricsPort, h.logger)
+}
+
+func (h *HTTPServerManager) metricsHandler() http.Handler {
+	handler := promhttp.HandlerFor(h.consumerMetrics.Registry(), promhttp.HandlerOpts{})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.refreshMetricsSnapshot()
+		handler.ServeHTTP(w, r)
+	})
 }
 
 // runServer 启动 HTTP 服务器并阻塞，统一处理日志和错误
@@ -194,205 +206,28 @@ func (h *HTTPServerManager) handleReady(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-// handleMetrics 处理指标请求
-func (h *HTTPServerManager) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	stats := h.loadMonitor.GetStats()
-	taskMetrics := metrics.GlobalTaskMetrics().GetSnapshot()
-	sheinMetrics := metrics.GlobalSheinMetrics().GetSnapshot()
-
-	// 从指标收集器获取系统指标
-	metricsCollector := h.loadMonitor.GetMetricsCollector()
-	systemMetrics := metricsCollector.GetMetrics()
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-
-	// 任务处理指标
-	fmt.Fprintf(w, "# HELP tasks_processed_total Total number of tasks processed\n")
-	fmt.Fprintf(w, "# TYPE tasks_processed_total counter\n")
-	fmt.Fprintf(w, "tasks_processed_total %d\n", stats.TasksProcessed)
-
-	fmt.Fprintf(w, "# HELP tasks_succeeded_total Total number of tasks succeeded\n")
-	fmt.Fprintf(w, "# TYPE tasks_succeeded_total counter\n")
-	fmt.Fprintf(w, "tasks_succeeded_total %d\n", stats.TasksSucceeded)
-
-	fmt.Fprintf(w, "# HELP tasks_failed_total Total number of tasks failed\n")
-	fmt.Fprintf(w, "# TYPE tasks_failed_total counter\n")
-	fmt.Fprintf(w, "tasks_failed_total %d\n", stats.TasksFailed)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_processing_total Total number of listing tasks entered processing\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_processing_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_processing_total %d\n", taskMetrics.ProcessingCount)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_completed_total Total number of listing tasks completed\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_completed_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_completed_total %d\n", taskMetrics.CompletedCount)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_failed_total Total number of listing tasks failed\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_failed_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_failed_total %d\n", taskMetrics.FailedCount)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_requeued_total Total number of listing tasks requeued\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_requeued_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_requeued_total %d\n", taskMetrics.RequeuedCount)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_wait_seconds_avg Average wait time for listing tasks in seconds\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_wait_seconds_avg gauge\n")
-	fmt.Fprintf(w, "listing_tasks_wait_seconds_avg %.3f\n", metrics.GlobalTaskMetrics().GetAverageWaitTime().Seconds())
-
-	fmt.Fprintf(w, "# HELP listing_tasks_process_seconds_avg Average processing time for listing tasks in seconds\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_process_seconds_avg gauge\n")
-	fmt.Fprintf(w, "listing_tasks_process_seconds_avg %.3f\n", metrics.GlobalTaskMetrics().GetAverageProcessTime().Seconds())
-
-	fmt.Fprintf(w, "# HELP listing_tasks_priority_high_total Total number of high-priority listing tasks\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_priority_high_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_priority_high_total %d\n", taskMetrics.HighPriorityCount)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_priority_medium_total Total number of medium-priority listing tasks\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_priority_medium_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_priority_medium_total %d\n", taskMetrics.MediumPriorityCount)
-
-	fmt.Fprintf(w, "# HELP listing_tasks_priority_low_total Total number of low-priority listing tasks\n")
-	fmt.Fprintf(w, "# TYPE listing_tasks_priority_low_total counter\n")
-	fmt.Fprintf(w, "listing_tasks_priority_low_total %d\n", taskMetrics.LowPriorityCount)
-
-	fmt.Fprintf(w, "# HELP shein_tasks_published_total Total number of SHEIN tasks published successfully\n")
-	fmt.Fprintf(w, "# TYPE shein_tasks_published_total counter\n")
-	fmt.Fprintf(w, "shein_tasks_published_total %d\n", sheinMetrics.PublishedCount)
-
-	fmt.Fprintf(w, "# HELP shein_tasks_paused_total Total number of SHEIN tasks paused\n")
-	fmt.Fprintf(w, "# TYPE shein_tasks_paused_total counter\n")
-	fmt.Fprintf(w, "shein_tasks_paused_total %d\n", sheinMetrics.PausedCount)
-
-	fmt.Fprintf(w, "# HELP shein_tasks_draft_total Total number of SHEIN tasks moved to draft\n")
-	fmt.Fprintf(w, "# TYPE shein_tasks_draft_total counter\n")
-	fmt.Fprintf(w, "shein_tasks_draft_total %d\n", sheinMetrics.DraftCount)
-
-	fmt.Fprintf(w, "# HELP shein_tasks_terminated_total Total number of SHEIN tasks terminated\n")
-	fmt.Fprintf(w, "# TYPE shein_tasks_terminated_total counter\n")
-	fmt.Fprintf(w, "shein_tasks_terminated_total %d\n", sheinMetrics.TerminatedCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_auth_expired_total Total number of SHEIN auth expired events\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_auth_expired_total counter\n")
-	fmt.Fprintf(w, "shein_reason_auth_expired_total %d\n", sheinMetrics.AuthExpiredCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_cookie_load_failed_total Total number of SHEIN cookie load failures\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_cookie_load_failed_total counter\n")
-	fmt.Fprintf(w, "shein_reason_cookie_load_failed_total %d\n", sheinMetrics.CookieLoadFailedCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_daily_limit_reached_total Total number of SHEIN daily limit reached events\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_daily_limit_reached_total counter\n")
-	fmt.Fprintf(w, "shein_reason_daily_limit_reached_total %d\n", sheinMetrics.DailyLimitReachedCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_shelf_quota_exhausted_total Total number of SHEIN shelf quota exhausted events\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_shelf_quota_exhausted_total counter\n")
-	fmt.Fprintf(w, "shein_reason_shelf_quota_exhausted_total %d\n", sheinMetrics.ShelfQuotaExhaustedCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_draft_saved_validation_failed_total Total number of SHEIN draft-saved validation failures\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_draft_saved_validation_failed_total counter\n")
-	fmt.Fprintf(w, "shein_reason_draft_saved_validation_failed_total %d\n", sheinMetrics.DraftSavedValidationCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_sku_duplicated_total Total number of SHEIN duplicated SKU events\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_sku_duplicated_total counter\n")
-	fmt.Fprintf(w, "shein_reason_sku_duplicated_total %d\n", sheinMetrics.SkuDuplicatedCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_filter_rule_rejected_total Total number of SHEIN filter-rule rejections\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_filter_rule_rejected_total counter\n")
-	fmt.Fprintf(w, "shein_reason_filter_rule_rejected_total %d\n", sheinMetrics.FilterRuleRejectedCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_retryable_failure_total Total number of SHEIN retryable failures\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_retryable_failure_total counter\n")
-	fmt.Fprintf(w, "shein_reason_retryable_failure_total %d\n", sheinMetrics.RetryableFailureCount)
-
-	fmt.Fprintf(w, "# HELP shein_reason_non_retryable_failure_total Total number of SHEIN non-retryable failures\n")
-	fmt.Fprintf(w, "# TYPE shein_reason_non_retryable_failure_total counter\n")
-	fmt.Fprintf(w, "shein_reason_non_retryable_failure_total %d\n", sheinMetrics.NonRetryableFailureCount)
-
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_problem_events", "Top SHEIN problem stores by problem events", sheinMetrics.TopProblemStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.ProblemEvents
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_auth_expired_total", "Top SHEIN problem stores by auth expired events", sheinMetrics.TopAuthExpiredStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.AuthExpiredCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_cookie_load_failed_total", "Top SHEIN problem stores by cookie load failures", sheinMetrics.TopCookieLoadFailedStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.CookieLoadFailedCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_daily_limit_reached_total", "Top SHEIN problem stores by daily limit reached events", sheinMetrics.TopDailyLimitStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.DailyLimitReachedCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_shelf_quota_exhausted_total", "Top SHEIN problem stores by shelf quota exhausted events", sheinMetrics.TopShelfQuotaStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.ShelfQuotaExhaustedCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_draft_saved_validation_failed_total", "Top SHEIN problem stores by draft validation failures", sheinMetrics.TopDraftValidationStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.DraftSavedValidationCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_sku_duplicated_total", "Top SHEIN problem stores by duplicated SKU events", sheinMetrics.TopSkuDuplicatedStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.SkuDuplicatedCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_filter_rule_rejected_total", "Top SHEIN problem stores by filter-rule rejected events", sheinMetrics.TopFilterRejectedStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.FilterRuleRejectedCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_retryable_failure_total", "Top SHEIN problem stores by retryable failures", sheinMetrics.TopRetryableFailureStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.RetryableFailureCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_problem_store_non_retryable_failure_total", "Top SHEIN problem stores by non-retryable failures", sheinMetrics.TopNonRetryableStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.NonRetryableFailureCount
-	})
-	writeSheinTopStoreMetrics(w, "shein_top_success_store_published_total", "Top SHEIN success stores by published tasks", sheinMetrics.TopSuccessStores, func(item metrics.SheinStoreStatsSnapshot) int64 {
-		return item.PublishedCount
-	})
-
-	// 系统指标
-	if goroutineMetric, ok := systemMetrics["system_goroutines_count"]; ok {
-		fmt.Fprintf(w, "# HELP goroutine_count Current number of goroutines\n")
-		fmt.Fprintf(w, "# TYPE goroutine_count gauge\n")
-		fmt.Fprintf(w, "goroutine_count %.0f\n", goroutineMetric.Value)
+func (h *HTTPServerManager) refreshMetricsSnapshot() {
+	if h.consumerMetrics == nil {
+		return
 	}
 
-	if cpuMetric, ok := systemMetrics["system_cpu_cores"]; ok {
-		fmt.Fprintf(w, "# HELP cpu_cores Number of CPU cores\n")
-		fmt.Fprintf(w, "# TYPE cpu_cores gauge\n")
-		fmt.Fprintf(w, "cpu_cores %.0f\n", cpuMetric.Value)
-	}
-
-	if heapMetric, ok := systemMetrics["system_memory_heap_bytes"]; ok {
-		fmt.Fprintf(w, "# HELP memory_heap_bytes Heap memory usage in bytes\n")
-		fmt.Fprintf(w, "# TYPE memory_heap_bytes gauge\n")
-		fmt.Fprintf(w, "memory_heap_bytes %.0f\n", heapMetric.Value)
-	}
-
-	if sysMetric, ok := systemMetrics["system_memory_sys_bytes"]; ok {
-		fmt.Fprintf(w, "# HELP memory_sys_bytes System memory usage in bytes\n")
-		fmt.Fprintf(w, "# TYPE memory_sys_bytes gauge\n")
-		fmt.Fprintf(w, "memory_sys_bytes %.0f\n", sysMetric.Value)
-	}
-
-	// RabbitMQ特定指标
-	if avgTimeMetric, ok := systemMetrics["rabbitmq_avg_processing_time_seconds"]; ok {
-		fmt.Fprintf(w, "# HELP rabbitmq_avg_processing_time_seconds Average task processing time\n")
-		fmt.Fprintf(w, "# TYPE rabbitmq_avg_processing_time_seconds gauge\n")
-		fmt.Fprintf(w, "rabbitmq_avg_processing_time_seconds %.3f\n", avgTimeMetric.Value)
-	}
-}
-
-func writeSheinTopStoreMetrics(w http.ResponseWriter, metricName, help string, stores []metrics.SheinStoreStatsSnapshot, valueFn func(metrics.SheinStoreStatsSnapshot) int64) {
-	fmt.Fprintf(w, "# HELP %s %s\n", metricName, help)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", metricName)
-	for idx, store := range stores {
-		value := valueFn(store)
-		if value <= 0 {
-			continue
+	var stats rabbitmq.LoadStats
+	systemMetrics := make(map[string]float64)
+	if h.loadMonitor != nil {
+		stats = h.loadMonitor.GetStats()
+		if collector := h.loadMonitor.GetMetricsCollector(); collector != nil {
+			for name, metric := range collector.GetMetrics() {
+				systemMetrics[name] = metric.Value
+			}
 		}
-		fmt.Fprintf(
-			w,
-			"%s{rank=\"%d\",tenant_id=\"%d\",store_id=\"%d\"} %d\n",
-			metricName,
-			idx+1,
-			store.TenantID,
-			store.StoreID,
-			value,
-		)
 	}
+
+	h.consumerMetrics.UpdateConsumerSnapshot(appmetrics.ConsumerSnapshot{
+		Load:   stats,
+		Task:   coremetrics.GlobalTaskMetrics().GetSnapshot(),
+		Shein:  coremetrics.GlobalSheinMetrics().GetSnapshot(),
+		System: systemMetrics,
+	})
 }
 
 // handleStats 处理统计请求
@@ -541,7 +376,7 @@ func trimStatsSlice(value any, limit int) any {
 	}
 
 	switch items := value.(type) {
-	case []metrics.SheinStoreStatsSnapshot:
+	case []coremetrics.SheinStoreStatsSnapshot:
 		if len(items) <= limit {
 			return items
 		}
@@ -557,12 +392,12 @@ func trimStatsSlice(value any, limit int) any {
 }
 
 func filterStatsSliceByReason(value any, reason string) any {
-	items, ok := value.([]metrics.SheinStoreStatsSnapshot)
+	items, ok := value.([]coremetrics.SheinStoreStatsSnapshot)
 	if !ok || reason == "" {
 		return value
 	}
 
-	filtered := make([]metrics.SheinStoreStatsSnapshot, 0, len(items))
+	filtered := make([]coremetrics.SheinStoreStatsSnapshot, 0, len(items))
 	for _, item := range items {
 		if matchStatsReason(item, reason) {
 			filtered = append(filtered, item)
@@ -571,7 +406,7 @@ func filterStatsSliceByReason(value any, reason string) any {
 	return filtered
 }
 
-func matchStatsReason(item metrics.SheinStoreStatsSnapshot, reason string) bool {
+func matchStatsReason(item coremetrics.SheinStoreStatsSnapshot, reason string) bool {
 	switch reason {
 	case "auth_expired":
 		return item.AuthExpiredCount > 0

@@ -67,9 +67,7 @@ services:
       - zitadel-bootstrap:/zitadel/bootstrap:rw
     networks:
       - local-zitadel
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - docker_yudao-network
     labels:
       - traefik.enable=true
       - traefik.docker.network=local-zitadel
@@ -132,6 +130,8 @@ services:
       - traefik.http.routers.zitadel-login.priority=250
 
   postgres:
+    profiles:
+      - local-db
     image: ${POSTGRES_IMAGE}
     restart: unless-stopped
     environment:
@@ -154,6 +154,8 @@ services:
 networks:
   local-zitadel:
     name: local-zitadel
+  docker_yudao-network:
+    external: true
 
 volumes:
   postgres-data:
