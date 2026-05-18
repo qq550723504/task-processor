@@ -100,7 +100,7 @@ export function StoreProfileSettingsPanel() {
       } else if (item.store_id > 0) {
         byID.set(item.store_id, {
           id: item.store_id,
-          store_id: item.store?.store_id,
+          storeId: item.store?.store_id,
           name: item.store?.name,
           platform: item.store?.platform,
           region: item.store?.region,
