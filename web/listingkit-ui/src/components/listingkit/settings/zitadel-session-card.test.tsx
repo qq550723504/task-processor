@@ -10,7 +10,7 @@ describe("ZitadelSessionCard", () => {
     global.fetch = originalFetch;
   });
 
-  it("shows tenant, user and platform admin status from the session endpoint", async () => {
+  it("shows account identity and platform admin status from the session endpoint", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -18,6 +18,7 @@ describe("ZitadelSessionCard", () => {
         identity: {
           tenantId: "org-286",
           userId: "user-42",
+          username: "admin",
           userType: "zitadel",
           roles: ["platform_admin", "billing_admin"],
         },
@@ -26,6 +27,8 @@ describe("ZitadelSessionCard", () => {
 
     renderWithQueryClient(<ZitadelSessionCard />);
 
+    expect(await screen.findByText("admin")).toBeInTheDocument();
+    expect(screen.getByText("登录名")).toBeInTheDocument();
     expect(await screen.findByText("org-286")).toBeInTheDocument();
     expect(screen.getByText("user-42")).toBeInTheDocument();
     expect(screen.getByText("platform_admin")).toBeInTheDocument();

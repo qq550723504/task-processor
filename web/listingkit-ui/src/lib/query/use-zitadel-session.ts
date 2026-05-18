@@ -7,6 +7,7 @@ import { listingKitSettingsKeys } from "@/lib/query/listingkit-settings";
 export type ZitadelIdentity = {
   tenantId?: string | number;
   userId?: string | number;
+  username?: string;
   userType?: string | number;
   roles?: string[];
 };

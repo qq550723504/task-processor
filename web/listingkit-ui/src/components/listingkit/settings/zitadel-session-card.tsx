@@ -36,8 +36,8 @@ export function ZitadelSessionCard() {
     <ListingKitSettingsSection
       id="session"
       eyebrow="ZITADEL"
-      title="当前登录态"
-      description="查看当前 ZITADEL 会话返回的租户、用户和角色信息。后续平台设置会按这组身份做范围判断。"
+      title="账户信息"
+      description="查看当前登录用户在 ZITADEL 中的登录名、租户、用户标识和角色信息。后续设置与权限判断都基于这组身份。"
       actions={
         session.isPending ? (
           <Badge className="gap-2" variant="neutral">
@@ -68,9 +68,9 @@ export function ZitadelSessionCard() {
       {session.data ? (
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
-            <p className="text-xs font-medium text-zinc-500">租户 ID</p>
+            <p className="text-xs font-medium text-zinc-500">登录名</p>
             <p className="mt-1 break-all font-mono text-sm text-zinc-950">
-              {stringify(session.data.tenantId)}
+              {stringify(session.data.username)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
@@ -80,6 +80,12 @@ export function ZitadelSessionCard() {
             </p>
           </div>
           <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+            <p className="text-xs font-medium text-zinc-500">租户 ID</p>
+            <p className="mt-1 break-all font-mono text-sm text-zinc-950">
+              {stringify(session.data.tenantId)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 md:col-span-3">
             <p className="text-xs font-medium text-zinc-500">身份类型</p>
             <p className="mt-1 break-all font-mono text-sm text-zinc-950">
               {stringify(session.data.userType)}
