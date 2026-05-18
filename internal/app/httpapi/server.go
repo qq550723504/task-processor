@@ -259,6 +259,7 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts", Module: "shein-login", Handler: sheinLoginHandler.ListAccounts},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/shein-login/accounts/:store_id/login", Module: "shein-login", Handler: sheinLoginHandler.Login},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/status", Module: "shein-login", Handler: sheinLoginHandler.Status},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/warehouses", Module: "shein-login", Handler: sheinLoginHandler.ListWarehouses},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/shein-login/accounts/:store_id/verify-code", Module: "shein-login", Handler: sheinLoginHandler.SubmitVerifyCode},
 			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/verify-code-wait", Module: "shein-login", Handler: sheinLoginHandler.CancelVerifyCodeWait},
 			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/cookie", Module: "shein-login", Handler: sheinLoginHandler.ClearCookie},

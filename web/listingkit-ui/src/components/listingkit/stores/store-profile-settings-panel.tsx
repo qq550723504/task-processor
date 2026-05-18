@@ -22,6 +22,12 @@ import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { getTenantListingStores } from "@/lib/api/tenant-stores";
 import { useDeleteStoreProfile, useStoreProfiles, useUpsertStoreProfile } from "@/lib/query/use-store-profiles";
 import type { ListingKitStoreProfile } from "@/lib/types/listingkit";
+import {
+  listSheinStoreWarehouses,
+} from "@/lib/api/shein-login";
+import { useSheinLoginAccounts } from "@/lib/query/use-shein-login";
+import { buildSheinLoginStatusMap } from "@/components/listingkit/stores/store-login-status";
+import type { SheinLoginWarehouse } from "@/lib/types/shein-login";
 
 type StoreProfileForm = {
   id?: number;
@@ -32,7 +38,7 @@ type StoreProfileForm = {
   country_rules: string;
   category_rules: string;
   site: string;
-  warehouse_code: string;
+  warehouse_codes: string[];
   default_stock: string;
   default_submit_mode: "publish" | "save_draft";
   exchange_rate: string;
@@ -50,6 +56,21 @@ type StoreOption = {
   region?: string;
 };
 
+const SHEIN_SITE_OPTIONS = [
+  "US",
+  "FR",
+  "DE",
+  "IT",
+  "ES",
+  "UK",
+  "AU",
+  "JP",
+  "MX",
+  "SA",
+  "AE",
+  "CA",
+] as const;
+
 const DEFAULT_FORM: StoreProfileForm = {
   store_id: "",
   enabled: true,
@@ -58,7 +79,7 @@ const DEFAULT_FORM: StoreProfileForm = {
   country_rules: "",
   category_rules: "",
   site: "US",
-  warehouse_code: "",
+  warehouse_codes: [],
   default_stock: "100",
   default_submit_mode: "publish",
   exchange_rate: "7.2",
@@ -78,6 +99,26 @@ export function StoreProfileSettingsPanel() {
   const storeOptionsQuery = useQuery({
     queryKey: ["listingkit-tenant-store-options"],
     queryFn: () => getTenantListingStores({ page: 1, page_size: 200, platform: "SHEIN" }),
+  });
+  const sheinLoginQuery = useSheinLoginAccounts();
+  const selectedStoreID = Number(draft.store_id) || 0;
+  const sheinLoginStatusMap = useMemo(
+    () => buildSheinLoginStatusMap(sheinLoginQuery.data),
+    [sheinLoginQuery.data],
+  );
+  const selectedStoreLoginStatus = selectedStoreID
+    ? sheinLoginStatusMap.get(selectedStoreID)
+    : undefined;
+  const canLoadWarehouses =
+    selectedStoreID > 0 &&
+    Boolean(
+      selectedStoreLoginStatus?.has_cookie ||
+        (selectedStoreLoginStatus?.cookie_ttl ?? 0) > 0,
+    );
+  const warehouseOptionsQuery = useQuery({
+    queryKey: ["listingkit-shein-store-warehouses", selectedStoreID],
+    queryFn: () => listSheinStoreWarehouses(selectedStoreID),
+    enabled: canLoadWarehouses,
   });
 
   const items = profiles.data ?? [];
@@ -124,7 +165,7 @@ export function StoreProfileSettingsPanel() {
       country_rules: formatMatchRuleValues(profile, "country"),
       category_rules: formatMatchRuleValues(profile, "category"),
       site: profile.site ?? "US",
-      warehouse_code: profile.warehouse_code ?? "",
+      warehouse_codes: parseWarehouseCodes(profile.warehouse_code),
       default_stock: String(profile.default_stock ?? 100),
       default_submit_mode: profile.default_submit_mode ?? "publish",
       exchange_rate: String(profile.pricing?.exchange_rate ?? 7.2),
@@ -149,7 +190,7 @@ export function StoreProfileSettingsPanel() {
         is_fallback: draft.is_fallback,
         match_rules: buildMatchRules(draft),
         site: draft.site.trim().toUpperCase(),
-        warehouse_code: draft.warehouse_code.trim(),
+        warehouse_code: normalizeWarehouseCodes(draft.warehouse_codes).join(","),
         default_stock: Number(draft.default_stock) || 0,
         default_submit_mode: draft.default_submit_mode,
         pricing: {
@@ -186,6 +227,14 @@ export function StoreProfileSettingsPanel() {
   const visibleError =
     error ||
     (storeOptionsQuery.error instanceof Error ? storeOptionsQuery.error.message : "");
+  const warehouseOptions = useMemo(
+    () =>
+      buildWarehouseOptions(
+        warehouseOptionsQuery.data,
+        draft.warehouse_codes,
+      ),
+    [draft.warehouse_codes, warehouseOptionsQuery.data],
+  );
 
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -257,7 +306,9 @@ export function StoreProfileSettingsPanel() {
                     </TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">
                       <div>{item.site || "-"}</div>
-                      <div className="text-xs text-zinc-500">{item.warehouse_code || "-"}</div>
+                      <div className="text-xs text-zinc-500">
+                        {formatWarehouseCodeSummary(item.warehouse_code)}
+                      </div>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">
                       <div className="text-xs text-zinc-600">{summarizeMatchRules(item)}</div>
@@ -326,13 +377,59 @@ export function StoreProfileSettingsPanel() {
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <TextField label="站点" value={draft.site} onChange={(site) => setDraft((current) => ({ ...current, site }))} />
-          <TextField
-            label="仓库编码"
-            value={draft.warehouse_code}
-            onChange={(warehouse_code) => setDraft((current) => ({ ...current, warehouse_code }))}
-          />
+          <Field label="站点">
+          <Select
+            aria-label="站点"
+            value={draft.site}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, site: event.target.value }))
+              }
+            >
+              {buildSiteOptions(draft.site).map((site) => (
+                <option key={site} value={site}>
+                  {site}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="仓库编码">
+            <Select
+              aria-label="仓库编码"
+              multiple
+              className="h-28"
+              disabled={!selectedStoreID || !canLoadWarehouses}
+              value={draft.warehouse_codes}
+              onChange={(event) =>
+                {
+                  const warehouseCodes = Array.from(event.currentTarget.selectedOptions).map(
+                    (option) => option.value,
+                  );
+                  setDraft((current) => ({
+                    ...current,
+                    warehouse_codes: warehouseCodes,
+                  }));
+                }
+              }
+            >
+              {warehouseOptions.map((item) => (
+                <option key={item.warehouse_code} value={item.warehouse_code}>
+                  {formatWarehouseOptionLabel(item)}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
+        <p className="-mt-1 mb-3 text-xs leading-5 text-zinc-500">
+          {!selectedStoreID
+            ? "先选择店铺，再加载该店铺登录后的仓库列表。"
+            : !canLoadWarehouses
+              ? "当前店铺还未登录，先在店铺列表完成登录后再选择仓库。"
+              : warehouseOptionsQuery.isFetching
+                ? "正在读取店铺仓库列表..."
+                : warehouseOptionsQuery.error instanceof Error
+                  ? `仓库列表读取失败：${warehouseOptionsQuery.error.message}`
+                  : "支持多选；当前发布链路会优先使用你选择的第一个仓库编码。"}
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <TextField
             label="国家规则"
@@ -464,6 +561,73 @@ function formatStoreOptionLabel(store: StoreOption) {
   const primary = store.name?.trim() || store.storeId?.trim() || `店铺 ${store.id}`;
   const meta = [store.storeId?.trim(), store.region?.trim()].filter(Boolean).join(" / ");
   return meta ? `${primary} (${meta})` : primary;
+}
+
+function buildSiteOptions(current: string) {
+  const value = current.trim().toUpperCase();
+  if (!value) {
+    return [...SHEIN_SITE_OPTIONS];
+  }
+  if (SHEIN_SITE_OPTIONS.includes(value as (typeof SHEIN_SITE_OPTIONS)[number])) {
+    return [...SHEIN_SITE_OPTIONS];
+  }
+  return [value, ...SHEIN_SITE_OPTIONS];
+}
+
+function parseWarehouseCodes(value?: string) {
+  return normalizeWarehouseCodes(
+    (value ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+}
+
+function normalizeWarehouseCodes(values: string[]) {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+}
+
+function formatWarehouseCodeSummary(value?: string) {
+  const items = parseWarehouseCodes(value);
+  return items.length > 0 ? items.join(", ") : "-";
+}
+
+function buildWarehouseOptions(
+  items: SheinLoginWarehouse[] | undefined,
+  currentCodes: string[],
+) {
+  const byCode = new Map<string, SheinLoginWarehouse>();
+  for (const item of items ?? []) {
+    const code = item.warehouse_code?.trim();
+    if (!code) {
+      continue;
+    }
+    byCode.set(code, item);
+  }
+  for (const code of normalizeWarehouseCodes(currentCodes)) {
+    if (!byCode.has(code)) {
+      byCode.set(code, { warehouse_code: code });
+    }
+  }
+  return Array.from(byCode.values()).sort((left, right) =>
+    (left.warehouse_code ?? "").localeCompare(right.warehouse_code ?? ""),
+  );
+}
+
+function formatWarehouseOptionLabel(item: SheinLoginWarehouse) {
+  const code = item.warehouse_code?.trim() || "UNKNOWN";
+  const name = item.warehouse_name?.trim();
+  const countries = item.sale_country_list?.filter(Boolean).join(", ");
+  if (name && countries) {
+    return `${name} (${code} / ${countries})`;
+  }
+  if (name) {
+    return `${name} (${code})`;
+  }
+  if (countries) {
+    return `${code} / ${countries}`;
+  }
+  return code;
 }
 
 function formatMatchRuleValues(profile: ListingKitStoreProfile, kind: string) {

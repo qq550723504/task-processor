@@ -159,6 +159,7 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 	if err != nil {
 		return nil, nil, err
 	}
+	svc.AttachManagementClient(deps.managementClient)
 	sheinclient.ConfigureLocalLoginRefresher(svc)
 	return sheinlogin.NewHandler(svc), svc.Close, nil
 }

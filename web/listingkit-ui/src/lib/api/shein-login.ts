@@ -1,6 +1,7 @@
 import type {
   SheinLoginAccountStatus,
   SheinLoginFailureDetail,
+  SheinLoginWarehouse,
 } from "@/lib/types/shein-login";
 
 async function readJSON<T>(response: Response): Promise<T> {
@@ -54,6 +55,10 @@ export function clearSheinCookie(storeID: number) {
 
 export function getSheinLastFailure(storeID: number) {
   return request<SheinLoginFailureDetail | undefined>(`/accounts/${storeID}/last-failure`);
+}
+
+export function listSheinStoreWarehouses(storeID: number) {
+  return request<SheinLoginWarehouse[]>(`/accounts/${storeID}/warehouses`);
 }
 
 export function clearSheinLastFailure(storeID: number) {

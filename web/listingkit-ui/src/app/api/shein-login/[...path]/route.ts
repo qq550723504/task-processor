@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { verifyListingKitRequestIdentity } from "@/app/api/listing-kits/proxy-auth";
+import {
+  buildListingKitUpstreamHeaders,
+  type VerifiedIdentity,
+  verifyListingKitRequestIdentity,
+} from "@/app/api/listing-kits/proxy-auth";
 import { buildSheinLoginURL } from "@/app/api/shein-login/shared";
 
 export const dynamic = "force-dynamic";
 
-function copyHeader(source: Headers, target: Headers, sourceName: string, targetName?: string) {
-  const value = source.get(sourceName);
-  if (value) {
-    target.set(targetName ?? sourceName, value);
-  }
-}
-
-export function buildSheinLoginUpstreamHeaders(requestHeaders: Headers) {
-  const headers = new Headers();
-  copyHeader(requestHeaders, headers, "accept", "Accept");
-  copyHeader(requestHeaders, headers, "content-type", "Content-Type");
-  copyHeader(requestHeaders, headers, "authorization", "Authorization");
-  return headers;
+export function buildSheinLoginUpstreamHeaders(
+  requestHeaders: Headers,
+  verifiedIdentity?: VerifiedIdentity,
+) {
+  return buildListingKitUpstreamHeaders(requestHeaders, verifiedIdentity);
 }
 
 async function proxyRequest(
@@ -31,7 +27,7 @@ async function proxyRequest(
     return auth.response;
   }
 
-  const headers = buildSheinLoginUpstreamHeaders(request.headers);
+  const headers = buildSheinLoginUpstreamHeaders(request.headers, auth.identity);
   if (auth.token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${auth.token}`);
   }

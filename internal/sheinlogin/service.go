@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/clients/management"
+	sheinwarehouse "task-processor/internal/shein/api/warehouse"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 type LocalRefresher interface {
@@ -19,6 +22,7 @@ type LocalRefresher interface {
 
 type Service struct {
 	provider          AccountProvider
+	managementClient  *management.ClientManager
 	store             *RedisStore
 	runtime           *Runtime
 	automation        Automation
@@ -65,6 +69,13 @@ func (s *Service) Close() error {
 	}
 	s.sessionsMu.Unlock()
 	return s.store.Close()
+}
+
+func (s *Service) AttachManagementClient(client *management.ClientManager) {
+	if s == nil {
+		return
+	}
+	s.managementClient = client
 }
 
 func (s *Service) Health(ctx context.Context) ServiceHealth {
@@ -123,6 +134,47 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 		LastFailure:          lastFailure,
 		RecommendedAction:    recommendedAction,
 	}, nil
+}
+
+func (s *Service) ListWarehouses(ctx context.Context, tenantID int64, storeID int64) ([]WarehouseOption, error) {
+	_, err := s.provider.GetAccount(ctx, tenantID, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if s.managementClient == nil {
+		return nil, fmt.Errorf("management client is nil")
+	}
+	apiClient := sheinclient.NewAPIClient(storeID, s.managementClient)
+	if !apiClient.HasCookies() {
+		if err := apiClient.ReloadCookies(); err != nil {
+			return nil, err
+		}
+	}
+	if !apiClient.HasCookies() {
+		return nil, fmt.Errorf("shein store cookie is unavailable")
+	}
+	baseAPI := sheinclient.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		storeID,
+		apiClient.GetHTTPClient(),
+	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	warehouseAPI := sheinwarehouse.NewClient(baseAPI)
+	warehouses, err := warehouseAPI.GetWarehouses()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]WarehouseOption, 0, len(warehouses.Data))
+	for _, item := range warehouses.Data {
+		items = append(items, WarehouseOption{
+			WarehouseCode:   strings.TrimSpace(item.WarehouseCode),
+			WarehouseName:   strings.TrimSpace(item.WarehouseName),
+			SaleCountryList: append([]string(nil), item.SaleCountryList...),
+			WarehouseType:   item.WarehouseType,
+		})
+	}
+	return items, nil
 }
 
 func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req LoginRequest) (*LoginResult, error) {

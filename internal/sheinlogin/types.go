@@ -96,6 +96,13 @@ type AccountStatus struct {
 	RecommendedAction    RecommendedAction `json:"recommended_action,omitempty"`
 }
 
+type WarehouseOption struct {
+	WarehouseCode   string   `json:"warehouse_code,omitempty"`
+	WarehouseName   string   `json:"warehouse_name,omitempty"`
+	SaleCountryList []string `json:"sale_country_list,omitempty"`
+	WarehouseType   int      `json:"warehouse_type,omitempty"`
+}
+
 type ServiceHealth struct {
 	Initialized         bool `json:"initialized"`
 	RedisReady          bool `json:"redis_ready"`

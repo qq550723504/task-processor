@@ -53,6 +53,13 @@ export type SheinLoginAccountStatus = {
   recommended_action?: SheinLoginRecommendedAction;
 };
 
+export type SheinLoginWarehouse = {
+  warehouse_code?: string;
+  warehouse_name?: string;
+  sale_country_list?: string[];
+  warehouse_type?: number;
+};
+
 export type SheinLoginAccountsResponse = {
   success: boolean;
   data?: SheinLoginAccountStatus[];

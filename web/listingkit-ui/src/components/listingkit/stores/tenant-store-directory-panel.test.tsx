@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createTenantListingStore: vi.fn(),
   updateTenantListingStore: vi.fn(),
   deleteTenantListingStore: vi.fn(),
+  listSheinLoginAccounts: vi.fn(),
 }));
 
 vi.mock("@/lib/api/tenant-stores", () => ({
@@ -18,12 +19,17 @@ vi.mock("@/lib/api/tenant-stores", () => ({
   deleteTenantListingStore: (...args: unknown[]) => mocks.deleteTenantListingStore(...args),
 }));
 
+vi.mock("@/lib/api/shein-login", () => ({
+  listSheinLoginAccounts: (...args: unknown[]) => mocks.listSheinLoginAccounts(...args),
+}));
+
 describe("TenantStoreDirectoryPanel", () => {
   beforeEach(() => {
     mocks.getTenantListingStores.mockReset();
     mocks.createTenantListingStore.mockReset();
     mocks.updateTenantListingStore.mockReset();
     mocks.deleteTenantListingStore.mockReset();
+    mocks.listSheinLoginAccounts.mockReset();
 
     mocks.getTenantListingStores.mockResolvedValue({
       items: [
@@ -51,6 +57,19 @@ describe("TenantStoreDirectoryPanel", () => {
       region: "CA",
       storeId: "SHEIN-CA-002",
     });
+    mocks.listSheinLoginAccounts.mockResolvedValue([
+      {
+        account: {
+          store_id: 1,
+          tenant_id: 1,
+          store_name: "SHEIN US",
+        },
+        has_cookie: true,
+        cookie_ttl: 1800,
+        waiting_for_verify_code: false,
+        login_in_progress: false,
+      },
+    ]);
   });
 
   it("renders tenant store list", async () => {
@@ -89,6 +108,59 @@ describe("TenantStoreDirectoryPanel", () => {
         }),
       );
     });
+  });
+
+  it("renders shein login status in store rows", async () => {
+    mocks.getTenantListingStores.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: "SHEIN US",
+          username: "shein-us",
+          platform: "SHEIN",
+          shopType: "0",
+          region: "US",
+          storeId: "SHEIN-US-001",
+          enableAutoListing: true,
+        },
+        {
+          id: 2,
+          name: "TEMU US",
+          username: "temu-us",
+          platform: "TEMU",
+          shopType: "2",
+          region: "US",
+          storeId: "TEMU-US-001",
+          enableAutoListing: false,
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 50,
+    });
+    mocks.listSheinLoginAccounts.mockResolvedValue([
+      {
+        account: {
+          store_id: 1,
+          tenant_id: 1,
+          store_name: "SHEIN US",
+        },
+        has_cookie: true,
+        cookie_ttl: 1800,
+        waiting_for_verify_code: false,
+        login_in_progress: false,
+      },
+    ]);
+
+    renderWithQueryClient(<TenantStoreDirectoryPanel />);
+
+    const sheinRow = (await screen.findByText("SHEIN US")).closest("tr");
+    const temuRow = (await screen.findByText("TEMU US")).closest("tr");
+
+    expect(sheinRow).not.toBeNull();
+    expect(temuRow).not.toBeNull();
+    expect(within(sheinRow as HTMLElement).getByText("已登录")).toBeInTheDocument();
+    expect(within(temuRow as HTMLElement).getAllByText("-").length).toBeGreaterThan(0);
   });
 });
 

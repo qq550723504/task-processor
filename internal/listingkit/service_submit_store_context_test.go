@@ -78,6 +78,14 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 	}
 }
 
+func TestSheinSubmitPreferredWarehouseCodeUsesFirstCSVItem(t *testing.T) {
+	t.Parallel()
+
+	if got := sheinSubmitPreferredWarehouseCode(SheinSettings{WarehouseCode: "WH-CA-1,WH-US-1"}); got != "WH-CA-1" {
+		t.Fatalf("preferred warehouse = %q, want WH-CA-1", got)
+	}
+}
+
 func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *testing.T) {
 	t.Parallel()
 

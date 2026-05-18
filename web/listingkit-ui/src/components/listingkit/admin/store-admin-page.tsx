@@ -31,6 +31,11 @@ import {
   type ListingStore,
   type ListingStoreInput,
 } from "@/lib/api/admin-stores";
+import { useSheinLoginAccounts } from "@/lib/query/use-shein-login";
+import {
+  buildSheinLoginStatusMap,
+  StoreLoginStatusBadge,
+} from "@/components/listingkit/stores/store-login-status";
 
 const STORE_TYPE_OPTIONS = [
   { value: "0", label: "半托" },
@@ -83,11 +88,16 @@ export function StoreAdminPage() {
     queryKey: ["listingkit-admin-deleted-stores"],
     queryFn: getDeletedListingStores,
   });
+  const sheinLoginQuery = useSheinLoginAccounts();
 
   const stores: ListingStore[] = storeQuery.data?.items ?? [];
   const deletedStores = deletedStoreQuery.data ?? [];
   const total = storeQuery.data?.total ?? 0;
   const loading = storeQuery.isLoading || storeQuery.isFetching;
+  const loginStatusMap = useMemo(
+    () => buildSheinLoginStatusMap(sheinLoginQuery.data),
+    [sheinLoginQuery.data],
+  );
   const visibleError =
     error ||
     (storeQuery.error instanceof Error ? storeQuery.error.message : "") ||
@@ -261,6 +271,7 @@ export function StoreAdminPage() {
                   <TableHead className="px-4 py-3">账号</TableHead>
                   <TableHead className="px-4 py-3">平台</TableHead>
                   <TableHead className="px-4 py-3">地区</TableHead>
+                  <TableHead className="px-4 py-3">登录状态</TableHead>
                   <TableHead className="px-4 py-3">每日限制</TableHead>
                   <TableHead className="px-4 py-3">自动上架</TableHead>
                   <TableHead className="px-4 py-3 text-right">操作</TableHead>
@@ -269,13 +280,13 @@ export function StoreAdminPage() {
               <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
                   <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : stores.length === 0 ? (
                   <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                       暂无店铺
                     </TableCell>
                   </TableRow>
@@ -289,6 +300,13 @@ export function StoreAdminPage() {
                       <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">{store.region || "-"}</TableCell>
+                      <TableCell className="px-4 py-3">
+                        <StoreLoginStatusBadge
+                          store={store}
+                          status={loginStatusMap.get(store.id)}
+                          failed={sheinLoginQuery.isError}
+                        />
+                      </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
                         {store.dailyLimit ?? "-"} {store.dailyLimitType ?? ""}
                       </TableCell>

@@ -50,6 +50,10 @@ func (s *stubSheinLoginHandler) Status(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+func (s *stubSheinLoginHandler) ListWarehouses(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": []any{}})
+}
+
 func (s *stubSheinLoginHandler) SubmitVerifyCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
@@ -773,6 +777,26 @@ func (s *stubListingKitHandler) GetAIClientSettings(c *gin.Context) {
 
 func (s *stubListingKitHandler) UpdateAIClientSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"client_name": "default", "api_key_set": true})
+}
+
+func (s *stubListingKitHandler) ListTenantStores(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}})
+}
+
+func (s *stubListingKitHandler) CreateTenantStore(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateTenantStore(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteTenantStore(c *gin.Context) {
+	c.Status(http.StatusNoContent)
+}
+
+func (s *stubListingKitHandler) ListSimpleTenantStores(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}})
 }
 
 type stubPromptTemplateHandler struct{}

@@ -21,10 +21,15 @@ import {
   getTenantListingStores,
   updateTenantListingStore,
 } from "@/lib/api/tenant-stores";
+import { useSheinLoginAccounts } from "@/lib/query/use-shein-login";
 import type { ListingStore, ListingStoreInput } from "@/lib/api/admin-stores";
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import {
+  buildSheinLoginStatusMap,
+  StoreLoginStatusBadge,
+} from "@/components/listingkit/stores/store-login-status";
 
 const STORE_TYPE_OPTIONS = [
   { value: "0", label: "半托" },
@@ -73,10 +78,15 @@ export function TenantStoreDirectoryPanel() {
     queryKey: ["listingkit-tenant-stores", query],
     queryFn: () => getTenantListingStores(query),
   });
+  const sheinLoginQuery = useSheinLoginAccounts();
 
   const stores: ListingStore[] = storeQuery.data?.items ?? [];
   const total = storeQuery.data?.total ?? 0;
   const loading = storeQuery.isLoading || storeQuery.isFetching;
+  const loginStatusMap = useMemo(
+    () => buildSheinLoginStatusMap(sheinLoginQuery.data),
+    [sheinLoginQuery.data],
+  );
   const visibleError =
     error || (storeQuery.error instanceof Error ? storeQuery.error.message : "");
 
@@ -195,6 +205,7 @@ export function TenantStoreDirectoryPanel() {
                 <TableHead className="px-4 py-3">账号</TableHead>
                 <TableHead className="px-4 py-3">平台</TableHead>
                 <TableHead className="px-4 py-3">地区</TableHead>
+                <TableHead className="px-4 py-3">登录状态</TableHead>
                 <TableHead className="px-4 py-3">自动上架</TableHead>
                 <TableHead className="px-4 py-3 text-right">操作</TableHead>
               </TableRow>
@@ -202,13 +213,13 @@ export function TenantStoreDirectoryPanel() {
             <TableBody className="divide-y divide-zinc-100">
               {loading ? (
                 <TableRow>
-                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
                     加载中...
                   </TableCell>
                 </TableRow>
               ) : stores.length === 0 ? (
                 <TableRow>
-                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
                     暂无店铺
                   </TableCell>
                 </TableRow>
@@ -224,6 +235,13 @@ export function TenantStoreDirectoryPanel() {
                     <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{store.region || "-"}</TableCell>
+                    <TableCell className="px-4 py-3">
+                      <StoreLoginStatusBadge
+                        store={store}
+                        status={loginStatusMap.get(store.id)}
+                        failed={sheinLoginQuery.isError}
+                      />
+                    </TableCell>
                     <TableCell className="px-4 py-3">
                       <Badge variant={store.enableAutoListing ? "success" : "neutral"}>
                         {store.enableAutoListing ? "启用" : "关闭"}

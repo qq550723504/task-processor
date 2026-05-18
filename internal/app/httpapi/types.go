@@ -281,6 +281,7 @@ type sheinLoginRouteHandler interface {
 	ListAccounts(c *gin.Context)
 	Login(c *gin.Context)
 	Status(c *gin.Context)
+	ListWarehouses(c *gin.Context)
 	SubmitVerifyCode(c *gin.Context)
 	CancelVerifyCodeWait(c *gin.Context)
 	ClearCookie(c *gin.Context)

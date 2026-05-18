@@ -119,9 +119,11 @@ func sheinSubmitDefaultSites(settings SheinSettings) []sheinproduct.SiteInfo {
 }
 
 func sheinSubmitPreferredWarehouseCode(settings SheinSettings) string {
-	value := strings.TrimSpace(settings.WarehouseCode)
-	if value != "" {
-		return value
+	for _, item := range strings.Split(settings.WarehouseCode, ",") {
+		value := strings.TrimSpace(item)
+		if value != "" {
+			return value
+		}
 	}
 	return "DEFAULT"
 }

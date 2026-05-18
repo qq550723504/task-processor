@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoreAdminPage } from "@/components/listingkit/admin/store-admin-page";
 import * as adminStoresApi from "@/lib/api/admin-stores";
+import * as sheinLoginApi from "@/lib/api/shein-login";
 
 describe("StoreAdminPage", () => {
   beforeEach(() => {
@@ -45,6 +46,19 @@ describe("StoreAdminPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([
+      {
+        account: {
+          store_id: 1,
+          tenant_id: 101,
+          store_name: "SHEIN US",
+        },
+        has_cookie: true,
+        cookie_ttl: 1800,
+        waiting_for_verify_code: false,
+        login_in_progress: false,
+      },
+    ]);
     render(
       <QueryClientProvider client={queryClient}>
         <StoreAdminPage />
@@ -64,6 +78,7 @@ describe("StoreAdminPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Deleted SHEIN")).toBeInTheDocument();
     });
+    expect(screen.getByText("已登录")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "恢复 Deleted SHEIN" }),
     ).toBeInTheDocument();
@@ -98,6 +113,19 @@ describe("StoreAdminPage", () => {
       page_size: 20,
     });
     vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([
+      {
+        account: {
+          store_id: 1,
+          tenant_id: 101,
+          store_name: "SHEIN US",
+        },
+        has_cookie: false,
+        cookie_ttl: 0,
+        waiting_for_verify_code: false,
+        login_in_progress: false,
+      },
+    ]);
     const updateStore = vi
       .spyOn(adminStoresApi, "updateListingStore")
       .mockResolvedValue({ ...store, name: "SHEIN US Edited" });
@@ -129,5 +157,40 @@ describe("StoreAdminPage", () => {
         expect.objectContaining({ name: "SHEIN US Edited" }),
       );
     });
+  });
+
+  it("shows non-shein stores without login status", async () => {
+    vi.spyOn(adminStoresApi, "getListingStores").mockResolvedValue({
+      items: [
+        {
+          id: 8,
+          tenantId: 101,
+          name: "TEMU US",
+          username: "temu-us",
+          platform: "TEMU",
+          shopType: "2",
+          region: "US",
+          status: 0,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreAdminPage />
+      </QueryClientProvider>,
+    );
+
+    const temuRow = (await screen.findByText("TEMU US")).closest("tr");
+    expect(temuRow).not.toBeNull();
+    expect(within(temuRow as HTMLElement).getAllByText("-").length).toBeGreaterThan(0);
   });
 });

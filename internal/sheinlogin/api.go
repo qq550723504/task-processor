@@ -73,6 +73,23 @@ func (h *Handler) Status(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": status})
 }
 
+func (h *Handler) ListWarehouses(c *gin.Context) {
+	tenantID, ok := requireTenantID(c)
+	if !ok {
+		return
+	}
+	storeID, ok := parseStoreID(c)
+	if !ok {
+		return
+	}
+	items, err := h.svc.ListWarehouses(c.Request.Context(), tenantID, storeID)
+	if err != nil {
+		c.JSON(statusCodeForTenantScopedError(err), gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+}
+
 func (h *Handler) SubmitVerifyCode(c *gin.Context) {
 	tenantID, ok := requireTenantID(c)
 	if !ok {

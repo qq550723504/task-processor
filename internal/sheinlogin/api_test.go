@@ -75,3 +75,19 @@ func TestHandlerStatusRejectsCrossTenantStore(t *testing.T) {
 		t.Fatalf("cross-tenant status = %d, want %d", resp.Code, http.StatusNotFound)
 	}
 }
+
+func TestHandlerListWarehousesRejectsWhenCookieUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHandler(newTestService(t, &stubAutomation{}))
+	router := gin.New()
+	router.GET("/api/v1/shein-login/accounts/:store_id/warehouses", handler.ListWarehouses)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/shein-login/accounts/2/warehouses", nil)
+	req.Header.Set("tenant-id", "1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusInternalServerError, resp.Body.String())
+	}
+}
