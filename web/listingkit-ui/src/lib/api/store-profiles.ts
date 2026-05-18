@@ -55,6 +55,12 @@ const storeProfileSchema = z
   })
   .passthrough();
 
+const storeProfileListSchema = z
+  .object({
+    items: z.array(storeProfileSchema),
+  })
+  .passthrough();
+
 const routingSchema = z
   .object({
     tenant_id: z.number().optional(),
@@ -71,9 +77,9 @@ export function parseStoreProfilesResponse(
 ): ListingKitStoreProfile[] {
   return parseApiResponseShape(
     payload,
-    z.array(storeProfileSchema),
+    storeProfileListSchema,
     "ListingKit API returned an unexpected store profile response",
-  );
+  ).items;
 }
 
 export function parseStoreRoutingResponse(

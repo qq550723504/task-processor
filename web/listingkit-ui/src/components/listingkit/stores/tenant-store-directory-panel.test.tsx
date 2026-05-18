@@ -85,6 +85,7 @@ describe("TenantStoreDirectoryPanel", () => {
           password: "secret",
           region: "CA",
           platform: "SHEIN",
+          shopType: "0",
         }),
       );
     });

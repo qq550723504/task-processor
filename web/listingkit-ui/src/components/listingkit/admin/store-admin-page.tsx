@@ -32,12 +32,18 @@ import {
   type ListingStoreInput,
 } from "@/lib/api/admin-stores";
 
+const STORE_TYPE_OPTIONS = [
+  { value: "0", label: "半托" },
+  { value: "2", label: "自营" },
+  { value: "1", label: "全托" },
+] as const;
+
 const DEFAULT_FORM: ListingStoreInput = {
   name: "",
   username: "",
   password: "",
   platform: "SHEIN",
-  shopType: "semi",
+  shopType: "0",
   region: "US",
   dailyLimit: 200,
   dailyLimitType: "SPU",
@@ -122,7 +128,7 @@ export function StoreAdminPage() {
       username: store.username,
       password: store.password ?? "",
       loginUrl: store.loginUrl,
-      shopType: store.shopType,
+      shopType: normalizeStoreType(store.shopType),
       region: store.region,
       platform: store.platform,
       dailyLimit: store.dailyLimit,
@@ -365,7 +371,12 @@ export function StoreAdminPage() {
             <StoreSelect label="平台" value={form.platform} onChange={(platformValue) => setForm({ ...form, platform: platformValue })} options={["SHEIN", "TEMU"]} />
             <StoreInput label="地区" value={form.region ?? ""} onChange={(region) => setForm({ ...form, region })} />
           </div>
-          <StoreInput label="店铺类型" value={form.shopType} onChange={(shopType) => setForm({ ...form, shopType })} />
+          <StoreSelect
+            label="店铺类型"
+            value={normalizeStoreType(form.shopType)}
+            onChange={(shopType) => setForm({ ...form, shopType })}
+            options={STORE_TYPE_OPTIONS}
+          />
           <StoreInput label="每日上架限制" type="number" value={String(form.dailyLimit ?? "")} onChange={(dailyLimit) => setForm({ ...form, dailyLimit: Number(dailyLimit) || undefined })} />
           <Label className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
             <Input
@@ -510,7 +521,7 @@ function StoreSelect({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: readonly string[] | readonly { value: string; label: string }[];
 }) {
   return (
     <Label className="mb-3 block text-xs font-medium text-zinc-500">
@@ -520,12 +531,34 @@ function StoreSelect({
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
       >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        {options.map((option) => {
+          const item = typeof option === "string" ? { value: option, label: option } : option;
+          return (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          );
+        })}
       </Select>
     </Label>
   );
+}
+
+function normalizeStoreType(value?: string) {
+  switch ((value ?? "").trim()) {
+    case "semi":
+    case "semi_managed":
+    case "0":
+      return "0";
+    case "full":
+    case "full_managed":
+    case "1":
+      return "1";
+    case "self":
+    case "self_operated":
+    case "2":
+      return "2";
+    default:
+      return value?.trim() || "0";
+  }
 }

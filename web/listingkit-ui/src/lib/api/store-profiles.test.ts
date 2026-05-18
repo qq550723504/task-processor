@@ -13,7 +13,7 @@ describe("store profile api", () => {
 
   it("reads store profiles", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      new Response(JSON.stringify([{ id: 1, store_id: 869 }]), {
+      new Response(JSON.stringify({ items: [{ id: 1, store_id: 869 }] }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
