@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/auth", () => ({
+  auth: vi.fn(async () => null),
+}));
+
 import {
   buildSheinLoginUpstreamHeaders,
   GET,

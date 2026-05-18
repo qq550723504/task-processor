@@ -17,7 +17,7 @@ func NewCategoryHandler(repo CategoryRepository) *CategoryHandler {
 func (h *CategoryHandler) ListCategories(c *gin.Context) {
 	query := CategoryQuery{
 		TenantID:    requestTenantID(c),
-		OwnerUserID: requestUserID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
 		Name:        strings.TrimSpace(c.Query("name")),
 		Code:        strings.TrimSpace(c.Query("code")),
 	}
@@ -25,7 +25,7 @@ func (h *CategoryHandler) ListCategories(c *gin.Context) {
 	query.Level = queryIntPtr(c, "level")
 	query.Status = queryInt16Ptr(c, "status")
 
-	items, err := h.repo.ListCategories(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
+	items, err := h.repo.ListCategories(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "category_list_failed", "message": err.Error()})
 		return
@@ -38,7 +38,7 @@ func (h *CategoryHandler) GetCategory(c *gin.Context) {
 	if !ok {
 		return
 	}
-	category, err := h.repo.GetCategory(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	category, err := h.repo.GetCategory(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writeCategoryError(c, err, "category_get_failed")
 		return
@@ -57,7 +57,7 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_category", "message": err.Error()})
 		return
 	}
-	category, err := h.repo.CreateCategory(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	category, err := h.repo.CreateCategory(requestIdentityContext(c), &req)
 	if err != nil {
 		writeCategoryError(c, err, "category_create_failed")
 		return
@@ -81,7 +81,7 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_category", "message": err.Error()})
 		return
 	}
-	category, err := h.repo.UpdateCategory(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	category, err := h.repo.UpdateCategory(requestIdentityContext(c), &req)
 	if err != nil {
 		writeCategoryError(c, err, "category_update_failed")
 		return
@@ -101,7 +101,7 @@ func (h *CategoryHandler) UpdateCategoryStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	category, err := h.repo.UpdateCategoryStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status)
+	category, err := h.repo.UpdateCategoryStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status)
 	if err != nil {
 		writeCategoryError(c, err, "category_status_update_failed")
 		return
@@ -114,7 +114,7 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteCategory(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteCategory(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeCategoryError(c, err, "category_delete_failed")
 		return
 	}

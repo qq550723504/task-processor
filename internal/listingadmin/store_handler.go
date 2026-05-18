@@ -22,7 +22,7 @@ func NewStoreHandler(repo StoreRepository) *StoreHandler {
 func (h *StoreHandler) ListStores(c *gin.Context) {
 	query := StoreQuery{
 		TenantID:    requestTenantID(c),
-		OwnerUserID: requestUserID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
 		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
 		StoreID:     strings.TrimSpace(c.Query("storeId")),
@@ -42,7 +42,7 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 	query.Status = queryInt16Ptr(c, "status")
 	query.Expired = queryBoolPtr(c, "expired")
 
-	page, err := h.repo.ListStores(withRequestUserID(c.Request.Context(), query.OwnerUserID), query)
+	page, err := h.repo.ListStores(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_list_failed", "message": err.Error()})
 		return
@@ -55,7 +55,7 @@ func (h *StoreHandler) GetStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	store, err := h.repo.GetStore(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	store, err := h.repo.GetStore(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writeStoreError(c, err, "store_get_failed")
 		return
@@ -77,7 +77,7 @@ func (h *StoreHandler) CreateStore(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_store", "message": err.Error()})
 		return
 	}
-	store, err := h.repo.CreateStore(withRequestUserID(c.Request.Context(), req.OwnerUserID), &req)
+	store, err := h.repo.CreateStore(requestIdentityContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_create_failed", "message": err.Error()})
 		return
@@ -103,7 +103,7 @@ func (h *StoreHandler) UpdateStore(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_store", "message": err.Error()})
 		return
 	}
-	store, err := h.repo.UpdateStore(withRequestUserID(c.Request.Context(), req.OwnerUserID), &req)
+	store, err := h.repo.UpdateStore(requestIdentityContext(c), &req)
 	if err != nil {
 		writeStoreError(c, err, "store_update_failed")
 		return
@@ -124,7 +124,7 @@ func (h *StoreHandler) UpdateStoreStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	store, err := h.repo.UpdateStoreStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status, req.Remark)
+	store, err := h.repo.UpdateStoreStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writeStoreError(c, err, "store_status_update_failed")
 		return
@@ -137,7 +137,7 @@ func (h *StoreHandler) DeleteStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteStore(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteStore(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeStoreError(c, err, "store_delete_failed")
 		return
 	}
@@ -145,7 +145,7 @@ func (h *StoreHandler) DeleteStore(c *gin.Context) {
 }
 
 func (h *StoreHandler) ListDeletedStores(c *gin.Context) {
-	items, err := h.repo.ListDeletedStores(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c))
+	items, err := h.repo.ListDeletedStores(requestIdentityContext(c), requestTenantID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_deleted_list_failed", "message": err.Error()})
 		return
@@ -158,7 +158,7 @@ func (h *StoreHandler) RestoreStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	store, err := h.repo.RestoreStore(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	store, err := h.repo.RestoreStore(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writeStoreError(c, err, "store_restore_failed")
 		return
@@ -171,7 +171,7 @@ func (h *StoreHandler) PermanentlyDeleteStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.PermanentlyDeleteStore(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.PermanentlyDeleteStore(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeStoreError(c, err, "store_permanent_delete_failed")
 		return
 	}
@@ -184,7 +184,7 @@ func (h *StoreHandler) ExtendStoreValidity(c *gin.Context) {
 		return
 	}
 	days := queryInt(c, "days", 30)
-	store, err := h.repo.ExtendStoreValidity(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, days)
+	store, err := h.repo.ExtendStoreValidity(requestIdentityContext(c), requestTenantID(c), id, days)
 	if err != nil {
 		writeStoreError(c, err, "store_validity_extend_failed")
 		return
@@ -193,9 +193,9 @@ func (h *StoreHandler) ExtendStoreValidity(c *gin.Context) {
 }
 
 func (h *StoreHandler) ListSimpleStores(c *gin.Context) {
-	page, err := h.repo.ListStores(withRequestUserID(c.Request.Context(), requestUserID(c)), StoreQuery{
+	page, err := h.repo.ListStores(requestIdentityContext(c), StoreQuery{
 		TenantID:    requestTenantID(c),
-		OwnerUserID: requestUserID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
 		Page:        1,
 		PageSize:    200,
 	})

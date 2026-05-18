@@ -17,7 +17,7 @@ func NewPricingRuleHandler(repo PricingRuleRepository) *PricingRuleHandler {
 func (h *PricingRuleHandler) ListPricingRules(c *gin.Context) {
 	query := PricingRuleQuery{
 		TenantID:    requestTenantID(c),
-		OwnerUserID: requestUserID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
 		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
 		Name:        strings.TrimSpace(c.Query("name")),
@@ -28,7 +28,7 @@ func (h *PricingRuleHandler) ListPricingRules(c *gin.Context) {
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListPricingRules(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
+	page, err := h.repo.ListPricingRules(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "pricing_rule_list_failed", "message": err.Error()})
 		return
@@ -41,7 +41,7 @@ func (h *PricingRuleHandler) GetPricingRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rule, err := h.repo.GetPricingRule(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	rule, err := h.repo.GetPricingRule(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writePricingRuleError(c, err, "pricing_rule_get_failed")
 		return
@@ -60,7 +60,7 @@ func (h *PricingRuleHandler) CreatePricingRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_pricing_rule", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.CreatePricingRule(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	rule, err := h.repo.CreatePricingRule(requestIdentityContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "pricing_rule_create_failed", "message": err.Error()})
 		return
@@ -84,7 +84,7 @@ func (h *PricingRuleHandler) UpdatePricingRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_pricing_rule", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.UpdatePricingRule(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	rule, err := h.repo.UpdatePricingRule(requestIdentityContext(c), &req)
 	if err != nil {
 		writePricingRuleError(c, err, "pricing_rule_update_failed")
 		return
@@ -105,7 +105,7 @@ func (h *PricingRuleHandler) UpdatePricingRuleStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.UpdatePricingRuleStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status, req.Remark)
+	rule, err := h.repo.UpdatePricingRuleStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writePricingRuleError(c, err, "pricing_rule_status_update_failed")
 		return
@@ -118,7 +118,7 @@ func (h *PricingRuleHandler) DeletePricingRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeletePricingRule(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeletePricingRule(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writePricingRuleError(c, err, "pricing_rule_delete_failed")
 		return
 	}

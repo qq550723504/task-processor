@@ -146,6 +146,56 @@ func TestStoreHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
 	}
 }
 
+func TestStoreHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	router := newStoreTestRouter(t)
+	seedStore(t, router.db, listingStore{
+		TenantID:    101,
+		OwnerUserID: "user-a",
+		CreatedBy:   "user-a",
+		UpdatedBy:   "user-a",
+		Name:        "Owned by A",
+		Username:    "owner-a",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
+	})
+	seedStore(t, router.db, listingStore{
+		TenantID:    101,
+		OwnerUserID: "user-b",
+		CreatedBy:   "user-b",
+		UpdatedBy:   "user-b",
+		Name:        "Owned by B",
+		Username:    "owner-b",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "platform-admin")
+	req.Header.Set("X-User-Roles", "platform_admin")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var page storePageResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if page.Total != 2 || len(page.Items) != 2 {
+		t.Fatalf("platform-admin items = %+v, want both stores", page.Items)
+	}
+}
+
 func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	store := seedStore(t, router.db, listingStore{

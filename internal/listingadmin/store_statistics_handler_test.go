@@ -143,6 +143,61 @@ func TestStoreStatisticsHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
 	}
 }
 
+func TestStoreStatisticsHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	router := newStoreStatisticsTestRouter(t)
+	trueValue := true
+	seedStore(t, router.db, listingStore{
+		ID:                1,
+		TenantID:          101,
+		OwnerUserID:       "user-a",
+		CreatedBy:         "user-a",
+		UpdatedBy:         "user-a",
+		Name:              "Owned by A",
+		Username:          "a",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStore(t, router.db, listingStore{
+		ID:                2,
+		TenantID:          101,
+		OwnerUserID:       "user-b",
+		CreatedBy:         "user-b",
+		UpdatedBy:         "user-b",
+		Name:              "Owned by B",
+		Username:          "b",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "platform-admin")
+	req.Header.Set("X-User-Roles", "platform_admin")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var items []StoreStatistics
+	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("statistics items = %+v, want both stores", items)
+	}
+}
+
 type storeStatisticsTestRouter struct {
 	engine *gin.Engine
 	db     *gorm.DB

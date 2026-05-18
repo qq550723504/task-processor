@@ -28,13 +28,35 @@ export function shouldBypassListingKitProxyAuth() {
   );
 }
 
+function buildLocalBypassIdentity(): VerifiedIdentity {
+  const tenantId =
+    process.env.LISTINGKIT_UI_LOCAL_TENANT_ID?.trim() || "1";
+  const userId = process.env.LISTINGKIT_UI_LOCAL_USER_ID?.trim() || undefined;
+  const userType =
+    process.env.LISTINGKIT_UI_LOCAL_USER_TYPE?.trim() || "local";
+  const roles = (
+    process.env.LISTINGKIT_UI_LOCAL_ROLES?.trim() ||
+    "platform_admin,listingkit_admin"
+  )
+    .split(",")
+    .map((role) => role.trim())
+    .filter(Boolean);
+
+  return {
+    tenantId,
+    userId,
+    userType,
+    roles,
+  };
+}
+
 export async function verifyListingKitRequestIdentity(
   request: NextRequest,
 ): Promise<VerifiedIdentityResult> {
   const zitadelOptions = getZitadelAuthOptions();
   if (!zitadelOptions) {
     if (shouldBypassListingKitProxyAuth()) {
-      return { identity: {}, token: "" };
+      return { identity: buildLocalBypassIdentity(), token: "" };
     }
     return {
       response: NextResponse.json(

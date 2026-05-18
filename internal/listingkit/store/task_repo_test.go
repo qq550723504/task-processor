@@ -333,6 +333,53 @@ func TestTaskRepositoryOwnerScopeFiltersTasksByUser(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryPlatformAdminBypassesOwnerScope(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	baseCtx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	platformAdminCtx := listingkit.WithRequestRoles(
+		openaiclient.WithIdentity(baseCtx, openaiclient.Identity{TenantID: "tenant-a", UserID: "platform-admin"}),
+		[]string{"platform_admin"},
+	)
+
+	taskA := makeTaskRepoFixture("task-user-a", time.Now().UTC(), []string{"shein"}, "published", "")
+	taskA.UserID = "user-a"
+	taskA.Request.UserID = "user-a"
+	taskB := makeTaskRepoFixture("task-user-b", time.Now().UTC().Add(-time.Minute), []string{"shein"}, "published", "")
+	taskB.UserID = "user-b"
+	taskB.Request.UserID = "user-b"
+	for _, task := range []*listingkit.Task{taskA, taskB} {
+		if err := repo.CreateTask(baseCtx, task); err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	items, total, err := repo.ListTasks(platformAdminCtx, &listingkit.TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("platform admin items = %+v total=%d, want both tasks", items, total)
+	}
+
+	got, err := repo.GetTask(platformAdminCtx, "task-user-b")
+	if err != nil {
+		t.Fatalf("GetTask err = %v, want nil", err)
+	}
+	if got.ID != "task-user-b" {
+		t.Fatalf("GetTask id = %q, want task-user-b", got.ID)
+	}
+}
+
 func makeTaskRepoFixture(id string, createdAt time.Time, platforms []string, sheinWorkflow string, blockerKey string) *listingkit.Task {
 	task := &listingkit.Task{
 		ID:        id,

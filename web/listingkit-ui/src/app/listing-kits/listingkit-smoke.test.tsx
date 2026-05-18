@@ -1,6 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("@/auth", () => ({
+  auth: vi.fn(async () => null),
+}));
+
 import { shouldBypassListingKitProxyAuth } from "@/app/api/listing-kits/proxy-auth";
 import { selectListingKitMockPayload } from "@/app/api/listing-kits/proxy-mock";
 import ListingKitSheinStudioPage from "@/app/listing-kits/shein/page";

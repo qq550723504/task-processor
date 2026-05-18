@@ -23,7 +23,9 @@ export function useZitadelIdentity() {
 }
 
 export function ZitadelAuthGate({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+  const pathname =
+    usePathname() ??
+    (typeof window !== "undefined" ? window.location.pathname : "");
   const bypassRoute =
     pathname.startsWith("/unauthorized") || pathname.startsWith("/login");
   const [identity, setIdentity] = useState<ZitadelClientIdentity | null>(null);
@@ -38,7 +40,7 @@ export function ZitadelAuthGate({ children }: { children: ReactNode }) {
     }
 
     async function verifySession() {
-      const response = await fetch("/api/zitadel-auth/session", {
+      const response = await window.fetch("/api/zitadel-auth/session", {
         method: "GET",
         headers: { Accept: "application/json" },
         cache: "no-store",

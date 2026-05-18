@@ -35,7 +35,7 @@ func NewImportTaskHandler(repo ImportTaskRepository) *ImportTaskHandler {
 func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
 	query := ImportTaskQuery{
 		TenantID:    requestTenantID(c),
-		OwnerUserID: requestUserID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
 		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
 		Platform:    strings.TrimSpace(c.Query("platform")),
@@ -46,7 +46,7 @@ func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListImportTasks(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
+	page, err := h.repo.ListImportTasks(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "import_task_list_failed", "message": err.Error()})
 		return
@@ -86,7 +86,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 			Priority:       req.Priority,
 		})
 	}
-	items, err := h.repo.BatchCreateImportTasks(withRequestUserID(c.Request.Context(), requestUserID(c)), tasks)
+	items, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "import_task_create_failed", "message": err.Error()})
 		return
@@ -99,7 +99,7 @@ func (h *ImportTaskHandler) DeleteImportTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteImportTask(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteImportTask(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeImportTaskError(c, err, "import_task_delete_failed")
 		return
 	}

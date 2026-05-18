@@ -19,7 +19,7 @@ func NewFilterRuleHandler(repo FilterRuleRepository) *FilterRuleHandler {
 func (h *FilterRuleHandler) ListFilterRules(c *gin.Context) {
 	query := FilterRuleQuery{
 		TenantID:        requestTenantID(c),
-		OwnerUserID:     requestUserID(c),
+		OwnerUserID:     requestScopedOwnerUserID(c),
 		Page:            queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:        queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
 		Name:            strings.TrimSpace(c.Query("name")),
@@ -31,7 +31,7 @@ func (h *FilterRuleHandler) ListFilterRules(c *gin.Context) {
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListFilterRules(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
+	page, err := h.repo.ListFilterRules(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "filter_rule_list_failed", "message": err.Error()})
 		return
@@ -44,7 +44,7 @@ func (h *FilterRuleHandler) GetFilterRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rule, err := h.repo.GetFilterRule(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	rule, err := h.repo.GetFilterRule(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writeFilterRuleError(c, err, "filter_rule_get_failed")
 		return
@@ -63,7 +63,7 @@ func (h *FilterRuleHandler) CreateFilterRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_filter_rule", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.CreateFilterRule(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	rule, err := h.repo.CreateFilterRule(requestIdentityContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "filter_rule_create_failed", "message": err.Error()})
 		return
@@ -87,7 +87,7 @@ func (h *FilterRuleHandler) UpdateFilterRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_filter_rule", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.UpdateFilterRule(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	rule, err := h.repo.UpdateFilterRule(requestIdentityContext(c), &req)
 	if err != nil {
 		writeFilterRuleError(c, err, "filter_rule_update_failed")
 		return
@@ -108,7 +108,7 @@ func (h *FilterRuleHandler) UpdateFilterRuleStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.UpdateFilterRuleStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status, req.Remark)
+	rule, err := h.repo.UpdateFilterRuleStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writeFilterRuleError(c, err, "filter_rule_status_update_failed")
 		return
@@ -121,7 +121,7 @@ func (h *FilterRuleHandler) DeleteFilterRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteFilterRule(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteFilterRule(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeFilterRuleError(c, err, "filter_rule_delete_failed")
 		return
 	}

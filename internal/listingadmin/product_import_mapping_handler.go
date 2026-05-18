@@ -19,7 +19,7 @@ func NewProductImportMappingHandler(repo ProductImportMappingRepository) *Produc
 func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) {
 	query := ProductImportMappingQuery{
 		TenantID:                requestTenantID(c),
-		OwnerUserID:             requestUserID(c),
+		OwnerUserID:             requestScopedOwnerUserID(c),
 		Page:                    queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:                queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
 		Platform:                strings.TrimSpace(c.Query("platform")),
@@ -34,7 +34,7 @@ func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) 
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListProductImportMappings(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
+	page, err := h.repo.ListProductImportMappings(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "product_import_mapping_list_failed", "message": err.Error()})
 		return
@@ -47,7 +47,7 @@ func (h *ProductImportMappingHandler) GetProductImportMapping(c *gin.Context) {
 	if !ok {
 		return
 	}
-	mapping, err := h.repo.GetProductImportMapping(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	mapping, err := h.repo.GetProductImportMapping(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writeProductImportMappingError(c, err, "product_import_mapping_get_failed")
 		return
@@ -66,7 +66,7 @@ func (h *ProductImportMappingHandler) CreateProductImportMapping(c *gin.Context)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_product_import_mapping", "message": err.Error()})
 		return
 	}
-	mapping, err := h.repo.CreateProductImportMapping(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	mapping, err := h.repo.CreateProductImportMapping(requestIdentityContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "product_import_mapping_create_failed", "message": err.Error()})
 		return
@@ -90,7 +90,7 @@ func (h *ProductImportMappingHandler) UpdateProductImportMapping(c *gin.Context)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_product_import_mapping", "message": err.Error()})
 		return
 	}
-	mapping, err := h.repo.UpdateProductImportMapping(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	mapping, err := h.repo.UpdateProductImportMapping(requestIdentityContext(c), &req)
 	if err != nil {
 		writeProductImportMappingError(c, err, "product_import_mapping_update_failed")
 		return
@@ -111,7 +111,7 @@ func (h *ProductImportMappingHandler) UpdateProductImportMappingStatus(c *gin.Co
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	mapping, err := h.repo.UpdateProductImportMappingStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status, req.Remark)
+	mapping, err := h.repo.UpdateProductImportMappingStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writeProductImportMappingError(c, err, "product_import_mapping_status_update_failed")
 		return
@@ -124,7 +124,7 @@ func (h *ProductImportMappingHandler) DeleteProductImportMapping(c *gin.Context)
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteProductImportMapping(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteProductImportMapping(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeProductImportMappingError(c, err, "product_import_mapping_delete_failed")
 		return
 	}

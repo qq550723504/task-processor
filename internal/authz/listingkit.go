@@ -2,6 +2,7 @@ package authz
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -33,6 +34,11 @@ m = (r.sub == p.sub || g(r.sub, p.sub)) && r.obj == p.obj
 type ListingKitAuthorizer struct {
 	enforcer *casbin.Enforcer
 }
+
+var (
+	defaultListingKitAuthorizerOnce sync.Once
+	defaultListingKitAuthorizer     *ListingKitAuthorizer
+)
 
 func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []string) (*ListingKitAuthorizer, error) {
 	m, err := model.NewModelFromString(listingKitModel)
@@ -98,6 +104,17 @@ func (a *ListingKitAuthorizer) Authorize(userID string, roles []string, permissi
 		}
 	}
 	return false
+}
+
+func DefaultListingKitAuthorizer() *ListingKitAuthorizer {
+	defaultListingKitAuthorizerOnce.Do(func() {
+		defaultListingKitAuthorizer, _ = NewListingKitAuthorizer(nil, nil)
+	})
+	return defaultListingKitAuthorizer
+}
+
+func IsListingKitPlatformAdmin(userID string, roles []string) bool {
+	return DefaultListingKitAuthorizer().Authorize(userID, roles, PermissionListingKitPlatformAdm)
 }
 
 func userSubject(userID string) string {

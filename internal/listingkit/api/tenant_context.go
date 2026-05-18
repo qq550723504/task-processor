@@ -13,13 +13,15 @@ import (
 func requestContext(c *gin.Context, candidates ...string) context.Context {
 	tenantID := requestTenantID(c, candidates...)
 	ctx := listingkit.WithTenantID(c.Request.Context(), tenantID)
-	return openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
+	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
+	return listingkit.WithRequestRoles(ctx, requestRoles(c))
 }
 
 func detachedRequestContext(c *gin.Context, candidates ...string) context.Context {
 	tenantID := requestTenantID(c, candidates...)
 	ctx := listingkit.WithTenantID(context.Background(), tenantID)
-	return openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
+	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
+	return listingkit.WithRequestRoles(ctx, requestRoles(c))
 }
 
 func requestTenantID(c *gin.Context, candidates ...string) string {
@@ -49,4 +51,26 @@ func requestUserID(c *gin.Context) string {
 		return value
 	}
 	return ""
+}
+
+func requestRoles(c *gin.Context) []string {
+	if c == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	roles := make([]string, 0, 4)
+	for _, header := range []string{"X-User-Roles", "X-Zitadel-Roles"} {
+		for _, part := range strings.Split(c.GetHeader(header), ",") {
+			role := strings.TrimSpace(part)
+			if role == "" {
+				continue
+			}
+			if _, ok := seen[role]; ok {
+				continue
+			}
+			seen[role] = struct{}{}
+			roles = append(roles, role)
+		}
+	}
+	return roles
 }

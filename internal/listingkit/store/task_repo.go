@@ -419,6 +419,9 @@ func applyTaskAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 	if !listingkit.OwnerScopeEnabled() {
 		return db
 	}
+	if listingkit.RequestHasPlatformAdminAccess(ctx) {
+		return db
+	}
 	userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))
 	if userID == "" {
 		return db
@@ -453,6 +456,9 @@ func filterTasksForUser(ctx context.Context, tasks []listingkit.Task) []listingk
 
 func taskVisibleToUser(ctx context.Context, task *listingkit.Task) bool {
 	if !listingkit.OwnerScopeEnabled() {
+		return true
+	}
+	if listingkit.RequestHasPlatformAdminAccess(ctx) {
 		return true
 	}
 	requestUserID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))

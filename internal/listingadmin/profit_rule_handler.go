@@ -19,7 +19,7 @@ func NewProfitRuleHandler(repo ProfitRuleRepository) *ProfitRuleHandler {
 func (h *ProfitRuleHandler) ListProfitRules(c *gin.Context) {
 	query := ProfitRuleQuery{
 		TenantID:    requestTenantID(c),
-		OwnerUserID: requestUserID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
 		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
 		Name:        strings.TrimSpace(c.Query("name")),
@@ -29,7 +29,7 @@ func (h *ProfitRuleHandler) ListProfitRules(c *gin.Context) {
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListProfitRules(withRequestUserID(c.Request.Context(), requestUserID(c)), query)
+	page, err := h.repo.ListProfitRules(requestIdentityContext(c), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "profit_rule_list_failed", "message": err.Error()})
 		return
@@ -42,7 +42,7 @@ func (h *ProfitRuleHandler) GetProfitRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rule, err := h.repo.GetProfitRule(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id)
+	rule, err := h.repo.GetProfitRule(requestIdentityContext(c), requestTenantID(c), id)
 	if err != nil {
 		writeProfitRuleError(c, err, "profit_rule_get_failed")
 		return
@@ -61,7 +61,7 @@ func (h *ProfitRuleHandler) CreateProfitRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_profit_rule", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.CreateProfitRule(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	rule, err := h.repo.CreateProfitRule(requestIdentityContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "profit_rule_create_failed", "message": err.Error()})
 		return
@@ -85,7 +85,7 @@ func (h *ProfitRuleHandler) UpdateProfitRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_profit_rule", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.UpdateProfitRule(withRequestUserID(c.Request.Context(), requestUserID(c)), &req)
+	rule, err := h.repo.UpdateProfitRule(requestIdentityContext(c), &req)
 	if err != nil {
 		writeProfitRuleError(c, err, "profit_rule_update_failed")
 		return
@@ -106,7 +106,7 @@ func (h *ProfitRuleHandler) UpdateProfitRuleStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	rule, err := h.repo.UpdateProfitRuleStatus(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id, req.Status, req.Remark)
+	rule, err := h.repo.UpdateProfitRuleStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writeProfitRuleError(c, err, "profit_rule_status_update_failed")
 		return
@@ -119,7 +119,7 @@ func (h *ProfitRuleHandler) DeleteProfitRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteProfitRule(withRequestUserID(c.Request.Context(), requestUserID(c)), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteProfitRule(requestIdentityContext(c), requestTenantID(c), id); err != nil {
 		writeProfitRuleError(c, err, "profit_rule_delete_failed")
 		return
 	}
