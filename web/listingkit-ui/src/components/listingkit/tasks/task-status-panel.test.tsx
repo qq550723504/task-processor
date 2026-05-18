@@ -134,6 +134,15 @@ describe("TaskStatusPanel", () => {
           created_at: "2026-05-04T10:00:00Z",
           result: {
             updated_at: "2026-05-04T10:30:00Z",
+            shein_store_resolution: {
+              store_id: 903,
+              site: "GB",
+              strategy: "country",
+              reason: "根据任务国家信息命中了对应店铺。",
+              matched_rule_kinds: ["country"],
+              matched_profile_id: 17,
+              resolved_at: "2026-05-18T08:15:00Z",
+            },
           },
         }}
       />,
@@ -143,5 +152,11 @@ describe("TaskStatusPanel", () => {
     expect(screen.getByText("task-123")).toBeInTheDocument();
     expect(screen.getByText("最近更新")).toBeInTheDocument();
     expect(screen.getByText("已创建")).toBeInTheDocument();
+    expect(screen.getByText("店铺解析")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
+    expect(screen.getByText("根据任务国家信息命中了对应店铺。")).toBeInTheDocument();
+    expect(screen.getByText("命中规则：国家规则")).toBeInTheDocument();
+    expect(screen.getByText("Profile #17")).toBeInTheDocument();
+    expect(screen.getByText(/固化时间：/)).toBeInTheDocument();
   });
 });

@@ -20,7 +20,7 @@ import type {
   SheinStudioVariantProductImageSet,
 } from "@/lib/types/shein-studio";
 
-export const DEFAULT_SHEIN_STORE_ID = "869";
+export const DEFAULT_SHEIN_STORE_ID = "";
 const DEFAULT_AI_PRODUCT_IMAGE_COUNT = 5;
 const MAX_AI_PRODUCT_IMAGE_COUNT = 9;
 
@@ -217,8 +217,7 @@ export async function createSheinReviewTasks(input: {
     throw new Error("Approve at least one style before creating SHEIN tasks.");
   }
 
-  const storeID =
-    parsePositiveInt(sheinStoreId) ?? parsePositiveInt(DEFAULT_SHEIN_STORE_ID);
+  const storeID = parsePositiveInt(sheinStoreId);
   const productImageTotal = Math.min(
     MAX_AI_PRODUCT_IMAGE_COUNT,
     parsePositiveInt(productImageCount ?? "") ?? DEFAULT_AI_PRODUCT_IMAGE_COUNT,

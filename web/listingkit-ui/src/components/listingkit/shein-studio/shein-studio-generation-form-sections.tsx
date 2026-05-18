@@ -11,7 +11,7 @@ import {
   SDSImagePicker,
   SectionHeading,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-sections";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
+import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import type {
   SheinStudioArtworkModel,
@@ -184,6 +184,8 @@ export function ProductImageGenerationSettings({
   sheinStoreId: string;
   showRenderSizeImagesWithSdsOption: boolean;
 }) {
+  const { enabledProfiles, profiles } = useSheinStoreSelector();
+
   return (
     <div className="space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
       <SectionHeading
@@ -201,15 +203,28 @@ export function ProductImageGenerationSettings({
         />
         <Label className="space-y-2">
           <span className="text-sm font-medium text-zinc-700">
-            SHEIN 店铺 ID
+            SHEIN 店铺
           </span>
-          <Input
+          <Select
+            aria-label="SHEIN 店铺"
             className="rounded-2xl px-4 py-3"
-            inputMode="numeric"
             onChange={(event) => setSheinStoreId(event.target.value)}
-            placeholder={DEFAULT_SHEIN_STORE_ID}
             value={sheinStoreId}
-          />
+          >
+            <option value="">
+              {enabledProfiles.length > 0 ? "按默认路由自动选择" : "当前没有已启用店铺配置"}
+            </option>
+            {enabledProfiles.map((item) => (
+              <option key={item.id ?? item.store_id} value={String(item.store_id)}>
+                {formatStoreProfileOption(item)}
+              </option>
+            ))}
+          </Select>
+          {profiles.isError ? (
+            <p className="text-xs leading-6 text-rose-600">
+              店铺配置读取失败，当前会依赖后端默认路由。
+            </p>
+          ) : null}
         </Label>
       </div>
 
@@ -280,4 +295,15 @@ export function ProductImageGenerationSettings({
       />
     </div>
   );
+}
+
+function formatStoreProfileOption(item: {
+  store_id: number;
+  store?: { name?: string; store_id?: string; region?: string };
+  site?: string;
+}) {
+  const primary =
+    item.store?.name?.trim() || item.store?.store_id?.trim() || `店铺 ${item.store_id}`;
+  const meta = [item.store?.region?.trim(), item.site?.trim()].filter(Boolean).join(" / ");
+  return meta ? `${primary} (${meta})` : primary;
 }

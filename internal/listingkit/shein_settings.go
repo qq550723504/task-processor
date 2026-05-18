@@ -92,3 +92,14 @@ func tenantIDInt64FromContext(ctx context.Context) (int64, bool) {
 	}
 	return value, true
 }
+
+func tenantIDInt64FromTask(task *Task) int64 {
+	if task == nil {
+		return 0
+	}
+	value, err := strconv.ParseInt(strings.TrimSpace(task.TenantID), 10, 64)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}

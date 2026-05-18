@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
+import { StoreProfileAdminPanel } from "@/components/listingkit/admin/store-profile-admin-panel";
 
 import {
   createListingStore,
@@ -474,6 +475,8 @@ export function StoreAdminPage() {
           </Table>
         </div>
       </section>
+
+      <StoreProfileAdminPanel />
     </div>
   );
 }

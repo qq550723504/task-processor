@@ -16,6 +16,7 @@ import {
   ImageSubmitSummary,
   ReviewSummaryGrid,
   SkuPricingTable,
+  StoreResolutionCard,
 } from "@/components/listingkit/shein/shein-final-review-sections";
 import {
   FinalReviewHeader,
@@ -175,6 +176,8 @@ export function SheinFinalReviewPanel({
         mainCount={imageCounts.main}
         swatchCount={imageCounts.swatch}
       />
+
+      <StoreResolutionCard resolution={shein?.store_resolution} />
 
       <FinalReviewOverviewCards finalReview={finalReview} />
 

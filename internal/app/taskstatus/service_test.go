@@ -2,20 +2,33 @@ package taskstatus
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 )
 
 type stubImportTaskClient struct {
-	lastReq *managementapi.ProductImportTaskUpdateReqDTO
-	err     error
+	lastReq   *managementapi.ProductImportTaskUpdateReqDTO
+	err       error
+	attempts  int32
+	failures  int32
+	handlerFn func(*managementapi.ProductImportTaskUpdateReqDTO) error
 }
 
 func (s *stubImportTaskClient) UpdateTaskStatus(req *managementapi.ProductImportTaskUpdateReqDTO) error {
 	copied := *req
 	s.lastReq = &copied
+	atomic.AddInt32(&s.attempts, 1)
+	if s.handlerFn != nil {
+		return s.handlerFn(req)
+	}
+	if s.failures > 0 {
+		s.failures--
+		return fmt.Errorf("temporary management failure")
+	}
 	if s.err != nil {
 		return s.err
 	}
@@ -142,5 +155,32 @@ func TestServiceTransitionSyncWithInputIgnoresConflictWhenConfigured(t *testing.
 	}
 	if client.lastReq == nil {
 		t.Fatal("TransitionSyncWithInput should still call UpdateTaskStatus")
+	}
+}
+
+func TestServiceUpdateSyncWithInputRetriesTemporaryFailureAndEventuallySucceeds(t *testing.T) {
+	client := &stubImportTaskClient{failures: 1}
+	service := NewService("test", func() ImportTaskStatusClient { return client })
+	service.maxRetries = 2
+
+	start := time.Now()
+	err := service.UpdateSyncWithInput(UpdateInput{
+		TaskID:       6,
+		Status:       model.TaskStatusPendingRetry,
+		ErrorMessage: "transient failure",
+	})
+	if err != nil {
+		t.Fatalf("UpdateSyncWithInput returned error: %v", err)
+	}
+
+	attempts := atomic.LoadInt32(&client.attempts)
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
+		t.Fatalf("retry path took too long: %s", elapsed)
+	}
+	if client.lastReq == nil {
+		t.Fatal("UpdateSyncWithInput should eventually send request")
 	}
 }

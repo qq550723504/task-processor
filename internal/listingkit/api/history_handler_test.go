@@ -110,6 +110,12 @@ func TestGetTaskRevisionHistoryReturnsPage(t *testing.T) {
 				Platform:   "shein",
 				ActionType: listingkit.RevisionActionTypeEdit,
 				UpdatedAt:  now,
+				StoreResolution: &listingkit.SheinStoreResolutionSummary{
+					StoreID:          903,
+					Site:             "GB",
+					Strategy:         "country",
+					MatchedProfileID: 17,
+				},
 				Timeline: &listingkit.ListingKitRevisionTimelineSummary{
 					Headline: "更新 SHEIN 资料",
 					Badge:    "编辑",
@@ -154,6 +160,9 @@ func TestGetTaskRevisionHistoryReturnsPage(t *testing.T) {
 	}
 	if body.Meta.Counts == nil || body.Meta.Counts.All != 5 {
 		t.Fatalf("history page meta = %+v", body.Meta)
+	}
+	if len(body.Items) == 0 || body.Items[0].StoreResolution == nil || body.Items[0].StoreResolution.StoreID != 903 {
+		t.Fatalf("history page store resolution = %+v", body.Items)
 	}
 	if len(body.Items) != 1 || body.Items[0].Timeline == nil {
 		t.Fatalf("history page items = %+v", body.Items)

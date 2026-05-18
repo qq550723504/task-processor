@@ -1,12 +1,14 @@
 package taskstatus
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"task-processor/internal/core/logger"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/resilience"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/recovery"
 
@@ -168,41 +170,28 @@ func (s *Service) updateSync(input UpdateInput) error {
 		req.ExpectedCurrentStatus = &expected
 	}
 
-	var lastErr error
-	for i := 0; i < s.maxRetries; i++ {
-		if err := client.UpdateTaskStatus(req); err != nil {
-			lastErr = err
-			if isNonRetriableUpdateErr(err) {
-				if input.IgnoreConflict {
-					s.log.WithError(err).WithFields(logrus.Fields{
-						logger.FieldTaskID: input.TaskID,
-						logger.FieldStatus: input.Status.String(),
-						"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
-					}).Debug("task status update conflict ignored")
-					return nil
-				}
-				s.log.WithError(err).WithFields(logrus.Fields{
-					logger.FieldTaskID: input.TaskID,
-					logger.FieldStatus: input.Status.String(),
-					"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
-				}).Warn("task status update rejected without retry")
-				break
-			}
-			if i < s.maxRetries-1 {
-				retryDelay := time.Second * time.Duration(i+1)
-				s.log.WithError(err).WithFields(logrus.Fields{
-					logger.FieldTaskID:     input.TaskID,
-					logger.FieldRetryCount: i + 1,
-					logger.FieldStatus:     input.Status.String(),
-					"expected_status":      formatExpectedStatus(input.ExpectedCurrentStatus),
-					"retry_delay":          retryDelay.String(),
-				}).Warn("retrying task status update")
-				time.Sleep(retryDelay)
-				continue
-			}
-			break
-		}
-
+	err := resilience.Retry(context.Background(), resilience.RetryConfig{
+		MaxAttempts:         s.maxRetries,
+		InitialDelay:        time.Second,
+		MaxDelay:            time.Duration(s.maxRetries-1) * time.Second,
+		Multiplier:          2,
+		RandomizationFactor: 0,
+		IsRetryable: func(err error) bool {
+			return !isNonRetriableUpdateErr(err)
+		},
+		OnRetry: func(_ context.Context, attempt resilience.RetryAttempt) {
+			s.log.WithError(attempt.Err).WithFields(logrus.Fields{
+				logger.FieldTaskID:     input.TaskID,
+				logger.FieldRetryCount: attempt.Attempt,
+				logger.FieldStatus:     input.Status.String(),
+				"expected_status":      formatExpectedStatus(input.ExpectedCurrentStatus),
+				"retry_delay":          attempt.NextDelay.String(),
+			}).Warn("retrying task status update")
+		},
+	}, func(context.Context) error {
+		return client.UpdateTaskStatus(req)
+	})
+	if err == nil {
 		s.log.WithFields(logrus.Fields{
 			logger.FieldTaskID: input.TaskID,
 			logger.FieldStatus: input.Status.String(),
@@ -211,7 +200,23 @@ func (s *Service) updateSync(input UpdateInput) error {
 		return nil
 	}
 
-	return fmt.Errorf("update task status failed: %w", lastErr)
+	if isNonRetriableUpdateErr(err) {
+		if input.IgnoreConflict {
+			s.log.WithError(err).WithFields(logrus.Fields{
+				logger.FieldTaskID: input.TaskID,
+				logger.FieldStatus: input.Status.String(),
+				"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
+			}).Debug("task status update conflict ignored")
+			return nil
+		}
+		s.log.WithError(err).WithFields(logrus.Fields{
+			logger.FieldTaskID: input.TaskID,
+			logger.FieldStatus: input.Status.String(),
+			"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
+		}).Warn("task status update rejected without retry")
+	}
+
+	return fmt.Errorf("update task status failed: %w", err)
 }
 
 func isNonRetriableUpdateErr(err error) bool {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/resilience"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/httpclient"
 
@@ -289,41 +291,37 @@ func (rr *ResultReporter) processResult(result *TaskResult) {
 
 // reportWithRetry 带重试的上报
 func (rr *ResultReporter) reportWithRetry(result *TaskResult) error {
-	var lastErr error
-	delay := rr.retryConfig.InitialDelay
+	attempts := 0
 
-	for attempt := 0; attempt <= rr.retryConfig.MaxRetries; attempt++ {
-		if attempt > 0 {
+	err := resilience.Retry(rr.ctx, resilience.RetryConfig{
+		MaxAttempts:         rr.retryConfig.MaxRetries + 1,
+		InitialDelay:        rr.retryConfig.InitialDelay,
+		MaxDelay:            rr.retryConfig.MaxDelay,
+		Multiplier:          rr.retryConfig.BackoffFactor,
+		RandomizationFactor: 0,
+		OnRetry: func(_ context.Context, attempt resilience.RetryAttempt) {
 			rr.logger.Debugf("重试上报任务结果: TaskID=%d, Attempt=%d/%d",
-				result.TaskID, attempt, rr.retryConfig.MaxRetries)
+				result.TaskID, attempt.Attempt, rr.retryConfig.MaxRetries)
 			rr.updateStats("retry")
-
-			// 等待重试延迟
-			select {
-			case <-rr.ctx.Done():
-				return fmt.Errorf("上报被取消")
-			case <-time.After(delay):
-			}
-
-			// 计算下次延迟（指数退避）
-			delay = time.Duration(float64(delay) * rr.retryConfig.BackoffFactor)
-			if delay > rr.retryConfig.MaxDelay {
-				delay = rr.retryConfig.MaxDelay
-			}
-		}
-
-		// 尝试上报
+		},
+	}, func(context.Context) error {
+		attempts++
 		err := rr.doReport(result)
-		if err == nil {
-			return nil
+		if err != nil {
+			rr.logger.Debugf("上报尝试失败: TaskID=%d, Attempt=%d, Error=%v",
+				result.TaskID, attempts, err)
 		}
-
-		lastErr = err
-		rr.logger.Debugf("上报尝试失败: TaskID=%d, Attempt=%d, Error=%v",
-			result.TaskID, attempt+1, err)
+		return err
+	})
+	if err == nil {
+		return nil
 	}
 
-	return fmt.Errorf("上报失败，已达到最大重试次数: %w", lastErr)
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("上报被取消: %w", err)
+	}
+
+	return fmt.Errorf("上报失败，已达到最大重试次数: %w", err)
 }
 
 // doReport 执行上报

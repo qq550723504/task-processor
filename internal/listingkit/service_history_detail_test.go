@@ -15,6 +15,15 @@ func TestGetTaskRevisionHistoryDetailReturnsMatchedRecord(t *testing.T) {
 	repo := &stubApplyRevisionRepo{
 		task: &Task{
 			ID: "task-history-detail-1",
+			SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+				StoreID:          903,
+				Site:             "GB",
+				Strategy:         "country",
+				Reason:           "根据任务国家信息命中了对应店铺。",
+				MatchedRuleKinds: []string{"country"},
+				MatchedProfileID: 17,
+				ResolvedAt:       now,
+			},
 			Result: &ListingKitResult{
 				TaskID: "task-history-detail-1",
 				Shein: &SheinPackage{
@@ -52,6 +61,12 @@ func TestGetTaskRevisionHistoryDetailReturnsMatchedRecord(t *testing.T) {
 	}
 	if detail.Record == nil || detail.Record.RevisionID != "rev-2" {
 		t.Fatalf("detail = %+v", detail)
+	}
+	if detail.Record.StoreResolution == nil || detail.Record.StoreResolution.StoreID != 903 {
+		t.Fatalf("store resolution = %+v, want snapshot-backed detail", detail.Record.StoreResolution)
+	}
+	if detail.Record.StoreResolution.MatchedProfileID != 17 || detail.Record.StoreResolution.ResolvedAt == "" {
+		t.Fatalf("store resolution = %+v, want audit metadata", detail.Record.StoreResolution)
 	}
 	if detail.Navigation == nil || detail.Navigation.PrevRevisionID != "rev-1" || detail.Navigation.NextRevisionID != "" {
 		t.Fatalf("navigation = %+v", detail.Navigation)

@@ -112,6 +112,13 @@ func TestGetTaskRevisionHistoryDetailReturnsRecord(t *testing.T) {
 				RevisionID: "rev-1",
 				Platform:   "shein",
 				ActionType: listingkit.RevisionActionTypeRestore,
+				StoreResolution: &listingkit.SheinStoreResolutionSummary{
+					StoreID:          903,
+					Site:             "GB",
+					Strategy:         "country",
+					MatchedProfileID: 17,
+					ResolvedAt:       "2026-05-18T08:15:00Z",
+				},
 				Timeline: &listingkit.ListingKitRevisionTimelineSummary{
 					Headline: "恢复历史版本",
 					Badge:    "回滚",
@@ -202,6 +209,9 @@ func TestGetTaskRevisionHistoryDetailReturnsRecord(t *testing.T) {
 	}
 	if body.Record == nil || body.Record.RevisionID != "rev-1" {
 		t.Fatalf("detail = %+v", body)
+	}
+	if body.Record.StoreResolution == nil || body.Record.StoreResolution.StoreID != 903 {
+		t.Fatalf("store resolution = %+v", body.Record)
 	}
 	if body.Navigation == nil || body.Navigation.PrevRevisionID != "rev-0" || body.Navigation.NextRevisionID != "rev-2" {
 		t.Fatalf("navigation = %+v", body.Navigation)

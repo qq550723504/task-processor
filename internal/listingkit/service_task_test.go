@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -198,6 +199,54 @@ func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 	}
 	if item.SheinActionQueue != SheinActionQueueFinalReview {
 		t.Fatalf("action queue = %q, want %s", item.SheinActionQueue, SheinActionQueueFinalReview)
+	}
+}
+
+func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID:     "task-store-context",
+		Status: TaskStatusCompleted,
+		Request: &GenerateRequest{
+			SheinStoreID: 869,
+			Country:      "US",
+		},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID:          903,
+			Site:             "GB",
+			Strategy:         "country",
+			Reason:           "根据任务国家信息命中了对应店铺。",
+			MatchedRuleKinds: []string{"country"},
+			MatchedProfileID: 17,
+			ResolvedAt:       time.Date(2026, 5, 18, 8, 15, 0, 0, time.UTC),
+		},
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{
+				SiteList: []common.Site{{MainSite: "GB"}},
+			},
+		},
+	}
+
+	item := buildTaskListItem(task)
+
+	if item.SheinStoreID != 903 {
+		t.Fatalf("shein store id = %d, want 903 snapshot store", item.SheinStoreID)
+	}
+	if item.SheinStoreSite != "GB" {
+		t.Fatalf("shein store site = %q, want GB", item.SheinStoreSite)
+	}
+	if item.SheinStoreProfileID != 17 {
+		t.Fatalf("shein store profile id = %d, want 17", item.SheinStoreProfileID)
+	}
+	if item.SheinStoreResolvedAt == nil || item.SheinStoreResolvedAt.IsZero() {
+		t.Fatalf("shein store resolved at = %v, want populated time", item.SheinStoreResolvedAt)
+	}
+	if item.SheinStoreStrategy != "country" || item.SheinStoreReason == "" {
+		t.Fatalf("shein store audit fields = %+v, want snapshot strategy and reason", item)
+	}
+	if len(item.SheinStoreMatchedRuleKinds) != 1 || item.SheinStoreMatchedRuleKinds[0] != "country" {
+		t.Fatalf("shein store matched rules = %+v, want [country]", item.SheinStoreMatchedRuleKinds)
 	}
 }
 

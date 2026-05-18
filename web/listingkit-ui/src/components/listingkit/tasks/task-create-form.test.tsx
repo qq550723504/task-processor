@@ -7,6 +7,7 @@ import { TaskCreateForm } from "@/components/listingkit/tasks/task-create-form";
 const push = vi.fn();
 const mutateAsync = vi.fn();
 const uploadMutateAsync = vi.fn();
+const useSheinStoreSelector = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -29,11 +30,23 @@ vi.mock("@/lib/query/use-upload-images", () => ({
   }),
 }));
 
+vi.mock("@/lib/query/use-shein-store-selector", () => ({
+  useSheinStoreSelector: () => useSheinStoreSelector(),
+}));
+
 describe("TaskCreateForm", () => {
   beforeEach(() => {
     push.mockReset();
     mutateAsync.mockReset();
     uploadMutateAsync.mockReset();
+    useSheinStoreSelector.mockReset();
+    useSheinStoreSelector.mockReturnValue({
+      enabledProfiles: [],
+      profiles: { isError: false },
+      routing: { isError: false, data: { selection_strategy: "manual" } },
+      recommendedStoreId: "",
+      recommendedReason: "",
+    });
     window.sessionStorage.clear();
   });
 
@@ -203,6 +216,57 @@ describe("TaskCreateForm", () => {
       expect(
         screen.getByText("请至少提供商品标题、图片链接或商品链接中的一种。"),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("auto-selects the recommended SHEIN store when routing provides one", async () => {
+    useSheinStoreSelector.mockReturnValue({
+      enabledProfiles: [
+        {
+          id: 1,
+          store_id: 870,
+          enabled: true,
+          site: "US",
+          is_fallback: true,
+          match_rules: [{ kind: "country" }],
+          store: { name: "US 主店", store_id: "SHEIN-US-870", region: "US" },
+        },
+      ],
+      profiles: { isError: false },
+      routing: { isError: false, data: { selection_strategy: "priority", fallback_store_id: 870 } },
+      recommendedStoreId: "870",
+      recommendedReason: "当前会优先使用 fallback 店铺作为推荐值。",
+    });
+    mutateAsync.mockResolvedValue({
+      task_id: "task_789",
+      status: "pending",
+      created_at: "2026-04-19T00:00:00Z",
+    });
+
+    render(<TaskCreateForm />);
+
+    fireEvent.change(screen.getByLabelText("商品标题"), {
+      target: { value: "Women knit cardigan" },
+    });
+    fireEvent.click(screen.getByLabelText("SHEIN"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "SHEIN 店铺" })).toHaveValue("870");
+    });
+    expect(screen.getByText("当前默认策略：按优先级。当前会优先使用 fallback 店铺作为推荐值。")).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "US 主店 (US / US / 国家规则 + fallback)" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "创建任务" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platforms: ["shein"],
+          shein_store_id: 870,
+        }),
+      );
     });
   });
 

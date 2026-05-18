@@ -1,8 +1,10 @@
 package listingkit
 
 import (
+	"context"
 	"testing"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
 
@@ -33,5 +35,95 @@ func TestPickSheinWarehouseCodeFallsBackToFirstWarehouse(t *testing.T) {
 
 	if got := pickSheinWarehouseCode(warehouses, "JP"); got != "WH-FIRST" {
 		t.Fatalf("pick warehouse = %q, want WH-FIRST", got)
+	}
+}
+
+func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{
+		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		sheinSettings: SheinSettings{
+			DefaultStoreID:    700,
+			Site:              "US",
+			WarehouseCode:     "DEFAULT",
+			DefaultStock:      100,
+			DefaultSubmitMode: "publish",
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "404", UserID: "user-d"})
+	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:           902,
+		Enabled:           true,
+		Priority:          1,
+		Site:              "GB",
+		WarehouseCode:     "WH-GB-1",
+		DefaultStock:      66,
+		DefaultSubmitMode: "save_draft",
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+
+	settings := svc.resolveSheinSubmitSettings(ctx, &Task{
+		TenantID: "404",
+		Request:  &GenerateRequest{},
+	})
+	if settings.DefaultStoreID != 902 {
+		t.Fatalf("default store id = %d, want 902", settings.DefaultStoreID)
+	}
+	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-1" || settings.DefaultStock != 66 || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("settings = %+v, want profile-backed settings", settings)
+	}
+}
+
+func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{
+		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		sheinSettings: SheinSettings{
+			DefaultStoreID:    700,
+			Site:              "US",
+			WarehouseCode:     "DEFAULT",
+			DefaultStock:      100,
+			DefaultSubmitMode: "publish",
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "405", UserID: "user-e"})
+	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:           903,
+		Enabled:           true,
+		Priority:          1,
+		Site:              "US",
+		WarehouseCode:     "WH-US-9",
+		DefaultStock:      11,
+		DefaultSubmitMode: "publish",
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+
+	settings := svc.resolveSheinSubmitSettings(ctx, &Task{
+		TenantID: "405",
+		Request:  &GenerateRequest{},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID:           902,
+			Site:              "GB",
+			WarehouseCode:     "WH-GB-7",
+			DefaultStock:      66,
+			DefaultSubmitMode: "save_draft",
+			Strategy:          "country",
+			Reason:            "snapshot persisted at task creation",
+			MatchedProfileID:  12,
+		},
+	})
+	if settings.DefaultStoreID != 902 {
+		t.Fatalf("default store id = %d, want snapshot store 902", settings.DefaultStoreID)
+	}
+	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-7" || settings.DefaultStock != 66 || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("settings = %+v, want snapshot-backed settings", settings)
 	}
 }

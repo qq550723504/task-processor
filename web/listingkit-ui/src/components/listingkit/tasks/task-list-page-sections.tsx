@@ -74,6 +74,66 @@ export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
   );
 }
 
+function storeResolutionStrategyLabel(strategy?: string) {
+  switch (strategy) {
+    case "priority":
+      return "按优先级";
+    case "country":
+      return "按国家匹配";
+    case "manual":
+      return "手工优先";
+    default:
+      return strategy || "";
+  }
+}
+
+function storeResolutionRuleLabel(kind?: string) {
+  switch (kind) {
+    case "country":
+      return "国家规则";
+    case "category":
+      return "类目规则";
+    default:
+      return kind || "";
+  }
+}
+
+function storeResolutionAuditTitle(task: ListingKitTaskListItem) {
+  const lines: string[] = [];
+  if (task.shein_store_id) {
+    lines.push(
+      `SHEIN 店铺 ${task.shein_store_id}${task.shein_store_site ? ` · ${task.shein_store_site}` : ""}`,
+    );
+  }
+  if (task.shein_store_profile_id) {
+    lines.push(`Profile #${task.shein_store_profile_id}`);
+  }
+  if (task.shein_store_strategy) {
+    lines.push(`路由策略：${storeResolutionStrategyLabel(task.shein_store_strategy)}`);
+  }
+  if (task.shein_store_matched_rule_kinds?.length) {
+    lines.push(
+      `命中规则：${task.shein_store_matched_rule_kinds
+        .map(storeResolutionRuleLabel)
+        .filter(Boolean)
+        .join(" / ")}`,
+    );
+  }
+  if (task.shein_store_manual_override) {
+    lines.push("手工指定：是");
+  }
+  if (task.shein_store_fallback) {
+    lines.push("Fallback：是");
+  }
+  if (task.shein_store_reason) {
+    lines.push(`原因：${task.shein_store_reason}`);
+  }
+  if (task.shein_store_resolved_at) {
+    lines.push(`固化时间：${formatDate(task.shein_store_resolved_at)}`);
+  }
+  return lines.join("\n");
+}
+
 export function TaskListFilters({
   platform,
   sheinActionQueue,
@@ -591,6 +651,33 @@ function TaskRow({
             任务 ID
           </p>
           <p className="mt-1 break-all text-sm text-zinc-500">{task.task_id}</p>
+          {task.shein_store_id ? (
+            <p className="mt-1 text-sm text-zinc-500" title={storeResolutionAuditTitle(task)}>
+              SHEIN 店铺 {task.shein_store_id}
+              {task.shein_store_site ? ` · ${task.shein_store_site}` : ""}
+            </p>
+          ) : null}
+          {task.shein_store_profile_id || task.shein_store_resolved_at ? (
+            <p className="mt-1 text-xs text-zinc-400" title={storeResolutionAuditTitle(task)}>
+              {task.shein_store_strategy
+                ? `路由 ${storeResolutionStrategyLabel(task.shein_store_strategy)}`
+                : ""}
+              {task.shein_store_strategy &&
+              (task.shein_store_profile_id || task.shein_store_resolved_at)
+                ? " · "
+                : ""}
+              {task.shein_store_profile_id
+                ? `Profile #${task.shein_store_profile_id}`
+                : ""}
+              {(task.shein_store_strategy || task.shein_store_profile_id) &&
+              task.shein_store_resolved_at
+                ? " · "
+                : ""}
+              {task.shein_store_resolved_at
+                ? `固化 ${formatDate(task.shein_store_resolved_at)}`
+                : ""}
+            </p>
+          ) : null}
           {task.variant_label ? (
             <p className="mt-1 truncate text-sm text-zinc-500">
               {task.variant_label}

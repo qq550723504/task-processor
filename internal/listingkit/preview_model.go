@@ -142,8 +142,21 @@ type SheinPreviewPayload struct {
 	Submission        *sheinpub.SubmissionReport        `json:"submission,omitempty"`
 	Pricing           *sheinpub.PricingReview           `json:"pricing,omitempty"`
 	FinalReview       *SheinFinalReview                 `json:"final_review,omitempty"`
+	StoreResolution   *SheinStoreResolutionSummary      `json:"store_resolution,omitempty"`
 	SubmissionEvents  []sheinpub.SubmissionEvent        `json:"submission_events,omitempty"`
 	InspectionData    *sheinpub.Inspection              `json:"inspection_data,omitempty"`
+}
+
+type SheinStoreResolutionSummary struct {
+	StoreID          int64    `json:"store_id,omitempty"`
+	Site             string   `json:"site,omitempty"`
+	Strategy         string   `json:"strategy,omitempty"`
+	Reason           string   `json:"reason,omitempty"`
+	MatchedRuleKinds []string `json:"matched_rule_kinds,omitempty"`
+	MatchedProfileID int64    `json:"matched_profile_id,omitempty"`
+	ManualOverride   bool     `json:"manual_override,omitempty"`
+	Fallback         bool     `json:"fallback,omitempty"`
+	ResolvedAt       string   `json:"resolved_at,omitempty"`
 }
 
 type SheinFinalReview struct {

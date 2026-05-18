@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/amazonlisting"
 	amazonlistingapi "task-processor/internal/amazonlisting/api"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
+	appruntime "task-processor/internal/app/runtime"
 	assetbundle "task-processor/internal/asset/bundle"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
@@ -612,173 +613,22 @@ func buildAmazonListingTaskRepository(cfg *config.Config, logger *logrus.Logger)
 }
 
 func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKitModule, error) {
-	repo, closers, err := buildListingKitTaskRepository(deps.cfg, logger)
+	svc, repo, storeRepo, storeStatisticsRepo, importTaskRepo, filterRuleRepo, profitRuleRepo, pricingRuleRepo, operationStrategyRepo, sensitiveWordRepo, productImportMappingRepo, categoryRepo, productDataRepo, subscriptionService, err := buildListingKitService(logger, deps)
 	if err != nil {
 		return nil, err
 	}
-	deps.closers = append(deps.closers, closers...)
-
-	storeRepo, storeClosers, err := buildListingAdminStoreRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, storeClosers...)
-
-	storeStatisticsRepo, storeStatisticsClosers, err := buildListingAdminStoreStatisticsRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, storeStatisticsClosers...)
-
-	importTaskRepo, importTaskClosers, err := buildListingAdminImportTaskRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, importTaskClosers...)
-
-	filterRuleRepo, filterRuleClosers, err := buildListingAdminFilterRuleRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, filterRuleClosers...)
-
-	profitRuleRepo, profitRuleClosers, err := buildListingAdminProfitRuleRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, profitRuleClosers...)
-
-	pricingRuleRepo, pricingRuleClosers, err := buildListingAdminPricingRuleRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, pricingRuleClosers...)
-
-	operationStrategyRepo, operationStrategyClosers, err := buildListingAdminOperationStrategyRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, operationStrategyClosers...)
-
-	sensitiveWordRepo, sensitiveWordClosers, err := buildListingAdminSensitiveWordRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, sensitiveWordClosers...)
-
-	productImportMappingRepo, productImportMappingClosers, err := buildListingAdminProductImportMappingRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, productImportMappingClosers...)
-
-	categoryRepo, categoryClosers, err := buildListingAdminCategoryRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, categoryClosers...)
-
-	productDataRepo, productDataClosers, err := buildListingAdminProductDataRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, productDataClosers...)
-
-	subscriptionRepo, subscriptionClosers, err := buildListingSubscriptionRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, subscriptionClosers...)
-	subscriptionService, err := listingsubscription.NewService(subscriptionRepo)
-	if err != nil {
-		return nil, fmt.Errorf("create listing subscription service: %w", err)
-	}
-
-	assetRepository, assetClosers, err := buildAssetRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, assetClosers...)
-
-	reviewRepository, reviewClosers, err := buildListingKitReviewRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, reviewClosers...)
-
-	studioSessionRepository, studioSessionClosers, err := buildListingKitStudioSessionRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, studioSessionClosers...)
-
-	uploadedImageRepository, uploadedImageClosers, err := buildListingKitUploadedImageRepository(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, uploadedImageClosers...)
-
-	resolutionCacheStore, resolutionCacheClosers, err := buildSheinResolutionCacheStore(deps.cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-	deps.closers = append(deps.closers, resolutionCacheClosers...)
-
-	sheinCategoryResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
-	sheinAttributeResolver := sheinpub.NewCachedAttributeResolver(sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
-	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
-	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(deps.managementClient)
-	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(deps.managementClient)
-	sheinTranslateAPIBuilder := sheinpub.NewManagedTranslateAPIBuilder(deps.managementClient)
-	sheinPricingPolicy := buildListingKitSheinPricingPolicy(deps.cfg)
-	deps.sdsSyncService = buildSDSSyncService(logger, deps)
-	listingkit.ConfigureSheinSubmitDebugDumpDir(deps.cfg.ListingKit.SheinSubmitDebugDumpDir)
-	listingkit.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
-	listingadmin.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
-	ConfigureListingKitZitadelAuth(deps.cfg.ListingKit.Zitadel)
-	if err := ConfigureListingKitAuthorization(deps.cfg.ListingKit.PlatformAdminUsers, deps.cfg.ListingKit.PlatformAdminRoles); err != nil {
-		return nil, fmt.Errorf("configure listing kit authorization: %w", err)
-	}
-
-	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
-		Repository:              repo,
-		StudioSessionRepository: studioSessionRepository,
-		UploadedImageRepository: uploadedImageRepository,
-		ProductService:          deps.productService,
-		ImageService:            deps.imageService,
-		SDSSyncService:          deps.sdsSyncService,
-		SheinDefaultStoreID:     resolveListingKitDefaultSheinStoreID(deps.cfg.Management.StoreIDs),
-		ImageUploadStore:        buildListingKitImageUploadStore(deps.cfg, logger),
-		AssetRepository:         assetRepository,
-		ReviewRepository:        reviewRepository,
-		AssetRecipeResolver:     assetrecipe.NewStaticResolver(),
-		AssetBundleBuilder:      assetbundle.NewBuilder(),
-		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
-			SubjectExtractor:        deps.imageSubjectExtractor,
-			WhiteBackgroundRenderer: deps.imageWhiteBgRenderer,
-			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(deps.imageSceneRenderer),
-		}),
-		SheinManagementClient:      deps.managementClient,
-		SheinCategoryResolver:      sheinCategoryResolver,
-		SheinAttributeResolver:     sheinAttributeResolver,
-		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
-		SheinPricingPolicy:         sheinPricingPolicy,
-		SheinProductAPIBuilder:     sheinProductAPIBuilder,
-		SheinImageAPIBuilder:       sheinImageAPIBuilder,
-		SheinTranslateAPIBuilder:   sheinTranslateAPIBuilder,
-		SheinContentOptimizer:      buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore),
-		StudioImageGenerator:       buildStudioImageGenerator(deps.cfg, deps.aiCredentialStore),
-		AIClientCredentialStore:    deps.aiCredentialStore,
-		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
-			SheinCategoryResolver:      sheinCategoryResolver,
-			SheinAttributeResolver:     sheinAttributeResolver,
-			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
-			SheinPricingPolicy:         sheinPricingPolicy,
-			SheinTitleOptimizer:        buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore),
-		}),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create listing kit service: %w", err)
+	var temporalWorkerCloser func() error
+	defer func() {
+		if err == nil || temporalWorkerCloser == nil {
+			return
+		}
+		_ = temporalWorkerCloser()
+	}()
+	if appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess() {
+		temporalWorkerCloser, err = appruntime.StartListingKitSheinPublishTemporalWorker(svc, logger)
+		if err != nil {
+			return nil, fmt.Errorf("start listing kit shein publish temporal worker: %w", err)
+		}
 	}
 
 	processor, err := listingkit.NewProcessor(svc, repo, logger, 2)
@@ -818,7 +668,212 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
 	}
-	return &listingKitModule{handler: handler, studioSessionHandler: studioSessionHandler, pool: pool}, nil
+	if temporalWorkerCloser != nil {
+		deps.closers = append(deps.closers, temporalWorkerCloser)
+	}
+	return &listingKitModule{handler: handler, studioSessionHandler: studioSessionHandler, service: svc, pool: pool}, nil
+}
+
+func buildListingKitService(logger *logrus.Logger, deps *runtimeDeps) (listingkit.Service, listingkit.Repository, listingadmin.StoreRepository, listingadmin.StoreStatisticsRepository, listingadmin.ImportTaskRepository, listingadmin.FilterRuleRepository, listingadmin.ProfitRuleRepository, listingadmin.PricingRuleRepository, listingadmin.OperationStrategyRepository, listingadmin.SensitiveWordRepository, listingadmin.ProductImportMappingRepository, listingadmin.CategoryRepository, listingadmin.ProductDataRepository, *listingsubscription.Service, error) {
+	repo, closers, err := buildListingKitTaskRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, closers...)
+
+	storeRepo, storeClosers, err := buildListingAdminStoreRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, storeClosers...)
+
+	storeStatisticsRepo, storeStatisticsClosers, err := buildListingAdminStoreStatisticsRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, storeStatisticsClosers...)
+
+	importTaskRepo, importTaskClosers, err := buildListingAdminImportTaskRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, importTaskClosers...)
+
+	filterRuleRepo, filterRuleClosers, err := buildListingAdminFilterRuleRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, filterRuleClosers...)
+
+	profitRuleRepo, profitRuleClosers, err := buildListingAdminProfitRuleRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, profitRuleClosers...)
+
+	pricingRuleRepo, pricingRuleClosers, err := buildListingAdminPricingRuleRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, pricingRuleClosers...)
+
+	operationStrategyRepo, operationStrategyClosers, err := buildListingAdminOperationStrategyRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, operationStrategyClosers...)
+
+	sensitiveWordRepo, sensitiveWordClosers, err := buildListingAdminSensitiveWordRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, sensitiveWordClosers...)
+
+	productImportMappingRepo, productImportMappingClosers, err := buildListingAdminProductImportMappingRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, productImportMappingClosers...)
+
+	categoryRepo, categoryClosers, err := buildListingAdminCategoryRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, categoryClosers...)
+
+	productDataRepo, productDataClosers, err := buildListingAdminProductDataRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, productDataClosers...)
+
+	subscriptionRepo, subscriptionClosers, err := buildListingSubscriptionRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, subscriptionClosers...)
+	subscriptionService, err := listingsubscription.NewService(subscriptionRepo)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("create listing subscription service: %w", err)
+	}
+
+	assetRepository, assetClosers, err := buildAssetRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, assetClosers...)
+
+	reviewRepository, reviewClosers, err := buildListingKitReviewRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, reviewClosers...)
+
+	studioSessionRepository, studioSessionClosers, err := buildListingKitStudioSessionRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, studioSessionClosers...)
+
+	uploadedImageRepository, uploadedImageClosers, err := buildListingKitUploadedImageRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, uploadedImageClosers...)
+
+	storeProfileRepository, storeProfileClosers, err := buildListingKitStoreProfileRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, storeProfileClosers...)
+
+	storeRoutingSettingsRepository, storeRoutingSettingsClosers, err := buildListingKitStoreRoutingSettingsRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, storeRoutingSettingsClosers...)
+
+	resolutionCacheStore, resolutionCacheClosers, err := buildSheinResolutionCacheStore(deps.cfg, logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+	}
+	deps.closers = append(deps.closers, resolutionCacheClosers...)
+
+	sheinCategoryResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
+	sheinAttributeResolver := sheinpub.NewCachedAttributeResolver(sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
+	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.aiCredentialStore)), resolutionCacheStore)
+	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(deps.managementClient)
+	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(deps.managementClient)
+	sheinTranslateAPIBuilder := sheinpub.NewManagedTranslateAPIBuilder(deps.managementClient)
+	sheinPricingPolicy := buildListingKitSheinPricingPolicy(deps.cfg)
+	deps.sdsSyncService = buildSDSSyncService(logger, deps)
+	listingkit.ConfigureSheinSubmitDebugDumpDir(deps.cfg.ListingKit.SheinSubmitDebugDumpDir)
+	listingkit.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
+	listingadmin.ConfigureOwnerScopeRequired(deps.cfg.ListingKit.OwnerScopeRequired)
+	ConfigureListingKitZitadelAuth(deps.cfg.ListingKit.Zitadel)
+	if err := ConfigureListingKitAuthorization(deps.cfg.ListingKit.PlatformAdminUsers, deps.cfg.ListingKit.PlatformAdminRoles); err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("configure listing kit authorization: %w", err)
+	}
+
+	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
+		Repository:                     repo,
+		StudioSessionRepository:        studioSessionRepository,
+		UploadedImageRepository:        uploadedImageRepository,
+		StoreProfileRepository:         storeProfileRepository,
+		StoreRoutingSettingsRepository: storeRoutingSettingsRepository,
+		ProductService:                 deps.productService,
+		ImageService:                   deps.imageService,
+		SDSSyncService:                 deps.sdsSyncService,
+		SheinDefaultStoreID:            resolveListingKitDefaultSheinStoreID(deps.cfg.Management.StoreIDs),
+		ImageUploadStore:               buildListingKitImageUploadStore(deps.cfg, logger),
+		AssetRepository:                assetRepository,
+		ReviewRepository:               reviewRepository,
+		AssetRecipeResolver:            assetrecipe.NewStaticResolver(),
+		AssetBundleBuilder:             assetbundle.NewBuilder(),
+		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
+			SubjectExtractor:        deps.imageSubjectExtractor,
+			WhiteBackgroundRenderer: deps.imageWhiteBgRenderer,
+			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(deps.imageSceneRenderer),
+		}),
+		SheinManagementClient:      deps.managementClient,
+		SheinCategoryResolver:      sheinCategoryResolver,
+		SheinAttributeResolver:     sheinAttributeResolver,
+		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
+		SheinPricingPolicy:         sheinPricingPolicy,
+		SheinProductAPIBuilder:     sheinProductAPIBuilder,
+		SheinImageAPIBuilder:       sheinImageAPIBuilder,
+		SheinTranslateAPIBuilder:   sheinTranslateAPIBuilder,
+		SheinContentOptimizer:      buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore),
+		StudioImageGenerator:       buildStudioImageGenerator(deps.cfg, deps.aiCredentialStore),
+		AIClientCredentialStore:    deps.aiCredentialStore,
+		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
+			SheinCategoryResolver:      sheinCategoryResolver,
+			SheinAttributeResolver:     sheinAttributeResolver,
+			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
+			SheinPricingPolicy:         sheinPricingPolicy,
+			SheinTitleOptimizer:        buildSheinCategoryLLMClient(deps.cfg, deps.aiCredentialStore),
+		}),
+	})
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("create listing kit service: %w", err)
+	}
+
+	temporalWorkflowClient, temporalCloser, err := appruntime.DialListingKitSheinPublishTemporalClient(logger)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("connect listing kit shein publish temporal client: %w", err)
+	}
+	if temporalWorkflowClient != nil {
+		if err := listingkit.ConfigureSheinPublishWorkflowClient(svc, temporalWorkflowClient, true); err != nil {
+			if temporalCloser != nil {
+				_ = temporalCloser()
+			}
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+	}
+	if temporalCloser != nil {
+		deps.closers = append(deps.closers, temporalCloser)
+	}
+	return svc, repo, storeRepo, storeStatisticsRepo, importTaskRepo, filterRuleRepo, profitRuleRepo, pricingRuleRepo, operationStrategyRepo, sensitiveWordRepo, productImportMappingRepo, categoryRepo, productDataRepo, subscriptionService, nil
 }
 
 func buildPromptTemplateModule(deps *runtimeDeps) *promptTemplateModule {
@@ -837,6 +892,32 @@ func buildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger)
 	}
 
 	logger.Warn("database not configured, ListingKit store admin API disabled")
+	return nil, nil, nil
+}
+
+func buildListingKitStoreProfileRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitStoreProfileRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit store profile repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory listingkit store profile repository")
+	return nil, nil, nil
+}
+
+func buildListingKitStoreRoutingSettingsRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitStoreRoutingSettingsRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit store routing repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory listingkit store routing repository")
 	return nil, nil, nil
 }
 

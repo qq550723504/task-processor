@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { PlatformCardRail } from "@/components/listingkit/shared/platform-card-rail";
 import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
 import { ReviewReasonsCard } from "@/components/listingkit/review/review-reasons-card";
+import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
 import { WorkspaceHeader } from "@/components/listingkit/workspace/workspace-header";
@@ -181,6 +182,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       <TaskStatusPanel task={taskResult.data} />
       <ReviewReasonsCard task={taskResult.data} />
       <TaskProgressNotice task={taskResult.data} />
+      <TaskRevisionHistoryPanel taskId={taskId} />
       <WorkspaceOverviewPanel
         overview={sessionData.overview}
         reviewSummary={sessionData.review_summary}

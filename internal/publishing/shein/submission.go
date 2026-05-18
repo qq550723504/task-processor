@@ -64,20 +64,33 @@ const (
 )
 
 type SubmissionEvent struct {
-	ID              string              `json:"id,omitempty"`
-	TaskID          string              `json:"task_id,omitempty"`
-	Platform        string              `json:"platform,omitempty"`
-	Action          string              `json:"action,omitempty"`
-	Phase           string              `json:"phase,omitempty"`
-	Status          string              `json:"status,omitempty"`
-	RequestID       string              `json:"request_id,omitempty"`
-	StartedAt       time.Time           `json:"started_at"`
-	FinishedAt      *time.Time          `json:"finished_at,omitempty"`
-	Detail          string              `json:"detail,omitempty"`
-	RemoteRecordID  string              `json:"remote_record_id,omitempty"`
-	ErrorMessage    string              `json:"error_message,omitempty"`
-	ValidationNotes []string            `json:"validation_notes,omitempty"`
-	Response        *SubmissionResponse `json:"response,omitempty"`
+	ID              string                     `json:"id,omitempty"`
+	TaskID          string                     `json:"task_id,omitempty"`
+	Platform        string                     `json:"platform,omitempty"`
+	Action          string                     `json:"action,omitempty"`
+	Phase           string                     `json:"phase,omitempty"`
+	Status          string                     `json:"status,omitempty"`
+	RequestID       string                     `json:"request_id,omitempty"`
+	StartedAt       time.Time                  `json:"started_at"`
+	FinishedAt      *time.Time                 `json:"finished_at,omitempty"`
+	Detail          string                     `json:"detail,omitempty"`
+	RemoteRecordID  string                     `json:"remote_record_id,omitempty"`
+	ErrorMessage    string                     `json:"error_message,omitempty"`
+	ValidationNotes []string                   `json:"validation_notes,omitempty"`
+	Response        *SubmissionResponse        `json:"response,omitempty"`
+	StoreResolution *SubmissionStoreResolution `json:"store_resolution,omitempty"`
+}
+
+type SubmissionStoreResolution struct {
+	StoreID          int64      `json:"store_id,omitempty"`
+	Site             string     `json:"site,omitempty"`
+	Strategy         string     `json:"strategy,omitempty"`
+	Reason           string     `json:"reason,omitempty"`
+	MatchedRuleKinds []string   `json:"matched_rule_kinds,omitempty"`
+	MatchedProfileID int64      `json:"matched_profile_id,omitempty"`
+	ManualOverride   bool       `json:"manual_override,omitempty"`
+	Fallback         bool       `json:"fallback,omitempty"`
+	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
 }
 
 type SubmissionResponse struct {

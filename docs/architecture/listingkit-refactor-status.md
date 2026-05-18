@@ -153,6 +153,13 @@ That is outside the current refactor boundary, but it remains an architectural l
 
 ## Recommended Rules For Next Changes
 
+## Phase-2 Boundary Goal
+
+- `internal/listingkit/workflow` becomes the implementation home for task orchestration helpers and policies.
+- `internal/listingkit/workspace` becomes the implementation home for facade-level workspace composition that is not SHEIN-domain-specific.
+- Root `internal/listingkit` stays as compatibility facade and service entrypoint.
+- Root `internal/listingkit` must not gain new business rules that can live in `publishing/shein` or `workspace/shein`.
+
 1. If the change is about SHEIN category/attribute/sale-attribute publishing, change `publishing/shein`.
 2. If the change is about SHEIN inspection/editor/repair/revision UX, change `workspace/shein`.
 3. If the change is about task flow, request normalization, persistence, preview/export aggregation, or API services, change `listingkit`.

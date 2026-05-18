@@ -281,6 +281,83 @@ export function FinalReviewOverviewCards({
   );
 }
 
+export function StoreResolutionCard({
+  resolution,
+}: {
+  resolution?: SheinPreviewPayload["store_resolution"];
+}) {
+  if (!resolution?.store_id) {
+    return null;
+  }
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            店铺解析
+          </p>
+          <p className="mt-1 text-sm font-semibold text-zinc-950">
+            SHEIN 店铺 {resolution.store_id}
+            {resolution.site ? ` · ${resolution.site}` : ""}
+          </p>
+          {resolution.reason ? (
+            <p className="mt-1 text-sm leading-6 text-zinc-600">{resolution.reason}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {resolution.strategy ? (
+            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="neutral">
+              {storeResolutionStrategyLabel(resolution.strategy)}
+            </Badge>
+          ) : null}
+          {resolution.manual_override ? (
+            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="success">
+              手工指定
+            </Badge>
+          ) : null}
+          {resolution.fallback ? (
+            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="warning">
+              fallback
+            </Badge>
+          ) : null}
+        </div>
+      </div>
+      {resolution.matched_profile_id || resolution.resolved_at ? (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+          {resolution.matched_profile_id ? (
+            <span>Profile #{resolution.matched_profile_id}</span>
+          ) : null}
+          {resolution.resolved_at ? (
+            <span>固化时间：{formatStoreResolutionTime(resolution.resolved_at)}</span>
+          ) : null}
+        </div>
+      ) : null}
+      {resolution.matched_rule_kinds?.length ? (
+        <p className="mt-3 text-xs leading-5 text-zinc-500">
+          命中规则：
+          {resolution.matched_rule_kinds.map(storeResolutionRuleLabel).join(" / ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function formatStoreResolutionTime(value?: string) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function SkuPricingTable({
   priceOverrides,
   pricing,
@@ -339,4 +416,27 @@ export function SkuPricingTable({
       </div>
     </>
   );
+}
+
+function storeResolutionStrategyLabel(strategy?: string) {
+  switch (strategy) {
+    case "priority":
+      return "按优先级";
+    case "country":
+      return "按国家匹配";
+    case "manual":
+    default:
+      return "手工优先";
+  }
+}
+
+function storeResolutionRuleLabel(kind?: string) {
+  switch (kind) {
+    case "country":
+      return "国家规则";
+    case "category":
+      return "类目规则";
+    default:
+      return kind || "未知规则";
+  }
 }

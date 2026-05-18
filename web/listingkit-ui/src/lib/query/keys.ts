@@ -1,4 +1,5 @@
 import type { ListingKitTaskListQuery, QueueQuery } from "@/lib/types/listingkit";
+import type { RevisionHistoryQuery } from "@/lib/api/revision-history";
 
 export type SDSProductsKeyQuery = {
   keyword: string;
@@ -17,6 +18,8 @@ export type SDSProductsKeyQuery = {
 export const listingKitKeys = {
   tasks: (query: ListingKitTaskListQuery) =>
     ["listingkit", "tasks", query] as const,
+  storeProfiles: () => ["listingkit", "store-profiles"] as const,
+  storeRouting: () => ["listingkit", "store-routing"] as const,
   preview: (taskId: string) => ["listingkit", taskId, "preview"] as const,
   taskResult: (taskId: string) => ["listingkit", taskId, "task-result"] as const,
   sdsProducts: (query: SDSProductsKeyQuery) =>
@@ -37,6 +40,10 @@ export const listingKitKeys = {
     ["listingkit", taskId, "review-session", query] as const,
   reviewPreview: (taskId: string, query: QueueQuery) =>
     ["listingkit", taskId, "review-preview", query] as const,
+  revisionHistory: (taskId: string, query: RevisionHistoryQuery) =>
+    ["listingkit", taskId, "revision-history", compactQueryKeyObject(query)] as const,
+  revisionHistoryDetail: (taskId: string, revisionId: string, compareTo?: string) =>
+    ["listingkit", taskId, "revision-history-detail", revisionId, compareTo ?? ""] as const,
 };
 
 function compactQueryKeyObject<T extends Record<string, unknown>>(query: T) {

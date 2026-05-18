@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -379,6 +380,78 @@ func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 	}
 	if task.Result == nil {
 		t.Fatalf("task result = nil, want inline workflow result")
+	}
+}
+
+func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	svc := &service{
+		repo:                repo,
+		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		taskSubmitter:       noopTaskSubmitter{},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "606", UserID: "user-f"})
+
+	profile, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:       903,
+		Enabled:       true,
+		Priority:      10,
+		Site:          "GB",
+		WarehouseCode: "WH-GB-1",
+		DefaultStock:  66,
+		MatchRules: []ListingKitStoreMatchRule{
+			{Kind: "country", Values: []string{"GB"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+	if _, err := svc.UpdateSheinStoreRoutingSettings(ctx, &ListingKitStoreRoutingSettings{
+		SelectionStrategy: "country",
+		AllowFallback:     true,
+	}); err != nil {
+		t.Fatalf("UpdateSheinStoreRoutingSettings error = %v", err)
+	}
+
+	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+		Text:      "snapshot demo",
+		Platforms: []string{"shein"},
+		Country:   "GB",
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask error = %v", err)
+	}
+	if task.SheinStoreResolutionSnapshot == nil {
+		t.Fatal("expected shein store resolution snapshot")
+	}
+	if task.SheinStoreResolutionSnapshot.StoreID != 903 {
+		t.Fatalf("snapshot store id = %d, want 903", task.SheinStoreResolutionSnapshot.StoreID)
+	}
+	if task.SheinStoreResolutionSnapshot.Site != "GB" || task.SheinStoreResolutionSnapshot.WarehouseCode != "WH-GB-1" {
+		t.Fatalf("snapshot store context = %+v, want persisted profile fields", task.SheinStoreResolutionSnapshot)
+	}
+	if task.SheinStoreResolutionSnapshot.Strategy != "country" {
+		t.Fatalf("snapshot strategy = %q, want country", task.SheinStoreResolutionSnapshot.Strategy)
+	}
+	if len(task.SheinStoreResolutionSnapshot.MatchedRuleKinds) != 1 || task.SheinStoreResolutionSnapshot.MatchedRuleKinds[0] != "country" {
+		t.Fatalf("snapshot matched rules = %+v, want [country]", task.SheinStoreResolutionSnapshot.MatchedRuleKinds)
+	}
+	if task.SheinStoreResolutionSnapshot.MatchedProfileID != profile.ID {
+		t.Fatalf("snapshot matched profile id = %d, want %d", task.SheinStoreResolutionSnapshot.MatchedProfileID, profile.ID)
+	}
+	if task.SheinStoreResolutionSnapshot.ResolvedAt.IsZero() {
+		t.Fatalf("snapshot resolved at = %v, want non-zero time", task.SheinStoreResolutionSnapshot.ResolvedAt)
+	}
+
+	stored, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask error = %v", err)
+	}
+	if stored.SheinStoreResolutionSnapshot == nil || stored.SheinStoreResolutionSnapshot.StoreID != 903 {
+		t.Fatalf("stored snapshot = %+v, want persisted snapshot", stored.SheinStoreResolutionSnapshot)
 	}
 }
 

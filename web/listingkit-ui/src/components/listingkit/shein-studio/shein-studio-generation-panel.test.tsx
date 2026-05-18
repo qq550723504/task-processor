@@ -13,6 +13,15 @@ vi.mock("@/components/listingkit/shein-studio/shein-saved-batches-panel", () => 
   SheinSavedBatchesPanel: () => <div>saved batches</div>,
 }));
 
+vi.mock("@/lib/query/use-shein-store-selector", () => ({
+  useSheinStoreSelector: () => ({
+    enabledProfiles: [],
+    profiles: { isError: false },
+    routing: { isError: false },
+    recommendedStoreId: "",
+  }),
+}));
+
 vi.mock("next/image", () => ({
   default: (props: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; src: string }) => {
     const { fill, alt, src, ...rest } = props;

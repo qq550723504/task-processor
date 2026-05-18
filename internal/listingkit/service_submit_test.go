@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -168,6 +169,22 @@ func (stubSubmitProductService) ProcessProduct(ctx context.Context, task *produc
 	return nil, errors.New("not implemented")
 }
 
+type stubSheinPublishWorkflowClient struct {
+	startCalls int
+	lastStart  SheinPublishWorkflowStartInput
+	startErr   error
+}
+
+func (s *stubSheinPublishWorkflowClient) StartSheinPublish(ctx context.Context, in SheinPublishWorkflowStartInput) error {
+	s.startCalls++
+	s.lastStart = in
+	return s.startErr
+}
+
+func (s *stubSheinPublishWorkflowClient) QuerySheinPublishState(ctx context.Context, taskID string) (*SheinPublishWorkflowState, error) {
+	return nil, nil
+}
+
 type submitResolutionCacheStore struct {
 	mu      sync.Mutex
 	entries []*sheinpub.SheinResolutionCacheEntry
@@ -223,29 +240,41 @@ func (s *submitResolutionCacheStore) snapshot() []sheinpub.SheinResolutionCacheE
 }
 
 type stubSheinProductAPIBuilder struct {
-	api sheinproduct.ProductAPI
-	msg string
+	api         sheinproduct.ProductAPI
+	msg         string
+	lastStoreID *int64
 }
 
 func (s stubSheinProductAPIBuilder) BuildProductAPI(storeID int64) (sheinproduct.ProductAPI, string) {
+	if s.lastStoreID != nil {
+		*s.lastStoreID = storeID
+	}
 	return s.api, s.msg
 }
 
 type stubSheinImageAPIBuilder struct {
-	api sheinimage.ImageAPI
-	msg string
+	api         sheinimage.ImageAPI
+	msg         string
+	lastStoreID *int64
 }
 
 func (s stubSheinImageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageAPI, string) {
+	if s.lastStoreID != nil {
+		*s.lastStoreID = storeID
+	}
 	return s.api, s.msg
 }
 
 type stubSheinTranslateAPIBuilder struct {
-	api sheintranslateapi.TranslateAPI
-	msg string
+	api         sheintranslateapi.TranslateAPI
+	msg         string
+	lastStoreID *int64
 }
 
 func (s stubSheinTranslateAPIBuilder) BuildTranslateAPI(storeID int64) (sheintranslateapi.TranslateAPI, string) {
+	if s.lastStoreID != nil {
+		*s.lastStoreID = storeID
+	}
 	return s.api, s.msg
 }
 
@@ -585,5 +614,41 @@ func makeReadySheinTask() *Task {
 		},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+	}
+}
+
+func TestBuildSheinSubmitProductAPIUsesResolvedProfileStoreID(t *testing.T) {
+	t.Parallel()
+
+	var lastStoreID int64
+	builder := stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}, lastStoreID: &lastStoreID}
+	svc := &service{
+		storeProfileRepo:       newInMemoryStoreProfileRepository(),
+		routingSettingsRepo:    newInMemoryStoreRoutingSettingsRepository(),
+		sheinProductAPIBuilder: builder,
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
+	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:  903,
+		Enabled:  true,
+		Priority: 1,
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+
+	task := &Task{
+		TenantID: "505",
+		Request:  &GenerateRequest{},
+	}
+	api, err := svc.buildSheinSubmitProductAPI(ctx, task)
+	if err != nil {
+		t.Fatalf("buildSheinSubmitProductAPI error = %v", err)
+	}
+	if api == nil {
+		t.Fatal("expected product api")
+	}
+	if lastStoreID != 903 {
+		t.Fatalf("builder store id = %d, want 903", lastStoreID)
 	}
 }

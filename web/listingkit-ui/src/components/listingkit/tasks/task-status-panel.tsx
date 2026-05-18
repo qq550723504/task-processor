@@ -32,6 +32,29 @@ function formatTaskDate(value?: string) {
   }).format(date);
 }
 
+function routeStrategyLabel(strategy?: string) {
+  switch (strategy) {
+    case "priority":
+      return "按优先级";
+    case "country":
+      return "按国家匹配";
+    case "manual":
+    default:
+      return "手工优先";
+  }
+}
+
+function ruleLabel(kind?: string) {
+  switch (kind) {
+    case "country":
+      return "国家规则";
+    case "category":
+      return "类目规则";
+    default:
+      return kind;
+  }
+}
+
 export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }) {
   if (!task?.status || task.status === "completed") {
     return null;
@@ -69,6 +92,7 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
   const createdAt = formatTaskDate(task.created_at);
   const updatedAt = formatTaskDate(task.result?.updated_at ?? task.completed_at);
   const taskIdentifier = task.task_id ?? task.result?.task_id;
+  const storeResolution = task.result?.shein_store_resolution;
 
   return (
     <Card className="border-zinc-200 bg-white/90 p-5">
@@ -119,6 +143,49 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
                   已创建
                 </div>
                 <p className="text-sm text-zinc-700">{createdAt}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {storeResolution?.store_id ? (
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  店铺解析
+                </div>
+                <p className="text-sm font-medium text-zinc-900">
+                  SHEIN 店铺 {storeResolution.store_id}
+                  {storeResolution.site ? ` · ${storeResolution.site}` : ""}
+                </p>
+                {storeResolution.reason ? (
+                  <p className="text-sm leading-6 text-zinc-600">{storeResolution.reason}</p>
+                ) : null}
+              </div>
+              {storeResolution.strategy ? (
+                <span className="inline-flex rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700">
+                  {routeStrategyLabel(storeResolution.strategy)}
+                </span>
+              ) : null}
+            </div>
+            {storeResolution.matched_rule_kinds?.length ? (
+              <p className="mt-2 text-xs text-zinc-500">
+                命中规则：
+                {storeResolution.matched_rule_kinds
+                  .map(ruleLabel)
+                  .filter(Boolean)
+                  .join(" / ")}
+              </p>
+            ) : null}
+            {storeResolution.matched_profile_id || storeResolution.resolved_at ? (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+                {storeResolution.matched_profile_id ? (
+                  <span>Profile #{storeResolution.matched_profile_id}</span>
+                ) : null}
+                {storeResolution.resolved_at ? (
+                  <span>固化时间：{formatTaskDate(storeResolution.resolved_at)}</span>
+                ) : null}
               </div>
             ) : null}
           </div>

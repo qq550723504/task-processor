@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,6 +47,7 @@ import {
   useTaskCreateWatchedState,
 } from "@/components/listingkit/tasks/task-create-form-hooks";
 import { useCreateTask } from "@/lib/query/use-create-task";
+import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import { useUploadImages } from "@/lib/query/use-upload-images";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
@@ -174,6 +175,7 @@ export function TaskCreateForm({
     currentPropsLevel,
     currentSceneCategory,
     currentSceneStyle,
+    currentSheinStoreId,
     imageCount,
     pageCopy,
     platformSceneDefaults,
@@ -186,6 +188,7 @@ export function TaskCreateForm({
     control,
     variant,
   });
+  const { recommendedStoreId } = useSheinStoreSelector();
 
   useTaskCreateSDSQuerySync({
     lastAppliedSDSQueryKeyRef,
@@ -237,6 +240,19 @@ export function TaskCreateForm({
   );
   const selectedPlatformCount = selectedPlatforms?.length ?? 0;
   const sourceModeLabel = activeSourceTab === "productUrl" ? "商品链接" : "图片素材";
+
+  useEffect(() => {
+    if (!selectedPlatforms?.includes("shein")) {
+      return;
+    }
+    if ((currentSheinStoreId ?? "").trim()) {
+      return;
+    }
+    if (!recommendedStoreId) {
+      return;
+    }
+    setValue("sheinStoreId", recommendedStoreId, { shouldDirty: true });
+  }, [currentSheinStoreId, recommendedStoreId, selectedPlatforms, setValue]);
 
   return (
     <Card

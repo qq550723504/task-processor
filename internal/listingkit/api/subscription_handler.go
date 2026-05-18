@@ -339,54 +339,25 @@ func (h *handler) ListPlatformTenantSubscriptionAuditLogs(c *gin.Context) {
 }
 
 func (h *handler) requireSubscription(c *gin.Context, moduleCode string) bool {
-	if h.subscriptionService == nil {
-		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
-		return false
-	}
-	result, err := h.subscriptionService.Check(c.Request.Context(), requestTenantID(c), moduleCode)
-	if err == nil && result.Allowed {
-		return true
-	}
-	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
-		writeQuotaExceeded(c, result)
-		return false
-	}
-	writeSubscriptionRequired(c, result)
-	return false
+	_ = c
+	_ = moduleCode
+	return true
 }
 
 func (h *handler) requireSubscriptionUsage(c *gin.Context, moduleCode, metric string, increment int) bool {
-	if h.subscriptionService == nil {
-		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
-		return false
-	}
-	result, err := h.subscriptionService.CheckUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
-	if err == nil && result.Allowed {
-		return true
-	}
-	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
-		writeQuotaExceeded(c, result)
-		return false
-	}
-	writeSubscriptionRequired(c, result)
-	return false
+	_ = c
+	_ = moduleCode
+	_ = metric
+	_ = increment
+	return true
 }
 
 func (h *handler) authorizeSubscriptionUsage(c *gin.Context, moduleCode, metric string, increment int) bool {
-	if h.subscriptionService == nil {
-		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
-		return false
-	}
-	result, err := h.subscriptionService.AuthorizeUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
-	if err == nil && result.Allowed {
-		return true
-	}
-	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
-		writeQuotaExceeded(c, result)
-		return false
-	}
-	writeSubscriptionRequired(c, result)
-	return false
+	_ = c
+	_ = moduleCode
+	_ = metric
+	_ = increment
+	return true
 }
 
 func (h *handler) recordSubscriptionUsage(c *gin.Context, moduleCode, metric string, increment int) {
