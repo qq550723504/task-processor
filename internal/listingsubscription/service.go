@@ -10,15 +10,20 @@ import (
 )
 
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo                      Repository
+	now                       func() time.Time
+	tenantDisplayNameResolver TenantDisplayNameResolver
 }
 
 func NewService(repo Repository) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("subscription repository is required")
 	}
-	s := &Service{repo: repo, now: time.Now}
+	s := &Service{
+		repo:                      repo,
+		now:                       time.Now,
+		tenantDisplayNameResolver: fallbackTenantDisplayNameResolver{},
+	}
 	if err := repo.UpsertDefaultModules(context.Background(), DefaultModules()); err != nil {
 		return nil, err
 	}
@@ -26,6 +31,13 @@ func NewService(repo Repository) (*Service, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+func (s *Service) SetTenantDisplayNameResolver(resolver TenantDisplayNameResolver) {
+	if s == nil || resolver == nil {
+		return
+	}
+	s.tenantDisplayNameResolver = resolver
 }
 
 func DefaultModules() []Module {
@@ -179,6 +191,9 @@ func (s *Service) ListTenantOverviews(ctx context.Context) ([]TenantOverview, er
 	if err != nil {
 		return nil, err
 	}
+	for i := range items {
+		items[i].TenantDisplayName = s.resolveTenantDisplayName(ctx, items[i].TenantID)
+	}
 	sort.Slice(items, func(i, j int) bool {
 		left := items[i].UpdatedAt
 		right := items[j].UpdatedAt
@@ -194,6 +209,26 @@ func (s *Service) ListTenantOverviews(ctx context.Context) ([]TenantOverview, er
 		return items[i].TenantID < items[j].TenantID
 	})
 	return items, nil
+}
+
+func (s *Service) resolveTenantDisplayName(ctx context.Context, tenantID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return ""
+	}
+	resolver := s.tenantDisplayNameResolver
+	if resolver == nil {
+		return tenantID
+	}
+	displayName, err := resolver.ResolveTenantDisplayName(ctx, tenantID)
+	if err != nil {
+		return tenantID
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return tenantID
+	}
+	return displayName
 }
 
 func (s *Service) UpsertEntitlement(ctx context.Context, tenantID, moduleCode string, input EntitlementInput) (*Entitlement, error) {

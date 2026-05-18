@@ -166,10 +166,11 @@ type Summary struct {
 }
 
 type TenantOverview struct {
-	TenantID         string     `json:"tenant_id"`
-	EntitlementCount int        `json:"entitlement_count"`
-	ActiveCount      int        `json:"active_count"`
-	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+	TenantID          string     `json:"tenant_id"`
+	TenantDisplayName string     `json:"tenant_display_name,omitempty"`
+	EntitlementCount  int        `json:"entitlement_count"`
+	ActiveCount       int        `json:"active_count"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 type GuardResult struct {

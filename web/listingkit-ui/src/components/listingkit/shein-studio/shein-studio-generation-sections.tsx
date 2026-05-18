@@ -81,6 +81,7 @@ export function GenerationMessages({
   saveMessage,
   selectedStyleCount,
   selectionReady,
+  subscriptionBlockedMessage,
 }: {
   creatingError: string;
   creatingMessage: string;
@@ -88,6 +89,7 @@ export function GenerationMessages({
   saveMessage: string;
   selectedStyleCount: number;
   selectionReady: boolean;
+  subscriptionBlockedMessage: string;
 }) {
   return (
     <>
@@ -95,6 +97,9 @@ export function GenerationMessages({
         <Message tone="info">
           当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。
         </Message>
+      ) : null}
+      {subscriptionBlockedMessage ? (
+        <Message tone="error">{subscriptionBlockedMessage}</Message>
       ) : null}
       {generationError ? (
         <Message tone="error">{generationError}</Message>

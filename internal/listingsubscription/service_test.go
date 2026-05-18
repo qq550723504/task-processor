@@ -406,6 +406,35 @@ func TestSubscriptionPlanUsageAndAudit(t *testing.T) {
 	}
 }
 
+func TestListTenantOverviewsResolvesDisplayNameAndFallsBackToTenantID(t *testing.T) {
+	svc := newTestService(t)
+	svc.SetTenantDisplayNameResolver(staticTenantDisplayNameResolver{
+		"org-alpha": "北美租户",
+	})
+	if _, err := svc.UpsertEntitlement(context.Background(), "org-alpha", ModuleStudio, EntitlementInput{Status: StatusActive}); err != nil {
+		t.Fatalf("seed alpha entitlement: %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "org-beta", ModuleOSSStorage, EntitlementInput{Status: StatusActive}); err != nil {
+		t.Fatalf("seed beta entitlement: %v", err)
+	}
+
+	items, err := svc.ListTenantOverviews(context.Background())
+	if err != nil {
+		t.Fatalf("ListTenantOverviews() error = %v", err)
+	}
+
+	displayNames := map[string]string{}
+	for _, item := range items {
+		displayNames[item.TenantID] = item.TenantDisplayName
+	}
+	if displayNames["org-alpha"] != "北美租户" {
+		t.Fatalf("org-alpha display name = %q, want 北美租户", displayNames["org-alpha"])
+	}
+	if displayNames["org-beta"] != "org-beta" {
+		t.Fatalf("org-beta display name = %q, want tenant id fallback", displayNames["org-beta"])
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	svc, err := NewService(NewMemRepository())
@@ -413,4 +442,10 @@ func newTestService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	return svc
+}
+
+type staticTenantDisplayNameResolver map[string]string
+
+func (r staticTenantDisplayNameResolver) ResolveTenantDisplayName(_ context.Context, tenantID string) (string, error) {
+	return r[tenantID], nil
 }

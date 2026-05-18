@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -84,6 +85,59 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 		t.Fatalf("decode tenant list: %v", err)
 	}
 	if len(listBody.Items) != 1 || listBody.Items[0].TenantID != "org-target" || listBody.Items[0].ActiveCount != 1 {
+		t.Fatalf("tenant list = %#v", listBody.Items)
+	}
+	if listBody.Items[0].TenantDisplayName != "org-target" {
+		t.Fatalf("tenant display name = %q, want tenant id fallback", listBody.Items[0].TenantDisplayName)
+	}
+}
+
+func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	service, err := listingsubscription.NewService(repo)
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	service.SetTenantDisplayNameResolver(subscriptionDisplayNameResolver{
+		"org-target": "目标租户",
+	})
+	h, err := NewHandler(&stubGenerationTaskService{}, WithSubscriptionService(service))
+	if err != nil {
+		t.Fatalf("create handler: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"status": "active",
+		"limits": map[string]int{"design_jobs": 12},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/studio", bytes.NewReader(body))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("X-User-Roles", "platform_admin")
+	putResp := httptest.NewRecorder()
+	fullRouter := gin.New()
+	fullRouter.GET("/platform/subscriptions", h.ListPlatformTenantSubscriptions)
+	fullRouter.PUT("/platform/subscriptions/:tenant_id/entitlements/:module_code", h.UpsertPlatformTenantSubscriptionEntitlement)
+	fullRouter.ServeHTTP(putResp, putReq)
+	if putResp.Code != http.StatusOK {
+		t.Fatalf("put status = %d, want %d; body=%s", putResp.Code, http.StatusOK, putResp.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/platform/subscriptions", nil)
+	req.Header.Set("X-User-Roles", "platform_admin")
+	resp := httptest.NewRecorder()
+	fullRouter.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	var listBody struct {
+		Items []listingsubscription.TenantOverview `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode tenant list: %v", err)
+	}
+	if len(listBody.Items) != 1 || listBody.Items[0].TenantDisplayName != "目标租户" {
 		t.Fatalf("tenant list = %#v", listBody.Items)
 	}
 }
@@ -315,4 +369,10 @@ func platformSubscriptionTestRouterWithOptions(t *testing.T, opts ...HandlerOpti
 	router.PUT("/platform/subscriptions/:tenant_id/plan", h.ApplyPlatformTenantSubscriptionPlan)
 	router.PUT("/platform/subscriptions/:tenant_id/entitlements/:module_code", h.UpsertPlatformTenantSubscriptionEntitlement)
 	return router
+}
+
+type subscriptionDisplayNameResolver map[string]string
+
+func (r subscriptionDisplayNameResolver) ResolveTenantDisplayName(_ context.Context, tenantID string) (string, error) {
+	return r[tenantID], nil
 }

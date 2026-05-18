@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
@@ -40,6 +41,7 @@ import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
+import { getCurrentSubscription } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
@@ -194,6 +196,10 @@ export function SheinStudioWorkbench({
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const activeSelection = useHydratedSDSVariantSelection(selection);
   const { recommendedStoreId } = useSheinStoreSelector();
+  const subscriptionQuery = useQuery({
+    queryKey: ["listingkit-subscription"],
+    queryFn: getCurrentSubscription,
+  });
   const {
     activeStepRef,
     effectiveStep,
@@ -208,6 +214,14 @@ export function SheinStudioWorkbench({
     selectedVariants,
   } = summarizeSheinStudioSelection(activeSelection);
   const availableSdsImages = buildSelectableSDSImages(activeSelection);
+  const studioAccessAllowed =
+    subscriptionQuery.data?.entitlements?.find(
+      (view) => view.module.code === "studio",
+    )?.allowed ?? true;
+  const subscriptionBlockedMessage =
+    subscriptionQuery.data && !studioAccessAllowed
+      ? "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。"
+      : "";
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
     galleryRatioCheck,
@@ -391,6 +405,7 @@ export function SheinStudioWorkbench({
           selectedSdsImages={selectedSdsImages}
           selectedStyleCount={selectedIds.length}
           selectionReady={Boolean(activeSelection?.variantId)}
+          subscriptionBlockedMessage={subscriptionBlockedMessage}
           setArtworkModel={setArtworkModel}
           setImageStrategy={setImageStrategy}
           setProductImageCount={setProductImageCount}

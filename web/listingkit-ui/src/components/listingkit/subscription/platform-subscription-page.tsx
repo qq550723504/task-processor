@@ -38,6 +38,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  formatSubscriptionDate,
+  formatSubscriptionRecord,
+  subscriptionMetricDisplayName,
+  subscriptionMetricUnit,
+  subscriptionModuleSummary,
+} from "@/components/listingkit/subscription/subscription-display";
 
 const STATUS_OPTIONS: SubscriptionStatus[] = [
   "active",
@@ -59,6 +66,23 @@ const OSS_STORAGE_LIMIT_PRESETS = [
   { label: "100 GB", bytes: 100 * 1024 * 1024 * 1024 },
 ];
 
+const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string; label: string; unit?: string }> }> = {
+  store_management: {
+  },
+  task_import: {
+  },
+  rules: {
+  },
+  operation_strategy: {
+  },
+  studio: {
+    recommendedMetrics: [{ key: "design_jobs", label: "设计任务额度", unit: "次" }],
+  },
+  oss_storage: {
+    recommendedMetrics: [{ key: "storage_bytes", label: "存储额度", unit: "字节" }],
+  },
+};
+
 export function PlatformSubscriptionPage() {
   const [tenantInput, setTenantInput] = useState("");
   const [tenantId, setTenantId] = useState("");
@@ -66,6 +90,8 @@ export function PlatformSubscriptionPage() {
   const [status, setStatus] = useState<SubscriptionStatus>("active");
   const [expiresAt, setExpiresAt] = useState("");
   const [limitsText, setLimitsText] = useState("{}");
+  const [limitDraft, setLimitDraft] = useState<Record<string, number>>({});
+  const [newLimitKey, setNewLimitKey] = useState("");
   const [usageMetric, setUsageMetric] = useState("");
   const [usagePeriod, setUsagePeriod] = useState(currentPeriodKey());
   const [usageUsed, setUsageUsed] = useState("0");
@@ -98,6 +124,17 @@ export function PlatformSubscriptionPage() {
   });
 
   const summary = query.data;
+  const editingView = summary?.entitlements.find((view) => view.module.code === editingModule);
+  const editingGuidance = editingModule ? MODULE_GUIDANCE[editingModule] : undefined;
+  const recommendedMetrics = editingGuidance?.recommendedMetrics ?? [];
+  const tenantOptions = tenantListQuery.data ?? [];
+  const tenantKeyword = tenantInput.trim().toLowerCase();
+  const visibleTenants = tenantKeyword
+    ? tenantOptions.filter((tenant) => {
+        const displayName = tenant.tenant_display_name?.toLowerCase() ?? "";
+        return displayName.includes(tenantKeyword) || tenant.tenant_id.toLowerCase().includes(tenantKeyword);
+      })
+    : tenantOptions;
   const visibleError =
     error ||
     (query.error ? formatSubscriptionApiError(query.error) : "") ||
@@ -119,6 +156,14 @@ export function PlatformSubscriptionPage() {
   async function handlePlanApply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!normalizedTenantId || !selectedPlan) {
+      return;
+    }
+    const selectedPlanName =
+      planQuery.data?.find((bundle) => bundle.plan.code === selectedPlan)?.plan.name ?? selectedPlan;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`确认给租户 ${normalizedTenantId} 应用套餐“${selectedPlanName}”吗？`)
+    ) {
       return;
     }
     setApplyingPlan(true);
@@ -143,7 +188,10 @@ export function PlatformSubscriptionPage() {
     setEditingModule(view.module.code);
     setStatus(view.entitlement?.status ?? "active");
     setExpiresAt(toLocalDateTimeInput(view.entitlement?.expires_at));
-    setLimitsText(JSON.stringify(view.entitlement?.limits ?? {}, null, 2));
+    const nextLimits = view.entitlement?.limits ?? {};
+    setLimitDraft(nextLimits);
+    setLimitsText(JSON.stringify(nextLimits, null, 2));
+    setNewLimitKey("");
     const firstLimit = Object.keys(view.entitlement?.limits ?? {})[0] ?? "";
     const firstUsage = view.usage.find((item) => item.metric === firstLimit) ?? view.usage[0];
     setUsageMetric(firstUsage?.metric ?? firstLimit);
@@ -158,6 +206,13 @@ export function PlatformSubscriptionPage() {
     if (!editingModule || !normalizedTenantId) {
       return;
     }
+    const nextLimits = parseLimits(limitsText);
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`确认保存租户 ${normalizedTenantId} 的模块 ${editingModule} 配置吗？`)
+    ) {
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -167,7 +222,7 @@ export function PlatformSubscriptionPage() {
         {
           status,
           expires_at: expiresAt ? new Date(expiresAt).toISOString() : undefined,
-          limits: parseLimits(limitsText),
+          limits: nextLimits,
         },
       );
       setEditingModule("");
@@ -191,6 +246,14 @@ export function PlatformSubscriptionPage() {
       setError("用量必须是非负整数");
       return;
     }
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `确认把租户 ${normalizedTenantId} 的模块 ${editingModule} 在周期 ${usagePeriod || currentPeriodKey()} 的指标 ${usageMetric} 用量更新为 ${used} 吗？`,
+      )
+    ) {
+      return;
+    }
     setSavingUsage(true);
     setError("");
     try {
@@ -209,14 +272,62 @@ export function PlatformSubscriptionPage() {
     }
   }
 
+  function updateLimitDraft(nextDraft: Record<string, number>) {
+    setLimitDraft(nextDraft);
+    setLimitsText(JSON.stringify(nextDraft, null, 2));
+  }
+
+  function handleLimitValueChange(key: string, rawValue: string) {
+    const nextValue = Number(rawValue);
+    updateLimitDraft({
+      ...limitDraft,
+      [key]: Number.isFinite(nextValue) && nextValue >= 0 ? nextValue : 0,
+    });
+  }
+
+  function handleLimitKeyRename(oldKey: string, nextKey: string) {
+    const normalizedKey = nextKey.trim();
+    const nextDraft = { ...limitDraft };
+    const currentValue = nextDraft[oldKey];
+    delete nextDraft[oldKey];
+    if (normalizedKey) {
+      nextDraft[normalizedKey] = currentValue;
+    }
+    updateLimitDraft(nextDraft);
+  }
+
+  function handleAddLimitMetric() {
+    const normalizedKey = newLimitKey.trim();
+    if (!normalizedKey || normalizedKey in limitDraft) {
+      return;
+    }
+    updateLimitDraft({ ...limitDraft, [normalizedKey]: 0 });
+    setNewLimitKey("");
+  }
+
+  function handleRemoveLimitMetric(key: string) {
+    const nextDraft = { ...limitDraft };
+    delete nextDraft[key];
+    updateLimitDraft(nextDraft);
+  }
+
+  function handleLimitsTextChange(value: string) {
+    setLimitsText(value);
+    try {
+      setLimitDraft(parseLimits(value));
+    } catch {
+      // Keep the structured editor on the last valid value until JSON is fixed.
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <CardTitle className="text-2xl">平台订阅</CardTitle>
+            <CardTitle className="text-2xl">租户订阅管理</CardTitle>
             <CardDescription className="mt-1">
-              租户 {summary?.tenant_id || normalizedTenantId || "-"}
+              推荐先按套餐开通；只有在补差或排障时，再单独调整模块额度和用量。
             </CardDescription>
           </div>
           <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row">
@@ -224,8 +335,15 @@ export function PlatformSubscriptionPage() {
               value={tenantInput}
               onChange={(event) => setTenantInput(event.target.value)}
               className="h-9 min-w-[260px] font-mono"
-              placeholder="ZITADEL resource owner id"
+              placeholder="搜索或输入租户 ID"
+              aria-label="租户 ID"
+              list="listingkit-tenant-options"
             />
+            <datalist id="listingkit-tenant-options">
+              {tenantOptions.map((tenant) => (
+                <option key={tenant.tenant_id} value={tenant.tenant_id} />
+              ))}
+            </datalist>
             <Button
               type="submit"
               disabled={!tenantInput.trim()}
@@ -246,6 +364,11 @@ export function PlatformSubscriptionPage() {
             </Button>
           </form>
         </CardHeader>
+        <CardContent className="pt-0">
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
+            如果你不知道租户 ID，优先通过输入框搜索或从下方列表选择；只有列表里没有时，再手动输入租户 ID。
+          </div>
+        </CardContent>
         {visibleError ? (
           <CardContent>
             <Alert variant="destructive">
@@ -275,10 +398,12 @@ export function PlatformSubscriptionPage() {
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {tenantListQuery.isLoading ? (
                 <span className="text-sm text-zinc-500">加载中...</span>
-              ) : (tenantListQuery.data ?? []).length === 0 ? (
+              ) : tenantOptions.length === 0 ? (
                 <span className="text-sm text-zinc-500">暂无租户</span>
+              ) : visibleTenants.length === 0 ? (
+                <span className="text-sm text-zinc-500">没有匹配的租户，请继续手动输入完整租户 ID。</span>
               ) : (
-                tenantListQuery.data?.map((tenant) => (
+                visibleTenants.map((tenant) => (
                   <Button
                     key={tenant.tenant_id}
                     type="button"
@@ -296,7 +421,12 @@ export function PlatformSubscriptionPage() {
                         : "text-zinc-700",
                     ].join(" ")}
                   >
-                    <div className="font-mono">{tenant.tenant_id}</div>
+                    <div className="font-medium">
+                      {tenantDisplayName(tenant.tenant_display_name, tenant.tenant_id)}
+                    </div>
+                    {tenant.tenant_display_name ? (
+                      <div className="mt-1 font-mono opacity-70">{tenant.tenant_id}</div>
+                    ) : null}
                     <div className="mt-1 opacity-80">
                       {tenant.active_count}/{tenant.entitlement_count} 已开通
                     </div>
@@ -337,18 +467,21 @@ export function PlatformSubscriptionPage() {
                         <div className="font-mono text-xs text-zinc-500">
                           {view.module.code}
                         </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {subscriptionModuleSummary(view.module.code, view.module.description)}
+                        </div>
                       </TableCell>
                       <TableCell className="px-4 py-3">
                         <StatusBadge view={view} />
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
-                        {formatDate(view.entitlement?.expires_at)}
+                        {formatSubscriptionDate(view.entitlement?.expires_at)}
                       </TableCell>
                       <TableCell className="px-4 py-3 font-mono text-xs text-zinc-600">
-                        {formatRecord(view.limits)}
+                        {formatSubscriptionRecord(view.limits)}
                       </TableCell>
                       <TableCell className="px-4 py-3 font-mono text-xs text-zinc-600">
-                        {formatRecord(view.used)}
+                        {formatSubscriptionRecord(view.used)}
                       </TableCell>
                       <TableCell className="px-4 py-3 text-right">
                         <Button
@@ -378,6 +511,9 @@ export function PlatformSubscriptionPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4">
+              <p className="mb-3 text-xs text-zinc-500">
+                适合整租户开通。应用套餐会按套餐定义覆盖该租户的模块开通状态与默认额度。
+              </p>
               <Label className="mb-3 block text-xs text-zinc-500">
                 套餐
                 <Select
@@ -418,6 +554,9 @@ export function PlatformSubscriptionPage() {
           <form onSubmit={handleSave}>
             <CardHeader className="p-4 pb-0">
               <CardTitle className="text-base">模块开通</CardTitle>
+              <CardDescription className="mt-1 text-xs">
+                仅用于个别模块补差或临时调整。优先使用套餐开通。
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-4">
             <Label className="mb-3 block text-xs text-zinc-500">
@@ -429,6 +568,12 @@ export function PlatformSubscriptionPage() {
                 placeholder="选择模块"
               />
             </Label>
+            {editingView ? (
+              <div className="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                <div className="font-medium text-zinc-800">{editingView.module.name}</div>
+                <div className="mt-1">{subscriptionModuleSummary(editingView.module.code, editingView.module.description)}</div>
+              </div>
+            ) : null}
             <Label className="mb-3 block text-xs text-zinc-500">
               状态
               <Select
@@ -453,12 +598,84 @@ export function PlatformSubscriptionPage() {
               />
             </Label>
             <div className="mb-3">
-              <Label
-                htmlFor="subscription-limits-json"
-                className="block text-xs text-zinc-500"
-              >
-                额度 JSON
-              </Label>
+              <Label className="block text-xs text-zinc-500">额度配置</Label>
+              <div className="mt-2 space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                <p className="text-xs text-zinc-500">
+                  可以直接维护“指标 + 数值”。只有复杂场景才需要展开 JSON 高级模式。
+                </p>
+                {recommendedMetrics.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {recommendedMetrics.map((metric) => (
+                      <Button
+                        key={metric.key}
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          if (!(metric.key in limitDraft)) {
+                            updateLimitDraft({ ...limitDraft, [metric.key]: 0 });
+                          }
+                        }}
+                        className="h-8 px-3 text-xs"
+                        disabled={metric.key in limitDraft}
+                      >
+                        添加 {metric.label}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+                {(Object.keys(limitDraft).length > 0 ||
+                  editingGuidance?.recommendedMetrics?.length) ? (
+                  <div className="space-y-2">
+                    {Object.entries(limitDraft).map(([key, value]) => (
+                      <div key={key} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_160px_84px]">
+                        <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                            <div className="text-xs font-medium text-zinc-800">
+                            {subscriptionMetricDisplayName(key)}
+                          </div>
+                          <div className="mt-1 font-mono text-[11px] text-zinc-500">{key}</div>
+                        </div>
+                        <Input
+                          aria-label={`额度值 ${key}`}
+                          type="number"
+                          min={0}
+                          value={String(value)}
+                          onChange={(event) => handleLimitValueChange(key, event.target.value)}
+                          className="h-9"
+                          placeholder={subscriptionMetricUnit(key) ? `单位：${subscriptionMetricUnit(key)}` : undefined}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleRemoveLimitMetric(key)}
+                          className="h-9 px-3 text-xs"
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-500">当前模块暂未配置额度项，可按需新增。</p>
+                )}
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_96px]">
+                  <Input
+                    aria-label="新增额度指标"
+                    value={newLimitKey}
+                    onChange={(event) => setNewLimitKey(event.target.value)}
+                    className="h-9 font-mono text-xs"
+                    placeholder="输入内部指标 key"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddLimitMetric}
+                    disabled={!newLimitKey.trim()}
+                    className="h-9 px-3 text-xs"
+                  >
+                    新增指标
+                  </Button>
+                </div>
+              </div>
               {editingModule === "oss_storage" ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {OSS_STORAGE_LIMIT_PRESETS.map((preset) => (
@@ -466,9 +683,7 @@ export function PlatformSubscriptionPage() {
                       key={preset.label}
                       type="button"
                       variant="outline"
-                      onClick={() =>
-                        setLimitsText(setStorageLimitPresetBytes(limitsText, preset.bytes))
-                      }
+                      onClick={() => updateLimitDraft(setStorageLimitPresetBytes(limitDraft, preset.bytes))}
                       className="h-8 px-3 text-xs"
                     >
                       {preset.label}
@@ -476,13 +691,24 @@ export function PlatformSubscriptionPage() {
                   ))}
                 </div>
               ) : null}
-              <Textarea
-                id="subscription-limits-json"
-                value={limitsText}
-                onChange={(event) => setLimitsText(event.target.value)}
-                rows={7}
-                className="mt-1 font-mono text-xs"
-              />
+              <details className="mt-3 rounded-lg border border-dashed border-zinc-200 bg-white p-3">
+                <summary className="cursor-pointer text-xs font-medium text-zinc-600">
+                  高级模式：直接编辑 JSON
+                </summary>
+                <Label
+                  htmlFor="subscription-limits-json"
+                  className="mt-3 block text-xs text-zinc-500"
+                >
+                  额度 JSON
+                </Label>
+                <Textarea
+                  id="subscription-limits-json"
+                  value={limitsText}
+                  onChange={(event) => handleLimitsTextChange(event.target.value)}
+                  rows={7}
+                  className="mt-1 font-mono text-xs"
+                />
+              </details>
             </div>
             <Button
               type="submit"
@@ -495,69 +721,80 @@ export function PlatformSubscriptionPage() {
             </CardContent>
           </form>
           <Separator className="my-4" />
-          <CardHeader className="p-4 pb-0">
-            <CardTitle className="text-base">用量调整</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-          <form onSubmit={handleUsageSave} className="space-y-3">
-            <Label className="block text-xs text-zinc-500">
-              周期
-              <Input
-                value={usagePeriod}
-                onChange={(event) => setUsagePeriod(event.target.value)}
-                className="mt-1 h-9 font-mono"
-                placeholder="YYYY-MM"
-              />
-            </Label>
-            <Label className="block text-xs text-zinc-500">
-              指标
-              <Input
-                value={usageMetric}
-                onChange={(event) => setUsageMetric(event.target.value)}
-                className="mt-1 h-9 font-mono"
-                placeholder="design_jobs"
-              />
-            </Label>
-            <Label className="block text-xs text-zinc-500">
-              已用
-              <Input
-                type="number"
-                min={0}
-                value={usageUsed}
-                onChange={(event) => setUsageUsed(event.target.value)}
-                className="mt-1 h-9"
-              />
-            </Label>
-            <Label className="block text-xs text-zinc-500">
-              原因
-              <Input
-                value={usageReason}
-                onChange={(event) => setUsageReason(event.target.value)}
-                className="mt-1 h-9"
-                placeholder="运营调整"
-              />
-            </Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!editingModule || !normalizedTenantId || savingUsage}
-                onClick={() => setUsageUsed("0")}
-                className="h-9 px-3"
-              >
-                重置为 0
-              </Button>
-              <Button
-                type="submit"
-                disabled={!editingModule || !normalizedTenantId || savingUsage}
-                className="h-9 gap-2 px-3"
-              >
-                {savingUsage ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-                保存用量
-              </Button>
-            </div>
-          </form>
-          </CardContent>
+          <div className="p-4 pt-0">
+            <details className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-700">
+                高级操作：用量调整
+              </summary>
+              <p className="mt-2 text-xs text-zinc-500">
+                仅用于纠正计数异常或人工补录，不建议作为日常运营入口。
+              </p>
+              <form onSubmit={handleUsageSave} className="mt-3 space-y-3">
+                <Label className="block text-xs text-zinc-500">
+                  周期
+                  <Input
+                    value={usagePeriod}
+                    onChange={(event) => setUsagePeriod(event.target.value)}
+                    className="mt-1 h-9 font-mono"
+                    placeholder="YYYY-MM"
+                  />
+                </Label>
+                <Label className="block text-xs text-zinc-500">
+                  指标
+                  <Input
+                    value={usageMetric}
+                    onChange={(event) => setUsageMetric(event.target.value)}
+                    className="mt-1 h-9 font-mono"
+                    placeholder={recommendedMetrics[0]?.key ?? "design_jobs"}
+                  />
+                  {usageMetric ? (
+                    <div className="mt-1 text-xs text-zinc-500">
+                      {subscriptionMetricDisplayName(usageMetric)}
+                      {subscriptionMetricUnit(usageMetric) ? `，单位：${subscriptionMetricUnit(usageMetric)}` : ""}
+                    </div>
+                  ) : null}
+                </Label>
+                <Label className="block text-xs text-zinc-500">
+                  已用
+                  <Input
+                    type="number"
+                    min={0}
+                    value={usageUsed}
+                    onChange={(event) => setUsageUsed(event.target.value)}
+                    className="mt-1 h-9"
+                  />
+                </Label>
+                <Label className="block text-xs text-zinc-500">
+                  原因
+                  <Input
+                    value={usageReason}
+                    onChange={(event) => setUsageReason(event.target.value)}
+                    className="mt-1 h-9"
+                    placeholder="运营调整"
+                  />
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!editingModule || !normalizedTenantId || savingUsage}
+                    onClick={() => setUsageUsed("0")}
+                    className="h-9 px-3"
+                  >
+                    重置为 0
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={!editingModule || !normalizedTenantId || savingUsage}
+                    className="h-9 gap-2 px-3"
+                  >
+                    {savingUsage ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                    保存用量
+                  </Button>
+                </div>
+              </form>
+            </details>
+          </div>
         </Card>
         </div>
       </section>
@@ -583,7 +820,7 @@ export function PlatformSubscriptionPage() {
             ) : (
               auditQuery.data?.map((item) => (
                 <div key={item.id} className="grid gap-1 py-3 md:grid-cols-[180px_1fr_160px]">
-                  <div className="text-zinc-500">{formatDate(item.created_at)}</div>
+                  <div className="text-zinc-500">{formatSubscriptionDate(item.created_at)}</div>
                   <div>
                     <span className="font-medium text-zinc-950">{item.action}</span>
                     {item.module_code ? (
@@ -604,9 +841,13 @@ export function PlatformSubscriptionPage() {
   );
 }
 
-function setStorageLimitPresetBytes(limitsText: string, bytes: number) {
-  const limits = parseLimits(limitsText);
-  return JSON.stringify({ ...limits, storage_bytes: bytes }, null, 2);
+function setStorageLimitPresetBytes(limits: Record<string, number>, bytes: number) {
+  return { ...limits, storage_bytes: bytes };
+}
+
+function tenantDisplayName(displayName: string | undefined, tenantId: string) {
+  const normalizedDisplayName = displayName?.trim();
+  return normalizedDisplayName || tenantId;
 }
 
 function StatusBadge({ view }: { view: SubscriptionEntitlementView }) {
@@ -621,47 +862,6 @@ function StatusBadge({ view }: { view: SubscriptionEntitlementView }) {
       {view.entitlement ? STATUS_LABEL[view.entitlement.status] : "未开通"}
     </span>
   );
-}
-
-function formatDate(value?: string) {
-  if (!value) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function formatRecord(value?: Record<string, number>) {
-  if (!value || Object.keys(value).length === 0) {
-    return "-";
-  }
-  return Object.entries(value)
-    .map(([key, count]) => `${key}: ${formatMetricValue(key, count)}`)
-    .join(", ");
-}
-
-function formatMetricValue(key: string, value: number) {
-  if (key === "storage_bytes" || key.endsWith("_bytes")) {
-    return formatBytes(value);
-  }
-  return String(value);
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const maximumFractionDigits = unitIndex === 0 ? 0 : 1;
-  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits }).format(size)} ${units[unitIndex]}`;
 }
 
 function toLocalDateTimeInput(value?: string) {

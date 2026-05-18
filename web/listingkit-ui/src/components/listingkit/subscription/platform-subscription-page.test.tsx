@@ -49,6 +49,7 @@ const mockedUpdatePlatformTenantSubscriptionEntitlement = vi.mocked(
 
 describe("PlatformSubscriptionPage", () => {
   beforeEach(() => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
     mockedGetPlatformTenantSubscriptionAuditLogs.mockReset();
     mockedApplyPlatformTenantSubscriptionPlan.mockReset();
     mockedGetPlatformSubscriptionPlans.mockReset();
@@ -78,6 +79,7 @@ describe("PlatformSubscriptionPage", () => {
     mockedGetPlatformTenantSubscriptions.mockResolvedValue([
       {
         tenant_id: "org-target",
+        tenant_display_name: "目标租户",
         entitlement_count: 1,
         active_count: 0,
       },
@@ -114,15 +116,16 @@ describe("PlatformSubscriptionPage", () => {
 
     renderWithQueryClient(<PlatformSubscriptionPage />);
 
-    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+    fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {
       target: { value: "org-target" },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询" }));
 
     expect(await screen.findByText("Studio")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "配置" }));
-    fireEvent.change(screen.getByLabelText("额度 JSON"), {
-      target: { value: "{\"design_jobs\":10}" },
+    fireEvent.click(screen.getByRole("button", { name: "添加 设计任务额度" }));
+    fireEvent.change(screen.getByLabelText("额度值 design_jobs"), {
+      target: { value: "10" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
 
@@ -153,7 +156,7 @@ describe("PlatformSubscriptionPage", () => {
 
     renderWithQueryClient(<PlatformSubscriptionPage />);
 
-    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+    fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {
       target: { value: "org-target" },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询" }));
@@ -205,7 +208,7 @@ describe("PlatformSubscriptionPage", () => {
 
     renderWithQueryClient(<PlatformSubscriptionPage />);
 
-    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+    fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {
       target: { value: "org-target" },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询" }));
@@ -235,13 +238,30 @@ describe("PlatformSubscriptionPage", () => {
 
     renderWithQueryClient(<PlatformSubscriptionPage />);
 
-    fireEvent.click(await screen.findByText("org-target"));
+    fireEvent.click(await screen.findByText("目标租户"));
 
     await waitFor(() => {
       expect(mockedGetPlatformTenantSubscription).toHaveBeenCalledWith(
         "org-target",
       );
     });
+  });
+
+  it("filters tenants by display name and still keeps tenant id as fallback", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {
+      target: { value: "目标" },
+    });
+
+    expect(await screen.findByText("目标租户")).toBeInTheDocument();
+    expect(screen.getByText("org-target")).toBeInTheDocument();
   });
 
   it("adjusts module usage for a billing period", async () => {
@@ -290,15 +310,16 @@ describe("PlatformSubscriptionPage", () => {
 
     renderWithQueryClient(<PlatformSubscriptionPage />);
 
-    fireEvent.change(screen.getByPlaceholderText("ZITADEL resource owner id"), {
+    fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {
       target: { value: "org-target" },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询" }));
 
     await screen.findByText("OSS 存储");
-    expect(screen.getByText("storage_bytes: 1 MB")).toBeInTheDocument();
-    expect(screen.getByText("storage_bytes: 2 KB")).toBeInTheDocument();
+    expect(screen.getByText("存储额度: 1 MB")).toBeInTheDocument();
+    expect(screen.getByText("存储额度: 2 KB")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "配置" }));
+    fireEvent.click(screen.getByText("高级操作：用量调整"));
     fireEvent.click(screen.getByRole("button", { name: "重置为 0" }));
     fireEvent.click(screen.getByRole("button", { name: "保存用量" }));
 
@@ -313,6 +334,49 @@ describe("PlatformSubscriptionPage", () => {
         }),
       );
     });
+  });
+
+  it("shows operator guidance and module business summary", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [
+        {
+          module: {
+            code: "studio",
+            name: "Studio",
+            description: "Design jobs",
+            sort_order: 50,
+            active: true,
+          },
+          usage: [],
+          allowed: false,
+          reason: "not_configured",
+          used: {},
+          limits: {},
+        },
+      ],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    expect(
+      screen.getByText("如果你不知道租户 ID，优先通过输入框搜索或从下方列表选择；只有列表里没有时，再手动输入租户 ID。"),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {
+      target: { value: "org-target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查询" }));
+
+    expect(await screen.findByText("控制生成任务、工作台和图片生产类能力。")).toBeInTheDocument();
+  });
+
+  it("shows usage adjustment as an advanced action", () => {
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    expect(screen.getByText("高级操作：用量调整")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存用量" })).toBeDisabled();
   });
 });
 

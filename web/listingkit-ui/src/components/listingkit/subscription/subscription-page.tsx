@@ -27,6 +27,11 @@ import {
   type SubscriptionEntitlementView,
   type SubscriptionStatus,
 } from "@/lib/api/subscription";
+import {
+  formatSubscriptionDate,
+  formatSubscriptionRecord,
+  subscriptionModuleSummary,
+} from "@/components/listingkit/subscription/subscription-display";
 
 const STATUS_LABEL: Record<SubscriptionStatus, string> = {
   active: "已开通",
@@ -49,9 +54,9 @@ export function SubscriptionPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle className="text-2xl">订阅</CardTitle>
+            <CardTitle className="text-2xl">当前租户订阅</CardTitle>
             <CardDescription className="mt-1">
-              当前租户 {summary?.tenant_id ?? "-"}，按模块开通 ListingKit 能力。
+              查看当前租户 {summary?.tenant_id ?? "-"} 的套餐与模块开通状态。
             </CardDescription>
             <p className="mt-2 inline-flex rounded-md bg-zinc-100 px-2.5 py-1 text-sm font-medium text-zinc-700">
               当前套餐：{summary?.current_plan?.plan.name ?? "未配置"}
@@ -104,6 +109,9 @@ export function SubscriptionPage() {
                   <TableRow key={view.module.code} className="align-top">
                     <TableCell>
                       <div className="font-medium text-zinc-950">{view.module.name}</div>
+                      <div className="mt-1 text-xs text-zinc-500">
+                        {subscriptionModuleSummary(view.module.code, view.module.description)}
+                      </div>
                       <div className="font-mono text-xs text-zinc-500">
                         {view.module.code}
                       </div>
@@ -112,13 +120,13 @@ export function SubscriptionPage() {
                       <StatusBadge view={view} />
                     </TableCell>
                     <TableCell className="text-zinc-700">
-                      {formatDate(view.entitlement?.expires_at)}
+                      {formatSubscriptionDate(view.entitlement?.expires_at)}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-zinc-600">
-                      {formatRecord(view.limits)}
+                      {formatSubscriptionRecord(view.limits)}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-zinc-600">
-                      {formatRecord(view.used)}
+                      {formatSubscriptionRecord(view.used)}
                     </TableCell>
                   </TableRow>
                 ))
@@ -138,45 +146,4 @@ function StatusBadge({ view }: { view: SubscriptionEntitlementView }) {
       {view.entitlement ? STATUS_LABEL[view.entitlement.status] : "未开通"}
     </Badge>
   );
-}
-
-function formatDate(value?: string) {
-  if (!value) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function formatRecord(value?: Record<string, number>) {
-  if (!value || Object.keys(value).length === 0) {
-    return "-";
-  }
-  return Object.entries(value)
-    .map(([key, count]) => `${key}: ${formatMetricValue(key, count)}`)
-    .join(", ");
-}
-
-function formatMetricValue(key: string, value: number) {
-  if (key === "storage_bytes" || key.endsWith("_bytes")) {
-    return formatBytes(value);
-  }
-  return String(value);
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const maximumFractionDigits = unitIndex === 0 ? 0 : 1;
-  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits }).format(size)} ${units[unitIndex]}`;
 }

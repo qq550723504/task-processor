@@ -7,6 +7,7 @@ import {
   parseSubscriptionPlanList,
   parseSubscriptionRequiredPayload,
   parseSubscriptionSummary,
+  parseSubscriptionTenantOverviewList,
 } from "@/lib/api/subscription";
 
 describe("subscription API schema", () => {
@@ -96,6 +97,22 @@ describe("subscription API schema", () => {
 
     expect(plans[0]?.plan.code).toBe("professional");
     expect(plans[0]?.modules[0]?.limits?.design_jobs).toBe(100);
+  });
+
+  it("parses tenant overviews with display names", () => {
+    const items = parseSubscriptionTenantOverviewList({
+      items: [
+        {
+          tenant_id: "org-286",
+          tenant_display_name: "北美租户",
+          entitlement_count: 3,
+          active_count: 2,
+        },
+      ],
+    });
+
+    expect(items[0]?.tenant_id).toBe("org-286");
+    expect(items[0]?.tenant_display_name).toBe("北美租户");
   });
 
   it("normalizes empty backend usage from null to an empty list", () => {

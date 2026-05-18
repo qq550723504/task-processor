@@ -50,6 +50,7 @@ export function SheinStudioGenerationPanel({
   selectedSdsImages,
   selectedStyleCount,
   selectionReady,
+  subscriptionBlockedMessage,
   variationIntensity,
   setImageStrategy,
   setSelectedSdsImages,
@@ -92,6 +93,7 @@ export function SheinStudioGenerationPanel({
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   selectedStyleCount: number;
   selectionReady: boolean;
+  subscriptionBlockedMessage: string;
   variationIntensity: SheinStudioVariationIntensity;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
@@ -176,11 +178,15 @@ export function SheinStudioGenerationPanel({
         saveMessage={saveMessage}
         selectedStyleCount={selectedStyleCount}
         selectionReady={selectionReady}
+        subscriptionBlockedMessage={subscriptionBlockedMessage}
       />
 
       {selectionReady ? (
         <div className="flex flex-wrap gap-3">
-          <Button disabled={isGenerating} onClick={onGenerate}>
+          <Button
+            disabled={isGenerating || Boolean(subscriptionBlockedMessage)}
+            onClick={onGenerate}
+          >
             {isGenerating ? "生成中..." : "生成款式图"}
           </Button>
           <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} variant="ghost">
@@ -191,7 +197,8 @@ export function SheinStudioGenerationPanel({
               isGenerating ||
               isCreatingTasks ||
               selectedStyleCount === 0 ||
-              !selectionReady
+              !selectionReady ||
+              Boolean(subscriptionBlockedMessage)
             }
             onClick={onCreateTasks}
             variant="secondary"

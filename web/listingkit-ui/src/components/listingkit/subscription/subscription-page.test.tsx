@@ -116,12 +116,13 @@ describe("SubscriptionPage", () => {
     renderWithQueryClient(<SubscriptionPage />);
 
     expect(await screen.findByText("Studio")).toBeInTheDocument();
+    expect(screen.getByText("控制生成任务、工作台和图片生产类能力。")).toBeInTheDocument();
     expect(screen.getByText("当前套餐：专业版")).toBeInTheDocument();
     expect(screen.getAllByText("已开通").length).toBeGreaterThan(0);
-    expect(screen.getByText("design_jobs: 10")).toBeInTheDocument();
-    expect(screen.getByText("design_jobs: 2")).toBeInTheDocument();
-    expect(screen.getByText("storage_bytes: 1 MB")).toBeInTheDocument();
-    expect(screen.getByText("storage_bytes: 2 KB")).toBeInTheDocument();
+    expect(screen.getByText("设计任务额度: 10")).toBeInTheDocument();
+    expect(screen.getByText("设计任务额度: 2")).toBeInTheDocument();
+    expect(screen.getByText("存储额度: 1 MB")).toBeInTheDocument();
+    expect(screen.getByText("存储额度: 2 KB")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "配置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存配置" })).not.toBeInTheDocument();
     expect(mockedUpdateSubscriptionEntitlement).not.toHaveBeenCalled();

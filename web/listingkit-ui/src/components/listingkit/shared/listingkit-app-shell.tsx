@@ -204,9 +204,14 @@ const SYSTEM_NAV_ITEMS = [
     icon: PackageCheck,
     requiredRoles: MENU_ROLES.admin,
     children: [
-      { label: "订阅", href: "/listing-kits/subscription", icon: PackageCheck, match: "prefix" },
       {
-        label: "平台订阅",
+        label: "当前租户订阅",
+        href: "/listing-kits/subscription",
+        icon: PackageCheck,
+        match: "prefix",
+      },
+      {
+        label: "租户订阅管理",
         href: "/listing-kits/platform/subscriptions",
         icon: UserCog,
         match: "prefix",

@@ -38,6 +38,7 @@ function renderPanel(options?: {
   imageStrategy?: "ai_generated" | "sds_official" | "hybrid";
   availableSdsImages?: SheinStudioSelectableSDSImage[];
   styleCount?: string;
+  subscriptionBlockedMessage?: string;
 }) {
   return render(
     <SheinStudioGenerationPanel
@@ -66,6 +67,7 @@ function renderPanel(options?: {
       selectedSdsImages={[]}
       selectedStyleCount={0}
       selectionReady={true}
+      subscriptionBlockedMessage={options?.subscriptionBlockedMessage ?? ""}
       variationIntensity="medium"
       setArtworkModel={() => undefined}
       setImageStrategy={() => undefined}
@@ -148,6 +150,7 @@ describe("SheinStudioGenerationPanel", () => {
         selectedSdsImages={[]}
         selectedStyleCount={0}
         selectionReady={false}
+        subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
         setImageStrategy={() => undefined}
@@ -184,5 +187,20 @@ describe("SheinStudioGenerationPanel", () => {
     renderPanel({ styleCount: "2" });
 
     expect(screen.getByText("变化强度")).toBeInTheDocument();
+  });
+
+  it("blocks generation and task creation when the current tenant has no Studio entitlement", () => {
+    renderPanel({
+      subscriptionBlockedMessage:
+        "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
+    });
+
+    expect(
+      screen.getByText(
+        "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
   });
 });

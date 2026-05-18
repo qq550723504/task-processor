@@ -110,7 +110,7 @@ export function ZitadelSessionCard() {
             {!hasPlatformAccess ? (
               <p className="mt-3 text-sm text-zinc-600">
                 需要在 ZITADEL 给当前用户配置 `platform_admin`、`listingkit_admin`
-                或 `admin` 之一，才能访问平台订阅和套餐管理。
+                或 `admin` 之一，才能访问租户订阅管理和套餐管理。
               </p>
             ) : null}
           </div>

@@ -50,9 +50,9 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("button", { name: "订阅计费" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 登录" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "订阅" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "当前租户订阅" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "提示词" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "平台订阅" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "租户订阅管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 上架" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "任务列表" })).toHaveAttribute("href", "/listing-kits");
     expect(screen.getByRole("link", { name: "退出登录" })).toHaveAttribute(

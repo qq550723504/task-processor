@@ -132,6 +132,7 @@ export const subscriptionSummarySchema = z
 export const subscriptionTenantOverviewSchema = z
   .object({
     tenant_id: z.string(),
+    tenant_display_name: z.string().optional(),
     entitlement_count: z.number(),
     active_count: z.number(),
     updated_at: z.string().optional(),

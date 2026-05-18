@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SheinStudioWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench";
 import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handoff";
 
+const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
 const createSheinReviewTasks = vi.fn();
 const ensureSheinStudioSession = vi.fn();
@@ -19,6 +20,10 @@ let lastGenerationPanelProps: Record<string, unknown> | null = null;
 vi.mock("next/navigation", () => ({
   usePathname: () => "/listing-kits/shein",
   useSearchParams: () => new URLSearchParams("step=generate"),
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: (...args: unknown[]) => useQuery(...args),
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-selection-overview", () => ({
@@ -59,6 +64,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     generationError?: string;
     onGenerate: () => void;
     prompt: string;
+    subscriptionBlockedMessage?: string;
     setPrompt: (value: string) => void;
     selectedSdsImages?: Array<{
       color?: string;
@@ -82,6 +88,9 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
           selected SDS images:{" "}
           {Array.isArray(props.selectedSdsImages) ? props.selectedSdsImages.length : 0}
         </div>
+        {props.subscriptionBlockedMessage ? (
+          <div>{props.subscriptionBlockedMessage}</div>
+        ) : null}
         {props.generationError ? <div>{props.generationError}</div> : null}
       </div>
     );
@@ -146,6 +155,7 @@ describe("SheinStudioWorkbench", () => {
     vi.restoreAllMocks();
     window.localStorage.clear();
     lastGenerationPanelProps = null;
+    useQuery.mockReturnValue({ data: undefined, error: null });
     generateSheinStudioDesigns.mockReset();
     createSheinReviewTasks.mockReset();
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
@@ -395,5 +405,32 @@ describe("SheinStudioWorkbench", () => {
     expect(
       screen.getByText("图库图片比例与 SDS 款式比例差异过大，请换图或更换 SDS 款式。"),
     ).toBeInTheDocument();
+  });
+
+  it("passes a Studio subscription gate message into the generation panel when the tenant is not entitled", async () => {
+    useQuery.mockReturnValue({
+      data: {
+        entitlements: [
+          {
+            allowed: false,
+            module: { code: "studio", name: "Studio" },
+          },
+        ],
+      },
+      error: null,
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(lastGenerationPanelProps?.subscriptionBlockedMessage).toBe(
+      "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
+    );
   });
 });

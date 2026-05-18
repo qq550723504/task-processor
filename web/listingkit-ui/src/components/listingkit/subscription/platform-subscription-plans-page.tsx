@@ -215,7 +215,7 @@ export function PlatformSubscriptionPlansPage() {
     <div className="space-y-5">
       <section className="flex flex-col gap-3 border-b border-zinc-200 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm font-medium text-zinc-500">平台订阅</p>
+          <p className="text-sm font-medium text-zinc-500">租户订阅管理</p>
           <h1 className="mt-1 text-2xl font-semibold text-zinc-950">
             套餐管理
           </h1>
