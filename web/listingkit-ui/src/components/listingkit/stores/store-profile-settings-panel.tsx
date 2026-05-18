@@ -94,6 +94,7 @@ export function StoreProfileSettingsPanel() {
   const upsert = useUpsertStoreProfile();
   const remove = useDeleteStoreProfile();
   const [draft, setDraft] = useState<StoreProfileForm>(DEFAULT_FORM);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState("");
 
   const storeOptionsQuery = useQuery({
@@ -430,23 +431,36 @@ export function StoreProfileSettingsPanel() {
                   ? `仓库列表读取失败：${warehouseOptionsQuery.error.message}`
                   : "支持多选；当前发布链路会优先使用你选择的第一个仓库编码。"}
         </p>
-        <div className="grid grid-cols-2 gap-3">
-          <TextField
-            label="国家规则"
-            value={draft.country_rules}
-            onChange={(country_rules) => setDraft((current) => ({ ...current, country_rules }))}
-            placeholder="US, CA, GB"
-          />
-          <TextField
-            label="类目规则"
-            value={draft.category_rules}
-            onChange={(category_rules) => setDraft((current) => ({ ...current, category_rules }))}
-            placeholder="shoes, jewelry"
-          />
+        <div className="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+          <button
+            type="button"
+            className="text-sm font-medium text-zinc-700"
+            onClick={() => setAdvancedOpen((current) => !current)}
+          >
+            高级设置
+          </button>
+          {advancedOpen ? (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <TextField
+                  label="国家规则"
+                  value={draft.country_rules}
+                  onChange={(country_rules) => setDraft((current) => ({ ...current, country_rules }))}
+                  placeholder="US, CA, GB"
+                />
+                <TextField
+                  label="类目规则"
+                  value={draft.category_rules}
+                  onChange={(category_rules) => setDraft((current) => ({ ...current, category_rules }))}
+                  placeholder="shoes, jewelry"
+                />
+              </div>
+              <p className="-mt-1 text-xs leading-5 text-zinc-500">
+                `国家规则` 会匹配任务里的 `country`；`类目规则` 会匹配类目 hint 或 SDS 类目路径。多个值用逗号分隔。
+              </p>
+            </>
+          ) : null}
         </div>
-        <p className="-mt-1 mb-3 text-xs leading-5 text-zinc-500">
-          `国家规则` 会匹配任务里的 `country`；`类目规则` 会匹配类目 hint 或 SDS 类目路径。多个值用逗号分隔。
-        </p>
         <div className="grid grid-cols-2 gap-3">
           <TextField
             label="优先级"

@@ -117,6 +117,7 @@ describe("StoreProfileSettingsPanel", () => {
     await screen.findByText("我的店铺配置");
     await screen.findByRole("option", { name: "US 备用店 (SHEIN-US-870 / US)" });
     expect(screen.getByRole("option", { name: "UK" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("国家规则")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("combobox", { name: "SHEIN 店铺" }), {
       target: { value: "870" },
@@ -131,6 +132,7 @@ describe("StoreProfileSettingsPanel", () => {
     warehouseCA.selected = true;
     warehouseUS.selected = true;
     fireEvent.change(warehouseSelect);
+    fireEvent.click(screen.getByText("高级设置"));
     fireEvent.change(screen.getByLabelText("国家规则"), {
       target: { value: "CA, US" },
     });
