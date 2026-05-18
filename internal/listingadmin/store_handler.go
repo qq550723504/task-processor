@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/tenantbridge"
 )
 
 type StoreHandler struct {
@@ -211,12 +213,24 @@ func (h *StoreHandler) ListSimpleStores(c *gin.Context) {
 }
 
 func requestTenantID(c *gin.Context) int64 {
+	rawTenantID := ""
 	for _, header := range []string{"X-Tenant-ID", "X-Tenant-Id", "X-Tenant", "tenant-id"} {
-		if id := parseTenantID(c.GetHeader(header)); id > 0 {
-			return id
+		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
+			rawTenantID = value
+			break
 		}
 	}
-	return parseTenantID(c.Query("tenant_id"))
+	if rawTenantID == "" {
+		rawTenantID = strings.TrimSpace(c.Query("tenant_id"))
+	}
+	if rawTenantID == "" {
+		return 0
+	}
+	value, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), rawTenantID)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
 }
 
 func requestUserID(c *gin.Context) string {

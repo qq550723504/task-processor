@@ -29,6 +29,7 @@ import {
   getListingStores,
   permanentlyDeleteListingStore,
   restoreListingStore,
+  updateListingStoreStatus,
   updateListingStore,
   type ListingStore,
   type ListingStoreInput,
@@ -38,12 +39,15 @@ import {
   buildSheinLoginStatusMap,
   StoreLoginStatusBadge,
 } from "@/components/listingkit/stores/store-login-status";
+import { SHEIN_SITE_OPTIONS } from "@/components/listingkit/stores/shein-site-options";
 
 const STORE_TYPE_OPTIONS = [
   { value: "0", label: "半托" },
   { value: "2", label: "自营" },
   { value: "1", label: "全托" },
 ] as const;
+
+const REGION_OPTIONS = [...SHEIN_SITE_OPTIONS];
 
 const DEFAULT_FORM: ListingStoreInput = {
   name: "",
@@ -204,6 +208,18 @@ export function StoreAdminPage() {
     }
   }
 
+  async function handleToggleStatus(store: ListingStore) {
+    setError("");
+    try {
+      const nextStatus = store.status === 0 ? 1 : 0;
+      const nextLabel = nextStatus === 0 ? "启用" : "禁用";
+      await updateListingStoreStatus(store.id, nextStatus, `平台手动${nextLabel}店铺`);
+      await storeQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    }
+  }
+
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
@@ -273,6 +289,7 @@ export function StoreAdminPage() {
                   <TableHead className="px-4 py-3">账号</TableHead>
                   <TableHead className="px-4 py-3">平台</TableHead>
                   <TableHead className="px-4 py-3">地区</TableHead>
+                  <TableHead className="px-4 py-3">店铺状态</TableHead>
                   <TableHead className="px-4 py-3">登录状态</TableHead>
                   <TableHead className="px-4 py-3">每日限制</TableHead>
                   <TableHead className="px-4 py-3">自动上架</TableHead>
@@ -281,14 +298,14 @@ export function StoreAdminPage() {
               </TableHeader>
               <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
-                  <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
+                    <TableRow>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={9}>
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : stores.length === 0 ? (
                   <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={9}>
                       暂无店铺
                     </TableCell>
                   </TableRow>
@@ -302,12 +319,17 @@ export function StoreAdminPage() {
                       <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">{store.region || "-"}</TableCell>
-                      <TableCell className="px-4 py-3">
-                        <StoreLoginStatusBadge
-                          store={store}
-                          status={loginStatusMap.get(store.id)}
-                          failed={sheinLoginQuery.isError}
-                        />
+                    <TableCell className="px-4 py-3">
+                      <Badge variant={store.status === 0 ? "success" : "neutral"}>
+                        {store.status === 0 ? "启用" : "禁用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
+                      <StoreLoginStatusBadge
+                        store={store}
+                        status={loginStatusMap.get(store.id)}
+                        failed={sheinLoginQuery.isError}
+                      />
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
                         {store.dailyLimit ?? "-"} {store.dailyLimitType ?? ""}
@@ -323,6 +345,16 @@ export function StoreAdminPage() {
                             <Link href={`/listing-kits/shein-login?store_id=${store.id}`}>去登录</Link>
                           </Button>
                         ) : null}
+                        <Button
+                          type="button"
+                          aria-label={`${store.status === 0 ? "禁用" : "启用"} ${store.name}`}
+                          onClick={() => void handleToggleStatus(store)}
+                          className="mr-2"
+                          size="sm"
+                          variant="outline"
+                        >
+                          {store.status === 0 ? "禁用" : "启用"}
+                        </Button>
                         <Button
                           type="button"
                           aria-label={`编辑 ${store.name}`}
@@ -364,67 +396,102 @@ export function StoreAdminPage() {
         <form
           aria-label="店铺表单"
           onSubmit={handleSave}
-          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
+          className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_18px_45px_rgba(24,24,27,0.08)]"
         >
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="border-b border-zinc-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_70%)] px-5 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                  {editingStoreId ? (
+                    <Pencil className="size-4" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-950">
+                    {editingStoreId ? "编辑店铺" : "新增店铺"}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    平台侧维护店铺主数据，字段会影响租户后续的选店和登录流程。
+                  </p>
+                </div>
+              </div>
               {editingStoreId ? (
-                <Pencil className="size-4 text-zinc-500" />
-              ) : (
-                <Plus className="size-4 text-zinc-500" />
-              )}
-              <h2 className="text-base font-semibold text-zinc-950">
-                {editingStoreId ? "编辑店铺" : "新增店铺"}
-              </h2>
+                <Button
+                  type="button"
+                  aria-label="取消编辑"
+                  onClick={resetForm}
+                  size="icon"
+                  variant="ghost"
+                >
+                  <X className="size-4" />
+                </Button>
+              ) : null}
             </div>
-            {editingStoreId ? (
+          </div>
+          <div className="space-y-4 p-5">
+            <FormSection
+              title="基础信息"
+              description="平台店铺识别信息和登录凭据。"
+            >
+              <StoreInput label="店铺名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
+              <StoreInput label="登录用户名" value={form.username} onChange={(username) => setForm({ ...form, username })} />
+              <StoreInput label="登录密码" type="password" value={form.password ?? ""} onChange={(password) => setForm({ ...form, password })} />
+            </FormSection>
+
+            <FormSection
+              title="店铺属性"
+              description="站点、类型和上架限制决定店铺的投放边界。"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <StoreSelect label="平台" value={form.platform} onChange={(platformValue) => setForm({ ...form, platform: platformValue })} options={["SHEIN", "TEMU"]} />
+                <StoreSelect label="地区" value={form.region ?? ""} onChange={(region) => setForm({ ...form, region })} options={REGION_OPTIONS} />
+              </div>
+              <StoreSelect
+                label="店铺类型"
+                value={normalizeStoreType(form.shopType)}
+                onChange={(shopType) => setForm({ ...form, shopType })}
+                options={STORE_TYPE_OPTIONS}
+              />
+              <StoreInput label="每日上架限制" type="number" value={String(form.dailyLimit ?? "")} onChange={(dailyLimit) => setForm({ ...form, dailyLimit: Number(dailyLimit) || undefined })} />
+            </FormSection>
+
+            <FormSection
+              title="自动化设置"
+              description="控制平台是否自动继续执行上架和登录维护动作。"
+            >
+              <ToggleField
+                label="启用自动上架"
+                hint="当店铺满足条件时，允许系统自动继续发布动作。"
+                checked={Boolean(form.enableAutoListing)}
+                onChange={(checked) => setForm({ ...form, enableAutoListing: checked })}
+              />
+              <ToggleField
+                label="启用自动登录"
+                hint="店铺登录态失效后，允许后台自动尝试恢复。"
+                checked={Boolean(form.enableAutoLogin)}
+                onChange={(checked) => setForm({ ...form, enableAutoLogin: checked })}
+              />
+            </FormSection>
+
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
               <Button
-                type="button"
-                aria-label="取消编辑"
-                onClick={resetForm}
-                size="icon"
-                variant="ghost"
+                type="submit"
+                disabled={saving}
+                className="h-11 w-full rounded-xl"
               >
-                <X className="size-4" />
+                {saving ? (
+                  <RefreshCw className="size-4 animate-spin" />
+                ) : editingStoreId ? (
+                  <Pencil className="size-4" />
+                ) : (
+                  <Plus className="size-4" />
+                )}
+                {editingStoreId ? "保存修改" : "保存店铺"}
               </Button>
-            ) : null}
+            </div>
           </div>
-          <StoreInput label="店铺名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
-          <StoreInput label="登录用户名" value={form.username} onChange={(username) => setForm({ ...form, username })} />
-          <StoreInput label="登录密码" type="password" value={form.password ?? ""} onChange={(password) => setForm({ ...form, password })} />
-          <div className="grid grid-cols-2 gap-3">
-            <StoreSelect label="平台" value={form.platform} onChange={(platformValue) => setForm({ ...form, platform: platformValue })} options={["SHEIN", "TEMU"]} />
-            <StoreInput label="地区" value={form.region ?? ""} onChange={(region) => setForm({ ...form, region })} />
-          </div>
-          <StoreSelect
-            label="店铺类型"
-            value={normalizeStoreType(form.shopType)}
-            onChange={(shopType) => setForm({ ...form, shopType })}
-            options={STORE_TYPE_OPTIONS}
-          />
-          <StoreInput label="每日上架限制" type="number" value={String(form.dailyLimit ?? "")} onChange={(dailyLimit) => setForm({ ...form, dailyLimit: Number(dailyLimit) || undefined })} />
-          <Label className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
-            <Input
-              type="checkbox"
-              checked={Boolean(form.enableAutoListing)}
-              onChange={(event) => setForm({ ...form, enableAutoListing: event.target.checked })}
-            />
-            启用自动上架
-          </Label>
-          <Button
-            type="submit"
-            disabled={saving}
-            className="w-full"
-          >
-            {saving ? (
-              <RefreshCw className="size-4 animate-spin" />
-            ) : editingStoreId ? (
-              <Pencil className="size-4" />
-            ) : (
-              <Plus className="size-4" />
-            )}
-            {editingStoreId ? "保存修改" : "保存店铺"}
-          </Button>
         </form>
       </section>
 
@@ -513,6 +580,26 @@ export function StoreAdminPage() {
   );
 }
 
+function FormSection({
+  title,
+  description,
+  children,
+}: Readonly<{
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}>) {
+  return (
+    <section className="rounded-2xl border border-zinc-200 bg-[linear-gradient(180deg,#ffffff_0%,#fafaf9_100%)] p-4">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-zinc-950">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-zinc-500">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function StoreInput({
   label,
   type = "text",
@@ -525,13 +612,13 @@ function StoreInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <Label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500 last:mb-0">
       {label}
       <Input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+        className="mt-1 h-10 w-full rounded-xl border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-none"
       />
     </Label>
   );
@@ -549,12 +636,12 @@ function StoreSelect({
   options: readonly string[] | readonly { value: string; label: string }[];
 }) {
   return (
-    <Label className="mb-3 block text-xs font-medium text-zinc-500">
+    <Label className="mb-3 block text-xs font-medium text-zinc-500 last:mb-0">
       {label}
       <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+        className="mt-1 h-10 w-full rounded-xl border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-none"
       >
         {options.map((option) => {
           const item = typeof option === "string" ? { value: option, label: option } : option;
@@ -565,6 +652,34 @@ function StoreSelect({
           );
         })}
       </Select>
+    </Label>
+  );
+}
+
+function ToggleField({
+  label,
+  hint,
+  checked,
+  onChange,
+}: Readonly<{
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}>) {
+  return (
+    <Label className="mb-3 flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-700 last:mb-0">
+      <Input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 h-4 w-4 rounded border-zinc-300 px-0 py-0"
+      />
+      <span className="flex flex-col gap-1">
+        <span className="font-medium text-zinc-900">{label}</span>
+        <span className="text-xs leading-5 text-zinc-500">{hint}</span>
+      </span>
     </Label>
   );
 }

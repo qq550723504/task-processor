@@ -18,6 +18,7 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
@@ -44,6 +45,7 @@ import (
 	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
+	"task-processor/internal/tenantbridge"
 )
 
 var newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
@@ -815,6 +817,11 @@ func buildListingKitService(logger *logrus.Logger, deps *runtimeDeps) (listingki
 	if err := ConfigureListingKitAuthorization(deps.cfg.ListingKit.PlatformAdminUsers, deps.cfg.ListingKit.PlatformAdminRoles); err != nil {
 		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("configure listing kit authorization: %w", err)
 	}
+	if legacyTenantResolverCloser, err := configureListingKitLegacyTenantResolver(deps.cfg, logger); err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("configure listing kit legacy tenant resolver: %w", err)
+	} else if legacyTenantResolverCloser != nil {
+		deps.closers = append(deps.closers, legacyTenantResolverCloser)
+	}
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Repository:                     repo,
@@ -1095,6 +1102,26 @@ func buildListingKitImageUploadStore(cfg *config.Config, logger *logrus.Logger) 
 		return nil
 	}
 	return store
+}
+
+func configureListingKitLegacyTenantResolver(cfg *config.Config, logger *logrus.Logger) (func() error, error) {
+	if cfg == nil || cfg.Database == nil || strings.TrimSpace(cfg.Database.Host) == "" {
+		tenantbridge.ConfigureLegacyTenantResolver(nil)
+		return nil, nil
+	}
+	// Transitional bridge: ListingKit still reads several legacy int64 tenant
+	// tables that are shared with the old system. We resolve the current
+	// ZITADEL tenant to yudao_tenant_id from zitadel_auth metadata until those
+	// tables are fully migrated and the old system is retired.
+	zitadelCfg := *cfg.Database
+	zitadelCfg.Database = "zitadel_auth"
+	db, err := database.NewSharedDatabaseFromConfig(&zitadelCfg)
+	if err != nil {
+		return nil, err
+	}
+	tenantbridge.ConfigureLegacyTenantResolver(tenantbridge.NewMetadataResolver(db))
+	logger.Infof("listingkit legacy tenant resolver connected: %s:%d/%s", zitadelCfg.Host, zitadelCfg.Port, zitadelCfg.Database)
+	return func() error { return database.CloseSharedDatabase(&zitadelCfg, db) }, nil
 }
 
 func buildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) (reviewstore.Repository, []func() error, error) {

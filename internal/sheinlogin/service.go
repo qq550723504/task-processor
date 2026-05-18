@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 	sheinclient "task-processor/internal/shein/client"
 )
@@ -21,22 +25,32 @@ type LocalRefresher interface {
 }
 
 type Service struct {
-	provider          AccountProvider
-	managementClient  *management.ClientManager
-	store             *RedisStore
-	runtime           *Runtime
-	automation        Automation
-	defaultHeadless   bool
-	profileRoot       string
-	artifactDir       string
-	browserPath       string
-	chromeVersion     string
-	chromeDownloadDir string
-	viewportWidth     int
-	viewportHeight    int
-	sessionsMu        sync.Mutex
-	sessions          map[int64]VerifySession
+	provider           AccountProvider
+	managementClient   *management.ClientManager
+	store              *RedisStore
+	runtime            *Runtime
+	automation         Automation
+	defaultHeadless    bool
+	profileRoot        string
+	artifactDir        string
+	browserPath        string
+	chromeVersion      string
+	chromeDownloadDir  string
+	viewportWidth      int
+	viewportHeight     int
+	sessionsMu         sync.Mutex
+	sessions           map[int64]VerifySession
+	resolveStoreID     func(ctx context.Context, account Account) (int64, error)
+	storeClientFor     func(tenantID int64) sheinLoginStoreClient
+	findDuplicateStore func(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error)
 }
+
+type sheinLoginStoreClient interface {
+	UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error)
+	UpdateStoreStatus(req *managementapi.StoreStatusUpdateReqDTO) (bool, error)
+}
+
+var sheinLoginServiceLogger = logger.GetGlobalLogger("sheinlogin_service")
 
 func NewService(cfg config.LoginServiceConfig, redisCfg config.RedisConfig, browserCfg config.BrowserConfig, provider AccountProvider) (*Service, error) {
 	store, err := NewRedisStore(redisCfg)
@@ -272,6 +286,7 @@ func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req 
 		_ = s.store.ClearLastFailure(ctx, account.TenantID, account.StoreID)
 		_ = s.store.ClearPauseKeys(ctx, account.TenantID, account.StoreID)
 		_, _ = s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
+		s.syncStoreIDAfterLogin(ctx, *account)
 		result = &LoginResult{
 			Success:     true,
 			Message:     "登录成功",
@@ -327,6 +342,7 @@ func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID 
 			_ = s.store.ClearLastFailure(ctx, account.TenantID, account.StoreID)
 			_ = s.store.ClearPauseKeys(ctx, account.TenantID, account.StoreID)
 			_, _ = s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
+			s.syncStoreIDAfterLogin(ctx, *account)
 			s.clearSession(storeID)
 			return nil
 		}
@@ -571,4 +587,189 @@ func (s *Service) clearSession(storeID int64) {
 		_ = session.Close()
 	}
 	delete(s.sessions, storeID)
+}
+
+func (s *Service) syncStoreIDAfterLogin(ctx context.Context, account Account) {
+	actualStoreID, err := s.resolveActualStoreID(ctx, account)
+	if err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id": account.TenantID,
+			"store_id":  account.StoreID,
+			"username":  account.Username,
+		}).Warn("resolve actual SHEIN store id after login failed")
+		return
+	}
+	if actualStoreID <= 0 {
+		return
+	}
+
+	storeClient := s.storeClient(account.TenantID)
+	if storeClient == nil {
+		return
+	}
+
+	actualStoreIDText := strconv.FormatInt(actualStoreID, 10)
+	duplicateStore, err := s.lookupDuplicateStore(ctx, account, actualStoreIDText)
+	if err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id":       account.TenantID,
+			"store_id":        account.StoreID,
+			"actual_store_id": actualStoreIDText,
+		}).Warn("lookup duplicate SHEIN store id failed")
+	} else if duplicateStore != nil {
+		duplicateStoreName := strings.TrimSpace(duplicateStore.Name)
+		if duplicateStoreName == "" {
+			duplicateStoreName = "-"
+		}
+		if _, err := storeClient.UpdateStoreStatus(&managementapi.StoreStatusUpdateReqDTO{
+			ID:     account.StoreID,
+			Status: 1,
+			Remark: fmt.Sprintf(
+				"自动登录识别到重复店铺ID，已禁用：store_id=%s duplicate_store_row_id=%d duplicate_tenant_id=%d duplicate_store_name=%s",
+				actualStoreIDText,
+				duplicateStore.ID,
+				duplicateStore.TenantID,
+				duplicateStoreName,
+			),
+		}); err != nil {
+			sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+				"tenant_id":              account.TenantID,
+				"store_id":               account.StoreID,
+				"actual_store_id":        actualStoreIDText,
+				"duplicate_store_row_id": duplicateStore.ID,
+				"duplicate_tenant_id":    duplicateStore.TenantID,
+				"duplicate_store_name":   duplicateStoreName,
+			}).Warn("disable duplicate SHEIN store failed")
+		}
+		return
+	}
+
+	recordedStoreID := strings.TrimSpace(account.StoreName)
+	if recordedStoreID == "" {
+		if _, err := storeClient.UpdateStoreId(&managementapi.StoreIdUpdateReqDTO{
+			ID:      account.StoreID,
+			StoreID: actualStoreIDText,
+		}); err != nil {
+			sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+				"tenant_id":       account.TenantID,
+				"store_id":        account.StoreID,
+				"actual_store_id": actualStoreIDText,
+			}).Warn("persist actual SHEIN store id after login failed")
+		}
+		return
+	}
+
+	recordedNumericStoreID, err := strconv.ParseInt(recordedStoreID, 10, 64)
+	if err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id":         account.TenantID,
+			"store_id":          account.StoreID,
+			"recorded_store_id": recordedStoreID,
+		}).Warn("stored SHEIN store id is not numeric, skip mismatch handling")
+		return
+	}
+	if recordedNumericStoreID == actualStoreID {
+		return
+	}
+
+	if _, err := storeClient.UpdateStoreStatus(&managementapi.StoreStatusUpdateReqDTO{
+		ID:     account.StoreID,
+		Status: 1,
+		Remark: fmt.Sprintf("自动登录识别到店铺ID不一致，已禁用：stored=%s actual=%s", recordedStoreID, actualStoreIDText),
+	}); err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id":         account.TenantID,
+			"store_id":          account.StoreID,
+			"recorded_store_id": recordedStoreID,
+			"actual_store_id":   actualStoreIDText,
+		}).Warn("disable store on SHEIN store id mismatch failed")
+	}
+}
+
+func (s *Service) resolveActualStoreID(ctx context.Context, account Account) (int64, error) {
+	if s != nil && s.resolveStoreID != nil {
+		return s.resolveStoreID(ctx, account)
+	}
+	if s == nil || s.managementClient == nil {
+		return 0, fmt.Errorf("management client is nil")
+	}
+
+	apiClient := sheinclient.NewAPIClient(account.StoreID, s.managementClient)
+	if !apiClient.HasCookies() {
+		if err := apiClient.ReloadCookies(); err != nil {
+			return 0, err
+		}
+	}
+	if !apiClient.HasCookies() {
+		return 0, fmt.Errorf("shein store cookie is unavailable")
+	}
+
+	baseAPI := sheinclient.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		account.StoreID,
+		apiClient.GetHTTPClient(),
+	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	otherAPI := sheinother.NewClient(baseAPI)
+	supplierInfo, err := otherAPI.GetSupplierOperateInfo()
+	if err != nil {
+		return 0, err
+	}
+	return supplierInfo.Info.StoreID, nil
+}
+
+func (s *Service) storeClient(tenantID int64) sheinLoginStoreClient {
+	if s != nil && s.storeClientFor != nil {
+		return s.storeClientFor(tenantID)
+	}
+	if s == nil || s.managementClient == nil {
+		return nil
+	}
+	return s.managementClient.GetStoreClientWithTenant(tenantID)
+}
+
+func (s *Service) lookupDuplicateStore(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error) {
+	if s != nil && s.findDuplicateStore != nil {
+		return s.findDuplicateStore(ctx, account, actualStoreID)
+	}
+	if s == nil || s.managementClient == nil || strings.TrimSpace(actualStoreID) == "" {
+		return nil, nil
+	}
+
+	storeClient := s.managementClient.GetStoreClient()
+	if storeClient == nil {
+		return nil, nil
+	}
+
+	pageNo := 1
+	pageSize := 200
+	for {
+		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
+			Platform: "SHEIN",
+			PageNo:   pageNo,
+			PageSize: pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range page.List {
+			if item == nil || item.ID == account.StoreID {
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(item.Platform), "shein") && strings.TrimSpace(item.StoreID) == actualStoreID {
+				return item, nil
+			}
+		}
+		if int64(pageNo*pageSize) >= page.Total || len(page.List) == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		pageNo++
+	}
+	return nil, nil
 }

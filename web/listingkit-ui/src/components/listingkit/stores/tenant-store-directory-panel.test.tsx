@@ -42,6 +42,7 @@ describe("TenantStoreDirectoryPanel", () => {
           region: "US",
           storeId: "SHEIN-US-001",
           enableAutoListing: true,
+          enableAutoLogin: true,
         },
       ],
       total: 1,
@@ -91,8 +92,8 @@ describe("TenantStoreDirectoryPanel", () => {
     await user.type(within(form).getByLabelText("店铺 ID"), "SHEIN-CA-002");
     await user.type(within(form).getByLabelText("登录用户名"), "shein-ca");
     await user.type(within(form).getByLabelText("登录密码"), "secret");
-    await user.clear(within(form).getByLabelText("地区"));
-    await user.type(within(form).getByLabelText("地区"), "CA");
+    await user.selectOptions(within(form).getByLabelText("地区"), "CA");
+    await user.click(within(form).getByLabelText("启用自动登录"));
     await user.click(within(form).getByRole("button", { name: "保存店铺" }));
 
     await waitFor(() => {
@@ -105,6 +106,7 @@ describe("TenantStoreDirectoryPanel", () => {
           region: "CA",
           platform: "SHEIN",
           shopType: "0",
+          enableAutoLogin: false,
         }),
       );
     });
@@ -122,6 +124,7 @@ describe("TenantStoreDirectoryPanel", () => {
           region: "US",
           storeId: "SHEIN-US-001",
           enableAutoListing: true,
+          enableAutoLogin: true,
         },
         {
           id: 2,
@@ -165,6 +168,19 @@ describe("TenantStoreDirectoryPanel", () => {
     ).toHaveAttribute("href", "/listing-kits/shein-login?store_id=1");
     expect(within(temuRow as HTMLElement).getAllByText("-").length).toBeGreaterThan(0);
     expect(within(temuRow as HTMLElement).queryByRole("link", { name: "去登录" })).toBeNull();
+  });
+
+  it("uses a region dropdown when editing a tenant store", async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(<TenantStoreDirectoryPanel />);
+
+    await screen.findByText("SHEIN US");
+    await user.click(screen.getByRole("button", { name: "编辑 SHEIN US" }));
+
+    const regionSelect = within(screen.getByRole("form", { name: "租户店铺表单" })).getByLabelText("地区");
+    expect(regionSelect.tagName).toBe("SELECT");
+    expect(regionSelect).toHaveValue("US");
+    expect(within(screen.getByRole("form", { name: "租户店铺表单" })).getByLabelText("启用自动登录")).toBeChecked();
   });
 });
 

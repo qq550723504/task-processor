@@ -2,12 +2,12 @@ package listingkit
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
 	"task-processor/internal/infra/clients/management/api"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/tenantbridge"
 )
 
 func (s *service) GetSheinSettings(ctx context.Context) (*SheinSettings, error) {
@@ -86,7 +86,7 @@ func tenantIDInt64FromContext(ctx context.Context) (int64, bool) {
 	if tenantID == "" {
 		return 0, false
 	}
-	value, err := strconv.ParseInt(tenantID, 10, 64)
+	value, err := tenantbridge.ResolveLegacyTenantID(ctx, tenantID)
 	if err != nil || value <= 0 {
 		return 0, false
 	}
@@ -97,7 +97,7 @@ func tenantIDInt64FromTask(task *Task) int64 {
 	if task == nil {
 		return 0
 	}
-	value, err := strconv.ParseInt(strings.TrimSpace(task.TenantID), 10, 64)
+	value, err := tenantbridge.ResolveLegacyTenantID(context.Background(), strings.TrimSpace(task.TenantID))
 	if err != nil || value <= 0 {
 		return 0
 	}

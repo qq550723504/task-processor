@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/tenantbridge"
 )
 
 func TestStoreProfileServiceUpsertListAndDelete(t *testing.T) {
@@ -211,4 +212,46 @@ func TestResolveSheinStoreIDUsesMatchRulesBeforeFallback(t *testing.T) {
 	if fallbackStoreID != 910 {
 		t.Fatalf("fallback resolved store id = %d, want 910", fallbackStoreID)
 	}
+}
+
+func TestStoreProfileServiceResolvesLegacyTenantIDFromMappedZitadelTenant(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(storeProfileLegacyTenantResolver{
+		mapping: map[string]int64{"373211199677923496": 227},
+	})
+	t.Cleanup(restore)
+
+	svc := &service{
+		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "373211199677923496", UserID: "user-z"})
+
+	saved, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:  999,
+		Enabled:  true,
+		Priority: 1,
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+	if saved.TenantID != 227 {
+		t.Fatalf("tenant id = %d, want 227", saved.TenantID)
+	}
+
+	items, err := svc.ListSheinStoreProfiles(ctx)
+	if err != nil {
+		t.Fatalf("ListSheinStoreProfiles error = %v", err)
+	}
+	if len(items) != 1 || items[0].TenantID != 227 {
+		t.Fatalf("items = %+v, want mapped legacy tenant 227 profile", items)
+	}
+}
+
+type storeProfileLegacyTenantResolver struct {
+	mapping map[string]int64
+}
+
+func (s storeProfileLegacyTenantResolver) ResolveLegacyTenantID(_ context.Context, tenantID string) (int64, bool, error) {
+	value, ok := s.mapping[tenantID]
+	return value, ok, nil
 }

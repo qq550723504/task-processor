@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/tenantbridge"
 )
 
 func requestTenantID(c *gin.Context) (int64, error) {
@@ -15,20 +17,19 @@ func requestTenantID(c *gin.Context) (int64, error) {
 		return 0, fmt.Errorf("tenant id is required")
 	}
 
-	candidates := []string{
+	for _, candidate := range []string{
 		c.GetHeader("tenant-id"),
 		c.GetHeader("X-Tenant-ID"),
 		c.GetHeader("X-Tenant-Id"),
 		c.GetHeader("X-Tenant"),
-	}
-	for _, candidate := range candidates {
-		if tenantID, ok := parseTenantID(candidate); ok {
+	} {
+		if tenantID, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), candidate); err == nil && tenantID > 0 {
 			return tenantID, nil
 		}
 	}
 
-	if tenantID, ok := parseTenantIDFromLoginUser(c.GetHeader("login-user")); ok {
-		return tenantID, nil
+	if tenantValue, ok := parseTenantIDValueFromLoginUser(c.GetHeader("login-user")); ok {
+		return tenantbridge.ResolveLegacyTenantID(c.Request.Context(), tenantValue)
 	}
 
 	return 0, fmt.Errorf("tenant id is required")
@@ -46,23 +47,23 @@ func parseTenantID(raw string) (int64, bool) {
 	return tenantID, true
 }
 
-func parseTenantIDFromLoginUser(raw string) (int64, bool) {
+func parseTenantIDValueFromLoginUser(raw string) (string, bool) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return 0, false
+		return "", false
 	}
 	if decoded, err := url.QueryUnescape(value); err == nil {
 		value = decoded
 	}
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(value), &payload); err != nil {
-		return 0, false
+		return "", false
 	}
-	if tenantID, ok := parseTenantID(fmt.Sprint(payload["tenantId"])); ok {
+	if tenantID := strings.TrimSpace(fmt.Sprint(payload["tenantId"])); tenantID != "" && tenantID != "<nil>" {
 		return tenantID, true
 	}
-	if tenantID, ok := parseTenantID(fmt.Sprint(payload["tenant_id"])); ok {
+	if tenantID := strings.TrimSpace(fmt.Sprint(payload["tenant_id"])); tenantID != "" && tenantID != "<nil>" {
 		return tenantID, true
 	}
-	return 0, false
+	return "", false
 }

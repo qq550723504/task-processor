@@ -28,6 +28,7 @@ import {
 import { useSheinLoginAccounts } from "@/lib/query/use-shein-login";
 import { buildSheinLoginStatusMap } from "@/components/listingkit/stores/store-login-status";
 import type { SheinLoginWarehouse } from "@/lib/types/shein-login";
+import { SHEIN_SITE_OPTIONS } from "@/components/listingkit/stores/shein-site-options";
 
 type StoreProfileForm = {
   id?: number;
@@ -55,21 +56,6 @@ type StoreOption = {
   platform?: string;
   region?: string;
 };
-
-const SHEIN_SITE_OPTIONS = [
-  "US",
-  "FR",
-  "DE",
-  "IT",
-  "ES",
-  "UK",
-  "AU",
-  "JP",
-  "MX",
-  "SA",
-  "AE",
-  "CA",
-] as const;
 
 const DEFAULT_FORM: StoreProfileForm = {
   store_id: "",

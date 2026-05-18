@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   type ZitadelClientIdentity,
   useZitadelIdentity,
@@ -36,7 +37,6 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -430,6 +430,22 @@ function NavTreeNode({
   return <NavSectionItem item={item} pathname={pathname} />;
 }
 
+function summarizeIdentity(identity: ZitadelClientIdentity | null | undefined) {
+  const username = identity?.username?.trim();
+  if (username) {
+    return username;
+  }
+  const userId = identity?.userId?.trim();
+  if (userId) {
+    return userId;
+  }
+  return "账号";
+}
+
+function summarizeTenant(identity: ZitadelClientIdentity | null | undefined) {
+  return identity?.tenantId?.trim() || "未识别租户";
+}
+
 export function ListingKitAppShell({
   children,
   identity: identityOverride,
@@ -440,6 +456,7 @@ export function ListingKitAppShell({
   const pathname = usePathname();
   const identityFromContext = useZitadelIdentity();
   const identity = identityOverride ?? identityFromContext;
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const navGroups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items
@@ -484,31 +501,76 @@ export function ListingKitAppShell({
           </nav>
         </SidebarContent>
 
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <a href="/api/zitadel-auth/logout">
-                  <LogOut data-icon="inline-start" />
-                  <span>退出登录</span>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
         <SidebarRail />
       </Sidebar>
 
       <SidebarInset>
         <div className={APP_RAIL_CLASS}>
-          <div className="flex min-h-14 items-center gap-3 border-b border-border py-3">
-            <SidebarTrigger className="md:hidden" />
-            <p className="min-w-0 text-sm text-muted-foreground">
-              当前页面
-              <Badge className="ml-2 rounded-full px-2.5 py-1 font-mono text-xs" variant="neutral">
-                {pathname}
-              </Badge>
-            </p>
+          <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarTrigger className="md:hidden" />
+              <p className="min-w-0 text-sm text-muted-foreground">
+                当前页面
+                <Badge className="ml-2 rounded-full px-2.5 py-1 font-mono text-xs" variant="neutral">
+                  {pathname}
+                </Badge>
+              </p>
+            </div>
+            <div className="relative">
+              <Button
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="menu"
+                className="h-auto min-w-[200px] justify-between rounded-xl px-3 py-2"
+                onClick={() => setAccountMenuOpen((current) => !current)}
+                size="sm"
+                variant="outline"
+              >
+                <span className="flex min-w-0 flex-col items-start text-left">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {summarizeIdentity(identity)}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {summarizeTenant(identity)}
+                  </span>
+                </span>
+                <UserCog className="size-4 shrink-0 text-muted-foreground" />
+              </Button>
+              {accountMenuOpen ? (
+                <div
+                  className="absolute right-0 top-full z-50 mt-2 w-[280px] rounded-2xl border border-border bg-background p-3 shadow-[0_16px_40px_rgba(24,24,27,0.12)]"
+                  role="menu"
+                >
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        当前账号
+                      </p>
+                      <p className="text-sm font-medium text-foreground">{summarizeIdentity(identity)}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        当前租户
+                      </p>
+                      <p className="break-all text-sm text-foreground">{summarizeTenant(identity)}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        角色
+                      </p>
+                      <p className="break-all text-sm text-foreground">
+                        {identity?.roles?.length ? identity.roles.join(", ") : "未识别角色"}
+                      </p>
+                    </div>
+                    <Button asChild className="w-full justify-center" size="sm" variant="outline">
+                      <a href="/api/zitadel-auth/logout">
+                        <LogOut data-icon="inline-start" />
+                        <span>退出登录</span>
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
         <main className={`${APP_RAIL_CLASS} flex min-h-screen flex-col py-2`}>

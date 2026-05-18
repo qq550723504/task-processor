@@ -11,6 +11,7 @@ import (
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
+	managementapi "task-processor/internal/infra/clients/management/api"
 )
 
 type stubAccountProvider struct {
@@ -64,6 +65,23 @@ func (s *stubAutomation) Login(context.Context, Account, AutomationConfig, *Redi
 func (s *stubAutomation) StartLogin(context.Context, Account, AutomationConfig) (*AutomationResult, VerifySession, error) {
 	s.calls++
 	return s.result, s.session, s.err
+}
+
+type stubStoreClient struct {
+	updateStoreIDReq     *managementapi.StoreIdUpdateReqDTO
+	updateStoreIDErr     error
+	updateStoreStatusReq *managementapi.StoreStatusUpdateReqDTO
+	updateStoreStatusErr error
+}
+
+func (s *stubStoreClient) UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error) {
+	s.updateStoreIDReq = req
+	return s.updateStoreIDErr == nil, s.updateStoreIDErr
+}
+
+func (s *stubStoreClient) UpdateStoreStatus(req *managementapi.StoreStatusUpdateReqDTO) (bool, error) {
+	s.updateStoreStatusReq = req
+	return s.updateStoreStatusErr == nil, s.updateStoreStatusErr
 }
 
 func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
@@ -154,6 +172,161 @@ func TestServiceLoginPersistsCookieOnlyBrowserState(t *testing.T) {
 	}
 	if strings.Contains(raw, "\"origins\"") {
 		t.Fatalf("expected cookie-only payload, got %s", raw)
+	}
+}
+
+func TestServiceLoginSyncsResolvedStoreIDWhenStoredValueIsEmpty(t *testing.T) {
+	auto := &stubAutomation{
+		result: &AutomationResult{
+			BrowserState: map[string]any{
+				"cookies": []any{map[string]any{"name": "sid", "value": "ok"}},
+			},
+		},
+	}
+	storeClient := &stubStoreClient{}
+	svc := newTestService(t, auto)
+	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
+		return 1862049307, nil
+	}
+	svc.storeClientFor = func(int64) sheinLoginStoreClient {
+		return storeClient
+	}
+	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
+		return nil, nil
+	}
+
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected successful login result: %+v", result)
+	}
+	if storeClient.updateStoreIDReq == nil {
+		t.Fatal("expected store id update request")
+	}
+	if storeClient.updateStoreIDReq.ID != 2 || storeClient.updateStoreIDReq.StoreID != "1862049307" {
+		t.Fatalf("unexpected store id update request: %+v", storeClient.updateStoreIDReq)
+	}
+	if storeClient.updateStoreStatusReq != nil {
+		t.Fatalf("did not expect store disable request: %+v", storeClient.updateStoreStatusReq)
+	}
+}
+
+func TestServiceLoginDisablesStoreWhenResolvedStoreIDDiffers(t *testing.T) {
+	auto := &stubAutomation{
+		result: &AutomationResult{
+			BrowserState: map[string]any{
+				"cookies": []any{map[string]any{"name": "sid", "value": "ok"}},
+			},
+		},
+	}
+	storeClient := &stubStoreClient{}
+	svc := newTestServiceWithAccounts(t, auto, []Account{{
+		StoreID:   2,
+		TenantID:  1,
+		Username:  "demo",
+		Password:  "pwd",
+		Platform:  "SHEIN",
+		StoreName: "123456",
+	}})
+	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
+		return 1862049307, nil
+	}
+	svc.storeClientFor = func(int64) sheinLoginStoreClient {
+		return storeClient
+	}
+	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
+		return nil, nil
+	}
+
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected successful login result: %+v", result)
+	}
+	if storeClient.updateStoreIDReq != nil {
+		t.Fatalf("did not expect store id update request: %+v", storeClient.updateStoreIDReq)
+	}
+	if storeClient.updateStoreStatusReq == nil {
+		t.Fatal("expected store disable request")
+	}
+	if storeClient.updateStoreStatusReq.ID != 2 || storeClient.updateStoreStatusReq.Status != 1 {
+		t.Fatalf("unexpected store status update request: %+v", storeClient.updateStoreStatusReq)
+	}
+	if !strings.Contains(storeClient.updateStoreStatusReq.Remark, "stored=123456") || !strings.Contains(storeClient.updateStoreStatusReq.Remark, "actual=1862049307") {
+		t.Fatalf("unexpected disable remark: %s", storeClient.updateStoreStatusReq.Remark)
+	}
+}
+
+func TestServiceLoginIgnoresStoreIDSyncFailure(t *testing.T) {
+	auto := &stubAutomation{
+		result: &AutomationResult{
+			BrowserState: map[string]any{
+				"cookies": []any{map[string]any{"name": "sid", "value": "ok"}},
+			},
+		},
+	}
+	svc := newTestService(t, auto)
+	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
+		return 0, fmt.Errorf("supplier info failed")
+	}
+
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected successful login result: %+v", result)
+	}
+}
+
+func TestServiceLoginDisablesCurrentStoreWhenDuplicateStoreIDExists(t *testing.T) {
+	auto := &stubAutomation{
+		result: &AutomationResult{
+			BrowserState: map[string]any{
+				"cookies": []any{map[string]any{"name": "sid", "value": "ok"}},
+			},
+		},
+	}
+	storeClient := &stubStoreClient{}
+	svc := newTestService(t, auto)
+	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
+		return 1862049307, nil
+	}
+	svc.storeClientFor = func(int64) sheinLoginStoreClient {
+		return storeClient
+	}
+	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
+		return &managementapi.StoreRespDTO{
+			ID:       99,
+			TenantID: 88,
+			Name:     "跨租户重复店铺",
+			StoreID:  "1862049307",
+			Platform: "SHEIN",
+		}, nil
+	}
+
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected successful login result: %+v", result)
+	}
+	if storeClient.updateStoreIDReq != nil {
+		t.Fatalf("did not expect store id update request: %+v", storeClient.updateStoreIDReq)
+	}
+	if storeClient.updateStoreStatusReq == nil {
+		t.Fatal("expected duplicate store disable request")
+	}
+	if !strings.Contains(storeClient.updateStoreStatusReq.Remark, "store_id=1862049307") ||
+		!strings.Contains(storeClient.updateStoreStatusReq.Remark, "duplicate_store_row_id=99") ||
+		!strings.Contains(storeClient.updateStoreStatusReq.Remark, "duplicate_tenant_id=88") ||
+		!strings.Contains(storeClient.updateStoreStatusReq.Remark, "duplicate_store_name=跨租户重复店铺") {
+		t.Fatalf("unexpected duplicate disable remark: %s", storeClient.updateStoreStatusReq.Remark)
 	}
 }
 
@@ -284,15 +457,20 @@ func TestLoginUsesAbsoluteProfileRoot(t *testing.T) {
 }
 
 func newTestService(t *testing.T, automation Automation) *Service {
+	return newTestServiceWithAccounts(t, automation, []Account{
+		{StoreID: 2, TenantID: 1, Username: "demo", Password: "pwd", Platform: "SHEIN"},
+		{StoreID: 2, TenantID: 9, Username: "other", Password: "pwd", Platform: "SHEIN"},
+	})
+}
+
+func newTestServiceWithAccounts(t *testing.T, automation Automation, accounts []Account) *Service {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	store := newRedisStoreFromClient(client)
 	t.Cleanup(func() { _ = store.Close() })
-	account := Account{StoreID: 2, TenantID: 1, Username: "demo", Password: "pwd", Platform: "SHEIN"}
-	otherTenantAccount := Account{StoreID: 2, TenantID: 9, Username: "other", Password: "pwd", Platform: "SHEIN"}
 	return &Service{
-		provider:        &stubAccountProvider{accounts: []Account{account, otherTenantAccount}},
+		provider:        &stubAccountProvider{accounts: accounts},
 		store:           store,
 		runtime:         NewRuntime(1),
 		automation:      automation,

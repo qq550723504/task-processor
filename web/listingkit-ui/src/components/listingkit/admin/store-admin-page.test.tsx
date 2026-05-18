@@ -71,9 +71,13 @@ describe("StoreAdminPage", () => {
     });
     expect(screen.getByText("shein-us")).toBeInTheDocument();
     expect(screen.getAllByText("SHEIN").length).toBeGreaterThan(0);
+    expect(screen.getByText("启用")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "回收站" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "延长 SHEIN US 有效期" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "禁用 SHEIN US" }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText("Deleted SHEIN")).toBeInTheDocument();
@@ -150,17 +154,59 @@ describe("StoreAdminPage", () => {
     const form = screen.getByRole("form", { name: "店铺表单" });
     const nameInput = within(form).getByLabelText("店铺名称");
     expect(nameInput).toHaveValue("SHEIN US");
+    expect(within(form).getByLabelText("启用自动登录")).not.toBeChecked();
 
     await user.clear(nameInput);
     await user.type(nameInput, "SHEIN US Edited");
+    await user.click(within(form).getByLabelText("启用自动登录"));
     await user.click(within(form).getByRole("button", { name: "保存修改" }));
 
     await waitFor(() => {
       expect(updateStore).toHaveBeenCalledWith(
         1,
-        expect.objectContaining({ name: "SHEIN US Edited" }),
+        expect.objectContaining({ name: "SHEIN US Edited", enableAutoLogin: true }),
       );
     });
+  });
+
+  it("uses a region dropdown when editing a platform store", async () => {
+    const user = userEvent.setup();
+    const store = {
+      id: 1,
+      tenantId: 101,
+      name: "SHEIN US",
+      username: "shein-us",
+      platform: "SHEIN",
+      shopType: "0",
+      region: "US",
+      status: 0,
+    };
+
+    vi.spyOn(adminStoresApi, "getListingStores").mockResolvedValue({
+      items: [store],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("SHEIN US");
+    await user.click(screen.getByRole("button", { name: "编辑 SHEIN US" }));
+
+    const regionSelect = within(screen.getByRole("form", { name: "店铺表单" })).getByLabelText("地区");
+    expect(regionSelect.tagName).toBe("SELECT");
+    expect(regionSelect).toHaveValue("US");
+    expect(within(screen.getByRole("form", { name: "店铺表单" })).getByLabelText("启用自动登录")).not.toBeChecked();
   });
 
   it("shows non-shein stores without login status", async () => {
@@ -197,5 +243,47 @@ describe("StoreAdminPage", () => {
     expect(temuRow).not.toBeNull();
     expect(within(temuRow as HTMLElement).getAllByText("-").length).toBeGreaterThan(0);
     expect(within(temuRow as HTMLElement).queryByRole("link", { name: "去登录" })).toBeNull();
+  });
+
+  it("toggles store status through the admin store status endpoint", async () => {
+    const user = userEvent.setup();
+    const store = {
+      id: 1,
+      tenantId: 101,
+      name: "SHEIN US",
+      username: "shein-us",
+      platform: "SHEIN",
+      shopType: "0",
+      region: "US",
+      status: 0,
+    };
+
+    vi.spyOn(adminStoresApi, "getListingStores").mockResolvedValue({
+      items: [store],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([]);
+    const updateStatus = vi
+      .spyOn(adminStoresApi, "updateListingStoreStatus")
+      .mockResolvedValue({ ...store, status: 1 });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("SHEIN US");
+    await user.click(screen.getByRole("button", { name: "禁用 SHEIN US" }));
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith(1, 1, "平台手动禁用店铺");
+    });
   });
 });

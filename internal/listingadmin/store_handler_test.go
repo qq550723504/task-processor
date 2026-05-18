@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
+
+	"task-processor/internal/tenantbridge"
 )
 
 func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
@@ -94,6 +97,42 @@ func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	}
 	if row.TenantID != 303 || row.EnableAutoListing == nil || !*row.EnableAutoListing || row.OwnerUserID != "user-303" || row.CreatedBy != "user-303" || row.UpdatedBy != "user-303" {
 		t.Fatalf("row = %+v, want tenant and boolean fields persisted", row)
+	}
+}
+
+func TestStoreHandlerResolvesLegacyTenantIDFromMappedZitadelTenant(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(staticLegacyTenantResolver{
+		mapping: map[string]int64{"373211199677923496": 227},
+	})
+	t.Cleanup(restore)
+
+	router := newStoreTestRouter(t)
+	seedStore(t, router.db, listingStore{
+		TenantID: 227,
+		Name:     "Mapped SHEIN",
+		Username: "mapped-user",
+		Password: "secret",
+		Platform: "SHEIN",
+		ShopType: "semi",
+		Region:   "US",
+		Status:   0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
+	req.Header.Set("X-Tenant-ID", "373211199677923496")
+	req.Header.Set("X-User-ID", "user-227")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var page storePageResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].TenantID != 227 {
+		t.Fatalf("items = %+v, want mapped legacy tenant 227 store", page.Items)
 	}
 }
 
@@ -405,4 +444,13 @@ func seedStore(t *testing.T, db *gorm.DB, store listingStore) listingStore {
 		t.Fatalf("seed store: %v", err)
 	}
 	return store
+}
+
+type staticLegacyTenantResolver struct {
+	mapping map[string]int64
+}
+
+func (s staticLegacyTenantResolver) ResolveLegacyTenantID(_ context.Context, tenantID string) (int64, bool, error) {
+	value, ok := s.mapping[tenantID]
+	return value, ok, nil
 }

@@ -17,7 +17,14 @@ describe("ListingKitAppShell", () => {
 
   it("renders the main ListingKit workflow navigation", () => {
     render(
-      <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
+      <ListingKitAppShell
+        identity={{
+          roles: ["listingkit_admin"],
+          username: "zone",
+          tenantId: "373211199677923496",
+          userId: "user-1",
+        }}
+      >
         <div>workspace content</div>
       </ListingKitAppShell>,
     );
@@ -55,17 +62,42 @@ describe("ListingKitAppShell", () => {
     expect(screen.queryByRole("link", { name: "租户订阅管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 上架" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "任务列表" })).toHaveAttribute("href", "/listing-kits");
-    expect(screen.getByRole("link", { name: "退出登录" })).toHaveAttribute(
-      "href",
-      "/api/zitadel-auth/logout",
-    );
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
       "aria-current",
       "page",
     );
     expect(screen.getByText("当前页面")).toBeInTheDocument();
     expect(screen.getByText("/listing-kits/sds")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /zone/i })).toBeInTheDocument();
     expect(screen.getByText("workspace content")).toBeInTheDocument();
+  });
+
+  it("opens the account menu on the right side", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ListingKitAppShell
+        identity={{
+          roles: ["listingkit_admin", "platform_admin"],
+          username: "zone",
+          tenantId: "373211199677923496",
+          userId: "user-1",
+        }}
+      >
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /zone/i }));
+
+    expect(screen.getByText("当前账号")).toBeInTheDocument();
+    expect(screen.getByText("当前租户")).toBeInTheDocument();
+    expect(screen.getAllByText("373211199677923496").length).toBeGreaterThan(0);
+    expect(screen.getByText("listingkit_admin, platform_admin")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "退出登录" })).toHaveAttribute(
+      "href",
+      "/api/zitadel-auth/logout",
+    );
   });
 
   it("renders second-level menu sections that can expand child links", async () => {

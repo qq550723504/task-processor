@@ -8,6 +8,7 @@ import {
   permanentlyDeleteListingStore,
   parseStorePageResponse,
   restoreListingStore,
+  updateListingStoreStatus,
 } from "@/lib/api/admin-stores";
 
 describe("parseStorePageResponse", () => {
@@ -190,5 +191,32 @@ describe("admin store API", () => {
       "/api/listing-kits/admin/stores/1/extend-validity?days=30",
     );
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("PUT");
+  });
+
+  it("updates store status through the admin store status endpoint", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 1,
+          name: "SHEIN US",
+          username: "shein-us",
+          shopType: "semi",
+          platform: "SHEIN",
+          status: 1,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateListingStoreStatus(1, 1, "平台手动禁用店铺")).resolves.toMatchObject({
+      id: 1,
+      status: 1,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/admin/stores/1/status",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("PATCH");
   });
 });
