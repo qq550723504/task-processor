@@ -2,22 +2,8 @@ name: ListingKit Deploy
 
 on:
   push:
-    branches:
-      - master
-    paths:
-      - ".github/workflows/listingkit-deploy.yml"
-      - "cmd/product-listing-api/**"
-      - "config/**"
-      - "deployments/docker/Dockerfile.product-listing-api"
-      - "deployments/docker/Dockerfile.listingkit-ui"
-      - "deployments/kubernetes/listingkit-workbench/base/**"
-      - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
-      - "go.mod"
-      - "go.sum"
-      - "internal/**"
-      - "prompts/**"
-      - "scripts/build-push-deploy-listingkit-workbench.ps1"
-      - "web/listingkit-ui/**"
+    tags:
+      - "listingkit-v*"
   workflow_dispatch:
     inputs:
       image_tag:

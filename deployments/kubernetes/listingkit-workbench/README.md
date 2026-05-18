@@ -107,7 +107,7 @@ Workflow file:
 
 Trigger rules:
 
-- push to `master`: run backend tests, frontend build, build/push both images, then deploy to K3S
+- push tag `listingkit-v*`: run backend tests, frontend build, build/push both images, then deploy to K3S
 - manual dispatch: optional custom image tag, optional `latest` publish, optional `skip_apply`
 
 Required GitHub repository secrets:
