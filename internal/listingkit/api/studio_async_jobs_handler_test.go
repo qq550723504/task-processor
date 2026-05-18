@@ -117,6 +117,33 @@ func TestStudioAsyncJobRejectsUnknownPath(t *testing.T) {
 	}
 }
 
+func TestStudioAsyncJobRequiresStudioSubscription(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	subscriptionService, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	h, err := NewHandler(&stubGenerationTaskService{}, WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/async-jobs", h.StartStudioAsyncJob)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/async-jobs", strings.NewReader(`{"path":"/studio/designs","body":{"prompt":"retro cherries","count":1}}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402 body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"subscription_required"`) {
+		t.Fatalf("body = %s, want subscription_required", resp.Body.String())
+	}
+}
+
 func TestStudioAsyncJobReturnsNotFoundForMissingJob(t *testing.T) {
 	t.Parallel()
 
