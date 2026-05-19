@@ -40,6 +40,7 @@ type FailureDetail struct {
 	CredentialErrorVisible bool            `json:"credential_error_visible,omitempty"`
 	BodyText               string          `json:"body_text,omitempty"`
 	SelectorStates         map[string]bool `json:"selector_states,omitempty"`
+	NetworkPayloads        []map[string]any `json:"network_payloads,omitempty"`
 }
 
 type RecommendedAction struct {

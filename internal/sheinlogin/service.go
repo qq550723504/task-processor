@@ -546,6 +546,9 @@ func failureDetailFromArtifact(summary *FailureSummary, metadata artifactMetadat
 	if len(metadata.SelectorStates) > 0 {
 		detail.SelectorStates = metadata.SelectorStates
 	}
+	if len(metadata.NetworkPayloads) > 0 {
+		detail.NetworkPayloads = metadata.NetworkPayloads
+	}
 	return detail
 }
 

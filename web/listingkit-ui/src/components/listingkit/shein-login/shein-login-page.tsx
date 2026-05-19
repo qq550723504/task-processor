@@ -479,6 +479,13 @@ function FailureDialog({
               </Card>
 
               <Card className="border-zinc-200 bg-zinc-50 p-4">
+                <h3 className="text-sm font-semibold text-zinc-900">登录相关网络请求</h3>
+                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-700">
+                  {JSON.stringify(detail.network_payloads ?? [], null, 2) || "[]"}
+                </pre>
+              </Card>
+
+              <Card className="border-zinc-200 bg-zinc-50 p-4">
                 <h3 className="text-sm font-semibold text-zinc-900">页面文本</h3>
                 <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-700">
                   {detail.body_text || "-"}

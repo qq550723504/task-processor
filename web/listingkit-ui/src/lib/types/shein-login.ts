@@ -24,6 +24,7 @@ export type SheinLoginFailureDetail = SheinLoginFailureSummary & {
   credential_error_visible?: boolean;
   body_text?: string;
   selector_states?: Record<string, boolean>;
+  network_payloads?: Array<Record<string, unknown>>;
 };
 
 export type SheinLoginRecommendedAction = {

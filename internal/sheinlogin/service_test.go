@@ -430,7 +430,8 @@ func TestServiceGetLastFailureDetailPrefersArtifactMetadata(t *testing.T) {
   "permission_visible": true,
   "agreement_visible": false,
   "credential_error_visible": true,
-  "selector_states": {"login_button": true, "verify_code_input": false}
+  "selector_states": {"login_button": true, "verify_code_input": false},
+  "network_payloads": [{"channel":"xhr","url":"https://sso.geiwohuo.com/sso/authenticate/login","status":200,"bodyPreview":"{\"code\":0}"}]
 }`
 	if err := os.WriteFile(filepath.Join(dir, "metadata.json"), []byte(metadata), 0o644); err != nil {
 		t.Fatalf("write metadata: %v", err)
@@ -451,6 +452,9 @@ func TestServiceGetLastFailureDetailPrefersArtifactMetadata(t *testing.T) {
 	}
 	if detail == nil || detail.ErrorCode != "REQUEST_FAILED" || detail.PageState != "request_failure" || detail.ActionKey != "retry_login" || detail.ActionMessage == "" || detail.URL != "https://sellerhub.shein.com/login" || detail.BodyText != "页面正文摘要" || !detail.OnLoginPage || !detail.RequestFailureModal || !detail.LoginFormVisible || detail.SellerHubVisible || detail.VerificationVisible || !detail.PermissionVisible || detail.AgreementVisible || !detail.CredentialErrorVisible || !detail.SelectorStates["login_button"] {
 		t.Fatalf("unexpected detail: %+v", detail)
+	}
+	if len(detail.NetworkPayloads) != 1 {
+		t.Fatalf("expected network payloads, got %+v", detail.NetworkPayloads)
 	}
 }
 

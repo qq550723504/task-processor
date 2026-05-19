@@ -34,6 +34,9 @@ func TestMapStoreToAccountFiltersAndMapsSheinStore(t *testing.T) {
 	if account.Username != "demo-user" || account.Proxy == "" || account.ShopName != "Demo Shop" {
 		t.Fatalf("unexpected account fields: %+v", account)
 	}
+	if account.LoginURL != "https://sellerhub.shein.com" {
+		t.Fatalf("expected normalized login url, got %q", account.LoginURL)
+	}
 
 	store.Platform = "TEMU"
 	if _, ok := mapStoreToAccount(store); ok {

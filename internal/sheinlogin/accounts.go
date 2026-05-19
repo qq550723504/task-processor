@@ -134,10 +134,21 @@ func mapStoreToAccount(store *managementapi.StoreRespDTO) (Account, bool) {
 		TenantID:  store.TenantID,
 		Username:  strings.TrimSpace(store.Username),
 		Password:  store.Password,
-		LoginURL:  strings.TrimSpace(store.LoginUrl),
+		LoginURL:  normalizeLoginURL(strings.TrimSpace(store.LoginUrl)),
 		Proxy:     strings.TrimSpace(store.Proxy),
 		ShopName:  strings.TrimSpace(store.Name),
 		Platform:  strings.TrimSpace(store.Platform),
 		StoreName: strings.TrimSpace(store.StoreID),
 	}, true
+}
+
+func normalizeLoginURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return value
+	}
+	return "https://" + value
 }
