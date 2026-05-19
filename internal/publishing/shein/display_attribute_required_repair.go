@@ -14,7 +14,7 @@ import (
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
-const maxTargetedDisplayAttributeRepairs = 2
+const maxTargetedDisplayAttributeRepairs = 6
 
 func inferMissingRequiredDisplayAttributesRepair(
 	attributes []sheinattribute.AttributeInfo,

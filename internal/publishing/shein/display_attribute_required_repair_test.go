@@ -37,6 +37,42 @@ func TestInferMissingRequiredDisplayAttributesRepairSkipsWhenTooManyPending(t *t
 				{AttributeValueID: 301, AttributeValueEn: "Casual"},
 			},
 		},
+		{
+			AttributeID:     4,
+			AttributeNameEn: "Occasion",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 401, AttributeValueEn: "Daily"},
+			},
+		},
+		{
+			AttributeID:     5,
+			AttributeNameEn: "Season",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 501, AttributeValueEn: "All"},
+			},
+		},
+		{
+			AttributeID:     6,
+			AttributeNameEn: "Room",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 601, AttributeValueEn: "Outdoor"},
+			},
+		},
+		{
+			AttributeID:     7,
+			AttributeNameEn: "Type",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 701, AttributeValueEn: "Curtain Panels"},
+			},
+		},
 	}
 	inputs := []common.Attribute{
 		{Name: "Title", Value: "Decorative wall clock"},
