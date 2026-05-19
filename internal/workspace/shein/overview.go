@@ -89,6 +89,55 @@ type WorkspaceRepairState struct {
 	SessionStatus      string `json:"session_status,omitempty"`
 }
 
+func BuildSubmitStateInput[R any, H any](readiness *SubmitReadiness[R, H]) *SubmitStateInput {
+	if readiness == nil {
+		return nil
+	}
+	return &SubmitStateInput{
+		Status:        readiness.Status,
+		Ready:         readiness.Ready,
+		Summary:       append([]string(nil), readiness.Summary...),
+		BlockingItems: ToActionItems(readiness.BlockingItems),
+		WarningItems:  ToActionItems(readiness.WarningItems),
+	}
+}
+
+func BuildRepairStateInput[R any, P any, S any, Q any, V any](center *RepairCenter[R, P, S, Q, V]) *RepairStateInput {
+	if center == nil {
+		return nil
+	}
+	out := &RepairStateInput{
+		Status:             center.Status,
+		TotalActions:       RepairCenterActionCount(center),
+		DirectApplyActions: RepairCenterDirectApplyCount(center),
+		PrimaryPlanStatus:  RepairCenterPrimaryPlanStatus(center),
+		SessionStatus:      RepairCenterSessionStatus(center),
+		Summary:            append([]string(nil), center.Summary...),
+	}
+	if center.PrimaryAction != nil {
+		out.PrimaryAction = center.PrimaryAction.SuggestedAction
+		out.PrimaryActionKey = center.PrimaryAction.Key
+	}
+	if center.Session != nil {
+		out.Session = &SessionInput{
+			Status:        center.Session.Status,
+			CurrentStepID: center.Session.CurrentStepID,
+			NextStepID:    center.Session.NextStepID,
+			RefreshBlocks: append([]string(nil), center.Session.RefreshBlocks...),
+		}
+		if center.Session.ResumeState != nil {
+			out.Session.ResumeMode = center.Session.ResumeState.ResumeMode
+			if out.Session.CurrentStepID == "" {
+				out.Session.CurrentStepID = center.Session.ResumeState.ResumeStepID
+			}
+			if len(out.Session.RefreshBlocks) == 0 {
+				out.Session.RefreshBlocks = append([]string(nil), center.Session.ResumeState.RefreshBlocks...)
+			}
+		}
+	}
+	return out
+}
+
 func BuildStatusOverview(inspection *sheinpub.Inspection, readiness *SubmitStateInput) *StatusOverview {
 	overview := &StatusOverview{}
 	if readiness != nil {

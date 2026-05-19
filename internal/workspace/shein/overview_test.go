@@ -97,3 +97,67 @@ func TestBuildWorkspaceOverviewUsesRepairSessionAsPrimaryEntry(t *testing.T) {
 		t.Fatalf("repair state = %+v", overview.RepairState)
 	}
 }
+
+func TestBuildSubmitStateInput(t *testing.T) {
+	t.Parallel()
+
+	readiness := &SubmitReadiness[string, string]{
+		Status:        "blocked",
+		Ready:         false,
+		Summary:       []string{"当前仍有关键字段未完成"},
+		BlockingItems: []ReadinessItem[string, string]{{Key: "category", SuggestedAction: "确认类目"}},
+		WarningItems:  []ReadinessItem[string, string]{{Key: "manual_notes", SuggestedAction: "处理备注"}},
+	}
+
+	state := BuildSubmitStateInput(readiness)
+	if state == nil {
+		t.Fatal("expected submit state")
+	}
+	if state.Status != "blocked" || state.Ready {
+		t.Fatalf("state = %+v", state)
+	}
+	if len(state.BlockingItems) != 1 || state.BlockingItems[0].Key != "category" {
+		t.Fatalf("blocking items = %+v", state.BlockingItems)
+	}
+}
+
+func TestBuildRepairStateInput(t *testing.T) {
+	t.Parallel()
+
+	center := &RepairCenter[string, string, string, string, string]{
+		Status:  "needs_repair",
+		Summary: []string{"已整理 2 个修复动作"},
+		Stats: &RepairCenterStats{
+			TotalActions:       2,
+			DirectApplyActions: 1,
+		},
+		PrimaryAction: &RepairCenterAction[string, string, string, string, string]{
+			Key:             "category",
+			SuggestedAction: "确认类目",
+		},
+		PrimaryPlan: &RepairPlan{Status: "mixed"},
+		Session: &RepairSession{
+			Status:        "guided_mixed",
+			CurrentStepID: "step-1",
+			NextStepID:    "step-2",
+			RefreshBlocks: []string{"inspection"},
+			ResumeState: &RepairResumeState{
+				ResumeMode: "editor_required",
+			},
+		},
+	}
+
+	state := BuildRepairStateInput(center)
+	if state == nil {
+		t.Fatal("expected repair state")
+	}
+	if state.Status != "needs_repair" || state.TotalActions != 2 || state.DirectApplyActions != 1 {
+		t.Fatalf("state = %+v", state)
+	}
+	if state.PrimaryAction != "确认类目" || state.PrimaryActionKey != "category" {
+		t.Fatalf("primary action = %+v", state)
+	}
+	if state.Session == nil || state.Session.ResumeMode != "editor_required" {
+		t.Fatalf("session = %+v", state.Session)
+	}
+}

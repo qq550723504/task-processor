@@ -208,6 +208,19 @@ func FindLabels[R any, H any](items []ReadinessItem[R, H]) []string {
 	return labels
 }
 
+func FindKeys[R any, H any](items []ReadinessItem[R, H]) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.Key != "" {
+			keys = append(keys, item.Key)
+		}
+	}
+	return keys
+}
+
 func CloneReadinessItems[R any, H any](items []ReadinessItem[R, H]) []ReadinessItem[R, H] {
 	if len(items) == 0 {
 		return nil

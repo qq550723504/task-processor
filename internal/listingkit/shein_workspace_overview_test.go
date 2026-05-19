@@ -30,7 +30,7 @@ func TestBuildSheinStatusOverviewBlockedState(t *testing.T) {
 		},
 	}
 
-	overview := sheinworkspace.BuildStatusOverview(pkg.Inspection, toSheinWorkspaceSubmitState(readiness))
+	overview := sheinworkspace.BuildStatusOverview(pkg.Inspection, sheinworkspace.BuildSubmitStateInput(readiness))
 	if overview == nil {
 		t.Fatal("expected overview")
 	}
@@ -66,7 +66,7 @@ func TestBuildSheinStatusOverviewReadyState(t *testing.T) {
 		Summary: []string{"SHEIN 资料包已具备提交前所需的关键骨架"},
 	}
 
-	overview := sheinworkspace.BuildStatusOverview(pkg.Inspection, toSheinWorkspaceSubmitState(readiness))
+	overview := sheinworkspace.BuildStatusOverview(pkg.Inspection, sheinworkspace.BuildSubmitStateInput(readiness))
 	if overview == nil {
 		t.Fatal("expected overview")
 	}
@@ -122,7 +122,7 @@ func TestBuildSheinWorkspaceOverviewUsesRepairSessionAsPrimaryEntry(t *testing.T
 		Summary: []string{"已整理 3 个修复动作"},
 	}
 
-	overview := sheinworkspace.BuildWorkspaceOverview(status, toSheinWorkspaceSubmitState(readiness), toSheinWorkspaceRepairState(center))
+	overview := sheinworkspace.BuildWorkspaceOverview(status, sheinworkspace.BuildSubmitStateInput(readiness), sheinworkspace.BuildRepairStateInput(center))
 	if overview == nil {
 		t.Fatal("expected workspace overview")
 	}

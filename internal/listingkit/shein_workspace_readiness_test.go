@@ -1067,3 +1067,29 @@ func TestCloneSheinRepairArtifacts(t *testing.T) {
 		t.Fatalf("artifacts validation = %+v", artifacts.validation)
 	}
 }
+
+func TestCloneSheinRepairFields(t *testing.T) {
+	t.Parallel()
+
+	categoryID := 3001
+	payload := &SheinRepairPatchPayload{
+		CategoryResolution: &SheinCategoryResolutionPatch{
+			CategoryID: &categoryID,
+		},
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ReviewNotes: []string{"manual review"},
+	}
+
+	fields := cloneSheinRepairFields(payload)
+	if fields.categoryResolution == nil || fields.categoryResolution.CategoryID == nil || *fields.categoryResolution.CategoryID != 3001 {
+		t.Fatalf("category fields = %+v", fields.categoryResolution)
+	}
+	if fields.images == nil || fields.images.MainImage != "https://cdn.example.com/main.jpg" {
+		t.Fatalf("image fields = %+v", fields.images)
+	}
+	if len(fields.reviewNotes) != 1 || fields.reviewNotes[0] != "manual review" {
+		t.Fatalf("review notes = %+v", fields.reviewNotes)
+	}
+}

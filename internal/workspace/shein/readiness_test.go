@@ -65,6 +65,21 @@ func TestCloneReadinessItems(t *testing.T) {
 	}
 }
 
+func TestFindKeys(t *testing.T) {
+	t.Parallel()
+
+	items := []ReadinessItem[string, string]{
+		{Key: "category"},
+		{Key: ""},
+		{Key: "manual_notes"},
+	}
+
+	got := FindKeys(items)
+	if len(got) != 2 || got[0] != "category" || got[1] != "manual_notes" {
+		t.Fatalf("FindKeys() = %+v", got)
+	}
+}
+
 func TestToActionItems(t *testing.T) {
 	t.Parallel()
 

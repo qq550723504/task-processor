@@ -130,6 +130,10 @@ func cloneResolutionCacheInfo(info *ResolutionCacheInfo) *ResolutionCacheInfo {
 	return &clone
 }
 
+func CloneResolutionCacheInfo(info *ResolutionCacheInfo) *ResolutionCacheInfo {
+	return cloneResolutionCacheInfo(info)
+}
+
 func cloneSourceVariantDimensions(items []SourceVariantDimension) []SourceVariantDimension {
 	if len(items) == 0 {
 		return nil

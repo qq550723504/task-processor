@@ -29,17 +29,41 @@ type sheinRepairArtifacts struct {
 	validation *SheinRepairValidationPreview
 }
 
+type sheinRepairClonedFields struct {
+	categoryResolution      *SheinCategoryResolutionPatch
+	attributeResolution     *SheinAttributeResolutionPatch
+	saleAttributeResolution *SheinSaleAttributeResolutionPatch
+	skcPatches              []SheinSKCRevisionPatch
+	images                  *PlatformImageSet
+	reviewNotes             []string
+}
+
+func cloneSheinRepairFields(payload *SheinRepairPatchPayload) sheinRepairClonedFields {
+	if payload == nil {
+		return sheinRepairClonedFields{}
+	}
+	return sheinRepairClonedFields{
+		categoryResolution:      cloneSheinCategoryResolutionPatch(payload.CategoryResolution),
+		attributeResolution:     cloneSheinAttributeResolutionPatch(payload.AttributeResolution),
+		saleAttributeResolution: cloneSheinSaleAttributeResolutionPatch(payload.SaleAttributeResolution),
+		skcPatches:              cloneSheinSKCRevisionPatches(payload.SKCPatches),
+		images:                  clonePlatformImageSetForEditor(payload.Images),
+		reviewNotes:             append([]string(nil), payload.ReviewNotes...),
+	}
+}
+
 func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {
 	if payload == nil {
 		return nil
 	}
+	fields := cloneSheinRepairFields(payload)
 	return &SheinRepairPatchPayload{
-		CategoryResolution:      cloneSheinCategoryResolutionPatch(payload.CategoryResolution),
-		AttributeResolution:     cloneSheinAttributeResolutionPatch(payload.AttributeResolution),
-		SaleAttributeResolution: cloneSheinSaleAttributeResolutionPatch(payload.SaleAttributeResolution),
-		SKCPatches:              cloneSheinSKCRevisionPatches(payload.SKCPatches),
-		Images:                  clonePlatformImageSetForEditor(payload.Images),
-		ReviewNotes:             append([]string(nil), payload.ReviewNotes...),
+		CategoryResolution:      fields.categoryResolution,
+		AttributeResolution:     fields.attributeResolution,
+		SaleAttributeResolution: fields.saleAttributeResolution,
+		SKCPatches:              fields.skcPatches,
+		Images:                  fields.images,
+		ReviewNotes:             fields.reviewNotes,
 	}
 }
 
@@ -183,13 +207,14 @@ func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevis
 	if payload == nil {
 		return nil
 	}
+	fields := cloneSheinRepairFields(payload)
 	input := &SheinRevisionInput{
-		CategoryResolution:      cloneSheinCategoryResolutionPatch(payload.CategoryResolution),
-		AttributeResolution:     cloneSheinAttributeResolutionPatch(payload.AttributeResolution),
-		SaleAttributeResolution: cloneSheinSaleAttributeResolutionPatch(payload.SaleAttributeResolution),
-		SKCPatches:              cloneSheinSKCRevisionPatches(payload.SKCPatches),
-		Images:                  clonePlatformImageSetForEditor(payload.Images),
-		ReviewNotes:             append([]string(nil), payload.ReviewNotes...),
+		CategoryResolution:      fields.categoryResolution,
+		AttributeResolution:     fields.attributeResolution,
+		SaleAttributeResolution: fields.saleAttributeResolution,
+		SKCPatches:              fields.skcPatches,
+		Images:                  fields.images,
+		ReviewNotes:             fields.reviewNotes,
 	}
 	if isEmptySheinRevisionInput(input) {
 		return nil

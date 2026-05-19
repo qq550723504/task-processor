@@ -354,7 +354,7 @@ func buildSheinTaskStatusOverview(pkg *SheinPackage) *sheinworkspace.StatusOverv
 		return nil
 	}
 	readiness := buildSheinSubmitReadiness(pkg)
-	return sheinworkspace.BuildStatusOverview(pkg.Inspection, toSheinWorkspaceSubmitState(readiness))
+	return sheinworkspace.BuildStatusOverview(pkg.Inspection, sheinworkspace.BuildSubmitStateInput(readiness))
 }
 
 func sheinBlockingKeys(pkg *SheinPackage) []string {
@@ -362,14 +362,7 @@ func sheinBlockingKeys(pkg *SheinPackage) []string {
 	if readiness == nil || len(readiness.BlockingItems) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(readiness.BlockingItems))
-	for _, item := range readiness.BlockingItems {
-		if strings.TrimSpace(item.Key) == "" {
-			continue
-		}
-		keys = append(keys, item.Key)
-	}
-	return uniqueNonEmptyStrings(keys)
+	return uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))
 }
 
 func sheinWarningKeys(pkg *SheinPackage) []string {
@@ -377,14 +370,7 @@ func sheinWarningKeys(pkg *SheinPackage) []string {
 	if readiness == nil || len(readiness.WarningItems) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(readiness.WarningItems))
-	for _, item := range readiness.WarningItems {
-		if strings.TrimSpace(item.Key) == "" {
-			continue
-		}
-		keys = append(keys, item.Key)
-	}
-	return uniqueNonEmptyStrings(keys)
+	return uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))
 }
 
 func deriveSheinWorkQueue(task *Task, workflowStatus string, overview *sheinworkspace.StatusOverview) string {
