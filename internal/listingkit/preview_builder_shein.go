@@ -123,7 +123,7 @@ func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Pr
 		CategoryPath:  append([]string(nil), pkg.CategoryPath...),
 		CategoryID:    pkg.CategoryID,
 		Attributes:    append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...),
-		BlockingItems: cloneSheinReadinessItems(readinessBlockingItems(readiness)),
+		BlockingItems: sheinworkspace.CloneReadinessItems(readiness.BlockingItems),
 	}
 	if pkg.FinalDraft != nil {
 		final.Confirmed = pkg.FinalDraft.Confirmed
@@ -138,22 +138,6 @@ func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Pr
 		final.Images = buildSheinFinalReviewImages(pkg.RequestDraft, pkg.FinalDraft, pkg.PreviewProduct)
 	}
 	return final
-}
-
-func readinessBlockingItems(readiness *SheinSubmitReadiness) []SheinReadinessItem {
-	if readiness == nil {
-		return nil
-	}
-	return readiness.BlockingItems
-}
-
-func cloneSheinReadinessItems(items []SheinReadinessItem) []SheinReadinessItem {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]SheinReadinessItem, len(items))
-	copy(out, items)
-	return out
 }
 
 func buildSheinFinalReviewSKUs(draft *sheinpub.RequestDraft) []SheinFinalReviewSKU {
@@ -319,23 +303,9 @@ func toSheinWorkspaceSubmitState(readiness *SheinSubmitReadiness) *sheinworkspac
 		Status:        readiness.Status,
 		Ready:         readiness.Ready,
 		Summary:       append([]string(nil), readiness.Summary...),
-		BlockingItems: toSheinWorkspaceActionItems(readiness.BlockingItems),
-		WarningItems:  toSheinWorkspaceActionItems(readiness.WarningItems),
+		BlockingItems: sheinworkspace.ToActionItems(readiness.BlockingItems),
+		WarningItems:  sheinworkspace.ToActionItems(readiness.WarningItems),
 	}
-}
-
-func toSheinWorkspaceActionItems(items []SheinReadinessItem) []sheinworkspace.ActionItem {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]sheinworkspace.ActionItem, 0, len(items))
-	for _, item := range items {
-		out = append(out, sheinworkspace.ActionItem{
-			Key:             item.Key,
-			SuggestedAction: item.SuggestedAction,
-		})
-	}
-	return out
 }
 
 func toSheinWorkspaceRepairState(center *SheinRepairCenter) *sheinworkspace.RepairStateInput {
@@ -344,10 +314,10 @@ func toSheinWorkspaceRepairState(center *SheinRepairCenter) *sheinworkspace.Repa
 	}
 	out := &sheinworkspace.RepairStateInput{
 		Status:             center.Status,
-		TotalActions:       safeRepairActionCount(center),
-		DirectApplyActions: safeRepairDirectApplyCount(center),
-		PrimaryPlanStatus:  safeRepairPlanStatus(center),
-		SessionStatus:      safeRepairSessionStatus(center),
+		TotalActions:       sheinworkspace.RepairCenterActionCount(center),
+		DirectApplyActions: sheinworkspace.RepairCenterDirectApplyCount(center),
+		PrimaryPlanStatus:  sheinworkspace.RepairCenterPrimaryPlanStatus(center),
+		SessionStatus:      sheinworkspace.RepairCenterSessionStatus(center),
 		Summary:            append([]string(nil), center.Summary...),
 	}
 	if center.PrimaryAction != nil {

@@ -149,6 +149,34 @@ type RepairSessionActionInfo struct {
 	AffectedSections []string
 }
 
+func RepairCenterActionCount[R any, P any, S any, Q any, V any](center *RepairCenter[R, P, S, Q, V]) int {
+	if center == nil || center.Stats == nil {
+		return 0
+	}
+	return center.Stats.TotalActions
+}
+
+func RepairCenterDirectApplyCount[R any, P any, S any, Q any, V any](center *RepairCenter[R, P, S, Q, V]) int {
+	if center == nil || center.Stats == nil {
+		return 0
+	}
+	return center.Stats.DirectApplyActions
+}
+
+func RepairCenterPrimaryPlanStatus[R any, P any, S any, Q any, V any](center *RepairCenter[R, P, S, Q, V]) string {
+	if center == nil || center.PrimaryPlan == nil {
+		return ""
+	}
+	return center.PrimaryPlan.Status
+}
+
+func RepairCenterSessionStatus[R any, P any, S any, Q any, V any](center *RepairCenter[R, P, S, Q, V]) string {
+	if center == nil || center.Session == nil {
+		return ""
+	}
+	return center.Session.Status
+}
+
 func BuildRepairPlan[R any, P any, S any, Q any, V any](
 	actions []RepairCenterAction[R, P, S, Q, V],
 	changeCount func(*V) int,

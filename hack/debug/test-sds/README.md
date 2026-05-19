@@ -5,7 +5,7 @@
 示例：
 
 ```bash
-cd tools/debug
+cd hack/debug
 go run ./test-sds -mode option-groups -token <access-token> -merchant-id <merchant-id>
 go run ./test-sds -mode list -token <access-token> -page 1 -size 20
 go run ./test-sds -mode detail -product-id 239998
@@ -19,8 +19,8 @@ go run ./test-sds -mode process-and-sync -token <access-token> -merchant-id <mer
 推荐优先使用：
 
 ```bash
-cd tools/debug
-go run ./test-sds -mode sync-file -variant-id 89764 -image-file ./.tmp/sds-live-test.png
+cd hack/debug
+go run ./test-sds -mode sync-file -variant-id 89764 -image-file ./.local/tmp/sds-live-test.png
 ```
 
 说明：

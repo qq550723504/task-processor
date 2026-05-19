@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	listingworkflow "task-processor/internal/listingkit/workflow"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -38,37 +39,45 @@ func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
 }
 
 func shouldProcessImages(req *GenerateRequest) bool {
-	if shouldUseSDSCatalogSource(req) {
-		return false
-	}
-	return req != nil && req.Options != nil && req.Options.ProcessImages &&
-		(len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != "")
+	return listingworkflow.ShouldProcessImages(buildWorkflowRequestPolicyInput(req))
 }
 
 func shouldGenerateAssets(req *GenerateRequest) bool {
-	if shouldUseSDSCatalogSource(req) {
-		return false
-	}
-	return req != nil && req.Options != nil && req.Options.ProcessImages
+	return listingworkflow.ShouldGenerateAssets(buildWorkflowRequestPolicyInput(req))
 }
 
 func shouldUseSDSCatalogSource(req *GenerateRequest) bool {
-	if req == nil || req.Options == nil || req.Options.SDS == nil {
-		return false
-	}
-	sds := req.Options.SDS
-	return shouldSyncSDS(req) &&
-		(strings.TrimSpace(sds.ProductName) != "" ||
-			strings.TrimSpace(sds.ProductSKU) != "" ||
-			strings.TrimSpace(sds.VariantSKU) != "" ||
-			len(sds.CategoryPath) > 0)
+	return listingworkflow.ShouldUseSDSCatalogSource(buildWorkflowRequestPolicyInput(req))
 }
 
 func shouldSyncSDS(req *GenerateRequest) bool {
-	return req != nil &&
-		req.Options != nil &&
-		req.Options.SDS != nil &&
-		(req.Options.SDS.VariantID > 0 || len(req.Options.SDS.Variants) > 0)
+	return listingworkflow.ShouldSyncSDS(buildWorkflowRequestPolicyInput(req))
+}
+
+func buildWorkflowRequestPolicyInput(req *GenerateRequest) listingworkflow.RequestPolicyInput {
+	if req == nil || req.Options == nil {
+		return listingworkflow.RequestPolicyInput{}
+	}
+
+	input := listingworkflow.RequestPolicyInput{
+		ProcessImages:                req.Options.ProcessImages,
+		ImageURLs:                    append([]string(nil), req.ImageURLs...),
+		ProductURL:                   strings.TrimSpace(req.ProductURL),
+		Platforms:                    append([]string(nil), req.Platforms...),
+		UseSheinStudioAIImages:       shouldUseSheinStudioAIImages(req),
+		RenderSheinSizeImagesWithSDS: shouldRenderSheinSizeImagesWithSDS(req),
+	}
+	if req.Options.SDS != nil {
+		input.SDS = listingworkflow.SDSPolicyInput{
+			VariantID:    req.Options.SDS.VariantID,
+			VariantCount: len(req.Options.SDS.Variants),
+			ProductName:  req.Options.SDS.ProductName,
+			ProductSKU:   req.Options.SDS.ProductSKU,
+			VariantSKU:   req.Options.SDS.VariantSKU,
+			CategoryPath: append([]string(nil), req.Options.SDS.CategoryPath...),
+		}
+	}
+	return input
 }
 
 func detectImageMarketplace(req *GenerateRequest) string {

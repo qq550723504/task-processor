@@ -74,6 +74,7 @@ func collectSheinRepairCandidates(readiness *SheinSubmitReadiness, checklist *Sh
 			id := sheinRepairActionID(item.Key, hint)
 			candidate, ok := indexed[id]
 			if !ok {
+				artifacts := cloneSheinRepairArtifacts(hint.Patch, hint.Skeleton, hint.Revision, hint.Validation)
 				action := SheinRepairCenterAction{
 					ID:               id,
 					Key:              item.Key,
@@ -89,10 +90,10 @@ func collectSheinRepairCandidates(readiness *SheinSubmitReadiness, checklist *Sh
 					EditorFocus:      append([]string(nil), hint.EditorFocus...),
 					RevisionPath:     hint.RevisionPath,
 					Reason:           cloneSheinReadinessReason(item.Reason),
-					Patch:            cloneSheinRepairPatchPayload(hint.Patch),
-					Skeleton:         cloneSheinEditorRevisionSkeleton(hint.Skeleton),
-					Revision:         cloneApplyRevisionRequest(hint.Revision),
-					Validation:       cloneSheinRepairValidationPreview(hint.Validation),
+					Patch:            artifacts.patch,
+					Skeleton:         artifacts.skeleton,
+					Revision:         artifacts.request,
+					Validation:       artifacts.validation,
 				}
 				candidate = &sheinRepairActionCandidate{
 					action:       action,

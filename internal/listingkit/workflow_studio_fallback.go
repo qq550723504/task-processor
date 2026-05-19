@@ -4,20 +4,21 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
+	listingworkflow "task-processor/internal/listingkit/workflow"
 )
 
 func shouldUseStudioProductFallback(task *Task) bool {
-	return task != nil &&
-		task.Request != nil &&
-		shouldSyncSDS(task.Request) &&
-		len(task.Request.ImageURLs) > 0
+	if task == nil {
+		return false
+	}
+	return listingworkflow.ShouldUseStudioProductFallback(buildWorkflowRequestPolicyInput(task.Request))
 }
 
 func shouldUseStudioCatalogCanonical(task *Task) bool {
-	if !shouldUseStudioProductFallback(task) || task.Request.Options == nil {
+	if task == nil {
 		return false
 	}
-	return shouldUseSDSCatalogSource(task.Request)
+	return listingworkflow.ShouldUseStudioCatalogCanonical(buildWorkflowRequestPolicyInput(task.Request))
 }
 
 func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {

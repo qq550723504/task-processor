@@ -205,7 +205,7 @@ amazon:
 amazon:
   failureArtifacts:
     enabled: true
-    directory: "./tmp/amazon-failure-artifacts"
+    directory: "./.local/tmp/amazon-failure-artifacts"
     captureHTML: true
     maxHTMLBytes: 262144
 ```

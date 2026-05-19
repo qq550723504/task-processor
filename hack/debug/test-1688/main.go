@@ -41,7 +41,7 @@ func main() {
 	fmt.Println("强制设置 Headless 为 false...")
 	cfg.Browser.Headless = false
 	// 使用临时用户数据目录，确保测试是干净的
-	cfg.Browser.UserDataDir = "./tmp/browser-profiles/test-1688-tmp"
+	cfg.Browser.UserDataDir = "./.local/tmp/browser-profiles/test-1688-tmp"
 	fmt.Printf("修改后 Headless: %v\n", cfg.Browser.Headless)
 	fmt.Printf("使用临时用户数据目录: %s\n", cfg.Browser.UserDataDir)
 	fmt.Println()

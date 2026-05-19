@@ -8,15 +8,15 @@ import (
 )
 
 func TestNewViper_BindsBrowserUserDataDirEnvironmentVariable(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_BROWSER_USER_DATA_DIR", "./tmp/browser-profiles/env-1688")
+	t.Setenv("TASK_PROCESSOR_BROWSER_USER_DATA_DIR", "./.local/tmp/browser-profiles/env-1688")
 
 	v := newViper()
 
-	assert.Equal(t, "./tmp/browser-profiles/env-1688", v.GetString("browser.userDataDir"))
+	assert.Equal(t, "./.local/tmp/browser-profiles/env-1688", v.GetString("browser.userDataDir"))
 }
 
 func TestLoadFromBytes_AppliesBrowserUserDataDirEnvironmentOverride(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_BROWSER_USER_DATA_DIR", "./tmp/browser-profiles/from-env")
+	t.Setenv("TASK_PROCESSOR_BROWSER_USER_DATA_DIR", "./.local/tmp/browser-profiles/from-env")
 
 	cfg, err := LoadFromBytes([]byte(`
 management:
@@ -29,13 +29,13 @@ openai:
   timeout: 30
 browser:
   enabled: true
-  browserPath: "./chrome/chrome.exe"
-  userDataDir: "./tmp/browser-profiles/from-yaml"
+  browserPath: "./.local/chrome/chrome.exe"
+  userDataDir: "./.local/tmp/browser-profiles/from-yaml"
   poolSize: 1
   viewportWidth: 1920
   viewportHeight: 1080
 `))
 	require.NoError(t, err)
 
-	assert.Equal(t, "./tmp/browser-profiles/from-env", cfg.Browser.UserDataDir)
+	assert.Equal(t, "./.local/tmp/browser-profiles/from-env", cfg.Browser.UserDataDir)
 }

@@ -3,7 +3,7 @@ param(
     [string] $PostgresDeployment = "deploy/postgresql",
     [string] $Database = "ruoyi-vue-pro",
     [string] $DbUser = "postgres",
-    [string] $OutputPath = ".tmp/yudao-zitadel-migration-dry-run.json"
+    [string] $OutputPath = ".local/tmp/yudao-zitadel-migration-dry-run.json"
 )
 
 $ErrorActionPreference = "Stop"

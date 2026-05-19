@@ -102,8 +102,8 @@ func main() {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  go run ./tools/debug/test-analyzeimage <image_url>")
-	fmt.Println("  go run ./tools/debug/test-analyzeimage <image_url> <prompt>")
+	fmt.Println("  go run ./hack/debug/test-analyzeimage <image_url>")
+	fmt.Println("  go run ./hack/debug/test-analyzeimage <image_url> <prompt>")
 }
 
 func loadPrompt() string {

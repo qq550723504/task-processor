@@ -8,7 +8,7 @@ import (
 )
 
 func TestResolveProfileDirReturnsAbsolutePath(t *testing.T) {
-	dir, err := resolveProfileDir("./tmp/shein-login/profiles", 1, 2)
+	dir, err := resolveProfileDir("./.local/tmp/shein-login/profiles", 1, 2)
 	if err != nil {
 		t.Fatalf("resolveProfileDir: %v", err)
 	}

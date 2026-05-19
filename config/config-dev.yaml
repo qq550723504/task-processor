@@ -5,16 +5,16 @@
 logging:
   level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
   format: "text"  # text 或 json
-  file: "logs/app.log"
+  file: ".local/logs/app.log"
   split_by_level:
     - levels: [error, fatal, panic]
-      file: logs/error.log
+      file: .local/logs/error.log
     - levels: [warn]
-      file: logs/warn.log
+      file: .local/logs/warn.log
     - levels: [info]
-      file: logs/info.log
+      file: .local/logs/info.log
     - levels: [debug, trace]
-      file: logs/debug.log
+      file: .local/logs/debug.log
 
 # 处理器配置
 processor:
@@ -176,8 +176,8 @@ platforms:
 browser:
   enabled: true
   headless: false  # false=可见模式（便于调试），true=无头模式
-  browserPath: "./chrome/chrome.exe"
-  userDataDir: "./tmp/browser-profiles/1688"
+  browserPath: "./.local/chrome/chrome.exe"
+  userDataDir: "./.local/tmp/browser-profiles/1688"
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
@@ -377,7 +377,7 @@ watermark:
 
 
 productimage:
-  workDir: "./tmp/productimage"
+  workDir: "./.local/tmp/productimage"
   segmenter:
     enabled: false
     endpoint: ""
@@ -396,7 +396,7 @@ productimage:
   publisher:
     enabled: true
     provider: "local"
-    outputDir: "./tmp/productimage-published"
+    outputDir: "./.local/tmp/productimage-published"
     publicBase: ""
     s3:
       bucket: "listingkit-assets"

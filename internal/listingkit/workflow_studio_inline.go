@@ -1,30 +1,11 @@
 package listingkit
 
+import listingworkflow "task-processor/internal/listingkit/workflow"
+
 func shouldRunStudioInline(req *GenerateRequest) bool {
-	if req == nil || req.Options == nil {
-		return false
-	}
-	if req.Options.ProcessImages {
-		return false
-	}
-	if !shouldSyncSDS(req) && !shouldUseSheinStudioAIImages(req) {
-		return false
-	}
-	if len(req.ImageURLs) == 0 || len(req.Platforms) != 1 {
-		return false
-	}
-	return req.Platforms[0] == "shein"
+	return listingworkflow.ShouldRunStudioInline(buildWorkflowRequestPolicyInput(req))
 }
 
 func shouldRunRemoteSDSDesignSync(req *GenerateRequest) bool {
-	if req == nil || req.Options == nil {
-		return false
-	}
-	if req.Options.ProcessImages {
-		return false
-	}
-	if !shouldSyncSDS(req) || !shouldRenderSheinSizeImagesWithSDS(req) {
-		return false
-	}
-	return len(req.ImageURLs) > 0
+	return listingworkflow.ShouldRunRemoteSDSDesignSync(buildWorkflowRequestPolicyInput(req))
 }

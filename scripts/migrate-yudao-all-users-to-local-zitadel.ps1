@@ -10,7 +10,7 @@ param(
     [string] $RunId = (Get-Date -Format "yyyyMMddHHmmss"),
     [int] $MaxTenants = 0,
     [int] $UserLimitPerTenant = 0,
-    [string] $OutputPath = ".tmp/yudao-zitadel-local-full-import.json",
+    [string] $OutputPath = ".local/tmp/yudao-zitadel-local-full-import.json",
     [switch] $DryRun
 )
 

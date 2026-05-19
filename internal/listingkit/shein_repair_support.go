@@ -16,6 +16,19 @@ type SheinRepairPatchPayload struct {
 	ReviewNotes             []string                           `json:"review_notes,omitempty"`
 }
 
+type sheinRepairRevisionBundle struct {
+	input    *SheinRevisionInput
+	skeleton *SheinEditorRevisionSkeleton
+	request  *ApplyRevisionRequest
+}
+
+type sheinRepairArtifacts struct {
+	patch      *SheinRepairPatchPayload
+	skeleton   *SheinEditorRevisionSkeleton
+	request    *ApplyRevisionRequest
+	validation *SheinRepairValidationPreview
+}
+
 func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {
 	if payload == nil {
 		return nil
@@ -131,34 +144,39 @@ func cloneRepairIntPointer(value *int) *int {
 	return &cloned
 }
 
-func buildSheinRepairRevisionSkeleton(action string, payload *SheinRepairPatchPayload) *SheinEditorRevisionSkeleton {
+func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {
 	input := buildSheinRepairRevisionInput(payload)
 	if input == nil {
-		return nil
+		return sheinRepairRevisionBundle{}
 	}
 	minimal := pruneSheinRevisionInput(input)
 	if minimal == nil || isEmptySheinRevisionInput(minimal) {
-		return nil
+		return sheinRepairRevisionBundle{}
 	}
-	return &SheinEditorRevisionSkeleton{
+	skeleton := &SheinEditorRevisionSkeleton{
 		Platform: "shein",
 		Actor:    "desktop-client",
 		Reason:   buildSheinRepairReason(action),
 		Shein:    minimal,
 	}
+	return sheinRepairRevisionBundle{
+		input:    input,
+		skeleton: skeleton,
+		request: &ApplyRevisionRequest{
+			Platform: skeleton.Platform,
+			Actor:    skeleton.Actor,
+			Reason:   skeleton.Reason,
+			Shein:    cloneHistorySheinRevisionInput(skeleton.Shein),
+		},
+	}
+}
+
+func buildSheinRepairRevisionSkeleton(action string, payload *SheinRepairPatchPayload) *SheinEditorRevisionSkeleton {
+	return buildSheinRepairRevisionBundle(action, payload).skeleton
 }
 
 func buildSheinRepairApplyRequest(action string, payload *SheinRepairPatchPayload) *ApplyRevisionRequest {
-	skeleton := buildSheinRepairRevisionSkeleton(action, payload)
-	if skeleton == nil {
-		return nil
-	}
-	return &ApplyRevisionRequest{
-		Platform: skeleton.Platform,
-		Actor:    skeleton.Actor,
-		Reason:   skeleton.Reason,
-		Shein:    cloneHistorySheinRevisionInput(skeleton.Shein),
-	}
+	return buildSheinRepairRevisionBundle(action, payload).request
 }
 
 func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevisionInput {
@@ -184,6 +202,25 @@ func buildSheinRepairReason(action string) string {
 		return "repair suggested issue"
 	}
 	return "repair: " + action
+}
+
+func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
+	bundle := buildSheinRepairRevisionBundle(action, patch)
+	return sheinRepairArtifacts{
+		patch:      cloneSheinRepairPatchPayload(patch),
+		skeleton:   bundle.skeleton,
+		request:    bundle.request,
+		validation: buildSheinRepairValidationPreview(pkg, editorSection, bundle.request, bundle.skeleton),
+	}
+}
+
+func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {
+	return sheinRepairArtifacts{
+		patch:      cloneSheinRepairPatchPayload(patch),
+		skeleton:   cloneSheinEditorRevisionSkeleton(skeleton),
+		request:    cloneApplyRevisionRequest(request),
+		validation: cloneSheinRepairValidationPreview(validation),
+	}
 }
 
 func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {
@@ -226,32 +263,4 @@ func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {
 		cloned.Changes = append([]RevisionFieldChange(nil), src.Changes...)
 	}
 	return cloned
-}
-
-func safeRepairActionCount(center *SheinRepairCenter) int {
-	if center == nil || center.Stats == nil {
-		return 0
-	}
-	return center.Stats.TotalActions
-}
-
-func safeRepairDirectApplyCount(center *SheinRepairCenter) int {
-	if center == nil || center.Stats == nil {
-		return 0
-	}
-	return center.Stats.DirectApplyActions
-}
-
-func safeRepairPlanStatus(center *SheinRepairCenter) string {
-	if center == nil || center.PrimaryPlan == nil {
-		return ""
-	}
-	return center.PrimaryPlan.Status
-}
-
-func safeRepairSessionStatus(center *SheinRepairCenter) string {
-	if center == nil || center.Session == nil {
-		return ""
-	}
-	return center.Session.Status
 }

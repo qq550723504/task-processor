@@ -1,5 +1,7 @@
 package shein
 
+import "strings"
+
 type Guidance[R any, H any] struct {
 	Reason      *R
 	RepairHints []H
@@ -175,6 +177,24 @@ func BuildSubmitChecklist[R any, H any](readiness *SubmitReadiness[R, H], groupF
 	return checklist
 }
 
+func ChecklistItemCount[R any, H any](checklist *SubmitChecklist[R, H]) int {
+	if checklist == nil {
+		return 0
+	}
+	return len(checklist.Required) + len(checklist.Recommended) + len(checklist.Optional)
+}
+
+func SubmitChecklistGroupForKey(key string) string {
+	switch key {
+	case "category", "category_review", "attributes", "attribute_review", "sale_attributes", "images", "variants":
+		return "required"
+	case "request_draft", "preview_product":
+		return "recommended"
+	default:
+		return "optional"
+	}
+}
+
 func FindLabels[R any, H any](items []ReadinessItem[R, H]) []string {
 	if len(items) == 0 {
 		return nil
@@ -186,6 +206,29 @@ func FindLabels[R any, H any](items []ReadinessItem[R, H]) []string {
 		}
 	}
 	return labels
+}
+
+func CloneReadinessItems[R any, H any](items []ReadinessItem[R, H]) []ReadinessItem[R, H] {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]ReadinessItem[R, H], len(items))
+	copy(out, items)
+	return out
+}
+
+func ToActionItems[R any, H any](items []ReadinessItem[R, H]) []ActionItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]ActionItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, ActionItem{
+			Key:             item.Key,
+			SuggestedAction: item.SuggestedAction,
+		})
+	}
+	return out
 }
 
 func findReadinessItem[R any, H any](readiness *SubmitReadiness[R, H], key string) *ReadinessItem[R, H] {
@@ -203,4 +246,8 @@ func findReadinessItem[R any, H any](readiness *SubmitReadiness[R, H], key strin
 		}
 	}
 	return nil
+}
+
+func JoinReadinessLabels[R any, H any](items []ReadinessItem[R, H], sep string) string {
+	return strings.Join(FindLabels(items), sep)
 }

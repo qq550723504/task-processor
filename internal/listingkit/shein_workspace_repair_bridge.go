@@ -1,3 +1,4 @@
+// Adapter-only bridge. Keep domain rules in internal/workspace/shein.
 package listingkit
 
 import sheinworkspace "task-processor/internal/workspace/shein"

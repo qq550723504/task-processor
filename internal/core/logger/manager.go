@@ -45,7 +45,7 @@ func DefaultLogConfig() *LogConfig {
 	return &LogConfig{
 		Level:        "info",
 		Format:       "json",
-		OutputFile:   "logs/app.log",
+			OutputFile:   ".local/logs/app.log",
 		MaxSize:      100,
 		MaxBackups:   10,
 		MaxAge:       30,

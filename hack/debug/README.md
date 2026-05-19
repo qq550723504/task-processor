@@ -9,7 +9,7 @@
 示例：
 
 ```bash
-cd tools/debug
+cd hack/debug
 go run ./test-amazon --help
 go run ./test-sds --help
 ```

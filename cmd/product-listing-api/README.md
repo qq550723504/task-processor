@@ -225,7 +225,7 @@ parse_source
 
 ```yaml
 productimage:
-  workDir: "./tmp/productimage"
+  workDir: "./.local/tmp/productimage"
   segmenter:
     enabled: false
     endpoint: ""
@@ -239,7 +239,7 @@ productimage:
   publisher:
     enabled: true
     provider: "local"
-    outputDir: "./tmp/productimage-published"
+    outputDir: "./.local/tmp/productimage-published"
     publicBase: ""
   lifecycle:
     cleanupTemporaryFiles: true

@@ -455,7 +455,7 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 		"  timeout: 30",
 		"listingkit:",
 		"  studioAsyncJobStorePath: \"./data/jobs.json\"",
-		"  sheinSubmitDebugDumpDir: \"./tmp/shein-dumps\"",
+		"  sheinSubmitDebugDumpDir: \"./.local/tmp/shein-dumps\"",
 		"  platformAdminUsers: [\"user-a\"]",
 		"  platformAdminRoles: [\"platform_admin\"]",
 		"  ownerScopeRequired: false",
@@ -477,7 +477,7 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "./data/jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
-	assert.Equal(t, "./tmp/shein-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
+	assert.Equal(t, "./.local/tmp/shein-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
 	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)
 	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)

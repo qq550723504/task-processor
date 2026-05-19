@@ -421,22 +421,29 @@ task-processor/
 ├── data/                        # 静态数据（敏感词、禁售品列表）
 ├── deployments/                 # 部署配置（Docker、Kubernetes）
 ├── docs/                        # 文档
-├── tools/                       # 工具模块与非生产调试程序
+├── hack/                        # 调试、试验、验证程序
+│   ├── debug/                   # 非生产调试入口（不纳入 cmd 发布面）
+│   └── makefiles/               # 本地开发辅助 makefile 片段
+├── tools/                       # 长期维护的小工具模块
 │   ├── go.mod                   # 工具依赖模块
 │   ├── json-simplifier/         # 独立工具
-│   └── debug/                   # 非生产调试入口（不纳入 cmd 发布面）
+├── .local/                      # 本地日志、临时文件、浏览器状态、开发产物
 └── examples/                    # 示例代码
 ```
 
 ### 重构后边界约定
 
 - `cmd/*-listing` 只保留入口胶水；公共启动逻辑在 `internal/app/runtime/listing`。
-- `cmd/` 只保留正式服务入口；调试可执行程序统一放在 `tools/debug/`。
+- `cmd/` 只保留正式服务入口；调试可执行程序统一放在 `hack/debug/`。
 - `internal/app/bootstrap` 只做装配，资源、fetcher、processor、scheduler 分别放在子包里。
 - `internal/app/consumer` 只依赖 `PlatformModule` 接口，不直接 import SHEIN/TEMU/Amazon 实现。
 - 新增平台时优先在 `internal/platforms/{platform}` 增加模块，并加入 `platforms.All()`。
 - RabbitMQ 任务消息先经过 `internal/domain/task.NormalizeTaskMessage`，业务层使用标准化后的 source/target 语义。
 - `productimage` 对外仍保留原包 API，新增领域类型在 `productimage/domain`，provider 接口在 `productimage/providers`。
+- 本地日志、浏览器状态、临时文件、开发期二进制产物默认进入 `.local/`，避免继续污染仓库根目录。
+- `tools/` 只保留长期维护的小工具；调试/试验程序放在 `hack/`。
+
+更多目录约定与后续演进方向见 [docs/development/repository-structure.md](./docs/development/repository-structure.md)。
 
 ### 添加新平台
 

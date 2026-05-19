@@ -158,7 +158,7 @@ func (rcg *RandomConfigGenerator) GenerateRandomBrowserConfig() *BrowserConfig {
 
 	return &BrowserConfig{
 		Headless:                       false,
-		BrowserPath:                    "./chrome/chrome.exe",
+		BrowserPath:                    "./.local/chrome/chrome.exe",
 		ViewportWidth:                  1920,
 		ViewportHeight:                 1080,
 		FingerprintSeed:                0, // 0表示使用随机种子
@@ -203,7 +203,7 @@ func (rcg *RandomConfigGenerator) GenerateStableBrowserConfig(seed int64) *Brows
 
 	return &BrowserConfig{
 		Headless:                       false,
-		BrowserPath:                    "./chrome/chrome.exe",
+		BrowserPath:                    "./.local/chrome/chrome.exe",
 		ViewportWidth:                  1920,
 		ViewportHeight:                 1080,
 		FingerprintSeed:                int32(seed),
@@ -248,7 +248,7 @@ func (rcg *RandomConfigGenerator) GenerateWindowsConfig() *BrowserConfig {
 
 	return &BrowserConfig{
 		Headless:                       false,
-		BrowserPath:                    "./chrome/chrome.exe",
+		BrowserPath:                    "./.local/chrome/chrome.exe",
 		ViewportWidth:                  1920,
 		ViewportHeight:                 1080,
 		FingerprintSeed:                0,
@@ -288,7 +288,7 @@ func GenerateConfigPresets() map[string]*BrowserConfig {
 	// Windows 高端配置
 	presets["windows_high_end"] = &BrowserConfig{
 		Headless:                       false,
-		BrowserPath:                    "./chrome/chrome.exe",
+		BrowserPath:                    "./.local/chrome/chrome.exe",
 		ViewportWidth:                  1920,
 		ViewportHeight:                 1080,
 		FingerprintPlatform:            "windows",
@@ -307,7 +307,7 @@ func GenerateConfigPresets() map[string]*BrowserConfig {
 	// Windows 中端配置
 	presets["windows_mid_range"] = &BrowserConfig{
 		Headless:                       false,
-		BrowserPath:                    "./chrome/chrome.exe",
+		BrowserPath:                    "./.local/chrome/chrome.exe",
 		ViewportWidth:                  1920,
 		ViewportHeight:                 1080,
 		FingerprintPlatform:            "windows",
@@ -326,7 +326,7 @@ func GenerateConfigPresets() map[string]*BrowserConfig {
 	// Mac 高端配置
 	presets["mac_high_end"] = &BrowserConfig{
 		Headless:                       false,
-		BrowserPath:                    "./chrome/chrome.exe",
+		BrowserPath:                    "./.local/chrome/chrome.exe",
 		ViewportWidth:                  1920,
 		ViewportHeight:                 1080,
 		FingerprintPlatform:            "macos",

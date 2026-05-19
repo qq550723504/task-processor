@@ -1,3 +1,4 @@
+// Adapter-only bridge. Keep domain rules in internal/workspace/shein or internal/publishing/shein.
 package listingkit
 
 import (

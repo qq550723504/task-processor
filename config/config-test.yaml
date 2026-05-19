@@ -5,7 +5,7 @@
 logging:
   level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
   format: "text"  # text 或 json
-  file: "logs/app.log"
+  file: ".local/logs/app.log"
 
 # 处理器配置
 processor:
@@ -118,7 +118,7 @@ platforms:
 browser:
   enabled: true
   headless: true  # false=可见模式（便于调试），true=无头模式
-  browserPath: "./chrome/chrome.exe"
+  browserPath: "./.local/chrome/chrome.exe"
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
@@ -257,7 +257,7 @@ updater:
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）
 
 productimage:
-  workDir: "./tmp/productimage-test"
+  workDir: "./.local/tmp/productimage-test"
   segmenter:
     enabled: false
     endpoint: ""
@@ -276,7 +276,7 @@ productimage:
   publisher:
     enabled: false
     provider: "local"
-    outputDir: "./tmp/productimage-published-test"
+    outputDir: "./.local/tmp/productimage-published-test"
     publicBase: ""
     s3:
       bucket: ""

@@ -5,6 +5,7 @@ import (
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
+	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func TestBuildSheinSubmitReadinessBlockedWhenCoreFieldsMissing(t *testing.T) {
@@ -901,5 +902,168 @@ func TestBuildSheinSubmitChecklistGroupsChecks(t *testing.T) {
 	}
 	if checklist.Optional[0].Reason == nil || checklist.Optional[0].Reason.Code != "manual_review_pending" {
 		t.Fatalf("optional reason = %+v", checklist.Optional[0].Reason)
+	}
+}
+
+func TestBuildSheinReadinessReason(t *testing.T) {
+	t.Parallel()
+
+	reason := buildSheinReadinessReason(&sheinworkspace.ReadinessReasonSpec{
+		Code:     "category_unresolved",
+		Category: "classification",
+		Summary:  "missing category",
+	})
+	if reason == nil {
+		t.Fatal("expected reason")
+	}
+	if reason.Code != "category_unresolved" || reason.Category != "classification" || reason.Summary != "missing category" {
+		t.Fatalf("reason = %+v", reason)
+	}
+}
+
+func TestBuildSheinReadinessPatchPayload(t *testing.T) {
+	t.Parallel()
+
+	pkg := &SheinPackage{
+		Images:      &PlatformImageSet{MainImage: "https://cdn.example.com/main.jpg"},
+		ReviewNotes: []string{"manual review"},
+	}
+
+	categoryPatch := buildSheinReadinessPatchPayload(pkg, "category")
+	if categoryPatch == nil || categoryPatch.CategoryResolution == nil {
+		t.Fatalf("category patch = %+v", categoryPatch)
+	}
+
+	imagesPatch := buildSheinReadinessPatchPayload(pkg, "images")
+	if imagesPatch == nil || imagesPatch.Images == nil || imagesPatch.Images.MainImage != "https://cdn.example.com/main.jpg" {
+		t.Fatalf("images patch = %+v", imagesPatch)
+	}
+
+	notesPatch := buildSheinReadinessPatchPayload(pkg, "manual_notes")
+	if notesPatch == nil || len(notesPatch.ReviewNotes) != 1 || notesPatch.ReviewNotes[0] != "manual review" {
+		t.Fatalf("manual notes patch = %+v", notesPatch)
+	}
+
+	if patch := buildSheinReadinessPatchPayload(pkg, "request_draft"); patch != nil {
+		t.Fatalf("request_draft patch = %+v, want nil", patch)
+	}
+}
+
+func TestBuildSheinReadinessRepairHint(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	pkg := &SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
+		ProductTypeID: &productTypeID,
+	}
+
+	hint := buildSheinReadinessRepairHint(
+		pkg,
+		"确认类目",
+		[]string{"shein.category_id"},
+		sheinworkspace.ReadinessHintSpec{
+			Priority:      "high",
+			Target:        "editor.category",
+			EditorSection: "category",
+			EditorFocus:   []string{"category_id"},
+			RevisionPath:  "shein.category_resolution",
+			Description:   "确认类目",
+		},
+		buildSheinReadinessPatchPayload(pkg, "category"),
+	)
+
+	if hint.Target != "editor.category" || hint.Priority != "high" {
+		t.Fatalf("hint = %+v", hint)
+	}
+	if len(hint.FieldPaths) != 1 || hint.FieldPaths[0] != "shein.category_id" {
+		t.Fatalf("hint field paths = %+v", hint.FieldPaths)
+	}
+	if hint.Patch == nil || hint.Patch.CategoryResolution == nil {
+		t.Fatalf("hint patch = %+v", hint.Patch)
+	}
+	if hint.Skeleton == nil || hint.Skeleton.Shein == nil || hint.Skeleton.Shein.CategoryResolution == nil {
+		t.Fatalf("hint skeleton = %+v", hint.Skeleton)
+	}
+	if hint.Revision == nil || hint.Revision.Shein == nil || hint.Revision.Shein.CategoryResolution == nil {
+		t.Fatalf("hint revision = %+v", hint.Revision)
+	}
+	if hint.Validation == nil || !hint.Validation.Valid {
+		t.Fatalf("hint validation = %+v", hint.Validation)
+	}
+}
+
+func TestBuildSheinRepairRevisionBundle(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	categoryID := 3001
+	payload := &SheinRepairPatchPayload{
+		CategoryResolution: &SheinCategoryResolutionPatch{
+			CategoryID:    &categoryID,
+			MatchedPath:   []string{"Home", "Kitchen", "Bottle"},
+			ProductTypeID: &productTypeID,
+		},
+	}
+
+	bundle := buildSheinRepairRevisionBundle("确认类目", payload)
+	if bundle.input == nil || bundle.input.CategoryResolution == nil {
+		t.Fatalf("bundle input = %+v", bundle.input)
+	}
+	if bundle.skeleton == nil || bundle.skeleton.Shein == nil || bundle.skeleton.Shein.CategoryResolution == nil {
+		t.Fatalf("bundle skeleton = %+v", bundle.skeleton)
+	}
+	if bundle.request == nil || bundle.request.Shein == nil || bundle.request.Shein.CategoryResolution == nil {
+		t.Fatalf("bundle request = %+v", bundle.request)
+	}
+	if bundle.skeleton.Reason != "repair: 确认类目" || bundle.request.Reason != bundle.skeleton.Reason {
+		t.Fatalf("bundle reasons = skeleton:%+v request:%+v", bundle.skeleton, bundle.request)
+	}
+}
+
+func TestCloneSheinRepairArtifacts(t *testing.T) {
+	t.Parallel()
+
+	categoryID := 3001
+	patch := &SheinRepairPatchPayload{
+		CategoryResolution: &SheinCategoryResolutionPatch{
+			CategoryID: &categoryID,
+		},
+	}
+	skeleton := &SheinEditorRevisionSkeleton{
+		Platform: "shein",
+		Reason:   "repair: 确认类目",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				CategoryID: &categoryID,
+			},
+		},
+	}
+	request := &ApplyRevisionRequest{
+		Platform: "shein",
+		Reason:   "repair: 确认类目",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				CategoryID: &categoryID,
+			},
+		},
+	}
+	validation := &SheinRepairValidationPreview{
+		Valid: true,
+	}
+
+	artifacts := cloneSheinRepairArtifacts(patch, skeleton, request, validation)
+	if artifacts.patch == nil || artifacts.patch.CategoryResolution == nil {
+		t.Fatalf("artifacts patch = %+v", artifacts.patch)
+	}
+	if artifacts.skeleton == nil || artifacts.skeleton.Shein == nil {
+		t.Fatalf("artifacts skeleton = %+v", artifacts.skeleton)
+	}
+	if artifacts.request == nil || artifacts.request.Shein == nil {
+		t.Fatalf("artifacts request = %+v", artifacts.request)
+	}
+	if artifacts.validation == nil || !artifacts.validation.Valid {
+		t.Fatalf("artifacts validation = %+v", artifacts.validation)
 	}
 }

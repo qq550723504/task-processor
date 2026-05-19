@@ -234,10 +234,10 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		return nil
 	}
 	if len(readiness.BlockingItems) > 0 {
-		readiness.Summary = append(readiness.Summary, "待补关键项："+joinReadinessLabels(readiness.BlockingItems))
+		readiness.Summary = append(readiness.Summary, "待补关键项："+sheinworkspace.JoinReadinessLabels(readiness.BlockingItems, "、"))
 	}
 	if len(readiness.WarningItems) > 0 {
-		readiness.Summary = append(readiness.Summary, "待确认项："+joinReadinessLabels(readiness.WarningItems))
+		readiness.Summary = append(readiness.Summary, "待确认项："+sheinworkspace.JoinReadinessLabels(readiness.WarningItems, "、"))
 	}
 	readiness.Summary = uniqueStrings(readiness.Summary)
 	return readiness

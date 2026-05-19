@@ -45,7 +45,7 @@ func main() {
 
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless:       playwright.Bool(false),
-		ExecutablePath: playwright.String("./chrome/chrome.exe"),
+		ExecutablePath: playwright.String("./.local/chrome/chrome.exe"),
 	})
 	if err != nil {
 		fmt.Printf("❌ 启动浏览器失败: %v\n", err)

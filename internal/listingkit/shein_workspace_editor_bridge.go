@@ -1,3 +1,4 @@
+// Adapter-only bridge. Keep domain rules in internal/workspace/shein.
 package listingkit
 
 import sheinworkspace "task-processor/internal/workspace/shein"
@@ -44,11 +45,7 @@ func buildSheinSaleAttributeEffects() []SheinEditorEffect {
 }
 
 func buildSheinEditorProgress(pkg *SheinPackage, checklist *SheinSubmitChecklist) *SheinEditorProgress {
-	checklistTotal := 0
-	if checklist != nil {
-		checklistTotal = len(checklist.Required) + len(checklist.Recommended) + len(checklist.Optional)
-	}
-	return sheinworkspace.BuildEditorProgress(pkg, checklistTotal)
+	return sheinworkspace.BuildEditorProgress(pkg, sheinworkspace.ChecklistItemCount(checklist))
 }
 
 func buildSheinEditorDirtyHints(pkg *SheinPackage) *SheinEditorDirtyHints {

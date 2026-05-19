@@ -5,16 +5,16 @@
 logging:
   level: "INFO"
   format: "text"
-  file: "logs/task.log"
+  file: ".local/logs/task.log"
   split_by_level:
     - levels: [error, fatal, panic]
-      file: logs/task-error.log
+      file: .local/logs/task-error.log
     - levels: [warn]
-      file: logs/task-warn.log
+      file: .local/logs/task-warn.log
     - levels: [info]
-      file: logs/task-info.log
+      file: .local/logs/task-info.log
     - levels: [debug, trace]
-      file: logs/task-debug.log
+      file: .local/logs/task-debug.log
 
 processor:
   maxRetries: 3
@@ -55,7 +55,7 @@ platforms:
 browser:
   enabled: true
   headless: true
-  browserPath: "./chrome/chrome.exe"
+  browserPath: "./.local/chrome/chrome.exe"
   poolSize: 1
   viewportWidth: 1920
   viewportHeight: 1080

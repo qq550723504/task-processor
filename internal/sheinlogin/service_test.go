@@ -442,7 +442,7 @@ func TestServiceGetLastFailureDetailPrefersArtifactMetadata(t *testing.T) {
 }
 
 func TestLoginUsesAbsoluteProfileRoot(t *testing.T) {
-	root := "./tmp/shein-login/profiles"
+	root := "./.local/tmp/shein-login/profiles"
 	profileDir := filepath.Join(root, "1", "2")
 	if filepath.IsAbs(profileDir) {
 		t.Fatal("test requires relative profile dir input")

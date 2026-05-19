@@ -14,7 +14,7 @@ func TestBrowserConfigDefaults(t *testing.T) {
 
 	assert.True(t, v.GetBool("browser.enabled"))
 	assert.True(t, v.GetBool("browser.headless"))
-	assert.Equal(t, "./chrome/chrome.exe", v.GetString("browser.browserPath"))
+	assert.Equal(t, "./.local/chrome/chrome.exe", v.GetString("browser.browserPath"))
 	assert.Equal(t, "", v.GetString("browser.userDataDir"))
 	assert.Equal(t, 3, v.GetInt("browser.poolSize"))
 	assert.Equal(t, 1920, v.GetInt("browser.viewportWidth"))
@@ -88,7 +88,7 @@ func TestConfigBuild(t *testing.T) {
 	v := viper.New()
 	v.Set("browser.enabled", true)
 	v.Set("browser.poolSize", 5)
-	v.Set("browser.userDataDir", "./tmp/browser-profiles/1688")
+	v.Set("browser.userDataDir", "./.local/tmp/browser-profiles/1688")
 	v.Set("browser.randomConfig.enabled", true)
 	v.Set("browser.randomConfig.strategy", "stable")
 	v.Set("browser.randomConfig.presetName", "mac_high_end")
@@ -104,7 +104,7 @@ func TestConfigBuild(t *testing.T) {
 	v.Set("platforms.sds.loginService.merchantName", "merchant")
 	v.Set("platforms.sds.loginService.username", "user")
 	v.Set("platforms.sds.loginService.password", "secret")
-	v.Set("productimage.workDir", "./tmp/images")
+	v.Set("productimage.workDir", "./.local/tmp/images")
 	v.Set("productimage.segmenter.enabled", true)
 	v.Set("productimage.segmenter.endpoint", "http://segmenter.local")
 	v.Set("productimage.whiteBackground.timeout", 90)
@@ -122,7 +122,7 @@ func TestConfigBuild(t *testing.T) {
 
 	assert.True(t, cfg.Browser.Enabled)
 	assert.Equal(t, 5, cfg.Browser.PoolSize)
-	assert.Equal(t, "./tmp/browser-profiles/1688", cfg.Browser.UserDataDir)
+	assert.Equal(t, "./.local/tmp/browser-profiles/1688", cfg.Browser.UserDataDir)
 	assert.True(t, cfg.Browser.RandomConfig.Enabled)
 	assert.Equal(t, "stable", cfg.Browser.RandomConfig.Strategy)
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)
@@ -138,7 +138,7 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "merchant", cfg.Platforms.SDS.LoginService.MerchantName)
 	assert.Equal(t, "user", cfg.Platforms.SDS.LoginService.Username)
 	assert.Equal(t, "secret", cfg.Platforms.SDS.LoginService.Password)
-	assert.Equal(t, "./tmp/images", cfg.ProductImage.WorkDir)
+	assert.Equal(t, "./.local/tmp/images", cfg.ProductImage.WorkDir)
 	assert.True(t, cfg.ProductImage.Segmenter.Enabled)
 	assert.Equal(t, "http://segmenter.local", cfg.ProductImage.Segmenter.Endpoint)
 	assert.Equal(t, 90, cfg.ProductImage.WhiteBackground.Timeout)
@@ -189,8 +189,8 @@ func TestConfigBuildIncludesDebugConfig(t *testing.T) {
 
 func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	v := viper.New()
-	v.Set("listingkit.studioAsyncJobStorePath", "./tmp/studio-jobs.json")
-	v.Set("listingkit.sheinSubmitDebugDumpDir", "./tmp/shein-submit-dumps")
+	v.Set("listingkit.studioAsyncJobStorePath", "./.local/tmp/studio-jobs.json")
+	v.Set("listingkit.sheinSubmitDebugDumpDir", "./.local/tmp/shein-submit-dumps")
 	v.Set("listingkit.platformAdminUsers", []string{"user-a", "user-b"})
 	v.Set("listingkit.platformAdminRoles", []string{"role-a", "role-b"})
 	v.Set("listingkit.ownerScopeRequired", true)
@@ -206,8 +206,8 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 
 	cfg := BuildConfig(v)
 
-	assert.Equal(t, "./tmp/studio-jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
-	assert.Equal(t, "./tmp/shein-submit-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
+	assert.Equal(t, "./.local/tmp/studio-jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
+	assert.Equal(t, "./.local/tmp/shein-submit-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
 	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"role-a", "role-b"}, cfg.ListingKit.PlatformAdminRoles)
 	assert.True(t, cfg.ListingKit.OwnerScopeRequired)

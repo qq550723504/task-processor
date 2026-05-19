@@ -19,6 +19,12 @@ func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
 	}, nil)
 }
 
+func TestListingKitDoesNotImportSheinAPIRoot(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
+		`"task-processor/internal/shein/api"`,
+	}, nil)
+}
+
 func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "publishing", "shein", "submit_validation.go")): {},

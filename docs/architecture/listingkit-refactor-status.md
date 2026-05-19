@@ -173,3 +173,11 @@ The next meaningful milestone is not another migration sprint. It should be one 
 1. Start the same publishing/workspace split for `TEMU`.
 2. Build an image-asset-oriented layer on top of `catalog + asset`.
 3. Freeze the current SHEIN architecture and focus on product-facing capabilities instead of further structural churn.
+
+## Post-SHEIN Direction
+
+Decision: freeze the current SHEIN package split and prioritize enforcing placement rules over more directory movement.
+
+Reason: `publishing/shein` and `workspace/shein` already exist as stable homes, while root `listingkit` still has a large compatibility surface. The highest-value next step is to stop new business rules from drifting back into the facade, not to start another broad package migration.
+
+Non-goals: this does not start a TEMU split, rename more packages, or move stable API shell types out of `internal/listingkit`.

@@ -5,21 +5,21 @@
 logging:
   level: "INFO"
   format: "text"
-  file: "logs/amazon-crawler-api.log"
+  file: ".local/logs/amazon-crawler-api.log"
   split_by_level:
     - levels: [error, fatal, panic]
-      file: logs/amazon-crawler-api-error.log
+      file: .local/logs/amazon-crawler-api-error.log
     - levels: [warn]
-      file: logs/amazon-crawler-api-warn.log
+      file: .local/logs/amazon-crawler-api-warn.log
     - levels: [info]
-      file: logs/amazon-crawler-api-info.log
+      file: .local/logs/amazon-crawler-api-info.log
     - levels: [debug, trace]
-      file: logs/amazon-crawler-api-debug.log
+      file: .local/logs/amazon-crawler-api-debug.log
 
 browser:
   enabled: true
   headless: true
-  browserPath: "./chrome/chrome.exe"
+  browserPath: "./.local/chrome/chrome.exe"
   poolSize: 3
   viewportWidth: 1920
   viewportHeight: 1080
@@ -36,7 +36,7 @@ amazon:
     pollIntervalMillis: 500
   failureArtifacts:
     enabled: true
-    directory: "./tmp/amazon-failure-artifacts"
+    directory: "./.local/tmp/amazon-failure-artifacts"
     captureHTML: true
     maxHTMLBytes: 262144
   riskControl:

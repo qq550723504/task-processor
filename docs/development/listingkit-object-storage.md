@@ -17,7 +17,7 @@ productimage:
   publisher:
     enabled: true
     provider: "s3"
-    outputDir: "./tmp/productimage-published"
+    outputDir: "./.local/tmp/productimage-published"
     publicBase: "http://127.0.0.1:9100/listingkit-assets" # 可选
     s3:
       bucket: "listingkit-assets"
@@ -79,7 +79,7 @@ productimage:
   publisher:
     enabled: true
     provider: "s3"
-    outputDir: "./tmp/productimage-published-test"
+    outputDir: "./.local/tmp/productimage-published-test"
     publicBase: "http://127.0.0.1:9100/listingkit-assets"
     s3:
       bucket: "listingkit-assets"
@@ -100,7 +100,7 @@ go build -o .\tmp\product-listing-api-s3.exe .\cmd\product-listing-api
 ### 5. 上传 smoke test
 
 ```powershell
-curl.exe -i -X POST -F "files=@D:/code/task-processor/tmp/listingkit-smoke.jpg;type=image/jpeg" http://127.0.0.1:8086/api/v1/listing-kits/uploads/images
+curl.exe -i -X POST -F "files=@D:/code/task-processor/.local/tmp/listingkit-smoke.jpg;type=image/jpeg" http://127.0.0.1:8086/api/v1/listing-kits/uploads/images
 ```
 
 预期返回：

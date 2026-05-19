@@ -23,7 +23,7 @@ func main() {
 	fmt.Println("Playwright 初始化成功")
 
 	// 使用项目中的浏览器路径
-	browserPath := "./chrome/chrome.exe"
+	browserPath := "./.local/chrome/chrome.exe"
 	fmt.Printf("使用浏览器路径: %s\n", browserPath)
 
 	// 启动浏览器（非 headless 模式）

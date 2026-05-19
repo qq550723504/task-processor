@@ -134,7 +134,7 @@ func NewDefaultConfig() *Config {
 		Browser: BrowserConfig{
 			Enabled:        true,
 			Headless:       true,
-			BrowserPath:    "./chrome/chrome.exe",
+			BrowserPath:    "./.local/chrome/chrome.exe",
 			UserDataDir:    "",
 			PoolSize:       3,
 			ViewportWidth:  1920,
@@ -160,7 +160,7 @@ func NewDefaultConfig() *Config {
 			},
 			FailureArtifacts: FailureArtifactsConfig{
 				Enabled:      false,
-				Directory:    "./tmp/amazon-failure-artifacts",
+				Directory:    "./.local/tmp/amazon-failure-artifacts",
 				CaptureHTML:  true,
 				MaxHTMLBytes: 262144,
 			},
@@ -207,7 +207,7 @@ func NewDefaultConfig() *Config {
 			},
 		},
 		ProductImage: ProductImageConfig{
-			WorkDir: "./tmp/productimage",
+			WorkDir: "./.local/tmp/productimage",
 			Segmenter: ProductImageModelConfig{
 				Enabled: false,
 				Timeout: 45,
@@ -223,7 +223,7 @@ func NewDefaultConfig() *Config {
 			Publisher: ProductImagePublisherConfig{
 				Enabled:    true,
 				Provider:   "local",
-				OutputDir:  "./tmp/productimage-published",
+				OutputDir:  "./.local/tmp/productimage-published",
 				PublicBase: "",
 				S3:         ProductImagePublisherS3Config{},
 			},
@@ -283,8 +283,8 @@ func NewDefaultConfig() *Config {
 				FetchMode:        "auto",
 				LoginService: LoginServiceConfig{
 					MaxConcurrentLogins: 3,
-					ProfileRootDir:      "./tmp/shein-login/profiles",
-					ArtifactDir:         "./tmp/shein-login/artifacts",
+					ProfileRootDir:      "./.local/tmp/shein-login/profiles",
+					ArtifactDir:         "./.local/tmp/shein-login/artifacts",
 					DefaultHeadless:     true,
 				},
 				AutoPricing: AutoPricingConfig{
