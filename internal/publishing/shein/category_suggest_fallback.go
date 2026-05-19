@@ -9,7 +9,7 @@ import (
 )
 
 type categorySuggestFallback interface {
-	SelectCategoryID(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
+	SelectCategoryID(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
 }
 
 type aiCategorySuggestFallback struct {
@@ -26,9 +26,9 @@ func newAICategorySuggestFallback(client openaiclient.ChatCompleter) categorySug
 	}
 }
 
-func (f *aiCategorySuggestFallback) SelectCategoryID(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
+func (f *aiCategorySuggestFallback) SelectCategoryID(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
 	if f == nil || f.manager == nil || api == nil || strings.TrimSpace(input.Title) == "" && strings.TrimSpace(input.ProductType) == "" && len(input.CategoryPath) == 0 {
 		return 0, nil
 	}
-	return f.manager.GetCategoryIDBySuggest(context.Background(), input, api, nil)
+	return f.manager.GetCategoryIDBySuggest(ctx, input, api, nil)
 }

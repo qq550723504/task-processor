@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -84,7 +85,7 @@ type stubCategoryTreeFallback struct {
 	err        error
 }
 
-func (s stubCategoryTreeFallback) SelectCategoryID(query string, tree *sheincategory.CategoryTreeResponse) (int, error) {
+func (s stubCategoryTreeFallback) SelectCategoryID(_ context.Context, query string, tree *sheincategory.CategoryTreeResponse) (int, error) {
 	return s.selectedID, s.err
 }
 
@@ -93,14 +94,14 @@ type stubCategorySuggestFallback struct {
 	err        error
 }
 
-func (s stubCategorySuggestFallback) SelectCategoryID(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
+func (s stubCategorySuggestFallback) SelectCategoryID(_ context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
 	return s.selectedID, s.err
 }
 
-type categorySuggestFallbackFunc func(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
+type categorySuggestFallbackFunc func(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
 
-func (f categorySuggestFallbackFunc) SelectCategoryID(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
-	return f(input, api)
+func (f categorySuggestFallbackFunc) SelectCategoryID(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
+	return f(ctx, input, api)
 }
 
 type stubCategorySemanticVerifier struct {

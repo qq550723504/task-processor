@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -36,6 +37,10 @@ func NewCategoryResolverWithTreeFallback(api CategoryAPI, treeFallback categoryT
 }
 
 func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution {
+	ctx := context.Background()
+	if req != nil && req.Context != nil {
+		ctx = req.Context
+	}
 	suggestQuery := buildCategorySuggestionQuery(req, canonical, pkg)
 	treeQuery := buildCategoryQuery(req, canonical, pkg)
 	resolution := &CategoryResolution{
@@ -65,7 +70,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 		return resolution
 	}
 	if r.api != nil && r.suggestFallback != nil && strings.TrimSpace(suggestQuery) != "" {
-		selectedID, suggestErr := r.suggestFallback.SelectCategoryID(buildCategorySuggestInput(req, canonical, pkg), r.api)
+		selectedID, suggestErr := r.suggestFallback.SelectCategoryID(ctx, buildCategorySuggestInput(req, canonical, pkg), r.api)
 		if suggestErr == nil && selectedID > 0 {
 			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
 				hydrated := hydrateCategoryResolution(info, "suggest_category_by_text", suggestQuery)
@@ -115,7 +120,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 			resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryTreeResolutionAPIError(treeErr))
 			return resolution
 		}
-		selectedID, selectErr := r.treeFallback.SelectCategoryID(treeQuery, tree)
+		selectedID, selectErr := r.treeFallback.SelectCategoryID(ctx, treeQuery, tree)
 		if selectErr != nil {
 			resolution.Status = "partial"
 			resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目树候选重选失败: "+strings.TrimSpace(selectErr.Error()))

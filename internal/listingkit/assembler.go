@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"context"
 	"time"
 
 	"task-processor/internal/catalog/canonical"
@@ -69,7 +70,7 @@ func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *pr
 				SaleAttributeResolver: a.sheinSaleAttributeResolver,
 				PricingPolicy:         a.sheinPricingPolicy,
 				TitleOptimizer:        a.sheinTitleOptimizer,
-			}).Build(buildSheinPublishRequest(task.Request), canonical, image)
+			}).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
 			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
 		case "temu":
 			result.Temu = buildTemuPackage(task.Request, canonical, image)
@@ -82,8 +83,16 @@ func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *pr
 }
 
 func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {
+	return buildSheinPublishRequestForTask(nil, req)
+}
+
+func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub.BuildRequest {
 	if req == nil {
 		return &sheinpub.BuildRequest{}
+	}
+	var ctxIdentity openaiclient.Identity
+	if task != nil {
+		ctxIdentity = openaiclient.Identity{TenantID: task.TenantID, UserID: task.UserID}
 	}
 	return &sheinpub.BuildRequest{
 		Country:            req.Country,
@@ -92,6 +101,7 @@ func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {
 		BrandHint:          req.BrandHint,
 		TargetCategoryHint: req.TargetCategoryHint,
 		SheinStoreID:       req.SheinStoreID,
+		Context:            openaiclient.WithIdentity(WithTenantID(context.Background(), ctxIdentity.TenantID), ctxIdentity),
 	}
 }
 

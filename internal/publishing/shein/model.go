@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"time"
 
 	common "task-processor/internal/publishing/common"
@@ -15,6 +16,7 @@ type BuildRequest struct {
 	BrandHint          string
 	TargetCategoryHint string
 	SheinStoreID       int64
+	Context            context.Context `json:"-"`
 }
 
 type Package struct {

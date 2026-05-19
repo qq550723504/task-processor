@@ -10,7 +10,7 @@ import (
 )
 
 type categoryTreeFallback interface {
-	SelectCategoryID(query string, tree *sheincategoryapi.CategoryTreeResponse) (int, error)
+	SelectCategoryID(ctx context.Context, query string, tree *sheincategoryapi.CategoryTreeResponse) (int, error)
 }
 
 type aiCategoryTreeFallback struct {
@@ -27,9 +27,9 @@ func newAICategoryTreeFallback(client openaiclient.ChatCompleter) categoryTreeFa
 	}
 }
 
-func (f *aiCategoryTreeFallback) SelectCategoryID(query string, tree *sheincategoryapi.CategoryTreeResponse) (int, error) {
+func (f *aiCategoryTreeFallback) SelectCategoryID(ctx context.Context, query string, tree *sheincategoryapi.CategoryTreeResponse) (int, error) {
 	if f == nil || f.manager == nil || tree == nil || strings.TrimSpace(query) == "" {
 		return 0, nil
 	}
-	return f.manager.GetCategoryIDByTitleWithTree(context.Background(), query, tree, nil)
+	return f.manager.GetCategoryIDByTitleWithTree(ctx, query, tree, nil)
 }
