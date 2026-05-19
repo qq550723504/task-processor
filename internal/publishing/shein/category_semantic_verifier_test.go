@@ -34,7 +34,7 @@ func (s *stubCategorySemanticLLM) GetDefaultModel() string { return "stub" }
 func TestAICategorySemanticVerifierBuildsStructuredPrompt(t *testing.T) {
 	llm := &stubCategorySemanticLLM{response: `{"verdict":"compatible","reason":"chair cushion semantics match home furnishing"}`}
 	verifier := newAICategorySemanticVerifier(llm)
-	validation := verifier.ValidateProductCategory(&canonical.Product{
+	validation := verifier.ValidateProductCategory(context.Background(), &canonical.Product{
 		Title:       "New Women's Summer Thin Ice Silk Pajamas",
 		Description: "Outdoor garden bench cushion for hanging chair and balcony seating",
 		Attributes: map[string]canonical.Attribute{
@@ -62,7 +62,7 @@ func TestAICategorySemanticVerifierBuildsStructuredPrompt(t *testing.T) {
 func TestAICategorySemanticVerifierAvoidsNoisyDescriptionWhenStructuredSignalsExist(t *testing.T) {
 	llm := &stubCategorySemanticLLM{response: `{"verdict":"compatible","reason":"structured signals clearly indicate an outdoor cushion"}`}
 	verifier := newAICategorySemanticVerifier(llm)
-	_ = verifier.ValidateProductCategory(&canonical.Product{
+	_ = verifier.ValidateProductCategory(context.Background(), &canonical.Product{
 		Title:       "Outdoor Bench Cushion",
 		Description: "iCOSS Smart Toilet Seat Bidet Attachment",
 		Attributes: map[string]canonical.Attribute{

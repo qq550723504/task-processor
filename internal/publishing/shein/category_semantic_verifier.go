@@ -14,7 +14,7 @@ import (
 )
 
 type categorySemanticVerifier interface {
-	ValidateProductCategory(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation
+	ValidateProductCategory(ctx context.Context, canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation
 }
 
 type aiCategorySemanticVerifier struct {
@@ -28,12 +28,15 @@ func newAICategorySemanticVerifier(client openaiclient.ChatCompleter) categorySe
 	return &aiCategorySemanticVerifier{client: client}
 }
 
-func (v *aiCategorySemanticVerifier) ValidateProductCategory(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+func (v *aiCategorySemanticVerifier) ValidateProductCategory(ctx context.Context, canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
 	if v == nil || v.client == nil || len(categoryPath) == 0 {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
 	raw, err := v.client.Generate(ctx, buildCategorySemanticValidationPrompt(canonical, pkg, categoryPath))
