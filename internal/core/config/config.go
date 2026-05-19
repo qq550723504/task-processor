@@ -517,6 +517,9 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.sds.loginService.password": {
 			Primary: "TASK_PROCESSOR_SDS_PASSWORD",
 		},
+		"platforms.sds.loginService.defaultHeadless": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS",
+		},
 		"platforms.sds.authBootstrap.staticAccessToken": {
 			Primary: "TASK_PROCESSOR_SDS_ACCESS_TOKEN",
 		},

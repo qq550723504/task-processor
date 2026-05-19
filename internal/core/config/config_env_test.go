@@ -144,6 +144,7 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SDS_MERCHANT_NAME", "merchant")
 	t.Setenv("TASK_PROCESSOR_SDS_USERNAME", "tester")
 	t.Setenv("TASK_PROCESSOR_SDS_PASSWORD", "secret")
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS", "true")
 
 	v := newViper()
 
@@ -154,6 +155,7 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "merchant", v.GetString("platforms.sds.loginService.merchantName"))
 	assert.Equal(t, "tester", v.GetString("platforms.sds.loginService.username"))
 	assert.Equal(t, "secret", v.GetString("platforms.sds.loginService.password"))
+	assert.True(t, v.GetBool("platforms.sds.loginService.defaultHeadless"))
 }
 
 func TestNewViper_BindsSDSAuthBootstrapEnvironmentVariables(t *testing.T) {
