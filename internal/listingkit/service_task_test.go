@@ -44,6 +44,45 @@ func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {
 	}
 }
 
+func TestDeriveSheinWorkflowStatusPrefersLatestSubmissionEvent(t *testing.T) {
+	t.Parallel()
+
+	status := deriveSheinWorkflowStatus(&SheinPackage{
+		SubmissionEvents: []sheinpub.SubmissionEvent{{
+			Action: "save_draft",
+			Status: "success",
+		}},
+		Submission: &sheinpub.SubmissionReport{
+			Publish: &sheinpub.SubmissionRecord{Status: "success"},
+		},
+	})
+	if status != SheinWorkflowStatusDraftSaved {
+		t.Fatalf("workflow status = %q, want %q", status, SheinWorkflowStatusDraftSaved)
+	}
+}
+
+func TestApplySheinSubmissionRemoteSummaryFallsBackToPublishRecord(t *testing.T) {
+	t.Parallel()
+
+	checkedAt := time.Date(2026, 5, 8, 9, 0, 0, 0, time.UTC)
+	item := TaskListItem{}
+	applySheinSubmissionRemoteSummary(&item, &SheinPackage{
+		Submission: &sheinpub.SubmissionReport{
+			RemoteStatus: sheinpub.SubmissionRemoteStatusPending,
+			Publish: &sheinpub.SubmissionRecord{
+				RemoteRecordID:  "record-fallback",
+				RemoteCheckedAt: &checkedAt,
+			},
+		},
+	})
+	if item.SheinSubmissionRemoteRecordID != "record-fallback" {
+		t.Fatalf("remote record id = %q, want record-fallback", item.SheinSubmissionRemoteRecordID)
+	}
+	if item.SheinSubmissionRemoteCheckedAt == nil || !item.SheinSubmissionRemoteCheckedAt.Equal(checkedAt) {
+		t.Fatalf("remote checked at = %v, want %v", item.SheinSubmissionRemoteCheckedAt, checkedAt)
+	}
+}
+
 func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
 	t.Parallel()
 

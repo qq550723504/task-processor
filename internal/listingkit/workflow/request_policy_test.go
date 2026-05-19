@@ -99,11 +99,11 @@ func TestShouldUseStudioProductFallback(t *testing.T) {
 func TestShouldUseStudioCatalogCanonical(t *testing.T) {
 	t.Parallel()
 
-	if ShouldUseStudioCatalogCanonical(RequestPolicyInput{
+	if !ShouldUseStudioCatalogCanonical(RequestPolicyInput{
 		ImageURLs: []string{"https://example.com/a.png"},
 		SDS:       SDSPolicyInput{VariantID: 88},
 	}) {
-		t.Fatal("expected studio fallback without SDS facts not to use catalog canonical")
+		t.Fatal("expected any SDS request to use studio catalog canonical")
 	}
 
 	if !ShouldUseStudioCatalogCanonical(RequestPolicyInput{
@@ -113,7 +113,7 @@ func TestShouldUseStudioCatalogCanonical(t *testing.T) {
 			ProductName: "studio tee",
 		},
 	}) {
-		t.Fatal("expected SDS fallback with product facts to use catalog canonical")
+		t.Fatal("expected SDS request with product facts to use studio catalog canonical")
 	}
 }
 

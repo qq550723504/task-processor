@@ -53,10 +53,7 @@ func ShouldUseStudioProductFallback(input RequestPolicyInput) bool {
 }
 
 func ShouldUseStudioCatalogCanonical(input RequestPolicyInput) bool {
-	if !ShouldUseStudioProductFallback(input) {
-		return false
-	}
-	return ShouldUseSDSCatalogSource(input)
+	return ShouldSyncSDS(input)
 }
 
 func ShouldRunStudioInline(input RequestPolicyInput) bool {

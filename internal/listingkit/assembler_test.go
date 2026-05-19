@@ -560,6 +560,34 @@ func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) 
 	}
 }
 
+func TestBuildSheinPublishRequestForTaskIncludesTaskIdentity(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{TenantID: "tenant-1", UserID: "user-1"}
+	req := &GenerateRequest{
+		Country:            "US",
+		Language:           "en_US",
+		Text:               "wireless earbuds",
+		BrandHint:          "Acme",
+		TargetCategoryHint: "4004",
+		SheinStoreID:       42,
+	}
+
+	built := buildSheinPublishRequestForTask(task, req)
+	if built == nil {
+		t.Fatal("expected build request")
+	}
+	if built.SheinStoreID != 42 {
+		t.Fatalf("shein_store_id = %d, want 42", built.SheinStoreID)
+	}
+	if got := TenantIDFromContext(built.Context); got != "tenant-1" {
+		t.Fatalf("tenant id in context = %q, want %q", got, "tenant-1")
+	}
+	if identity := openaiclient.IdentityFromContext(built.Context); identity.UserID != "user-1" || identity.TenantID != "tenant-1" {
+		t.Fatalf("identity from context = %#v, want tenant-1/user-1", identity)
+	}
+}
+
 func containsResolvedAttribute(items []SheinResolvedAttribute, attributeID int, valueID int) bool {
 	for _, item := range items {
 		if item.AttributeID == attributeID && item.AttributeValueID != nil && *item.AttributeValueID == valueID {

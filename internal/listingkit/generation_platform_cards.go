@@ -2,8 +2,6 @@ package listingkit
 
 import (
 	"strings"
-
-	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func buildPlatformPreviewCards(result *ListingKitResult, selectedPlatform string) []ListingKitPlatformCard {
@@ -135,48 +133,11 @@ func buildAmazonPreviewCard(pkg *AmazonPackage, queue *GenerationWorkQueue, prev
 	return enrichListingKitPlatformCard(card, queue, previews), true
 }
 
-func buildSheinPreviewCard(pkg *sheinpub.Package, queue *GenerationWorkQueue, previews *PlatformAssetRenderPreviews) (ListingKitPlatformCard, bool) {
-	if pkg == nil && queue == nil && previews == nil {
-		return ListingKitPlatformCard{}, false
-	}
-	status := "ready"
-	summary := "已生成 SHEIN 预览"
-	needsReview := false
-	if pkg != nil {
-		summary = firstNonEmpty(pkg.SpuName, pkg.ProductNameEn, summary)
-		needsReview = len(pkg.ReviewNotes) > 0
-	}
-	if pkg != nil && pkg.Inspection != nil {
-		needsReview = needsReview || pkg.Inspection.NeedsReview
-		if pkg.Inspection.NeedsReview {
-			status = "needs_review"
-		}
-		summary = firstNonEmpty(joinStrings(pkg.Inspection.Summary, "；"), summary)
-	}
-	card := ListingKitPlatformCard{
-		Platform:    "shein",
-		Status:      status,
-		Summary:     summary,
-		NeedsReview: needsReview,
-	}
-	return enrichListingKitPlatformCard(card, queue, previews), true
-}
-
 func buildTemuPreviewCard(pkg *TemuPackage, queue *GenerationWorkQueue, previews *PlatformAssetRenderPreviews) (ListingKitPlatformCard, bool) {
 	if pkg == nil && queue == nil && previews == nil {
 		return ListingKitPlatformCard{}, false
 	}
-	card := ListingKitPlatformCard{
-		Platform:    "temu",
-		Status:      "ready",
-		Summary:     "已生成 TEMU 资料包",
-		NeedsReview: false,
-	}
-	if pkg != nil {
-		card.Status = previewStatusFromReviewNotes(pkg.ReviewNotes)
-		card.Summary = firstNonEmpty(pkg.GoodsName, card.Summary)
-		card.NeedsReview = len(pkg.ReviewNotes) > 0
-	}
+	card := buildReviewNotePreviewCard("temu", "已生成 TEMU 资料包", len(pkg.ReviewNotes) > 0, firstNonEmpty(pkg.GoodsName))
 	return enrichListingKitPlatformCard(card, queue, previews), true
 }
 
@@ -184,16 +145,6 @@ func buildWalmartPreviewCard(pkg *WalmartPackage, queue *GenerationWorkQueue, pr
 	if pkg == nil && queue == nil && previews == nil {
 		return ListingKitPlatformCard{}, false
 	}
-	card := ListingKitPlatformCard{
-		Platform:    "walmart",
-		Status:      "ready",
-		Summary:     "已生成 Walmart 资料包",
-		NeedsReview: false,
-	}
-	if pkg != nil {
-		card.Status = previewStatusFromReviewNotes(pkg.ReviewNotes)
-		card.Summary = firstNonEmpty(pkg.ProductName, card.Summary)
-		card.NeedsReview = len(pkg.ReviewNotes) > 0
-	}
+	card := buildReviewNotePreviewCard("walmart", "已生成 Walmart 资料包", len(pkg.ReviewNotes) > 0, firstNonEmpty(pkg.ProductName))
 	return enrichListingKitPlatformCard(card, queue, previews), true
 }
