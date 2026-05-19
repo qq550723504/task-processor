@@ -4,6 +4,8 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+
+	coreconfig "task-processor/internal/core/config"
 )
 
 type stubLocalSDSLoginProvider struct {
@@ -22,7 +24,7 @@ func (s *stubLocalSDSLoginProvider) LoadAuthState(context.Context, string, strin
 	return s.payload, nil
 }
 
-func TestTriggerLoginServiceLoginDoesNotAutoLaunchLocalProvider(t *testing.T) {
+func TestTriggerLoginServiceLoginUsesLocalProvider(t *testing.T) {
 	stub := &stubLocalSDSLoginProvider{}
 	ConfigureLocalLoginProvider(stub)
 	t.Cleanup(func() { ConfigureLocalLoginProvider(nil) })
@@ -35,6 +37,9 @@ func TestTriggerLoginServiceLoginDoesNotAutoLaunchLocalProvider(t *testing.T) {
 		LoginUsername:          "user",
 		LoginPassword:          "secret",
 	}
+	cfg.LoginService = coreconfig.SDSLoginServiceConfig{
+		DefaultHeadless: false,
+	}
 	cfg.AuthFile = filepath.Join(t.TempDir(), "auth.json")
 	cfg.CookieFile = filepath.Join(t.TempDir(), "cookies.json")
 
@@ -42,11 +47,15 @@ func TestTriggerLoginServiceLoginDoesNotAutoLaunchLocalProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
+	initialCalls := stub.triggerCalls
 	if err := c.triggerLoginServiceLogin(context.Background(), true); err != nil {
 		t.Fatalf("trigger local login: %v", err)
 	}
-	if stub.triggerCalls != 0 {
-		t.Fatalf("expected no local browser launch, got calls=%d req=%+v", stub.triggerCalls, stub.triggerReq)
+	if stub.triggerCalls != initialCalls+1 {
+		t.Fatalf("expected one additional local browser launch, got calls=%d initial=%d req=%+v", stub.triggerCalls, initialCalls, stub.triggerReq)
+	}
+	if stub.triggerReq.TenantID != "1" || stub.triggerReq.Identifier != "869" || !stub.triggerReq.ForceLogin || stub.triggerReq.Headless {
+		t.Fatalf("unexpected local login request: %+v", stub.triggerReq)
 	}
 }
 

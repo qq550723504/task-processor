@@ -44,6 +44,7 @@ type Config struct {
 	CookieFile    string
 	AuthFile      string
 	Management    *coreconfig.ManagementConfig
+	LoginService  coreconfig.SDSLoginServiceConfig
 	AuthBootstrap AuthBootstrapConfig
 	Endpoints     EndpointSet
 }

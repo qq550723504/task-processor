@@ -1,0 +1,18 @@
+{
+  "tenant_id": "tenant-a",
+  "shop_id": "store-a",
+  "identifier": "store-a",
+  "username": "",
+  "merchant_name": "",
+  "access_token": "token-a",
+  "cookies": [
+    {
+      "name": "sid",
+      "value": "a",
+      "domain": ".sdsdiy.com",
+      "path": "/",
+      "expires": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "issued_at": "0001-01-01T00:00:00Z"
+}

@@ -115,6 +115,19 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 	if svc.loadSession(2) == nil {
 		t.Fatal("expected session to be stored")
 	}
+	status, err := svc.Status(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !status.WaitingForVerifyCode {
+		t.Fatalf("expected waiting_for_verify_code=true in status: %+v", status)
+	}
+	if status.LastFailure == nil || status.LastFailure.ErrorCode != "VERIFY_CODE_REQUIRED" || !status.LastFailure.WaitingForVerifyCode {
+		t.Fatalf("expected verify-code failure summary in status: %+v", status)
+	}
+	if status.RecommendedAction.Key != "submit_verify_code" || status.RecommendedAction.Message == "" {
+		t.Fatalf("expected verify-code recommended action in status: %+v", status)
+	}
 }
 
 func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {

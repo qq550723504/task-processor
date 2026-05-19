@@ -63,13 +63,7 @@ func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *pr
 		case "amazon":
 			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonical, image)}
 		case "shein":
-			result.Shein = sheinpub.NewAssembler(sheinpub.AssemblerConfig{
-				CategoryResolver:      a.sheinCategoryResolver,
-				AttributeResolver:     a.sheinAttributeResolver,
-				SaleAttributeResolver: a.sheinSaleAttributeResolver,
-				PricingPolicy:         a.sheinPricingPolicy,
-				TitleOptimizer:        a.sheinTitleOptimizer,
-			}).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
+			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
 			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
 		case "temu":
 			result.Temu = buildTemuPackage(task.Request, canonical, image)

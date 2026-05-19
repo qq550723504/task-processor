@@ -137,6 +137,12 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 	if err != nil {
 		return nil, err
 	}
+	if s.loadSession(account.StoreID) != nil {
+		waiting = true
+		if lastFailure == nil || !lastFailure.WaitingForVerifyCode {
+			lastFailure = verifyCodeFailureSummary(account)
+		}
+	}
 	recommendedAction := deriveRecommendedAction(waiting, lastFailure)
 	return &AccountStatus{
 		Account:              *account,
@@ -235,9 +241,11 @@ func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req 
 			return runErr
 		}
 		if runResult.WaitingForVerifyCode {
-			if runResult.FailureSummary != nil {
-				_ = s.store.RecordLastFailure(ctx, account.TenantID, account.StoreID, runResult.FailureSummary, 30*24*time.Hour)
+			summary := runResult.FailureSummary
+			if summary == nil {
+				summary = verifyCodeFailureSummary(account)
 			}
+			_ = s.store.RecordLastFailure(ctx, account.TenantID, account.StoreID, summary, 30*24*time.Hour)
 			if err := s.store.SetVerifyWait(ctx, account.TenantID, account.StoreID, 10*time.Minute); err != nil {
 				if session != nil {
 					_ = session.Close()
@@ -347,6 +355,14 @@ func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID 
 			return nil
 		}
 		if result != nil && result.WaitingForVerifyCode {
+			summary := runResultFailureSummary(result)
+			if summary == nil {
+				summary = verifyCodeFailureSummary(account)
+			}
+			_ = s.store.RecordLastFailure(ctx, account.TenantID, account.StoreID, summary, 30*24*time.Hour)
+			if err := s.store.SetVerifyWait(ctx, account.TenantID, account.StoreID, 10*time.Minute); err != nil {
+				return err
+			}
 			return nil
 		}
 	}
@@ -355,6 +371,30 @@ func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID 
 		ttl = time.Duration(expireSeconds) * time.Second
 	}
 	return s.store.SubmitVerifyCode(ctx, account.TenantID, account.StoreID, code, ttl)
+}
+
+func verifyCodeFailureSummary(account *Account) *FailureSummary {
+	if account == nil {
+		return &FailureSummary{
+			ErrorCode:            "VERIFY_CODE_REQUIRED",
+			ErrorMessage:         "登录等待验证码",
+			PageState:            "verification",
+			ActionKey:            "submit_verify_code",
+			ActionMessage:        "提交验证码并继续当前登录会话",
+			WaitingForVerifyCode: true,
+		}
+	}
+	return &FailureSummary{
+		ErrorCode:            "VERIFY_CODE_REQUIRED",
+		ErrorMessage:         "登录等待验证码",
+		PageState:            "verification",
+		ActionKey:            "submit_verify_code",
+		ActionMessage:        "提交验证码并继续当前登录会话",
+		WaitingForVerifyCode: true,
+		Stage:                "wait_login",
+		URL:                  loginURLForAccount(*account),
+		Title:                "SHEIN全球商家中心",
+	}
 }
 
 func runResultFailureSummary(runResult *AutomationResult) *FailureSummary {

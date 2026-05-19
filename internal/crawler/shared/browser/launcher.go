@@ -36,11 +36,8 @@ type BrowserConfig struct {
 // GetBrowserLaunchArgs 获取浏览器启动参数（针对fingerprint-chromium优化）
 func GetBrowserLaunchArgs() []string {
 	return []string{
-		"--disable-infobars",     // 禁用信息栏
-		"--no-sandbox",           // 禁用沙箱
-		"--disable-web-security", // 禁用Web安全
-		"--start-maximized",      // 最大化启动
-		"--disable-gpu",          // 禁用GPU加速（避免检测）
+		"--start-maximized", // 最大化启动
+		"--disable-gpu",     // 禁用GPU加速（避免检测）
 	}
 }
 

@@ -60,21 +60,46 @@ func TestBuildSDSSyncServiceReturnsNilWithoutImageService(t *testing.T) {
 	}
 }
 
-func TestBuildSDSSyncServiceReturnsNilWithoutAuthState(t *testing.T) {
+func TestBuildSDSSyncServiceReturnsServiceWithoutAuthState(t *testing.T) {
 	logger := logrus.New()
 	previousFactory := newSDSSyncServiceForHTTPAPI
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
+	expected := &stubHTTPAPISDSSyncService{}
 	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
-		return nil, nil, nil
+		return expected, nil, nil
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
 		imageService: &stubHTTPAPIImageService{},
 	})
-	if svc != nil {
-		t.Fatalf("buildSDSSyncService() = %v, want nil", svc)
+	if svc != expected {
+		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)
+	}
+}
+
+func TestNewSDSSyncServiceForHTTPAPIReturnsServiceWithoutAuthState(t *testing.T) {
+	previousFactory := newSDSSyncServiceForHTTPAPI
+	t.Cleanup(func() {
+		newSDSSyncServiceForHTTPAPI = previousFactory
+	})
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.AuthFile = t.TempDir() + "/missing-auth.json"
+	cfg.CookieFile = t.TempDir() + "/missing-cookie.json"
+	cfg.BaseURL = "http://127.0.0.1:1"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+
+	svc, authState, err := previousFactory(&stubHTTPAPIImageService{}, cfg)
+	if err != nil {
+		t.Fatalf("newSDSSyncServiceForHTTPAPI() error = %v", err)
+	}
+	if svc == nil {
+		t.Fatal("newSDSSyncServiceForHTTPAPI() returned nil service without auth state")
+	}
+	if authState != nil {
+		t.Fatalf("authState = %+v, want nil without bootstrap state", authState)
 	}
 }
 

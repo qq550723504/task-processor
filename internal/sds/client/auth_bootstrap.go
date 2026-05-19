@@ -119,9 +119,19 @@ func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error
 	baseURL := strings.TrimSpace(cfg.LoginServiceBaseURL)
 	tenantID := strings.TrimSpace(cfg.LoginServiceTenantID)
 	identifier := strings.TrimSpace(cfg.LoginServiceIdentifier)
+	headless := c.loginServiceHeadless()
 
 	if localProvider := loadLocalLoginProvider(); localProvider != nil {
-		return nil
+		req := LocalLoginRequest{
+			TenantID:     tenantID,
+			Identifier:   identifier,
+			MerchantName: strings.TrimSpace(cfg.LoginMerchantName),
+			Username:     strings.TrimSpace(cfg.LoginUsername),
+			Password:     strings.TrimSpace(cfg.LoginPassword),
+			Headless:     headless,
+			ForceLogin:   force,
+		}
+		return localProvider.TriggerLogin(ctx, req)
 	}
 
 	requestCtx := ctx
@@ -135,7 +145,7 @@ func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error
 	payloadMap := map[string]any{
 		"tenant_id":         tenantID,
 		"identifier":        identifier,
-		"headless":          true,
+		"headless":          headless,
 		"force_login":       force,
 		"keep_browser_open": false,
 	}
@@ -186,6 +196,13 @@ func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error
 	return nil
 }
 
+func (c *Client) loginServiceHeadless() bool {
+	if c == nil || c.config == nil {
+		return true
+	}
+	return c.config.LoginService.DefaultHeadless
+}
+
 func (c *Client) hasLoginServiceManualCredentials() bool {
 	if c == nil || c.config == nil {
 		return false
@@ -200,7 +217,7 @@ func (c *Client) hasUsableAuthState() bool {
 	if c.authState == nil || strings.TrimSpace(c.authState.AccessToken) == "" {
 		return false
 	}
-	return len(c.cookies) > 0
+	return c.authState.MerchantID > 0 || len(c.cookies) > 0
 }
 
 func (c *Client) applyStaticBootstrap() bool {

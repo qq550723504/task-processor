@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	"task-processor/internal/amazonlisting"
 	amazonlistingapi "task-processor/internal/amazonlisting/api"
@@ -58,10 +59,6 @@ var newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdscl
 	}
 
 	authState := sdsHTTPClient.AuthState()
-	if authState == nil || strings.TrimSpace(authState.AccessToken) == "" {
-		return nil, authState, nil
-	}
-
 	svc, err := sdsusecase.NewService(sdsusecase.Config{
 		SDSClient:    sdsHTTPClient,
 		ImageService: imageSvc,
@@ -216,6 +213,7 @@ func buildSDSClientConfig(cfg *config.Config) *sdsclient.Config {
 		clientCfg.AuthBootstrap.LoginExtraInfo = value
 	}
 	loginService := cfg.Platforms.SDS.LoginService
+	clientCfg.LoginService = loginService
 	if value := strings.TrimSpace(loginService.BaseURL); value != "" {
 		clientCfg.AuthBootstrap.LoginServiceBaseURL = value
 	}
@@ -1111,17 +1109,40 @@ func configureListingKitLegacyTenantResolver(cfg *config.Config, logger *logrus.
 	}
 	// Transitional bridge: ListingKit still reads several legacy int64 tenant
 	// tables that are shared with the old system. We resolve the current
-	// ZITADEL tenant to yudao_tenant_id from zitadel_auth metadata until those
-	// tables are fully migrated and the old system is retired.
-	zitadelCfg := *cfg.Database
-	zitadelCfg.Database = "zitadel_auth"
-	db, err := database.NewSharedDatabaseFromConfig(&zitadelCfg)
-	if err != nil {
-		return nil, err
+	// ZITADEL tenant to yudao_tenant_id from metadata until those tables are
+	// fully migrated and the old system is retired. Kubernetes keeps this in
+	// zitadel_auth, while the local Docker stack still uses zitadel.
+	for _, databaseName := range []string{"zitadel_auth", "zitadel"} {
+		zitadelCfg := *cfg.Database
+		zitadelCfg.Database = databaseName
+		db, err := database.NewSharedDatabaseFromConfig(&zitadelCfg)
+		if err != nil {
+			continue
+		}
+		if !listingKitLegacyTenantMetadataTableExists(db) {
+			_ = database.CloseSharedDatabase(&zitadelCfg, db)
+			continue
+		}
+		tenantbridge.ConfigureLegacyTenantResolver(tenantbridge.NewMetadataResolver(db))
+		logger.Infof("listingkit legacy tenant resolver connected: %s:%d/%s", zitadelCfg.Host, zitadelCfg.Port, zitadelCfg.Database)
+		return func() error { return database.CloseSharedDatabase(&zitadelCfg, db) }, nil
 	}
-	tenantbridge.ConfigureLegacyTenantResolver(tenantbridge.NewMetadataResolver(db))
-	logger.Infof("listingkit legacy tenant resolver connected: %s:%d/%s", zitadelCfg.Host, zitadelCfg.Port, zitadelCfg.Database)
-	return func() error { return database.CloseSharedDatabase(&zitadelCfg, db) }, nil
+	tenantbridge.ConfigureLegacyTenantResolver(nil)
+	logger.Warn("listingkit legacy tenant resolver metadata table not found; legacy tenant bridge disabled")
+	return nil, nil
+}
+
+func listingKitLegacyTenantMetadataTableExists(db *gorm.DB) bool {
+	if db == nil {
+		return false
+	}
+	result := struct {
+		Name *string `gorm:"column:name"`
+	}{}
+	if err := db.Raw("select to_regclass(?) as name", "projections.org_metadata2").Scan(&result).Error; err != nil {
+		return false
+	}
+	return result.Name != nil && strings.TrimSpace(*result.Name) != ""
 }
 
 func buildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) (reviewstore.Repository, []func() error, error) {
@@ -1212,10 +1233,13 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
 		return nil
 	}
+	if svc == nil {
+		logger.Warn("SDS sync service not initialized; SDS sync disabled")
+		return nil
+	}
 
 	if authState == nil || strings.TrimSpace(authState.AccessToken) == "" {
-		logger.Info("SDS auth state not found; SDS sync disabled")
-		return nil
+		logger.Info("SDS auth state not found at startup; keeping SDS sync enabled for request-time auth bootstrap")
 	}
 
 	return svc

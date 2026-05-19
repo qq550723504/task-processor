@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -46,9 +47,11 @@ type Service struct {
 
 var runSDSBrowserLogin = runBrowserLogin
 
+var statePathSegmentSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
 func NewService(loginCfg config.LoginServiceConfig, browserCfg config.BrowserConfig) *Service {
 	cfg := sdsclient.DefaultConfig()
-	return &Service{
+	service := &Service{
 		loginCfg:         loginCfg,
 		browserCfg:       browserCfg,
 		authFile:         cfg.AuthFile,
@@ -67,6 +70,8 @@ func NewService(loginCfg config.LoginServiceConfig, browserCfg config.BrowserCon
 			Password:     strings.TrimSpace(loginCfg.Password),
 		},
 	}
+	service.applyAccountStatePaths(service.account)
+	return service
 }
 
 func (s *Service) Health(context.Context) ServiceHealth {
@@ -94,6 +99,8 @@ func (s *Service) statusLocked() (*Status, error) {
 		LastError:            strings.TrimSpace(s.lastError),
 	}
 	if payload != nil {
+		status.TenantID = coalesce(payload.TenantID, status.TenantID)
+		status.Identifier = coalesce(payload.Identifier, status.Identifier)
 		status.Username = coalesce(payload.Username, status.Username)
 		status.MerchantName = coalesce(payload.MerchantName, status.MerchantName)
 		status.HasCookie = len(payload.Cookies) > 0
@@ -197,6 +204,7 @@ func (s *Service) loginWithAccount(ctx context.Context, account configuredAccoun
 	}
 	s.mu.Lock()
 	s.account = account
+	s.applyAccountStatePaths(account)
 	s.lastError = ""
 	s.waitingForVerify = false
 	s.mu.Unlock()
@@ -228,10 +236,21 @@ func (s *Service) persistPayload(payload *AuthPayload) error {
 	if payload == nil {
 		return fmt.Errorf("payload is nil")
 	}
-	if err := os.MkdirAll(filepath.Dir(s.payloadFile), 0o755); err != nil {
+	account := configuredAccount{
+		TenantID:     coalesce(payload.TenantID, s.account.TenantID),
+		Identifier:   coalesce(payload.Identifier, payload.ShopID, s.account.Identifier),
+		MerchantName: coalesce(payload.MerchantName, s.account.MerchantName),
+		Username:     coalesce(payload.Username, s.account.Username),
+		Password:     s.account.Password,
+	}
+	authStore, sessionStore, _, _, browserStateFile, payloadFile := s.accountState(account)
+	payload.TenantID = account.TenantID
+	payload.Identifier = coalesce(payload.Identifier, account.Identifier)
+	payload.ShopID = coalesce(payload.ShopID, account.Identifier)
+	if err := os.MkdirAll(filepath.Dir(payloadFile), 0o755); err != nil {
 		return err
 	}
-	if err := s.authStore.Save(&sdsclient.AuthState{
+	if err := authStore.Save(&sdsclient.AuthState{
 		AccessToken: payload.AccessToken,
 		OutToken:    payload.OutToken,
 		MerchantID:  payload.MerchantID,
@@ -256,7 +275,7 @@ func (s *Service) persistPayload(payload *AuthPayload) error {
 		}
 		cookies = append(cookies, cookie)
 	}
-	if err := s.sessionStore.Save(cookies); err != nil {
+	if err := sessionStore.Save(cookies); err != nil {
 		return err
 	}
 	if payload.BrowserState != nil {
@@ -264,7 +283,7 @@ func (s *Service) persistPayload(payload *AuthPayload) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(s.browserStateFile, body, 0o644); err != nil {
+		if err := os.WriteFile(browserStateFile, body, 0o644); err != nil {
 			return err
 		}
 	}
@@ -272,7 +291,14 @@ func (s *Service) persistPayload(payload *AuthPayload) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.payloadFile, body, 0o644)
+	if err := os.WriteFile(payloadFile, body, 0o644); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.account = account
+	s.applyAccountStatePaths(account)
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *Service) ClearState() error {
@@ -280,20 +306,52 @@ func (s *Service) ClearState() error {
 	defer s.mu.Unlock()
 	s.waitingForVerify = false
 	s.lastError = ""
-	removeBestEffort(s.payloadFile)
-	removeBestEffort(s.browserStateFile)
-	if err := s.authStore.Clear(); err != nil {
+	authStore, sessionStore, _, _, browserStateFile, payloadFile := s.accountState(s.account)
+	removeBestEffort(payloadFile)
+	removeBestEffort(browserStateFile)
+	if payloadFile != s.legacyPayloadFilePath() {
+		removeBestEffort(s.legacyPayloadFilePath())
+	}
+	if browserStateFile != s.legacyBrowserStateFilePath() {
+		removeBestEffort(s.legacyBrowserStateFilePath())
+	}
+	if err := authStore.Clear(); err != nil {
 		return err
 	}
-	return s.sessionStore.Clear()
-}
-
-func (s *Service) TriggerLogin(ctx context.Context, req sdsclient.LocalLoginRequest) error {
+	if err := sessionStore.Clear(); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (s *Service) LoadAuthState(context.Context, string, string) (*sdsclient.LocalAuthPayload, error) {
-	payload, err := s.loadPayload()
+func (s *Service) TriggerLogin(ctx context.Context, req sdsclient.LocalLoginRequest) error {
+	account := configuredAccount{
+		TenantID:     coalesce(req.TenantID, s.account.TenantID),
+		Identifier:   coalesce(req.Identifier, s.account.Identifier),
+		MerchantName: coalesce(req.MerchantName, s.account.MerchantName),
+		Username:     coalesce(req.Username, s.account.Username),
+		Password:     coalesce(req.Password, s.account.Password),
+	}
+	if account.TenantID == "" || account.Identifier == "" {
+		return fmt.Errorf("tenant_id and identifier are required")
+	}
+	if account.MerchantName == "" || account.Username == "" || account.Password == "" {
+		return fmt.Errorf("merchant_name, username and password are required")
+	}
+	headless := req.Headless
+	_, err := s.loginWithAccount(withExplicitLoginTrigger(ctx), account, LoginRequest{
+		ForceLogin: req.ForceLogin,
+		Headless:   &headless,
+	})
+	return err
+}
+
+func (s *Service) LoadAuthState(_ context.Context, tenantID, identifier string) (*sdsclient.LocalAuthPayload, error) {
+	account := configuredAccount{
+		TenantID:   strings.TrimSpace(tenantID),
+		Identifier: strings.TrimSpace(identifier),
+	}
+	payload, err := s.loadPayloadForAccount(account)
 	if err != nil || payload == nil {
 		return nil, err
 	}
@@ -317,6 +375,91 @@ func (s *Service) LoadAuthState(context.Context, string, string) (*sdsclient.Loc
 		})
 	}
 	return result, nil
+}
+
+func (s *Service) loadPayloadForAccount(account configuredAccount) (*AuthPayload, error) {
+	_, _, _, _, _, payloadFile := s.accountState(account)
+	data, err := os.ReadFile(payloadFile)
+	if err != nil {
+		if os.IsNotExist(err) && payloadFile != s.legacyPayloadFilePath() {
+			data, err = os.ReadFile(s.legacyPayloadFilePath())
+		}
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+	}
+	var payload AuthPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(account.TenantID) != "" && strings.TrimSpace(payload.TenantID) != "" && strings.TrimSpace(payload.TenantID) != strings.TrimSpace(account.TenantID) {
+		return nil, nil
+	}
+	if strings.TrimSpace(account.Identifier) != "" {
+		storedIdentifier := coalesce(payload.Identifier, payload.ShopID)
+		if storedIdentifier != "" && strings.TrimSpace(storedIdentifier) != strings.TrimSpace(account.Identifier) {
+			return nil, nil
+		}
+	}
+	return &payload, nil
+}
+
+func (s *Service) accountState(account configuredAccount) (*sdsclient.AuthStateStore, *sdsclient.SessionStore, string, string, string, string) {
+	authFile, cookieFile, browserStateFile, payloadFile := s.accountStatePaths(account)
+	return sdsclient.NewAuthStateStore(authFile), sdsclient.NewSessionStore(cookieFile), authFile, cookieFile, browserStateFile, payloadFile
+}
+
+func (s *Service) applyAccountStatePaths(account configuredAccount) {
+	authFile, cookieFile, browserStateFile, payloadFile := s.accountStatePaths(account)
+	s.authFile = authFile
+	s.cookieFile = cookieFile
+	s.browserStateFile = browserStateFile
+	s.payloadFile = payloadFile
+	s.authStore = sdsclient.NewAuthStateStore(authFile)
+	s.sessionStore = sdsclient.NewSessionStore(cookieFile)
+}
+
+func (s *Service) accountStatePaths(account configuredAccount) (string, string, string, string) {
+	baseDir := filepath.Dir(s.legacyPayloadFilePath())
+	tenantID := sanitizeStatePathSegment(account.TenantID)
+	identifier := sanitizeStatePathSegment(account.Identifier)
+	if tenantID == "" || identifier == "" {
+		return s.legacyAuthFilePath(), s.legacyCookieFilePath(), s.legacyBrowserStateFilePath(), s.legacyPayloadFilePath()
+	}
+	accountDir := filepath.Join(baseDir, tenantID, identifier)
+	return filepath.Join(accountDir, "auth.json"),
+		filepath.Join(accountDir, "cookies.json"),
+		filepath.Join(accountDir, "browser_state.json"),
+		filepath.Join(accountDir, "login_state.json")
+}
+
+func (s *Service) legacyAuthFilePath() string {
+	cfg := sdsclient.DefaultConfig()
+	return cfg.AuthFile
+}
+
+func (s *Service) legacyCookieFilePath() string {
+	cfg := sdsclient.DefaultConfig()
+	return cfg.CookieFile
+}
+
+func (s *Service) legacyBrowserStateFilePath() string {
+	return filepath.Join(filepath.Dir(s.legacyAuthFilePath()), "browser_state.json")
+}
+
+func (s *Service) legacyPayloadFilePath() string {
+	return filepath.Join(filepath.Dir(s.legacyAuthFilePath()), "login_state.json")
+}
+
+func sanitizeStatePathSegment(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	return statePathSegmentSanitizer.ReplaceAllString(trimmed, "_")
 }
 
 func removeBestEffort(path string) {

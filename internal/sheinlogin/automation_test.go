@@ -115,3 +115,24 @@ func TestDeriveBusinessVisibility(t *testing.T) {
 		t.Fatalf("unexpected derived visibility: loginForm=%v sellerHub=%v verification=%v permission=%v agreement=%v credential=%v", loginForm, sellerHub, verification, permission, agreement, credential)
 	}
 }
+
+func TestHasLoginSurfaceSignals(t *testing.T) {
+	if !hasLoginSurfaceSignals(map[string]bool{"login_button": true}, "") {
+		t.Fatal("expected selector-based login surface signal")
+	}
+	if !hasLoginSurfaceSignals(map[string]bool{}, "欢迎来到 SHEIN 全球商家中心，请登录后继续") {
+		t.Fatal("expected text-based login surface signal")
+	}
+	if hasLoginSurfaceSignals(map[string]bool{}, "   ") {
+		t.Fatal("expected empty content not to be treated as login surface")
+	}
+}
+
+func TestClassifyLoginFailureUsesCaptchaSignals(t *testing.T) {
+	metadata := artifactMetadata{
+		BodyText: "系统检测到异常，请完成滑块验证码后重试",
+	}
+	if got := classifyLoginFailure(metadata); got != "LOGIN_FAILED" {
+		t.Fatalf("classifyLoginFailure() = %q, want %q", got, "LOGIN_FAILED")
+	}
+}

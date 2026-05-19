@@ -100,6 +100,10 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 	if err != nil {
 		return nil, fmt.Errorf("启动持久化上下文失败: %w", err)
 	}
+	if err := applyContextStealth(context); err != nil {
+		context.Close()
+		return nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
+	}
 
 	return context, nil
 }
@@ -131,8 +135,61 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 		browser.Close()
 		return nil, nil, fmt.Errorf("创建浏览器上下文失败: %w", err)
 	}
+	if err := applyContextStealth(context); err != nil {
+		context.Close()
+		browser.Close()
+		return nil, nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
+	}
 
 	return browser, context, nil
+}
+
+func applyContextStealth(context playwright.BrowserContext) error {
+	if context == nil {
+		return nil
+	}
+	script := `
+(() => {
+  const patchGetter = (target, key, getter) => {
+    try {
+      Object.defineProperty(target, key, {
+        get: getter,
+        configurable: true,
+      });
+    } catch (_) {}
+  };
+
+  patchGetter(Navigator.prototype, 'webdriver', () => undefined);
+  patchGetter(Navigator.prototype, 'languages', () => ['zh-CN', 'zh', 'en-US', 'en']);
+  patchGetter(Navigator.prototype, 'language', () => 'zh-CN');
+  patchGetter(Navigator.prototype, 'plugins', () => [
+    { name: 'Chrome PDF Plugin' },
+    { name: 'Chrome PDF Viewer' },
+    { name: 'Native Client' },
+  ]);
+
+  if (!window.chrome) {
+    Object.defineProperty(window, 'chrome', {
+      value: { runtime: {}, app: {} },
+      configurable: true,
+    });
+  } else if (!window.chrome.runtime) {
+    window.chrome.runtime = {};
+  }
+
+  const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
+  if (originalQuery) {
+    window.navigator.permissions.query = (parameters) => (
+      parameters && parameters.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : originalQuery.call(window.navigator.permissions, parameters)
+    );
+  }
+})();
+`
+	return context.AddInitScript(playwright.Script{
+		Content: playwright.String(script),
+	})
 }
 
 func resolveUserDataDir(dir string) (string, error) {

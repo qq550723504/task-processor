@@ -61,6 +61,7 @@ type artifactMetadata struct {
 	LoginError             string          `json:"login_error,omitempty"`
 	BodyText               string          `json:"body_text,omitempty"`
 	SelectorStates         map[string]bool `json:"selector_states,omitempty"`
+	NetworkPayloads        []map[string]any `json:"network_payloads,omitempty"`
 }
 
 type Automation interface {
@@ -159,12 +160,18 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
 	}
+	_ = installPageNetworkCapture(page)
 	if _, err = page.Goto(loginURLForAccount(account), playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 		Timeout:   playwright.Float(60000),
 	}); err != nil {
 		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
+	}
+	if err := waitForLoginSurface(ctx, page); err != nil {
+		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "wait_login_surface", err)
+		closeManagerProfile(manager, profileDir)
+		return result, nil, resultErr
 	}
 	if err := fillLogin(page, account); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "fill_login", err)
@@ -177,6 +184,31 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		return result, nil, resultErr
 	}
 	if waiting, err := waitForLoginOutcome(ctx, page); err != nil {
+		settleAfterSubmit(page, 8*time.Second)
+		if loggedIn, loginErr := isLoggedIn(page); loginErr == nil && loggedIn {
+			storageState, stateErr := manager.GetContext().StorageState()
+			if stateErr != nil {
+				result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "export_state_after_recover", stateErr)
+				closeManagerProfile(manager, profileDir)
+				return result, nil, resultErr
+			}
+			state := cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})
+			closeManagerProfile(manager, profileDir)
+			return &AutomationResult{BrowserState: state}, nil, nil
+		}
+		if verifyRequired, verifyErr := isVerifyCodeRequired(page); verifyErr == nil && verifyRequired {
+			return &AutomationResult{
+					WaitingForVerifyCode: true,
+					ErrorCode:            "VERIFY_CODE_REQUIRED",
+					ErrorMessage:         "登录等待验证码",
+				}, &playwrightVerifySession{
+					account:     account,
+					manager:     manager,
+					page:        page,
+					artifactDir: cfg.ArtifactDir,
+					profileDir:  profileDir,
+				}, nil
+		}
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "wait_login", err)
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
@@ -205,6 +237,110 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	return &AutomationResult{BrowserState: state}, nil, nil
 }
 
+func installPageNetworkCapture(page playwright.Page) error {
+	if page == nil {
+		return nil
+	}
+	script := `
+(() => {
+  if (window.__codexAuthPayloadCaptureInstalled) return;
+  window.__codexAuthPayloadCaptureInstalled = true;
+  window.__codexAuthPayloads = [];
+  const shouldCapture = (url) => {
+    const lowered = String(url || '').toLowerCase();
+    return lowered.includes('/sso/authenticate/login')
+      || lowered.includes('/sso/geetest/ajax.php')
+      || lowered.includes('/sso/geetest/reset.php');
+  };
+  const pushPayload = (item) => {
+    try {
+      window.__codexAuthPayloads.push({
+        ...item,
+        capturedAt: Date.now(),
+      });
+      if (window.__codexAuthPayloads.length > 30) {
+        window.__codexAuthPayloads = window.__codexAuthPayloads.slice(-30);
+      }
+    } catch (e) {}
+  };
+  const origFetch = window.fetch;
+  if (origFetch) {
+    window.fetch = async function(...args) {
+      const response = await origFetch.apply(this, args);
+      try {
+        const url = response && response.url ? response.url : (args[0] && args[0].url) || args[0];
+        if (shouldCapture(url)) {
+          const cloned = response.clone();
+          let body = '';
+          try { body = await cloned.text(); } catch (e) {}
+          pushPayload({
+            channel: 'fetch',
+            url: String(url || ''),
+            status: response.status,
+            bodyPreview: String(body || '').replace(/\s+/g, ' ').slice(0, 1000),
+          });
+        }
+      } catch (e) {}
+      return response;
+    };
+  }
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    try {
+      this.__codexCaptureUrl = url;
+      this.__codexCaptureMethod = method;
+    } catch (e) {}
+    return origOpen.call(this, method, url, ...rest);
+  };
+  XMLHttpRequest.prototype.send = function(...args) {
+    try {
+      this.addEventListener('loadend', function() {
+        try {
+          const url = this.__codexCaptureUrl || this.responseURL;
+          if (!shouldCapture(url)) return;
+          const body = typeof this.responseText === 'string' ? this.responseText : '';
+          pushPayload({
+            channel: 'xhr',
+            url: String(url || ''),
+            status: this.status,
+            bodyPreview: String(body || '').replace(/\s+/g, ' ').slice(0, 1000),
+          });
+        } catch (e) {}
+      });
+    } catch (e) {}
+    return origSend.apply(this, args);
+  };
+})();
+`
+	return page.Context().AddInitScript(playwright.Script{Content: playwright.String(script)})
+}
+
+func getCapturedNetworkPayloads(page playwright.Page) []map[string]any {
+	if page == nil {
+		return nil
+	}
+	value, err := page.Evaluate(`() => Array.isArray(window.__codexAuthPayloads) ? window.__codexAuthPayloads.slice(-20) : []`, nil)
+	if err != nil || value == nil {
+		return nil
+	}
+	items, ok := value.([]interface{})
+	if !ok {
+		return nil
+	}
+	results := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if payload, ok := item.(map[string]interface{}); ok {
+			result := make(map[string]any, len(payload))
+			for k, v := range payload {
+				result[k] = v
+			}
+			results = append(results, result)
+		}
+	}
+	return results
+}
+
 func loginURLForAccount(account Account) string {
 	value := strings.TrimSpace(account.LoginURL)
 	if value == "" {
@@ -223,9 +359,37 @@ func defaultViewport(value, fallback int) int {
 	return fallback
 }
 
+func waitForLoginSurface(ctx context.Context, page playwright.Page) error {
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
+			return nil
+		}
+		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
+			return nil
+		}
+		states := collectSelectorStates(page)
+		bodyText := ""
+		if text, err := page.Locator("body").TextContent(); err == nil {
+			bodyText = summarizeBodyText(text, 1200)
+		}
+		if hasLoginSurfaceSignals(states, bodyText) {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return fmt.Errorf("login surface not ready")
+}
+
 func fillLogin(page playwright.Page, account Account) error {
 	username, err := firstVisible(page, []string{
 		"input.soui-input-input:first-of-type",
+		`input.soui-input-input:not([type="password"])`,
 		`input[type="text"].soui-input-input`,
 		`input[type="text"]`,
 	})
@@ -239,10 +403,35 @@ func fillLogin(page playwright.Page, account Account) error {
 	if err != nil {
 		return err
 	}
-	if err := username.Fill(account.Username); err != nil {
+	if err := username.Click(); err != nil {
 		return err
 	}
-	return password.Fill(account.Password)
+	if err := username.Press("Control+A"); err != nil {
+		return err
+	}
+	if err := username.Press("Backspace"); err != nil {
+		return err
+	}
+	if err := username.Type(account.Username, playwright.LocatorTypeOptions{Delay: playwright.Float(60)}); err != nil {
+		return err
+	}
+	if err := username.Press("Tab"); err != nil {
+		return err
+	}
+	if err := password.Click(); err != nil {
+		return err
+	}
+	if err := password.Press("Control+A"); err != nil {
+		return err
+	}
+	if err := password.Press("Backspace"); err != nil {
+		return err
+	}
+	if err := password.Type(account.Password, playwright.LocatorTypeOptions{Delay: playwright.Float(60)}); err != nil {
+		return err
+	}
+	_ = password.Press("Tab")
+	return nil
 }
 
 func submitLogin(page playwright.Page) error {
@@ -253,6 +442,44 @@ func submitLogin(page playwright.Page) error {
 	})
 	if err != nil {
 		return err
+	}
+	if password, pwErr := firstVisible(page, []string{
+		`input[type="password"].soui-input-input`,
+		`input[type="password"]`,
+	}); pwErr == nil {
+		_ = password.Click()
+		if err := password.Press("Enter"); err == nil {
+			if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+				return nil
+			}
+		}
+	}
+	if err := clickWithFallback(page, button); err == nil {
+		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			return nil
+		}
+	}
+	if dismissed, dismissErr := dismissRequestFailure(page); dismissErr == nil && dismissed {
+		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			return nil
+		}
+	}
+	if _, evalErr := button.Evaluate(`(el) => {
+		el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+		el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+		el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		const form = el.closest('form');
+		if (form) {
+			if (typeof form.requestSubmit === 'function') {
+				form.requestSubmit();
+			} else {
+				form.submit();
+			}
+		}
+	}`, nil); evalErr == nil {
+		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			return nil
+		}
 	}
 	return clickWithFallback(page, button)
 }
@@ -282,7 +509,46 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 	if loginError, err := extractLoginError(page); err == nil && loginError != "" {
 		return false, fmt.Errorf("%s", loginError)
 	}
+	if shouldWaitForCaptcha(page) {
+		return true, nil
+	}
 	return false, fmt.Errorf("login outcome timeout")
+}
+
+func loginOutcomeAdvanced(page playwright.Page, wait time.Duration) (bool, error) {
+	deadline := time.Now().Add(wait)
+	for time.Now().Before(deadline) {
+		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
+			return true, nil
+		}
+		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
+			return true, nil
+		}
+		if loginError, err := extractLoginError(page); err == nil && loginError != "" {
+			return true, nil
+		}
+		if dismissed, _ := dismissRequestFailure(page); dismissed {
+			continue
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false, nil
+}
+
+func settleAfterSubmit(page playwright.Page, wait time.Duration) {
+	deadline := time.Now().Add(wait)
+	for time.Now().Before(deadline) {
+		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
+			return
+		}
+		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
+			return
+		}
+		if dismissed, _ := dismissRequestFailure(page); dismissed {
+			continue
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 type playwrightVerifySession struct {
@@ -304,11 +570,31 @@ func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (
 		return artifactResult(s.page, s.artifactDir, s.account, "wait_verify_code", err)
 	}
 	if waiting {
-		return &AutomationResult{
-			WaitingForVerifyCode: true,
-			ErrorCode:            "VERIFY_CODE_REQUIRED",
-			ErrorMessage:         "验证码提交后仍需继续验证",
-		}, nil
+		result, _ := artifactResult(s.page, s.artifactDir, s.account, "wait_verify_code", fmt.Errorf("验证码提交后仍需继续验证"))
+		if result == nil {
+			return &AutomationResult{
+				WaitingForVerifyCode: true,
+				ErrorCode:            "VERIFY_CODE_REQUIRED",
+				ErrorMessage:         "验证码提交后仍需继续验证",
+			}, nil
+		}
+		result.WaitingForVerifyCode = true
+		if strings.TrimSpace(result.ErrorCode) == "" {
+			result.ErrorCode = "VERIFY_CODE_REQUIRED"
+		}
+		if strings.TrimSpace(result.ErrorMessage) == "" {
+			result.ErrorMessage = "验证码提交后仍需继续验证"
+		}
+		if result.FailureSummary != nil {
+			result.FailureSummary.WaitingForVerifyCode = true
+			if strings.TrimSpace(result.FailureSummary.ErrorCode) == "" {
+				result.FailureSummary.ErrorCode = "VERIFY_CODE_REQUIRED"
+			}
+			if strings.TrimSpace(result.FailureSummary.ErrorMessage) == "" {
+				result.FailureSummary.ErrorMessage = "验证码提交后仍需继续验证"
+			}
+		}
+		return result, nil
 	}
 	storageState, err := s.manager.GetContext().StorageState()
 	if err != nil {
@@ -365,9 +651,19 @@ func submitVerifyCode(page playwright.Page, code string) error {
 	if err != nil {
 		return err
 	}
-	if err := input.Fill(code); err != nil {
+	if err := input.Click(); err != nil {
 		return err
 	}
+	if err := input.Press("Control+A"); err != nil {
+		return err
+	}
+	if err := input.Press("Backspace"); err != nil {
+		return err
+	}
+	if err := input.Type(code, playwright.LocatorTypeOptions{Delay: playwright.Float(80)}); err != nil {
+		return err
+	}
+	_ = input.Press("Tab")
 	button, err := firstVisible(page, []string{
 		`button.soui-button-primary:has-text("确认")`,
 		`button:has-text("确认")`,
@@ -376,6 +672,14 @@ func submitVerifyCode(page playwright.Page, code string) error {
 	})
 	if err != nil {
 		return err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		disabled, disabledErr := button.IsDisabled()
+		if disabledErr == nil && !disabled {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	return clickWithFallback(page, button)
 }
@@ -709,6 +1013,9 @@ func collectArtifactMetadata(page playwright.Page, account Account, stage string
 	if bodyText, err := page.Locator("body").TextContent(); err == nil {
 		metadata.BodyText = summarizeBodyText(bodyText, 4000)
 	}
+	if payloads := getCapturedNetworkPayloads(page); len(payloads) > 0 {
+		metadata.NetworkPayloads = payloads
+	}
 	metadata.SelectorStates = collectSelectorStates(page)
 	loginFormVisible, sellerHubVisible, verificationVisible, permissionVisible, agreementVisible, credentialErrorVisible := deriveBusinessVisibility(metadata.SelectorStates)
 	metadata.LoginFormVisible = &loginFormVisible
@@ -763,9 +1070,11 @@ func hasRequestFailureModal(page playwright.Page) (bool, error) {
 func collectSelectorStates(page playwright.Page) map[string]bool {
 	states := map[string]bool{}
 	selectors := map[string]string{
-		"username_input":           `input[type="text"]`,
+		"username_input":           `input.soui-input-input:not([type="password"])`,
 		"password_input":           `input[type="password"]`,
 		"login_button":             `button:has-text("登录")`,
+		"captcha_iframe":           `iframe[src*="captcha"], iframe[src*="geetest"]`,
+		"captcha_container":        `[class*="geetest"], [id*="captcha"], [class*="captcha"]`,
 		"verify_code_input":        `#verifyCode`,
 		"verify_send_email_button": `button:has-text("发送至邮箱")`,
 		"verify_confirm_button":    `button:has-text("确认")`,
@@ -791,6 +1100,35 @@ func collectSelectorStates(page playwright.Page) map[string]bool {
 	return states
 }
 
+func shouldWaitForCaptcha(page playwright.Page) bool {
+	states := collectSelectorStates(page)
+	if states["verify_code_input"] || states["verify_send_email_button"] || states["verify_confirm_button"] {
+		return true
+	}
+	if states["captcha_iframe"] || states["captcha_container"] {
+		return true
+	}
+	bodyText := ""
+	if text, err := page.Locator("body").TextContent(); err == nil {
+		bodyText = normalizeText(text)
+	}
+	for _, keyword := range []string{
+		"验证码",
+		"校验",
+		"滑块",
+		"人机",
+		"请勿频繁点击",
+		"稍后重试",
+		"captcha",
+		"geetest",
+	} {
+		if strings.Contains(bodyText, normalizeText(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
 func deriveBusinessVisibility(selectorStates map[string]bool) (loginFormVisible, sellerHubVisible, verificationVisible, permissionVisible, agreementVisible, credentialErrorVisible bool) {
 	loginFormVisible = selectorStates["username_input"] || selectorStates["password_input"] || selectorStates["login_button"]
 	sellerHubVisible = selectorStates["seller_hub_text"] || selectorStates["seller_hub_cn_text"]
@@ -799,6 +1137,33 @@ func deriveBusinessVisibility(selectorStates map[string]bool) (loginFormVisible,
 	agreementVisible = selectorStates["agreement_text"] || selectorStates["agreement_checkbox"] || selectorStates["agreement_confirm_button"] || selectorStates["agreement_sign_button"]
 	credentialErrorVisible = selectorStates["credential_error_text"] || selectorStates["credential_error_inline"] || selectorStates["credential_error_input"] || selectorStates["credential_error_alert"]
 	return loginFormVisible, sellerHubVisible, verificationVisible, permissionVisible, agreementVisible, credentialErrorVisible
+}
+
+func hasLoginSurfaceSignals(selectorStates map[string]bool, bodyText string) bool {
+	loginFormVisible, sellerHubVisible, verificationVisible, permissionVisible, agreementVisible, credentialErrorVisible := deriveBusinessVisibility(selectorStates)
+	if loginFormVisible || sellerHubVisible || verificationVisible || permissionVisible || agreementVisible || credentialErrorVisible {
+		return true
+	}
+	normalized := normalizeText(bodyText)
+	if normalized == "" {
+		return false
+	}
+	keywords := []string{
+		"登录",
+		"手机号",
+		"账号",
+		"密码",
+		"验证码",
+		"卖家中心",
+		"seller hub",
+		"商家中心",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(normalized, normalizeText(keyword)) {
+			return true
+		}
+	}
+	return false
 }
 
 func capturedAtFromMetadata(metadata artifactMetadata) time.Time {
