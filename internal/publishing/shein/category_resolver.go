@@ -59,7 +59,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 		}
 		if info, err := r.api.GetCategory(hintedID); err == nil && info != nil {
 			hydrated := hydrateCategoryResolution(info, resolution.Source, resolution.QueryText)
-			hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+			hydrated.SemanticValidation = r.semanticValidation(ctx, canonical, pkg, hydrated.MatchedPath)
 			if semanticRejectsCategory(hydrated.SemanticValidation) {
 				hydrated.ReviewNotes = append(hydrated.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
 			}
@@ -74,7 +74,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 		if suggestErr == nil && selectedID > 0 {
 			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
 				hydrated := hydrateCategoryResolution(info, "suggest_category_by_text", suggestQuery)
-				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+				hydrated.SemanticValidation = r.semanticValidation(ctx, canonical, pkg, hydrated.MatchedPath)
 				if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 					return hydrated
 				}
@@ -86,7 +86,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 			} else {
 				if tree, treeErr := r.api.GetCategoryTree(); treeErr == nil {
 					if hydrated := hydrateCategoryResolutionFromTree(tree, selectedID, "suggest_category_by_text", suggestQuery); hydrated != nil {
-						hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+						hydrated.SemanticValidation = r.semanticValidation(ctx, canonical, pkg, hydrated.MatchedPath)
 						if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 							return hydrated
 						}
@@ -129,7 +129,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 		if selectedID > 0 {
 			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
 				hydrated := hydrateCategoryResolution(info, "ai_category_tree", treeQuery)
-				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+				hydrated.SemanticValidation = r.semanticValidation(ctx, canonical, pkg, hydrated.MatchedPath)
 				if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 					return hydrated
 				}
@@ -139,7 +139,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 				resolution.ReviewNotes = append(resolution.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 			}
 			if hydrated := hydrateCategoryResolutionFromTree(tree, selectedID, "ai_category_tree", treeQuery); hydrated != nil {
-				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+				hydrated.SemanticValidation = r.semanticValidation(ctx, canonical, pkg, hydrated.MatchedPath)
 				if r.acceptsAutomatedCategory(hydrated.SemanticValidation) {
 					return hydrated
 				}
@@ -264,11 +264,11 @@ func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query s
 	return resolution
 }
 
-func (r *categoryResolver) semanticValidation(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+func (r *categoryResolver) semanticValidation(ctx context.Context, canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
 	if r == nil || r.semanticVerifier == nil || len(categoryPath) == 0 {
 		return nil
 	}
-	return r.semanticVerifier.ValidateProductCategory(canonical, pkg, categoryPath)
+	return r.semanticVerifier.ValidateProductCategory(ctx, canonical, pkg, categoryPath)
 }
 
 func semanticRejectsCategory(validation *CategorySemanticValidation) bool {
@@ -280,10 +280,7 @@ func semanticAcceptsCategory(validation *CategorySemanticValidation) bool {
 }
 
 func (r *categoryResolver) acceptsAutomatedCategory(validation *CategorySemanticValidation) bool {
-	if r == nil || r.semanticVerifier == nil {
-		return !semanticRejectsCategory(validation)
-	}
-	return semanticAcceptsCategory(validation)
+	return !semanticRejectsCategory(validation)
 }
 
 func semanticCategoryReviewNote(validation *CategorySemanticValidation) string {
