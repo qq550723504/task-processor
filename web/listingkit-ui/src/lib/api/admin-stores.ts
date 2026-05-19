@@ -9,7 +9,6 @@ export const listingStoreSchema = z
   .object({
     id: z.number(),
     tenantId: z.number().optional(),
-    storeId: z.string().optional(),
     name: z.string(),
     username: z.string(),
     password: z.string().optional(),
@@ -75,7 +74,6 @@ export type SimpleListingStore = z.infer<
 export type ListingStoreQuery = QueueQuery & {
   page?: number;
   page_size?: number;
-  storeId?: string;
   name?: string;
   username?: string;
   shopType?: string;
@@ -93,7 +91,6 @@ export type ListingStoreQuery = QueueQuery & {
 };
 
 export type ListingStoreInput = {
-  storeId?: string;
   name: string;
   username: string;
   password?: string;

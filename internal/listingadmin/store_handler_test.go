@@ -64,6 +64,7 @@ func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
 func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	body := bytes.NewBufferString(`{
+		"storeId":"MANUAL-STORE-ID",
 		"name":"SHEIN US",
 		"username":"shein-us",
 		"password":"secret",
@@ -90,10 +91,16 @@ func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	if created.ID == 0 || created.TenantID != 303 || created.Name != "SHEIN US" {
 		t.Fatalf("created = %+v, want tenant scoped store", created)
 	}
+	if created.StoreID != "" {
+		t.Fatalf("created.StoreID = %q, want empty because storeId is auto populated after login", created.StoreID)
+	}
 
 	var row listingStore
 	if err := router.db.Table("listing_store").Where("id = ?", created.ID).Take(&row).Error; err != nil {
 		t.Fatalf("load created row: %v", err)
+	}
+	if row.StoreID != "" {
+		t.Fatalf("row.StoreID = %q, want empty because client input storeId should be ignored", row.StoreID)
 	}
 	if row.TenantID != 303 || row.EnableAutoListing == nil || !*row.EnableAutoListing || row.OwnerUserID != "user-303" || row.CreatedBy != "user-303" || row.UpdatedBy != "user-303" {
 		t.Fatalf("row = %+v, want tenant and boolean fields persisted", row)

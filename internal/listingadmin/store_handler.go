@@ -27,7 +27,6 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 		OwnerUserID: requestScopedOwnerUserID(c),
 		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
-		StoreID:     strings.TrimSpace(c.Query("storeId")),
 		Name:        strings.TrimSpace(c.Query("name")),
 		Username:    strings.TrimSpace(c.Query("username")),
 		ShopType:    strings.TrimSpace(c.Query("shopType")),

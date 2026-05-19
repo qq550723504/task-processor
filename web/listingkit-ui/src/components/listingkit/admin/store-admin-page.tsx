@@ -139,7 +139,6 @@ export function StoreAdminPage() {
     setError("");
     setEditingStoreId(store.id);
     setForm({
-      storeId: store.storeId,
       name: store.name,
       username: store.username,
       password: store.password ?? "",

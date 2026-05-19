@@ -18,7 +18,7 @@ type Store struct {
 	OwnerUserID             string     `json:"ownerUserId,omitempty"`
 	CreatedBy               string     `json:"createdBy,omitempty"`
 	UpdatedBy               string     `json:"updatedBy,omitempty"`
-	StoreID                 string     `json:"storeId,omitempty"`
+	StoreID                 string     `json:"-"`
 	Name                    string     `json:"name"`
 	Username                string     `json:"username"`
 	Password                string     `json:"password,omitempty"`

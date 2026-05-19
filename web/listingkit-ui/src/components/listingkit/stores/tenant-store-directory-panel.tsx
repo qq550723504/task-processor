@@ -123,7 +123,6 @@ export function TenantStoreDirectoryPanel() {
     setError("");
     setEditingStoreId(store.id);
     setForm({
-      storeId: store.storeId,
       name: store.name,
       username: store.username,
       password: store.password ?? "",
@@ -233,9 +232,7 @@ export function TenantStoreDirectoryPanel() {
                   <TableRow key={store.id} className="align-top">
                     <TableCell className="px-4 py-3">
                       <div className="font-medium text-zinc-950">{store.name}</div>
-                      <div className="text-xs text-zinc-500">
-                        {[store.storeId, `#${store.id}`].filter(Boolean).join(" / ")}
-                      </div>
+                      <div className="text-xs text-zinc-500">#{store.id}</div>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
@@ -319,7 +316,6 @@ export function TenantStoreDirectoryPanel() {
             description="识别店铺和登录账号的核心字段。"
           >
             <StoreInput label="店铺名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
-            <StoreInput label="店铺 ID" value={form.storeId ?? ""} onChange={(storeId) => setForm({ ...form, storeId })} />
             <StoreInput label="登录用户名" value={form.username} onChange={(username) => setForm({ ...form, username })} />
             <StoreInput
               label="登录密码"

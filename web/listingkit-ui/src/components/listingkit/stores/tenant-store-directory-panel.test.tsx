@@ -89,7 +89,6 @@ describe("TenantStoreDirectoryPanel", () => {
     const form = screen.getByRole("form", { name: "租户店铺表单" });
 
     await user.type(within(form).getByLabelText("店铺名称"), "SHEIN CA");
-    await user.type(within(form).getByLabelText("店铺 ID"), "SHEIN-CA-002");
     await user.type(within(form).getByLabelText("登录用户名"), "shein-ca");
     await user.type(within(form).getByLabelText("登录密码"), "secret");
     await user.selectOptions(within(form).getByLabelText("地区"), "CA");
@@ -100,7 +99,6 @@ describe("TenantStoreDirectoryPanel", () => {
       expect(mocks.createTenantListingStore).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "SHEIN CA",
-          storeId: "SHEIN-CA-002",
           username: "shein-ca",
           password: "secret",
           region: "CA",
@@ -109,6 +107,7 @@ describe("TenantStoreDirectoryPanel", () => {
           enableAutoLogin: false,
         }),
       );
+      expect(mocks.createTenantListingStore.mock.calls[0]?.[0]).not.toHaveProperty("storeId");
     });
   });
 
@@ -181,6 +180,14 @@ describe("TenantStoreDirectoryPanel", () => {
     expect(regionSelect.tagName).toBe("SELECT");
     expect(regionSelect).toHaveValue("US");
     expect(within(screen.getByRole("form", { name: "租户店铺表单" })).getByLabelText("启用自动登录")).toBeChecked();
+  });
+
+  it("does not render a store id input in the tenant store form", async () => {
+    renderWithQueryClient(<TenantStoreDirectoryPanel />);
+
+    const form = await screen.findByRole("form", { name: "租户店铺表单" });
+
+    expect(within(form).queryByLabelText("店铺 ID")).toBeNull();
   });
 });
 
