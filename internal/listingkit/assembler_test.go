@@ -588,6 +588,40 @@ func TestBuildSheinPublishRequestForTaskIncludesTaskIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildSummaryIncludesCanonicalAndImageReviewState(t *testing.T) {
+	t.Parallel()
+
+	summary := buildSummary(&Task{
+		Request: &GenerateRequest{
+			Text:      "wireless earbuds",
+			ImageURLs: []string{"https://example.com/1.jpg", "https://example.com/2.jpg"},
+		},
+	}, &canonical.Product{
+		NeedsReview: true,
+		Variants: []canonical.Variant{
+			{SKU: "SKU-1"},
+			{SKU: "SKU-2"},
+		},
+	}, &productimage.ImageProcessResult{
+		Review: &productimage.ReviewDecision{
+			NeedsReview: true,
+			Reasons:     []string{"image needs manual review"},
+		},
+	})
+	if summary == nil {
+		t.Fatal("expected summary")
+	}
+	if summary.SourceType != "images_and_text" || summary.ImageCount != 2 || summary.VariantCount != 2 {
+		t.Fatalf("summary core fields = %+v", summary)
+	}
+	if !summary.NeedsReview {
+		t.Fatalf("summary needs_review = false, want true: %+v", summary)
+	}
+	if len(summary.Warnings) != 1 || summary.Warnings[0] != "image needs manual review" {
+		t.Fatalf("summary warnings = %#v, want image review reason", summary.Warnings)
+	}
+}
+
 func containsResolvedAttribute(items []SheinResolvedAttribute, attributeID int, valueID int) bool {
 	for _, item := range items {
 		if item.AttributeID == attributeID && item.AttributeValueID != nil && *item.AttributeValueID == valueID {
