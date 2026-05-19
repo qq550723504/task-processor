@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -78,7 +79,7 @@ func TestInferMissingRequiredDisplayAttributesRepairSkipsWhenTooManyPending(t *t
 		{Name: "Title", Value: "Decorative wall clock"},
 	}
 
-	resolved, notes := inferMissingRequiredDisplayAttributesRepair(attributes, inputs, map[int]ResolvedAttribute{}, panicDisplayAttributeLLM{})
+	resolved, notes := inferMissingRequiredDisplayAttributesRepair(context.Background(), attributes, inputs, map[int]ResolvedAttribute{}, panicDisplayAttributeLLM{})
 	if len(resolved) != 0 {
 		t.Fatalf("resolved = %#v, want none", resolved)
 	}

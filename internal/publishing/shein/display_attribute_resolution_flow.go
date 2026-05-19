@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -15,6 +16,7 @@ type displayAttributeInput struct {
 }
 
 func resolveDisplayAttributes(
+	ctx context.Context,
 	attributes []sheinattribute.AttributeInfo,
 	evidence *DisplayAttributeEvidencePool,
 	llm openaiclient.ChatCompleter,
@@ -93,19 +95,19 @@ func resolveDisplayAttributes(
 		resolveOne(entry)
 	}
 
-	templateBatchResolved, templateBatchNotes := inferDisplayAttributesTemplateBatch(templateIndex.attributes, inputs, resolvedByID, llm)
+	templateBatchResolved, templateBatchNotes := inferDisplayAttributesTemplateBatch(ctx, templateIndex.attributes, inputs, resolvedByID, llm)
 	if len(templateBatchResolved) > 0 {
 		resolved = append(resolved, templateBatchResolved...)
 	}
 	notes = append(notes, templateBatchNotes...)
 
-	requiredRepairResolved, requiredRepairNotes := inferMissingRequiredDisplayAttributes(templateIndex.attributes, inputs, resolvedByID, llm)
+	requiredRepairResolved, requiredRepairNotes := inferMissingRequiredDisplayAttributes(ctx, templateIndex.attributes, inputs, resolvedByID, llm)
 	if len(requiredRepairResolved) > 0 {
 		resolved = append(resolved, requiredRepairResolved...)
 	}
 	notes = append(notes, requiredRepairNotes...)
 
-	targetedRepairResolved, targetedRepairNotes := inferMissingRequiredDisplayAttributesRepair(templateIndex.attributes, inputs, resolvedByID, llm)
+	targetedRepairResolved, targetedRepairNotes := inferMissingRequiredDisplayAttributesRepair(ctx, templateIndex.attributes, inputs, resolvedByID, llm)
 	if len(targetedRepairResolved) > 0 {
 		resolved = append(resolved, targetedRepairResolved...)
 	}

@@ -160,7 +160,7 @@ func TestResolveDisplayAttributesSkipsDuplicateResolvedAttributeIDs(t *testing.T
 		{Name: "Description", Value: "Polyester"},
 	}
 
-	resolved, _, _, _, _ := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), nil)
+	resolved, _, _, _, _ := resolveDisplayAttributes(context.Background(), attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), nil)
 	if len(resolved) != 1 {
 		t.Fatalf("resolved attributes = %#v, want exactly 1 material attribute", resolved)
 	}
@@ -193,7 +193,7 @@ func TestResolveDisplayAttributesTraversesTemplatesInsteadOfSourceOrder(t *testi
 		{Name: "Material", Value: "Polyester"},
 	}
 
-	resolved, _, _, _, _ := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), nil)
+	resolved, _, _, _, _ := resolveDisplayAttributes(context.Background(), attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), nil)
 	if len(resolved) != 2 {
 		t.Fatalf("resolved attributes = %#v, want material and product model", resolved)
 	}
@@ -222,7 +222,7 @@ func TestResolveDisplayAttributesExactNameMatchDoesNotCallLLM(t *testing.T) {
 		{Name: "Material", Value: "Polyester"},
 	}
 
-	resolved, _, _, _, _ := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), panicDisplayAttributeLLM{})
+	resolved, _, _, _, _ := resolveDisplayAttributes(context.Background(), attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), panicDisplayAttributeLLM{})
 	if len(resolved) != 1 {
 		t.Fatalf("resolved attributes = %#v, want 1", resolved)
 	}
@@ -288,7 +288,7 @@ func TestResolveDisplayAttributesCallsValueBatchLLMOnce(t *testing.T) {
 	}
 	llm := &stagedDisplayAttributeLLM{}
 
-	resolved, _, _, _, _ := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
+	resolved, _, _, _, _ := resolveDisplayAttributes(context.Background(), attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
 	if len(resolved) != 2 {
 		t.Fatalf("resolved attributes = %#v, want 2", resolved)
 	}
@@ -326,7 +326,7 @@ func TestResolveDisplayAttributesFallsBackToRequiredRepairWhenBatchReturnsEmpty(
 		},
 	}
 
-	resolved, pending, _, _, notes := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
+	resolved, pending, _, _, notes := resolveDisplayAttributes(context.Background(), attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
 	if len(resolved) != 1 {
 		t.Fatalf("resolved = %#v, want 1", resolved)
 	}
@@ -375,7 +375,7 @@ func TestResolveDisplayAttributesAddsCandidateDiagnosticsWhenUnresolved(t *testi
 		},
 	}
 
-	_, _, _, _, notes := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
+	_, _, _, _, notes := resolveDisplayAttributes(context.Background(), attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
 	joined := strings.Join(notes, "\n")
 	if !strings.Contains(joined, "SHEIN 普通属性候选诊断") {
 		t.Fatalf("notes = %#v, want candidate diagnostics note", notes)
@@ -406,7 +406,7 @@ func TestInferMissingDisplayAttributeTextCandidatesAddsEvidenceDiagnostics(t *te
 		},
 	}
 
-	_, notes := inferMissingDisplayAttributeTextCandidates(attributes, inputs, map[int]ResolvedAttribute{}, llm)
+	_, notes := inferMissingDisplayAttributeTextCandidates(context.Background(), attributes, inputs, map[int]ResolvedAttribute{}, llm)
 	joined := strings.Join(notes, "\n")
 	if !strings.Contains(joined, "SHEIN 普通属性文本诊断") {
 		t.Fatalf("notes = %#v, want text diagnostics note", notes)
@@ -440,7 +440,7 @@ func TestInferDisplayAttributesTemplateBatchAddsCandidateDiagnostics(t *testing.
 		},
 	}
 
-	_, notes := inferDisplayAttributesTemplateBatch(attributes, inputs, map[int]ResolvedAttribute{}, llm)
+	_, notes := inferDisplayAttributesTemplateBatch(context.Background(), attributes, inputs, map[int]ResolvedAttribute{}, llm)
 	joined := strings.Join(notes, "\n")
 	if !strings.Contains(joined, "SHEIN 普通属性候选诊断") {
 		t.Fatalf("notes = %#v, want batch candidate diagnostics", notes)
@@ -471,7 +471,7 @@ func TestInferDisplayAttributesTemplateBatchAddsTextDiagnostics(t *testing.T) {
 		},
 	}
 
-	_, notes := inferDisplayAttributesTemplateBatch(attributes, inputs, map[int]ResolvedAttribute{}, llm)
+	_, notes := inferDisplayAttributesTemplateBatch(context.Background(), attributes, inputs, map[int]ResolvedAttribute{}, llm)
 	joined := strings.Join(notes, "\n")
 	if !strings.Contains(joined, "SHEIN 普通属性文本诊断") {
 		t.Fatalf("notes = %#v, want text diagnostics note", notes)
@@ -514,7 +514,7 @@ func TestInferDisplayAttributesTemplateBatchToleratesTrailingMalformedJSON(t *te
 		},
 	}
 
-	resolved, notes := inferDisplayAttributesTemplateBatch(attributes, inputs, map[int]ResolvedAttribute{}, llm)
+	resolved, notes := inferDisplayAttributesTemplateBatch(context.Background(), attributes, inputs, map[int]ResolvedAttribute{}, llm)
 	if len(resolved) != 1 {
 		t.Fatalf("resolved = %#v, want first valid selection recovered", resolved)
 	}

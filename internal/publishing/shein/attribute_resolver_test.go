@@ -954,7 +954,7 @@ func TestAttributeResolverTemplateBatchInfersRemainingAttributes(t *testing.T) {
 	}
 	resolvedByID := map[int]ResolvedAttribute{}
 
-	resolved, notes := inferDisplayAttributesTemplateBatch(attributes, inputs, resolvedByID, llm)
+	resolved, notes := inferDisplayAttributesTemplateBatch(context.Background(), attributes, inputs, resolvedByID, llm)
 	if len(resolved) != 2 {
 		t.Fatalf("resolved = %+v, notes=%+v, want 2", resolved, notes)
 	}
@@ -1003,7 +1003,7 @@ func TestAttributeResolverRepairsRemainingRequiredAttributes(t *testing.T) {
 	}
 	resolvedByID := map[int]ResolvedAttribute{}
 
-	resolved, notes := inferMissingRequiredDisplayAttributesRepair(attributes, inputs, resolvedByID, llm)
+	resolved, notes := inferMissingRequiredDisplayAttributesRepair(context.Background(), attributes, inputs, resolvedByID, llm)
 	if len(resolved) != 2 {
 		t.Fatalf("resolved = %+v, notes=%+v, want 2", resolved, notes)
 	}

@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -53,7 +54,7 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *canonical.Prod
 	}).Info("loaded SHEIN display attribute templates")
 	resolution.Source = "attribute_templates"
 	resolution.TemplateCount = len(templates.Data)
-	resolution.ResolvedAttributes, resolution.PendingAttributes, resolution.PendingAttributeCandidates, resolution.RecommendedAttributeCandidates, resolution.ReviewNotes = matchAttributes(templates, pkg, r.llm)
+	resolution.ResolvedAttributes, resolution.PendingAttributes, resolution.PendingAttributeCandidates, resolution.RecommendedAttributeCandidates, resolution.ReviewNotes = matchAttributes(resolveBuildRequestContext(req), templates, pkg, r.llm)
 	for _, item := range resolution.ResolvedAttributes {
 		if item.AttributeID > 0 {
 			resolution.ResolvedCount++
@@ -88,7 +89,7 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *canonical.Prod
 	return resolution
 }
 
-func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm openaiclient.ChatCompleter) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
+func matchAttributes(ctx context.Context, templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm openaiclient.ChatCompleter) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
 	if templates == nil || len(templates.Data) == 0 || pkg == nil {
 		return nil, nil, nil, nil, nil
 	}
@@ -96,7 +97,7 @@ func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Packa
 	if evidence == nil {
 		return nil, nil, nil, nil, nil
 	}
-	return resolveDisplayAttributes(templates.Data[0].AttributeInfos, evidence, llm)
+	return resolveDisplayAttributes(ctx, templates.Data[0].AttributeInfos, evidence, llm)
 }
 
 func buildAttributeInputs(pkg *Package) []common.Attribute {
@@ -122,4 +123,11 @@ func categoryID(pkg *Package) int {
 		return pkg.CategoryResolution.CategoryID
 	}
 	return 0
+}
+
+func resolveBuildRequestContext(req *BuildRequest) context.Context {
+	if req != nil && req.Context != nil {
+		return req.Context
+	}
+	return context.Background()
 }

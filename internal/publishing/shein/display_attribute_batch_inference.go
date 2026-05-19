@@ -29,6 +29,7 @@ type templateAttributeBatchChoice struct {
 }
 
 func inferDisplayAttributesTemplateBatch(
+	ctx context.Context,
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
@@ -42,7 +43,7 @@ func inferDisplayAttributesTemplateBatch(
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	ctx, cancel := context.WithTimeout(contextWithFallback(ctx), 35*time.Second)
 	defer cancel()
 
 	log := logger.GetGlobalLogger("shein/attribute")

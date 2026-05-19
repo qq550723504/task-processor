@@ -17,6 +17,7 @@ import (
 const maxTargetedDisplayAttributeRepairs = 6
 
 func inferMissingRequiredDisplayAttributesRepair(
+	ctx context.Context,
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
@@ -52,7 +53,7 @@ func inferMissingRequiredDisplayAttributesRepair(
 		if len(attr.AttributeValueInfoList) == 0 {
 			continue
 		}
-		match, matchNotes, ok := inferRequiredDisplayAttributeRepair(attr, inputs, llm)
+		match, matchNotes, ok := inferRequiredDisplayAttributeRepair(ctx, attr, inputs, llm)
 		notes = append(notes, matchNotes...)
 		if !ok {
 			if narrowed := describeDisplayAttributeCandidates(attr, "", "", inputs, maxDisplayAttributePromptCandidates); narrowed != "" {
@@ -74,11 +75,12 @@ func inferMissingRequiredDisplayAttributesRepair(
 }
 
 func inferRequiredDisplayAttributeRepair(
+	ctx context.Context,
 	attr sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	llm openaiclient.ChatCompleter,
 ) (ResolvedAttribute, []string, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(contextWithFallback(ctx), 12*time.Second)
 	defer cancel()
 
 	response, err := llm.Generate(ctx, buildRequiredDisplayAttributeRepairPrompt(attr, inputs))

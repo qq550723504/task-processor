@@ -15,6 +15,7 @@ import (
 )
 
 func inferMissingRequiredDisplayAttributes(
+	ctx context.Context,
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
@@ -42,7 +43,7 @@ func inferMissingRequiredDisplayAttributes(
 			continue
 		}
 		if len(attr.AttributeValueInfoList) == 0 {
-			match, reasons, ok := inferDisplayAttributeTextFromContext(attr, inputs, llm)
+			match, reasons, ok := inferDisplayAttributeTextFromContext(ctx, attr, inputs, llm)
 			if !ok {
 				notes = append(notes, reasons...)
 				continue
@@ -52,7 +53,7 @@ func inferMissingRequiredDisplayAttributes(
 			notes = append(notes, reasons...)
 			continue
 		}
-		match, reasons, ok := inferDisplayAttributeValueFromContext(attr, inputs, llm)
+		match, reasons, ok := inferDisplayAttributeValueFromContext(ctx, attr, inputs, llm)
 		if !ok {
 			notes = append(notes, reasons...)
 			continue
@@ -65,6 +66,7 @@ func inferMissingRequiredDisplayAttributes(
 }
 
 func inferMissingDisplayAttributeTextCandidates(
+	ctx context.Context,
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
@@ -85,7 +87,7 @@ func inferMissingDisplayAttributeTextCandidates(
 		if len(attr.AttributeValueInfoList) > 0 {
 			continue
 		}
-		match, reasons, ok := inferDisplayAttributeTextFromContext(attr, inputs, llm)
+		match, reasons, ok := inferDisplayAttributeTextFromContext(ctx, attr, inputs, llm)
 		if !ok {
 			notes = append(notes, reasons...)
 			if evidence := describeDisplayAttributeEvidenceFields(inputs, 8); evidence != "" {
@@ -111,6 +113,7 @@ type templateAttributeTextSelection struct {
 }
 
 func inferDisplayAttributeTextFromContext(
+	ctx context.Context,
 	attr sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	llm openaiclient.ChatCompleter,
@@ -118,7 +121,7 @@ func inferDisplayAttributeTextFromContext(
 	if llm == nil || len(inputs) == 0 {
 		return ResolvedAttribute{}, nil, false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(contextWithFallback(ctx), 10*time.Second)
 	defer cancel()
 
 	response, err := llm.Generate(ctx, buildMissingDisplayAttributeTextPrompt(attr, inputs))
@@ -203,6 +206,7 @@ func buildAllDisplayAttributeContextLines(inputs []common.Attribute) []string {
 }
 
 func inferDisplayAttributeValueFromContext(
+	ctx context.Context,
 	attr sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	llm openaiclient.ChatCompleter,
@@ -210,7 +214,7 @@ func inferDisplayAttributeValueFromContext(
 	if llm == nil || len(attr.AttributeValueInfoList) == 0 || len(inputs) == 0 {
 		return ResolvedAttribute{}, nil, false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(contextWithFallback(ctx), 10*time.Second)
 	defer cancel()
 
 	response, err := llm.Generate(ctx, buildMissingDisplayAttributeInferencePrompt(attr, inputs))

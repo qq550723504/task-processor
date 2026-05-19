@@ -1,6 +1,10 @@
 package shein
 
-import "task-processor/internal/prompt"
+import (
+	"context"
+
+	"task-processor/internal/prompt"
+)
 
 var sheinDisplayAttributePromptRenderer = prompt.NewTemplateRenderer()
 
@@ -15,4 +19,11 @@ func renderSheinDisplayAttributePrompt(key string, fallback string, vars map[str
 		return fallback
 	}
 	return rendered
+}
+
+func contextWithFallback(ctx context.Context) context.Context {
+	if ctx != nil {
+		return ctx
+	}
+	return context.Background()
 }
