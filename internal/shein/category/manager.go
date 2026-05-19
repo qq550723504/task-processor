@@ -79,12 +79,12 @@ func (s *OpenAISelector) selectCategoryByAI(
 	categoryInfo string,
 	categoryType string,
 ) (int, error) {
-	systemPrompt, err := prompt.GetTenantFromContext(ctx, prompt.KSheinCategorySelectorSelectCategorySystem)
+	systemPrompt, err := prompt.GetTenantFromContextWithGlobalFallback(ctx, prompt.KSheinCategorySelectorSelectCategorySystem)
 	if err != nil {
 		return 0, fmt.Errorf("读取租户分类系统提示词失败: %w", err)
 	}
 
-	userPrompt, err := prompt.RenderTenantFromContext(ctx, prompt.KSheinCategorySelectorSelectCategoryUser, map[string]any{
+	userPrompt, err := prompt.RenderTenantFromContextWithGlobalFallback(ctx, prompt.KSheinCategorySelectorSelectCategoryUser, map[string]any{
 		"title":        title,
 		"categoryInfo": categoryInfo,
 	})
@@ -173,7 +173,7 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 
 // ExtractCoreItemByAI 通过AI从商品上下文中提取适合 SuggestCategoryByText 的核心检索词。
 func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, input CoreItemInput) (string, error) {
-	systemPrompt, err := prompt.GetTenantFromContext(ctx, prompt.KSheinCategorySelectorExtractCoreItemSystem)
+	systemPrompt, err := prompt.GetTenantFromContextWithGlobalFallback(ctx, prompt.KSheinCategorySelectorExtractCoreItemSystem)
 	if err != nil {
 		return "", fmt.Errorf("读取租户核心类目提示词失败: %w", err)
 	}

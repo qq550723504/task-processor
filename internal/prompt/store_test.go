@@ -13,6 +13,51 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type promptRegistryStub struct {
+	globalPrompts         map[string]string
+	globalRenderedPrompts map[string]string
+	tenantPrompts         map[string]string
+	tenantRenderedPrompts map[string]string
+	tenantErr             error
+	tenantRenderErr       error
+}
+
+func (s promptRegistryStub) Get(key string, _ string) string {
+	return s.globalPrompts[key]
+}
+
+func (s promptRegistryStub) Render(key string, _ map[string]any, _ string) (string, error) {
+	value, ok := s.globalRenderedPrompts[key]
+	if !ok {
+		return "", errors.New("global render missing")
+	}
+	return value, nil
+}
+
+func (s promptRegistryStub) GetTenant(_ string, key string) (string, error) {
+	if s.tenantErr != nil {
+		return "", s.tenantErr
+	}
+	value, ok := s.tenantPrompts[key]
+	if !ok {
+		return "", ErrTenantPromptNotFound
+	}
+	return value, nil
+}
+
+func (s promptRegistryStub) RenderTenant(_ string, key string, _ map[string]any) (string, error) {
+	if s.tenantRenderErr != nil {
+		return "", s.tenantRenderErr
+	}
+	value, ok := s.tenantRenderedPrompts[key]
+	if !ok {
+		return "", ErrTenantPromptNotFound
+	}
+	return value, nil
+}
+
+func (s promptRegistryStub) Keys() []string { return nil }
+
 func TestGormTenantPromptStore_UpsertAndGetEnabled(t *testing.T) {
 	store := openTestPromptStore(t)
 
@@ -129,6 +174,45 @@ func TestRegistry_RenderTenantFromContextDoesNotFallBackWhenDatabasePromptMissin
 
 	require.Error(t, err)
 	require.Empty(t, got)
+}
+
+func TestGetTenantFromContextWithGlobalFallbackUsesGlobalPromptWhenTenantMissing(t *testing.T) {
+	previous := GlobalRegistry
+	GlobalRegistry = promptRegistryStub{
+		globalPrompts: map[string]string{"tmpl.key": "global prompt"},
+	}
+	defer func() { GlobalRegistry = previous }()
+
+	got, err := GetTenantFromContextWithGlobalFallback(context.Background(), "tmpl.key")
+
+	require.NoError(t, err)
+	require.Equal(t, "global prompt", got)
+}
+
+func TestRenderTenantFromContextWithGlobalFallbackUsesGlobalRenderWhenTenantMissing(t *testing.T) {
+	previous := GlobalRegistry
+	GlobalRegistry = promptRegistryStub{
+		globalRenderedPrompts: map[string]string{"tmpl.key": "global rendered"},
+	}
+	defer func() { GlobalRegistry = previous }()
+
+	got, err := RenderTenantFromContextWithGlobalFallback(context.Background(), "tmpl.key", map[string]any{"Name": "Alice"})
+
+	require.NoError(t, err)
+	require.Equal(t, "global rendered", got)
+}
+
+func TestGetTenantFromContextWithGlobalFallbackPreservesNonMissingErrors(t *testing.T) {
+	previous := GlobalRegistry
+	GlobalRegistry = promptRegistryStub{
+		tenantErr: errors.New("db down"),
+		globalPrompts: map[string]string{"tmpl.key": "global prompt"},
+	}
+	defer func() { GlobalRegistry = previous }()
+
+	_, err := GetTenantFromContextWithGlobalFallback(context.Background(), "tmpl.key")
+
+	require.EqualError(t, err, "db down")
 }
 
 func openTestPromptStore(t *testing.T) *GormTenantPromptStore {

@@ -64,12 +64,12 @@ func (o *ContentOptimizer) OptimizeTitleAndDescription(ctx context.Context, titl
 		return title, description, fmt.Errorf("OpenAI客户端未初始化")
 	}
 
-	systemPrompt, err := prompt.GetTenantFromContext(ctx, prompt.KSheinContentOptimizerOptimizeTitleDescriptionSystem)
+	systemPrompt, err := prompt.GetTenantFromContextWithGlobalFallback(ctx, prompt.KSheinContentOptimizerOptimizeTitleDescriptionSystem)
 	if err != nil {
 		return title, description, fmt.Errorf("读取租户系统提示词失败: %w", err)
 	}
 
-	userPrompt, err := prompt.RenderTenantFromContext(ctx, prompt.KSheinContentOptimizerOptimizeTitleDescriptionUser, map[string]any{
+	userPrompt, err := prompt.RenderTenantFromContextWithGlobalFallback(ctx, prompt.KSheinContentOptimizerOptimizeTitleDescriptionUser, map[string]any{
 		"title":       title,
 		"description": description,
 		"features":    features,

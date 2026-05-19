@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 
 	"task-processor/internal/core/logger"
@@ -273,6 +274,36 @@ func RenderTenantFromContext(ctx context.Context, key string, vars map[string]an
 		return registry.RenderTenantFromContext(ctx, key, vars)
 	}
 	return GlobalRegistry.RenderTenant(tenantctx.TenantIDFromContext(ctx), key, vars)
+}
+
+func GetTenantFromContextWithGlobalFallback(ctx context.Context, key string) (string, error) {
+	value, err := GetTenantFromContext(ctx, key)
+	if err == nil {
+		return value, nil
+	}
+	if !errors.Is(err, ErrTenantPromptNotFound) || GlobalRegistry == nil {
+		return "", err
+	}
+	fallback := GlobalRegistry.Get(key, "")
+	if strings.TrimSpace(fallback) == "" {
+		return "", err
+	}
+	return fallback, nil
+}
+
+func RenderTenantFromContextWithGlobalFallback(ctx context.Context, key string, vars map[string]any) (string, error) {
+	value, err := RenderTenantFromContext(ctx, key, vars)
+	if err == nil {
+		return value, nil
+	}
+	if !errors.Is(err, ErrTenantPromptNotFound) || GlobalRegistry == nil {
+		return "", err
+	}
+	fallback, fallbackErr := GlobalRegistry.Render(key, vars, "")
+	if fallbackErr != nil {
+		return "", err
+	}
+	return fallback, nil
 }
 
 func SetTenantPromptStore(store TenantPromptStore) error {
