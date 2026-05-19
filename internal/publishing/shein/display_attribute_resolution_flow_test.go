@@ -300,6 +300,56 @@ func TestResolveDisplayAttributesCallsValueBatchLLMOnce(t *testing.T) {
 	}
 }
 
+func TestResolveDisplayAttributesFallsBackToRequiredRepairWhenBatchReturnsEmpty(t *testing.T) {
+	t.Parallel()
+
+	attributes := []sheinattribute.AttributeInfo{
+		{
+			AttributeID:     160,
+			AttributeNameEn: "Material",
+			AttributeMode:   1,
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 526, AttributeValueEn: "Polyester", AttributeValue: "聚酯纤维(涤纶)"},
+				{AttributeValueID: 527, AttributeValueEn: "Cotton", AttributeValue: "棉"},
+			},
+		},
+	}
+	inputs := []common.Attribute{
+		{Name: "Material", Value: "涤纶"},
+		{Name: "Description", Value: "Polyester door curtain"},
+	}
+	llm := &scriptedAttributeLLM{
+		responses: []string{
+			`{"selections":[]}`,
+			`{"attribute_value_id":526,"reasons":["polyester is directly supported by source evidence"]}`,
+		},
+	}
+
+	resolved, pending, _, _, notes := resolveDisplayAttributes(attributes, newDisplayAttributeEvidencePoolFromInputs(inputs), llm)
+	if len(resolved) != 1 {
+		t.Fatalf("resolved = %#v, want 1", resolved)
+	}
+	if resolved[0].AttributeID != 160 {
+		t.Fatalf("attribute id = %d, want 160", resolved[0].AttributeID)
+	}
+	if resolved[0].AttributeValueID == nil || *resolved[0].AttributeValueID != 526 {
+		t.Fatalf("attribute value id = %#v, want 526", resolved[0].AttributeValueID)
+	}
+	if resolved[0].MatchedBy != "llm_attribute_inference" {
+		t.Fatalf("matched by = %q, want llm_attribute_inference", resolved[0].MatchedBy)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("pending = %#v, want none", pending)
+	}
+	if len(llm.prompts) != 2 {
+		t.Fatalf("llm prompt count = %d, want 2", len(llm.prompts))
+	}
+	if strings.Contains(strings.Join(notes, "\n"), "SHEIN 必填展示属性缺失") {
+		t.Fatalf("notes = %#v, want no missing-required note after fallback inference", notes)
+	}
+}
+
 func TestResolveDisplayAttributesAddsCandidateDiagnosticsWhenUnresolved(t *testing.T) {
 	t.Parallel()
 

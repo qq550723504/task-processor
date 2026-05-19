@@ -99,6 +99,18 @@ func resolveDisplayAttributes(
 	}
 	notes = append(notes, templateBatchNotes...)
 
+	requiredRepairResolved, requiredRepairNotes := inferMissingRequiredDisplayAttributes(templateIndex.attributes, inputs, resolvedByID, llm)
+	if len(requiredRepairResolved) > 0 {
+		resolved = append(resolved, requiredRepairResolved...)
+	}
+	notes = append(notes, requiredRepairNotes...)
+
+	targetedRepairResolved, targetedRepairNotes := inferMissingRequiredDisplayAttributesRepair(templateIndex.attributes, inputs, resolvedByID, llm)
+	if len(targetedRepairResolved) > 0 {
+		resolved = append(resolved, targetedRepairResolved...)
+	}
+	notes = append(notes, targetedRepairNotes...)
+
 	pending := buildDependencyPendingAttributes(templateIndex.attributes, resolved, inputs)
 	pendingCandidates := buildPendingAttributeCandidates(templateIndex.attributes, resolved, inputs)
 	recommendedCandidates := buildRecommendedAttributeCandidates(templateIndex.attributes, resolved, inputs)
