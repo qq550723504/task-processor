@@ -455,6 +455,36 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	}
 }
 
+func TestCreateGenerateTaskStartsStandardProductTemporalWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	standardClient := &stubStandardProductWorkflowClient{}
+	svc := &service{
+		repo:                           repo,
+		taskSubmitter:                  noopTaskSubmitter{},
+		standardProductWorkflowClient:  standardClient,
+		standardProductWorkflowEnabled: true,
+	}
+
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+		Text:      "temporal standard task",
+		Platforms: []string{"amazon"},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask error = %v", err)
+	}
+	if len(standardClient.calls) != 1 || standardClient.calls[0].TaskID != task.ID {
+		t.Fatalf("standard temporal calls = %+v, want single call for %s", standardClient.calls, task.ID)
+	}
+	if task.Status != TaskStatusPending {
+		t.Fatalf("task status = %q, want pending while temporal workflow runs", task.Status)
+	}
+	if task.Result != nil {
+		t.Fatalf("task result = %+v, want nil before temporal processing", task.Result)
+	}
+}
+
 type stubTaskListRepo struct {
 	tasks      []Task
 	lastQuery  *TaskListQuery

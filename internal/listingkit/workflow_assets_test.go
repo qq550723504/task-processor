@@ -243,6 +243,18 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if result.AssetInventorySummary.GeneratedRecords == 0 {
 		t.Fatalf("asset inventory summary = %+v, want generated records", result.AssetInventorySummary)
 	}
+	if result.StandardProductSnapshot == nil {
+		t.Fatal("expected persisted standard product snapshot")
+	}
+	if result.StandardProductSnapshot.CanonicalProduct == nil || result.StandardProductSnapshot.CatalogProduct == nil {
+		t.Fatalf("standard snapshot = %+v, want canonical/catalog product", result.StandardProductSnapshot)
+	}
+	if result.StandardProductSnapshot.AssetInventorySummary == nil || result.StandardProductSnapshot.AssetInventorySummary.TotalRecords == 0 {
+		t.Fatalf("standard snapshot inventory = %+v, want persisted inventory summary", result.StandardProductSnapshot)
+	}
+	if result.StandardProductSnapshot.ImageAssets == nil {
+		t.Fatalf("standard snapshot image assets = %+v, want copied image stage output", result.StandardProductSnapshot)
+	}
 	if result.Amazon == nil || result.Amazon.ImageBundle == nil {
 		t.Fatalf("amazon image bundle = %+v", result.Amazon)
 	}

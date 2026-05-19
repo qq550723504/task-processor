@@ -40,7 +40,7 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		sheinCookieUnavailableIssueCode,
 		"SHEIN 店铺登录",
 		!sheinCookieUnavailable(pkg),
-		"SHEIN 店铺 cookie 不可用，当前无法在线获取类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+		"SHEIN 店铺 cookie 不可用。标准商品和 SDS 图片仍可继续使用，但 SHEIN 平台在线类目、属性解析和提交已在平台阶段受阻，请先重新登录店铺后再继续。",
 		[]string{"shein.review_notes", "shein.category_resolution.review_notes", "shein.attribute_resolution.review_notes", "shein.sale_attribute_resolution.review_notes"},
 		"重新登录 SHEIN 店铺",
 		false,

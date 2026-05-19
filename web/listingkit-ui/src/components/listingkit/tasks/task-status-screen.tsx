@@ -13,6 +13,7 @@ import { shouldAutoOpenWorkspace } from "@/components/listingkit/tasks/task-stat
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useExecuteAction } from "@/lib/query/use-action";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function formatStatusDate(value?: string) {
@@ -40,6 +41,7 @@ export function TaskStatusScreen({
   task?: ListingKitTaskResult | null;
 }) {
   const router = useRouter();
+  const layerAction = useExecuteAction(taskId, {});
   const isTerminal =
     task?.status === "completed" ||
     task?.status === "failed" ||
@@ -84,6 +86,24 @@ export function TaskStatusScreen({
   if (!task) {
     return null;
   }
+
+  const handleRunStandardProductTemporal = () => {
+    layerAction.mutate({
+      action_key: "run_standard_product_temporal",
+    });
+  };
+
+  const handleRunPlatformAdaptTemporal = () => {
+    layerAction.mutate({
+      action_key: "run_platform_adapt_temporal",
+      target: {
+        action_key: "run_platform_adapt_temporal",
+        queue_query: {
+          platform: "all",
+        },
+      },
+    });
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -130,6 +150,34 @@ export function TaskStatusScreen({
       </Card>
 
       <TaskStatusPanel task={task} />
+      <Card className="p-6">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-zinc-950">分层 Temporal 执行</h2>
+            <p className="text-sm leading-6 text-zinc-600">
+              标准商品层和平台适配层现在可以分别手动触发。标准层会产出稳定的标准商品快照，平台层会基于这个快照继续做 SHEIN 等平台适配。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={handleRunStandardProductTemporal}
+              type="button"
+              variant="secondary"
+              disabled={layerAction.isPending}
+            >
+              运行标准商品层
+            </Button>
+            <Button
+              onClick={handleRunPlatformAdaptTemporal}
+              type="button"
+              variant="secondary"
+              disabled={layerAction.isPending}
+            >
+              运行平台适配层
+            </Button>
+          </div>
+        </div>
+      </Card>
       <TaskRevisionHistoryPanel taskId={taskId} />
       <TaskSDSSyncCard task={task} />
       <TaskSourceSummary draft={taskDraft} />

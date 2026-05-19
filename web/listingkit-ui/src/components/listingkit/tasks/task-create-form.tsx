@@ -426,7 +426,11 @@ export function TaskCreateForm({
               />
 
               {selectedPlatforms?.includes("shein") ? (
-                <TaskSheinStoreField register={register} />
+                <TaskSheinStoreField
+                  register={register}
+                  selectedPlatforms={selectedPlatforms}
+                  selectedStoreId={currentSheinStoreId}
+                />
               ) : null}
               <Separator />
               <div>

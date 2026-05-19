@@ -15,6 +15,109 @@ import (
 	common "task-processor/internal/publishing/common"
 )
 
+type stubStandardProductWorkflowClient struct {
+	calls []StandardProductWorkflowStartInput
+	err   error
+}
+
+func (s *stubStandardProductWorkflowClient) StartStandardProduct(_ context.Context, in StandardProductWorkflowStartInput) error {
+	s.calls = append(s.calls, in)
+	return s.err
+}
+
+type stubPlatformAdaptWorkflowClient struct {
+	calls []PlatformAdaptWorkflowStartInput
+	err   error
+}
+
+func (s *stubPlatformAdaptWorkflowClient) StartPlatformAdaptation(_ context.Context, in PlatformAdaptWorkflowStartInput) error {
+	s.calls = append(s.calls, in)
+	return s.err
+}
+
+func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	client := &stubStandardProductWorkflowClient{}
+	svc := &service{
+		repo:                           repo,
+		standardProductWorkflowClient:  client,
+		standardProductWorkflowEnabled: true,
+	}
+
+	task := &Task{
+		ID:        "task-generation-action-standard-temporal-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-action-standard-temporal-1"},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ExecuteTaskGenerationAction(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionRunStandardProductTemporal,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTaskGenerationAction() error = %v", err)
+	}
+	if len(client.calls) != 1 || client.calls[0].TaskID != task.ID {
+		t.Fatalf("standard product temporal calls = %+v, want single call for task", client.calls)
+	}
+	if result == nil || result.ActionKey != assetGenerationActionRunStandardProductTemporal {
+		t.Fatalf("result = %+v, want standard temporal action result", result)
+	}
+	if result.Audit == nil || result.Audit.ResolutionSource != "layer_temporal" {
+		t.Fatalf("audit = %+v, want layer_temporal audit", result.Audit)
+	}
+}
+
+func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	client := &stubPlatformAdaptWorkflowClient{}
+	svc := &service{
+		repo:                         repo,
+		platformAdaptWorkflowClient:  client,
+		platformAdaptWorkflowEnabled: true,
+	}
+
+	task := &Task{
+		ID:        "task-generation-action-platform-temporal-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-action-platform-temporal-1"},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ExecuteTaskGenerationAction(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+		Target: &AssetGenerationActionTarget{
+			QueueQuery: &GenerationQueueQuery{Platform: "amazon"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTaskGenerationAction() error = %v", err)
+	}
+	if len(client.calls) != 1 || client.calls[0].TaskID != task.ID || client.calls[0].Platform != "amazon" {
+		t.Fatalf("platform adapt temporal calls = %+v, want single amazon call for task", client.calls)
+	}
+	if result == nil || result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal {
+		t.Fatalf("result = %+v, want platform temporal action result", result)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
+		t.Fatalf("resolved target = %+v, want amazon queue query", result.ResolvedTarget)
+	}
+}
+
 func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 	t.Parallel()
 

@@ -2,22 +2,31 @@ package sdslogin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
+	miniredis "github.com/alicebob/miniredis/v2"
+	goredis "github.com/redis/go-redis/v9"
+
 	"task-processor/internal/core/config"
 	sdsclient "task-processor/internal/sds/client"
 )
 
-func TestServiceStatusReadsPersistedPayload(t *testing.T) {
-	svc := NewService(config.LoginServiceConfig{
+func newTestService(t *testing.T) *Service {
+	t.Helper()
+	svc, err := NewService(config.LoginServiceConfig{
 		TenantID:     "1",
 		Identifier:   "869",
 		MerchantName: "merchant",
 		Username:     "user",
-	}, config.BrowserConfig{})
+		Password:     "pass",
+	}, config.RedisConfig{}, config.BrowserConfig{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
 	dir := t.TempDir()
 	svc.authFile = filepath.Join(dir, "auth.json")
 	svc.cookieFile = filepath.Join(dir, "cookies.json")
@@ -25,7 +34,21 @@ func TestServiceStatusReadsPersistedPayload(t *testing.T) {
 	svc.payloadFile = filepath.Join(dir, "login_state.json")
 	svc.authStore = sdsclient.NewAuthStateStore(svc.authFile)
 	svc.sessionStore = sdsclient.NewSessionStore(svc.cookieFile)
+	return svc
+}
 
+func newRedisBackedTestService(t *testing.T) (*Service, *goredis.Client) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	svc := newTestService(t)
+	svc.redisStore = newRedisStateStoreFromClient(client)
+	t.Cleanup(func() { _ = client.Close() })
+	return svc, client
+}
+
+func TestServiceStatusReadsPersistedPayload(t *testing.T) {
+	svc := newTestService(t)
 	issuedAt := time.Now().UTC().Truncate(time.Second)
 	if err := svc.persistPayload(&AuthPayload{
 		TenantID:     "1",
@@ -53,20 +76,7 @@ func TestServiceStatusReadsPersistedPayload(t *testing.T) {
 }
 
 func TestServiceLoadAuthStateReturnsPersistedCookies(t *testing.T) {
-	svc := NewService(config.LoginServiceConfig{
-		TenantID:     "1",
-		Identifier:   "869",
-		MerchantName: "merchant",
-		Username:     "user",
-	}, config.BrowserConfig{})
-	dir := t.TempDir()
-	svc.authFile = filepath.Join(dir, "auth.json")
-	svc.cookieFile = filepath.Join(dir, "cookies.json")
-	svc.browserStateFile = filepath.Join(dir, "browser_state.json")
-	svc.payloadFile = filepath.Join(dir, "login_state.json")
-	svc.authStore = sdsclient.NewAuthStateStore(svc.authFile)
-	svc.sessionStore = sdsclient.NewSessionStore(svc.cookieFile)
-
+	svc := newTestService(t)
 	if err := svc.persistPayload(&AuthPayload{
 		TenantID:    "1",
 		ShopID:      "869",
@@ -87,21 +97,8 @@ func TestServiceLoadAuthStateReturnsPersistedCookies(t *testing.T) {
 	}
 }
 
-func TestServiceLoadAuthStateIsScopedByTenantAndIdentifier(t *testing.T) {
-	svc := NewService(config.LoginServiceConfig{
-		TenantID:     "1",
-		Identifier:   "869",
-		MerchantName: "merchant",
-		Username:     "user",
-	}, config.BrowserConfig{})
-	dir := t.TempDir()
-	svc.authFile = filepath.Join(dir, "auth.json")
-	svc.cookieFile = filepath.Join(dir, "cookies.json")
-	svc.browserStateFile = filepath.Join(dir, "browser_state.json")
-	svc.payloadFile = filepath.Join(dir, "login_state.json")
-	svc.authStore = sdsclient.NewAuthStateStore(svc.authFile)
-	svc.sessionStore = sdsclient.NewSessionStore(svc.cookieFile)
-
+func TestServiceLoadAuthStateUsesGlobalSharedState(t *testing.T) {
+	svc := newTestService(t)
 	if err := svc.persistPayload(&AuthPayload{
 		TenantID:    "tenant-a",
 		ShopID:      "store-a",
@@ -109,16 +106,7 @@ func TestServiceLoadAuthStateIsScopedByTenantAndIdentifier(t *testing.T) {
 		AccessToken: "token-a",
 		Cookies:     []CookieRecord{{Name: "sid", Value: "a", Domain: ".sdsdiy.com", Path: "/"}},
 	}); err != nil {
-		t.Fatalf("persist payload A: %v", err)
-	}
-	if err := svc.persistPayload(&AuthPayload{
-		TenantID:    "tenant-b",
-		ShopID:      "store-b",
-		Identifier:  "store-b",
-		AccessToken: "token-b",
-		Cookies:     []CookieRecord{{Name: "sid", Value: "b", Domain: ".sdsdiy.com", Path: "/"}},
-	}); err != nil {
-		t.Fatalf("persist payload B: %v", err)
+		t.Fatalf("persist payload: %v", err)
 	}
 
 	payloadA, err := svc.LoadAuthState(context.Background(), "tenant-a", "store-a")
@@ -133,16 +121,71 @@ func TestServiceLoadAuthStateIsScopedByTenantAndIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load auth state B: %v", err)
 	}
-	if payloadB == nil || payloadB.AccessToken != "token-b" {
+	if payloadB == nil || payloadB.AccessToken != "token-a" {
 		t.Fatalf("unexpected payload B: %+v", payloadB)
 	}
+}
 
-	payloadMissing, err := svc.LoadAuthState(context.Background(), "tenant-a", "store-b")
-	if err != nil {
-		t.Fatalf("load auth state missing: %v", err)
+func TestServicePersistPayloadStoresMinimalRedisState(t *testing.T) {
+	svc, client := newRedisBackedTestService(t)
+	issuedAt := time.Now().UTC().Truncate(time.Second)
+	if err := svc.persistPayload(&AuthPayload{
+		TenantID:     "tenant-a",
+		ShopID:       "store-a",
+		Identifier:   "store-a",
+		Username:     "user-a",
+		MerchantName: "merchant-a",
+		AccessToken:  "token-a",
+		OutToken:     "out-a",
+		MerchantID:   42,
+		UserID:       84,
+		Cookies:      []CookieRecord{{Name: "sid", Value: "cookie-a", Domain: ".sdsdiy.com", Path: "/"}},
+		BrowserState: map[string]any{"cookies": []any{}, "origins": []any{"x"}},
+		IssuedAt:     issuedAt,
+		Source:       "fresh_login",
+	}); err != nil {
+		t.Fatalf("persist payload: %v", err)
 	}
-	if payloadMissing != nil {
-		t.Fatalf("expected nil payload for mismatched account, got %+v", payloadMissing)
+
+	raw, err := client.Get(context.Background(), sdsSharedAuthStateKey).Result()
+	if err != nil {
+		t.Fatalf("read redis payload: %v", err)
+	}
+	var stored map[string]any
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		t.Fatalf("unmarshal redis payload: %v", err)
+	}
+	for _, forbidden := range []string{"tenant_id", "identifier", "shop_id", "username", "merchant_name", "browser_state", "issued_at", "source"} {
+		if _, ok := stored[forbidden]; ok {
+			t.Fatalf("unexpected extra field %q in redis payload: %v", forbidden, stored)
+		}
+	}
+	if stored["access_token"] != "token-a" || stored["out_token"] != "out-a" {
+		t.Fatalf("unexpected token fields in redis payload: %v", stored)
+	}
+}
+
+func TestServiceLoadAuthStateUsesRedisSharedStateAcrossTenants(t *testing.T) {
+	svc, _ := newRedisBackedTestService(t)
+	if err := svc.persistPayload(&AuthPayload{
+		TenantID:    "tenant-a",
+		Identifier:  "store-a",
+		ShopID:      "store-a",
+		AccessToken: "token-a",
+		OutToken:    "out-a",
+		MerchantID:  12,
+		UserID:      34,
+		Cookies:     []CookieRecord{{Name: "sid", Value: "cookie-a", Domain: ".sdsdiy.com", Path: "/"}},
+	}); err != nil {
+		t.Fatalf("persist payload: %v", err)
+	}
+
+	payload, err := svc.LoadAuthState(context.Background(), "tenant-b", "store-b")
+	if err != nil {
+		t.Fatalf("load auth state: %v", err)
+	}
+	if payload == nil || payload.AccessToken != "token-a" || payload.MerchantID != 12 || len(payload.Cookies) != 1 {
+		t.Fatalf("unexpected redis auth payload: %+v", payload)
 	}
 }
 
@@ -153,20 +196,14 @@ func TestManualLoginFailureDoesNotOverwriteStoredAccount(t *testing.T) {
 		return nil, false, fmt.Errorf("invalid credentials")
 	}
 
-	svc := NewService(config.LoginServiceConfig{
+	svc := newTestService(t)
+	svc.account = configuredAccount{
 		TenantID:     "1",
 		Identifier:   "869",
 		MerchantName: "good-merchant",
 		Username:     "good-user",
 		Password:     "good-pass",
-	}, config.BrowserConfig{})
-	dir := t.TempDir()
-	svc.authFile = filepath.Join(dir, "auth.json")
-	svc.cookieFile = filepath.Join(dir, "cookies.json")
-	svc.browserStateFile = filepath.Join(dir, "browser_state.json")
-	svc.payloadFile = filepath.Join(dir, "login_state.json")
-	svc.authStore = sdsclient.NewAuthStateStore(svc.authFile)
-	svc.sessionStore = sdsclient.NewSessionStore(svc.cookieFile)
+	}
 
 	_, err := svc.ManualLogin(context.Background(), ManualLoginRequest{
 		TenantID:     "1",
@@ -204,13 +241,7 @@ func TestTriggerLoginLaunchesBrowserLogin(t *testing.T) {
 		}, false, nil
 	}
 
-	svc := NewService(config.LoginServiceConfig{
-		TenantID:     "1",
-		Identifier:   "869",
-		MerchantName: "merchant",
-		Username:     "user",
-		Password:     "pass",
-	}, config.BrowserConfig{})
+	svc := newTestService(t)
 
 	if err := svc.TriggerLogin(context.Background(), sdsclient.LocalLoginRequest{
 		TenantID:     "1",
@@ -228,13 +259,7 @@ func TestTriggerLoginLaunchesBrowserLogin(t *testing.T) {
 }
 
 func TestLoginWithAccountRequiresExplicitTrigger(t *testing.T) {
-	svc := NewService(config.LoginServiceConfig{
-		TenantID:     "1",
-		Identifier:   "869",
-		MerchantName: "merchant",
-		Username:     "user",
-		Password:     "pass",
-	}, config.BrowserConfig{})
+	svc := newTestService(t)
 
 	_, err := svc.loginWithAccount(context.Background(), configuredAccount{
 		TenantID:     "1",

@@ -7,6 +7,7 @@ import { TaskStatusScreen } from "@/components/listingkit/tasks/task-status-scre
 const push = vi.fn();
 const revisionHistoryMock = vi.fn();
 const revisionHistoryDetailMock = vi.fn();
+const executeActionMutate = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -19,11 +20,19 @@ vi.mock("@/lib/query/use-revision-history", () => ({
   useTaskRevisionHistoryDetail: (...args: unknown[]) => revisionHistoryDetailMock(...args),
 }));
 
+vi.mock("@/lib/query/use-action", () => ({
+  useExecuteAction: () => ({
+    mutate: executeActionMutate,
+    isPending: false,
+  }),
+}));
+
 describe("TaskStatusScreen", () => {
   beforeEach(() => {
     push.mockReset();
     revisionHistoryMock.mockReset();
     revisionHistoryDetailMock.mockReset();
+    executeActionMutate.mockReset();
     revisionHistoryMock.mockReturnValue({
       data: { items: [] },
       isLoading: false,
@@ -250,5 +259,33 @@ describe("TaskStatusScreen", () => {
     expect(screen.getByText("店铺快照")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
     expect(screen.getByText("Profile #17")).toBeInTheDocument();
+  });
+
+  it("can manually trigger layered temporal actions", () => {
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "processing",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "运行标准商品层" }));
+    expect(executeActionMutate).toHaveBeenCalledWith({
+      action_key: "run_standard_product_temporal",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "运行平台适配层" }));
+    expect(executeActionMutate).toHaveBeenCalledWith({
+      action_key: "run_platform_adapt_temporal",
+      target: {
+        action_key: "run_platform_adapt_temporal",
+        queue_query: {
+          platform: "all",
+        },
+      },
+    });
   });
 });

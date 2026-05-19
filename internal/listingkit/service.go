@@ -20,40 +20,44 @@ import (
 )
 
 type service struct {
-	repo                        Repository
-	studioSessionRepo           StudioSessionRepository
-	productSvc                  ProductService
-	imageSvc                    ImageService
-	sdsSyncSvc                  SDSSyncService
-	uploadStore                 ImageUploadStore
-	uploadedImageRepo           UploadedImageRepository
-	assembler                   Assembler
-	sheinCategoryResolver       sheinpub.CategoryResolver
-	sheinManagementClient       *management.ClientManager
-	sheinAttributeResolver      sheinpub.AttributeResolver
-	sheinSaleAttributeResolver  sheinpub.SaleAttributeResolver
-	sheinPricingPolicy          sheinpub.PricingPolicy
-	sheinProductAPIBuilder      sheinpub.ProductAPIBuilder
-	sheinImageAPIBuilder        sheinpub.ImageAPIBuilder
-	sheinTranslateAPIBuilder    sheinpub.TranslateAPIBuilder
-	sheinContentOptimizer       openaiclient.ChatCompleter
-	studioPromptDiversifier     openaiclient.ChatCompleter
-	studioImageGenerator        openaiclient.ImageGenerator
-	aiCredentialStore           AIClientCredentialStore
-	assetRepo                   AssetRepository
-	reviewRepo                  GenerationReviewRepository
-	assetRecipeResolver         AssetRecipeResolver
-	assetBundleBuilder          AssetBundleBuilder
-	assetGenerator              AssetGenerationService
-	taskSubmitter               TaskSubmitter
-	sheinPublishWorkflowClient  SheinPublishWorkflowClient
-	sheinPublishWorkflowEnabled bool
-	storeProfileRepo            StoreProfileRepository
-	routingSettingsRepo         StoreRoutingSettingsRepository
-	requestDefaults             generateRequestDefaults
-	sheinSubmitLocks            *submitLockManager
-	sheinSettingsMu             sync.RWMutex
-	sheinSettings               SheinSettings
+	repo                           Repository
+	studioSessionRepo              StudioSessionRepository
+	productSvc                     ProductService
+	imageSvc                       ImageService
+	sdsSyncSvc                     SDSSyncService
+	uploadStore                    ImageUploadStore
+	uploadedImageRepo              UploadedImageRepository
+	assembler                      Assembler
+	sheinCategoryResolver          sheinpub.CategoryResolver
+	sheinManagementClient          *management.ClientManager
+	sheinAttributeResolver         sheinpub.AttributeResolver
+	sheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
+	sheinPricingPolicy             sheinpub.PricingPolicy
+	sheinProductAPIBuilder         sheinpub.ProductAPIBuilder
+	sheinImageAPIBuilder           sheinpub.ImageAPIBuilder
+	sheinTranslateAPIBuilder       sheinpub.TranslateAPIBuilder
+	sheinContentOptimizer          openaiclient.ChatCompleter
+	studioPromptDiversifier        openaiclient.ChatCompleter
+	studioImageGenerator           openaiclient.ImageGenerator
+	aiCredentialStore              AIClientCredentialStore
+	assetRepo                      AssetRepository
+	reviewRepo                     GenerationReviewRepository
+	assetRecipeResolver            AssetRecipeResolver
+	assetBundleBuilder             AssetBundleBuilder
+	assetGenerator                 AssetGenerationService
+	taskSubmitter                  TaskSubmitter
+	sheinPublishWorkflowClient     SheinPublishWorkflowClient
+	sheinPublishWorkflowEnabled    bool
+	standardProductWorkflowClient  StandardProductWorkflowClient
+	standardProductWorkflowEnabled bool
+	platformAdaptWorkflowClient    PlatformAdaptWorkflowClient
+	platformAdaptWorkflowEnabled   bool
+	storeProfileRepo               StoreProfileRepository
+	routingSettingsRepo            StoreRoutingSettingsRepository
+	requestDefaults                generateRequestDefaults
+	sheinSubmitLocks               *submitLockManager
+	sheinSettingsMu                sync.RWMutex
+	sheinSettings                  SheinSettings
 }
 
 type ServiceConfig struct {
@@ -73,6 +77,10 @@ type ServiceConfig struct {
 	TaskSubmitter                  TaskSubmitter
 	SheinPublishWorkflowClient     SheinPublishWorkflowClient
 	SheinPublishWorkflowEnabled    bool
+	StandardProductWorkflowClient  StandardProductWorkflowClient
+	StandardProductWorkflowEnabled bool
+	PlatformAdaptWorkflowClient    PlatformAdaptWorkflowClient
+	PlatformAdaptWorkflowEnabled   bool
 	StoreProfileRepository         StoreProfileRepository
 	StoreRoutingSettingsRepository StoreRoutingSettingsRepository
 	SheinDefaultStoreID            int64
@@ -154,36 +162,40 @@ func NewService(config *ServiceConfig) (Service, error) {
 	}
 	defaultSettings := defaultSheinSettings(config.SheinDefaultStoreID, config.SheinPricingPolicy)
 	return &service{
-		repo:                        config.Repository,
-		studioSessionRepo:           config.StudioSessionRepository,
-		productSvc:                  config.ProductService,
-		imageSvc:                    config.ImageService,
-		sdsSyncSvc:                  config.SDSSyncService,
-		uploadStore:                 config.ImageUploadStore,
-		uploadedImageRepo:           config.UploadedImageRepository,
-		assembler:                   config.Assembler,
-		sheinCategoryResolver:       config.SheinCategoryResolver,
-		sheinManagementClient:       config.SheinManagementClient,
-		sheinAttributeResolver:      config.SheinAttributeResolver,
-		sheinSaleAttributeResolver:  config.SheinSaleAttributeResolver,
-		sheinPricingPolicy:          config.SheinPricingPolicy,
-		sheinProductAPIBuilder:      config.SheinProductAPIBuilder,
-		sheinImageAPIBuilder:        config.SheinImageAPIBuilder,
-		sheinTranslateAPIBuilder:    config.SheinTranslateAPIBuilder,
-		sheinContentOptimizer:       config.SheinContentOptimizer,
-		studioPromptDiversifier:     config.StudioPromptDiversifier,
-		studioImageGenerator:        config.StudioImageGenerator,
-		aiCredentialStore:           config.AIClientCredentialStore,
-		assetRepo:                   config.AssetRepository,
-		reviewRepo:                  config.ReviewRepository,
-		assetRecipeResolver:         config.AssetRecipeResolver,
-		assetBundleBuilder:          config.AssetBundleBuilder,
-		assetGenerator:              config.AssetGenerationService,
-		taskSubmitter:               config.TaskSubmitter,
-		sheinPublishWorkflowClient:  config.SheinPublishWorkflowClient,
-		sheinPublishWorkflowEnabled: config.SheinPublishWorkflowEnabled,
-		storeProfileRepo:            config.StoreProfileRepository,
-		routingSettingsRepo:         config.StoreRoutingSettingsRepository,
+		repo:                           config.Repository,
+		studioSessionRepo:              config.StudioSessionRepository,
+		productSvc:                     config.ProductService,
+		imageSvc:                       config.ImageService,
+		sdsSyncSvc:                     config.SDSSyncService,
+		uploadStore:                    config.ImageUploadStore,
+		uploadedImageRepo:              config.UploadedImageRepository,
+		assembler:                      config.Assembler,
+		sheinCategoryResolver:          config.SheinCategoryResolver,
+		sheinManagementClient:          config.SheinManagementClient,
+		sheinAttributeResolver:         config.SheinAttributeResolver,
+		sheinSaleAttributeResolver:     config.SheinSaleAttributeResolver,
+		sheinPricingPolicy:             config.SheinPricingPolicy,
+		sheinProductAPIBuilder:         config.SheinProductAPIBuilder,
+		sheinImageAPIBuilder:           config.SheinImageAPIBuilder,
+		sheinTranslateAPIBuilder:       config.SheinTranslateAPIBuilder,
+		sheinContentOptimizer:          config.SheinContentOptimizer,
+		studioPromptDiversifier:        config.StudioPromptDiversifier,
+		studioImageGenerator:           config.StudioImageGenerator,
+		aiCredentialStore:              config.AIClientCredentialStore,
+		assetRepo:                      config.AssetRepository,
+		reviewRepo:                     config.ReviewRepository,
+		assetRecipeResolver:            config.AssetRecipeResolver,
+		assetBundleBuilder:             config.AssetBundleBuilder,
+		assetGenerator:                 config.AssetGenerationService,
+		taskSubmitter:                  config.TaskSubmitter,
+		sheinPublishWorkflowClient:     config.SheinPublishWorkflowClient,
+		sheinPublishWorkflowEnabled:    config.SheinPublishWorkflowEnabled,
+		standardProductWorkflowClient:  config.StandardProductWorkflowClient,
+		standardProductWorkflowEnabled: config.StandardProductWorkflowEnabled,
+		platformAdaptWorkflowClient:    config.PlatformAdaptWorkflowClient,
+		platformAdaptWorkflowEnabled:   config.PlatformAdaptWorkflowEnabled,
+		storeProfileRepo:               config.StoreProfileRepository,
+		routingSettingsRepo:            config.StoreRoutingSettingsRepository,
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.SheinDefaultStoreID,
 		},
@@ -239,6 +251,32 @@ func ConfigureSheinPublishWorkflowClient(svc Service, client SheinPublishWorkflo
 	}
 	impl.sheinPublishWorkflowClient = client
 	impl.sheinPublishWorkflowEnabled = enabled && client != nil
+	return nil
+}
+
+func ConfigureStandardProductWorkflowClient(svc Service, client StandardProductWorkflowClient, enabled bool) error {
+	if svc == nil {
+		return fmt.Errorf("listingkit service is nil")
+	}
+	impl, ok := svc.(*service)
+	if !ok {
+		return fmt.Errorf("listingkit service does not support standard product workflow configuration")
+	}
+	impl.standardProductWorkflowClient = client
+	impl.standardProductWorkflowEnabled = enabled && client != nil
+	return nil
+}
+
+func ConfigurePlatformAdaptWorkflowClient(svc Service, client PlatformAdaptWorkflowClient, enabled bool) error {
+	if svc == nil {
+		return fmt.Errorf("listingkit service is nil")
+	}
+	impl, ok := svc.(*service)
+	if !ok {
+		return fmt.Errorf("listingkit service does not support platform adaptation workflow configuration")
+	}
+	impl.platformAdaptWorkflowClient = client
+	impl.platformAdaptWorkflowEnabled = enabled && client != nil
 	return nil
 }
 

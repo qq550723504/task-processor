@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 
@@ -30,6 +29,7 @@ type configuredAccount struct {
 type Service struct {
 	loginCfg         config.LoginServiceConfig
 	browserCfg       config.BrowserConfig
+	redisCfg         config.RedisConfig
 	authFile         string
 	cookieFile       string
 	browserStateFile string
@@ -38,6 +38,7 @@ type Service struct {
 	defaultTargetURL string
 	authStore        *sdsclient.AuthStateStore
 	sessionStore     *sdsclient.SessionStore
+	redisStore       *RedisStateStore
 	mu               sync.Mutex
 	inFlight         bool
 	waitingForVerify bool
@@ -47,13 +48,16 @@ type Service struct {
 
 var runSDSBrowserLogin = runBrowserLogin
 
-var statePathSegmentSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
-
-func NewService(loginCfg config.LoginServiceConfig, browserCfg config.BrowserConfig) *Service {
+func NewService(loginCfg config.LoginServiceConfig, redisCfg config.RedisConfig, browserCfg config.BrowserConfig) (*Service, error) {
 	cfg := sdsclient.DefaultConfig()
+	redisStore, err := NewRedisStateStore(redisCfg)
+	if err != nil {
+		return nil, fmt.Errorf("initialize SDS redis state store: %w", err)
+	}
 	service := &Service{
 		loginCfg:         loginCfg,
 		browserCfg:       browserCfg,
+		redisCfg:         redisCfg,
 		authFile:         cfg.AuthFile,
 		cookieFile:       cfg.CookieFile,
 		browserStateFile: filepath.Join(filepath.Dir(cfg.AuthFile), "browser_state.json"),
@@ -62,6 +66,7 @@ func NewService(loginCfg config.LoginServiceConfig, browserCfg config.BrowserCon
 		defaultTargetURL: "https://www.sdsdiy.com/admin/material",
 		authStore:        sdsclient.NewAuthStateStore(cfg.AuthFile),
 		sessionStore:     sdsclient.NewSessionStore(cfg.CookieFile),
+		redisStore:       redisStore,
 		account: configuredAccount{
 			TenantID:     strings.TrimSpace(loginCfg.TenantID),
 			Identifier:   strings.TrimSpace(loginCfg.Identifier),
@@ -71,7 +76,7 @@ func NewService(loginCfg config.LoginServiceConfig, browserCfg config.BrowserCon
 		},
 	}
 	service.applyAccountStatePaths(service.account)
-	return service
+	return service, nil
 }
 
 func (s *Service) Health(context.Context) ServiceHealth {
@@ -218,6 +223,15 @@ func (s *Service) loadPayload() (*AuthPayload, error) {
 }
 
 func (s *Service) loadPayloadLocked() (*AuthPayload, error) {
+	if s.redisStore != nil {
+		payload, err := s.redisStore.Load(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		if payload != nil {
+			return payload, nil
+		}
+	}
 	data, err := os.ReadFile(s.payloadFile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -247,52 +261,59 @@ func (s *Service) persistPayload(payload *AuthPayload) error {
 	payload.TenantID = account.TenantID
 	payload.Identifier = coalesce(payload.Identifier, account.Identifier)
 	payload.ShopID = coalesce(payload.ShopID, account.Identifier)
+	if s.redisStore != nil {
+		if err := s.redisStore.Save(context.Background(), payload); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(payloadFile), 0o755); err != nil {
 		return err
 	}
-	if err := authStore.Save(&sdsclient.AuthState{
-		AccessToken: payload.AccessToken,
-		OutToken:    payload.OutToken,
-		MerchantID:  payload.MerchantID,
-		UserID:      payload.UserID,
-		Username:    payload.Username,
-	}); err != nil {
-		return err
-	}
-	cookies := make([]*http.Cookie, 0, len(payload.Cookies))
-	for _, item := range payload.Cookies {
-		cookie := &http.Cookie{
-			Name:     item.Name,
-			Value:    item.Value,
-			Domain:   item.Domain,
-			Path:     item.Path,
-			Expires:  item.Expires,
-			Secure:   item.Secure,
-			HttpOnly: item.HTTPOnly,
+	if s.redisStore == nil {
+		if err := authStore.Save(&sdsclient.AuthState{
+			AccessToken: payload.AccessToken,
+			OutToken:    payload.OutToken,
+			MerchantID:  payload.MerchantID,
+			UserID:      payload.UserID,
+			Username:    payload.Username,
+		}); err != nil {
+			return err
 		}
-		if cookie.Path == "" {
-			cookie.Path = "/"
+		cookies := make([]*http.Cookie, 0, len(payload.Cookies))
+		for _, item := range payload.Cookies {
+			cookie := &http.Cookie{
+				Name:     item.Name,
+				Value:    item.Value,
+				Domain:   item.Domain,
+				Path:     item.Path,
+				Expires:  item.Expires,
+				Secure:   item.Secure,
+				HttpOnly: item.HTTPOnly,
+			}
+			if cookie.Path == "" {
+				cookie.Path = "/"
+			}
+			cookies = append(cookies, cookie)
 		}
-		cookies = append(cookies, cookie)
-	}
-	if err := sessionStore.Save(cookies); err != nil {
-		return err
-	}
-	if payload.BrowserState != nil {
-		body, err := json.MarshalIndent(payload.BrowserState, "", "  ")
+		if err := sessionStore.Save(cookies); err != nil {
+			return err
+		}
+		if payload.BrowserState != nil {
+			body, err := json.MarshalIndent(payload.BrowserState, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(browserStateFile, body, 0o644); err != nil {
+				return err
+			}
+		}
+		body, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(browserStateFile, body, 0o644); err != nil {
+		if err := os.WriteFile(payloadFile, body, 0o644); err != nil {
 			return err
 		}
-	}
-	body, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(payloadFile, body, 0o644); err != nil {
-		return err
 	}
 	s.mu.Lock()
 	s.account = account
@@ -315,11 +336,18 @@ func (s *Service) ClearState() error {
 	if browserStateFile != s.legacyBrowserStateFilePath() {
 		removeBestEffort(s.legacyBrowserStateFilePath())
 	}
-	if err := authStore.Clear(); err != nil {
-		return err
+	if s.redisStore != nil {
+		if err := s.redisStore.Clear(context.Background()); err != nil {
+			return err
+		}
 	}
-	if err := sessionStore.Clear(); err != nil {
-		return err
+	if s.redisStore == nil {
+		if err := authStore.Clear(); err != nil {
+			return err
+		}
+		if err := sessionStore.Clear(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -348,8 +376,8 @@ func (s *Service) TriggerLogin(ctx context.Context, req sdsclient.LocalLoginRequ
 
 func (s *Service) LoadAuthState(_ context.Context, tenantID, identifier string) (*sdsclient.LocalAuthPayload, error) {
 	account := configuredAccount{
-		TenantID:   strings.TrimSpace(tenantID),
-		Identifier: strings.TrimSpace(identifier),
+		TenantID:   coalesce(s.account.TenantID, tenantID),
+		Identifier: coalesce(s.account.Identifier, identifier),
 	}
 	payload, err := s.loadPayloadForAccount(account)
 	if err != nil || payload == nil {
@@ -378,6 +406,15 @@ func (s *Service) LoadAuthState(_ context.Context, tenantID, identifier string) 
 }
 
 func (s *Service) loadPayloadForAccount(account configuredAccount) (*AuthPayload, error) {
+	if s.redisStore != nil {
+		payload, err := s.redisStore.Load(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		if payload != nil {
+			return payload, nil
+		}
+	}
 	_, _, _, _, _, payloadFile := s.accountState(account)
 	data, err := os.ReadFile(payloadFile)
 	if err != nil {
@@ -394,15 +431,6 @@ func (s *Service) loadPayloadForAccount(account configuredAccount) (*AuthPayload
 	var payload AuthPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
-	}
-	if strings.TrimSpace(account.TenantID) != "" && strings.TrimSpace(payload.TenantID) != "" && strings.TrimSpace(payload.TenantID) != strings.TrimSpace(account.TenantID) {
-		return nil, nil
-	}
-	if strings.TrimSpace(account.Identifier) != "" {
-		storedIdentifier := coalesce(payload.Identifier, payload.ShopID)
-		if storedIdentifier != "" && strings.TrimSpace(storedIdentifier) != strings.TrimSpace(account.Identifier) {
-			return nil, nil
-		}
 	}
 	return &payload, nil
 }
@@ -422,18 +450,10 @@ func (s *Service) applyAccountStatePaths(account configuredAccount) {
 	s.sessionStore = sdsclient.NewSessionStore(cookieFile)
 }
 
-func (s *Service) accountStatePaths(account configuredAccount) (string, string, string, string) {
-	baseDir := filepath.Dir(s.legacyPayloadFilePath())
-	tenantID := sanitizeStatePathSegment(account.TenantID)
-	identifier := sanitizeStatePathSegment(account.Identifier)
-	if tenantID == "" || identifier == "" {
-		return s.legacyAuthFilePath(), s.legacyCookieFilePath(), s.legacyBrowserStateFilePath(), s.legacyPayloadFilePath()
-	}
-	accountDir := filepath.Join(baseDir, tenantID, identifier)
-	return filepath.Join(accountDir, "auth.json"),
-		filepath.Join(accountDir, "cookies.json"),
-		filepath.Join(accountDir, "browser_state.json"),
-		filepath.Join(accountDir, "login_state.json")
+func (s *Service) accountStatePaths(_ configuredAccount) (string, string, string, string) {
+	// SDS auth is shared globally across ListingKit tenants/users.
+	// Keep a single persisted state so every request reuses the same account.
+	return s.legacyAuthFilePath(), s.legacyCookieFilePath(), s.legacyBrowserStateFilePath(), s.legacyPayloadFilePath()
 }
 
 func (s *Service) legacyAuthFilePath() string {
@@ -452,14 +472,6 @@ func (s *Service) legacyBrowserStateFilePath() string {
 
 func (s *Service) legacyPayloadFilePath() string {
 	return filepath.Join(filepath.Dir(s.legacyAuthFilePath()), "login_state.json")
-}
-
-func sanitizeStatePathSegment(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-	return statePathSegmentSanitizer.ReplaceAllString(trimmed, "_")
 }
 
 func removeBestEffort(path string) {

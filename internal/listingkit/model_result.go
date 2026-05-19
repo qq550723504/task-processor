@@ -23,6 +23,7 @@ type ListingKitResult struct {
 	Platforms                   []string                         `json:"platforms,omitempty"`
 	Country                     string                           `json:"country,omitempty"`
 	Language                    string                           `json:"language,omitempty"`
+	StandardProductSnapshot     *StandardProductSnapshot         `json:"standard_product_snapshot,omitempty"`
 	CatalogProduct              *catalog.Product                 `json:"catalog_product,omitempty"`
 	AssetBundle                 *asset.Bundle                    `json:"asset_bundle,omitempty"`
 	AssetInventorySummary       *asset.InventorySummary          `json:"asset_inventory_summary,omitempty"`
@@ -51,6 +52,23 @@ type ListingKitResult struct {
 	WorkflowIssues              []WorkflowIssue                  `json:"workflow_issues,omitempty"`
 	CreatedAt                   time.Time                        `json:"created_at"`
 	UpdatedAt                   time.Time                        `json:"updated_at"`
+}
+
+// StandardProductSnapshot captures the stable boundary between the standard
+// product layer and later platform adaptation. It is intentionally persisted
+// on the task result so the standard layer can later be executed and resumed
+// independently from platform-specific workflows such as SHEIN adaptation.
+type StandardProductSnapshot struct {
+	CatalogProduct        *catalog.Product                 `json:"catalog_product,omitempty"`
+	CanonicalProduct      *canonical.Product               `json:"canonical_product,omitempty"`
+	AssetBundle           *asset.Bundle                    `json:"asset_bundle,omitempty"`
+	AssetInventorySummary *asset.InventorySummary          `json:"asset_inventory_summary,omitempty"`
+	ImageAssets           *productimage.ImageProcessResult `json:"image_assets,omitempty"`
+	SDSSync               *SDSSyncSummary                  `json:"sds_sync,omitempty"`
+	Summary               *GenerationSummary               `json:"summary,omitempty"`
+	ChildTasks            []ChildTaskState                 `json:"child_tasks,omitempty"`
+	WorkflowStages        []WorkflowStage                  `json:"workflow_stages,omitempty"`
+	WorkflowIssues        []WorkflowIssue                  `json:"workflow_issues,omitempty"`
 }
 
 type GenerationSummary struct {

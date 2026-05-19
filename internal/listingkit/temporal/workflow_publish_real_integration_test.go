@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -53,11 +54,11 @@ func TestPublishWorkflowResumesAfterWorkerRestartAgainstRealTemporal(t *testing.
 		ID:        WorkflowIDForSheinPublish(taskID),
 		TaskQueue: TaskQueueSheinSubmitPublish,
 	}, PublishWorkflow, SheinPublishWorkflowInput{
-		TaskID:       taskID,
-		Platform:     "shein",
-		Action:       "publish",
-		RequestID:    "temporal-e2e-request",
-		RequestedAt:  time.Now(),
+		TaskID:          taskID,
+		Platform:        "shein",
+		Action:          "publish",
+		RequestID:       "temporal-e2e-request",
+		RequestedAt:     time.Now(),
 		TriggeredByUser: "temporal-e2e",
 	})
 	if err != nil {
@@ -107,8 +108,12 @@ func TestPublishWorkflowResumesAfterWorkerRestartAgainstRealTemporal(t *testing.
 }
 
 func newTemporalE2EWorker(client sdkclient.Client, host listingkit.SheinPublishActivityHost) (sdkworker.Worker, error) {
+	layerHost, ok := host.(listingkit.LayerWorkflowActivityHost)
+	if !ok {
+		return nil, errors.New("temporal e2e host does not implement LayerWorkflowActivityHost")
+	}
 	worker := sdkworker.New(client, TaskQueueSheinSubmitPublish, sdkworker.Options{})
-	if err := RegisterWorker(worker, host); err != nil {
+	if err := RegisterWorker(worker, host, layerHost); err != nil {
 		return nil, err
 	}
 	return worker, nil
@@ -127,9 +132,9 @@ type temporalE2EWorkerState struct {
 	allowPersist   chan struct{}
 	confirmed      chan string
 
-	mu                sync.Mutex
-	beginCalls        int
-	confirmWorkerID   string
+	mu              sync.Mutex
+	beginCalls      int
+	confirmWorkerID string
 }
 
 type temporalE2EHost struct {

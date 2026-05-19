@@ -58,6 +58,57 @@ func TestClientStartSheinPublishUsesStableWorkflowID(t *testing.T) {
 	}
 }
 
+func TestClientStartStandardProductUsesStableWorkflowIDAndAllowsManualRerun(t *testing.T) {
+	t.Parallel()
+
+	raw := &stubTemporalClient{}
+	client := NewClient(raw)
+
+	in := listingkit.StandardProductWorkflowStartInput{
+		TaskID:      "task-123",
+		RequestedAt: time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC),
+	}
+	if err := client.StartStandardProduct(context.Background(), in); err != nil {
+		t.Fatalf("start standard product: %v", err)
+	}
+
+	if raw.options.ID != "listingkit-standard:task-123" {
+		t.Fatalf("workflow id = %q, want stable standard workflow id", raw.options.ID)
+	}
+	if raw.options.TaskQueue != TaskQueueStandardProduct {
+		t.Fatalf("task queue = %q, want %q", raw.options.TaskQueue, TaskQueueStandardProduct)
+	}
+	if raw.options.WorkflowIDReusePolicy != enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE {
+		t.Fatalf("reuse policy = %v, want allow duplicate", raw.options.WorkflowIDReusePolicy)
+	}
+}
+
+func TestClientStartPlatformAdaptationUsesStableWorkflowIDAndAllowsManualRerun(t *testing.T) {
+	t.Parallel()
+
+	raw := &stubTemporalClient{}
+	client := NewClient(raw)
+
+	in := listingkit.PlatformAdaptWorkflowStartInput{
+		TaskID:      "task-123",
+		Platform:    "all",
+		RequestedAt: time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC),
+	}
+	if err := client.StartPlatformAdaptation(context.Background(), in); err != nil {
+		t.Fatalf("start platform adaptation: %v", err)
+	}
+
+	if raw.options.ID != "listingkit-platform:all:task-123" {
+		t.Fatalf("workflow id = %q, want stable platform workflow id", raw.options.ID)
+	}
+	if raw.options.TaskQueue != TaskQueuePlatformAdapt {
+		t.Fatalf("task queue = %q, want %q", raw.options.TaskQueue, TaskQueuePlatformAdapt)
+	}
+	if raw.options.WorkflowIDReusePolicy != enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE {
+		t.Fatalf("reuse policy = %v, want allow duplicate", raw.options.WorkflowIDReusePolicy)
+	}
+}
+
 func TestClientStartSheinPublishCarriesConfirmedFinal(t *testing.T) {
 	t.Parallel()
 

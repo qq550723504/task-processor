@@ -176,7 +176,14 @@ func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error,
 	if deps == nil || deps.cfg == nil {
 		return nil, nil, nil
 	}
-	svc := sdslogin.NewService(deps.cfg.Platforms.SDS.LoginService, deps.cfg.Browser)
+	redisCfg := config.RedisConfig{}
+	if deps.cfg.Redis != nil {
+		redisCfg = *deps.cfg.Redis
+	}
+	svc, err := sdslogin.NewService(deps.cfg.Platforms.SDS.LoginService, redisCfg, deps.cfg.Browser)
+	if err != nil {
+		return nil, nil, err
+	}
 	sdsclient.ConfigureLocalLoginProvider(svc)
 	return sdslogin.NewHandler(svc), nil, nil
 }
@@ -874,6 +881,22 @@ func buildListingKitService(logger *logrus.Logger, deps *runtimeDeps) (listingki
 				_ = temporalCloser()
 			}
 			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+		if standardClient, ok := temporalWorkflowClient.(listingkit.StandardProductWorkflowClient); ok {
+			if err := listingkit.ConfigureStandardProductWorkflowClient(svc, standardClient, true); err != nil {
+				if temporalCloser != nil {
+					_ = temporalCloser()
+				}
+				return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+			}
+		}
+		if platformClient, ok := temporalWorkflowClient.(listingkit.PlatformAdaptWorkflowClient); ok {
+			if err := listingkit.ConfigurePlatformAdaptWorkflowClient(svc, platformClient, true); err != nil {
+				if temporalCloser != nil {
+					_ = temporalCloser()
+				}
+				return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+			}
 		}
 	}
 	if temporalCloser != nil {

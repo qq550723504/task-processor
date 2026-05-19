@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -54,12 +55,38 @@ export function TaskPlatformFieldset({
 }
 
 export function TaskSheinStoreField({
+  selectedPlatforms,
+  selectedStoreId,
   register,
 }: {
+  selectedPlatforms?: string[];
+  selectedStoreId?: string;
   register: UseFormRegister<FormValues>;
 }) {
-  const { enabledProfiles, profiles, recommendedReason, recommendedStoreId, routing } =
-    useSheinStoreSelector();
+  const {
+    anyLoggedInStore,
+    enabledProfiles,
+    profiles,
+    recommendedReason,
+    recommendedStoreId,
+    routing,
+    selectedStoreLoginStatus,
+  } = useSheinStoreSelector(selectedStoreId);
+  const sheinSelected = selectedPlatforms?.includes("shein");
+  const selectedStoreUnavailable = Boolean(
+    sheinSelected &&
+      selectedStoreLoginStatus &&
+      !selectedStoreLoginStatus.login_in_progress &&
+      !selectedStoreLoginStatus.waiting_for_verify_code &&
+      !selectedStoreLoginStatus.has_cookie &&
+      (selectedStoreLoginStatus.cookie_ttl ?? 0) <= 0,
+  );
+  const noLoggedInStore = Boolean(
+    sheinSelected &&
+      !selectedStoreLoginStatus &&
+      !anyLoggedInStore &&
+      enabledProfiles.length > 0,
+  );
 
   return (
     <Label className="block space-y-2">
@@ -91,6 +118,22 @@ export function TaskSheinStoreField({
       ) : null}
       {profiles.isError ? (
         <p className="text-sm text-rose-600">店铺配置读取失败，当前只能依赖后端默认路由。</p>
+      ) : null}
+      {selectedStoreUnavailable ? (
+        <Alert className="border-amber-200 bg-amber-50/80">
+          <AlertDescription className="text-sm leading-6 text-amber-900">
+            当前选中的 SHEIN 店铺还未登录。你仍然可以先创建标准商品和 SDS 图片；但后续 SHEIN
+            在线类目、属性解析和提交会在平台阶段受阻，需要先重新登录店铺。
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {noLoggedInStore ? (
+        <Alert className="border-amber-200 bg-amber-50/80">
+          <AlertDescription className="text-sm leading-6 text-amber-900">
+            当前没有可用的 SHEIN 店铺登录态。你仍然可以先创建标准商品和 SDS 图片；但后续 SHEIN
+            在线解析和提交会在平台阶段受阻，建议先完成店铺登录。
+          </AlertDescription>
+        </Alert>
       ) : null}
     </Label>
   );

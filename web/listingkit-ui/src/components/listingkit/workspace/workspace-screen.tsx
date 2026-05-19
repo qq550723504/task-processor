@@ -35,6 +35,7 @@ import {
 } from "@/lib/query/use-submit-task";
 import { useUpdateSheinFinalDraft } from "@/lib/query/use-shein-final-draft";
 import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
+import { useExecuteAction } from "@/lib/query/use-action";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const searchParams = useSearchParams();
@@ -74,6 +75,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const refreshSubmissionStatus = useRefreshSubmissionStatus(taskId);
   const updateSheinFinalDraft = useUpdateSheinFinalDraft(taskId);
   const clearSheinResolutionCache = useClearSheinResolutionCache(taskId);
+  const layerAction = useExecuteAction(taskId, baseQuery);
   const sheinActions = useSheinWorkspaceActions({
     taskId,
     sheinPreview: sheinPreviewPayload,
@@ -124,6 +126,24 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   });
   const refetchWorkspace = () =>
     Promise.all([preview.refetch(), session.refetch(), taskResult.refetch()]);
+
+  const handleRunStandardProductTemporal = () => {
+    layerAction.mutate({
+      action_key: "run_standard_product_temporal",
+    });
+  };
+
+  const handleRunPlatformAdaptTemporal = () => {
+    layerAction.mutate({
+      action_key: "run_platform_adapt_temporal",
+      target: {
+        action_key: "run_platform_adapt_temporal",
+        queue_query: {
+          platform: "all",
+        },
+      },
+    });
+  };
 
   if (preview.isLoading || session.isLoading) {
     return <WorkspaceLoadingState />;
@@ -176,6 +196,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           preview.data.asset_generation_overview?.recovery_summary
         }
         showSheinStudioLink={selectedPlatform === "shein"}
+        showLayerActions
+        layerActionsPending={layerAction.isPending}
+        onRunStandardLayer={handleRunStandardProductTemporal}
+        onRunPlatformLayer={handleRunPlatformAdaptTemporal}
         onSelectAction={(summary) => workspaceActions.handleAction(summary)}
         onSelectRecovery={workspaceActions.handleRecovery}
       />

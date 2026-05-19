@@ -55,9 +55,15 @@ func StartListingKitSheinPublishTemporalWorker(svc listingkit.Service, logger *l
 		rawClient.Close()
 		return nil, err
 	}
+	layerHost, err := listingkit.NewLayerWorkflowActivityHost(svc)
+	if err != nil {
+		rawClient.Close()
+		return nil, err
+	}
 	worker, err := listingtemporal.NewWorker(listingtemporal.WorkerConfig{
-		Client: rawClient,
-		Host:   host,
+		Client:    rawClient,
+		Host:      host,
+		LayerHost: layerHost,
 	})
 	if err != nil {
 		rawClient.Close()

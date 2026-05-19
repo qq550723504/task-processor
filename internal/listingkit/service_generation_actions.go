@@ -8,6 +8,9 @@ import (
 )
 
 func (s *service) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error) {
+	if handled, result, err := s.executeLayerTemporalAction(ctx, taskID, req); handled {
+		return result, err
+	}
 	queue, err := s.getCurrentAssetGenerationQueue(ctx, taskID)
 	if err != nil {
 		return nil, err
@@ -106,6 +109,121 @@ func (s *service) ExecuteTaskGenerationAction(ctx context.Context, taskID string
 		result.PlatformRenderPreviews = nil
 	}
 	return applyGenerationConditionalStateToActionResult(result), nil
+}
+
+func (s *service) executeLayerTemporalAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (bool, *GenerationActionExecutionResult, error) {
+	actionKey := requestedAssetGenerationActionKey(req)
+	switch actionKey {
+	case assetGenerationActionRunStandardProductTemporal:
+		if !s.standardProductWorkflowEnabled || s.standardProductWorkflowClient == nil {
+			return true, nil, fmt.Errorf("standard product temporal workflow is not configured")
+		}
+		if err := s.standardProductWorkflowClient.StartStandardProduct(ctx, StandardProductWorkflowStartInput{
+			TaskID:      strings.TrimSpace(taskID),
+			RequestedAt: time.Now().UTC(),
+		}); err != nil {
+			return true, nil, err
+		}
+		return true, &GenerationActionExecutionResult{
+			ActionKey:       actionKey,
+			InteractionMode: "queue_only",
+			ResponseMode:    normalizeGenerationActionResponseMode(req.ResponseMode),
+			ResolvedTarget: &AssetGenerationActionTarget{
+				ActionKey:       actionKey,
+				InteractionMode: "queue_only",
+			},
+			Audit: &GenerationActionAudit{
+				RequestedActionKey: actionKey,
+				ResolvedActionKey:  actionKey,
+				ResolutionSource:   "layer_temporal",
+				ExecutionPath:      "queue_only",
+				ExecutedAt:         time.Now().UTC(),
+			},
+		}, nil
+	case assetGenerationActionRunPlatformAdaptTemporal:
+		if !s.platformAdaptWorkflowEnabled || s.platformAdaptWorkflowClient == nil {
+			return true, nil, fmt.Errorf("platform adaptation temporal workflow is not configured")
+		}
+		platform := resolveLayerTemporalPlatform(req)
+		if err := s.platformAdaptWorkflowClient.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
+			TaskID:      strings.TrimSpace(taskID),
+			Platform:    platform,
+			RequestedAt: time.Now().UTC(),
+		}); err != nil {
+			return true, nil, err
+		}
+		return true, &GenerationActionExecutionResult{
+			ActionKey:       actionKey,
+			InteractionMode: "queue_only",
+			ResponseMode:    normalizeGenerationActionResponseMode(req.ResponseMode),
+			ResolvedTarget: &AssetGenerationActionTarget{
+				ActionKey:       actionKey,
+				InteractionMode: "queue_only",
+				QueueQuery:      &GenerationQueueQuery{Platform: platform},
+			},
+			Audit: &GenerationActionAudit{
+				RequestedActionKey: actionKey,
+				ResolvedActionKey:  actionKey,
+				ResolutionSource:   "layer_temporal",
+				ExecutionPath:      "queue_only",
+				ExecutedAt:         time.Now().UTC(),
+			},
+		}, nil
+	default:
+		return false, nil, nil
+	}
+}
+
+func resolveLayerTemporalPlatform(req *ExecuteGenerationActionRequest) string {
+	if req != nil && req.Target != nil {
+		if req.Target.QueueQuery != nil {
+			if platform := strings.ToLower(strings.TrimSpace(req.Target.QueueQuery.Platform)); platform != "" {
+				return platform
+			}
+		}
+		if req.Target.NavigationTarget != nil {
+			if req.Target.NavigationTarget.QueueQuery != nil {
+				if platform := strings.ToLower(strings.TrimSpace(req.Target.NavigationTarget.QueueQuery.Platform)); platform != "" {
+					return platform
+				}
+			}
+			if req.Target.NavigationTarget.SessionQuery != nil {
+				if platform := strings.ToLower(strings.TrimSpace(req.Target.NavigationTarget.SessionQuery.Platform)); platform != "" {
+					return platform
+				}
+			}
+			if req.Target.NavigationTarget.PreviewQuery != nil {
+				if platform := strings.ToLower(strings.TrimSpace(req.Target.NavigationTarget.PreviewQuery.Platform)); platform != "" {
+					return platform
+				}
+			}
+			if req.Target.NavigationTarget.ActionTarget != nil && req.Target.NavigationTarget.ActionTarget.QueueQuery != nil {
+				if platform := strings.ToLower(strings.TrimSpace(req.Target.NavigationTarget.ActionTarget.QueueQuery.Platform)); platform != "" {
+					return platform
+				}
+			}
+			if req.Target.NavigationTarget.Descriptor != nil {
+				for _, read := range req.Target.NavigationTarget.Descriptor.FollowUpReads {
+					if read.Query != nil {
+						if platform := strings.ToLower(strings.TrimSpace(read.Query.Platform)); platform != "" {
+							return platform
+						}
+					}
+				}
+			}
+			if req.Target.NavigationTarget.ActionTarget != nil {
+				if platform := resolveLayerTemporalPlatform(&ExecuteGenerationActionRequest{Target: req.Target.NavigationTarget.ActionTarget}); platform != "" {
+					return platform
+				}
+			}
+		}
+		if req.Target.NavigationTarget != nil && req.Target.NavigationTarget.ActionTarget != nil && req.Target.NavigationTarget.ActionTarget.QueueQuery != nil {
+			if platform := strings.ToLower(strings.TrimSpace(req.Target.NavigationTarget.ActionTarget.QueueQuery.Platform)); platform != "" {
+				return platform
+			}
+		}
+	}
+	return "shein"
 }
 
 func (s *service) getCurrentAssetGenerationOverview(ctx context.Context, taskID string) (*AssetGenerationOverview, error) {

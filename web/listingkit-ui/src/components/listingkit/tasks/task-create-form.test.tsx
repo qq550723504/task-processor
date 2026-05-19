@@ -41,11 +41,13 @@ describe("TaskCreateForm", () => {
     uploadMutateAsync.mockReset();
     useSheinStoreSelector.mockReset();
     useSheinStoreSelector.mockReturnValue({
+      anyLoggedInStore: false,
       enabledProfiles: [],
       profiles: { isError: false },
       routing: { isError: false, data: { selection_strategy: "manual" } },
       recommendedStoreId: "",
       recommendedReason: "",
+      selectedStoreLoginStatus: null,
     });
     window.sessionStorage.clear();
   });
@@ -221,6 +223,7 @@ describe("TaskCreateForm", () => {
 
   it("auto-selects the recommended SHEIN store when routing provides one", async () => {
     useSheinStoreSelector.mockReturnValue({
+      anyLoggedInStore: false,
       enabledProfiles: [
         {
           id: 1,
@@ -236,6 +239,7 @@ describe("TaskCreateForm", () => {
       routing: { isError: false, data: { selection_strategy: "priority", fallback_store_id: 870 } },
       recommendedStoreId: "870",
       recommendedReason: "当前会优先使用 fallback 店铺作为推荐值。",
+      selectedStoreLoginStatus: null,
     });
     mutateAsync.mockResolvedValue({
       task_id: "task_789",
@@ -309,5 +313,73 @@ describe("TaskCreateForm", () => {
 
     expect(screen.queryByLabelText("Walmart")).not.toBeInTheDocument();
     expect(screen.getByText("已选择 1 个平台")).toBeInTheDocument();
+  });
+
+  it("shows a non-blocking SHEIN login warning when the selected store is unavailable", async () => {
+    useSheinStoreSelector.mockReturnValue({
+      anyLoggedInStore: false,
+      enabledProfiles: [
+        {
+          id: 1,
+          store_id: 870,
+          enabled: true,
+          site: "US",
+          store: { name: "US 主店", store_id: "SHEIN-US-870", region: "US" },
+        },
+      ],
+      profiles: { isError: false },
+      routing: { isError: false, data: { selection_strategy: "manual" } },
+      recommendedStoreId: "870",
+      recommendedReason: "",
+      selectedStoreLoginStatus: {
+        account: { store_id: 870, tenant_id: 1 },
+        has_cookie: false,
+        cookie_ttl: 0,
+        waiting_for_verify_code: false,
+        login_in_progress: false,
+      },
+    });
+
+    render(<TaskCreateForm />);
+
+    fireEvent.change(screen.getByLabelText("商品标题"), {
+      target: { value: "Women knit cardigan" },
+    });
+    fireEvent.click(screen.getByLabelText("SHEIN"));
+
+    expect(
+      screen.getByText(
+        "当前选中的 SHEIN 店铺还未登录。你仍然可以先创建标准商品和 SDS 图片；但后续 SHEIN 在线类目、属性解析和提交会在平台阶段受阻，需要先重新登录店铺。",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("warns when SHEIN is selected but no logged-in store is currently available", () => {
+    useSheinStoreSelector.mockReturnValue({
+      anyLoggedInStore: false,
+      enabledProfiles: [
+        {
+          id: 1,
+          store_id: 870,
+          enabled: true,
+          site: "US",
+          store: { name: "US 主店", store_id: "SHEIN-US-870", region: "US" },
+        },
+      ],
+      profiles: { isError: false },
+      routing: { isError: false, data: { selection_strategy: "manual" } },
+      recommendedStoreId: "",
+      recommendedReason: "",
+      selectedStoreLoginStatus: null,
+    });
+
+    render(<TaskCreateForm />);
+    fireEvent.click(screen.getByLabelText("SHEIN"));
+
+    expect(
+      screen.getByText(
+        "当前没有可用的 SHEIN 店铺登录态。你仍然可以先创建标准商品和 SDS 图片；但后续 SHEIN 在线解析和提交会在平台阶段受阻，建议先完成店铺登录。",
+      ),
+    ).toBeInTheDocument();
   });
 });

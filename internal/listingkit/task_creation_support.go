@@ -91,6 +91,16 @@ func (s *service) refreshGenerateTask(ctx context.Context, task *Task) (*Task, e
 }
 
 func (s *service) enqueueGenerateTask(ctx context.Context, task *Task) error {
+	if s.standardProductWorkflowEnabled && s.standardProductWorkflowClient != nil {
+		if err := s.standardProductWorkflowClient.StartStandardProduct(ctx, StandardProductWorkflowStartInput{
+			TaskID:      strings.TrimSpace(task.ID),
+			RequestedAt: time.Now().UTC(),
+		}); err != nil {
+			_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to start standard product workflow: %v", err))
+			return fmt.Errorf("failed to start standard product workflow: %w", err)
+		}
+		return nil
+	}
 	if s.taskSubmitter == nil {
 		return nil
 	}

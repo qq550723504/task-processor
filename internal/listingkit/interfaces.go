@@ -80,6 +80,8 @@ type AmazonDraftBuilder interface {
 
 type Service interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
+	ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error)
+	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
 	ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error)
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)

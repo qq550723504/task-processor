@@ -13,6 +13,7 @@ The browser talks to the Next.js UI. The UI proxies `/api/listing-kits/*` and `/
 - Docker login to the target registry.
 - `kubectl` context pointing at the target K3S cluster.
 - Existing external services configured for DB, RabbitMQ, S3-compatible storage, SDS, SHEIN, and image generation.
+- Reachable Temporal frontend for ListingKit workflows.
 
 ## Configure secrets
 
@@ -170,6 +171,63 @@ kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
 Use the emergency path only when GitHub Actions cannot be used. If you do use
 it, follow up with a normal workflow-driven deploy so the release history stays
 consistent.
+
+## Temporal rollout
+
+ListingKit now runs three Temporal-backed workflow paths:
+
+- `StandardProductWorkflow`
+- `PlatformAdaptWorkflow`
+- existing SHEIN publish workflow
+
+Current production wiring keeps them on the same task queue and starts the
+worker inside `product-listing-api`. This is the smallest rollout shape and
+matches the current runtime implementation.
+
+Temporal env is prepared in:
+
+- [D:/code/task-processor/deployments/kubernetes/listingkit-workbench/base/configmap.yaml](D:/code/task-processor/deployments/kubernetes/listingkit-workbench/base/configmap.yaml)
+
+Prepared variables:
+
+```text
+LISTINGKIT_TEMPORAL_ENABLED=1
+LISTINGKIT_TEMPORAL_ADDRESS=temporal-frontend.temporal.svc.cluster.local:7233
+LISTINGKIT_TEMPORAL_NAMESPACE=default
+LISTINGKIT_TEMPORAL_START_WORKER=1
+```
+
+Before rollout, confirm:
+
+1. `LISTINGKIT_TEMPORAL_ADDRESS` points at the real Temporal frontend Service.
+2. `LISTINGKIT_TEMPORAL_NAMESPACE` exists in Temporal.
+3. `product-listing-api` pods can reach Temporal on port `7233`.
+
+Recommended rollout order:
+
+1. Apply the updated ConfigMap.
+2. Roll `product-listing-api`.
+3. Confirm API logs contain:
+   - `connected listingkit shein publish temporal client`
+   - `started listingkit shein publish temporal worker`
+4. Create one new ListingKit task and confirm logs contain:
+   - `WorkflowType StandardProductWorkflow`
+   - `WorkflowType PlatformAdaptWorkflow`
+
+Manual verification after rollout:
+
+1. Create a new task from `/listing-kits/new`.
+2. Open the task status or workspace page.
+3. Use:
+   - `运行标准商品层`
+   - `运行平台适配层`
+4. Confirm both actions return `200` and produce Temporal workflow log lines.
+
+Important current behavior:
+
+- New tasks automatically run `StandardProductWorkflow`, then auto-chain into `PlatformAdaptWorkflow(platform=all)`.
+- Older tasks without `standard_product_snapshot` are still manually compatible; platform adaptation can rebuild a fallback snapshot from the persisted legacy result.
+- Successful manual reruns are allowed; standard/platform workflows now permit duplicate workflow IDs after a successful prior run.
 
 ## Manual deploy fallback
 

@@ -15,6 +15,12 @@ data:
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE: "true"
   # Mount this path to persistent storage if API restarts must retain Studio async job status.
   LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH: "/data/listingkit-studio-async-jobs.json"
+  # ListingKit layer workflows and publish workflows run on Temporal when enabled.
+  # Replace the address with the real Temporal frontend Service in the cluster.
+  LISTINGKIT_TEMPORAL_ENABLED: "1"
+  LISTINGKIT_TEMPORAL_ADDRESS: "temporal-frontend.temporal.svc.cluster.local:7233"
+  LISTINGKIT_TEMPORAL_NAMESPACE: "default"
+  LISTINGKIT_TEMPORAL_START_WORKER: "1"
   # Set ZITADEL_ISSUER_URL and ZITADEL_CLIENT_ID to enable ZITADEL OIDC login.
   # These env vars are bound into Go API core config at listingkit.zitadel.*.
   # The resourceowner scope is required so the Go API can scope ListingKit data by ZITADEL tenant.

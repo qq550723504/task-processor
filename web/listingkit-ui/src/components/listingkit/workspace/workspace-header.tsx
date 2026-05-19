@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
 import { ResolvedActionCard } from "@/components/listingkit/review/resolved-action-card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type {
   RecoveryDescriptor,
   RecoverySummary,
@@ -19,6 +20,10 @@ export function WorkspaceHeader({
   summary,
   recoverySummary,
   showSheinStudioLink = false,
+  showLayerActions = false,
+  onRunStandardLayer,
+  onRunPlatformLayer,
+  layerActionsPending = false,
   onSelectAction,
   onSelectRecovery,
 }: {
@@ -29,6 +34,10 @@ export function WorkspaceHeader({
   summary?: ResolvedActionSummary | null;
   recoverySummary?: RecoverySummary | null;
   showSheinStudioLink?: boolean;
+  showLayerActions?: boolean;
+  onRunStandardLayer?: () => void;
+  onRunPlatformLayer?: () => void;
+  layerActionsPending?: boolean;
   onSelectAction?: (summary: ResolvedActionSummary) => void;
   onSelectRecovery?: (descriptor: RecoveryDescriptor) => void;
 }) {
@@ -53,6 +62,26 @@ export function WorkspaceHeader({
               >
                 返回 SHEIN 工作室
               </Link>
+            ) : null}
+            {showLayerActions ? (
+              <>
+                <Button
+                  onClick={onRunStandardLayer}
+                  type="button"
+                  variant="secondary"
+                  disabled={layerActionsPending}
+                >
+                  运行标准商品层
+                </Button>
+                <Button
+                  onClick={onRunPlatformLayer}
+                  type="button"
+                  variant="secondary"
+                  disabled={layerActionsPending}
+                >
+                  运行平台适配层
+                </Button>
+              </>
             ) : null}
           </div>
           <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">

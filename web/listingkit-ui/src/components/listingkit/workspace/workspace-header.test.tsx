@@ -58,4 +58,24 @@ describe("WorkspaceHeader", () => {
     expect(screen.getByText("2026-05-04 10:30")).toBeInTheDocument();
     expect(screen.getByText("SHEIN · 最终确认")).toBeInTheDocument();
   });
+
+  it("renders manual layer action buttons when enabled", () => {
+    const onRunStandardLayer = vi.fn();
+    const onRunPlatformLayer = vi.fn();
+
+    render(
+      <WorkspaceHeader
+        title="测试任务"
+        showLayerActions
+        onRunStandardLayer={onRunStandardLayer}
+        onRunPlatformLayer={onRunPlatformLayer}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "运行标准商品层" }));
+    expect(onRunStandardLayer).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "运行平台适配层" }));
+    expect(onRunPlatformLayer).toHaveBeenCalled();
+  });
 });
