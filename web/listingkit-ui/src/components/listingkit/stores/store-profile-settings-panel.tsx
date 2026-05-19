@@ -115,7 +115,6 @@ export function StoreProfileSettingsPanel() {
       if (item?.id) {
         byID.set(item.id, {
           id: item.id,
-          storeId: item.storeId,
           name: item.name,
           platform: item.platform,
           region: item.region,

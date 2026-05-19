@@ -435,7 +435,10 @@ function summarizeIdentity(identity: ZitadelClientIdentity | null | undefined) {
   if (username) {
     return username;
   }
-  const userId = identity?.userId?.trim();
+  const userId =
+    identity?.userId === undefined || identity.userId === null
+      ? ""
+      : String(identity.userId).trim();
   if (userId) {
     return userId;
   }
@@ -443,7 +446,11 @@ function summarizeIdentity(identity: ZitadelClientIdentity | null | undefined) {
 }
 
 function summarizeTenant(identity: ZitadelClientIdentity | null | undefined) {
-  return identity?.tenantId?.trim() || "未识别租户";
+  const tenantId =
+    identity?.tenantId === undefined || identity.tenantId === null
+      ? ""
+      : String(identity.tenantId).trim();
+  return tenantId || "未识别租户";
 }
 
 export function ListingKitAppShell({
