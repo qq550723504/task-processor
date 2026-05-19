@@ -28,7 +28,7 @@ export function shouldBypassListingKitProxyAuth() {
   );
 }
 
-function buildLocalBypassIdentity(): VerifiedIdentity {
+export function buildLocalBypassIdentity(): VerifiedIdentity {
   const tenantId =
     process.env.LISTINGKIT_UI_LOCAL_TENANT_ID?.trim() || "1";
   const userId = process.env.LISTINGKIT_UI_LOCAL_USER_ID?.trim() || undefined;
@@ -53,11 +53,12 @@ function buildLocalBypassIdentity(): VerifiedIdentity {
 export async function verifyListingKitRequestIdentity(
   request: NextRequest,
 ): Promise<VerifiedIdentityResult> {
+  if (shouldBypassListingKitProxyAuth()) {
+    return { identity: buildLocalBypassIdentity(), token: "" };
+  }
+
   const zitadelOptions = getZitadelAuthOptions();
   if (!zitadelOptions) {
-    if (shouldBypassListingKitProxyAuth()) {
-      return { identity: buildLocalBypassIdentity(), token: "" };
-    }
     return {
       response: NextResponse.json(
         {

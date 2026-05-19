@@ -123,21 +123,24 @@ func ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, error) 
 	if trimmed == "" {
 		return 0, fmt.Errorf("tenant id is required")
 	}
+	parsed, parseErr := strconv.ParseInt(trimmed, 10, 64)
 	resolverState.mu.RLock()
 	current := resolverState.resolver
 	resolverState.mu.RUnlock()
 	if current != nil {
 		value, ok, err := current.ResolveLegacyTenantID(ctx, trimmed)
 		if err != nil {
+			if parseErr == nil && parsed > 0 {
+				return parsed, nil
+			}
 			return 0, err
 		}
 		if ok && value > 0 {
 			return value, nil
 		}
 	}
-	value, err := strconv.ParseInt(trimmed, 10, 64)
-	if err != nil || value <= 0 {
+	if parseErr != nil || parsed <= 0 {
 		return 0, fmt.Errorf("tenant id is required")
 	}
-	return value, nil
+	return parsed, nil
 }

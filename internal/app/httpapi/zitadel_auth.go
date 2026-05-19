@@ -137,7 +137,7 @@ func newListingKitZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
 		return nil
 	}
 	cfg := runtimeCfg.AuthConfig
-	if cfg.IssuerURL == "" && cfg.ClientID == "" && !cfg.Required {
+	if !cfg.Required {
 		return nil
 	}
 	return newListingKitZitadelAuthMiddleware(cfg, runtimeCfg.AuthzConfig).Handle
@@ -153,6 +153,11 @@ func newListingKitZitadelAuthMiddleware(cfg zitadelAuthConfig, authz zitadelAuth
 }
 
 func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
+	if !m.cfg.Required {
+		c.Next()
+		return
+	}
+
 	if m.cfg.IssuerURL == "" || m.cfg.ClientID == "" {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 			"error":   "zitadel_auth_not_configured",

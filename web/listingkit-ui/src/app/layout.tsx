@@ -9,10 +9,6 @@ export const metadata: Metadata = {
   description: "ListingKit 上架任务工作台",
 };
 
-const shouldBypassAuthGate =
-  process.env.NODE_ENV !== "production" &&
-  process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE === "1";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -22,13 +18,9 @@ export default function RootLayout({
     <html lang="zh-CN" className="h-full antialiased">
       <body className="min-h-full bg-zinc-100 text-zinc-950">
         <QueryProvider>
-          {shouldBypassAuthGate ? (
+          <ZitadelAuthGate>
             <ListingKitAppShell>{children}</ListingKitAppShell>
-          ) : (
-            <ZitadelAuthGate>
-              <ListingKitAppShell>{children}</ListingKitAppShell>
-            </ZitadelAuthGate>
-          )}
+          </ZitadelAuthGate>
         </QueryProvider>
       </body>
     </html>

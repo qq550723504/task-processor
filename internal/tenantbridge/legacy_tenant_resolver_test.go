@@ -2,12 +2,19 @@ package tenantbridge
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
+
+type failingResolver struct{}
+
+func (failingResolver) ResolveLegacyTenantID(context.Context, string) (int64, bool, error) {
+	return 0, false, errors.New("metadata table is unavailable")
+}
 
 func TestResolveLegacyTenantIDFallsBackToNumericTenantID(t *testing.T) {
 	t.Parallel()
@@ -51,5 +58,20 @@ func TestResolveLegacyTenantIDUsesMetadataMapping(t *testing.T) {
 	}
 	if value != 227 {
 		t.Fatalf("tenant id = %d, want 227", value)
+	}
+}
+
+func TestResolveLegacyTenantIDFallsBackToNumericTenantIDWhenResolverErrors(t *testing.T) {
+	t.Parallel()
+
+	restore := ConfigureLegacyTenantResolver(failingResolver{})
+	t.Cleanup(restore)
+
+	value, err := ResolveLegacyTenantID(context.Background(), "1")
+	if err != nil {
+		t.Fatalf("ResolveLegacyTenantID error = %v", err)
+	}
+	if value != 1 {
+		t.Fatalf("tenant id = %d, want 1", value)
 	}
 }

@@ -20,6 +20,7 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: "https://issuer.example",
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -43,6 +44,35 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "zitadel_token_missing") {
 		t.Fatalf("body = %s, want zitadel_token_missing", resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthDisabledWhenAuthIsNotRequired(t *testing.T) {
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: "https://issuer.example",
+			ClientID:  "listingkit-client",
+			Required:  false,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			},
+		},
+	})
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 }
 
@@ -104,6 +134,7 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -170,6 +201,7 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
 			Required:         true,
@@ -228,6 +260,7 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
 			Required:         true,
@@ -265,6 +298,7 @@ func TestListingKitZitadelAuthRejectsAuthenticatedUserForOperationalAdminRoutesW
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -301,6 +335,7 @@ func TestListingKitZitadelAuthAllowsOperatorForOperationalAdminRoutes(t *testing
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -334,6 +369,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForSDSRoutes(t *testing.T) 
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -367,6 +403,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForTaskRoutes(t *testing.T)
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -400,6 +437,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForAISettingsRoute(t *testi
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -433,6 +471,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForSDSLoginRoutes(t *testin
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -466,6 +505,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForRuleAdminRoutes(t *testi
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -499,6 +539,7 @@ func TestListingKitZitadelAuthAllowsListingKitAdminForPlatformRoutes(t *testing.
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 
@@ -532,6 +573,7 @@ func TestListingKitZitadelAuthRejectsOperatorForPlatformRoutes(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
+			Required:  true,
 		},
 	})
 

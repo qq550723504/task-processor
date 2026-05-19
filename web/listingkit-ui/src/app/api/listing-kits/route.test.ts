@@ -160,6 +160,40 @@ describe("verifyListingKitRequestIdentity", () => {
     });
   });
 
+  it("prefers local bypass even when zitadel auth settings are present", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_TENANT_ID", "1");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_ID", "local-admin");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_TYPE", "local");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_ROLES", "platform_admin,listingkit_admin");
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedAuthState.session = {
+      accessToken: "session-token-1",
+      identity: {
+        tenantId: "org-286",
+        userId: "user-42",
+        username: "admin",
+        userType: "zitadel",
+        roles: ["listingkit_admin"],
+      },
+    };
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks"),
+    );
+
+    expect(result.response).toBeUndefined();
+    expect(result.token).toBe("");
+    expect(result.identity).toEqual({
+      tenantId: "1",
+      userId: "local-admin",
+      userType: "local",
+      roles: ["platform_admin", "listingkit_admin"],
+    });
+  });
+
   it("omits a local bypass user id unless explicitly configured", async () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");

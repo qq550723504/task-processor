@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import {
+  buildLocalBypassIdentity,
+  shouldBypassListingKitProxyAuth,
+} from "@/app/api/listing-kits/proxy-auth";
+import {
   authorizeZitadelIdentity,
   isZitadelAuthConfigured,
   readZitadelAccessTokenFromSession,
@@ -12,6 +16,13 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (shouldBypassListingKitProxyAuth()) {
+    return NextResponse.json({
+      ok: true,
+      identity: buildLocalBypassIdentity(),
+    });
+  }
+
   if (!isZitadelAuthConfigured()) {
     return NextResponse.json(
       {
