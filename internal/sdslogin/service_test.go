@@ -189,6 +189,35 @@ func TestServiceLoadAuthStateUsesRedisSharedStateAcrossTenants(t *testing.T) {
 	}
 }
 
+func TestServiceLoginReusesMinimalPersistedPayloadWithoutCookies(t *testing.T) {
+	previous := runSDSBrowserLogin
+	t.Cleanup(func() { runSDSBrowserLogin = previous })
+	runSDSBrowserLogin = func(ctx context.Context, account configuredAccount, cfg browserRunConfig) (*AuthPayload, bool, error) {
+		t.Fatal("runSDSBrowserLogin should not be called when minimal persisted payload is usable")
+		return nil, false, nil
+	}
+
+	svc, _ := newRedisBackedTestService(t)
+	if err := svc.persistPayload(&AuthPayload{
+		TenantID:    "1",
+		Identifier:  "869",
+		ShopID:      "869",
+		AccessToken: "token-a",
+		MerchantID:  36811,
+		UserID:      30098709,
+	}); err != nil {
+		t.Fatalf("persist payload: %v", err)
+	}
+
+	payload, err := svc.Login(withExplicitLoginTrigger(context.Background()), LoginRequest{})
+	if err != nil {
+		t.Fatalf("Login() err = %v", err)
+	}
+	if payload == nil || payload.AccessToken != "token-a" || payload.MerchantID != 36811 {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
 func TestManualLoginFailureDoesNotOverwriteStoredAccount(t *testing.T) {
 	previous := runSDSBrowserLogin
 	t.Cleanup(func() { runSDSBrowserLogin = previous })
@@ -255,6 +284,59 @@ func TestTriggerLoginLaunchesBrowserLogin(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Fatalf("expected TriggerLogin to launch browser once, got %d calls", callCount)
+	}
+}
+
+func TestTriggerLoginUsesCloakBrowserConfigWhenEnabled(t *testing.T) {
+	previous := runSDSBrowserLogin
+	t.Cleanup(func() { runSDSBrowserLogin = previous })
+	t.Setenv("CLOAKBROWSER_BINARY_PATH", "C:/Users/test/.cloakbrowser/chrome.exe")
+
+	var captured browserRunConfig
+	runSDSBrowserLogin = func(ctx context.Context, account configuredAccount, cfg browserRunConfig) (*AuthPayload, bool, error) {
+		captured = cfg
+		return &AuthPayload{
+			TenantID:    account.TenantID,
+			Identifier:  account.Identifier,
+			ShopID:      account.Identifier,
+			AccessToken: "token",
+			Cookies:     []CookieRecord{{Name: "sid", Value: "ok", Domain: ".sdsdiy.com", Path: "/"}},
+		}, false, nil
+	}
+
+	svc, err := NewService(config.LoginServiceConfig{
+		TenantID:             "1",
+		Identifier:           "869",
+		MerchantName:         "merchant",
+		Username:             "user",
+		Password:             "pass",
+		CloakBrowserEnabled:  true,
+		CloakBrowserPath:     "D:/custom/cloak/chrome.exe",
+		DefaultHeadless:      true,
+	}, config.RedisConfig{}, config.BrowserConfig{BrowserPath: "D:/fallback/browser.exe"})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if err := svc.TriggerLogin(context.Background(), sdsclient.LocalLoginRequest{
+		TenantID:     "1",
+		Identifier:   "869",
+		MerchantName: "merchant",
+		Username:     "user",
+		Password:     "pass",
+		ForceLogin:   true,
+	}); err != nil {
+		t.Fatalf("TriggerLogin() err = %v", err)
+	}
+
+	if !captured.UseCloakBrowser {
+		t.Fatalf("expected UseCloakBrowser=true, got %+v", captured)
+	}
+	if captured.BrowserPath != "D:/custom/cloak/chrome.exe" {
+		t.Fatalf("expected cloak browser path override, got %s", captured.BrowserPath)
+	}
+	if captured.Headless != true {
+		t.Fatalf("expected headless=true, got %+v", captured)
 	}
 }
 

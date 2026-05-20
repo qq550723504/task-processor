@@ -520,6 +520,12 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.sds.loginService.defaultHeadless": {
 			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS",
 		},
+		"platforms.sds.loginService.cloakBrowserEnabled": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_CLOAKBROWSER_ENABLED",
+		},
+		"platforms.sds.loginService.cloakBrowserPath": {
+			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_CLOAKBROWSER_PATH",
+		},
 		"platforms.sds.authBootstrap.staticAccessToken": {
 			Primary: "TASK_PROCESSOR_SDS_ACCESS_TOKEN",
 		},

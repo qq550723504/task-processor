@@ -120,6 +120,13 @@ func (s *Service) statusLocked() (*Status, error) {
 	return status, nil
 }
 
+func hasUsablePayload(payload *AuthPayload) bool {
+	if payload == nil || strings.TrimSpace(payload.AccessToken) == "" {
+		return false
+	}
+	return payload.MerchantID > 0 || payload.UserID > 0 || len(payload.Cookies) > 0
+}
+
 func (s *Service) Login(ctx context.Context, req LoginRequest) (*AuthPayload, error) {
 	account := s.account
 	return s.loginWithAccount(withExplicitLoginTrigger(ctx), account, req)
@@ -173,7 +180,7 @@ func (s *Service) loginWithAccount(ctx context.Context, account configuredAccoun
 	}()
 
 	if !req.ForceLogin {
-		if payload, _ := s.loadPayload(); payload != nil && payload.AccessToken != "" && len(payload.Cookies) > 0 {
+		if payload, _ := s.loadPayload(); hasUsablePayload(payload) {
 			return payload, nil
 		}
 	}
@@ -186,13 +193,14 @@ func (s *Service) loginWithAccount(ctx context.Context, account configuredAccoun
 		Headless:          headless,
 		ProfileRoot:       s.loginCfg.ProfileRootDir,
 		ArtifactDir:       s.loginCfg.ArtifactDir,
-		BrowserPath:       s.browserCfg.BrowserPath,
+		BrowserPath:       coalesce(strings.TrimSpace(s.loginCfg.CloakBrowserPath), strings.TrimSpace(os.Getenv("CLOAKBROWSER_BINARY_PATH")), s.browserCfg.BrowserPath),
 		ChromeVersion:     "144",
 		ChromeDownloadDir: "./chrome",
 		ViewportWidth:     s.browserCfg.ViewportWidth,
 		ViewportHeight:    s.browserCfg.ViewportHeight,
 		LoginURL:          s.defaultLoginURL,
 		TargetURL:         coalesce(strings.TrimSpace(req.TargetURL), s.defaultTargetURL),
+		UseCloakBrowser:   s.loginCfg.CloakBrowserEnabled,
 	})
 	if err != nil {
 		s.mu.Lock()
@@ -366,7 +374,10 @@ func (s *Service) TriggerLogin(ctx context.Context, req sdsclient.LocalLoginRequ
 	if account.MerchantName == "" || account.Username == "" || account.Password == "" {
 		return fmt.Errorf("merchant_name, username and password are required")
 	}
-	headless := req.Headless
+	headless := s.loginCfg.DefaultHeadless
+	if req.Headless {
+		headless = true
+	}
 	_, err := s.loginWithAccount(withExplicitLoginTrigger(ctx), account, LoginRequest{
 		ForceLogin: req.ForceLogin,
 		Headless:   &headless,

@@ -1,0 +1,15 @@
+{
+  "name": "cloakbrowser-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sds-login": "node ./sds-login.mjs",
+    "sds-login:redis": "node ./sds-login-redis.mjs"
+  },
+  "dependencies": {
+    "cloakbrowser": "^0.3.28",
+    "mmdb-lib": "^2.0.5",
+    "playwright-core": "^1.54.2",
+    "redis": "^5.9.0"
+  }
+}

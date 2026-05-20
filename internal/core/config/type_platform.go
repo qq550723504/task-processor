@@ -73,6 +73,8 @@ type LoginServiceConfig struct {
 	ProfileRootDir      string `mapstructure:"profileRootDir" yaml:"profileRootDir"`
 	ArtifactDir         string `mapstructure:"artifactDir" yaml:"artifactDir"`
 	DefaultHeadless     bool   `mapstructure:"defaultHeadless" yaml:"defaultHeadless"`
+	CloakBrowserEnabled bool   `mapstructure:"cloakBrowserEnabled" yaml:"cloakBrowserEnabled"`
+	CloakBrowserPath    string `mapstructure:"cloakBrowserPath" yaml:"cloakBrowserPath"`
 }
 
 type SDSLoginServiceConfig = LoginServiceConfig

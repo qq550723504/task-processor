@@ -96,3 +96,24 @@ func TestLoadLoginServiceBootstrapUsesLocalProvider(t *testing.T) {
 		t.Fatalf("unexpected bootstrap material: %+v", material)
 	}
 }
+
+func TestHasUsableAuthStateAcceptsMinimalTokenAndMerchant(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AuthFile = filepath.Join(t.TempDir(), "auth.json")
+	cfg.CookieFile = filepath.Join(t.TempDir(), "cookies.json")
+
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	c.authState = &AuthState{
+		AccessToken: "token",
+		MerchantID:  36811,
+		UserID:      30098709,
+	}
+	c.cookies = nil
+
+	if !c.hasUsableAuthState() {
+		t.Fatal("expected auth state with token and merchant/user to be usable without cookies")
+	}
+}

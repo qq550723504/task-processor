@@ -55,25 +55,37 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 	}
 
 	// 构建启动参数
-	args := GetBrowserLaunchArgs()
-	args = AddFingerprintArgs(args, cl.config, cl.fingerprint)
+	args := GetBrowserLaunchArgs(cl.config)
+	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
+		args = AddFingerprintArgs(args, cl.config, cl.fingerprint)
+	}
 
 	// 获取需要排除的默认参数
-	ignoreDefaultArgs := GetIgnoreDefaultArgs()
+	ignoreDefaultArgs := GetIgnoreDefaultArgs(cl.config)
 
 	// 创建持久化上下文选项
 	options := playwright.BrowserTypeLaunchPersistentContextOptions{
 		Headless:          playwright.Bool(cl.config.Headless),
 		Args:              args,
 		IgnoreDefaultArgs: ignoreDefaultArgs,
-		Viewport: &playwright.Size{
+		IgnoreHttpsErrors: playwright.Bool(true),
+	}
+	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
+		options.Viewport = &playwright.Size{
 			Width:  cl.config.ViewportWidth,
 			Height: cl.config.ViewportHeight,
-		},
-		UserAgent:         playwright.String(userAgent),
-		Locale:            playwright.String(GetLocaleForRegion(cl.config.ProxyServer)),
-		TimezoneId:        GetTimezoneForRegion(cl.config.ProxyServer),
-		IgnoreHttpsErrors: playwright.Bool(true),
+		}
+		options.UserAgent = playwright.String(userAgent)
+		options.Locale = playwright.String(GetLocaleForRegion(cl.config.ProxyServer))
+		options.TimezoneId = GetTimezoneForRegion(cl.config.ProxyServer)
+	} else {
+		options.Viewport = &playwright.Size{
+			Width:  cl.config.ViewportWidth,
+			Height: cl.config.ViewportHeight,
+		}
+		if userAgent != "" {
+			options.UserAgent = playwright.String(userAgent)
+		}
 	}
 
 	// 设置浏览器路径（支持自动下载）
@@ -100,9 +112,11 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 	if err != nil {
 		return nil, fmt.Errorf("启动持久化上下文失败: %w", err)
 	}
-	if err := applyContextStealth(context); err != nil {
-		context.Close()
-		return nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
+	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
+		if err := applyContextStealth(context); err != nil {
+			context.Close()
+			return nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
+		}
 	}
 
 	return context, nil
@@ -135,10 +149,12 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 		browser.Close()
 		return nil, nil, fmt.Errorf("创建浏览器上下文失败: %w", err)
 	}
-	if err := applyContextStealth(context); err != nil {
-		context.Close()
-		browser.Close()
-		return nil, nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
+	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
+		if err := applyContextStealth(context); err != nil {
+			context.Close()
+			browser.Close()
+			return nil, nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
+		}
 	}
 
 	return browser, context, nil

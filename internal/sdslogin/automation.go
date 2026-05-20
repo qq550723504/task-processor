@@ -32,6 +32,7 @@ type browserRunConfig struct {
 	LoginURL          string
 	TargetURL         string
 	WaitTimeout       time.Duration
+	UseCloakBrowser   bool
 }
 
 type browserEventTracer struct {
@@ -71,10 +72,19 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 		FingerprintSeed:   stableFingerprintSeed(account.Identifier),
 		Language:          "zh-CN",
 		AcceptLanguage:    "zh-CN,zh;q=0.9,en;q=0.8",
+		StealthProvider:   sharedbrowser.StealthProviderDefault,
+	}
+	if cfg.UseCloakBrowser {
+		managerCfg.StealthProvider = sharedbrowser.StealthProviderCloakBrowser
+		managerCfg.FingerprintSeed = 0
+		managerCfg.ChromeVersion = ""
+		managerCfg.ChromeDownloadDir = ""
 	}
 	manager := sharedbrowser.NewManager(managerCfg)
 	manager.SetUserDataDir(profileDir)
-	manager.SetFingerprint(manager.GenerateStableFingerprint(account.Identifier))
+	if !cfg.UseCloakBrowser {
+		manager.SetFingerprint(manager.GenerateStableFingerprint(account.Identifier))
+	}
 	if err := manager.Install(); err != nil {
 		log.WithError(err).Warnf("sds login browser install failed tenant=%s identifier=%s", account.TenantID, account.Identifier)
 		return nil, false, err

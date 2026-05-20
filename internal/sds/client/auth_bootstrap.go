@@ -217,7 +217,7 @@ func (c *Client) hasUsableAuthState() bool {
 	if c.authState == nil || strings.TrimSpace(c.authState.AccessToken) == "" {
 		return false
 	}
-	return c.authState.MerchantID > 0 || len(c.cookies) > 0
+	return c.authState.MerchantID > 0 || c.authState.UserID > 0 || len(c.cookies) > 0
 }
 
 func (c *Client) applyStaticBootstrap() bool {

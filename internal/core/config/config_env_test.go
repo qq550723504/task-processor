@@ -145,6 +145,8 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SDS_USERNAME", "tester")
 	t.Setenv("TASK_PROCESSOR_SDS_PASSWORD", "secret")
 	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS", "true")
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_CLOAKBROWSER_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_CLOAKBROWSER_PATH", "C:/cloak/chrome.exe")
 
 	v := newViper()
 
@@ -156,6 +158,8 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "tester", v.GetString("platforms.sds.loginService.username"))
 	assert.Equal(t, "secret", v.GetString("platforms.sds.loginService.password"))
 	assert.True(t, v.GetBool("platforms.sds.loginService.defaultHeadless"))
+	assert.True(t, v.GetBool("platforms.sds.loginService.cloakBrowserEnabled"))
+	assert.Equal(t, "C:/cloak/chrome.exe", v.GetString("platforms.sds.loginService.cloakBrowserPath"))
 }
 
 func TestNewViper_BindsSDSAuthBootstrapEnvironmentVariables(t *testing.T) {

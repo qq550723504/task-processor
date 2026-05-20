@@ -31,10 +31,30 @@ type BrowserConfig struct {
 	AcceptLanguage                 string `json:"acceptLanguage"`                 // 接受的语言
 	Timezone                       string `json:"timezone"`                       // 时区
 	DisableGPUFingerprint          bool   `json:"disableGPUFingerprint"`          // 禁用GPU指纹
+	StealthProvider                string `json:"stealthProvider,omitempty"`      // stealth provider, e.g. default/cloakbrowser
 }
 
+const (
+	StealthProviderDefault      = "default"
+	StealthProviderCloakBrowser = "cloakbrowser"
+)
+
 // GetBrowserLaunchArgs 获取浏览器启动参数（针对fingerprint-chromium优化）
-func GetBrowserLaunchArgs() []string {
+func GetBrowserLaunchArgs(cfg *BrowserConfig) []string {
+	if cfg != nil && cfg.StealthProvider == StealthProviderCloakBrowser {
+		seed := cfg.FingerprintSeed
+		if seed == 0 {
+			seed = int32(time.Now().UnixNano() % 90000)
+			if seed < 10000 {
+				seed += 10000
+			}
+		}
+		return []string{
+			"--no-sandbox",
+			fmt.Sprintf("--fingerprint=%d", seed),
+			"--fingerprint-platform=windows",
+		}
+	}
 	return []string{
 		"--start-maximized", // 最大化启动
 		"--disable-gpu",     // 禁用GPU加速（避免检测）
@@ -42,7 +62,13 @@ func GetBrowserLaunchArgs() []string {
 }
 
 // GetIgnoreDefaultArgs 获取需要排除的默认参数（关键！）
-func GetIgnoreDefaultArgs() []string {
+func GetIgnoreDefaultArgs(cfg *BrowserConfig) []string {
+	if cfg != nil && cfg.StealthProvider == StealthProviderCloakBrowser {
+		return []string{
+			"--enable-automation",
+			"--enable-unsafe-swiftshader",
+		}
+	}
 	return []string{
 		"--enable-automation",                           // 排除自动化标志
 		"--disable-blink-features=AutomationControlled", // 排除自动化控制特征
@@ -134,13 +160,15 @@ func AddFingerprintArgs(args []string, cfg *BrowserConfig, fingerprint *Fingerpr
 // CreateLaunchOptions 创建浏览器启动选项
 func CreateLaunchOptions(cfg *BrowserConfig, fingerprint *FingerprintConfig) playwright.BrowserTypeLaunchOptions {
 	// 构建启动参数
-	args := GetBrowserLaunchArgs()
-	args = AddFingerprintArgs(args, cfg, fingerprint)
+	args := GetBrowserLaunchArgs(cfg)
+	if cfg == nil || cfg.StealthProvider != StealthProviderCloakBrowser {
+		args = AddFingerprintArgs(args, cfg, fingerprint)
+	}
 
 	launchOptions := playwright.BrowserTypeLaunchOptions{
 		Headless:          playwright.Bool(cfg.Headless),
 		Args:              args,
-		IgnoreDefaultArgs: GetIgnoreDefaultArgs(), // 排除自动化检测参数
+		IgnoreDefaultArgs: GetIgnoreDefaultArgs(cfg), // 排除自动化检测参数
 	}
 
 	// 设置浏览器路径
@@ -166,6 +194,19 @@ func CreateLaunchOptions(cfg *BrowserConfig, fingerprint *FingerprintConfig) pla
 
 // CreateContextOptions 创建浏览器上下文选项
 func CreateContextOptions(cfg *BrowserConfig, userAgent string) playwright.BrowserNewContextOptions {
+	if cfg != nil && cfg.StealthProvider == StealthProviderCloakBrowser {
+		options := playwright.BrowserNewContextOptions{
+			Viewport: &playwright.Size{
+				Width:  cfg.ViewportWidth,
+				Height: cfg.ViewportHeight,
+			},
+			IgnoreHttpsErrors: playwright.Bool(true),
+		}
+		if userAgent != "" {
+			options.UserAgent = playwright.String(userAgent)
+		}
+		return options
+	}
 	return playwright.BrowserNewContextOptions{
 		Viewport: &playwright.Size{
 			Width:  cfg.ViewportWidth,
