@@ -28,10 +28,35 @@ export function buildSelectedAttributes(
   candidates: SheinPendingAttributeCandidate[],
   selectedValues: Record<string, string>,
 ): SheinResolvedAttribute[] {
-  return candidates.flatMap((candidate) => {
+  return candidates.flatMap<SheinResolvedAttribute>((candidate) => {
     const key = String(candidate.attribute_id ?? candidate.name);
-    const selectedValueID = Number(selectedValues[key]);
-    if (!candidate.attribute_id || !selectedValueID) {
+    const rawValue = selectedValues[key]?.trim() ?? "";
+    if (!candidate.attribute_id) {
+      return [];
+    }
+    if ((candidate.attribute_value_list?.length ?? 0) === 0) {
+      if (!rawValue) {
+        return [];
+      }
+      return [
+        {
+          name: candidate.name ?? candidate.attribute_name_en ?? candidate.attribute_name,
+          value: rawValue,
+          attribute_id: candidate.attribute_id,
+          attribute_extra_value: rawValue,
+          attribute_type: candidate.attribute_type,
+          attribute_mode: candidate.attribute_mode,
+          data_dimension: candidate.data_dimension,
+          cascade_attribute_id: candidate.cascade_attribute_id,
+          matched_by: "manual_attribute_review",
+          required: candidate.required,
+          important: candidate.important,
+          skc_scope: candidate.skc_scope,
+        },
+      ];
+    }
+    const selectedValueID = Number(rawValue);
+    if (!selectedValueID) {
       return [];
     }
     const selectedValue = candidate.attribute_value_list?.find(

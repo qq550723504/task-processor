@@ -166,6 +166,55 @@ describe("SheinAttributeReviewCard", () => {
     expect(screen.queryByText("必填未完成")).not.toBeInTheDocument();
   });
 
+  it("allows manual text entry when a required template attribute has no options", async () => {
+    const user = userEvent.setup();
+    const onConfirmAttributes = vi.fn();
+
+    render(
+      <SheinAttributeReviewCard
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              pending_attribute_candidates: [
+                {
+                  name: "Product Model",
+                  attribute_id: 1000546,
+                  attribute_type: 1,
+                  attribute_mode: 2,
+                  required: true,
+                  important: true,
+                  attribute_value_list: [],
+                },
+              ],
+            },
+          },
+        }}
+        onConfirmAttributes={onConfirmAttributes}
+      />,
+    );
+
+    expect(
+      screen.getByText("这个模板属性没有可选值，请手工输入要写入 SHEIN 的文本属性值。"),
+    ).toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText("输入属性值，例如型号或材质"),
+      "MG17701061001",
+    );
+    await user.click(screen.getByRole("button", { name: "保存已选择属性" }));
+
+    expect(onConfirmAttributes).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: "Product Model",
+        value: "MG17701061001",
+        attribute_id: 1000546,
+        attribute_extra_value: "MG17701061001",
+        matched_by: "manual_attribute_review",
+      }),
+    ]);
+  });
+
   it("allows fallback confirmation when template candidates are unavailable", async () => {
     const user = userEvent.setup();
     const onConfirmFallbackAttributes = vi.fn();

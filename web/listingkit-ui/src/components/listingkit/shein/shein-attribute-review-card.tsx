@@ -264,7 +264,9 @@ function SheinAttributeReviewContent({
                       ? `attribute_id ${attribute.attribute_id}${
                           attribute.attribute_value_id
                             ? ` · value_id ${attribute.attribute_value_id}`
-                            : ""
+                            : attribute.attribute_extra_value
+                              ? " · 手工文本"
+                              : ""
                         }`
                       : undefined
                   }

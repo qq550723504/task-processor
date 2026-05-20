@@ -1,5 +1,6 @@
 import type { SheinPendingAttributeCandidate } from "@/lib/types/listingkit";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 
 export function AttributeRow({
@@ -79,9 +80,16 @@ export function PendingCandidateRow({
           ))}
         </Select>
       ) : (
-        <p className="mt-2 text-sm text-zinc-600">
-          这个模板属性没有可选值。当前 MVP 暂不支持手工文本录入。
-        </p>
+        <div className="mt-2 space-y-2">
+          <Input
+            placeholder="输入属性值，例如型号或材质"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <p className="text-sm text-zinc-600">
+            这个模板属性没有可选值，请手工输入要写入 SHEIN 的文本属性值。
+          </p>
+        </div>
       )}
     </Label>
   );
