@@ -239,6 +239,43 @@ func TestAppHTTPAPIModuleBuildersStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
+	filePath := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filePath, nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowed := map[string]struct{}{
+		`"fmt"`:                                 {},
+		`"path/filepath"`:                       {},
+		`"strings"`:                             {},
+		`"github.com/sirupsen/logrus"`:          {},
+		`"gorm.io/gorm"`:                        {},
+		`"task-processor/internal/app/runtime"`: {},
+		`"task-processor/internal/asset/repository"`:       {},
+		`"task-processor/internal/core/config"`:            {},
+		`"task-processor/internal/infra/database"`:         {},
+		`"task-processor/internal/listingadmin"`:           {},
+		`"task-processor/internal/listingkit"`:             {},
+		`"task-processor/internal/listingkit/httpapi"`:     {},
+		`"task-processor/internal/listingkit/reviewstore"`: {},
+		`"task-processor/internal/listingkit/store"`:       {},
+		`"task-processor/internal/listingsubscription"`:    {},
+		`"task-processor/internal/publishing/shein"`:       {},
+		`"task-processor/internal/sds/usecase"`:            {},
+		`"task-processor/internal/tenantbridge"`:           {},
+	}
+
+	for _, imp := range file.Imports {
+		path := imp.Path.Value
+		if _, ok := allowed[path]; !ok {
+			t.Errorf("%s imports %s; keep app/httpapi/listingkit_support.go limited to assembly and repository wiring, and move new ListingKit-specific logic into internal/listingkit/httpapi or domain packages", filePath, path)
+		}
+	}
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
