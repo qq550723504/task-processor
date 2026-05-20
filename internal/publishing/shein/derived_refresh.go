@@ -36,9 +36,7 @@ func RefreshDerivedState(
 	if len(pkg.SiteList) == 0 {
 		pkg.SiteList = common.DefaultSites(countryOrDefault(req))
 	}
-	if len(pkg.ProductAttributes) == 0 {
-		pkg.ProductAttributes = common.BuildAttributes(canonical.Attributes)
-	}
+	pkg.ProductAttributes = common.BuildAttributes(canonical.Attributes)
 	if pkg.RequestDraft == nil {
 		pkg.RequestDraft = &RequestDraft{}
 	}

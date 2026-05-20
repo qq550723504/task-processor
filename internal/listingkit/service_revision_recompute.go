@@ -35,6 +35,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		s.sheinPricingPolicy,
 	)
 	applySheinSaleAttributeReviewOverride(task.Result.Shein, req.Shein.SaleAttributeResolution)
+	normalizeSheinCategoryRefreshSaleAttributeState(task.Result.Shein)
 	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(task.Result.Shein)
 	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)
@@ -78,4 +79,23 @@ func shouldRefreshSheinDerivedState(req *SheinRevisionInput) bool {
 		return false
 	}
 	return true
+}
+
+func normalizeSheinCategoryRefreshSaleAttributeState(pkg *sheinpub.Package) {
+	if pkg == nil || pkg.SaleAttributeResolution == nil {
+		return
+	}
+	if sheinSaleAttributesReadyForSubmit(pkg) {
+		return
+	}
+	if pkg.SaleAttributeResolution.Status == "" || pkg.SaleAttributeResolution.Status == "resolved" {
+		pkg.SaleAttributeResolution.Status = "partial"
+	}
+	pkg.SaleAttributeResolution.ReviewNotes = uniqueStrings(append(
+		[]string(nil),
+		append(
+			pkg.SaleAttributeResolution.ReviewNotes,
+			"类目变更后已重新生成销售属性，但当前仍缺少真实 sale attribute value 映射，请重新确认规格。",
+		)...,
+	))
 }

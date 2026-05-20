@@ -200,6 +200,52 @@ func TestNormalizeSheinSubmitPackageRepairsResolvedSaleAttributes(t *testing.T) 
 	}
 }
 
+func TestSubmitTaskBlocksResolvedSaleAttributesWithoutValueIDs(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.SaleAttributeResolution.Status = "resolved"
+	task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID = 1001466
+	task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID = 0
+	task.Result.Shein.SaleAttributeResolution.SKCAttributes = []SheinResolvedSaleAttribute{{
+		Scope:       "skc",
+		Name:        "Plug(Voltage)",
+		Value:       "white",
+		AttributeID: 1001466,
+	}}
+	task.Result.Shein.SaleAttributeResolution.SKUAttributes = nil
+	task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute = nil
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes = nil
+	task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeID = 0
+	task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeValueID = 0
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList = nil
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:             repo,
+		ProductService:         stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "publish-missing-sale-value-id",
+	})
+	if err == nil || !errors.Is(err, ErrSubmitBlocked) {
+		t.Fatalf("submit err = %v, want ErrSubmitBlocked", err)
+	}
+	if !strings.Contains(err.Error(), "当前仍有关键字段未完成") {
+		t.Fatalf("submit err = %v, want readiness blocked summary", err)
+	}
+}
+
 func TestSubmitTaskTreatsCodeZeroPublishWithoutValidationNotesAsAccepted(t *testing.T) {
 	t.Parallel()
 

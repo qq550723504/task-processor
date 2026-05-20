@@ -668,6 +668,85 @@ func TestBuildSheinSubmitReadinessBlocksWhenCategoryReviewStillPending(t *testin
 	}
 }
 
+func TestBuildSheinSubmitReadinessBlocksWhenResolvedSaleAttributesLackValueIDs(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:               "resolved",
+			PrimaryAttributeID:   1001466,
+			SKCAttributes:        []SheinResolvedSaleAttribute{{Scope: "skc", Name: "Plug(Voltage)", Value: "white", AttributeID: 1001466}},
+			SecondaryAttributeID: 0,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "material",
+				AttributeID: 7001,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode:  "SKC-1",
+				SaleAttribute: nil,
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{
+			SKCList: []sheinproduct.SKC{{
+				SaleAttribute: sheinproduct.SaleAttribute{
+					AttributeID:      0,
+					AttributeValueID: 0,
+				},
+				SKUS: []sheinproduct.SKU{{SupplierSKU: "SKU-1"}},
+			}},
+		},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
+	}
+	found := false
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "sale_attributes" {
+			found = true
+			if item.Reason == nil || item.Reason.Code != "sale_attributes_unresolved" {
+				t.Fatalf("sale attribute reason = %+v", item.Reason)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected sale_attributes blocker, got %+v", readiness.BlockingItems)
+	}
+}
+
 func TestBuildSheinSubmitReadinessBlocksWhenRequiredDisplayAttributesArePending(t *testing.T) {
 	t.Parallel()
 

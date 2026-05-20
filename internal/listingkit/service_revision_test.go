@@ -73,6 +73,28 @@ func (stubRevisionSheinSaleReviewResolver) Resolve(req *sheinpub.BuildRequest, c
 	}
 }
 
+type stubRevisionSheinSaleMissingValueResolver struct{}
+
+func (stubRevisionSheinSaleMissingValueResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
+	return &sheinpub.SaleAttributeResolution{
+		Status:                  "resolved",
+		Source:                  "sale_attribute_templates",
+		PrimaryAttributeID:      1001466,
+		PrimarySourceDimension:  "Color",
+		RecommendCategoryReview: false,
+		SelectionSummary: []string{
+			"主销售属性使用源维度 Color 映射到 Plug(Voltage)",
+		},
+		SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+			Scope:       "skc",
+			Name:        "Plug(Voltage)",
+			Value:       "white",
+			AttributeID: 1001466,
+			MatchedBy:   "test",
+		}},
+	}
+}
+
 func (r *stubApplyRevisionRepo) CreateTask(ctx context.Context, task *Task) error {
 	r.task = task
 	return nil
@@ -324,7 +346,7 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 					},
 				},
 				ProductAttributes: []PlatformAttribute{
-					{Name: "颜色", Value: "黑色"},
+					{Name: "旧属性", Value: "stale"},
 				},
 				SaleAttributeResolution: &SheinSaleAttributeResolution{
 					Status:                  "partial",
@@ -385,8 +407,14 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 	if repo.task.Result.Shein.AttributeResolution == nil || repo.task.Result.Shein.AttributeResolution.ResolvedCount != 1 {
 		t.Fatalf("attribute resolution = %+v", repo.task.Result.Shein.AttributeResolution)
 	}
+	if len(repo.task.Result.Shein.ProductAttributes) != 1 || repo.task.Result.Shein.ProductAttributes[0].Name != "颜色" || repo.task.Result.Shein.ProductAttributes[0].Value != "黑色" {
+		t.Fatalf("product attributes = %+v, want rebuilt canonical attributes", repo.task.Result.Shein.ProductAttributes)
+	}
 	if repo.task.Result.Shein.RequestDraft == nil || len(repo.task.Result.Shein.RequestDraft.SKCList) != 1 {
 		t.Fatalf("request draft = %+v", repo.task.Result.Shein.RequestDraft)
+	}
+	if len(repo.task.Result.Shein.RequestDraft.ProductAttributeList) != 1 || repo.task.Result.Shein.RequestDraft.ProductAttributeList[0].Name != "颜色" || repo.task.Result.Shein.RequestDraft.ProductAttributeList[0].Value != "黑色" {
+		t.Fatalf("request draft product attributes = %+v, want rebuilt canonical attributes", repo.task.Result.Shein.RequestDraft.ProductAttributeList)
 	}
 	if repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute == nil || repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeID != 27 {
 		t.Fatalf("request draft skc sale attribute = %+v", repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute)
@@ -493,6 +521,101 @@ func TestApplyTaskRevisionKeepsManualCategoryReviewConfirmationAfterRefresh(t *t
 	}
 	if repo.task.Result.Shein.CategoryResolution != nil && repo.task.Result.Shein.CategoryResolution.SuggestedCategory != nil {
 		t.Fatalf("suggested category = %+v, want nil after manual confirmation", repo.task.Result.Shein.CategoryResolution.SuggestedCategory)
+	}
+}
+
+func TestApplyTaskRevisionDowngradesSaleAttributesWhenCategoryRefreshLacksValueIDs(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	task := &Task{
+		ID: "task-apply-shein-category-rerun-sale-attributes",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Text:         "metal wall sign",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-category-rerun-sale-attributes",
+			CanonicalProduct: &canonical.Product{
+				Title: "metal wall sign",
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   3894,
+				CategoryPath: []string{"家居&生活", "家居装饰", "家居装饰摆件&配件", "铁皮画标牌"},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 3894,
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:             "resolved",
+					PrimaryAttributeID: 27,
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{
+		repo:                       repo,
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{},
+	}
+
+	categoryID := 2486
+	productTypeID := 999
+	topCategoryID := 31
+	_, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				Status:         stringPtr("resolved"),
+				Source:         stringPtr("manual_revision"),
+				MatchedPath:    []string{"家居&生活", "家居装饰", "装饰挂饰和风铃", "装饰挂饰"},
+				CategoryID:     &categoryID,
+				CategoryIDList: []int{31, 2478, 2484, 2486},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  &topCategoryID,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				RecommendCategoryReview: boolPtr(false),
+				CategoryReviewReason:    stringPtr(""),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution == nil {
+		t.Fatal("expected refreshed sale attribute resolution")
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.Status != "partial" {
+		t.Fatalf("sale attribute status = %q, want partial", repo.task.Result.Shein.SaleAttributeResolution.Status)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID != 1001466 {
+		t.Fatalf("primary attribute id = %d, want 1001466", repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID)
+	}
+	if len(repo.task.Result.Shein.RequestDraft.SKCList) == 0 || repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute != nil {
+		t.Fatalf("request draft skc sale attribute = %+v, want nil because value id is missing", repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute)
+	}
+	if repo.task.Result.Shein.PreviewProduct == nil || repo.task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeID != 0 {
+		t.Fatalf("preview skc sale attribute = %+v, want unresolved placeholder", repo.task.Result.Shein.PreviewProduct)
+	}
+	if len(repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes) == 0 {
+		t.Fatalf("sale attribute review notes = %+v, want rerun warning", repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes)
 	}
 }
 

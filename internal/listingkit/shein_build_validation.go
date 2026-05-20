@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	sheinproduct "task-processor/internal/shein/api/product"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
@@ -26,8 +27,8 @@ func ValidateSheinPackageAgainstTemplates(pkg *SheinPackage) sheinBuildValidatio
 		categoryMessage:      "类目、类目层级和 product_type_id 需要确认；如当前类目被建议复核，也不能直接进入提交态",
 		attributeReady:       isSheinAttributeResolved(pkg) && !sheinHasBlockingPendingAttributes(pkg),
 		attributeMessage:     "普通属性还没有全部映射到真实 attribute_id / attribute_value_id，或仍存在模板必填/重要属性未确认",
-		saleAttributeReady:   sheinSaleAttributeStatusResolved(pkg) && !sheinSaleAttributeReviewPending(pkg),
-		saleAttributeMessage: "销售属性主副规格还没有稳定映射到真实 sale attribute，或当前类目/规格组合仍需复核",
+		saleAttributeReady:   sheinSaleAttributesReadyForSubmit(pkg),
+		saleAttributeMessage: "销售属性主副规格还没有稳定映射到真实 sale attribute/value，或当前类目/规格组合仍需复核",
 		submitPayloadReady:   true,
 		submitPayloadMessage: "发布载荷结构需要满足 SHEIN 提交要求，包括 SKC 图片、方形图、SKU 数量/包装/仓库/尺寸字段",
 	}
@@ -79,6 +80,72 @@ func sheinSaleAttributeStatusResolved(pkg *SheinPackage) bool {
 	}
 	return strings.EqualFold(strings.TrimSpace(pkg.SaleAttributeResolution.Status), "resolved") &&
 		pkg.SaleAttributeResolution.PrimaryAttributeID > 0
+}
+
+func sheinSaleAttributesReadyForSubmit(pkg *SheinPackage) bool {
+	if !sheinSaleAttributeStatusResolved(pkg) || sheinSaleAttributeReviewPending(pkg) {
+		return false
+	}
+	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+		return false
+	}
+	requireSKUAttributes := len(pkg.SaleAttributeResolution.SKUAttributes) > 0
+	for _, skc := range pkg.RequestDraft.SKCList {
+		if !sheinResolvedSaleAttributeReady(skc.SaleAttribute) {
+			return false
+		}
+		if requireSKUAttributes {
+			if len(skc.SKUList) == 0 {
+				return false
+			}
+			for _, sku := range skc.SKUList {
+				if len(sku.SaleAttributes) == 0 {
+					return false
+				}
+				for _, attr := range sku.SaleAttributes {
+					if !sheinResolvedSaleAttributeValueReady(attr) {
+						return false
+					}
+				}
+			}
+		}
+	}
+	if pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) == 0 {
+		return false
+	}
+	for _, skc := range pkg.PreviewProduct.SKCList {
+		if !sheinPreviewSaleAttributeReady(skc.SaleAttribute) {
+			return false
+		}
+		if requireSKUAttributes {
+			if len(skc.SKUS) == 0 {
+				return false
+			}
+			for _, sku := range skc.SKUS {
+				if len(sku.SaleAttributeList) == 0 {
+					return false
+				}
+				for _, attr := range sku.SaleAttributeList {
+					if !sheinPreviewSaleAttributeReady(attr) {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
+}
+
+func sheinResolvedSaleAttributeReady(attr *SheinResolvedSaleAttribute) bool {
+	return attr != nil && sheinResolvedSaleAttributeValueReady(*attr)
+}
+
+func sheinResolvedSaleAttributeValueReady(attr SheinResolvedSaleAttribute) bool {
+	return attr.AttributeID > 0 && attr.AttributeValueID != nil && *attr.AttributeValueID > 0
+}
+
+func sheinPreviewSaleAttributeReady(attr sheinproduct.SaleAttribute) bool {
+	return attr.AttributeID > 0 && attr.AttributeValueID > 0
 }
 
 func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {
