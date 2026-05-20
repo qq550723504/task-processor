@@ -62,8 +62,6 @@ logs
 .gocache/
 .local/*
 !.local/README.md
-!/.local/chrome/
-!/.local/chrome/**
 tmp/*
 !tmp/go.mod
 !tmp/README.md
