@@ -81,6 +81,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 				resolution.Status = "partial"
 				resolution.Source = "suggest_category_by_text"
 				resolution.QueryText = suggestQuery
+				resolution.SemanticValidation = hydrated.SemanticValidation
 				resolution.SuggestedCategory = categorySuggestionFromResolution(hydrated, semanticCategoryReviewNote(hydrated.SemanticValidation))
 				resolution.ReviewNotes = append(resolution.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 			} else {
@@ -135,6 +136,7 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *canonical.Produ
 				}
 				resolution.Status = "partial"
 				resolution.QueryText = treeQuery
+				resolution.SemanticValidation = hydrated.SemanticValidation
 				resolution.SuggestedCategory = categorySuggestionFromResolution(hydrated, semanticCategoryReviewNote(hydrated.SemanticValidation))
 				resolution.ReviewNotes = append(resolution.ReviewNotes, semanticCategoryReviewNote(hydrated.SemanticValidation))
 			}
@@ -265,6 +267,9 @@ func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query s
 }
 
 func (r *categoryResolver) semanticValidation(ctx context.Context, canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+	if validation := validateChildrenCategoryCompatibility(canonical, pkg, categoryPath); validation != nil {
+		return validation
+	}
 	if r == nil || r.semanticVerifier == nil || len(categoryPath) == 0 {
 		return nil
 	}

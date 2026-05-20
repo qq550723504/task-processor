@@ -30,6 +30,11 @@ type CoreItemInput struct {
 	Attributes   map[string]string
 }
 
+var childrenRelatedKeywords = []string{
+	"儿童", "童装", "童鞋", "婴儿", "宝宝", "幼儿", "小孩", "孩子", "童", "婴", "幼",
+	"children", "child", "kids", "kid", "baby", "infant", "toddler", "youth", "teen", "school bags",
+}
+
 // AISelector AI选择器接口
 type AISelector interface {
 	// SelectLevelOneCategoryByAI 通过AI选择一级分类
@@ -326,8 +331,9 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 
 	// 3. 获取该一级分类下所有叶子节点
 	leafNodes := getLeafNodesUnderCategory(selectedLevelOneID, categoryTree.Data)
+	leafNodes = filterNonChildrenLeafNodes(leafNodes)
 	if len(leafNodes) == 0 {
-		return 0, fmt.Errorf("未找到一级分类下的叶子节点")
+		return 0, fmt.Errorf("未找到非儿童类目叶子节点")
 	}
 	leafIDs := make([]int, 0, len(leafNodes))
 	leafMap := make(map[int]string)
@@ -390,6 +396,7 @@ func buildFullCategoryPath(node category.CategoryTreeNode) string {
 // categoryAPI 为 nil 或接口返回空结果时返回 0, nil（调用方应 fallback）。
 func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, input CoreItemInput, categoryAPI interface {
 	SuggestCategoryByText(productInfo string) (*category.SuggestCategoryResponse, error)
+	GetCategory(categoryID int) (*category.CategoryInfo, error)
 }, cache *aicache.Cache) (int, error) {
 	// 1. 用AI提取核心物品描述
 	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
@@ -422,16 +429,77 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, input Core
 		return 0, nil
 	}
 
-	categoryID, err := strconv.Atoi(resp.Data[0].CategoryID)
-	if err != nil {
-		return 0, fmt.Errorf("SuggestCategoryByText返回的categoryId无法解析为整数: %q", resp.Data[0].CategoryID)
+	for _, item := range resp.Data {
+		categoryID, parseErr := strconv.Atoi(item.CategoryID)
+		if parseErr != nil {
+			return 0, fmt.Errorf("SuggestCategoryByText返回的categoryId无法解析为整数: %q", item.CategoryID)
+		}
+		if categoryAPI == nil {
+			logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
+			if cache != nil {
+				cache.Set(aicache.TypeCategory, cacheKey, categoryID)
+			}
+			return categoryID, nil
+		}
+		info, infoErr := categoryAPI.GetCategory(categoryID)
+		if infoErr != nil {
+			return 0, fmt.Errorf("获取SuggestCategory候选类目详情失败: %w", infoErr)
+		}
+		if !isChildrenRelatedCategoryInfo(info) {
+			logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
+			if cache != nil {
+				cache.Set(aicache.TypeCategory, cacheKey, categoryID)
+			}
+			return categoryID, nil
+		}
 	}
-	logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
 
-	// 4. 写缓存
-	if cache != nil {
-		cache.Set(aicache.TypeCategory, cacheKey, categoryID)
+	logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText候选均为儿童相关类目: coreItem=%q", coreItem)
+	return 0, nil
+}
+
+func filterNonChildrenLeafNodes(nodes []category.CategoryTreeNode) []category.CategoryTreeNode {
+	filtered := make([]category.CategoryTreeNode, 0, len(nodes))
+	for _, node := range nodes {
+		if isChildrenRelatedCategoryPath([]string{buildFullCategoryPath(node)}) {
+			continue
+		}
+		filtered = append(filtered, node)
 	}
+	return filtered
+}
 
-	return categoryID, nil
+func isChildrenRelatedCategoryInfo(info *category.CategoryInfo) bool {
+	if info == nil {
+		return false
+	}
+	path := make([]string, 0, 4)
+	for _, name := range []string{
+		info.LevelOneCategoryName,
+		info.LevelTwoCategoryName,
+		info.LevelThreeCategoryName,
+	} {
+		if strings.TrimSpace(name) != "" {
+			path = append(path, name)
+		}
+	}
+	if info.LevelFourCategoryName != nil && strings.TrimSpace(*info.LevelFourCategoryName) != "" {
+		path = append(path, *info.LevelFourCategoryName)
+	}
+	return isChildrenRelatedCategoryPath(path)
+}
+
+func isChildrenRelatedCategoryPath(path []string) bool {
+	for _, segment := range path {
+		normalized := strings.ToLower(strings.TrimSpace(segment))
+		if normalized == "" {
+			continue
+		}
+		for _, keyword := range childrenRelatedKeywords {
+			if strings.Contains(normalized, strings.ToLower(keyword)) {
+				return true
+			}
+		}
+	}
+	return false
 }

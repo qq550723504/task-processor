@@ -11,14 +11,23 @@ import (
 type stubAISelector struct {
 	coreItemInput CoreItemInput
 	coreItem      string
+	levelOneID    int
+	categoryID    int
+	leafIDs       []int
+	leafMap       map[int]string
 }
 
 func (s *stubAISelector) SelectLevelOneCategoryByAI(context.Context, string, []int, map[int]string) (int, error) {
-	return 0, nil
+	return s.levelOneID, nil
 }
 
-func (s *stubAISelector) SelectCategoryByAI(context.Context, string, []int, map[int]string) (int, error) {
-	return 0, nil
+func (s *stubAISelector) SelectCategoryByAI(_ context.Context, _ string, leafIDs []int, leafMap map[int]string) (int, error) {
+	s.leafIDs = append([]int(nil), leafIDs...)
+	s.leafMap = make(map[int]string, len(leafMap))
+	for key, value := range leafMap {
+		s.leafMap[key] = value
+	}
+	return s.categoryID, nil
 }
 
 func (s *stubAISelector) ExtractCoreItemByAI(_ context.Context, input CoreItemInput) (string, error) {
@@ -60,12 +69,26 @@ func TestGetCategoryIDBySuggestUsesCoreItemInput(t *testing.T) {
 		Data: []sheinapicategory.SuggestCategoryItem{{CategoryID: "8604"}},
 	}}
 	manager := NewCategoryManager(selector)
+	categoryAPI := stubCategoryTreeAPI{
+		suggestAPI: api,
+		categoryInfoByID: map[int]*sheinapicategory.CategoryInfo{
+			8604: {
+				CategoryID:             8604,
+				LevelOneCategoryID:     1,
+				LevelOneCategoryName:   "Home",
+				LevelTwoCategoryID:     2,
+				LevelTwoCategoryName:   "Outdoor",
+				LevelThreeCategoryID:   8604,
+				LevelThreeCategoryName: "Cushions",
+			},
+		},
+	}
 
 	categoryID, err := manager.GetCategoryIDBySuggest(context.Background(), CoreItemInput{
 		Title:        "跨境亚马逊户外防水防晒长凳垫吊椅垫",
 		ProductType:  "椅垫",
 		CategoryPath: []string{"家居饰品", "户外用品", "户外坐垫"},
-	}, api, nil)
+	}, categoryAPI, nil)
 	if err != nil {
 		t.Fatalf("GetCategoryIDBySuggest error = %v", err)
 	}
@@ -78,4 +101,107 @@ func TestGetCategoryIDBySuggestUsesCoreItemInput(t *testing.T) {
 	if api.productInfo != "户外坐垫" {
 		t.Fatalf("suggest productInfo = %q, want 户外坐垫", api.productInfo)
 	}
+}
+
+func TestGetCategoryIDBySuggestSkipsChildrenCandidates(t *testing.T) {
+	selector := &stubAISelector{coreItem: "casual backpack"}
+	api := &stubSuggestAPI{resp: &sheinapicategory.SuggestCategoryResponse{
+		Data: []sheinapicategory.SuggestCategoryItem{
+			{CategoryID: "1001"},
+			{CategoryID: "1002"},
+		},
+	}}
+	manager := NewCategoryManager(selector)
+
+	categoryAPI := stubCategoryTreeAPI{
+		suggestAPI: api,
+		categoryInfoByID: map[int]*sheinapicategory.CategoryInfo{
+			1001: {
+				CategoryID:             1001,
+				LevelOneCategoryID:     1,
+				LevelOneCategoryName:   "Kids",
+				LevelTwoCategoryID:     11,
+				LevelTwoCategoryName:   "Bags",
+				LevelThreeCategoryID:   111,
+				LevelThreeCategoryName: "School Bags",
+			},
+			1002: {
+				CategoryID:             1002,
+				LevelOneCategoryID:     2,
+				LevelOneCategoryName:   "Women",
+				LevelTwoCategoryID:     22,
+				LevelTwoCategoryName:   "Accessories",
+				LevelThreeCategoryID:   222,
+				LevelThreeCategoryName: "Backpacks",
+			},
+		},
+	}
+
+	categoryID, err := manager.GetCategoryIDBySuggest(context.Background(), CoreItemInput{
+		Title: "casual backpack for travel",
+	}, categoryAPI, nil)
+	if err != nil {
+		t.Fatalf("GetCategoryIDBySuggest error = %v", err)
+	}
+	if categoryID != 1002 {
+		t.Fatalf("categoryID = %d, want 1002", categoryID)
+	}
+}
+
+func TestGetCategoryIDByTitleWithTreeFiltersChildrenLeafCandidates(t *testing.T) {
+	selector := &stubAISelector{
+		levelOneID: 10,
+		categoryID: 2002,
+	}
+	manager := NewCategoryManager(selector)
+
+	tree := &sheinapicategory.CategoryTreeResponse{
+		Data: []sheinapicategory.CategoryTreeNode{{
+			CategoryID:   10,
+			CategoryName: "Bags",
+			Children: []sheinapicategory.CategoryTreeNode{
+				{
+					CategoryID:   2001,
+					CategoryName: "Kids Backpacks",
+					LastCategory: true,
+				},
+				{
+					CategoryID:   2002,
+					CategoryName: "Travel Backpacks",
+					LastCategory: true,
+				},
+			},
+		}},
+	}
+
+	categoryID, err := manager.GetCategoryIDByTitleWithTree(context.Background(), "travel backpack", tree, nil)
+	if err != nil {
+		t.Fatalf("GetCategoryIDByTitleWithTree error = %v", err)
+	}
+	if categoryID != 2002 {
+		t.Fatalf("categoryID = %d, want 2002", categoryID)
+	}
+	if len(selector.leafIDs) != 1 || selector.leafIDs[0] != 2002 {
+		t.Fatalf("leafIDs = %#v, want [2002]", selector.leafIDs)
+	}
+	if got := selector.leafMap[2002]; got != "Travel Backpacks" {
+		t.Fatalf("leaf path = %q, want Travel Backpacks", got)
+	}
+}
+
+type stubCategoryTreeAPI struct {
+	suggestAPI        *stubSuggestAPI
+	categoryInfoByID  map[int]*sheinapicategory.CategoryInfo
+	categoryLookupErr error
+}
+
+func (s stubCategoryTreeAPI) SuggestCategoryByText(productInfo string) (*sheinapicategory.SuggestCategoryResponse, error) {
+	return s.suggestAPI.SuggestCategoryByText(productInfo)
+}
+
+func (s stubCategoryTreeAPI) GetCategory(categoryID int) (*sheinapicategory.CategoryInfo, error) {
+	if s.categoryLookupErr != nil {
+		return nil, s.categoryLookupErr
+	}
+	return s.categoryInfoByID[categoryID], nil
 }

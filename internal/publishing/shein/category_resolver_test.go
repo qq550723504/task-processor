@@ -174,6 +174,44 @@ func TestCategoryResolverFallsBackToCategoryTreeSelection(t *testing.T) {
 	}
 }
 
+func TestCategoryResolverRejectsChildrenCategoryForNonChildrenProduct(t *testing.T) {
+	resolver := NewCategoryResolverWithSemanticVerifier(stubCategoryAPI{
+		categoryInfoByID: map[int]*sheincategory.CategoryInfo{
+			2696: {
+				CategoryID:             2696,
+				LevelOneCategoryID:     1,
+				LevelOneCategoryName:   "Kids",
+				LevelTwoCategoryID:     2,
+				LevelTwoCategoryName:   "Bags",
+				LevelThreeCategoryID:   2696,
+				LevelThreeCategoryName: "School Backpacks",
+				ProductTypeID:          9001,
+			},
+		},
+	}, stubCategorySuggestFallback{selectedID: 2696}, nil, nil)
+
+	resolution := resolver.Resolve(&BuildRequest{Text: "travel backpack"}, &canonical.Product{
+		Title:        "Women's travel backpack with laptop compartment",
+		CategoryPath: []string{"Bags", "Backpacks"},
+	}, &Package{})
+
+	if resolution.Status != "partial" {
+		t.Fatalf("status = %q, want partial", resolution.Status)
+	}
+	if resolution.CategoryID != 0 {
+		t.Fatalf("category_id = %d, want 0 after semantic rejection", resolution.CategoryID)
+	}
+	if resolution.SuggestedCategory == nil {
+		t.Fatal("expected suggested category after semantic rejection")
+	}
+	if resolution.SemanticValidation == nil || resolution.SemanticValidation.Verdict != "incompatible" {
+		t.Fatalf("semantic validation = %+v, want incompatible", resolution.SemanticValidation)
+	}
+	if len(resolution.ReviewNotes) == 0 {
+		t.Fatal("expected review note")
+	}
+}
+
 func TestCategoryResolverHydratesSelectedCategoryFromTreeWhenDetailFails(t *testing.T) {
 	resolver := NewCategoryResolverWithTreeFallback(stubCategoryAPI{
 		suggestResponse: &sheincategory.SuggestCategoryResponse{},

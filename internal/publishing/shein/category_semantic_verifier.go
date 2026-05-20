@@ -29,6 +29,9 @@ func newAICategorySemanticVerifier(client openaiclient.ChatCompleter) categorySe
 }
 
 func (v *aiCategorySemanticVerifier) ValidateProductCategory(ctx context.Context, canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+	if validation := validateChildrenCategoryCompatibility(canonical, pkg, categoryPath); validation != nil {
+		return validation
+	}
 	if v == nil || v.client == nil || len(categoryPath) == 0 {
 		return nil
 	}
@@ -69,6 +72,55 @@ func (v *aiCategorySemanticVerifier) ValidateProductCategory(ctx context.Context
 		Verdict:      verdict,
 		Reason:       strings.TrimSpace(payload.Reason),
 	}
+}
+
+func validateChildrenCategoryCompatibility(canonical *canonical.Product, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+	if len(categoryPath) == 0 || !containsChildrenCategorySignal(categoryPath) || productLooksChildrenFocused(canonical, pkg) {
+		return nil
+	}
+	return &CategorySemanticValidation{
+		Source:       "rule_children_category_guard",
+		ComparedPath: append([]string(nil), categoryPath...),
+		Verdict:      "incompatible",
+		Reason:       "当前商品语义更接近成人/通用商品，不应自动落入儿童类目",
+	}
+}
+
+func productLooksChildrenFocused(canonical *canonical.Product, pkg *Package) bool {
+	values := make([]string, 0, 12)
+	if canonical != nil {
+		values = append(values, canonical.Title, canonical.Description)
+		values = append(values, canonical.CategoryPath...)
+		for _, attr := range canonical.Attributes {
+			values = append(values, attr.Value)
+		}
+	}
+	if pkg != nil {
+		values = append(values, pkg.CategoryPath...)
+		for _, value := range pkg.Attributes {
+			values = append(values, value)
+		}
+	}
+	return containsChildrenCategorySignal(values)
+}
+
+func containsChildrenCategorySignal(values []string) bool {
+	keywords := []string{
+		"儿童", "童装", "童鞋", "婴儿", "宝宝", "幼儿", "小孩", "孩子", "童", "婴", "幼",
+		"children", "child", "kids", "kid", "baby", "infant", "toddler", "youth", "teen",
+	}
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		for _, keyword := range keywords {
+			if strings.Contains(normalized, strings.ToLower(keyword)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func buildCategorySemanticValidationPrompt(canonical *canonical.Product, pkg *Package, categoryPath []string) string {
