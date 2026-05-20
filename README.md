@@ -131,6 +131,7 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 补充架构文档：
 
 - [任务状态流转说明](./docs/architecture/task-status-lifecycle.md)
+- [HTTP API 装配边界](./docs/architecture/httpapi-assembly-boundaries.md)
 - [中心化部署改造方案](./docs/architecture/centralized-deployment-plan.md)
 - [Amazon Crawler API 说明](./cmd/amazon-crawler-api/README.md)
 - [Amazon 爬虫商用化清单](./docs/architecture/amazon-crawler-commercialization-checklist.md)

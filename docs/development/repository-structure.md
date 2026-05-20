@@ -27,8 +27,10 @@
 - `internal/app`
   - 运行装配层，负责 bootstrap、consumer、httpapi、worker、scheduler 等运行时组装与协调。
   - 不承载具体平台业务规则。
+  - 其中 `internal/app/httpapi` 当前只负责共享 HTTP runtime 协调；各业务 HTTP builder 已下沉到 `internal/*/httpapi`。
 - `internal/listingkit`
   - 产品主域，承接 ListingKit 的任务、工作台、审核、提交编排、多租户产品能力。
+  - `internal/listingkit/httpapi` 是 ListingKit 专属 HTTP 装配、认证运行时和 AI client helper 的稳定归属地。
 - `internal/shein` / `internal/temu` / `internal/amazon`
   - 当前仍然存在的历史平台实现目录。
   - 本阶段不迁移、不改 import，只在后续迭代中逐步收口。
