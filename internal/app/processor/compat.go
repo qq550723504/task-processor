@@ -1,3 +1,6 @@
+// Package processor is a temporary compatibility layer that forwards legacy
+// internal/app imports to internal/processor. New code should import
+// task-processor/internal/processor directly.
 package processor
 
 import (

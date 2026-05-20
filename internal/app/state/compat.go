@@ -1,3 +1,6 @@
+// Package state is a temporary compatibility layer that forwards legacy
+// internal/app imports to internal/state. New code should import
+// task-processor/internal/state directly.
 package state
 
 import (

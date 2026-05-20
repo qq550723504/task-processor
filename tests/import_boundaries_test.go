@@ -143,6 +143,24 @@ func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	})
 }
 
+func TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "app", "processor", "compat.go")): {},
+	}
+	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
+		`"task-processor/internal/app/processor"`,
+	}, allowedFiles)
+}
+
+func TestInternalPackagesDoNotImportAppStateCompatibilityLayer(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "app", "state", "compat.go")): {},
+	}
+	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
+		`"task-processor/internal/app/state"`,
+	}, allowedFiles)
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
