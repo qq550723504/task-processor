@@ -208,6 +208,37 @@ func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppHTTPAPIModuleBuildersStayAllowlisted(t *testing.T) {
+	filePath := filepath.Join("..", "internal", "app", "httpapi", "modules.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filePath, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowed := map[string]struct{}{
+		"buildProductModule":       {},
+		"buildImageModule":         {},
+		"buildAmazonListingModule": {},
+		"buildSheinLoginModule":    {},
+		"buildSDSLoginModule":      {},
+		"buildListingKitModule":    {},
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil {
+			continue
+		}
+		if !strings.HasPrefix(fn.Name.Name, "build") || !strings.HasSuffix(fn.Name.Name, "Module") {
+			continue
+		}
+		if _, ok := allowed[fn.Name.Name]; !ok {
+			t.Errorf("%s declares new centralized module builder %s; prefer adding module/bootstrap in the owning domain package and keep app/httpapi as thin assembly", filePath, fn.Name.Name)
+		}
+	}
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
