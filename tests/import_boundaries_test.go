@@ -25,6 +25,49 @@ func TestListingKitDoesNotImportSheinAPIRoot(t *testing.T) {
 	}, nil)
 }
 
+func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit")
+	allowedImports := map[string]map[string]struct{}{
+		`"task-processor/internal/shein/client"`: {
+			filepath.Clean(filepath.Join(root, "service_shein_categories.go")):     {},
+			filepath.Clean(filepath.Join(root, "service_submit_store_context.go")): {},
+		},
+		`"task-processor/internal/shein/store"`: {
+			filepath.Clean(filepath.Join(root, "shein_submit_payload.go")): {},
+		},
+		`"task-processor/internal/shein/submitprep"`: {
+			filepath.Clean(filepath.Join(root, "shein_submit_test_helpers_test.go")): {},
+		},
+	}
+
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(content)
+		cleanPath := filepath.Clean(path)
+		for bannedImport, allowedFiles := range allowedImports {
+			if !strings.Contains(text, bannedImport) {
+				continue
+			}
+			if _, ok := allowedFiles[cleanPath]; !ok {
+				t.Errorf("%s imports %s; keep non-API SHEIN dependencies isolated to the current allowlisted adapter files", path, bannedImport)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "publishing", "shein", "submit_validation.go")): {},
