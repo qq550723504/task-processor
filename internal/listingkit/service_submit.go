@@ -282,8 +282,51 @@ func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req
 			pkg.FinalDraft.SubmitMode = action
 		}
 	}
+	repairSheinSubmitSaleAttributes(pkg)
 	applySheinFinalImageDraft(pkg)
 	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
+}
+
+func repairSheinSubmitSaleAttributes(pkg *SheinPackage) {
+	if !sheinSubmitSaleAttributesNeedRepair(pkg) {
+		return
+	}
+	sheinpub.ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
+	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+}
+
+func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
+	if pkg == nil || pkg.RequestDraft == nil || pkg.SaleAttributeResolution == nil {
+		return false
+	}
+	if strings.TrimSpace(pkg.SaleAttributeResolution.Status) != "resolved" {
+		return false
+	}
+	if len(pkg.RequestDraft.SKCList) == 0 {
+		return false
+	}
+	if len(pkg.SaleAttributeResolution.SKCAttributes) == 0 && len(pkg.SaleAttributeResolution.SKUAttributes) == 0 {
+		return false
+	}
+	for _, skc := range pkg.RequestDraft.SKCList {
+		if skc.SaleAttribute == nil || skc.SaleAttribute.AttributeID <= 0 || skc.SaleAttribute.AttributeValueID == nil || *skc.SaleAttribute.AttributeValueID <= 0 {
+			return true
+		}
+		for _, sku := range skc.SKUList {
+			if len(pkg.SaleAttributeResolution.SKUAttributes) == 0 {
+				continue
+			}
+			if len(sku.SaleAttributes) == 0 {
+				return true
+			}
+			for _, attr := range sku.SaleAttributes {
+				if attr.AttributeID <= 0 || attr.AttributeValueID == nil || *attr.AttributeValueID <= 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (sheinproduct.ProductAPI, error) {

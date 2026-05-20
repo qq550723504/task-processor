@@ -165,6 +165,41 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 	}
 }
 
+func TestNormalizeSheinSubmitPackageRepairsResolvedSaleAttributes(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute = nil
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes = nil
+	task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeID = 0
+	task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeValueID = 0
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList = nil
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     &stubSubmitRepo{},
+		ProductService: stubSubmitProductService{},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	host := svc.(*service)
+
+	host.normalizeSheinSubmitPackage(task, task.Result.Shein, &SubmitTaskRequest{Platform: "shein", Action: "publish"}, "publish")
+
+	if task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute == nil || task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeID <= 0 {
+		t.Fatalf("request draft skc sale attribute = %+v, want repaired resolved value", task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute)
+	}
+	if len(task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes) == 0 || task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes[0].AttributeID <= 0 {
+		t.Fatalf("request draft sku sale attributes = %+v, want repaired resolved value", task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes)
+	}
+	if task.Result.Shein.PreviewProduct == nil || task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeID <= 0 {
+		t.Fatalf("preview skc sale attribute = %+v, want repaired preview product", task.Result.Shein.PreviewProduct)
+	}
+	if len(task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList) == 0 || task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList[0].AttributeID <= 0 {
+		t.Fatalf("preview sku sale attribute list = %+v, want repaired preview product", task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList)
+	}
+}
+
 func TestSubmitTaskTreatsCodeZeroPublishWithoutValidationNotesAsAccepted(t *testing.T) {
 	t.Parallel()
 
