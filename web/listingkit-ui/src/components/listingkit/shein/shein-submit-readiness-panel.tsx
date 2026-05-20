@@ -176,12 +176,14 @@ export function SheinSubmitReadinessPanel({
           </div>
         </div>
 
-        <SheinCustomerIssueSummary
-          compact={compact}
-          issues={customerIssues}
-          canSelectIssue={canSelectIssue}
-          onSelectIssue={handleSelectIssue}
-        />
+        {!compact ? (
+          <SheinCustomerIssueSummary
+            compact={compact}
+            issues={customerIssues}
+            canSelectIssue={canSelectIssue}
+            onSelectIssue={handleSelectIssue}
+          />
+        ) : null}
 
         {submitReady ? (
           <SubmitActionCard

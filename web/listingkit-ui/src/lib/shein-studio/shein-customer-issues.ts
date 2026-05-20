@@ -200,8 +200,8 @@ function byText(rawText: string): IssueTemplate {
   ) {
     return {
       category: "普通属性问题",
-      title: "必填商品属性未补齐",
-      message: "SHEIN 类目模板要求补齐商品属性。请确认材质、产品型号、电池等属性。",
+      title: "商品属性需要补齐",
+      message: "请补齐 SHEIN 模板要求的商品属性，例如材质、型号或电池信息。",
       actionLabel: "去确认属性",
       actionKey: "attributes",
     };
@@ -301,11 +301,10 @@ export function buildSheinCustomerIssues(
   const seen = new Set<string>();
   return issues.filter((issue) => {
     const key = [
-      issue.severity,
       issue.category,
       issue.title,
       issue.actionKey ?? "",
-      issue.rawText,
+      issue.message,
     ].join("|");
     if (seen.has(key)) {
       return false;

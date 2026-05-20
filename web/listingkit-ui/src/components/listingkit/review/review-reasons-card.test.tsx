@@ -23,11 +23,11 @@ describe("ReviewReasonsCard", () => {
       />,
     );
 
-    expect(screen.getByText("Review focus")).toBeInTheDocument();
+    expect(screen.getByText("审核重点")).toBeInTheDocument();
     expect(screen.getByText("Reason one")).toBeInTheDocument();
     expect(screen.getByText("Reason two")).toBeInTheDocument();
     expect(screen.queryByText("Reason three")).not.toBeInTheDocument();
-    expect(screen.getByText("1 more review reason in task details")).toBeInTheDocument();
+    expect(screen.getByText("还有 1 条待确认原因，请在任务详情中继续查看")).toBeInTheDocument();
     expect(screen.queryByText("legacy fallback string")).not.toBeInTheDocument();
   });
 
@@ -45,6 +45,6 @@ describe("ReviewReasonsCard", () => {
     expect(screen.getByText("Reason one")).toBeInTheDocument();
     expect(screen.getByText("Reason two")).toBeInTheDocument();
     expect(screen.queryByText("Reason three")).not.toBeInTheDocument();
-    expect(screen.getByText("1 more review reason in task details")).toBeInTheDocument();
+    expect(screen.getByText("还有 1 条待确认原因，请在任务详情中继续查看")).toBeInTheDocument();
   });
 });

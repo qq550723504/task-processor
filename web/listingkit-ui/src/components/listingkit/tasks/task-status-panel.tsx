@@ -191,23 +191,7 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
           </div>
         ) : null}
 
-        {task.status === "needs_review" && reviewReasons.length > 0 ? (
-          <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-              需要人工确认的原因
-            </div>
-            <ul className="space-y-2">
-              {reviewReasons.map((reason) => (
-                <li
-                  className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm leading-6 text-zinc-700"
-                  key={reason}
-                >
-                  {reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : error ? (
+        {task.status === "needs_review" && reviewReasons.length > 0 ? null : error ? (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-700 whitespace-pre-wrap">
             {error}
           </div>

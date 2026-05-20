@@ -27,7 +27,7 @@ export function WorkspacePreviewSuggestionCard({
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-            Suggested Preview
+            预览建议
           </p>
           <h3 className="text-sm font-semibold text-zinc-950">
             {suggestion.title}

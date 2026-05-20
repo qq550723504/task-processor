@@ -64,24 +64,29 @@ export function WorkspaceHeader({
               </Link>
             ) : null}
             {showLayerActions ? (
-              <>
-                <Button
-                  onClick={onRunStandardLayer}
-                  type="button"
-                  variant="secondary"
-                  disabled={layerActionsPending}
-                >
-                  运行标准商品层
-                </Button>
-                <Button
-                  onClick={onRunPlatformLayer}
-                  type="button"
-                  variant="secondary"
-                  disabled={layerActionsPending}
-                >
-                  运行平台适配层
-                </Button>
-              </>
+              <details className="rounded-full border border-zinc-200 bg-white px-3 py-1.5">
+                <summary className="cursor-pointer list-none text-sm font-medium text-zinc-700">
+                  高级操作
+                </summary>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    onClick={onRunStandardLayer}
+                    type="button"
+                    variant="secondary"
+                    disabled={layerActionsPending}
+                  >
+                    运行标准商品层
+                  </Button>
+                  <Button
+                    onClick={onRunPlatformLayer}
+                    type="button"
+                    variant="secondary"
+                    disabled={layerActionsPending}
+                  >
+                    运行平台适配层
+                  </Button>
+                </div>
+              </details>
             ) : null}
           </div>
           <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">

@@ -118,10 +118,17 @@ function StoreResolutionAudit({
   );
 }
 
-export function TaskRevisionHistoryPanel({ taskId }: { taskId: string }) {
+export function TaskRevisionHistoryPanel({
+  taskId,
+  defaultCollapsed = false,
+}: {
+  taskId: string;
+  defaultCollapsed?: boolean;
+}) {
   const historyQuery = useTaskRevisionHistory(taskId, { limit: 5 });
   const items = historyQuery.data?.items ?? [];
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>("");
+  const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
 
   useEffect(() => {
     if (!selectedRevisionId && items[0]?.revision_id) {
@@ -152,83 +159,95 @@ export function TaskRevisionHistoryPanel({ taskId }: { taskId: string }) {
   return (
     <Card className="p-6">
       <div className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-            修订历史
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-zinc-950">最近的编辑与恢复记录</h2>
-          <p className="mt-1 text-sm leading-6 text-zinc-600">
-            这里展示最近的 revision 以及当时绑定的店铺快照，方便对齐编辑历史与提交历史。
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+              修订历史
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-zinc-950">最近的编辑与恢复记录</h2>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">
+              这里展示最近的 revision 以及当时绑定的店铺快照，方便对齐编辑历史与提交历史。
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-9"
+            onClick={() => setIsExpanded((current) => !current)}
+          >
+            {isExpanded ? "收起历史" : `展开历史（${items.length}）`}
+          </Button>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <div className="space-y-2">
-            {items.map((item) => {
-              const selected = item.revision_id === selectedRevisionId;
-              return (
-                <Button
-                  key={item.revision_id}
-                  type="button"
-                  variant="outline"
-                  className={`h-auto w-full justify-start rounded-2xl px-4 py-3 text-left ${selected ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
-                  onClick={() => setSelectedRevisionId(item.revision_id ?? "")}
-                >
-                  <div className="space-y-1">
+        {isExpanded ? (
+          <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="space-y-2">
+              {items.map((item) => {
+                const selected = item.revision_id === selectedRevisionId;
+                return (
+                  <Button
+                    key={item.revision_id}
+                    type="button"
+                    variant="outline"
+                    className={`h-auto w-full justify-start rounded-2xl px-4 py-3 text-left ${selected ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
+                    onClick={() => setSelectedRevisionId(item.revision_id ?? "")}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-zinc-900">
+                          {item.timeline?.headline || "SHEIN 修订"}
+                        </span>
+                        <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="neutral">
+                          {actionTypeLabel(item.action_type)}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-zinc-500">{formatRevisionTime(item.updated_at)}</p>
+                      {item.store_resolution?.store_id ? (
+                        <p className="text-xs text-zinc-500">
+                          店铺 {item.store_resolution.store_id}
+                          {item.store_resolution.site ? ` · ${item.store_resolution.site}` : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="space-y-4">
+              {detailRecord ? (
+                <>
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-zinc-900">
-                        {item.timeline?.headline || "SHEIN 修订"}
-                      </span>
+                      <p className="text-base font-semibold text-zinc-950">
+                        {detailRecord.timeline?.headline || "SHEIN 修订"}
+                      </p>
                       <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="neutral">
-                        {actionTypeLabel(item.action_type)}
+                        {actionTypeLabel(detailRecord.action_type)}
                       </Badge>
                     </div>
-                    <p className="text-xs text-zinc-500">{formatRevisionTime(item.updated_at)}</p>
-                    {item.store_resolution?.store_id ? (
-                      <p className="text-xs text-zinc-500">
-                        店铺 {item.store_resolution.store_id}
-                        {item.store_resolution.site ? ` · ${item.store_resolution.site}` : ""}
-                      </p>
-                    ) : null}
+                    <div className="mt-2 space-y-1 text-sm text-zinc-600">
+                      <p>修订时间：{formatRevisionTime(detailRecord.updated_at)}</p>
+                      {detailRecord.updated_by ? <p>操作人：{detailRecord.updated_by}</p> : null}
+                      {detailRecord.reason ? <p>原因：{detailRecord.reason}</p> : null}
+                      {detailRecord.applied_changes?.change_count ? (
+                        <p>变更数：{detailRecord.applied_changes.change_count}</p>
+                      ) : null}
+                    </div>
                   </div>
-                </Button>
-              );
-            })}
-          </div>
-
-          <div className="space-y-4">
-            {detailRecord ? (
-              <>
-                <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-base font-semibold text-zinc-950">
-                      {detailRecord.timeline?.headline || "SHEIN 修订"}
-                    </p>
-                    <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="neutral">
-                      {actionTypeLabel(detailRecord.action_type)}
-                    </Badge>
-                  </div>
-                  <div className="mt-2 space-y-1 text-sm text-zinc-600">
-                    <p>修订时间：{formatRevisionTime(detailRecord.updated_at)}</p>
-                    {detailRecord.updated_by ? <p>操作人：{detailRecord.updated_by}</p> : null}
-                    {detailRecord.reason ? <p>原因：{detailRecord.reason}</p> : null}
-                    {detailRecord.applied_changes?.change_count ? (
-                      <p>变更数：{detailRecord.applied_changes.change_count}</p>
-                    ) : null}
-                  </div>
+                  <StoreResolutionAudit record={detailRecord} />
+                </>
+              ) : (
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                  暂无可展示的修订详情。
                 </div>
-                <StoreResolutionAudit record={detailRecord} />
-              </>
-            ) : (
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
-                暂无可展示的修订详情。
-              </div>
-            )}
-            {detailQuery.isLoading ? (
-              <p className="text-xs text-zinc-500">正在加载修订详情...</p>
-            ) : null}
+              )}
+              {detailQuery.isLoading ? (
+                <p className="text-xs text-zinc-500">正在加载修订详情...</p>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </Card>
   );

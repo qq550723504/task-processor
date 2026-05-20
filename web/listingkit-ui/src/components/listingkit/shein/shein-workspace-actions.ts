@@ -80,3 +80,21 @@ export function canSelectSheinReadinessItem(item: SheinReadinessItem) {
 export function sheinWorkspaceTargetIdForKey(key: SheinWorkspaceActionKey) {
   return SHEIN_REPAIR_TARGETS[key];
 }
+
+export function isSheinAdvancedRepairKey(key: SheinWorkspaceActionKey) {
+  return (
+    key === "category" ||
+    key === "category_review" ||
+    key === "attributes" ||
+    key === "attribute_review" ||
+    key === "sale_attributes" ||
+    key === "variants"
+  );
+}
+
+export function buildSheinGeneralReviewHref(
+  taskId: string,
+  targetId: string,
+) {
+  return `/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review#${targetId}`;
+}

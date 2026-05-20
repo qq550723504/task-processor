@@ -104,4 +104,30 @@ describe("buildSheinCustomerIssues", () => {
       rawText: "SHEIN returned an unexpected vendor error",
     });
   });
+
+  it("deduplicates equivalent readiness and submission issues", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        blocking_items: [
+          {
+            key: "attribute_review",
+            label: "属性复核",
+            message: "普通属性仍需要人工确认",
+          },
+        ],
+      },
+      submission: {
+        last_result: {
+          validation_notes: ["材质: 类型下模板属性为必填项"],
+        },
+      },
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      category: "普通属性问题",
+      title: "商品属性需要补齐",
+      actionKey: "attributes",
+    });
+  });
 });

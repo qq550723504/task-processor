@@ -41,4 +41,46 @@ describe("WorkspaceOverviewPanel", () => {
     expect(screen.getByText("使用兜底结果继续检查")).toBeInTheDocument();
     expect(screen.getByText("中优先级 / 立即处理")).toBeInTheDocument();
   });
+
+  it("hides zero-value metrics and empty panels", () => {
+    const { rerender } = render(
+      <WorkspaceOverviewPanel
+        overview={{
+          previewable_items: 0,
+          retryable_count: 2,
+          approved_sections: 0,
+          review_pending_sections: 0,
+        }}
+        reviewSummary={{
+          approved_sections: 0,
+          deferred_sections: 0,
+          pending_sections: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("可重试")).toBeInTheDocument();
+    expect(screen.getByText("待处理")).toBeInTheDocument();
+    expect(screen.queryByText("可预览")).not.toBeInTheDocument();
+    expect(screen.queryByText("已延后")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceOverviewPanel
+        overview={{
+          previewable_items: 0,
+          retryable_count: 0,
+          approved_sections: 0,
+          review_pending_sections: 0,
+        }}
+        reviewSummary={{
+          approved_sections: 0,
+          deferred_sections: 0,
+          pending_sections: 0,
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("可重试")).not.toBeInTheDocument();
+    expect(screen.queryByText("待处理")).not.toBeInTheDocument();
+  });
 });

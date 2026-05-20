@@ -13,6 +13,10 @@ export function ReviewSectionTabs({
   selectedKey?: string;
   onSelect: (section: ReviewSection) => void;
 }) {
+  if ((sections?.length ?? 0) <= 1) {
+    return null;
+  }
+
   return (
     <div className="flex flex-wrap gap-2">
       {(sections ?? []).map((section) => (

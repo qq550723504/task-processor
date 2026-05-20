@@ -25,6 +25,7 @@ import { useListingKitPreview } from "@/lib/query/use-preview";
 import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
+import type { ResolvedActionSummary } from "@/lib/types/listingkit";
 
 export function useWorkspaceData({
   taskId,
@@ -33,6 +34,42 @@ export function useWorkspaceData({
   taskId: string;
   searchParams: URLSearchParams;
 }) {
+  const buildSheinBlockingActionSummary = ({
+    categoryBlocked,
+    attributeBlocked,
+    saleAttributeBlocked,
+  }: {
+    categoryBlocked: boolean;
+    attributeBlocked: boolean;
+    saleAttributeBlocked: boolean;
+  }): ResolvedActionSummary | undefined => {
+    if (attributeBlocked) {
+      return {
+        title: "确认普通属性",
+        summary: "先补齐 SHEIN 模板要求的普通属性，再继续最终确认和提交。",
+        cta_kind: "review",
+        action_key: "attributes",
+      };
+    }
+    if (saleAttributeBlocked) {
+      return {
+        title: "确认销售属性",
+        summary: "先确认颜色、尺寸等销售属性映射，再继续最终确认和提交。",
+        cta_kind: "review",
+        action_key: "sale_attributes",
+      };
+    }
+    if (categoryBlocked) {
+      return {
+        title: "确认类目",
+        summary: "先确认 SHEIN 类目和类目模板，再继续最终确认和提交。",
+        cta_kind: "review",
+        action_key: "category",
+      };
+    }
+    return undefined;
+  };
+
   const baseQuery = useMemo(
     () => queryFromSearchParams(searchParams),
     [searchParams],
@@ -87,7 +124,7 @@ export function useWorkspaceData({
       session.data?.resolved_action_summary,
     preview.data?.asset_generation_overview?.resolved_action_summary,
   );
-  const previewSuggestion = deriveWorkspacePreviewSuggestion({
+  const previewSuggestionCandidate = deriveWorkspacePreviewSuggestion({
     slots: sessionData?.slot_navigation,
     selectedSlot: sessionData?.selected_slot,
     focusedPreview,
@@ -136,6 +173,19 @@ export function useWorkspaceData({
     selectedPlatform === "shein" &&
     !isSheinFinalReviewMode &&
     (sheinCategoryBlocked || sheinAttributeBlocked || sheinSaleAttributeBlocked);
+  const sheinBlockingActionSummary = buildSheinBlockingActionSummary({
+    categoryBlocked: sheinCategoryBlocked,
+    attributeBlocked: sheinAttributeBlocked,
+    saleAttributeBlocked: sheinSaleAttributeBlocked,
+  });
+  const effectiveResolvedActionSummary =
+    selectedPlatform === "shein" && sheinBlockingActionSummary
+      ? sheinBlockingActionSummary
+      : resolvedActionSummary;
+  const previewSuggestion =
+    selectedPlatform === "shein" && sheinBlockingActionSummary
+      ? null
+      : previewSuggestionCandidate;
   const sheinFlowSteps: SheinFlowStep[] = [
     {
       key: "preview",
@@ -215,7 +265,7 @@ export function useWorkspaceData({
     selectedPlatform,
     focusedScenePreset,
     suppressResolvedActionSummary,
-    resolvedActionSummary,
+    resolvedActionSummary: effectiveResolvedActionSummary,
     previewSuggestion,
     sheinImages,
     sheinMockupImages,

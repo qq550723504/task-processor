@@ -117,11 +117,16 @@ export function openSheinAdvancedDetailsForTarget(targetId: string) {
   if (
     targetId !== "shein-category-review-card" &&
     targetId !== "shein-attribute-review-card" &&
-    targetId !== "shein-sale-attribute-review-card"
+    targetId !== "shein-sale-attribute-review-card" &&
+    targetId !== "shein-final-review-pricing"
   ) {
     return;
   }
-  const details = document.getElementById("shein-advanced-review-details");
+  const detailsId =
+    targetId === "shein-final-review-pricing"
+      ? "shein-general-final-review-details"
+      : "shein-advanced-review-details";
+  const details = document.getElementById(detailsId);
   if (details instanceof HTMLDetailsElement) {
     details.open = true;
   }

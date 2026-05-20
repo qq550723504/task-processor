@@ -45,13 +45,29 @@ export function WorkspaceOverviewPanel({
   overview?: AssetGenerationOverview | null;
   reviewSummary?: ReviewSummary | null;
 }) {
-  if (!overview && !reviewSummary) {
+  const visibleOverviewMetrics = overviewMetrics.filter(
+    (metric) => (overview?.[metric.key] ?? 0) > 0,
+  );
+  const visibleReviewMetrics = reviewMetrics.filter(
+    (metric) => (reviewSummary?.[metric.key] ?? 0) > 0,
+  );
+  const resolvedActionSummary = overview?.resolved_action_summary;
+  const recoverySummary = overview?.recovery_summary;
+  const hasResolvedAction = Boolean(resolvedActionSummary);
+  const hasRecoverySummary = Boolean(recoverySummary);
+
+  if (
+    visibleOverviewMetrics.length === 0 &&
+    visibleReviewMetrics.length === 0 &&
+    !hasResolvedAction &&
+    !hasRecoverySummary
+  ) {
     return null;
   }
 
   return (
     <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-      {overviewMetrics.map((metric) => (
+      {visibleOverviewMetrics.map((metric) => (
         <Card className="p-4" key={metric.key}>
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
             {metric.label}
@@ -61,7 +77,7 @@ export function WorkspaceOverviewPanel({
           </p>
         </Card>
       ))}
-      {reviewMetrics.map((metric) => (
+      {visibleReviewMetrics.map((metric) => (
         <Card className="p-4" key={`review-${metric.key}`}>
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
             {metric.label}
@@ -71,32 +87,32 @@ export function WorkspaceOverviewPanel({
           </p>
         </Card>
       ))}
-      {overview?.resolved_action_summary ? (
+      {hasResolvedAction ? (
         <Card className="p-4 md:col-span-2 xl:col-span-4">
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
             当前建议
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <p className="text-lg font-semibold text-zinc-950">
-              {presentResolvedActionTitle(overview.resolved_action_summary.title)}
+              {presentResolvedActionTitle(resolvedActionSummary?.title)}
             </p>
             <Badge
               className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
               variant="neutral"
             >
-              {presentActionCtaKind(overview.resolved_action_summary.cta_kind)}
+              {presentActionCtaKind(resolvedActionSummary?.cta_kind)}
             </Badge>
           </div>
-          {overview.resolved_action_summary.summary ? (
+          {resolvedActionSummary?.summary ? (
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              {presentResolvedActionSummary(overview.resolved_action_summary.summary)}
+              {presentResolvedActionSummary(resolvedActionSummary.summary)}
             </p>
           ) : null}
         </Card>
       ) : null}
-      {overview?.recovery_summary ? (
+      {hasRecoverySummary ? (
         (() => {
-          const recovery = presentRecoverySummary(overview.recovery_summary);
+          const recovery = presentRecoverySummary(recoverySummary);
           if (!recovery) {
             return null;
           }

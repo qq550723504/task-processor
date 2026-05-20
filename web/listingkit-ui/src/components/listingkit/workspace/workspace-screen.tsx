@@ -160,6 +160,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const sheinAdvancedReviewDetails = sheinAdvancedReviewDetailsProps ? (
     <SheinAdvancedReviewDetails {...sheinAdvancedReviewDetailsProps} />
   ) : null;
+  const shouldShowPlatformRail = platformCards.length > 1;
   const workspaceReviewViewProps = buildWorkspaceReviewViewProps({
     selectedPlatform,
     previewSuggestion,
@@ -206,26 +207,23 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       <TaskStatusPanel task={taskResult.data} />
       <ReviewReasonsCard task={taskResult.data} />
       <TaskProgressNotice task={taskResult.data} />
-      <TaskRevisionHistoryPanel taskId={taskId} />
-      <WorkspaceOverviewPanel
-        overview={sessionData.overview}
-        reviewSummary={sessionData.review_summary}
-      />
 
-      <PlatformCardRail
-        cards={platformCards}
-        selectedPlatform={sessionData.selected_platform}
-        onSelect={(card) => {
-          workspaceActions.dispatchTarget(
-            card.primary_navigation_target ??
-              card.resolved_action_summary?.navigation_target,
-          );
-          workspaceActions.handlePlatformSelect(card.platform);
-        }}
-        onSelectRecovery={(descriptor, card) =>
-          workspaceActions.handlePlatformRecovery(descriptor, card.platform)
-        }
-      />
+      {shouldShowPlatformRail ? (
+        <PlatformCardRail
+          cards={platformCards}
+          selectedPlatform={sessionData.selected_platform}
+          onSelect={(card) => {
+            workspaceActions.dispatchTarget(
+              card.primary_navigation_target ??
+                card.resolved_action_summary?.navigation_target,
+            );
+            workspaceActions.handlePlatformSelect(card.platform);
+          }}
+          onSelectRecovery={(descriptor, card) =>
+            workspaceActions.handlePlatformRecovery(descriptor, card.platform)
+          }
+        />
+      ) : null}
 
       {selectedPlatform === "shein" ? (
         <SheinFlowNav
@@ -249,6 +247,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       )}
 
       {!shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
+      <WorkspaceOverviewPanel
+        overview={sessionData.overview}
+        reviewSummary={sessionData.review_summary}
+      />
+      <TaskRevisionHistoryPanel taskId={taskId} defaultCollapsed />
     </div>
   );
 }

@@ -91,13 +91,13 @@ describe("TaskStatusPanel", () => {
     );
 
     expect(screen.getByText("任务需要人工确认")).toBeInTheDocument();
-    expect(screen.getByText("需要人工确认的原因")).toBeInTheDocument();
+    expect(screen.queryByText("需要人工确认的原因")).not.toBeInTheDocument();
     expect(
-      screen.getByText("The product type is 'Unknown Product'."),
-    ).toBeInTheDocument();
+      screen.queryByText("The product type is 'Unknown Product'."),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("The IP risk level is 'medium' due to using scraped 1688 source images."),
-    ).toBeInTheDocument();
+      screen.queryByText("The IP risk level is 'medium' due to using scraped 1688 source images."),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText("legacy semicolon string should not be used here"),
     ).not.toBeInTheDocument();
@@ -115,14 +115,14 @@ describe("TaskStatusPanel", () => {
     );
 
     expect(
-      screen.getByText("The product type is 'Unknown Product'."),
-    ).toBeInTheDocument();
+      screen.queryByText("The product type is 'Unknown Product'."),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("The title is 'Unknown Product'."),
-    ).toBeInTheDocument();
+      screen.queryByText("The title is 'Unknown Product'."),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("image pipeline uses scraped 1688 source images"),
-    ).toBeInTheDocument();
+      screen.queryByText("image pipeline uses scraped 1688 source images"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders task diagnostics for in-flight tasks", () => {

@@ -72,6 +72,7 @@ describe("WorkspaceHeader", () => {
       />,
     );
 
+    fireEvent.click(screen.getByText("高级操作"));
     fireEvent.click(screen.getByRole("button", { name: "运行标准商品层" }));
     expect(onRunStandardLayer).toHaveBeenCalled();
 

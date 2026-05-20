@@ -19,6 +19,9 @@ export function ReviewToolbar({
     ...(toolbar.section_actions ?? []),
     ...(toolbar.preview_actions ?? []),
   ];
+  if (actions.length === 0) {
+    return null;
+  }
 
   return (
     <Card className="p-4">

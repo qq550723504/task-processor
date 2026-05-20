@@ -28,10 +28,10 @@ export function ReviewReasonsCard({
       <div className="space-y-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-            Review focus
+            审核重点
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
-            This task completed with review blockers. Resolve or confirm these items before final approval.
+            当前任务仍有待确认项。请先处理或确认这些内容，再进入最终提交。
           </p>
         </div>
         <ul className="space-y-2">
@@ -46,7 +46,7 @@ export function ReviewReasonsCard({
         </ul>
         {hiddenCount > 0 ? (
           <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-            {hiddenCount} more review reason{hiddenCount === 1 ? "" : "s"} in task details
+            还有 {hiddenCount} 条待确认原因，请在任务详情中继续查看
           </p>
         ) : null}
       </div>

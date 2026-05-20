@@ -25,6 +25,10 @@ export function SlotNavigationList({
   selectedAssetId?: string;
   onSelect: (slot: ReviewSlot) => void;
 }) {
+  if ((slots?.length ?? 0) <= 1) {
+    return null;
+  }
+
   return (
     <div className="space-y-2">
       {(slots ?? []).map((slot, index) => (

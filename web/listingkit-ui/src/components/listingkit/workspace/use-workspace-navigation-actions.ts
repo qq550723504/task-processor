@@ -4,6 +4,9 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  buildSheinGeneralReviewHref,
+  isSheinWorkspaceActionKey,
+  isSheinAdvancedRepairKey,
   normalizeSheinWorkspaceActionKey,
   sheinWorkspaceTargetIdForKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
@@ -78,6 +81,20 @@ export function useWorkspaceNavigationActions({
       return;
     }
 
+    if (
+      actionSummary?.action_key &&
+      isSheinWorkspaceActionKey(actionSummary.action_key) &&
+      !actionSummary.action_target
+    ) {
+      navigateOrScrollSheinActionTarget({
+        taskId,
+        router,
+        searchParams: searchParams.toString(),
+        key: actionSummary.action_key,
+      });
+      return;
+    }
+
     if (actionSummary?.action_target || actionSummary?.action_key) {
       action.mutate({
         action_key: actionSummary.action_key,
@@ -129,11 +146,21 @@ export function useWorkspaceNavigationActions({
   };
 
   const handleSelectSheinBlockingItem = (item: SheinReadinessItem) => {
-    scrollSheinActionTarget(item.key);
+    navigateOrScrollSheinActionTarget({
+      taskId,
+      router,
+      searchParams: searchParams.toString(),
+      key: item.key,
+    });
   };
 
   const handleRunSheinPrimaryAction = (key?: string | null) => {
-    scrollSheinActionTarget(key);
+    navigateOrScrollSheinActionTarget({
+      taskId,
+      router,
+      searchParams: searchParams.toString(),
+      key,
+    });
   };
 
   return {
@@ -148,11 +175,30 @@ export function useWorkspaceNavigationActions({
   };
 }
 
-function scrollSheinActionTarget(key?: string | null) {
+function navigateOrScrollSheinActionTarget({
+  taskId,
+  router,
+  searchParams,
+  key,
+}: {
+  taskId: string;
+  router: ReturnType<typeof useRouter>;
+  searchParams: string;
+  key?: string | null;
+}) {
   const normalizedKey = normalizeSheinWorkspaceActionKey(key);
   if (!normalizedKey) {
     return;
   }
   const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
+  const currentParams = new URLSearchParams(searchParams);
+  const sectionKey = currentParams.get("section_key");
+  const needsGeneralReviewRoute =
+    isSheinAdvancedRepairKey(normalizedKey) &&
+    (sectionKey === "final_review" || !document.getElementById(targetId));
+  if (needsGeneralReviewRoute) {
+    router.replace(buildSheinGeneralReviewHref(taskId, targetId));
+    return;
+  }
   scrollSheinWorkspaceTarget(normalizedKey, targetId);
 }

@@ -60,8 +60,10 @@ function presentSourceLabel(label: string) {
 
 export function SheinSourceProductPanel({
   shein,
+  defaultCollapsed = false,
 }: {
   shein?: SheinPreviewPayload | null;
+  defaultCollapsed?: boolean;
 }) {
   const source = shein?.source_product;
   if (!source) {
@@ -73,17 +75,24 @@ export function SheinSourceProductPanel({
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
-      <div className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            SDS 来源商品
-          </p>
-          <p className="mt-1 break-words text-sm leading-6 text-zinc-700">
-            {source.title}
-          </p>
-        </div>
+      <details open={!defaultCollapsed}>
+        <summary className="cursor-pointer list-none">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                SDS 来源商品
+              </p>
+              <p className="mt-1 break-words text-sm leading-6 text-zinc-700">
+                {source.title}
+              </p>
+            </div>
+            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-600">
+              {defaultCollapsed ? "点击展开" : "来源详情"}
+            </span>
+          </div>
+        </summary>
 
-        <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <dl className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           <Field label={presentSourceLabel("SDS SKU")} value={source.sku} />
           <Field label={presentSourceLabel("Category")} value={joinPath(source.category_path)} />
           <Field label={presentSourceLabel("Material")} value={material} />
@@ -96,7 +105,7 @@ export function SheinSourceProductPanel({
           <Field label={presentSourceLabel("Print area")} value={source.attributes?.design_area} />
           <Field label={presentSourceLabel("Image request")} value={source.attributes?.picture_request} />
         </dl>
-      </div>
+      </details>
     </Card>
   );
 }

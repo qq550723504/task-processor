@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSheinGeneralReviewHref,
   canSelectSheinReadinessItem,
+  isSheinAdvancedRepairKey,
   normalizeSheinWorkspaceActionKey,
   sheinWorkspaceTargetIdForKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
@@ -25,5 +27,23 @@ describe("shein workspace actions", () => {
   it("maps normalized keys to concrete workspace section ids", () => {
     expect(sheinWorkspaceTargetIdForKey("images")).toBe("shein-preview-images");
     expect(sheinWorkspaceTargetIdForKey("pricing")).toBe("shein-final-review-pricing");
+  });
+
+  it("flags advanced review keys that require the editable workspace", () => {
+    expect(isSheinAdvancedRepairKey("attributes")).toBe(true);
+    expect(isSheinAdvancedRepairKey("sale_attributes")).toBe(true);
+    expect(isSheinAdvancedRepairKey("images")).toBe(false);
+    expect(isSheinAdvancedRepairKey("pricing")).toBe(false);
+  });
+
+  it("builds a general review deep link for advanced repair targets", () => {
+    expect(
+      buildSheinGeneralReviewHref(
+        "task-123",
+        "shein-attribute-review-card",
+      ),
+    ).toBe(
+      "/listing-kits/task-123/workspace?platform=shein&section_key=general_review#shein-attribute-review-card",
+    );
   });
 });

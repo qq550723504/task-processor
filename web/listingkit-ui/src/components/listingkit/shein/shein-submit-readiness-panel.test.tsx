@@ -290,6 +290,7 @@ describe("SheinSubmitReadinessPanel", () => {
   it("keeps blocker repair entries visible in compact workspace mode", async () => {
     const user = userEvent.setup();
     const onSelectBlockingItem = vi.fn();
+    const onRunPrimaryAction = vi.fn();
 
     render(
       <SheinSubmitReadinessPanel
@@ -315,15 +316,17 @@ describe("SheinSubmitReadinessPanel", () => {
         }}
         canSelectBlockingItem={(item) => item.key === "attributes"}
         onSelectBlockingItem={onSelectBlockingItem}
+        canRunPrimaryAction={(key) => key === "attribute_review"}
+        onRunPrimaryAction={onRunPrimaryAction}
       />,
     );
 
-    expect(screen.getByText("待处理问题")).toBeInTheDocument();
-    expect(screen.getByText("商品属性需要补齐")).toBeInTheDocument();
+    expect(screen.queryByText("待处理问题")).not.toBeInTheDocument();
+    expect(screen.queryByText("商品属性需要补齐")).not.toBeInTheDocument();
+    expect(screen.getByText("下一步处理")).toBeInTheDocument();
+    expect(screen.getByText("确认属性")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "去确认属性" }));
-    expect(onSelectBlockingItem).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "attributes" }),
-    );
+    await user.click(screen.getByRole("button", { name: "去处理" }));
+    expect(onRunPrimaryAction).toHaveBeenCalledWith("attribute_review");
   });
 });
