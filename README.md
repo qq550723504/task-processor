@@ -132,6 +132,8 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 
 - [任务状态流转说明](./docs/architecture/task-status-lifecycle.md)
 - [HTTP API 装配边界](./docs/architecture/httpapi-assembly-boundaries.md)
+- [App 装配边界](./docs/architecture/app-assembly-boundaries.md)
+- [后续架构优先级](./docs/architecture/next-steps.md)
 - [中心化部署改造方案](./docs/architecture/centralized-deployment-plan.md)
 - [Amazon Crawler API 说明](./cmd/amazon-crawler-api/README.md)
 - [Amazon 爬虫商用化清单](./docs/architecture/amazon-crawler-commercialization-checklist.md)
@@ -141,6 +143,8 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 - [ListingKit 操作指南](./docs/product/listingkit-operating-guide.md)
 - [ListingKit Temporal PoC Runbook](./docs/architecture/temporal-poc-runbook.md)
 - [ListingKit Temporal 工作流评估](./docs/architecture/temporal-workflow-evaluation.md)
+
+涉及架构边界或运行时装配的 PR，默认使用 [PR 模板](./.github/pull_request_template.md) 里的 checklist 做自检。
 
 ### ListingKit Temporal PoC
 
