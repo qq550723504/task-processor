@@ -176,6 +176,14 @@ func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
 	}, nil)
 }
 
+func TestPublishingCommonDoesNotImportPlatformImplementations(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
+		`"task-processor/internal/shein"`,
+		`"task-processor/internal/temu"`,
+		`"task-processor/internal/amazon"`,
+	}, nil)
+}
+
 func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "catalog"), []string{
 		`"task-processor/internal/productenrich"`,
