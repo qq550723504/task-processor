@@ -10,4 +10,5 @@ type ManagementConfig struct {
 	TenantID     string   `yaml:"tenantID"` // 租户ID
 	UserID       int64    `yaml:"userID"`
 	StoreIDs     []int64  `yaml:"storeIDs"`
+	HTTPClient   HTTPClientConfig `yaml:"httpClient"`
 }

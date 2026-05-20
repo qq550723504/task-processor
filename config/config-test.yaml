@@ -5,7 +5,7 @@
 logging:
   level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
   format: "text"  # text 或 json
-  file: ".local/logs/app.log"
+  file: "tmp/logs/app.log"
 
 # 处理器配置
 processor:

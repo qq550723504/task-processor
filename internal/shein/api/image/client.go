@@ -27,9 +27,17 @@ type Client struct {
 
 // NewClient 创建新的图片API客户端
 func NewClient(baseClient *client.BaseAPIClient) *Client {
+	return NewClientWithImageDownloader(baseClient, nil)
+}
+
+// NewClientWithImageDownloader 创建新的图片API客户端，并允许复用外部已配置的下载器。
+func NewClientWithImageDownloader(baseClient *client.BaseAPIClient, imageDownloader *management.ImageDownloader) *Client {
+	if imageDownloader == nil {
+		imageDownloader = management.NewImageDownloader(180*time.Second, false)
+	}
 	return &Client{
 		BaseAPIClient:   baseClient,
-		imageDownloader: management.NewImageDownloader(180 * time.Second),
+		imageDownloader: imageDownloader,
 	}
 }
 

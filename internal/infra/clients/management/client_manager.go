@@ -21,6 +21,7 @@ type ClientManager struct {
 	imageDownloader *ImageDownloader
 	// 图片下载超时时间
 	imageDownloadTimeout time.Duration
+	imageDownloadInsecureSkipVerify bool
 
 	// 数据新鲜度天数
 	dataFreshnessDays int
@@ -43,6 +44,7 @@ func NewClientManager(cfg *config.ManagementConfig) *ClientManager {
 		baseURL: baseURL,
 		// 设置默认的图片下载超时时间 - 增加到2分钟适应Amazon图片服务器
 		imageDownloadTimeout: 120 * time.Second,
+		imageDownloadInsecureSkipVerify: cfg != nil && cfg.HTTPClient.InsecureSkipVerify,
 		// 默认数据新鲜度7天
 		dataFreshnessDays: 7,
 	}
@@ -275,7 +277,7 @@ func (cm *ClientManager) GetImageDownloader() *ImageDownloader {
 		return cm.imageDownloader
 	}
 
-	cm.imageDownloader = NewImageDownloader(cm.imageDownloadTimeout)
+	cm.imageDownloader = NewImageDownloader(cm.imageDownloadTimeout, cm.imageDownloadInsecureSkipVerify)
 	return cm.imageDownloader
 }
 
@@ -303,7 +305,7 @@ func (cm *ClientManager) SetImageDownloadTimeout(timeout time.Duration) {
 	cm.imageDownloadTimeout = timeout
 	// 如果已经存在图片下载客户端，需要重新创建
 	if cm.imageDownloader != nil {
-		cm.imageDownloader = NewImageDownloader(timeout)
+		cm.imageDownloader = NewImageDownloader(timeout, cm.imageDownloadInsecureSkipVerify)
 	}
 }
 

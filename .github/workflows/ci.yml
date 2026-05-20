@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - "cmd/product-listing-api/**"
+      - "cmd/**"
       - "config/**"
       - "deployments/docker/Dockerfile.product-listing-api"
       - "deployments/docker/Dockerfile.listingkit-ui"
@@ -16,17 +17,20 @@ on:
       - "go.mod"
       - "go.sum"
       - "internal/app/httpapi/**"
+      - "internal/**"
       - "internal/crawler/alibaba1688/**"
       - "internal/listingkit/**"
       - "internal/listingadmin/**"
       - "internal/promptmgmt/**"
       - "internal/listingsubscription/**"
       - "prompts/**"
+      - "tests/**"
       - "web/listingkit-ui/**"
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
       - "cmd/product-listing-api/**"
+      - "cmd/**"
       - "config/**"
       - "deployments/docker/Dockerfile.product-listing-api"
       - "deployments/docker/Dockerfile.listingkit-ui"
@@ -35,12 +39,14 @@ on:
       - "go.mod"
       - "go.sum"
       - "internal/app/httpapi/**"
+      - "internal/**"
       - "internal/crawler/alibaba1688/**"
       - "internal/listingkit/**"
       - "internal/listingadmin/**"
       - "internal/promptmgmt/**"
       - "internal/listingsubscription/**"
       - "prompts/**"
+      - "tests/**"
       - "web/listingkit-ui/**"
 
 permissions:
@@ -67,6 +73,7 @@ jobs:
       - name: Run ListingKit backend tests
         run: |
           go test ./cmd/product-listing-api ./internal/app/httpapi ./internal/crawler/alibaba1688 ./internal/listingkit ./internal/listingadmin ./internal/promptmgmt ./internal/listingsubscription
+          go test ./tests/...
 
   frontend:
     name: Frontend Checks

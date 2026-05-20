@@ -1,10 +1,10 @@
 package management
 
 import (
-	"crypto/tls"
 	"math/rand"
 	"strings"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/httpclient"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -17,34 +17,30 @@ type HTTPClient struct {
 }
 
 // NewHTTPClient 创建新的HTTP客户端
-func NewHTTPClient(timeout time.Duration) *HTTPClient {
-	client := req.C().
-		SetTLSFingerprintChrome().
-		SetTimeout(timeout).
-		SetTLSClientConfig(&tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12,
-			MaxVersion:         tls.VersionTLS13,
-		}).
-		SetCommonHeaders(map[string]string{
+func NewHTTPClient(timeout time.Duration, insecureSkipVerify bool) *HTTPClient {
+	client := httpclient.Build(httpclient.ClientConfig{
+		Timeout:            timeout,
+		RetryCount:         5,
+		InsecureSkipVerify: insecureSkipVerify,
+		Headers: map[string]string{
 			"Accept":          "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
 			"Accept-Encoding": "gzip, deflate, br",
 			"Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
 			"Cache-Control":   "no-cache",
 			"Pragma":          "no-cache",
-		}).
-		SetCommonRetryCount(5).
-		SetCommonRetryInterval(func(resp *req.Response, attempt int) time.Duration {
+		},
+		RetryInterval: func(resp *req.Response, attempt int) time.Duration {
 			base := time.Duration(attempt*attempt) * time.Second
 			jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
 			return base + jitter
-		}).
-		SetCommonRetryCondition(func(resp *req.Response, err error) bool {
+		},
+		RetryCondition: func(resp *req.Response, err error) bool {
 			return isRetryableError(resp, err)
-		}).
-		SetCommonRetryHook(func(resp *req.Response, err error) {
+		},
+		RetryHook: func(resp *req.Response, err error) {
 			logRetryAttempt(resp, err)
-		})
+		},
+	})
 
 	return &HTTPClient{client: client, timeout: timeout}
 }

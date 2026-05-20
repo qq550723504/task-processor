@@ -16,6 +16,7 @@ import (
 const (
 	cookieKeyPrefix     = "shein:cookie"
 	verifyCodePrefix    = "shein:verify_code"
+	verifyCodeQueuePrefix = "shein:verify_code_queue"
 	verifyWaitPrefix    = "shein:wait_verify_code"
 	lastLoginTimePrefix = "shein:last_login_time"
 	lastFailurePrefix   = "shein:last_failure"
@@ -115,6 +116,9 @@ func (s *RedisStore) SubmitVerifyCode(ctx context.Context, tenantID, storeID int
 	pipe := s.client.TxPipeline()
 	pipe.Set(ctx, verifyCodeKey(tenantID, storeID), code, ttl)
 	pipe.Set(ctx, verifyWaitKey(tenantID, storeID), "waiting", ttl)
+	pipe.Del(ctx, verifyCodeQueueKey(tenantID, storeID))
+	pipe.RPush(ctx, verifyCodeQueueKey(tenantID, storeID), code)
+	pipe.Expire(ctx, verifyCodeQueueKey(tenantID, storeID), ttl)
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -131,8 +135,43 @@ func (s *RedisStore) ConsumeVerifyCode(ctx context.Context, tenantID, storeID in
 	pipe := s.client.TxPipeline()
 	pipe.Del(ctx, key)
 	pipe.Del(ctx, verifyWaitKey(tenantID, storeID))
+	pipe.Del(ctx, verifyCodeQueueKey(tenantID, storeID))
 	_, execErr := pipe.Exec(ctx)
 	return value, true, execErr
+}
+
+func (s *RedisStore) WaitAndConsumeVerifyCode(ctx context.Context, tenantID, storeID int64, timeout time.Duration) (string, bool, error) {
+	if code, ok, err := s.ConsumeVerifyCode(ctx, tenantID, storeID); err != nil || ok {
+		return code, ok, err
+	}
+	if timeout <= 0 {
+		return "", false, nil
+	}
+
+	values, err := s.client.BLPop(ctx, timeout, verifyCodeQueueKey(tenantID, storeID)).Result()
+	if err == goredis.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if len(values) != 2 {
+		return "", false, nil
+	}
+	code := strings.TrimSpace(values[1])
+	if code == "" {
+		return "", false, nil
+	}
+
+	pipe := s.client.TxPipeline()
+	pipe.Del(ctx, verifyCodeKey(tenantID, storeID))
+	pipe.Del(ctx, verifyWaitKey(tenantID, storeID))
+	pipe.Del(ctx, verifyCodeQueueKey(tenantID, storeID))
+	_, execErr := pipe.Exec(ctx)
+	if execErr != nil {
+		return "", false, execErr
+	}
+	return code, true, nil
 }
 
 func (s *RedisStore) RecordLastLoginTime(ctx context.Context, tenantID, storeID int64, when time.Time) error {
@@ -201,6 +240,9 @@ func verifyCodeKey(tenantID, storeID int64) string {
 }
 func verifyWaitKey(tenantID, storeID int64) string {
 	return fmt.Sprintf("%s:%d:%d", verifyWaitPrefix, tenantID, storeID)
+}
+func verifyCodeQueueKey(tenantID, storeID int64) string {
+	return fmt.Sprintf("%s:%d:%d", verifyCodeQueuePrefix, tenantID, storeID)
 }
 func lastLoginKey(tenantID, storeID int64) string {
 	return fmt.Sprintf("%s:%d:%d", lastLoginTimePrefix, tenantID, storeID)

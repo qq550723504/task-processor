@@ -59,6 +59,7 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 			StockChangeThreshold: v.GetInt(prefix + ".monitor.stockChangeThreshold"),
 		},
 		LoginService: BuildLoginServiceConfig(v, prefix+".loginService"),
+		HTTPClient:   BuildHTTPClientConfig(v, prefix+".httpClient"),
 	}
 
 	return normalizePlatformConfig(cfg)

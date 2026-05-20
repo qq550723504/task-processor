@@ -2,7 +2,6 @@ package downloader
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/httpclient"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -46,6 +46,10 @@ type BlockDetector struct {
 
 // NewImageDownloader 创建新的图片下载器 - 参考SHEIN实现
 func NewImageDownloader() *ImageDownloader {
+	return NewImageDownloaderWithConfig(httpclient.ClientConfig{})
+}
+
+func NewImageDownloaderWithConfig(clientConfig httpclient.ClientConfig) *ImageDownloader {
 	timeout := 30 * time.Second
 
 	// 多样化的User-Agent池，模拟不同浏览器和设备
@@ -60,26 +64,11 @@ func NewImageDownloader() *ImageDownloader {
 	}
 
 	// 创建增强的HTTP客户端 - 完全参考SHEIN的实现
-	client := req.C().
-		SetTLSFingerprintChrome(). // 关键：使用Chrome TLS指纹
-		SetTimeout(timeout).
-		// 设置更真实的TLS配置
-		SetTLSClientConfig(&tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12,
-			MaxVersion:         tls.VersionTLS13,
-			CipherSuites: []uint16{
-				tls.TLS_AES_128_GCM_SHA256,
-				tls.TLS_AES_256_GCM_SHA384,
-				tls.TLS_CHACHA20_POLY1305_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			},
-		}).
-		// 基础请求头，会在每次请求时动态调整
-		SetCommonHeaders(map[string]string{
+	if clientConfig.Timeout <= 0 {
+		clientConfig.Timeout = timeout
+	}
+	clientConfig.RetryCount = 5
+	clientConfig.Headers = map[string]string{
 			"Accept":                    "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
 			"Accept-Encoding":           "gzip, deflate, br",
 			"Accept-Language":           "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
@@ -92,16 +81,14 @@ func NewImageDownloader() *ImageDownloader {
 			"Sec-Fetch-Mode":            "no-cors",
 			"Sec-Fetch-Site":            "cross-site",
 			"Upgrade-Insecure-Requests": "1",
-		}).
-		// 增强重试策略
-		SetCommonRetryCount(5).
-		SetCommonRetryInterval(func(resp *req.Response, attempt int) time.Duration {
+	}
+	clientConfig.RetryInterval = func(resp *req.Response, attempt int) time.Duration {
 			// 动态退避策略：基础延迟 + 随机抖动
 			baseDelay := time.Duration(attempt*attempt) * time.Second
 			jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
 			return baseDelay + jitter
-		}).
-		SetCommonRetryCondition(func(resp *req.Response, err error) bool {
+	}
+	clientConfig.RetryCondition = func(resp *req.Response, err error) bool {
 			// 网络错误重试
 			if err != nil {
 				errStr := err.Error()
@@ -145,8 +132,8 @@ func NewImageDownloader() *ImageDownloader {
 				}
 			}
 			return false
-		}).
-		SetCommonRetryHook(func(resp *req.Response, err error) {
+	}
+	clientConfig.RetryHook = func(resp *req.Response, err error) {
 			// 添加空指针检查
 			if resp != nil {
 				// 使用最安全的方式访问 StatusCode
@@ -179,7 +166,8 @@ func NewImageDownloader() *ImageDownloader {
 			if resp == nil && err == nil {
 				logger.GetGlobalLogger("pkg/downloader").Warnf("   ⚠️  重试钩子被调用，但resp和err都为nil")
 			}
-		})
+	}
+	client := httpclient.Build(clientConfig)
 
 	downloader := &ImageDownloader{
 		httpClient: client,

@@ -1,10 +1,10 @@
-// Package client 提供TEMU平台HTTP管理功能
 package client
 
 import (
-	"crypto/tls"
 	"fmt"
 	"time"
+
+	"task-processor/internal/pkg/httpclient"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
@@ -18,28 +18,32 @@ type HTTPManager struct {
 }
 
 // NewHTTPManager 创建新的HTTP管理器
-func NewHTTPManager(proxyURL string, logger *logrus.Entry) *HTTPManager {
+func NewHTTPManager(proxyURL string, logger *logrus.Entry, config *Config) *HTTPManager {
+	if config == nil {
+		config = DefaultConfig()
+	}
 	return &HTTPManager{
 		proxyURL: proxyURL,
 		logger:   logger,
-		config:   DefaultConfig(), // 使用默认配置
+		config:   config,
 	}
 }
 
 // CreateClient 创建HTTP客户端
 func (h *HTTPManager) CreateClient() *req.Client {
-	client := req.C().
-		SetTLSFingerprintChrome().
-		SetTLSClientConfig(h.getTLSConfig()).
-		SetCommonHeaders(h.getDefaultHeaders()).
-		SetCommonRetryCount(h.config.RetryCount).
-		SetCommonRetryInterval(func(resp *req.Response, attempt int) time.Duration {
+	client := httpclient.Build(httpclient.ClientConfig{
+		Timeout:            h.config.MaxTimeout,
+		RetryCount:         h.config.RetryCount,
+		ProxyURL:           h.proxyURL,
+		InsecureSkipVerify: h.config.InsecureSkipVerify,
+		Headers:            h.getDefaultHeaders(),
+		RetryInterval: func(resp *req.Response, attempt int) time.Duration {
 			// 使用配置的重试间隔，并应用指数退避
 			baseDelay := h.config.RetryInterval * time.Duration(attempt)
 			h.logger.Infof("重试第%d次，等待%v", attempt, baseDelay)
 			return baseDelay
-		}).
-		SetCommonRetryCondition(func(resp *req.Response, err error) bool {
+		},
+		RetryCondition: func(resp *req.Response, err error) bool {
 			// 网络错误重试
 			if err != nil {
 				h.logger.WithError(err).Warn("网络错误，准备重试")
@@ -51,13 +55,8 @@ func (h *HTTPManager) CreateClient() *req.Client {
 				return true
 			}
 			return false
-		}).
-		SetTimeout(h.config.MaxTimeout) // 使用配置文件中的超时设置
-
-	// 如果配置了代理，则设置代理
-	if h.proxyURL != "" {
-		client = client.SetProxyURL(h.proxyURL)
-	}
+		},
+	})
 
 	return client
 }
@@ -135,24 +134,6 @@ func (h *HTTPManager) sendJSONRequest(r *req.Request, method, url string, header
 		return r.SetBody(body).Delete(url)
 	default:
 		return r.SetBody(body).Send(method, url)
-	}
-}
-
-// getTLSConfig 获取TLS配置
-func (h *HTTPManager) getTLSConfig() *tls.Config {
-	return &tls.Config{
-		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS12,
-		MaxVersion:         tls.VersionTLS13,
-		CipherSuites: []uint16{
-			tls.TLS_AES_128_GCM_SHA256,
-			tls.TLS_AES_256_GCM_SHA384,
-			tls.TLS_CHACHA20_POLY1305_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		},
 	}
 }
 

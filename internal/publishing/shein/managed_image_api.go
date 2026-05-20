@@ -27,5 +27,5 @@ func (b *managedImageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageA
 	if baseClient == nil {
 		return nil, fallback
 	}
-	return sheinimage.NewClient(baseClient), ""
+	return sheinimage.NewClientWithImageDownloader(baseClient, b.factory.client.GetImageDownloader()), ""
 }

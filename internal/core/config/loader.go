@@ -130,6 +130,7 @@ func NewDefaultConfig() *Config {
 			TokenURL:     "https://api.shuomiai.com/admin-api/system/oauth2/token",
 			Scopes:       []string{"user.read"},
 			TenantID:     "1",
+			HTTPClient:   *DefaultHTTPClientConfig(),
 		},
 		Browser: BrowserConfig{
 			Enabled:        true,
@@ -248,6 +249,7 @@ func NewDefaultConfig() *Config {
 				Enabled:          false,
 				SchedulerEnabled: false,
 				FetchMode:        "auto",
+				HTTPClient:       *DefaultHTTPClientConfig(),
 				AutoPricing: AutoPricingConfig{
 					Enabled:        false,
 					Interval:       300,
@@ -281,6 +283,7 @@ func NewDefaultConfig() *Config {
 				Enabled:          false,
 				SchedulerEnabled: false,
 				FetchMode:        "auto",
+				HTTPClient:       *DefaultHTTPClientConfig(),
 				LoginService: LoginServiceConfig{
 					MaxConcurrentLogins: 3,
 					ProfileRootDir:      "./.local/tmp/shein-login/profiles",

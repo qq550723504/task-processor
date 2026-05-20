@@ -96,20 +96,14 @@ func (a *PlaywrightAutomation) Login(ctx context.Context, account Account, cfg A
 		defer session.Close()
 		if store != nil {
 			_ = store.SetVerifyWait(ctx, account.TenantID, account.StoreID, 10*time.Minute)
-		}
-		deadline := time.Now().Add(10 * time.Minute)
-		for time.Now().Before(deadline) {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
+			if code, ok, consumeErr := store.WaitAndConsumeVerifyCode(ctx, account.TenantID, account.StoreID, 10*time.Minute); consumeErr != nil {
+				return nil, consumeErr
+			} else if ok && strings.TrimSpace(code) != "" {
+				return session.SubmitCode(ctx, code)
 			}
-			if store != nil {
-				if code, ok, consumeErr := store.ConsumeVerifyCode(ctx, account.TenantID, account.StoreID); consumeErr == nil && ok && strings.TrimSpace(code) != "" {
-					return session.SubmitCode(ctx, code)
-				}
-			}
-			time.Sleep(2 * time.Second)
+		} else {
+			<-ctx.Done()
+			return nil, ctx.Err()
 		}
 		return &AutomationResult{
 			WaitingForVerifyCode: true,

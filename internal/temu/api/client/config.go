@@ -11,6 +11,7 @@ type Config struct {
 	RetryCount     int
 	MaxTimeout     time.Duration // 最大超时时间
 	RetryInterval  time.Duration // 重试间隔
+	InsecureSkipVerify bool
 }
 
 // DefaultConfig 返回默认配置
@@ -21,11 +22,12 @@ func DefaultConfig() *Config {
 		MaxTimeout:     120 * time.Second, // 最大超时时间（包含重试）
 		RetryCount:     3,
 		RetryInterval:  2 * time.Second, // 重试间隔
+		InsecureSkipVerify: false,
 	}
 }
 
 // NewConfigFromSettings 从配置文件创建配置
-func NewConfigFromSettings(timeout, maxTimeout, retryInterval int, retryCount int) *Config {
+func NewConfigFromSettings(timeout, maxTimeout, retryInterval int, retryCount int, insecureSkipVerify bool) *Config {
 	config := DefaultConfig()
 
 	if timeout > 0 {
@@ -40,6 +42,7 @@ func NewConfigFromSettings(timeout, maxTimeout, retryInterval int, retryCount in
 	if retryCount > 0 {
 		config.RetryCount = retryCount
 	}
+	config.InsecureSkipVerify = insecureSkipVerify
 
 	return config
 }

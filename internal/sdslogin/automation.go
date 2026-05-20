@@ -133,6 +133,8 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 		waitTimeout = 30 * time.Second
 	}
 	deadline := time.Now().Add(waitTimeout)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
 	var lastState *pageLoginState
 	lastHref := ""
 	lastTokenPresent := false
@@ -141,7 +143,7 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 		select {
 		case <-ctx.Done():
 			return nil, false, ctx.Err()
-		default:
+		case <-ticker.C:
 		}
 		state, err := readCurrentLoginState(manager, page)
 		if err == nil {
@@ -172,7 +174,6 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 			log.Infof("sds login completed tenant=%s identifier=%s url=%s merchant_id=%d user_id=%d", account.TenantID, account.Identifier, state.Href, state.MerchantID, state.UserID)
 			return buildPayload(account, state, "fresh_login"), false, nil
 		}
-		time.Sleep(time.Second)
 	}
 
 	log.Warnf(

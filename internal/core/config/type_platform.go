@@ -36,6 +36,7 @@ type PlatformConfig struct {
 	Monitor              MonitorConfig        `yaml:"monitor"`                                  // 产品监控配置
 	ConfigPaths          PlatformConfigPaths  `yaml:"configPaths"`                              // 业务配置文件路径（统一管理）
 	LoginService         LoginServiceConfig   `mapstructure:"loginService" yaml:"loginService"` // 统一登录服务配置
+	HTTPClient           HTTPClientConfig     `yaml:"httpClient"`
 }
 
 // PlatformConfigPaths 平台业务配置文件路径

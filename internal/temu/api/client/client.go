@@ -53,7 +53,7 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 	}
 
 	// 初始化各个管理器
-	apiClient.httpManager = NewHTTPManager(apiClient.proxyURL, logger)
+	apiClient.httpManager = NewHTTPManager(apiClient.proxyURL, logger, apiClient.config)
 	apiClient.authManager = NewAuthManager(logger)
 
 	// 初始化HTTP客户端

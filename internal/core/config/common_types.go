@@ -31,6 +31,7 @@ type HTTPClientConfig struct {
 	RetryDelay      time.Duration     `yaml:"retryDelay" json:"retryDelay"`           // 重试延迟
 	MaxIdleConns    int               `yaml:"maxIdleConns" json:"maxIdleConns"`       // 最大空闲连接数
 	MaxConnsPerHost int               `yaml:"maxConnsPerHost" json:"maxConnsPerHost"` // 每个主机最大连接数
+	InsecureSkipVerify bool           `yaml:"insecureSkipVerify" json:"insecureSkipVerify"`
 	Headers         map[string]string `yaml:"headers" json:"headers"`                 // 自定义请求头
 }
 
@@ -42,6 +43,7 @@ func DefaultHTTPClientConfig() *HTTPClientConfig {
 		RetryDelay:      1 * time.Second,
 		MaxIdleConns:    100,
 		MaxConnsPerHost: 10,
+		InsecureSkipVerify: false,
 		Headers:         make(map[string]string),
 	}
 }
@@ -98,7 +100,7 @@ func DefaultLogConfig() *LogConfig {
 		Level:      "INFO",
 		Format:     "text",
 		Output:     "stdout",
-		FilePath:   ".local/logs/app.log",
+		FilePath:   "tmp/logs/app.log",
 		MaxSize:    100,
 		MaxBackups: 3,
 		MaxAge:     7,

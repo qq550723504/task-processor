@@ -151,6 +151,7 @@ func TestDefaultLogConfig(t *testing.T) {
 	assert.NotNil(t, config)
 	assert.Equal(t, "info", config.Level)
 	assert.Equal(t, "json", config.Format)
+	assert.Equal(t, filepath.Join("tmp", "logs", "app.log"), config.OutputFile)
 	assert.Equal(t, 100, config.MaxSize)
 	assert.Equal(t, 10, config.MaxBackups)
 	assert.Equal(t, 30, config.MaxAge)

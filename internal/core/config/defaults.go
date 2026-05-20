@@ -29,6 +29,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("management.tokenURL", defaults.Management.TokenURL)
 	v.SetDefault("management.scopes", defaults.Management.Scopes)
 	v.SetDefault("management.tenantID", defaults.Management.TenantID)
+	v.SetDefault("management.httpClient.insecureSkipVerify", defaults.Management.HTTPClient.InsecureSkipVerify)
 	v.SetDefault("debug.save_publish_json", defaults.Debug.SavePublishJSON)
 	v.SetDefault("debug.productEnrichMockLLM", defaults.Debug.ProductEnrichMockLLM)
 	v.SetDefault("listingkit.studioAsyncJobStorePath", defaults.ListingKit.StudioAsyncJobStorePath)
@@ -213,6 +214,7 @@ func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.temu.enabled", p.Enabled)
 	v.SetDefault("platforms.temu.schedulerEnabled", p.SchedulerEnabled)
 	v.SetDefault("platforms.temu.fetchMode", p.FetchMode)
+	v.SetDefault("platforms.temu.httpClient.insecureSkipVerify", p.HTTPClient.InsecureSkipVerify)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.temu.autoPricing.enabled", ap.Enabled)
@@ -257,6 +259,7 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.enabled", p.Enabled)
 	v.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled)
 	v.SetDefault("platforms.shein.fetchMode", p.FetchMode)
+	v.SetDefault("platforms.shein.httpClient.insecureSkipVerify", p.HTTPClient.InsecureSkipVerify)
 	v.SetDefault("platforms.shein.cookieRedis.host", p.CookieRedis.Host)
 	v.SetDefault("platforms.shein.cookieRedis.port", p.CookieRedis.Port)
 	v.SetDefault("platforms.shein.cookieRedis.password", p.CookieRedis.Password)

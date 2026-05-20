@@ -16,9 +16,9 @@ type ImageDownloader struct {
 }
 
 // NewImageDownloader 创建新的图片下载客户端
-func NewImageDownloader(timeout time.Duration) *ImageDownloader {
+func NewImageDownloader(timeout time.Duration, insecureSkipVerify bool) *ImageDownloader {
 	return &ImageDownloader{
-		httpClient:    NewHTTPClient(timeout),
+		httpClient:    NewHTTPClient(timeout, insecureSkipVerify),
 		antiBot:       NewAntiBotManager(),
 		rateLimit:     NewRateLimit(),
 		blockDetector: NewBlockDetector(),

@@ -42,6 +42,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			TenantID:     v.GetString("management.tenantID"),
 			UserID:       v.GetInt64("management.userID"),
 			StoreIDs:     getInt64Slice(v, "management.storeIDs"),
+			HTTPClient:   BuildHTTPClientConfig(v, "management.httpClient"),
 		},
 		Platforms: PlatformsConfig{
 			Temu:  BuildPlatformConfig(v, "platforms.temu"),
@@ -239,6 +240,19 @@ func BuildConfig(v *viper.Viper) *Config {
 	}
 
 	return cfg
+}
+
+func BuildHTTPClientConfig(v *viper.Viper, prefix string) HTTPClientConfig {
+	return HTTPClientConfig{
+		BaseURL:              v.GetString(prefix + ".baseURL"),
+		Timeout:              time.Duration(v.GetInt(prefix+".timeout")) * time.Second,
+		MaxRetries:           v.GetInt(prefix + ".maxRetries"),
+		RetryDelay:           time.Duration(v.GetInt(prefix+".retryDelay")) * time.Second,
+		MaxIdleConns:         v.GetInt(prefix + ".maxIdleConns"),
+		MaxConnsPerHost:      v.GetInt(prefix + ".maxConnsPerHost"),
+		InsecureSkipVerify:   v.GetBool(prefix + ".insecureSkipVerify"),
+		Headers:              v.GetStringMapString(prefix + ".headers"),
+	}
 }
 
 func buildOpenAIClients(v *viper.Viper) map[string]OpenAIClientConfig {
