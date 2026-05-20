@@ -161,6 +161,46 @@ func TestInternalPackagesDoNotImportAppStateCompatibilityLayer(t *testing.T) {
 	}, allowedFiles)
 }
 
+func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
+	for _, domainRoot := range []string{
+		filepath.Join("..", "internal", "productenrich", "httpapi"),
+		filepath.Join("..", "internal", "productimage", "httpapi"),
+		filepath.Join("..", "internal", "amazonlisting", "httpapi"),
+		filepath.Join("..", "internal", "listingkit", "httpapi"),
+	} {
+		t.Run(filepath.Base(domainRoot), func(t *testing.T) {
+			assertNoBannedImports(t, domainRoot, []string{
+				`"task-processor/internal/app/httpapi"`,
+			}, nil)
+		})
+	}
+}
+
+func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "httpapi")
+	allowed := map[string]struct{}{
+		"listingkit_support.go":         {},
+		"listingkit_temporal_worker.go": {},
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "listingkit_") || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if _, ok := allowed[name]; !ok {
+			t.Errorf("%s is a new app/httpapi ListingKit helper; move ListingKit-specific logic into internal/listingkit/httpapi instead", filepath.Join(root, name))
+		}
+	}
+}
+
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
