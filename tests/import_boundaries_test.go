@@ -116,6 +116,60 @@ func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	}, allowedFiles)
 }
 
+func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "publishing", "shein")
+	allowedImports := map[string]map[string]struct{}{
+		`"task-processor/internal/shein/client"`: {
+			filepath.Clean(filepath.Join(root, "managed_api_factory.go")): {},
+		},
+		`"task-processor/internal/shein/content"`: {
+			filepath.Clean(filepath.Join(root, "review_content.go")):               {},
+			filepath.Clean(filepath.Join(root, "sale_attribute_custom_values.go")): {},
+			filepath.Clean(filepath.Join(root, "submit_prep.go")):                  {},
+		},
+		`"task-processor/internal/shein/category"`: {
+			filepath.Clean(filepath.Join(root, "category_query.go")):            {},
+			filepath.Clean(filepath.Join(root, "category_resolver_test.go")):    {},
+			filepath.Clean(filepath.Join(root, "category_suggest_fallback.go")): {},
+			filepath.Clean(filepath.Join(root, "category_tree_fallback.go")):    {},
+		},
+		`"task-processor/internal/shein/submitprep"`: {
+			filepath.Clean(filepath.Join(root, "submit_prep.go")):      {},
+			filepath.Clean(filepath.Join(root, "submit_prep_test.go")): {},
+		},
+		`"task-processor/internal/shein/publish"`: {
+			filepath.Clean(filepath.Join(root, "submit_validation.go")): {},
+		},
+	}
+
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(content)
+		cleanPath := filepath.Clean(path)
+		for bannedImport, allowedFiles := range allowedImports {
+			if !strings.Contains(text, bannedImport) {
+				continue
+			}
+			if _, ok := allowedFiles[cleanPath]; !ok {
+				t.Errorf("%s imports %s; keep publishing/shein direct dependencies on legacy shein implementation packages isolated to current allowlisted adapter files", path, bannedImport)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
 		`"task-processor/internal/productenrich"`,
