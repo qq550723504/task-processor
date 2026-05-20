@@ -9,7 +9,6 @@ import (
 
 	"task-processor/internal/core/config"
 	storageinfra "task-processor/internal/infra/storage"
-	"task-processor/internal/listingkit"
 	"task-processor/internal/productimage"
 )
 
@@ -61,38 +60,4 @@ func buildProductImageS3AssetPublisher(cfg *config.Config, logger *logrus.Logger
 		return nil
 	}
 	return publisher
-}
-
-func buildListingKitS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {
-	client, err := newProductImagePublisherS3Client(cfg)
-	if err != nil {
-		logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
-		return nil
-	}
-
-	publicBase := strings.TrimSpace(cfg.ProductImage.Publisher.PublicBase)
-	if publicBase == "" {
-		publicBase = storageinfra.BuildS3PublicBase(
-			cfg.ProductImage.Publisher.S3.Endpoint,
-			cfg.ProductImage.Publisher.S3.Bucket,
-			cfg.ProductImage.Publisher.S3.UsePathStyle,
-		)
-	}
-
-	store, err := listingkit.NewS3ImageUploadStore(listingkit.S3ImageUploadStoreConfig{
-		Bucket:     cfg.ProductImage.Publisher.S3.Bucket,
-		PublicBase: publicBase,
-		Uploader: storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
-			Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
-			PublicBase:   publicBase,
-			Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,
-			UsePathStyle: cfg.ProductImage.Publisher.S3.UsePathStyle,
-		}),
-		Reader: client,
-	})
-	if err != nil {
-		logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
-		return nil
-	}
-	return store
 }
