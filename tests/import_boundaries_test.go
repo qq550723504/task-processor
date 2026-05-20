@@ -68,6 +68,41 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "assembler_test.go")): {},
+		filepath.Clean(filepath.Join(root, "export_model.go")):   {},
+		filepath.Clean(filepath.Join(root, "interfaces.go")):     {},
+		filepath.Clean(filepath.Join(root, "model_result.go")):   {},
+		filepath.Clean(filepath.Join(root, "preview_model.go")):  {},
+		filepath.Clean(filepath.Join(root, "service.go")):        {},
+	}
+
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(content), `"task-processor/internal/amazonlisting"`) {
+			return nil
+		}
+		if _, ok := allowedFiles[filepath.Clean(path)]; !ok {
+			t.Errorf("%s imports task-processor/internal/amazonlisting; keep amazonlisting dependencies isolated to current facade/result bridge files", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "publishing", "shein", "submit_validation.go")): {},
