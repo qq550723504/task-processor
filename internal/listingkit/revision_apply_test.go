@@ -220,6 +220,93 @@ func TestApplyListingKitRevisionPatchesSheinSaleAttributesAndSKUs(t *testing.T) 
 	}
 }
 
+func TestApplyListingKitRevisionAppliesSaleAttributeResolutionWithoutSKCPatches(t *testing.T) {
+	t.Parallel()
+
+	skcValueID := 1001
+	skuValueID := 2002
+	status := "resolved"
+	source := "manual_review"
+	primaryAttributeID := 1001466
+	secondaryAttributeID := 1001467
+
+	result := &ListingKitResult{
+		Platforms: []string{"shein"},
+		Shein: &SheinPackage{
+			SkcList: []SheinSKCPackage{{
+				SupplierCode: "SKC-1",
+				Attributes:   map[string]string{"color": "white"},
+				SKUs: []PlatformVariant{{
+					SKU:        "SKU-1",
+					Attributes: map[string]string{"size": "M"},
+				}},
+			}},
+			RequestDraft: &SheinRequestDraft{
+				SKCList: []SheinSKCRequestDraft{{
+					SupplierCode: "SKC-1",
+					SKUList: []SheinSKUDraft{{
+						SupplierSKU: "SKU-1",
+						Attributes:  map[string]string{"size": "M"},
+					}},
+				}},
+			},
+		},
+	}
+
+	err := applyListingKitRevision(result, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				Status:               &status,
+				Source:               &source,
+				PrimaryAttributeID:   &primaryAttributeID,
+				SecondaryAttributeID: &secondaryAttributeID,
+				SKCAttributes: []SheinResolvedSaleAttribute{{
+					Scope:            "skc",
+					Name:             "Plug(Voltage)",
+					Value:            "white",
+					AttributeID:      primaryAttributeID,
+					AttributeValueID: &skcValueID,
+					MatchedBy:        "llm_sale_attribute_mapping",
+				}},
+				SKUAttributes: []SheinResolvedSaleAttribute{{
+					Scope:            "sku",
+					Name:             "Size",
+					Value:            "M",
+					AttributeID:      secondaryAttributeID,
+					AttributeValueID: &skuValueID,
+					MatchedBy:        "llm_sale_attribute_mapping",
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply sale attribute resolution revision: %v", err)
+	}
+
+	if result.Shein.RequestDraft == nil || len(result.Shein.RequestDraft.SKCList) != 1 {
+		t.Fatalf("request draft skc list = %+v", result.Shein.RequestDraft)
+	}
+	if result.Shein.RequestDraft.SKCList[0].SaleAttribute == nil || result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeID != primaryAttributeID {
+		t.Fatalf("request draft skc sale attribute = %+v", result.Shein.RequestDraft.SKCList[0].SaleAttribute)
+	}
+	if got := result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeValueID; got == nil || *got != skcValueID {
+		t.Fatalf("request draft skc sale attribute value id = %+v", result.Shein.RequestDraft.SKCList[0].SaleAttribute)
+	}
+	if len(result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes) != 1 || result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes[0].AttributeID != secondaryAttributeID {
+		t.Fatalf("request draft sku sale attributes = %+v", result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes)
+	}
+	if result.Shein.PreviewProduct == nil || len(result.Shein.PreviewProduct.SKCList) != 1 {
+		t.Fatalf("preview product = %+v", result.Shein.PreviewProduct)
+	}
+	if result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeID != primaryAttributeID {
+		t.Fatalf("preview skc sale attribute = %+v", result.Shein.PreviewProduct.SKCList[0].SaleAttribute)
+	}
+	if len(result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList) != 1 || result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList[0].AttributeID != secondaryAttributeID {
+		t.Fatalf("preview sku sale attribute list = %+v", result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList)
+	}
+}
+
 func TestApplyListingKitRevisionPatchesSheinCategoryAndAttributeResolution(t *testing.T) {
 	t.Parallel()
 

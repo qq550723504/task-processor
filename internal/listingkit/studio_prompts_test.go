@@ -12,8 +12,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"testing"
 	"sync"
+	"testing"
 
 	"github.com/sirupsen/logrus"
 
@@ -364,6 +364,34 @@ func TestGenerateStudioDesignsRetriesFailedVariantsSequentially(t *testing.T) {
 	}
 	if generator.generateCalls != 5 {
 		t.Fatalf("generateCalls = %d, want 5 (3 initial + 2 retries)", generator.generateCalls)
+	}
+}
+
+func TestGenerateStudioDesignsCapsCountAtTen(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		generateResponse: &openaiclient.ImageResponse{
+			Data: []openaiclient.ImageData{{
+				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+			}},
+		},
+	}
+	svc := &service{
+		studioImageGenerator: generator,
+		uploadStore:          &stubImageUploadStore{},
+	}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		Prompt: "retro cherries",
+		Count:  12,
+	})
+	if err != nil {
+		t.Fatalf("GenerateStudioDesigns() error = %v", err)
+	}
+	if len(response.Images) != 10 {
+		t.Fatalf("images = %d, want 10", len(response.Images))
+	}
+	if generator.generateCalls != 10 {
+		t.Fatalf("generateCalls = %d, want 10", generator.generateCalls)
 	}
 }
 

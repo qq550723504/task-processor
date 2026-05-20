@@ -67,15 +67,17 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 		draftCopy := *req.RequestDraft
 		pkg.RequestDraft = &draftCopy
 	}
+	ensureSheinRequestDraft(pkg)
+	if req.SaleAttributeResolution != nil {
+		sheinpub.ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
+	}
 	if req.SKCPatches != nil {
-		ensureSheinRequestDraft(pkg)
 		applySheinSKCRevisionPatches(pkg, req.SKCPatches)
 	}
 	if req.ReviewNotes != nil {
 		pkg.ReviewNotes = uniqueStrings(append([]string(nil), req.ReviewNotes...))
 	}
 
-	ensureSheinRequestDraft(pkg)
 	syncSheinDraftFromPackage(pkg)
 	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
 	refreshSheinReviewState(pkg)

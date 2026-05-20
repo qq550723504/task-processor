@@ -19,7 +19,7 @@ import (
 	"task-processor/internal/prompt"
 )
 
-const maxStudioDesignCount = 5
+const maxStudioDesignCount = 10
 const studioDesignTransparentModel = "gpt-image-2"
 const (
 	studioVariationLight  = "light"
