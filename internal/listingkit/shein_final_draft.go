@@ -59,7 +59,7 @@ func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req 
 		review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
 		applySheinPricingReview(pkg, review)
 		applySheinFinalImageDraft(pkg)
-		applySheinVariantImageCoverageGuard(task, pkg)
+		applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
 		task.Result.UpdatedAt = now
 		return nil
 	})

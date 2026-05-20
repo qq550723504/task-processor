@@ -36,9 +36,9 @@ func TestPublishWorkflowResumesAfterWorkerRestartAgainstRealTemporal(t *testing.
 	defer rawClient.Close()
 
 	state := &temporalE2EWorkerState{
-		persistStarted: make(chan struct{}, 1),
-		allowPersist:   make(chan struct{}),
-		confirmed:      make(chan string, 1),
+		persistStarted:   make(chan struct{}, 1),
+		allowPersist:     make(chan struct{}),
+		persistCompleted: make(chan string, 1),
 	}
 	worker1, err := newTemporalE2EWorker(rawClient, &temporalE2EHost{id: "worker-1", state: state})
 	if err != nil {
@@ -98,12 +98,12 @@ func TestPublishWorkflowResumesAfterWorkerRestartAgainstRealTemporal(t *testing.
 	}
 
 	select {
-	case confirmedBy := <-state.confirmed:
-		if confirmedBy != "worker-2" {
-			t.Fatalf("confirm remote executed by %q, want worker-2 after restart", confirmedBy)
+	case persistedBy := <-state.persistCompleted:
+		if persistedBy != "worker-2" {
+			t.Fatalf("persist success completed by %q, want worker-2 after restart", persistedBy)
 		}
 	case <-ctx.Done():
-		t.Fatalf("confirm remote did not complete before timeout: %v", ctx.Err())
+		t.Fatalf("persist success did not complete before timeout: %v", ctx.Err())
 	}
 }
 
@@ -128,13 +128,13 @@ func temporalE2ENamespace() string {
 }
 
 type temporalE2EWorkerState struct {
-	persistStarted chan struct{}
-	allowPersist   chan struct{}
-	confirmed      chan string
+	persistStarted   chan struct{}
+	allowPersist     chan struct{}
+	persistCompleted chan string
 
 	mu              sync.Mutex
 	beginCalls      int
-	confirmWorkerID string
+	persistWorkerID string
 }
 
 type temporalE2EHost struct {
@@ -190,6 +190,13 @@ func (h *temporalE2EHost) PersistSheinPublishSuccess(context.Context, listingkit
 	default:
 	}
 	<-h.state.allowPersist
+	h.state.mu.Lock()
+	h.state.persistWorkerID = h.id
+	h.state.mu.Unlock()
+	select {
+	case h.state.persistCompleted <- h.id:
+	default:
+	}
 	return nil
 }
 
@@ -197,15 +204,8 @@ func (h *temporalE2EHost) PersistSheinPublishFailure(context.Context, listingkit
 	return nil
 }
 
-func (h *temporalE2EHost) ConfirmSheinPublishRemote(context.Context, listingkit.SheinConfirmRemoteInput) (*listingkit.SheinRemoteConfirmResult, error) {
-	h.state.mu.Lock()
-	h.state.confirmWorkerID = h.id
-	h.state.mu.Unlock()
-	select {
-	case h.state.confirmed <- h.id:
-	default:
-	}
-	return &listingkit.SheinRemoteConfirmResult{
+func (h *temporalE2EHost) RefreshSheinPublishRemoteStatus(context.Context, listingkit.SheinRefreshRemoteStatusInput) (*listingkit.SheinRefreshRemoteStatusResult, error) {
+	return &listingkit.SheinRefreshRemoteStatusResult{
 		TaskID:       "temporal-e2e",
 		Action:       "publish",
 		RequestID:    "temporal-e2e-request",

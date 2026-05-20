@@ -126,7 +126,6 @@ func (c *Client) QuerySheinPublishState(ctx context.Context, taskID string) (*li
 		LastError:       state.LastError,
 		StartedAt:       state.StartedAt,
 		FinishedAt:      state.FinishedAt,
-		RemoteStatus:    state.RemoteStatus,
 		WorkflowRunning: state.WorkflowRunning,
 	}, nil
 }

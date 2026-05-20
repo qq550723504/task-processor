@@ -11,9 +11,9 @@ import (
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
 
+	sheintestsuite "go.temporal.io/sdk/testsuite"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheintestsuite "go.temporal.io/sdk/testsuite"
 )
 
 func TestPublishWorkflowRunsExpectedPhaseOrder(t *testing.T) {
@@ -60,9 +60,6 @@ func TestPublishWorkflowRunsExpectedPhaseOrder(t *testing.T) {
 	env.OnActivity(activityNamePersistSuccess, mock.Anything, mock.Anything).
 		Return(nil).
 		Run(func(args mock.Arguments) { phases = append(phases, "persist_result") })
-	env.OnActivity(activityNameConfirmRemote, mock.Anything, mock.Anything).
-		Return(&listingkit.SheinRemoteConfirmResult{RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed}, nil).
-		Run(func(args mock.Arguments) { phases = append(phases, "confirm_remote") })
 
 	env.ExecuteWorkflow(PublishWorkflow, SheinPublishWorkflowInput{
 		TaskID:      "task-1",
@@ -81,7 +78,6 @@ func TestPublishWorkflowRunsExpectedPhaseOrder(t *testing.T) {
 		"pre_validate",
 		"submit_remote",
 		"persist_result",
-		"confirm_remote",
 	}, phases)
 }
 
@@ -218,8 +214,6 @@ func TestPublishWorkflowQueryReportsCurrentPhaseWhileRunning(t *testing.T) {
 	env.OnActivity(activityNamePreValidate, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(activityNameSubmitRemote, mock.Anything, mock.Anything).Return(remoteResult, nil)
 	env.OnActivity(activityNamePersistSuccess, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity(activityNameConfirmRemote, mock.Anything, mock.Anything).
-		Return(&listingkit.SheinRemoteConfirmResult{RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed}, nil)
 
 	env.RegisterDelayedCallback(func() {
 		resp, err := env.QueryWorkflow(SheinPublishQueryCurrentState)
@@ -324,7 +318,4 @@ func registerPublishWorkflowActivityNames(env activityRegistrar) {
 	env.RegisterActivityWithOptions(func(ctx context.Context, in *listingkit.SheinPersistSubmitFailureInput) error {
 		return nil
 	}, sdkactivity.RegisterOptions{Name: activityNamePersistFailure})
-	env.RegisterActivityWithOptions(func(ctx context.Context, in listingkit.SheinConfirmRemoteInput) (*listingkit.SheinRemoteConfirmResult, error) {
-		return nil, nil
-	}, sdkactivity.RegisterOptions{Name: activityNameConfirmRemote})
 }

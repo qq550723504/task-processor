@@ -61,6 +61,23 @@ func TestDeriveSheinWorkflowStatusPrefersLatestSubmissionEvent(t *testing.T) {
 	}
 }
 
+func TestDeriveSheinWorkflowStatusIgnoresLatestSubmitPhaseEvent(t *testing.T) {
+	t.Parallel()
+
+	status := deriveSheinWorkflowStatus(&SheinPackage{
+		SubmissionEvents: []sheinpub.SubmissionEvent{
+			{Action: "submit_phase", Phase: sheinpub.SubmissionPhaseConfirmRemote, Status: sheinpub.SubmissionRemoteStatusPending},
+			{Action: "publish", Status: sheinpub.SubmissionStatusSuccess},
+		},
+		Submission: &sheinpub.SubmissionReport{
+			Publish: &sheinpub.SubmissionRecord{Status: sheinpub.SubmissionStatusSuccess},
+		},
+	})
+	if status != SheinWorkflowStatusPublished {
+		t.Fatalf("workflow status = %q, want %q", status, SheinWorkflowStatusPublished)
+	}
+}
+
 func TestApplySheinSubmissionRemoteSummaryFallsBackToPublishRecord(t *testing.T) {
 	t.Parallel()
 
@@ -80,6 +97,42 @@ func TestApplySheinSubmissionRemoteSummaryFallsBackToPublishRecord(t *testing.T)
 	}
 	if item.SheinSubmissionRemoteCheckedAt == nil || !item.SheinSubmissionRemoteCheckedAt.Equal(checkedAt) {
 		t.Fatalf("remote checked at = %v, want %v", item.SheinSubmissionRemoteCheckedAt, checkedAt)
+	}
+}
+
+func TestBuildTaskListItemUsesLatestSubmissionOutcomeInsteadOfPhaseEvent(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID:     "task-phase-event-summary",
+		Status: TaskStatusCompleted,
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+		},
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{
+				SubmissionEvents: []sheinpub.SubmissionEvent{
+					{Action: "submit_phase", Phase: sheinpub.SubmissionPhaseConfirmRemote, Status: sheinpub.SubmissionRemoteStatusPending, ErrorMessage: "diagnostic pending"},
+					{Action: "publish", Status: sheinpub.SubmissionStatusSuccess},
+				},
+				Submission: &sheinpub.SubmissionReport{
+					LastStatus: sheinpub.SubmissionStatusSuccess,
+					Publish:    &sheinpub.SubmissionRecord{Status: sheinpub.SubmissionStatusSuccess},
+				},
+			},
+		},
+	}
+
+	item := buildTaskListItem(task)
+
+	if item.SheinLatestSubmissionStatus != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("latest submission status = %q, want success outcome", item.SheinLatestSubmissionStatus)
+	}
+	if item.SheinLatestSubmissionError != "" {
+		t.Fatalf("latest submission error = %q, want empty because phase diagnostics should not override outcome", item.SheinLatestSubmissionError)
+	}
+	if item.SheinWorkflowStatus != SheinWorkflowStatusPublished {
+		t.Fatalf("workflow status = %q, want published", item.SheinWorkflowStatus)
 	}
 }
 

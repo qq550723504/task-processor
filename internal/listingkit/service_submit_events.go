@@ -132,7 +132,7 @@ func sheinSubmitPhaseDetail(action, phase string) string {
 	case sheinpub.SubmissionPhasePersistResult:
 		return "保存本地提交结果"
 	case sheinpub.SubmissionPhaseConfirmRemote:
-		return "确认 SHEIN 远端记录"
+		return "刷新 SHEIN 远端诊断状态"
 	default:
 		return phase
 	}

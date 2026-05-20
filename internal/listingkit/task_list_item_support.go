@@ -142,7 +142,7 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 	item.SheinStatusOverview = buildSheinTaskStatusOverview(pkg)
 	item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
-	if latest := latestSheinSubmissionEvent(pkg); latest != nil {
+	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
 		item.SheinLatestSubmissionStatus = latest.Status
 		item.SheinLatestSubmissionError = latest.ErrorMessage
 	} else if pkg.Submission != nil {

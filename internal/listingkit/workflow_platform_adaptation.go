@@ -67,7 +67,7 @@ func (s *service) runPlatformAdaptation(
 	applySheinInspectionReviewToSummary(final)
 	addSheinReviewWorkflowIssues(final)
 	sheinReviewStage.Complete()
-	applySheinVariantImageCoverageGuard(task, final.Shein)
+	applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)
 	if inventory != nil {
 		if enableAssetGeneration {
 			attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, s.assetBundleBuilder)

@@ -183,7 +183,16 @@ func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersis
 	if err := s.repo.SaveTaskResult(ctx, in.TaskID, task.Result); err != nil {
 		return err
 	}
-	return s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhasePersistResult)
+	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhasePersistResult); err != nil {
+		return err
+	}
+
+	startedAt := sheinSubmitStartedAt(pkg, in.Action, in.RequestID, time.Now())
+	record := completeSheinSubmitAttempt(pkg, in.Action, in.RequestID, in.Response, nil, time.Now())
+	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(in.TaskID, in.Action, record, in.Response, nil, startedAt))
+	s.rememberSheinSubmittedResolution(task, in.Action)
+	task.Result.UpdatedAt = time.Now()
+	return s.repo.SaveTaskResult(ctx, in.TaskID, task.Result)
 }
 
 func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {
@@ -212,7 +221,7 @@ func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersis
 	)
 }
 
-func (s *service) ConfirmSheinPublishRemote(ctx context.Context, in SheinConfirmRemoteInput) (*SheinRemoteConfirmResult, error) {
+func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {
 	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
 	if err != nil {
 		return nil, err
@@ -226,7 +235,7 @@ func (s *service) ConfirmSheinPublishRemote(ctx context.Context, in SheinConfirm
 	}
 
 	startedAt := sheinSubmitStartedAt(pkg, in.Action, in.RequestID, time.Now())
-	remoteEvent, remoteErr := s.confirmSheinSubmitRemote(ctx, in.TaskID, pkg, productAPI, in.Action, in.RequestID, in.SupplierCode, startedAt)
+	remoteEvent, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, in.TaskID, pkg, productAPI, in.Action, in.RequestID, in.SupplierCode, startedAt)
 	if remoteEvent != nil {
 		appendSheinSubmissionEvent(pkg, *remoteEvent)
 	}
@@ -256,7 +265,7 @@ func (s *service) ConfirmSheinPublishRemote(ctx context.Context, in SheinConfirm
 	if pkg.Submission != nil {
 		remoteStatus = pkg.Submission.RemoteStatus
 	}
-	return &SheinRemoteConfirmResult{
+	return &SheinRefreshRemoteStatusResult{
 		TaskID:       in.TaskID,
 		Action:       in.Action,
 		RequestID:    in.RequestID,

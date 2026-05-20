@@ -212,8 +212,8 @@ func TestSubmitTaskTreatsCodeZeroPublishWithoutValidationNotesAsAccepted(t *test
 	if preview.Shein.Submission.Publish == nil || preview.Shein.Submission.Publish.Result == nil || !preview.Shein.Submission.Publish.Result.Success {
 		t.Fatalf("publish result = %+v, want accepted success", preview.Shein.Submission.Publish)
 	}
-	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	if preview.Shein.Submission.RemoteStatus != "" {
+		t.Fatalf("remote status = %q, want empty when publish success does not require remote confirmation", preview.Shein.Submission.RemoteStatus)
 	}
 }
 
@@ -278,7 +278,7 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 	}
 }
 
-func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
+func TestSubmitTaskDoesNotAutoConfirmRemoteRecordAfterPublishSuccess(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -286,7 +286,6 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	var recordSupplierCodes []string
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,
 		ProductService: stubSubmitProductService{},
@@ -296,11 +295,6 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 					Code: "0",
 					Msg:  "success",
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
-				},
-				recordHook: func(request *sheinproduct.ProductRecordRequest) {
-					if request.SupplierCodeList != nil {
-						recordSupplierCodes = append(recordSupplierCodes, (*request.SupplierCodeList)...)
-					}
 				},
 				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
 					RecordID:     "record-123",
@@ -321,17 +315,14 @@ func TestSubmitTaskConfirmsRemoteRecordAfterPublishSuccess(t *testing.T) {
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != "" {
+		t.Fatalf("remote status = %q, want empty without auto confirmation", got)
 	}
-	if preview.Shein.Submission.Publish.RemoteRecordID != "record-123" {
-		t.Fatalf("remote record id = %q, want record-123", preview.Shein.Submission.Publish.RemoteRecordID)
+	if preview.Shein.Submission.Publish.RemoteRecordID != "" {
+		t.Fatalf("remote record id = %q, want empty without auto confirmation", preview.Shein.Submission.Publish.RemoteRecordID)
 	}
-	if len(recordSupplierCodes) == 0 || recordSupplierCodes[0] == "" {
-		t.Fatalf("record supplier codes = %+v, want non-empty lookup codes", recordSupplierCodes)
-	}
-	if !repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseConfirmRemote) {
-		t.Fatalf("confirm_remote phase was not persisted; saved phases = %+v", repo.savedSubmissionPhases)
+	if repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseConfirmRemote) {
+		t.Fatalf("confirm_remote phase should not be persisted; saved phases = %+v", repo.savedSubmissionPhases)
 	}
 }
 
@@ -366,7 +357,7 @@ func TestCollectSheinRemoteLookupCodesIncludesNormalizedSupplierSKUs(t *testing.
 	}
 }
 
-func TestSubmitTaskTreatsAcceptedPublishAsConfirmedWhenRecordMissing(t *testing.T) {
+func TestSubmitTaskTreatsAcceptedPublishAsSuccessfulWithoutRemoteConfirmation(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -398,18 +389,18 @@ func TestSubmitTaskTreatsAcceptedPublishAsConfirmedWhenRecordMissing(t *testing.
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != "" {
+		t.Fatalf("remote status = %q, want empty", got)
 	}
 	if preview.Shein.Submission.LastStatus != sheinpub.SubmissionStatusSuccess {
 		t.Fatalf("last status = %q, want success", preview.Shein.Submission.LastStatus)
 	}
-	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "accepted publish request") {
-		t.Fatalf("remote message = %q, want accepted publish fallback detail", got)
+	if got := preview.Shein.Submission.Publish.RemoteMessage; got != "" {
+		t.Fatalf("remote message = %q, want empty without remote confirmation", got)
 	}
 }
 
-func TestSubmitTaskConfirmsRemoteByInventoryWhenRecordMissing(t *testing.T) {
+func TestSubmitTaskDoesNotQueryRemoteInventoryWhenPublishSucceeds(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -450,18 +441,18 @@ func TestSubmitTaskConfirmsRemoteByInventoryWhenRecordMissing(t *testing.T) {
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if queriedSPU != "SPU-123" {
-		t.Fatalf("inventory lookup spu_name = %q, want SPU-123", queriedSPU)
+	if queriedSPU != "" {
+		t.Fatalf("inventory lookup spu_name = %q, want no inventory lookup on success", queriedSPU)
 	}
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != "" {
+		t.Fatalf("remote status = %q, want empty", got)
 	}
-	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "spu_name=SPU-123") {
-		t.Fatalf("remote message = %q, want inventory confirmation detail", got)
+	if got := preview.Shein.Submission.Publish.RemoteMessage; got != "" {
+		t.Fatalf("remote message = %q, want empty without remote confirmation", got)
 	}
 }
 
-func TestSubmitTaskKeepsPublishSuccessWhenRemoteRecordLooksDraft(t *testing.T) {
+func TestSubmitTaskKeepsPublishSuccessWithoutInspectingRemoteRecord(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -506,21 +497,21 @@ func TestSubmitTaskKeepsPublishSuccessWhenRemoteRecordLooksDraft(t *testing.T) {
 	if submission == nil {
 		t.Fatal("expected submission report")
 	}
-	if submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", submission.RemoteStatus)
+	if submission.RemoteStatus != "" {
+		t.Fatalf("remote status = %q, want empty", submission.RemoteStatus)
 	}
 	if submission.LastStatus != sheinpub.SubmissionStatusSuccess {
 		t.Fatalf("last status = %q, want success", submission.LastStatus)
 	}
-	if submission.Publish == nil || !strings.Contains(submission.Publish.RemoteMessage, "publish API reported success") {
-		t.Fatalf("publish record = %+v, want accepted publish remote message", submission.Publish)
+	if submission.Publish == nil || submission.Publish.RemoteMessage != "" {
+		t.Fatalf("publish record = %+v, want no remote confirmation message", submission.Publish)
 	}
-	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("preview remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	if preview.Shein.Submission.RemoteStatus != "" {
+		t.Fatalf("preview remote status = %q, want empty", preview.Shein.Submission.RemoteStatus)
 	}
 }
 
-func TestSubmitTaskTreatsRecordNotVisibleAsConfirmedAfterAcceptedPublish(t *testing.T) {
+func TestSubmitTaskSkipsRemoteRecordLookupAfterAcceptedPublish(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -556,17 +547,17 @@ func TestSubmitTaskTreatsRecordNotVisibleAsConfirmedAfterAcceptedPublish(t *test
 		t.Fatalf("submit task: %v", err)
 	}
 
-	if got := preview.Shein.Submission.RemoteStatus; got != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", got)
+	if got := preview.Shein.Submission.RemoteStatus; got != "" {
+		t.Fatalf("remote status = %q, want empty", got)
 	}
-	if got := atomic.LoadInt32(&recordCalls); got != 1 {
-		t.Fatalf("record calls = %d, want 1 record lookup", got)
+	if got := atomic.LoadInt32(&recordCalls); got != 0 {
+		t.Fatalf("record calls = %d, want 0 record lookups", got)
 	}
 	if preview.Shein.Submission.Publish.RemoteRecordID != "" {
 		t.Fatalf("remote record id = %q, want empty when record not visible", preview.Shein.Submission.Publish.RemoteRecordID)
 	}
-	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "accepted publish request") {
-		t.Fatalf("remote message = %q, want accepted publish fallback detail", got)
+	if got := preview.Shein.Submission.Publish.RemoteMessage; got != "" {
+		t.Fatalf("remote message = %q, want empty without remote confirmation", got)
 	}
 }
 
@@ -651,6 +642,7 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	var publishCalls int32
+	var recordCalls int32
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,
 		ProductService: stubSubmitProductService{},
@@ -663,6 +655,9 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 					Code: "0",
 					Msg:  "success",
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordHook: func(*sheinproduct.ProductRecordRequest) {
+					atomic.AddInt32(&recordCalls, 1)
 				},
 				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
 					RecordID:     "record-recovered",
@@ -705,8 +700,11 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	if got := atomic.LoadInt32(&publishCalls); got != 1 {
 		t.Fatalf("publish calls = %d, want 1", got)
 	}
-	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	if got := atomic.LoadInt32(&recordCalls); got != 0 {
+		t.Fatalf("record calls = %d, want 0 when local success can be recovered without remote lookup", got)
+	}
+	if preview.Shein.Submission.RemoteStatus != "" {
+		t.Fatalf("remote status = %q, want empty for local recovery", preview.Shein.Submission.RemoteStatus)
 	}
 	if preview.Shein.Submission.CurrentPhase != "" {
 		t.Fatalf("current phase = %q, want cleared", preview.Shein.Submission.CurrentPhase)
@@ -722,6 +720,7 @@ func TestSubmitTaskRecoversRemoteSubmitAfterPersistResultSaveFailure(t *testing.
 		t.Fatalf("create task: %v", err)
 	}
 	var publishCalls int32
+	var recordCalls int32
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,
 		ProductService: stubSubmitProductService{},
@@ -734,6 +733,9 @@ func TestSubmitTaskRecoversRemoteSubmitAfterPersistResultSaveFailure(t *testing.
 					Code: "0",
 					Msg:  "success",
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+				recordHook: func(*sheinproduct.ProductRecordRequest) {
+					atomic.AddInt32(&recordCalls, 1)
 				},
 				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
 					RecordID:     "record-persist-result",
@@ -769,8 +771,11 @@ func TestSubmitTaskRecoversRemoteSubmitAfterPersistResultSaveFailure(t *testing.
 	if got := atomic.LoadInt32(&publishCalls); got != 1 {
 		t.Fatalf("publish calls = %d, want 1", got)
 	}
-	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	if got := atomic.LoadInt32(&recordCalls); got != 0 {
+		t.Fatalf("record calls = %d, want 0 when persisted result is already available", got)
+	}
+	if preview.Shein.Submission.RemoteStatus != "" {
+		t.Fatalf("remote status = %q, want empty for local recovery", preview.Shein.Submission.RemoteStatus)
 	}
 	if preview.Shein.Submission.CurrentPhase != "" {
 		t.Fatalf("current phase = %q, want cleared", preview.Shein.Submission.CurrentPhase)
@@ -1221,6 +1226,9 @@ func TestSubmitTaskMarksTemporalStartFailureAsFailedInsteadOfLeavingRunningAttem
 	}
 	if record.FinishedAt == nil {
 		t.Fatalf("publish record = %+v, want finished_at recorded on start failure", record)
+	}
+	if record.StartedAt.IsZero() || !record.SubmittedAt.Equal(record.StartedAt) {
+		t.Fatalf("publish timing = %+v, want submitted_at preserved as start time", record)
 	}
 	if saved.Result.Shein.Submission.CurrentAction != "" || saved.Result.Shein.Submission.CurrentPhase != "" || saved.Result.Shein.Submission.CurrentRequestID != "" {
 		t.Fatalf("submission current state = %+v, want cleared after start failure", saved.Result.Shein.Submission)

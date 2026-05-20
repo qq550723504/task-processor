@@ -27,7 +27,6 @@ type SheinPublishStateQueryResult struct {
 	LastError       string     `json:"last_error,omitempty"`
 	StartedAt       *time.Time `json:"started_at,omitempty"`
 	FinishedAt      *time.Time `json:"finished_at,omitempty"`
-	RemoteStatus    string     `json:"remote_status,omitempty"`
 	WorkflowRunning bool       `json:"workflow_running"`
 }
 

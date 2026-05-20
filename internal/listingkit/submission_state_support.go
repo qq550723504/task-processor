@@ -23,7 +23,7 @@ func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
 	if pkg == nil {
 		return ""
 	}
-	if latest := latestSheinSubmissionEvent(pkg); latest != nil {
+	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
 		if latest.Action == "publish" && latest.Status == "success" {
 			return SheinWorkflowStatusPublished
 		}
@@ -57,6 +57,19 @@ func latestSheinSubmissionEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {
 		return nil
 	}
 	return &pkg.SubmissionEvents[0]
+}
+
+func latestSheinSubmissionOutcomeEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {
+	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
+		return nil
+	}
+	for i := range pkg.SubmissionEvents {
+		event := &pkg.SubmissionEvents[i]
+		if event.Action != "submit_phase" {
+			return event
+		}
+	}
+	return nil
 }
 
 func sheinPrimarySubmissionRecord(submission *sheinpub.SubmissionReport) *sheinpub.SubmissionRecord {

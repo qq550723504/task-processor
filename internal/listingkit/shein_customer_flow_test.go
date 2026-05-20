@@ -103,7 +103,7 @@ func TestApplySheinVariantImageCoverageGuardMarksBlockedWithoutClearingImages(t 
 		FinalDraft: &sheinpub.FinalDraft{Confirmed: true},
 	}
 
-	blocked := applySheinVariantImageCoverageGuard(task, pkg)
+	blocked := applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
 	if !blocked {
 		t.Fatal("expected coverage guard to block incomplete variant coverage")
 	}
@@ -129,6 +129,60 @@ func TestApplySheinVariantImageCoverageGuardMarksBlockedWithoutClearingImages(t 
 	}
 	if !found {
 		t.Fatalf("blocking items = %+v, want variant image coverage blocker", readiness.BlockingItems)
+	}
+}
+
+func TestApplySheinVariantImageCoverageGuardMarksProvidedResultNeedsReview(t *testing.T) {
+	t.Parallel()
+
+	mainImage := "https://cdn.example.com/shared-main.jpg"
+	req := &GenerateRequest{
+		Options: &GenerateOptions{
+			SheinStudio: &SheinStudioOptions{},
+		},
+	}
+	result := &ListingKitResult{
+		SDSSync: &SDSSyncSummary{
+			Status: "failed",
+			Error:  "SDS render failed for selected color variants: green",
+			VariantResults: []SDSSyncSummary{
+				{VariantColor: "red", Status: "completed", MockupImageURLs: []string{mainImage}},
+				{VariantColor: "green", Status: "failed"},
+			},
+		},
+		Summary: &GenerationSummary{},
+	}
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					SupplierCode: "RED",
+					ImageInfo:    &sheinpub.ImageDraft{MainImage: mainImage},
+					SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "RED-1", MainImage: mainImage, Attributes: map[string]string{"Color": "red"}}},
+				},
+				{
+					SupplierCode: "GREEN",
+					ImageInfo:    &sheinpub.ImageDraft{MainImage: mainImage},
+					SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "GREEN-1", MainImage: mainImage, Attributes: map[string]string{"Color": "green"}}},
+				},
+			},
+		},
+		PreviewProduct: &sheinproduct.Product{
+			SKCList: []sheinproduct.SKC{
+				{SupplierCode: testStringPtr("RED"), ImageInfo: *sheinImageInfo([]string{mainImage})},
+				{SupplierCode: testStringPtr("GREEN"), ImageInfo: *sheinImageInfo([]string{mainImage})},
+			},
+		},
+	}
+
+	if !applySheinVariantImageCoverageGuard(result, req, pkg) {
+		t.Fatal("expected coverage guard to block incomplete variant coverage")
+	}
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want provided result marked needs_review", result.Summary)
+	}
+	if len(result.ReviewReasons) == 0 {
+		t.Fatalf("review reasons = %#v, want blocking reason on provided result", result.ReviewReasons)
 	}
 }
 

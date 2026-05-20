@@ -73,7 +73,6 @@ func CompleteAttempt(pkg *sheinpub.Package, action, requestID string, response *
 	}
 	record.Result = response
 	record.FinishedAt = &finishedAt
-	record.SubmittedAt = finishedAt
 	if submitErr != nil {
 		record.Status = sheinpub.SubmissionStatusFailed
 		record.Error = submitErr.Error()
@@ -111,7 +110,6 @@ func FailAttempt(pkg *sheinpub.Package, action, requestID, phase string, submitE
 	record.Status = sheinpub.SubmissionStatusFailed
 	record.Phase = phase
 	record.FinishedAt = &finishedAt
-	record.SubmittedAt = finishedAt
 	if submitErr != nil {
 		record.Error = submitErr.Error()
 	}

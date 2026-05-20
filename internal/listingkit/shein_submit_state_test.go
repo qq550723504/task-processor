@@ -80,6 +80,12 @@ func TestCompleteSheinSubmitAttemptClearsInFlightAndWritesResult(t *testing.T) {
 	if record.RequestID != "idem-1" || !record.StartedAt.Equal(startedAt) || record.FinishedAt == nil || !record.FinishedAt.Equal(finishedAt) {
 		t.Fatalf("record timing/request = %+v, want request id and start/finish times", record)
 	}
+	if !record.SubmittedAt.Equal(startedAt) {
+		t.Fatalf("submitted_at = %v, want original started_at %v", record.SubmittedAt, startedAt)
+	}
+	if pkg.Submission.SubmittedAt == nil || !pkg.Submission.SubmittedAt.Equal(startedAt) {
+		t.Fatalf("submission submitted_at = %v, want original started_at %v", pkg.Submission.SubmittedAt, startedAt)
+	}
 }
 
 func TestFailSheinSubmitAttemptRecordsFailedPhaseAndError(t *testing.T) {
@@ -98,6 +104,9 @@ func TestFailSheinSubmitAttemptRecordsFailedPhaseAndError(t *testing.T) {
 	}
 	if record.Error != errTestSubmitState.Error() {
 		t.Fatalf("error = %q, want %q", record.Error, errTestSubmitState.Error())
+	}
+	if !record.SubmittedAt.Equal(startedAt) {
+		t.Fatalf("submitted_at = %v, want original started_at %v", record.SubmittedAt, startedAt)
 	}
 	if pkg.Submission.LastError != errTestSubmitState.Error() {
 		t.Fatalf("last error = %q, want %q", pkg.Submission.LastError, errTestSubmitState.Error())

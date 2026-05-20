@@ -23,7 +23,7 @@ const (
 	activityNameSubmitRemote        = "SubmitRemote"
 	activityNamePersistSuccess      = "PersistSuccess"
 	activityNamePersistFailure      = "PersistFailure"
-	activityNameConfirmRemote       = "ConfirmRemote"
+	activityNameRefreshRemoteStatus = "RefreshRemoteStatus"
 )
 
 type activityRegisterer interface {
@@ -45,7 +45,7 @@ func RegisterSubmitActivities(reg activityRegisterer, activities *SubmitActiviti
 	reg.RegisterActivityWithOptions(activities.SubmitRemote, sdkactivity.RegisterOptions{Name: activityNameSubmitRemote})
 	reg.RegisterActivityWithOptions(activities.PersistSuccess, sdkactivity.RegisterOptions{Name: activityNamePersistSuccess})
 	reg.RegisterActivityWithOptions(activities.PersistFailure, sdkactivity.RegisterOptions{Name: activityNamePersistFailure})
-	reg.RegisterActivityWithOptions(activities.ConfirmRemote, sdkactivity.RegisterOptions{Name: activityNameConfirmRemote})
+	reg.RegisterActivityWithOptions(activities.RefreshRemoteStatus, sdkactivity.RegisterOptions{Name: activityNameRefreshRemoteStatus})
 	return nil
 }
 
@@ -116,12 +116,12 @@ func (a *SubmitActivities) PersistFailure(ctx context.Context, in *listingkit.Sh
 	return host.PersistSheinPublishFailure(ctx, *in)
 }
 
-func (a *SubmitActivities) ConfirmRemote(ctx context.Context, in listingkit.SheinConfirmRemoteInput) (*listingkit.SheinRemoteConfirmResult, error) {
+func (a *SubmitActivities) RefreshRemoteStatus(ctx context.Context, in listingkit.SheinRefreshRemoteStatusInput) (*listingkit.SheinRefreshRemoteStatusResult, error) {
 	host, err := a.host()
 	if err != nil {
 		return nil, err
 	}
-	return host.ConfirmSheinPublishRemote(ctx, in)
+	return host.RefreshSheinPublishRemoteStatus(ctx, in)
 }
 
 func (a *SubmitActivities) BuildPreview(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {

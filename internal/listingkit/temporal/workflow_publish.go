@@ -88,20 +88,6 @@ func PublishWorkflow(ctx sdkworkflow.Context, in SheinPublishWorkflowInput) erro
 		return persistWorkflowFailure(ctx, &state, err, prepared, remoteResult)
 	}
 
-	state.CurrentPhase = sheinpub.SubmissionPhaseConfirmRemote
-	var confirmResult *listingkit.SheinRemoteConfirmResult
-	if err := sdkworkflow.ExecuteActivity(ctx, activityNameConfirmRemote, listingkit.SheinConfirmRemoteInput{
-		TaskID:       in.TaskID,
-		Action:       in.Action,
-		RequestID:    in.RequestID,
-		SupplierCode: sheinRemoteSupplierCode(remoteResult),
-	}).Get(ctx, &confirmResult); err != nil {
-		return persistWorkflowFailure(ctx, &state, err, prepared, remoteResult)
-	}
-
-	if confirmResult != nil {
-		state.RemoteStatus = strings.TrimSpace(confirmResult.RemoteStatus)
-	}
 	finishWorkflowSuccess(ctx, &state)
 	return nil
 }

@@ -92,7 +92,6 @@ func TestPublishWorkflowWithConcreteActivitiesPersistsStateAndBuildsPreview(t *t
 		sheinpub.SubmissionPhasePreValidate,
 		sheinpub.SubmissionPhaseSubmitRemote,
 		sheinpub.SubmissionPhasePersistResult,
-		sheinpub.SubmissionPhaseConfirmRemote,
 	} {
 		if !temporalHasSubmissionEventPhase(saved.Result.Shein.SubmissionEvents, phase) {
 			t.Fatalf("submission events = %+v, want phase %q", saved.Result.Shein.SubmissionEvents, phase)

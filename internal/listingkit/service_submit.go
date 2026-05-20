@@ -190,16 +190,6 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhasePersistResult); err != nil {
 			return nil, err
 		}
-		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote); err != nil {
-			return nil, err
-		}
-		remoteEvent, remoteErr := s.confirmSheinSubmitRemote(ctx, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
-		if remoteEvent != nil {
-			appendSheinSubmissionEvent(pkg, *remoteEvent)
-		}
-		if remoteErr != nil {
-			responseErr = remoteErr
-		}
 	}
 	record := completeSheinSubmitAttempt(pkg, action, requestID, response, responseErr, time.Now())
 	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, response, responseErr, startedAt))
@@ -293,7 +283,7 @@ func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req
 		}
 	}
 	applySheinFinalImageDraft(pkg)
-	applySheinVariantImageCoverageGuard(task, pkg)
+	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
 }
 
 func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (sheinproduct.ProductAPI, error) {

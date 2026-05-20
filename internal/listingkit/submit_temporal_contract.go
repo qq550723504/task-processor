@@ -34,7 +34,6 @@ type SheinPublishWorkflowState struct {
 	LastError       string     `json:"last_error,omitempty"`
 	StartedAt       *time.Time `json:"started_at,omitempty"`
 	FinishedAt      *time.Time `json:"finished_at,omitempty"`
-	RemoteStatus    string     `json:"remote_status,omitempty"`
 	WorkflowRunning bool       `json:"workflow_running"`
 }
 
@@ -50,7 +49,7 @@ type SheinPublishActivityHost interface {
 	SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error)
 	PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error
 	PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error
-	ConfirmSheinPublishRemote(ctx context.Context, in SheinConfirmRemoteInput) (*SheinRemoteConfirmResult, error)
+	RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error)
 	BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error)
 }
 
@@ -100,14 +99,14 @@ type SheinPersistSubmitFailureInput struct {
 	Snapshot     *sheinpub.SubmitSnapshot     `json:"snapshot,omitempty"`
 }
 
-type SheinConfirmRemoteInput struct {
+type SheinRefreshRemoteStatusInput struct {
 	TaskID       string `json:"task_id"`
 	Action       string `json:"action"`
 	RequestID    string `json:"request_id"`
 	SupplierCode string `json:"supplier_code,omitempty"`
 }
 
-type SheinRemoteConfirmResult struct {
+type SheinRefreshRemoteStatusResult struct {
 	TaskID       string `json:"task_id"`
 	Action       string `json:"action"`
 	RequestID    string `json:"request_id"`

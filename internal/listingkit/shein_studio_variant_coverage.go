@@ -12,21 +12,21 @@ const (
 	sheinVariantImageCoverageMessageKey = "variant_image_coverage_message"
 )
 
-func applySheinVariantImageCoverageGuard(task *Task, pkg *sheinpub.Package) bool {
-	if task == nil || task.Result == nil || pkg == nil {
+func applySheinVariantImageCoverageGuard(result *ListingKitResult, req *GenerateRequest, pkg *sheinpub.Package) bool {
+	if result == nil || pkg == nil {
 		return false
 	}
-	warning, blocked := enforceSheinVariantImageCoverage(pkg, task.Request, task.Result.SDSSync)
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, req, result.SDSSync)
 	setSheinVariantImageCoverageMetadata(pkg, warning, blocked)
 	if !blocked || strings.TrimSpace(warning) == "" {
 		return false
 	}
-	if task.Result.Summary == nil {
-		task.Result.Summary = &GenerationSummary{}
+	if result.Summary == nil {
+		result.Summary = &GenerationSummary{}
 	}
-	task.Result.Summary.NeedsReview = true
-	task.Result.Summary.Warnings = uniqueStrings(append(task.Result.Summary.Warnings, warning))
-	task.Result.ReviewReasons = uniqueStrings(append(task.Result.ReviewReasons, warning))
+	result.Summary.NeedsReview = true
+	result.Summary.Warnings = uniqueStrings(append(result.Summary.Warnings, warning))
+	result.ReviewReasons = uniqueStrings(append(result.ReviewReasons, warning))
 	pkg.ReviewNotes = uniqueStrings(append(pkg.ReviewNotes, warning))
 	return true
 }
