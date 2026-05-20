@@ -23,6 +23,7 @@ describe("AIClientSettingsCard", () => {
       data: {
         scope: "tenant",
         client_name: clientName,
+        resolved_scope: "tenant",
         api_key_set: clientName !== "image_gpt_image_2",
         base_url:
           clientName === "image_nanobanana"
@@ -53,6 +54,8 @@ describe("AIClientSettingsCard", () => {
     render(<AIClientSettingsCard />);
 
     expect(screen.getByText("密钥已配置")).toBeInTheDocument();
+    expect(screen.getByText("当前生效来源：")).toBeInTheDocument();
+    expect(screen.getByText("当前租户配置")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("tenant-secret")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("https://tenant-ai.example.com/v1")).toBeInTheDocument();
     expect(screen.getByDisplayValue("gpt-4.1-mini")).toBeInTheDocument();
@@ -122,5 +125,26 @@ describe("AIClientSettingsCard", () => {
         model: "nano-banana-pro",
       }),
     );
+  });
+
+  it("shows user scope when a user-level config is currently taking effect", () => {
+    mocks.useAIClientSettings.mockImplementation((_scope: string, clientName: string) => ({
+      data: {
+        scope: "user",
+        client_name: clientName,
+        resolved_scope: "user",
+        api_key_set: true,
+        base_url: "https://user-ai.example.com/v1",
+        model: "gemini-3.1-flash-lite",
+        timeout_second: 45,
+        enabled: true,
+      },
+      isLoading: false,
+      isError: false,
+    }));
+
+    render(<AIClientSettingsCard />);
+
+    expect(screen.getByText("当前登录用户配置")).toBeInTheDocument();
   });
 });

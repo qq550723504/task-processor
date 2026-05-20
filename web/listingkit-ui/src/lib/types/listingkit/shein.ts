@@ -541,6 +541,7 @@ export type AIClientSettings = {
   timeout_second?: number;
   enabled?: boolean;
   updated_at?: string;
+  resolved_scope?: "tenant" | "user" | string;
 };
 
 export type ListingKitStoreMatchRule = {

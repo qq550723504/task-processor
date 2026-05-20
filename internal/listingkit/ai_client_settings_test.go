@@ -10,7 +10,8 @@ import (
 
 func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testing.T) {
 	store := &fakeAIClientCredentialStore{
-		credential: &openaiclient.AIClientCredential{
+		credentials: map[string]*openaiclient.AIClientCredential{
+			"tenant-a||default": {
 			TenantID:      "tenant-a",
 			ClientName:    "default",
 			APIKey:        "existing-key",
@@ -19,6 +20,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 			TimeoutSecond: 30,
 			Enabled:       true,
 			UpdatedAt:     time.Now(),
+			},
 		},
 	}
 	svc := &service{aiCredentialStore: store}
@@ -48,22 +50,101 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 }
 
 type fakeAIClientCredentialStore struct {
-	credential *openaiclient.AIClientCredential
-	saved      *openaiclient.AIClientCredential
+	credentials map[string]*openaiclient.AIClientCredential
+	saved       *openaiclient.AIClientCredential
 }
 
 func (f *fakeAIClientCredentialStore) SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error {
 	saved := credential
 	saved.UpdatedAt = time.Now()
 	f.saved = &saved
-	f.credential = &saved
+	if f.credentials == nil {
+		f.credentials = make(map[string]*openaiclient.AIClientCredential)
+	}
+	f.credentials[aiCredentialKey(saved.TenantID, saved.UserID, saved.ClientName)] = &saved
 	return nil
 }
 
 func (f *fakeAIClientCredentialStore) GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error) {
-	if f.credential == nil {
+	if f.credentials == nil {
 		return nil, nil
 	}
-	credential := *f.credential
-	return &credential, nil
+	credential := f.credentials[aiCredentialKey(tenantID, userID, clientName)]
+	if credential == nil {
+		return nil, nil
+	}
+	copied := *credential
+	return &copied, nil
+}
+
+func aiCredentialKey(tenantID, userID, clientName string) string {
+	return tenantID + "|" + userID + "|" + clientName
+}
+
+func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
+	now := time.Now()
+	store := &fakeAIClientCredentialStore{
+		credentials: map[string]*openaiclient.AIClientCredential{
+			aiCredentialKey("tenant-a", "", "default"): {
+				TenantID:      "tenant-a",
+				UserID:        "",
+				ClientName:    "default",
+				APIKey:        "tenant-key",
+				BaseURL:       "https://tenant.example.test/v1",
+				Model:         "tenant-model",
+				TimeoutSecond: 40,
+				Enabled:       true,
+				UpdatedAt:     now,
+			},
+			aiCredentialKey("tenant-a", "user-a", "default"): {
+				TenantID:      "tenant-a",
+				UserID:        "user-a",
+				ClientName:    "default",
+				APIKey:        "user-key",
+				BaseURL:       "https://user.example.test/v1",
+				Model:         "user-model",
+				TimeoutSecond: 50,
+				Enabled:       true,
+				UpdatedAt:     now,
+			},
+		},
+	}
+	svc := &service{aiCredentialStore: store}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{
+		TenantID: "tenant-a",
+		UserID:   "user-a",
+	})
+
+	userScoped, err := svc.GetAIClientSettings(ctx, "user", "default")
+	if err != nil {
+		t.Fatalf("GetAIClientSettings(user) returned error: %v", err)
+	}
+	if userScoped.ResolvedScope != "user" {
+		t.Fatalf("user scoped resolved_scope = %q, want user", userScoped.ResolvedScope)
+	}
+	if userScoped.BaseURL != "https://user.example.test/v1" {
+		t.Fatalf("user scoped base_url = %q", userScoped.BaseURL)
+	}
+
+	tenantScoped, err := svc.GetAIClientSettings(ctx, "tenant", "default")
+	if err != nil {
+		t.Fatalf("GetAIClientSettings(tenant) returned error: %v", err)
+	}
+	if tenantScoped.ResolvedScope != "tenant" {
+		t.Fatalf("tenant scoped resolved_scope = %q, want tenant", tenantScoped.ResolvedScope)
+	}
+	if tenantScoped.BaseURL != "https://tenant.example.test/v1" {
+		t.Fatalf("tenant scoped base_url = %q", tenantScoped.BaseURL)
+	}
+
+	missing, err := svc.GetAIClientSettings(ctx, "tenant", "scorer")
+	if err != nil {
+		t.Fatalf("GetAIClientSettings(missing) returned error: %v", err)
+	}
+	if missing.ResolvedScope != "" {
+		t.Fatalf("missing resolved_scope = %q, want empty", missing.ResolvedScope)
+	}
+	if missing.APIKeySet {
+		t.Fatal("missing config should not report api key set")
+	}
 }

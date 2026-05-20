@@ -62,6 +62,7 @@ export function AIClientSettingsCard() {
   const [draft, setDraft] = useState<AISettingsForm | null>(null);
   const selectedClient =
     aiClientOptions.find((option) => option.name === clientName) ?? aiClientOptions[0];
+  const resolvedScopeLabel = resolveAIClientScopeLabel(settings.data?.resolved_scope);
 
   const loadedForm = useMemo<AISettingsForm>(() => {
     const data = settings.data;
@@ -155,6 +156,10 @@ export function AIClientSettingsCard() {
             client_name: <span className="font-semibold text-zinc-800">{selectedClient.name}</span>
           </div>
         </div>
+        <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          当前生效来源：
+          <span className="ml-1 font-semibold">{resolvedScopeLabel}</span>
+        </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr_140px]">
           <Label className="space-y-1">
@@ -221,6 +226,17 @@ export function AIClientSettingsCard() {
       ) : null}
     </ListingKitSettingsSection>
   );
+}
+
+function resolveAIClientScopeLabel(scope?: string) {
+  switch ((scope ?? "").trim()) {
+    case "user":
+      return "当前登录用户配置";
+    case "tenant":
+      return "当前租户配置";
+    default:
+      return "未配置，运行时会回退到系统默认";
+  }
 }
 
 function Input({

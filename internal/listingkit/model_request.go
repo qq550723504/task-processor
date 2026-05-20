@@ -209,6 +209,7 @@ type AIClientSettings struct {
 	TimeoutSecond int    `json:"timeout_second,omitempty"`
 	Enabled       bool   `json:"enabled"`
 	UpdatedAt     string `json:"updated_at,omitempty"`
+	ResolvedScope string `json:"resolved_scope,omitempty"`
 }
 
 type SheinPricePreviewRequest struct {

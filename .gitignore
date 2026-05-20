@@ -62,6 +62,8 @@ logs
 .gocache/
 .local/*
 !.local/README.md
+!/.local/chrome/
+!/.local/chrome/**
 tmp/*
 !tmp/go.mod
 !tmp/README.md
@@ -78,4 +80,5 @@ web/listingkit-ui/tsconfig.tsbuildinfo
 
 # Local SDS/SHEIN integration state and credentials
 data/sds/
+internal/sdslogin/data/sds/*.json
 config/*local*.yaml

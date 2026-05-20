@@ -14,15 +14,17 @@ func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientN
 	}
 	identity := openaiclient.IdentityFromContext(ctx)
 	tenantID := strings.TrimSpace(identity.TenantID)
+	requestedScope := normalizeAISettingsScope(scope, identity.UserID)
 	userID := aiSettingsUserID(identity, scope)
-	credential, err := s.aiCredentialStore.GetCredential(ctx, tenantID, userID, clientName)
+	credential, resolvedScope, err := s.resolveAISettingsCredential(ctx, tenantID, strings.TrimSpace(identity.UserID), userID, clientName)
 	if err != nil {
 		return nil, err
 	}
 	settings := &AIClientSettings{
-		Scope:      normalizeAISettingsScope(scope, userID),
+		Scope:         requestedScope,
 		ClientName: normalizeAIClientName(clientName),
-		Enabled:    true,
+		Enabled:       true,
+		ResolvedScope: resolvedScope,
 	}
 	if credential == nil {
 		return settings, nil
@@ -34,6 +36,35 @@ func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientN
 	settings.Enabled = credential.Enabled
 	settings.UpdatedAt = credential.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 	return settings, nil
+}
+
+func (s *service) resolveAISettingsCredential(
+	ctx context.Context,
+	tenantID string,
+	_ string,
+	requestedUserID string,
+	clientName string,
+) (*openaiclient.AIClientCredential, string, error) {
+	if tenantID == "" {
+		return nil, "", nil
+	}
+	if requestedUserID != "" {
+		credential, err := s.aiCredentialStore.GetCredential(ctx, tenantID, requestedUserID, clientName)
+		if err != nil {
+			return nil, "", err
+		}
+		if credential != nil {
+			return credential, "user", nil
+		}
+	}
+	credential, err := s.aiCredentialStore.GetCredential(ctx, tenantID, "", clientName)
+	if err != nil {
+		return nil, "", err
+	}
+	if credential != nil {
+		return credential, "tenant", nil
+	}
+	return nil, "", nil
 }
 
 func (s *service) UpdateAIClientSettings(ctx context.Context, req *AIClientSettings) (*AIClientSettings, error) {
