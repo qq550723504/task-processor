@@ -252,10 +252,6 @@ func countTemplateValueFitsForAttribute(attr sheinattribute.AttributeInfo, value
 	for _, value := range normalizedValues {
 		if _, ok := matchSaleAttributeValueExact(attr, value, ""); ok {
 			fitCount++
-			continue
-		}
-		if _, ok := matchSaleAttributeValueNormalized(attr, value, ""); ok {
-			fitCount++
 		}
 	}
 	return fitCount, len(normalizedValues)

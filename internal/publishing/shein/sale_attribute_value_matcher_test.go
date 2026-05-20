@@ -31,7 +31,7 @@ func (s stubSaleAttributeLLM) GetDefaultModel() string {
 	return "test"
 }
 
-func TestBuildValueAssignmentsMatchesNormalizedNumericValues(t *testing.T) {
+func TestBuildValueAssignmentsDoesNotMatchNormalizedNumericValuesDeterministically(t *testing.T) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{{
 		AttributeID:       502,
 		AttributeName:     "尺码",
@@ -44,18 +44,11 @@ func TestBuildValueAssignmentsMatchesNormalizedNumericValues(t *testing.T) {
 	}})
 
 	assignments, _, notes, _ := buildValueAssignments([]string{"40码"}, "尺码", "Size", "sku", index, nil, 0, "", nil)
-	if len(notes) != 0 {
-		t.Fatalf("notes = %v, want empty", notes)
+	if assignments != nil {
+		t.Fatalf("assignments = %+v, want nil", assignments)
 	}
-	assignment, ok := assignments[normalizeText("40码")]
-	if !ok {
-		t.Fatalf("missing normalized assignment for 40码")
-	}
-	if assignment.AttributeValueID == nil || *assignment.AttributeValueID != 21 {
-		t.Fatalf("attribute value id = %v, want 21", assignment.AttributeValueID)
-	}
-	if assignment.MatchedBy != "attribute_value_normalized" && assignment.MatchedBy != "attribute_value_comparable" {
-		t.Fatalf("matched by = %q, want normalized or comparable match", assignment.MatchedBy)
+	if len(notes) != 1 {
+		t.Fatalf("notes = %v, want single unmatched note", notes)
 	}
 }
 
@@ -83,7 +76,7 @@ func TestBuildValueAssignmentsMatchesEURSizeValues(t *testing.T) {
 	}
 }
 
-func TestBuildValueAssignmentsStripsSourceCodePrefixForColor(t *testing.T) {
+func TestBuildValueAssignmentsDoesNotStripSourceCodePrefixDeterministically(t *testing.T) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{{
 		AttributeID:       501,
 		AttributeName:     "颜色",
@@ -97,22 +90,15 @@ func TestBuildValueAssignmentsStripsSourceCodePrefixForColor(t *testing.T) {
 	}})
 
 	assignments, _, notes, _ := buildValueAssignments([]string{"B-2601黑色"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
-	if len(notes) != 0 {
-		t.Fatalf("notes = %v, want empty", notes)
+	if assignments != nil {
+		t.Fatalf("assignments = %+v, want nil", assignments)
 	}
-	assignment, ok := assignments[normalizeText("B-2601黑色")]
-	if !ok {
-		t.Fatalf("missing normalized assignment for B-2601黑色")
-	}
-	if assignment.AttributeValueID == nil || *assignment.AttributeValueID != 11 {
-		t.Fatalf("attribute value id = %v, want 11", assignment.AttributeValueID)
-	}
-	if assignment.MatchedBy != "attribute_value_normalized" {
-		t.Fatalf("matched by = %q, want attribute_value_normalized", assignment.MatchedBy)
+	if len(notes) != 1 {
+		t.Fatalf("notes = %v, want single unmatched note", notes)
 	}
 }
 
-func TestBuildValueAssignmentsUsesLastSegmentForCompositeColor(t *testing.T) {
+func TestBuildValueAssignmentsDoesNotUseCompositeColorSegmentsDeterministically(t *testing.T) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{{
 		AttributeID:       501,
 		AttributeName:     "颜色",
@@ -126,19 +112,15 @@ func TestBuildValueAssignmentsUsesLastSegmentForCompositeColor(t *testing.T) {
 	}})
 
 	assignments, _, notes, _ := buildValueAssignments([]string{"牛津布/防水防晒/深蓝"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
-	if len(notes) != 0 {
-		t.Fatalf("notes = %v, want empty", notes)
+	if assignments != nil {
+		t.Fatalf("assignments = %+v, want nil", assignments)
 	}
-	assignment, ok := assignments[normalizeText("牛津布/防水防晒/深蓝")]
-	if !ok {
-		t.Fatalf("missing normalized assignment for composite color")
-	}
-	if assignment.AttributeValueID == nil || *assignment.AttributeValueID != 11 {
-		t.Fatalf("attribute value id = %v, want 11", assignment.AttributeValueID)
+	if len(notes) != 1 {
+		t.Fatalf("notes = %v, want single unmatched note", notes)
 	}
 }
 
-func TestBuildValueAssignmentsStripsWeightAnnotationForSize(t *testing.T) {
+func TestBuildValueAssignmentsDoesNotStripWeightAnnotationDeterministically(t *testing.T) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{{
 		AttributeID:       502,
 		AttributeName:     "尺码",
@@ -151,19 +133,15 @@ func TestBuildValueAssignmentsStripsWeightAnnotationForSize(t *testing.T) {
 	}})
 
 	assignments, _, notes, _ := buildValueAssignments([]string{"150*100*10CM（4kg）"}, "尺寸", "Size", "sku", index, nil, 0, "", nil)
-	if len(notes) != 0 {
-		t.Fatalf("notes = %v, want empty", notes)
+	if assignments != nil {
+		t.Fatalf("assignments = %+v, want nil", assignments)
 	}
-	assignment, ok := assignments[normalizeText("150*100*10CM（4kg）")]
-	if !ok {
-		t.Fatalf("missing normalized assignment for weighted size")
-	}
-	if assignment.AttributeValueID == nil || *assignment.AttributeValueID != 21 {
-		t.Fatalf("attribute value id = %v, want 21", assignment.AttributeValueID)
+	if len(notes) != 1 {
+		t.Fatalf("notes = %v, want single unmatched note", notes)
 	}
 }
 
-func TestBuildValueAssignmentsMatchesSegmentedCandidateWithoutExactWholeValueMatch(t *testing.T) {
+func TestBuildValueAssignmentsDoesNotMatchSegmentedCandidateDeterministically(t *testing.T) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{{
 		AttributeID:       501,
 		AttributeName:     "颜色",
@@ -177,18 +155,11 @@ func TestBuildValueAssignmentsMatchesSegmentedCandidateWithoutExactWholeValueMat
 	}})
 
 	assignments, _, notes, _ := buildValueAssignments([]string{"牛津布/防水深蓝"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
-	if len(notes) != 0 {
-		t.Fatalf("notes = %v, want empty", notes)
+	if assignments != nil {
+		t.Fatalf("assignments = %+v, want nil", assignments)
 	}
-	assignment, ok := assignments[normalizeText("牛津布/防水深蓝")]
-	if !ok {
-		t.Fatalf("missing normalized assignment for segmented candidate")
-	}
-	if assignment.AttributeValueID == nil || *assignment.AttributeValueID != 11 {
-		t.Fatalf("attribute value id = %v, want 11", assignment.AttributeValueID)
-	}
-	if assignment.MatchedBy != "attribute_value_comparable" && assignment.MatchedBy != "attribute_value_normalized" {
-		t.Fatalf("matched by = %q, want comparable-style match", assignment.MatchedBy)
+	if len(notes) != 1 {
+		t.Fatalf("notes = %v, want single unmatched note", notes)
 	}
 }
 
@@ -341,6 +312,57 @@ func TestBuildValueAssignmentsCreatesCustomSaleAttributeValueAfterValidation(t *
 	}
 	if len(notes) == 0 {
 		t.Fatalf("notes = %v, want custom creation note", notes)
+	}
+}
+
+func TestResolveSingleSaleAttributeValueCreatesCustomValueID(t *testing.T) {
+	attr := sheinattribute.AttributeInfo{
+		AttributeID:       501,
+		AttributeName:     "颜色",
+		AttributeNameEn:   "Color",
+		AttributeInputNum: 1,
+	}
+	api := stubAttributeAPI{
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			resp.Data.AttributeValueNameMultis = []struct {
+				Language                string `json:"language"`
+				AttributeValueNameMulti string `json:"attribute_value_name_multi"`
+				WarningType             int    `json:"warning_type"`
+			}{
+				{Language: "en", AttributeValueNameMulti: "Cream Beige"},
+			}
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}
+
+	resolved, relations, notes, ok := ResolveSingleSaleAttributeValue(
+		attr,
+		"颜色",
+		"米驼",
+		"skc",
+		api,
+		12143,
+		"Bench Cushion",
+	)
+	if !ok {
+		t.Fatalf("expected match, got false; notes=%v", notes)
+	}
+	if resolved.AttributeValueID == nil || *resolved.AttributeValueID != 9001 {
+		t.Fatalf("attribute value id = %v, want 9001", resolved.AttributeValueID)
+	}
+	if len(relations) != 1 || relations[0].AttributeValueID != 9001 {
+		t.Fatalf("relations = %+v, want created custom relation", relations)
 	}
 }
 

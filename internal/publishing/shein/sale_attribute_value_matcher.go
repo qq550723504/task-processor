@@ -125,6 +125,40 @@ func buildValueAssignments(
 	return assignments, dedupeCustomAttributeRelations(relations), dedupeStrings(notes), summary
 }
 
+func ResolveSingleSaleAttributeValue(
+	attr sheinattribute.AttributeInfo,
+	sourceDimension string,
+	sourceValue string,
+	scope string,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+) (ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, bool) {
+	index := newTemplateIndex([]sheinattribute.AttributeInfo{attr})
+	assignments, relations, notes, _ := buildValueAssignments(
+		[]string{sourceValue},
+		sourceDimension,
+		firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+		scope,
+		index,
+		api,
+		categoryID,
+		spuName,
+		nil,
+	)
+	if len(assignments) == 0 {
+		return ResolvedSaleAttribute{}, relations, notes, false
+	}
+	resolved, ok := assignments[normalizeText(sourceValue)]
+	if ok {
+		return resolved, relations, notes, true
+	}
+	for _, value := range assignments {
+		return value, relations, notes, true
+	}
+	return ResolvedSaleAttribute{}, relations, notes, false
+}
+
 func matchSaleAttributeValueDeterministic(
 	attr *sheinattribute.AttributeInfo,
 	sourceDimension string,
@@ -136,9 +170,6 @@ func matchSaleAttributeValueDeterministic(
 		return ResolvedSaleAttribute{}, nil
 	}
 	if resolved, ok := matchSaleAttributeValueExact(*attr, sourceValue, scope); ok {
-		return resolved, nil
-	}
-	if resolved, ok := matchSaleAttributeValueNormalized(*attr, sourceValue, scope); ok {
 		return resolved, nil
 	}
 
@@ -158,10 +189,17 @@ func matchSaleAttributeValueExact(attr sheinattribute.AttributeInfo, sourceValue
 		return ResolvedSaleAttribute{}, false
 	}
 	for _, option := range attr.AttributeValueInfoList {
-		if normalizeText(firstNonEmpty(option.AttributeValueEn, option.AttributeValue)) != normalizeText(sourceValue) {
-			continue
+		candidates := []string{
+			firstNonEmpty(option.AttributeValueEn, option.AttributeValue),
+			option.AttributeValue,
+			option.AttributeValueEn,
 		}
-		return buildResolvedSaleAttribute(attr, option, sourceValue, scope, "attribute_value"), true
+		for _, candidate := range candidates {
+			if normalizeText(candidate) != normalizeText(sourceValue) {
+				continue
+			}
+			return buildResolvedSaleAttribute(attr, option, sourceValue, scope, "attribute_value"), true
+		}
 	}
 	return ResolvedSaleAttribute{}, false
 }
