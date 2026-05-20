@@ -161,6 +161,13 @@ func TestInternalPackagesDoNotImportAppStateCompatibilityLayer(t *testing.T) {
 	}, allowedFiles)
 }
 
+func TestCmdPackagesDoNotImportAppCompatibilityLayers(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "cmd"), []string{
+		`"task-processor/internal/app/processor"`,
+		`"task-processor/internal/app/state"`,
+	}, nil)
+}
+
 func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "productenrich", "httpapi"),
