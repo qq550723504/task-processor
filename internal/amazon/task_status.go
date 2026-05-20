@@ -5,10 +5,10 @@ import (
 	"time"
 
 	amazonModel "task-processor/internal/amazon/model"
-	"task-processor/internal/app/state"
-	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timex"
+	"task-processor/internal/state"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )

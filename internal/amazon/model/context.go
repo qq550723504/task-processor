@@ -3,8 +3,8 @@ package model
 
 import (
 	"task-processor/internal/amazon/api"
-	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/state"
 )
 
 // Services Amazon平台服务集合

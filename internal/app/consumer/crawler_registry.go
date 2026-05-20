@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	"task-processor/internal/app/crawler/distributed"
-	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/processor"
 
 	"github.com/sirupsen/logrus"
 )

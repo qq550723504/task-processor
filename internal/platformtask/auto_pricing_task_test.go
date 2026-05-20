@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // MockAutoPricingService 模拟自动核价服务

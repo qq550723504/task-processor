@@ -3,10 +3,10 @@ package product
 import (
 	"fmt"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/timex"
+	"task-processor/internal/state"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"

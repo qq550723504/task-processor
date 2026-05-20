@@ -5,10 +5,10 @@ import (
 	"context"
 	"strings"
 
-	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	"task-processor/internal/ports"
 
 	"github.com/sirupsen/logrus"
 )

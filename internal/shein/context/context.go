@@ -3,7 +3,6 @@ package context
 import (
 	"context"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
@@ -17,6 +16,7 @@ import (
 	"task-processor/internal/shein/api/product"
 	sheintranslate "task-processor/internal/shein/api/translate"
 	"task-processor/internal/shein/api/warehouse"
+	"task-processor/internal/state"
 )
 
 type StepHandler interface {

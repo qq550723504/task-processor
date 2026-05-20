@@ -8,7 +8,7 @@ import (
 
 // ReListingQueueManager 重新上架队列管理器（内存版）
 type ReListingQueueManager struct {
-	queues map[string][]string // key: tenantID:shopID, value: task data list
+	queues map[string][]string
 	mutex  sync.RWMutex
 }
 
@@ -25,11 +25,9 @@ func (m *ReListingQueueManager) PushTask(tenantID, shopID int64, taskData string
 	defer m.mutex.Unlock()
 
 	key := fmt.Sprintf("%d:%d", tenantID, shopID)
-
-	// 添加到队列头部
 	m.queues[key] = append([]string{taskData}, m.queues[key]...)
 
-	logger.GetGlobalLogger("app/state").Infof("任务已添加到重新上架队列: 租户=%d, 店铺=%d, 队列长度=%d", tenantID, shopID, len(m.queues[key]))
+	logger.GetGlobalLogger("state").Infof("任务已添加到重新上架队列: 租户=%d, 店铺=%d, 队列长度=%d", tenantID, shopID, len(m.queues[key]))
 }
 
 // PopTask 从队列尾部取出任务
@@ -39,16 +37,12 @@ func (m *ReListingQueueManager) PopTask(tenantID, shopID int64) (string, error) 
 
 	key := fmt.Sprintf("%d:%d", tenantID, shopID)
 	queue, exists := m.queues[key]
-
 	if !exists || len(queue) == 0 {
 		return "", fmt.Errorf("队列为空")
 	}
 
-	// 从尾部取出
 	taskData := queue[len(queue)-1]
 	m.queues[key] = queue[:len(queue)-1]
-
-	// 如果队列为空，删除键
 	if len(m.queues[key]) == 0 {
 		delete(m.queues, key)
 	}
@@ -90,5 +84,5 @@ func (m *ReListingQueueManager) ClearQueue(tenantID, shopID int64) {
 	key := fmt.Sprintf("%d:%d", tenantID, shopID)
 	delete(m.queues, key)
 
-	logger.GetGlobalLogger("app/state").Infof("重新上架队列已清空: 租户=%d, 店铺=%d", tenantID, shopID)
+	logger.GetGlobalLogger("state").Infof("重新上架队列已清空: 租户=%d, 店铺=%d", tenantID, shopID)
 }

@@ -16,7 +16,7 @@ type MemoryManager struct {
 
 // NewMemoryManager 创建内存管理器
 func NewMemoryManager(ctx context.Context, managementClientMgr *management.ClientManager) *MemoryManager {
-	logger.GetGlobalLogger("app/state").Info("初始化内存管理器...")
+	logger.GetGlobalLogger("state").Info("初始化内存管理器...")
 
 	manager := &MemoryManager{
 		CookieManager:     NewCookieManager(),
@@ -25,10 +25,9 @@ func NewMemoryManager(ctx context.Context, managementClientMgr *management.Clien
 		ReListingQueue:    NewReListingQueueManager(),
 	}
 
-	// 启动清理任务 - 传递context
 	manager.ShopPauseManager.StartCleanupTask(ctx)
 
-	logger.GetGlobalLogger("app/state").Info("内存管理器初始化完成")
+	logger.GetGlobalLogger("state").Info("内存管理器初始化完成")
 	return manager
 }
 

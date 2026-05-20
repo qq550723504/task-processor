@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	types "task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/processor"
 	"task-processor/internal/shein/aicache"
 
 	"github.com/sirupsen/logrus"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	appscheduler "task-processor/internal/app/scheduler"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // BaseTask 基础任务实现

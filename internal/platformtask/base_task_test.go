@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	appscheduler "task-processor/internal/app/scheduler"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 func TestNewBaseTask(t *testing.T) {

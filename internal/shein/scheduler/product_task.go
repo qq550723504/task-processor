@@ -4,9 +4,9 @@ package scheduler
 import (
 	"context"
 
-	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // ProductSyncTask SHEIN产品同步任务

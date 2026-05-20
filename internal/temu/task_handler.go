@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	"task-processor/internal/taskstatus"
 	"task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 

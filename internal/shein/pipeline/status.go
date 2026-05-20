@@ -3,9 +3,9 @@ package pipeline
 import (
 	"fmt"
 
-	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )

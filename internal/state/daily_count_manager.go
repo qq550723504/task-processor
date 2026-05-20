@@ -46,30 +46,28 @@ func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, 
 
 	client := m.managementClientMgr.GetDailyListingCountClient()
 	if client == nil {
-		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，返回默认值")
+		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，返回默认值")
 		return increment
 	}
 
-	// 先获取当前计数
 	currentCount := m.GetCount(tenantID, shopID, date)
 	newCount := currentCount + increment
 
-	// 设置新的计数
 	req := &api.DailyListingCountSetReqDTO{
 		TenantID: tenantID,
 		StoreID:  shopID,
-		UserID:   tenantID, // 使用tenantID作为userID
+		UserID:   tenantID,
 		Date:     date,
 		Count:    newCount,
 	}
 
 	if err := client.SetDailyListingCount(req); err != nil {
-		logger.GetGlobalLogger("app/state").Errorf("设置每日上架数量失败: tenantID=%d, shopID=%d, date=%s, count=%d, error=%v",
+		logger.GetGlobalLogger("state").Errorf("设置每日上架数量失败: tenantID=%d, shopID=%d, date=%s, count=%d, error=%v",
 			tenantID, shopID, date, newCount, err)
-		return currentCount // 返回原来的计数
+		return currentCount
 	}
 
-	logger.GetGlobalLogger("app/state").Infof("成功增加每日上架数量: tenantID=%d, shopID=%d, date=%s, increment=%d, newCount=%d",
+	logger.GetGlobalLogger("state").Infof("成功增加每日上架数量: tenantID=%d, shopID=%d, date=%s, increment=%d, newCount=%d",
 		tenantID, shopID, date, increment, newCount)
 	return newCount
 }
@@ -78,7 +76,7 @@ func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, 
 func (m *DailyCountManager) TryReserveQuota(tenantID, shopID int64, date string, increment, limit int64) (*DailyQuotaReservation, error) {
 	client := m.managementClientMgr.GetDailyListingCountClient()
 	if client == nil {
-		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，无法预占额度")
+		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，无法预占额度")
 		return nil, fmt.Errorf("daily listing count client is not initialized")
 	}
 
@@ -91,7 +89,7 @@ func (m *DailyCountManager) TryReserveQuota(tenantID, shopID int64, date string,
 		Limit:     limit,
 	})
 	if err != nil {
-		logger.GetGlobalLogger("app/state").Errorf("原子预占每日上架额度失败: tenantID=%d, shopID=%d, date=%s, increment=%d, limit=%d, error=%v",
+		logger.GetGlobalLogger("state").Errorf("原子预占每日上架额度失败: tenantID=%d, shopID=%d, date=%s, increment=%d, limit=%d, error=%v",
 			tenantID, shopID, date, increment, limit, err)
 		return nil, err
 	}
@@ -108,7 +106,7 @@ func (m *DailyCountManager) TryReserveQuota(tenantID, shopID int64, date string,
 func (m *DailyCountManager) RollbackReservedQuota(tenantID, shopID int64, date string, decrement int64) (int64, error) {
 	client := m.managementClientMgr.GetDailyListingCountClient()
 	if client == nil {
-		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，无法回滚额度")
+		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，无法回滚额度")
 		return 0, fmt.Errorf("daily listing count client is not initialized")
 	}
 
@@ -120,12 +118,12 @@ func (m *DailyCountManager) RollbackReservedQuota(tenantID, shopID int64, date s
 		Decrement: decrement,
 	})
 	if err != nil {
-		logger.GetGlobalLogger("app/state").Errorf("回滚每日上架额度失败: tenantID=%d, shopID=%d, date=%s, decrement=%d, error=%v",
+		logger.GetGlobalLogger("state").Errorf("回滚每日上架额度失败: tenantID=%d, shopID=%d, date=%s, decrement=%d, error=%v",
 			tenantID, shopID, date, decrement, err)
 		return 0, err
 	}
 
-	logger.GetGlobalLogger("app/state").Infof("成功回滚每日上架额度: tenantID=%d, shopID=%d, date=%s, decrement=%d, newCount=%d",
+	logger.GetGlobalLogger("state").Infof("成功回滚每日上架额度: tenantID=%d, shopID=%d, date=%s, decrement=%d, newCount=%d",
 		tenantID, shopID, date, decrement, newCount)
 	return newCount, nil
 }
@@ -149,19 +147,19 @@ func (m *DailyCountManager) getLock(tenantID, shopID int64, date string) *sync.M
 func (m *DailyCountManager) GetCount(tenantID, shopID int64, date string) int64 {
 	client := m.managementClientMgr.GetDailyListingCountClient()
 	if client == nil {
-		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，返回默认值0")
+		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，返回默认值0")
 		return 0
 	}
 
 	resp, err := client.GetDailyListingCount(tenantID, shopID, tenantID, date)
 	if err != nil {
-		logger.GetGlobalLogger("app/state").Errorf("获取每日上架数量失败: tenantID=%d, shopID=%d, date=%s, error=%v",
+		logger.GetGlobalLogger("state").Errorf("获取每日上架数量失败: tenantID=%d, shopID=%d, date=%s, error=%v",
 			tenantID, shopID, date, err)
 		return 0
 	}
 
 	if resp == nil {
-		logger.GetGlobalLogger("app/state").Warnf("获取每日上架数量返回空结果: tenantID=%d, shopID=%d, date=%s",
+		logger.GetGlobalLogger("state").Warnf("获取每日上架数量返回空结果: tenantID=%d, shopID=%d, date=%s",
 			tenantID, shopID, date)
 		return 0
 	}
@@ -173,25 +171,25 @@ func (m *DailyCountManager) GetCount(tenantID, shopID int64, date string) int64 
 func (m *DailyCountManager) ResetCount(tenantID, shopID int64, date string) {
 	client := m.managementClientMgr.GetDailyListingCountClient()
 	if client == nil {
-		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，无法重置计数")
+		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，无法重置计数")
 		return
 	}
 
 	req := &api.DailyListingCountSetReqDTO{
 		TenantID: tenantID,
 		StoreID:  shopID,
-		UserID:   tenantID, // 使用tenantID作为userID
+		UserID:   tenantID,
 		Date:     date,
 		Count:    0,
 	}
 
 	if err := client.SetDailyListingCount(req); err != nil {
-		logger.GetGlobalLogger("app/state").Errorf("重置每日上架数量失败: tenantID=%d, shopID=%d, date=%s, error=%v",
+		logger.GetGlobalLogger("state").Errorf("重置每日上架数量失败: tenantID=%d, shopID=%d, date=%s, error=%v",
 			tenantID, shopID, date, err)
 		return
 	}
 
-	logger.GetGlobalLogger("app/state").Infof("每日计数已重置: 租户=%d, 店铺=%d, 日期=%s", tenantID, shopID, date)
+	logger.GetGlobalLogger("state").Infof("每日计数已重置: 租户=%d, 店铺=%d, 日期=%s", tenantID, shopID, date)
 }
 
 // GetClient 获取每日上架数量客户端

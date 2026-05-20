@@ -1,5 +1,7 @@
 # productenrich-api
 
+`productenrich-api` 当前是共享 `product-listing-api` HTTP 装配的一条兼容入口，不再维护独立的 API 组装逻辑。
+
 `productenrich-api` 当前同时提供两条异步流水线：
 
 - `productenrich`

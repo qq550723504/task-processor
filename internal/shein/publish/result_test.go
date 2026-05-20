@@ -6,12 +6,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	sheinproduct "task-processor/internal/shein/api/product"
+	"task-processor/internal/state"
 )
 
 func TestSavePublishResultCalculateIncrementUsesStoreLimitType(t *testing.T) {

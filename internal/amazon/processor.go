@@ -10,12 +10,12 @@ import (
 	"task-processor/internal/amazon/llm"
 	amazonModel "task-processor/internal/amazon/model"
 	"task-processor/internal/amazon/pipeline"
-	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/processor"
 
 	"github.com/sirupsen/logrus"
 )

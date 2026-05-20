@@ -15,7 +15,7 @@ type CookieInfo struct {
 
 // CookieManager Cookie管理器（内存版）
 type CookieManager struct {
-	cookies map[string]*CookieInfo // key: tenantID:shopID
+	cookies map[string]*CookieInfo
 	mutex   sync.RWMutex
 }
 
@@ -37,7 +37,7 @@ func (m *CookieManager) SetCookie(shopID int64, cookie string) {
 		UpdateTime: time.Now(),
 	}
 
-	logger.GetGlobalLogger("app/state").Infof("Cookie已保存到内存: 店铺=%d", shopID)
+	logger.GetGlobalLogger("state").Infof("Cookie已保存到内存: 店铺=%d", shopID)
 }
 
 // GetCookie 获取Cookie
@@ -62,7 +62,7 @@ func (m *CookieManager) DeleteCookie(shopID int64) {
 	key := fmt.Sprintf("%d", shopID)
 	delete(m.cookies, key)
 
-	logger.GetGlobalLogger("app/state").Infof("Cookie已从内存删除: 店铺=%d", shopID)
+	logger.GetGlobalLogger("state").Infof("Cookie已从内存删除: 店铺=%d", shopID)
 }
 
 // GetAllCookies 获取所有Cookie（用于调试）

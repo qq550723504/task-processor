@@ -4,12 +4,12 @@ package sync
 import (
 	"fmt"
 
-	"task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/ports"
 	"task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"

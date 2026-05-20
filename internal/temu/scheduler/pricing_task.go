@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // PricingTask TEMU核价任务

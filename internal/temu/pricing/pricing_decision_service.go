@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"

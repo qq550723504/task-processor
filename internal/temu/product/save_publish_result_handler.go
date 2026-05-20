@@ -3,9 +3,9 @@ package product
 import (
 	"fmt"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/state"
 	temucontext "task-processor/internal/temu/context"
 
 	"task-processor/internal/core/logger"

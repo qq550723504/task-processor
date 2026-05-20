@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/app/httpapi"
 	"task-processor/internal/pkg/appenv"
+	"task-processor/internal/pkg/httpapicmd"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +22,7 @@ var (
 )
 
 func start(logger *logrus.Logger, options httpapi.Options) error {
-	return httpapi.Run(logger, options)
+	return httpapicmd.Run(logger, "product listing API service", options)
 }
 
 func main() {
@@ -32,10 +33,6 @@ func main() {
 		Version:   appVersion,
 		BuildTime: buildTime,
 	})
-
-	logger.Info("starting product listing API service")
-	logger.Infof("config path: %s", *configPath)
-	logger.Infof("API port: %d", *port)
 
 	if err := start(logger, httpapi.Options{
 		ConfigPath: *configPath,

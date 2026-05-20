@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	amazonModel "task-processor/internal/amazon/model"
-	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	"task-processor/internal/state"
 
 	"github.com/sirupsen/logrus"
 )

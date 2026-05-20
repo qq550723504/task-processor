@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	appscheduler "task-processor/internal/app/scheduler"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // GetTaskTypeDisplayName 获取任务类型显示名称

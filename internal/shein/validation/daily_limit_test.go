@@ -7,13 +7,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	sheinctx "task-processor/internal/shein/context"
+	"task-processor/internal/state"
 )
 
 func TestCheckDailyLimitHandlerReturnsPausedHandledErrorWhenLimitReached(t *testing.T) {

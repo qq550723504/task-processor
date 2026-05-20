@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/amazonlisting"
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
@@ -85,161 +86,12 @@ type listingKitModule struct {
 	pool                 worker.WorkerPool
 }
 
-type promptTemplateModule struct {
-	handler promptTemplateRouteHandler
-}
-
-type productRouteHandler interface {
-	GenerateProduct(c *gin.Context)
-	GetTaskResult(c *gin.Context)
-}
-
-type imageRouteHandler interface {
-	ProcessImages(c *gin.Context)
-	GetTaskResult(c *gin.Context)
-	ReviewTask(c *gin.Context)
-}
-
-type amazonListingRouteHandler interface {
-	GenerateListing(c *gin.Context)
-	ListTaskQueue(c *gin.Context)
-	GetTaskResult(c *gin.Context)
-	GetTaskWorkbench(c *gin.Context)
-	ReviewTask(c *gin.Context)
-	SubmitTask(c *gin.Context)
-}
-
-type listingKitRouteHandler interface {
-	GenerateListingKit(c *gin.Context)
-	GenerateStudioDesigns(c *gin.Context)
-	GenerateStudioProductImages(c *gin.Context)
-	StartStudioAsyncJob(c *gin.Context)
-	GetStudioAsyncJob(c *gin.Context)
-	RegenerateSheinDataImage(c *gin.Context)
-	UploadListingKitImages(c *gin.Context)
-	GetUploadedListingKitImage(c *gin.Context)
-	DeleteUploadedListingKitImage(c *gin.Context)
-	ListTasks(c *gin.Context)
-	GetTaskResult(c *gin.Context)
-	GetTaskPreview(c *gin.Context)
-	GetTaskGenerationTasks(c *gin.Context)
-	GetTaskGenerationQueue(c *gin.Context)
-	GetTaskGenerationReviewSession(c *gin.Context)
-	GetTaskGenerationReviewPreview(c *gin.Context)
-	DispatchTaskGenerationNavigation(c *gin.Context)
-	RetryTaskGenerationTasks(c *gin.Context)
-	ExecuteTaskGenerationAction(c *gin.Context)
-	GetTaskRevisionHistory(c *gin.Context)
-	GetTaskRevisionHistoryDetail(c *gin.Context)
-	GetTaskExport(c *gin.Context)
-	ApplyTaskRevision(c *gin.Context)
-	ValidateTaskRevision(c *gin.Context)
-	SubmitTask(c *gin.Context)
-	RefreshSubmissionStatus(c *gin.Context)
-	ListSettingsNamespaces(c *gin.Context)
-	GetSettingsNamespaceSchema(c *gin.Context)
-	GetSettingsNamespace(c *gin.Context)
-	UpdateSettingsNamespace(c *gin.Context)
-	ListSheinStoreProfiles(c *gin.Context)
-	UpsertSheinStoreProfile(c *gin.Context)
-	DeleteSheinStoreProfile(c *gin.Context)
-	GetSheinStoreRoutingSettings(c *gin.Context)
-	UpdateSheinStoreRoutingSettings(c *gin.Context)
-	GetSheinSettings(c *gin.Context)
-	UpdateSheinSettings(c *gin.Context)
-	GetAIClientSettings(c *gin.Context)
-	UpdateAIClientSettings(c *gin.Context)
-	ListTenantStores(c *gin.Context)
-	CreateTenantStore(c *gin.Context)
-	UpdateTenantStore(c *gin.Context)
-	DeleteTenantStore(c *gin.Context)
-	ListSimpleTenantStores(c *gin.Context)
-	ListAdminStores(c *gin.Context)
-	GetAdminStore(c *gin.Context)
-	CreateAdminStore(c *gin.Context)
-	UpdateAdminStore(c *gin.Context)
-	UpdateAdminStoreStatus(c *gin.Context)
-	DeleteAdminStore(c *gin.Context)
-	ListSimpleAdminStores(c *gin.Context)
-	ListAdminStoreStatistics(c *gin.Context)
-	ListDeletedAdminStores(c *gin.Context)
-	RestoreAdminStore(c *gin.Context)
-	PermanentlyDeleteAdminStore(c *gin.Context)
-	ExtendAdminStoreValidity(c *gin.Context)
-	ListAdminImportTasks(c *gin.Context)
-	BatchCreateAdminImportTasks(c *gin.Context)
-	DeleteAdminImportTask(c *gin.Context)
-	ListAdminFilterRules(c *gin.Context)
-	GetAdminFilterRule(c *gin.Context)
-	CreateAdminFilterRule(c *gin.Context)
-	UpdateAdminFilterRule(c *gin.Context)
-	UpdateAdminFilterRuleStatus(c *gin.Context)
-	DeleteAdminFilterRule(c *gin.Context)
-	ListAdminProfitRules(c *gin.Context)
-	GetAdminProfitRule(c *gin.Context)
-	CreateAdminProfitRule(c *gin.Context)
-	UpdateAdminProfitRule(c *gin.Context)
-	UpdateAdminProfitRuleStatus(c *gin.Context)
-	DeleteAdminProfitRule(c *gin.Context)
-	ListAdminPricingRules(c *gin.Context)
-	GetAdminPricingRule(c *gin.Context)
-	CreateAdminPricingRule(c *gin.Context)
-	UpdateAdminPricingRule(c *gin.Context)
-	UpdateAdminPricingRuleStatus(c *gin.Context)
-	DeleteAdminPricingRule(c *gin.Context)
-	ListAdminOperationStrategies(c *gin.Context)
-	GetAdminOperationStrategy(c *gin.Context)
-	CreateAdminOperationStrategy(c *gin.Context)
-	UpdateAdminOperationStrategy(c *gin.Context)
-	UpdateAdminOperationStrategyStatus(c *gin.Context)
-	DeleteAdminOperationStrategy(c *gin.Context)
-	ListAdminSensitiveWords(c *gin.Context)
-	GetAdminSensitiveWord(c *gin.Context)
-	CreateAdminSensitiveWord(c *gin.Context)
-	UpdateAdminSensitiveWord(c *gin.Context)
-	UpdateAdminSensitiveWordStatus(c *gin.Context)
-	DeleteAdminSensitiveWord(c *gin.Context)
-	ListAdminProductImportMappings(c *gin.Context)
-	GetAdminProductImportMapping(c *gin.Context)
-	CreateAdminProductImportMapping(c *gin.Context)
-	UpdateAdminProductImportMapping(c *gin.Context)
-	UpdateAdminProductImportMappingStatus(c *gin.Context)
-	DeleteAdminProductImportMapping(c *gin.Context)
-	ListAdminCategories(c *gin.Context)
-	GetAdminCategory(c *gin.Context)
-	CreateAdminCategory(c *gin.Context)
-	UpdateAdminCategory(c *gin.Context)
-	UpdateAdminCategoryStatus(c *gin.Context)
-	DeleteAdminCategory(c *gin.Context)
-	ListAdminProductData(c *gin.Context)
-	GetAdminProductData(c *gin.Context)
-	CreateAdminProductData(c *gin.Context)
-	UpdateAdminProductData(c *gin.Context)
-	UpdateAdminProductDataStatus(c *gin.Context)
-	DeleteAdminProductData(c *gin.Context)
-	GetCurrentSubscription(c *gin.Context)
-	ListSubscriptionModules(c *gin.Context)
-	ListSubscriptionEntitlements(c *gin.Context)
-	UpsertSubscriptionEntitlement(c *gin.Context)
-	ListPlatformTenantSubscriptions(c *gin.Context)
-	ListPlatformSubscriptionPlans(c *gin.Context)
-	UpsertPlatformSubscriptionPlan(c *gin.Context)
-	UpsertPlatformSubscriptionPlanModule(c *gin.Context)
-	DeletePlatformSubscriptionPlanModule(c *gin.Context)
-	SetPlatformSubscriptionPlanStatus(c *gin.Context)
-	ListPlatformSubscriptionPlanTenants(c *gin.Context)
-	ListPlatformSubscriptionPlanAuditLogs(c *gin.Context)
-	GetPlatformTenantSubscription(c *gin.Context)
-	ApplyPlatformTenantSubscriptionPlan(c *gin.Context)
-	UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context)
-	SetPlatformTenantSubscriptionUsage(c *gin.Context)
-	ListPlatformTenantSubscriptionAuditLogs(c *gin.Context)
-	PreviewSheinPrice(c *gin.Context)
-	SearchSheinCategories(c *gin.Context)
-	UpdateSheinFinalDraft(c *gin.Context)
-	GetSubmissionEvents(c *gin.Context)
-	ClearSheinResolutionCache(c *gin.Context)
-}
+type productRouteHandler = productenrich.ProductHandler
+type imageRouteHandler = productimage.Handler
+type amazonListingRouteHandler = amazonlisting.Handler
+type listingKitRouteHandler = listingkit.Handler
+type studioSessionRouteHandler = listingkit.StudioSessionHandler
+type taskRPCRouteHandler = taskrpcapi.Handler
 
 type promptTemplateRouteHandler interface {
 	ListPromptTemplateCatalog(c *gin.Context)
@@ -249,31 +101,11 @@ type promptTemplateRouteHandler interface {
 	SetPromptTemplateStatus(c *gin.Context)
 }
 
-type studioSessionRouteHandler interface {
-	EnsureStudioSession(c *gin.Context)
-	GetStudioSession(c *gin.Context)
-	UpdateStudioSession(c *gin.Context)
-	ReplaceStudioSessionDesigns(c *gin.Context)
-	ListStudioSessionGallery(c *gin.Context)
-	ListStudioBatches(c *gin.Context)
-	GetStudioBatch(c *gin.Context)
-	UpsertStudioBatch(c *gin.Context)
-	DeleteStudioBatch(c *gin.Context)
-}
-
 type sdsCatalogRouteHandler interface {
 	ListSDSProducts(c *gin.Context)
 	GetSDSProduct(c *gin.Context)
 	ListSDSCategories(c *gin.Context)
 	ListSDSShipmentAreas(c *gin.Context)
-}
-
-type taskRPCRouteHandler interface {
-	GetTaskStatus(c *gin.Context)
-	RetryTask(c *gin.Context)
-	CancelTask(c *gin.Context)
-	GetQueueStats(c *gin.Context)
-	GetHealth(c *gin.Context)
 }
 
 type sheinLoginRouteHandler interface {
@@ -298,10 +130,4 @@ type sdsLoginRouteHandler interface {
 	ClearState(c *gin.Context)
 }
 
-type routeDescriptor struct {
-	Method     string
-	Path       string
-	Module     string
-	Permission string
-	Handler    gin.HandlerFunc
-}
+type routeDescriptor = httproute.Descriptor

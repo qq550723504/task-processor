@@ -2,8 +2,8 @@
 package scheduler
 
 import (
-	appscheduler "task-processor/internal/app/scheduler"
 	platformtask "task-processor/internal/platformtask"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // BaseTask TEMU平台基础任务

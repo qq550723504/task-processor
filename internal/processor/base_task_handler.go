@@ -1,4 +1,3 @@
-// Package processor 提供统一的任务处理器基类
 package processor
 
 import (
@@ -15,7 +14,6 @@ import (
 )
 
 // BaseTaskHandler 统一的任务处理器基类
-// 提供所有平台TaskHandler的通用实现
 type BaseTaskHandler struct {
 	processor worker.Processor
 	logger    *logrus.Entry
@@ -35,7 +33,6 @@ func NewBaseTaskHandler(processor worker.Processor, platform string) *BaseTaskHa
 
 // ProcessTask 统一的任务处理方法
 func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline pipeline.Pipeline) error {
-	// 将任务转换为 WorkerJob
 	taskData, err := json.Marshal(task)
 	if err != nil {
 		h.logger.WithError(err).Error("序列化任务数据失败")
@@ -53,16 +50,12 @@ func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipe
 		logger.FieldProductID: task.ProductID,
 	}).Info("开始处理任务")
 
-	// 记录开始时间
 	startTime := time.Now()
-
-	// 委托给具体的处理器执行
 	if err := h.processor.ProcessTask(ctx, job); err != nil {
 		h.logger.WithError(err).Error("任务处理失败")
 		return err
 	}
 
-	// 记录处理时间
 	processTime := time.Since(startTime)
 	h.logger.WithFields(map[string]any{
 		logger.FieldTaskID:     task.ID,

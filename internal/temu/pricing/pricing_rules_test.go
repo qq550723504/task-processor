@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/logger"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/model"
 	"task-processor/internal/product"
 )

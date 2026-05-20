@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pricing"

@@ -4,12 +4,12 @@ package platformbase
 import (
 	"fmt"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
-	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	appscheduler "task-processor/internal/scheduler"
 
 	"github.com/sirupsen/logrus"
 )

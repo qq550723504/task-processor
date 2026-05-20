@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sync"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/state"
 
 	"task-processor/internal/core/logger"
 

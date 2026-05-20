@@ -7,12 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"task-processor/internal/app/state"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	otherclient "task-processor/internal/shein/api/other"
 	sheinclient "task-processor/internal/shein/client"
 	sheinctx "task-processor/internal/shein/context"
+	"task-processor/internal/state"
 
 	"github.com/imroc/req/v3"
 )

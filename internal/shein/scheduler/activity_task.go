@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	appscheduler "task-processor/internal/scheduler"
 	"task-processor/internal/shein/activity"
 
 	"task-processor/internal/core/logger"

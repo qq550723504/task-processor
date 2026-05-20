@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	appscheduler "task-processor/internal/app/scheduler"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // TaskTypeToString 任务类型转字符串

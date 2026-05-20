@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
+	appscheduler "task-processor/internal/scheduler"
 )
 
 // MockProductSyncService 模拟产品同步服务

@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/ports"
-	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/platformbase"
 	platformtask "task-processor/internal/platformtask"
+	"task-processor/internal/ports"
+	appscheduler "task-processor/internal/scheduler"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 	sheinpricingapi "task-processor/internal/shein/api/pricing"
@@ -20,6 +19,7 @@ import (
 	"task-processor/internal/shein/inventory"
 	sheinpricing "task-processor/internal/shein/pricing"
 	"task-processor/internal/shein/productsync"
+	"task-processor/internal/state"
 )
 
 type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error)

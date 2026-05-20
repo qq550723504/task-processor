@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/processor"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/core/metrics"
 	managementAPI "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	"task-processor/internal/processor"
 	shein "task-processor/internal/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"

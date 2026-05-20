@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 )
 
 // RunListingKitTemporalWorker boots the minimum ListingKit dependencies required
@@ -29,12 +30,13 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 		return fmt.Errorf("build image module: %w", err)
 	}
 
-	svc, _, _, _, _, _, _, _, _, _, _, _, _, _, err := buildListingKitService(logger, deps)
+	bundle, err := listingkithttpapi.BuildService(newListingKitBuildServiceInput(logger, deps))
 	if err != nil {
 		return fmt.Errorf("build listing kit service: %w", err)
 	}
+	deps.closers = append(deps.closers, bundle.Closers...)
 
-	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(svc, logger)
+	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.Service, logger)
 	if err != nil {
 		return fmt.Errorf("start listing kit temporal worker: %w", err)
 	}

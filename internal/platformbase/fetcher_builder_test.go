@@ -3,8 +3,8 @@ package platformbase
 import (
 	"testing"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 )
 
 func TestDefaultProductFetcherBuilderBuildPrefersRemoteAPIWithoutCrawler(t *testing.T) {

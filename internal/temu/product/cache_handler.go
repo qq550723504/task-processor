@@ -2,7 +2,7 @@ package product
 
 import (
 	"fmt"
-	appProduct "task-processor/internal/app/crawler/fetcher"
+	appProduct "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"

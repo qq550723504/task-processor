@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	amazonmodel "task-processor/internal/amazon/model"
-	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/state"
 )
 
 func TestDailyLimitHandlerReservesQuotaWhenUnderLimit(t *testing.T) {

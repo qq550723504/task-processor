@@ -4,7 +4,7 @@ package scheduler
 import (
 	"context"
 
-	appscheduler "task-processor/internal/app/scheduler"
+	appscheduler "task-processor/internal/scheduler"
 
 	"task-processor/internal/core/logger"
 

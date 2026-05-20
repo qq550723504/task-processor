@@ -3,8 +3,8 @@ package productdata
 import (
 	"strings"
 
-	appProduct "task-processor/internal/app/crawler/fetcher"
 	coreLogger "task-processor/internal/core/logger"
+	appProduct "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
 	shein "task-processor/internal/shein"
