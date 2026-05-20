@@ -254,6 +254,34 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.queryByText("ListingKit API request failed: 408")).not.toBeInTheDocument();
   });
 
+  it("shows backend generation warnings when only part of the requested styles succeed", async () => {
+    generateSheinStudioDesigns.mockResolvedValue({
+      warnings: [
+        "款式变体提示词生成失败，已回退为基础提示词重复生成。",
+        "请求生成 3 款，实际仅成功 1 款，另外 2 款生成失败。 首个失败原因：upstream rate limited",
+      ],
+      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() => expect(loadSheinStudioDraft).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("prompt"), {
+      target: { value: "retro cherries" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(
+        /款式变体提示词生成失败，已回退为基础提示词重复生成。 请求生成 3 款，实际仅成功 1 款，另外 2 款生成失败。/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("keeps generated designs when parent step changes to review", async () => {
     generateSheinStudioDesigns.mockResolvedValue({
       images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],

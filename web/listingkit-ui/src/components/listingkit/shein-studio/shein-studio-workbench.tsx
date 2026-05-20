@@ -97,6 +97,9 @@ export function SheinStudioWorkbench({
       setGenerationError: (
         value: SheinStudioWorkbenchStateUpdater<"generationError">,
       ) => setWorkbenchField("generationError", value),
+      setGenerationWarning: (
+        value: SheinStudioWorkbenchStateUpdater<"generationWarning">,
+      ) => setWorkbenchField("generationWarning", value),
       setImageStrategy: (value: SheinStudioWorkbenchStateUpdater<"imageStrategy">) =>
         setWorkbenchField("imageStrategy", value),
       setIsCreatingTasks: (
@@ -155,6 +158,7 @@ export function SheinStudioWorkbench({
     draftWarning,
     galleryRatioCheck,
     generationError,
+    generationWarning,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
@@ -375,6 +379,7 @@ export function SheinStudioWorkbench({
 
       <SheinStudioWorkbenchAlerts
         draftWarning={draftWarning}
+        generationWarning={generationWarning}
         galleryRatioCheck={galleryRatioCheck}
       />
 

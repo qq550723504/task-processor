@@ -123,6 +123,7 @@ export function useSheinStudioDesignActions({
     }
 
     workbench.setField("generationError", "");
+    workbench.setField("generationWarning", "");
     workbench.setField("creatingError", "");
     workbench.setField("creatingMessage", "");
     workbench.setField("createdTasks", []);
@@ -219,6 +220,9 @@ export function useSheinStudioDesignActions({
         draftSaveStatus: "pending",
         selectionVariantId: activeSelection.variantId,
       });
+      if ((response.warnings?.length ?? 0) > 0) {
+        workbench.setField("generationWarning", response.warnings!.join(" "));
+      }
       hasLocalWorkflowStateRef.current = true;
       workbench.setField("designs", response.images);
       workbench.setField("selectedIds", nextSelectedIds);
@@ -238,6 +242,7 @@ export function useSheinStudioDesignActions({
       const message = formatSubscriptionApiError(error);
       workbench.setField("designs", []);
       workbench.setField("selectedIds", []);
+      workbench.setField("generationWarning", "");
       void sessionSyncPromise
         .then((sessionId) => {
           if (!sessionId) {

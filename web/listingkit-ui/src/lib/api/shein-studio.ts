@@ -18,6 +18,7 @@ export async function generateSheinStudioDesigns(
     printable_height?: number;
     image_model?: string;
     transparent_background?: boolean;
+    warnings?: string[];
     images?: Array<{
       id: string;
       image_url?: string;
@@ -58,6 +59,7 @@ export async function generateSheinStudioDesigns(
     printableHeight: payload.printable_height,
     imageModel: payload.image_model,
     transparentBackground: payload.transparent_background,
+    warnings: payload.warnings ?? [],
     images: (payload.images ?? []).map((image) => ({
       id: image.id,
       imageUrl: image.imageUrl ?? image.image_url,

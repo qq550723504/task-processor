@@ -45,7 +45,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 		ImageURL:       editableAssetURL(req.SourceAsset),
 		ResponseFormat: "b64_json",
 		N:              1,
-		Size:           "1536x1536",
+		Size:           "auto",
 	})
 	if err != nil {
 		return nil, err

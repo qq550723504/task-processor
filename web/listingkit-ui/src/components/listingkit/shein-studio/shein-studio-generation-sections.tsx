@@ -47,12 +47,14 @@ export function parsePositiveInteger(value: string) {
 }
 
 export function NumberInput({
+  disabled,
   label,
   max,
   min,
   setValue,
   value,
 }: {
+  disabled?: boolean;
   label: string;
   max: number;
   min: number;
@@ -64,6 +66,7 @@ export function NumberInput({
       <span className="text-sm font-medium text-zinc-700">{label}</span>
       <Input
         className="rounded-2xl bg-zinc-50 px-4 py-3 focus:bg-white"
+        disabled={disabled}
         inputMode="numeric"
         max={max}
         min={min}

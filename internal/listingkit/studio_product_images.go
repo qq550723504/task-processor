@@ -144,7 +144,7 @@ func (s *service) tryGenerateStudioProductImage(ctx context.Context, inputImages
 		Prompt:         promptText,
 		ImageURL:       inputImages[0],
 		ImageURLs:      inputImages,
-		Size:           "1024x1024",
+		Size:           "auto",
 		ResponseFormat: "b64_json",
 		N:              1,
 	})
@@ -154,7 +154,7 @@ func (s *service) tryGenerateStudioProductImage(ctx context.Context, inputImages
 			Prompt:         promptText,
 			ImageURL:       inputImages[0],
 			ImageURLs:      inputImages[:1],
-			Size:           "1024x1024",
+			Size:           "auto",
 			ResponseFormat: "b64_json",
 			N:              1,
 		})

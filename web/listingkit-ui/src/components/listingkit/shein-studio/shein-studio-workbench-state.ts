@@ -33,6 +33,7 @@ export type SheinStudioWorkbenchState = {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   generationError: string;
+  generationWarning: string;
   creatingError: string;
   creatingMessage: string;
   isGenerating: boolean;
@@ -115,6 +116,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     designs: [],
     selectedIds: [],
     generationError: "",
+    generationWarning: "",
     creatingError: "",
     creatingMessage: "",
     isGenerating: false,

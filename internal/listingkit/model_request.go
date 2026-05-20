@@ -73,7 +73,8 @@ type StudioProductImagePrompt struct {
 }
 
 type StudioProductImageResponse struct {
-	Images []StudioGeneratedImage `json:"images,omitempty"`
+	Images   []StudioGeneratedImage `json:"images,omitempty"`
+	Warnings []string               `json:"warnings,omitempty"`
 }
 
 type StudioGeneratedImage struct {
@@ -106,6 +107,7 @@ type StudioDesignResponse struct {
 	ImageModel            string                 `json:"image_model,omitempty"`
 	TransparentBackground bool                   `json:"transparent_background"`
 	Images                []StudioGeneratedImage `json:"images,omitempty"`
+	Warnings              []string               `json:"warnings,omitempty"`
 }
 
 type SDSSyncOptions struct {

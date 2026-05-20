@@ -32,6 +32,7 @@ describe("shein studio design metadata", () => {
       prompt: "retro botanical clock",
       image_model: "gpt-image-2",
       transparent_background: true,
+      warnings: ["fallback applied"],
       images: [
         {
           id: "design-1",
@@ -57,6 +58,7 @@ describe("shein studio design metadata", () => {
       variationIntensity: "light",
       revisedPrompt: "revised",
     });
+    expect(result.warnings).toEqual(["fallback applied"]);
   });
 
   it("passes a custom image model through when transparent background is off", async () => {

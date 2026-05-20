@@ -23,6 +23,7 @@ import type {
 
 export function ArtworkGenerationSettings({
   artworkModel,
+  disabled,
   prompt,
   promptInputRef,
   setArtworkModel,
@@ -36,6 +37,7 @@ export function ArtworkGenerationSettings({
   variationIntensity,
 }: {
   artworkModel: SheinStudioArtworkModel;
+  disabled?: boolean;
   prompt: string;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
@@ -61,6 +63,7 @@ export function ArtworkGenerationSettings({
         </span>
         <Textarea
           className="min-h-40 rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+          disabled={disabled}
           onChange={(event) => setPrompt(event.target.value)}
           placeholder="例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"
           ref={promptInputRef}
@@ -71,6 +74,7 @@ export function ArtworkGenerationSettings({
         </p>
       </Label>
       <NumberInput
+        disabled={disabled}
         label="款式数量"
         max={5}
         min={1}
@@ -82,6 +86,7 @@ export function ArtworkGenerationSettings({
           <span className="text-sm font-medium text-zinc-700">变化强度</span>
           <Select
             className="rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+            disabled={disabled}
             onChange={(event) =>
               setVariationIntensity(
                 event.target.value as SheinStudioVariationIntensity,
@@ -103,6 +108,7 @@ export function ArtworkGenerationSettings({
           <span className="text-sm font-medium text-zinc-700">款式图模型</span>
           <Input
             className="rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+            disabled={disabled}
             list="shein-studio-artwork-models"
             onChange={(event) => {
               const nextModel = event.target.value.trim();
@@ -128,6 +134,7 @@ export function ArtworkGenerationSettings({
           <Checkbox
             checked={transparentBackground}
             className="mt-1 border-emerald-300"
+            disabled={disabled}
             onChange={(event) => {
               const checked = event.target.checked;
               setTransparentBackground(checked);

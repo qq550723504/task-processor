@@ -64,39 +64,60 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 	}
 	images := make([]StudioGeneratedImage, count)
 	errs := make([]error, count)
+	generateOne := func(idx int) {
+		promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
+		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
+		if err != nil {
+			errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
+			return
+		}
+		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
+		if err != nil {
+			errs[idx] = fmt.Errorf("persist studio design %d: %w", idx+1, err)
+			return
+		}
+		errs[idx] = nil
+		images[idx] = StudioGeneratedImage{
+			ID:                    uuid.NewString(),
+			ImageURL:              imageURL,
+			Prompt:                theme,
+			RevisedPrompt:         revisedPrompt,
+			ImageModel:            model,
+			TransparentBackground: response.TransparentBackground,
+			VariationIntensity:    req.VariationIntensity,
+		}
+	}
 	var wg sync.WaitGroup
 	for idx := 0; idx < count; idx++ {
 		idx := idx
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
-			generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
-			if err != nil {
-				errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
-				return
-			}
-			imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
-			if err != nil {
-				errs[idx] = fmt.Errorf("persist studio design %d: %w", idx+1, err)
-				return
-			}
-			images[idx] = StudioGeneratedImage{
-				ID:                    uuid.NewString(),
-				ImageURL:              imageURL,
-				Prompt:                theme,
-				RevisedPrompt:         revisedPrompt,
-				ImageModel:            model,
-				TransparentBackground: response.TransparentBackground,
-				VariationIntensity:    req.VariationIntensity,
-			}
+			generateOne(idx)
 		}()
 	}
 	wg.Wait()
+	failedIndexes := failedStudioImageIndexes(images)
+	if len(failedIndexes) > 0 && len(failedIndexes) < count {
+		for _, idx := range failedIndexes {
+			generateOne(idx)
+		}
+	}
 	for _, image := range images {
 		if strings.TrimSpace(image.ImageURL) != "" {
 			response.Images = append(response.Images, image)
 		}
+	}
+	if diversifyErr != nil {
+		response.Warnings = append(response.Warnings, "款式变体提示词生成失败，已回退为基础提示词重复生成。")
+	}
+	if len(response.Images) > 0 && len(response.Images) < count {
+		failureCount := count - len(response.Images)
+		warning := fmt.Sprintf("请求生成 %d 款，实际仅成功 %d 款，另外 %d 款生成失败。", count, len(response.Images), failureCount)
+		if firstErr := firstNonNilError(errs); firstErr != nil {
+			warning = fmt.Sprintf("%s 首个失败原因：%s", warning, compactStudioGenerationError(firstErr))
+		}
+		response.Warnings = append(response.Warnings, warning)
 	}
 	if len(response.Images) == 0 {
 		errList := nonNilErrors(errs)
@@ -327,17 +348,39 @@ func studioDesignReferenceImageURLs(urls []string) []string {
 }
 
 func resolveStudioDesignSize(width int, height int) string {
-	if width <= 0 || height <= 0 {
-		return "1024x1024"
+	return "auto"
+}
+
+func failedStudioImageIndexes(images []StudioGeneratedImage) []int {
+	indexes := make([]int, 0, len(images))
+	for idx, image := range images {
+		if strings.TrimSpace(image.ImageURL) == "" {
+			indexes = append(indexes, idx)
+		}
 	}
-	ratio := float64(width) / float64(height)
-	if ratio >= 1.18 {
-		return "1536x1024"
+	return indexes
+}
+
+func firstNonNilError(errs []error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
 	}
-	if ratio <= 0.84 {
-		return "1024x1536"
+	return nil
+}
+
+func compactStudioGenerationError(err error) string {
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		return "未知错误"
 	}
-	return "1024x1024"
+	message = strings.Join(strings.Fields(message), " ")
+	if len([]rune(message)) > 120 {
+		runes := []rune(message)
+		return string(runes[:120]) + "..."
+	}
+	return message
 }
 
 func (s *service) persistGeneratedStudioImage(ctx context.Context, response *openaiclient.ImageResponse, filename string) (string, string, error) {

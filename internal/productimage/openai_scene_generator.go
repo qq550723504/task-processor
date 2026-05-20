@@ -45,7 +45,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 		ImageURL:       editableAssetURL(req.SourceAsset),
 		ResponseFormat: "b64_json",
 		N:              1,
-		Size:           "1536x1536",
+		Size:           "auto",
 	})
 	if err != nil {
 		return nil, err

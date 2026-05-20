@@ -9,13 +9,21 @@ import type {
 
 export function SheinStudioWorkbenchAlerts({
   draftWarning,
+  generationWarning,
   galleryRatioCheck,
 }: {
   draftWarning: string;
+  generationWarning: string;
   galleryRatioCheck: SDSRatioMatch | null;
 }) {
   return (
     <>
+      {generationWarning ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+          {generationWarning}
+        </div>
+      ) : null}
+
       {draftWarning ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
           {draftWarning}

@@ -67,6 +67,7 @@ export type SheinStudioGenerateResponse = {
   imageModel?: SheinStudioArtworkModel | string;
   transparentBackground?: boolean;
   images: SheinStudioGeneratedDesign[];
+  warnings?: string[];
 };
 
 export type SheinStudioSavedBatch = {

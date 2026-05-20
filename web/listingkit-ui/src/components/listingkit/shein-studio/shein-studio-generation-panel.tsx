@@ -139,6 +139,7 @@ export function SheinStudioGenerationPanel({
       <div className="grid gap-4">
         <ArtworkGenerationSettings
           artworkModel={artworkModel}
+          disabled={isGenerating}
           prompt={prompt}
           promptInputRef={promptInputRef}
           setArtworkModel={setArtworkModel}

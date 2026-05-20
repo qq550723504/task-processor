@@ -49,7 +49,7 @@ type WorkbenchDraftState = {
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
-  setDraftWarning: (value: string) => void;
+  setDraftWarning: (value: string | ((current: string) => string)) => void;
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
@@ -58,6 +58,17 @@ type WorkbenchDraftState = {
 
 const DRAFT_SAVE_WARNING =
   "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。";
+
+function appendDraftSaveWarning(current: string) {
+  if (current.includes(DRAFT_SAVE_WARNING)) {
+    return current;
+  }
+  return current ? `${current} ${DRAFT_SAVE_WARNING}` : DRAFT_SAVE_WARNING;
+}
+
+function clearDraftSaveWarning(current: string) {
+  return current.replace(DRAFT_SAVE_WARNING, "").trim();
+}
 
 export function useHydratedSDSVariantSelection(
   selection?: SDSProductVariantSelection,
@@ -171,13 +182,13 @@ export function useSheinStudioDraftPersistence(state: WorkbenchDraftState) {
           buildDraftInput(overrides),
           options,
         );
-        state.setDraftWarning("");
+        state.setDraftWarning((current) => clearDraftSaveWarning(current));
         return draft;
       } catch (error) {
         if (options?.signal?.aborted) {
           return null;
         }
-        state.setDraftWarning(DRAFT_SAVE_WARNING);
+        state.setDraftWarning((current) => appendDraftSaveWarning(current));
         throw error;
       }
     },
@@ -215,14 +226,14 @@ export function useSheinStudioDraftPersistence(state: WorkbenchDraftState) {
         source: "autosave",
       })
         .then(() => {
-          state.setDraftWarning("");
+          state.setDraftWarning((current) => clearDraftSaveWarning(current));
           autosaveFingerprintRef.current = fingerprint;
         })
         .catch((error) => {
           if (controller.signal.aborted) {
             return;
           }
-          state.setDraftWarning(DRAFT_SAVE_WARNING);
+          state.setDraftWarning((current) => appendDraftSaveWarning(current));
           console.warn(
             "shein studio draft autosave failed",
             error instanceof Error ? error.message : error,

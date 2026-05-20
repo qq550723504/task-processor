@@ -118,6 +118,7 @@ export function useSheinStudioWorkspaceLoader({
           );
         }
         workbench.setField("generationError", "");
+        workbench.setField("generationWarning", "");
         workbench.setField("creatingError", "");
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");

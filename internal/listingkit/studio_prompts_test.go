@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -208,11 +209,13 @@ func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testin
 }
 
 type stubStudioImageGenerator struct {
+	mu               sync.Mutex
 	editErr          error
 	editErrs         []error
 	editCalls        int
 	editRequests     []*openaiclient.ImageEditRequest
 	generateCalls    int
+	generateErrs     []error
 	generateResponse *openaiclient.ImageResponse
 }
 
@@ -238,11 +241,21 @@ func (s *stubStudioChatCompleter) GetDefaultModel() string {
 }
 
 func (s *stubStudioImageGenerator) GenerateImage(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.generateCalls++
+	if len(s.generateErrs) > 0 {
+		idx := s.generateCalls - 1
+		if idx < len(s.generateErrs) && s.generateErrs[idx] != nil {
+			return nil, s.generateErrs[idx]
+		}
+	}
 	return s.generateResponse, nil
 }
 
 func (s *stubStudioImageGenerator) EditImage(_ context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.editCalls++
 	reqCopy := *req
 	s.editRequests = append(s.editRequests, &reqCopy)
@@ -263,6 +276,95 @@ func (s *stubStudioImageGenerator) EditImage(_ context.Context, req *openaiclien
 
 func (s *stubStudioImageGenerator) GetDefaultModel() string {
 	return "test-model"
+}
+
+func TestGenerateStudioDesignsAddsWarningsForPromptFallbackAndPartialSuccess(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		generateErrs: []error{
+			nil,
+			errors.New("upstream rate limited"),
+			errors.New("upstream timeout"),
+			errors.New("upstream rate limited"),
+			errors.New("upstream timeout"),
+		},
+		generateResponse: &openaiclient.ImageResponse{
+			Data: []openaiclient.ImageData{{
+				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+			}},
+		},
+	}
+	svc := &service{
+		studioImageGenerator: generator,
+		studioPromptDiversifier: &stubStudioChatCompleter{
+			generateText: "not-json",
+		},
+		uploadStore: &stubImageUploadStore{},
+	}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		Prompt:             "retro cherries",
+		Count:              3,
+		VariationIntensity: studioVariationStrong,
+	})
+	if err != nil {
+		t.Fatalf("GenerateStudioDesigns() error = %v", err)
+	}
+	if len(response.Images) != 1 {
+		t.Fatalf("images = %d, want 1", len(response.Images))
+	}
+	if generator.generateCalls != 5 {
+		t.Fatalf("generateCalls = %d, want 5", generator.generateCalls)
+	}
+	if len(response.Warnings) != 2 {
+		t.Fatalf("warnings = %#v, want 2 entries", response.Warnings)
+	}
+	if !strings.Contains(response.Warnings[0], "已回退为基础提示词重复生成") {
+		t.Fatalf("warning[0] = %q", response.Warnings[0])
+	}
+	if !strings.Contains(response.Warnings[1], "请求生成 3 款，实际仅成功 1 款") {
+		t.Fatalf("warning[1] = %q", response.Warnings[1])
+	}
+	if !strings.Contains(response.Warnings[1], "upstream rate limited") {
+		t.Fatalf("warning[1] = %q, want first failure reason", response.Warnings[1])
+	}
+}
+
+func TestGenerateStudioDesignsRetriesFailedVariantsSequentially(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		generateErrs: []error{
+			errors.New("transient upstream error"),
+			errors.New("transient upstream error"),
+			nil,
+			nil,
+			nil,
+		},
+		generateResponse: &openaiclient.ImageResponse{
+			Data: []openaiclient.ImageData{{
+				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+			}},
+		},
+	}
+	svc := &service{
+		studioImageGenerator: generator,
+		uploadStore:          &stubImageUploadStore{},
+	}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		Prompt: "retro cherries",
+		Count:  3,
+	})
+	if err != nil {
+		t.Fatalf("GenerateStudioDesigns() error = %v", err)
+	}
+	if len(response.Images) != 3 {
+		t.Fatalf("images = %d, want 3", len(response.Images))
+	}
+	if len(response.Warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none after successful refill", response.Warnings)
+	}
+	if generator.generateCalls != 5 {
+		t.Fatalf("generateCalls = %d, want 5 (3 initial + 2 retries)", generator.generateCalls)
+	}
 }
 
 func TestStudioProductImagePromptRendersManagedTemplate(t *testing.T) {

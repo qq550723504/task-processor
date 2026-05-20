@@ -203,4 +203,68 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
   });
+
+  it("locks only artwork-generation fields while a style generation is in progress", () => {
+    render(
+      <SheinStudioGenerationPanel
+        availableSdsImages={[]}
+        artworkModel="nanobanana"
+        createdTasks={[]}
+        creatingError=""
+        creatingMessage=""
+        generationError=""
+        imageStrategy="ai_generated"
+        isCreatingTasks={false}
+        isGenerating={true}
+        onCreateTasks={() => undefined}
+        onDeleteBatch={() => undefined}
+        onGenerate={() => undefined}
+        onLoadBatch={() => undefined}
+        onSaveBatch={() => undefined}
+        productImageCount="5"
+        productImagePrompt="暖色背景"
+        productImagePrompts={[]}
+        prompt="美国国旗主题"
+        promptInputRef={{ current: null }}
+        renderSizeImagesWithSds={true}
+        saveMessage=""
+        savedBatches={[]}
+        selectedSdsImages={[]}
+        selectedStyleCount={0}
+        selectionReady={true}
+        subscriptionBlockedMessage=""
+        variationIntensity="medium"
+        setArtworkModel={() => undefined}
+        setImageStrategy={() => undefined}
+        setProductImageCount={() => undefined}
+        setProductImagePrompt={() => undefined}
+        setProductImagePrompts={() => undefined}
+        setPrompt={() => undefined}
+        setRenderSizeImagesWithSds={() => undefined}
+        setSelectedSdsImages={() => undefined}
+        setSheinStoreId={() => undefined}
+        setStyleCount={() => undefined}
+        setVariationIntensity={() => undefined}
+        setTransparentBackground={() => undefined}
+        sheinStoreId="869"
+        styleCount="2"
+        transparentBackground={true}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "生成中..." })).toBeDisabled();
+    expect(
+      screen.getByPlaceholderText("例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("款式数量")).toBeDisabled();
+    expect(screen.getByDisplayValue("中变化")).toBeDisabled();
+    expect(screen.getByDisplayValue("gpt-image-2")).toBeDisabled();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
+
+    expect(screen.getByLabelText("商品图数量")).toBeEnabled();
+    expect(
+      screen.getByPlaceholderText("可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"),
+    ).toBeEnabled();
+    expect(screen.getByLabelText("SHEIN 店铺")).toBeEnabled();
+  });
 });
