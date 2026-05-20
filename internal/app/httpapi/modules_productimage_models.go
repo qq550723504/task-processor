@@ -115,10 +115,6 @@ func buildProductImageModelProvider(cfg *config.Config, llmMgr productenrich.LLM
 	})
 }
 
-func buildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
-	return buildListingKitRoutedImageClient(cfg, resolver)
-}
-
 func shouldUseModelBackedImagePipeline(provider productimage.ProductImageModelProvider) bool {
 	return provider != nil && (provider.FaithfulEditor() != nil || provider.SceneGenerator() != nil || provider.ReviewModel() != nil)
 }

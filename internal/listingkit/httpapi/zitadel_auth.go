@@ -16,6 +16,7 @@ import (
 
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 )
 
 type zitadelAuthConfig struct {
@@ -131,7 +132,7 @@ func ConfigureListingKitAuthorization(platformAdminUsers []string, platformAdmin
 	return nil
 }
 
-func newListingKitZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
+func NewZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
 	runtimeCfg := currentListingKitZitadelRuntimeConfig()
 	if runtimeCfg == nil {
 		return nil
@@ -280,7 +281,7 @@ func (m *zitadelAuthMiddleware) getDiscovery(r *http.Request) (zitadelDiscovery,
 	return discovery, nil
 }
 
-func listingKitRouteRequiresZitadelAuth(route routeDescriptor) bool {
+func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 	return route.Module == "listing-kit" ||
 		route.Module == "listing-kit-admin" ||
 		route.Module == "listing-kit-platform-admin" ||
@@ -290,7 +291,7 @@ func listingKitRouteRequiresZitadelAuth(route routeDescriptor) bool {
 		route.Module == "sds-login"
 }
 
-func listingKitRouteRequiredPermission(route routeDescriptor) string {
+func listingKitRouteRequiredPermission(route httproute.Descriptor) string {
 	if value := strings.TrimSpace(route.Permission); value != "" {
 		return value
 	}
@@ -307,7 +308,7 @@ func listingKitRouteRequiredPermission(route routeDescriptor) string {
 	}
 }
 
-func newListingKitRoleMiddleware(route routeDescriptor) gin.HandlerFunc {
+func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
 	requiredPermission := listingKitRouteRequiredPermission(route)
 	if requiredPermission == "" {
 		return nil

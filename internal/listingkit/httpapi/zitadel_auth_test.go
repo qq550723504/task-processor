@@ -8,7 +8,26 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/httproute"
 )
+
+type routeDescriptor = httproute.Descriptor
+
+func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
+	zitadelAuth := NewZitadelAuthMiddlewareFromEnv()
+	for _, route := range routes {
+		if zitadelAuth != nil && RouteRequiresZitadelAuth(route) {
+			if roleAuth := NewRouteRoleMiddleware(route); roleAuth != nil {
+				r.Handle(route.Method, route.Path, zitadelAuth, roleAuth, route.Handler)
+				continue
+			}
+			r.Handle(route.Method, route.Path, zitadelAuth, route.Handler)
+			continue
+		}
+		r.Handle(route.Method, route.Path, route.Handler)
+	}
+}
 
 func useListingKitZitadelTestConfig(t *testing.T, cfg *listingKitZitadelRuntimeConfig) {
 	t.Helper()

@@ -61,10 +61,10 @@ func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHan
 }
 
 func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
-	zitadelAuth := newListingKitZitadelAuthMiddlewareFromEnv()
+	zitadelAuth := listingkithttpapi.NewZitadelAuthMiddlewareFromEnv()
 	for _, route := range routes {
-		if zitadelAuth != nil && listingKitRouteRequiresZitadelAuth(route) {
-			if roleAuth := newListingKitRoleMiddleware(route); roleAuth != nil {
+		if zitadelAuth != nil && listingkithttpapi.RouteRequiresZitadelAuth(route) {
+			if roleAuth := listingkithttpapi.NewRouteRoleMiddleware(route); roleAuth != nil {
 				r.Handle(route.Method, route.Path, zitadelAuth, roleAuth, route.Handler)
 				continue
 			}

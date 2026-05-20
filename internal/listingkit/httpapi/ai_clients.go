@@ -18,7 +18,20 @@ const (
 	listingKitImageClientNameNanobanana   = "image_nanobanana"
 	listingKitImageModelSelectorGPTImage2 = "gpt-image-2"
 	listingKitImageModelSelectorNano      = "nanobanana"
+	sheinSaleAttributeClientName          = "scorer"
 )
+
+func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+	return buildStrictListingKitChatClient(cfg, resolver, "default")
+}
+
+func BuildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+	return buildStrictListingKitChatClient(cfg, resolver, sheinSaleAttributeClientName)
+}
+
+func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
+	return buildListingKitRoutedImageClient(cfg, resolver)
+}
 
 func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ChatCompleter {
 	return &strictListingKitChatClient{

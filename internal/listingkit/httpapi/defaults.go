@@ -1,6 +1,6 @@
 package httpapi
 
-func resolveListingKitDefaultSheinStoreID(storeIDs []int64) int64 {
+func ResolveDefaultSheinStoreID(storeIDs []int64) int64 {
 	if len(storeIDs) != 1 {
 		return 0
 	}

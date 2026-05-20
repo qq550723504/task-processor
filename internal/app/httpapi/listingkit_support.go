@@ -65,12 +65,12 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 		SheinPricingPolicyBuilder:             buildListingKitSheinPricingPolicy,
 		ImageUploadStoreBuilder:               buildListingKitImageUploadStore,
 		LegacyTenantResolverConfigurator:      configureListingKitLegacyTenantResolver,
-		SheinCategoryLLMClientBuilder:         buildSheinCategoryLLMClient,
-		SheinSaleAttributeLLMBuilder:          buildSheinSaleAttributeLLMClient,
-		StudioImageGeneratorBuilder:           buildStudioImageGenerator,
-		DefaultSheinStoreIDResolver:           resolveListingKitDefaultSheinStoreID,
-		ConfigureZitadelAuth:                  ConfigureListingKitZitadelAuth,
-		ConfigureAuthorization:                ConfigureListingKitAuthorization,
+		SheinCategoryLLMClientBuilder:         listingkithttpapi.BuildSheinCategoryLLMClient,
+		SheinSaleAttributeLLMBuilder:          listingkithttpapi.BuildSheinSaleAttributeLLMClient,
+		StudioImageGeneratorBuilder:           listingkithttpapi.BuildStudioImageGenerator,
+		DefaultSheinStoreIDResolver:           listingkithttpapi.ResolveDefaultSheinStoreID,
+		ConfigureZitadelAuth:                  listingkithttpapi.ConfigureListingKitZitadelAuth,
+		ConfigureAuthorization:                listingkithttpapi.ConfigureListingKitAuthorization,
 	}
 }
 
