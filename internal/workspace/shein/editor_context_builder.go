@@ -165,8 +165,13 @@ func BuildSaleAttributeResolutionPatch(pkg *sheinpub.Package) *SaleAttributeReso
 	}
 	patch.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), pkg.SaleAttributeResolution.SKCAttributes...)
 	patch.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), pkg.SaleAttributeResolution.SKUAttributes...)
+	patch.CustomAttributeRelation = append(patch.CustomAttributeRelation, pkg.SaleAttributeResolution.CustomAttributeRelation...)
 	patch.SelectionSummary = append([]string(nil), pkg.SaleAttributeResolution.SelectionSummary...)
 	patch.ReviewNotes = append([]string(nil), pkg.SaleAttributeResolution.ReviewNotes...)
+	if patch.Status != nil && *patch.Status == "resolved" && !IsSaleAttributeResolved(pkg) {
+		status := "partial"
+		patch.Status = &status
+	}
 	return patch
 }
 

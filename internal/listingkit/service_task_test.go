@@ -203,6 +203,7 @@ func TestBuildTaskListItemDoesNotCountSourceImagesAsRenderedImages(t *testing.T)
 func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 	t.Parallel()
 
+	colorValueID := 271
 	task := &Task{
 		ID:     "task-status-overview",
 		Status: TaskStatusCompleted,
@@ -219,6 +220,11 @@ func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 					},
 					SKCList: []sheinpub.SKCRequestDraft{{
 						SupplierCode: "SKC-1",
+						SaleAttribute: &sheinpub.ResolvedSaleAttribute{
+							Name:             "Color",
+							AttributeID:      27,
+							AttributeValueID: &colorValueID,
+						},
 						ImageInfo: &sheinpub.ImageDraft{
 							MainImage: "https://cdn.example.com/skc-main.png",
 						},
@@ -236,6 +242,9 @@ func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 				PreviewProduct: &sheinproduct.Product{},
 				SkcList: []SheinSKCPackage{{
 					SupplierCode: "SKC-1",
+					Attributes: map[string]string{
+						"Color": "Black",
+					},
 					SKUs: []PlatformVariant{{
 						SKU: "SKU-1",
 					}},

@@ -281,6 +281,45 @@ export type SheinSaleAttributeCandidateInfo = {
   reasons?: string[];
 };
 
+export type SheinSourceVariantDimension = {
+  name?: string;
+  values?: string[];
+  distinct_count?: number;
+  sample_value?: string;
+};
+
+export type SheinSaleAttributeTemplateOption = {
+  attribute_id?: number;
+  name?: string;
+  name_en?: string;
+  skc_scope?: boolean;
+  required?: boolean;
+  important?: boolean;
+  attribute_value_list?: SheinAttributeValueCandidate[];
+};
+
+export type SheinInspectionSKUPatchPayload = {
+  supplier_sku?: string;
+  attributes?: Record<string, string>;
+  base_price?: string;
+  cost_price?: string;
+  currency?: string;
+  stock_count?: number;
+  main_image?: string;
+  barcode?: string;
+  sale_attributes?: SheinResolvedSaleAttribute[];
+};
+
+export type SheinInspectionSKCPatchPayload = {
+  supplier_code?: string;
+  skc_name?: string;
+  sale_name?: string;
+  main_image_url?: string;
+  attributes?: Record<string, string>;
+  sale_attribute?: SheinResolvedSaleAttribute;
+  sku_patches?: SheinInspectionSKUPatchPayload[];
+};
+
 export type SheinInspectionSaleAttributePayload = {
   status?: string;
   source?: string;
@@ -288,11 +327,16 @@ export type SheinInspectionSaleAttributePayload = {
   category_review_reason?: string;
   primary_attribute_id?: number;
   secondary_attribute_id?: number;
+  primary_source_dimension?: string;
+  secondary_source_dimension?: string;
+  source_dimensions?: SheinSourceVariantDimension[];
+  template_options?: SheinSaleAttributeTemplateOption[];
   selection_summary?: string[];
   skc_attributes?: SheinResolvedSaleAttribute[];
   sku_attributes?: SheinResolvedSaleAttribute[];
   candidate_count?: number;
   candidates?: SheinSaleAttributeCandidateInfo[];
+  skc_patches?: SheinInspectionSKCPatchPayload[];
   review_notes?: string[];
 };
 

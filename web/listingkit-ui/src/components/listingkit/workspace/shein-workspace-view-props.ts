@@ -220,6 +220,10 @@ export function buildSheinAdvancedReviewDetailsProps({
       isApplying,
       onConfirmCurrentSaleAttributes:
         sheinActions.handleConfirmCurrentSheinSaleAttributes,
+      onRegenerateSaleAttributes:
+        sheinActions.handleRegenerateSheinSaleAttributes,
+      onApplyManualSaleAttributes:
+        sheinActions.handleApplyManualSheinSaleAttributes,
     },
   };
 }

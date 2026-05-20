@@ -7,6 +7,7 @@ import type { UpdateSheinFinalDraftRequest } from "@/lib/api/shein-final-draft";
 import { submitErrorMessage } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import {
   buildApplyManualSheinCategoryRevision,
+  buildApplyManualSheinSaleAttributesRevision,
   buildApplySuggestedSheinCategoryRevision,
   buildConfirmCurrentSheinCategoryRevision,
   buildConfirmCurrentSheinSaleAttributesRevision,
@@ -17,6 +18,7 @@ import type {
   SheinManualCategoryCandidate,
   SheinPreviewPayload,
   SheinResolvedAttribute,
+  SheinSaleAttributeTemplateOption,
 } from "@/lib/types/listingkit";
 import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
 
@@ -131,6 +133,38 @@ export function useSheinWorkspaceActions({
     applyRevision.mutate(revision);
   };
 
+  const handleRegenerateSheinSaleAttributes = () => {
+    const revision = buildConfirmCurrentSheinCategoryRevision(sheinPreview);
+    if (!revision) {
+      return;
+    }
+    applyRevision.mutate(revision);
+  };
+
+  const handleApplyManualSheinSaleAttributes = ({
+    primaryOption,
+    secondaryOption,
+    skcSelections,
+    skuSelections,
+  }: {
+    primaryOption?: SheinSaleAttributeTemplateOption | null;
+    secondaryOption?: SheinSaleAttributeTemplateOption | null;
+    skcSelections: Record<string, { valueId?: number; textValue?: string }>;
+    skuSelections: Record<string, { valueId?: number; textValue?: string }>;
+  }) => {
+    const revision = buildApplyManualSheinSaleAttributesRevision({
+      sheinPreview,
+      primaryOption,
+      secondaryOption,
+      skcSelections,
+      skuSelections,
+    });
+    if (!revision) {
+      return;
+    }
+    applyRevision.mutate(revision);
+  };
+
   const handleSaveSheinFinalDraft = (
     payload: UpdateSheinFinalDraftRequest,
     successMessage = "Final SHEIN draft saved.",
@@ -201,6 +235,8 @@ export function useSheinWorkspaceActions({
     handleConfirmSheinAttributes,
     handleConfirmSheinFallbackAttributes,
     handleConfirmCurrentSheinSaleAttributes,
+    handleRegenerateSheinSaleAttributes,
+    handleApplyManualSheinSaleAttributes,
     handleSaveSheinFinalDraft,
     handleSubmitShein,
     handleSaveSheinDraft: () => handleSubmitShein("save_draft"),

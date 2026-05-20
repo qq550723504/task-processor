@@ -5,6 +5,7 @@ import (
 
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
@@ -77,10 +78,33 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	if req.ReviewNotes != nil {
 		pkg.ReviewNotes = uniqueStrings(append([]string(nil), req.ReviewNotes...))
 	}
+	normalizeSheinSaleAttributeState(pkg)
 
 	syncSheinDraftFromPackage(pkg)
 	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
 	refreshSheinReviewState(pkg)
+}
+
+func normalizeSheinSaleAttributeState(pkg *sheinpub.Package) {
+	if pkg == nil || pkg.SaleAttributeResolution == nil {
+		return
+	}
+	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+		return
+	}
+	if sheinSaleAttributesReadyForSubmit((*SheinPackage)(pkg)) {
+		return
+	}
+	if pkg.SaleAttributeResolution.Status == "" || pkg.SaleAttributeResolution.Status == "resolved" {
+		pkg.SaleAttributeResolution.Status = "partial"
+	}
+	pkg.SaleAttributeResolution.ReviewNotes = uniqueStrings(append(
+		[]string(nil),
+		append(
+			pkg.SaleAttributeResolution.ReviewNotes,
+			"当前销售属性仍缺少真实 sale attribute value 映射，请重新确认规格。",
+		)...,
+	))
 }
 
 func applySheinCategoryResolutionPatch(pkg *sheinpub.Package, patch *SheinCategoryResolutionPatch) {
@@ -221,6 +245,9 @@ func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinS
 	}
 	if patch.SKUAttributes != nil {
 		pkg.SaleAttributeResolution.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKUAttributes...)
+	}
+	if patch.CustomAttributeRelation != nil {
+		pkg.SaleAttributeResolution.CustomAttributeRelation = append([]sheinattribute.CustomAttributeRelation(nil), patch.CustomAttributeRelation...)
 	}
 	if patch.SelectionSummary != nil {
 		pkg.SaleAttributeResolution.SelectionSummary = append([]string(nil), patch.SelectionSummary...)

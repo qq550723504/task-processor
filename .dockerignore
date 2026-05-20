@@ -1,10 +1,15 @@
 .git
 .github
 .gocache
+.local
+.tmp
+.codex-backups
 .kiro
 .qoder
 .vscode
 .idea
+.agents
+.tools
 
 bin
 build
@@ -13,8 +18,11 @@ logs
 tmp
 cache
 .venv
+test-results
 
 chrome
+data
+node_modules
 
 *.log
 *.exe

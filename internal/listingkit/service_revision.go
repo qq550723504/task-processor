@@ -14,6 +14,11 @@ func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *App
 	if err != nil {
 		return nil, err
 	}
+	if effectiveReq.Platform == "shein" {
+		if err := s.resolveManualSheinSaleAttributeValueIDs(ctx, task, effectiveReq); err != nil {
+			return nil, err
+		}
+	}
 	var appliedChanges *RevisionDiffPreview
 	task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
 		if task.Result == nil {

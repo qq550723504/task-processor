@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type stubApplyRevisionRepo struct {
@@ -619,6 +620,90 @@ func TestApplyTaskRevisionDowngradesSaleAttributesWhenCategoryRefreshLacksValueI
 	}
 }
 
+func TestApplyTaskRevisionDowngradesManualResolvedSaleAttributesWithoutValueIDs(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	task := &Task{
+		ID: "task-apply-shein-sale-confirm-without-value-ids",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Text:         "metal wall sign",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-sale-confirm-without-value-ids",
+			CanonicalProduct: &canonical.Product{
+				Title: "metal wall sign",
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID: 2486,
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 2486,
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:             "partial",
+					PrimaryAttributeID: 1001466,
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{
+						SupplierCode: "SKC-1",
+						SKUList: []SheinSKUDraft{{
+							SupplierSKU: "SKU-1",
+						}},
+					}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{repo: repo}
+
+	status := "resolved"
+	source := "manual_review"
+	_, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				Status:             &status,
+				Source:             &source,
+				PrimaryAttributeID: intPtr(1001466),
+				SKCAttributes: []SheinResolvedSaleAttribute{{
+					Scope:       "skc",
+					Name:        "Plug(Voltage)",
+					Value:       "white",
+					AttributeID: 1001466,
+				}},
+				ReviewNotes: []string{"SHEIN 销售属性已按当前主规格和其他规格人工确认。"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution == nil {
+		t.Fatal("expected sale attribute resolution")
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.Status != "partial" {
+		t.Fatalf("sale attribute status = %q, want partial", repo.task.Result.Shein.SaleAttributeResolution.Status)
+	}
+	if len(repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes) == 0 {
+		t.Fatalf("review notes = %+v, want normalization note", repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes)
+	}
+}
+
 func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 	t.Parallel()
 
@@ -864,4 +949,115 @@ func boolPtr(v bool) *bool {
 
 func stringPtr(v string) *string {
 	return &v
+}
+
+type stubManualSaleAttributeAPI struct {
+	templates *sheinattribute.AttributeTemplateInfo
+}
+
+func (s stubManualSaleAttributeAPI) GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error) {
+	return s.templates, nil
+}
+
+func (s stubManualSaleAttributeAPI) ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+	resp := &sheinattribute.ValidateAttributeResponse{}
+	resp.Data.AttributeID = attributeID
+	resp.Data.PreAttributeValueID = 3001
+	resp.Data.AttributeValueNameMultis = []struct {
+		Language                string `json:"language"`
+		AttributeValueNameMulti string `json:"attribute_value_name_multi"`
+		WarningType             int    `json:"warning_type"`
+	}{
+		{Language: "en", AttributeValueNameMulti: attributeValue},
+	}
+	return resp, nil
+}
+
+func (s stubManualSaleAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+	resp := &sheinattribute.AddCustomAttributeValueResponse{}
+	resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+		PreAttributeValueID: req.PreAttributeValueList[0].PreAttributeValueID,
+		AttributeValueID:    9001,
+	}}
+	return resp, nil
+}
+
+func TestResolveManualSheinSaleAttributeValueIDsCreatesCustomValueIDs(t *testing.T) {
+	t.Parallel()
+
+	pkg := &SheinPackage{
+		SpuName:    "Bench Cushion",
+		CategoryID: 12143,
+		SkcList: []sheinpub.SKCPackage{{
+			SupplierCode: "SKC-1",
+			Attributes:   map[string]string{"Color": "米驼"},
+			SKUs: []common.Variant{{
+				SKU:        "SKU-1",
+				Attributes: map[string]string{"Size": `30"×40"`},
+			}},
+		}},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			PrimarySourceDimension:   "Color",
+			SecondarySourceDimension: "Size",
+		},
+	}
+	req := &SheinRevisionInput{
+		SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+			PrimaryAttributeID:   intPtr(501),
+			SecondaryAttributeID: intPtr(502),
+		},
+		SKCPatches: []SheinSKCRevisionPatch{{
+			SupplierCode: "SKC-1",
+			SaleAttribute: &SheinResolvedSaleAttribute{
+				Scope:       "skc",
+				Name:        "Color",
+				AttributeID: 501,
+			},
+			SKUPatches: []SheinSKURevisionPatch{{
+				SupplierSKU: "SKU-1",
+				SaleAttributes: []SheinResolvedSaleAttribute{{
+					Scope:       "sku",
+					Name:        "Size",
+					AttributeID: 502,
+				}},
+			}},
+		}},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeInfos: []sheinattribute.AttributeInfo{
+				{AttributeID: 501, AttributeName: "颜色", AttributeNameEn: "Color", AttributeInputNum: 1},
+				{AttributeID: 502, AttributeName: "尺码", AttributeNameEn: "Size", AttributeInputNum: 1},
+			},
+		}},
+	}
+
+	relations, notes, err := resolveManualSheinSaleAttributeValueIDs(
+		pkg,
+		req,
+		stubManualSaleAttributeAPI{templates: templates},
+		12143,
+		flattenSheinAttributeTemplatesByID(templates),
+	)
+	if err != nil {
+		t.Fatalf("resolve manual shein sale attributes: %v", err)
+	}
+	if got := req.SKCPatches[0].SaleAttribute; got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 9001 {
+		t.Fatalf("skc sale attribute = %+v, want custom value id 9001", got)
+	}
+	if got := req.SKCPatches[0].SKUPatches[0].SaleAttributes[0].AttributeValueID; got == nil || *got != 9001 {
+		t.Fatalf("sku sale attribute value id = %v, want 9001", got)
+	}
+	if len(relations) == 0 || relations[0].AttributeValueID != 9001 {
+		t.Fatalf("relations = %+v, want custom relation", relations)
+	}
+	if len(notes) == 0 {
+		t.Fatalf("notes = %+v, want remote resolution notes", notes)
+	}
+	if len(req.SaleAttributeResolution.SKCAttributes) != 1 || req.SaleAttributeResolution.SKCAttributes[0].AttributeValueID == nil {
+		t.Fatalf("sale attribute resolution skc attrs = %+v", req.SaleAttributeResolution.SKCAttributes)
+	}
+	if len(req.SaleAttributeResolution.SKUAttributes) != 1 || req.SaleAttributeResolution.SKUAttributes[0].AttributeValueID == nil {
+		t.Fatalf("sale attribute resolution sku attrs = %+v", req.SaleAttributeResolution.SKUAttributes)
+	}
 }

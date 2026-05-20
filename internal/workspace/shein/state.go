@@ -57,7 +57,10 @@ func IsSaleAttributeResolved(pkg *sheinpub.Package) bool {
 	if pkg.SaleAttributeResolution.PrimaryAttributeID <= 0 {
 		return false
 	}
-	if firstNonEmpty(pkg.SaleAttributeResolution.Status, "unresolved") == "resolved" {
+	if firstNonEmpty(pkg.SaleAttributeResolution.Status, "unresolved") != "resolved" {
+		return false
+	}
+	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
 		return true
 	}
 	return hasResolvedSaleAttributeDraft(pkg)

@@ -1,9 +1,16 @@
 import type { ApplyRevisionRequest } from "@/lib/api/revision";
 import type {
+  SheinInspectionSKCPatchPayload,
   SheinManualCategoryCandidate,
   SheinPreviewPayload,
   SheinResolvedAttribute,
+  SheinResolvedSaleAttribute,
+  SheinSaleAttributeTemplateOption,
 } from "@/lib/types/listingkit";
+
+type ApplyRevisionSKCPatch = NonNullable<
+  NonNullable<ApplyRevisionRequest["shein"]>["skc_patches"]
+>[number];
 
 export function buildApplySuggestedSheinCategoryRevision(
   sheinPreview?: SheinPreviewPayload,
@@ -225,4 +232,191 @@ export function buildConfirmCurrentSheinSaleAttributesRevision(
       },
     },
   };
+}
+
+export function buildApplyManualSheinSaleAttributesRevision({
+  sheinPreview,
+  primaryOption,
+  secondaryOption,
+  skcSelections,
+  skuSelections,
+}: {
+  sheinPreview?: SheinPreviewPayload;
+  primaryOption?: SheinSaleAttributeTemplateOption | null;
+  secondaryOption?: SheinSaleAttributeTemplateOption | null;
+  skcSelections: Record<string, { valueId?: number; textValue?: string }>;
+  skuSelections: Record<string, { valueId?: number; textValue?: string }>;
+}): ApplyRevisionRequest | null {
+  const current = sheinPreview?.editor_context?.sale_attributes?.current;
+  const skcPatches = current?.skc_patches ?? [];
+  if (!current || !primaryOption?.attribute_id || skcPatches.length === 0) {
+    return null;
+  }
+
+  const nextSKCPatches: ApplyRevisionSKCPatch[] = [];
+  for (const patch of skcPatches) {
+    const nextPatch = buildManualSaleSKCPatch({
+      patch,
+      primaryOption,
+      secondaryOption,
+      skcSelections,
+      skuSelections,
+    });
+    if (nextPatch) {
+      nextSKCPatches.push(nextPatch);
+    }
+  }
+  if (nextSKCPatches.length === 0) {
+    return null;
+  }
+
+  const firstPrimary = nextSKCPatches[0]?.sale_attribute;
+  const firstSecondary = nextSKCPatches
+    .flatMap((patch) => patch.sku_patches ?? [])
+    .flatMap((skuPatch) => skuPatch.sale_attributes ?? [])[0];
+
+  return {
+    platform: "shein",
+    actor: "workspace",
+    reason: "Apply manual SHEIN sale attributes",
+    shein: {
+      sale_attribute_resolution: {
+        status: "resolved",
+        source: "manual_review",
+        recommend_category_review: false,
+        category_review_reason: "",
+        primary_attribute_id: primaryOption.attribute_id,
+        secondary_attribute_id: secondaryOption?.attribute_id,
+        skc_attributes: firstPrimary ? [firstPrimary] : [],
+        sku_attributes: firstSecondary ? [firstSecondary] : [],
+        selection_summary: [
+          "SHEIN 销售属性已由人工按当前类目模板重新填写。",
+        ],
+        review_notes: [
+          "SHEIN 销售属性已人工填写真实 attribute_value_id。",
+        ],
+      },
+      skc_patches: nextSKCPatches,
+    },
+  };
+}
+
+function buildManualSaleSKCPatch({
+  patch,
+  primaryOption,
+  secondaryOption,
+  skcSelections,
+  skuSelections,
+}: {
+  patch: SheinInspectionSKCPatchPayload;
+  primaryOption: SheinSaleAttributeTemplateOption;
+  secondaryOption?: SheinSaleAttributeTemplateOption | null;
+  skcSelections: Record<string, { valueId?: number; textValue?: string }>;
+  skuSelections: Record<string, { valueId?: number; textValue?: string }>;
+}): ApplyRevisionSKCPatch | null {
+  const supplierCode = patch.supplier_code;
+  if (!supplierCode) {
+    return null;
+  }
+  const primarySelection = skcSelections[supplierCode];
+  if (!hasManualSaleAttributeSelection(primarySelection)) {
+    return null;
+  }
+  const primaryValueID = primarySelection?.valueId;
+  const primaryValue = primaryOption.attribute_value_list?.find(
+    (option) => option.attribute_value_id === primaryValueID,
+  );
+  const saleAttribute = buildManualResolvedSaleAttribute(
+    primaryOption,
+    primaryValueID,
+    resolveManualSaleAttributeTextValue(
+      primarySelection,
+      primaryValue?.value_en ?? primaryValue?.value,
+    ),
+    "skc",
+  );
+  if (!saleAttribute) {
+    return null;
+  }
+
+  const skuPatches =
+    patch.sku_patches?.map((skuPatch) => {
+      const supplierSKU = skuPatch.supplier_sku;
+      if (!supplierSKU) {
+        return null;
+      }
+      const secondarySelection = skuSelections[supplierSKU];
+      const secondaryValueID = secondarySelection?.valueId;
+      const secondaryValue = secondaryOption?.attribute_value_list?.find(
+        (option) => option.attribute_value_id === secondaryValueID,
+      );
+      const saleAttributes =
+        secondaryOption?.attribute_id && hasManualSaleAttributeSelection(secondarySelection)
+        ? [
+            buildManualResolvedSaleAttribute(
+              secondaryOption,
+              secondaryValueID,
+              resolveManualSaleAttributeTextValue(
+                secondarySelection,
+                secondaryValue?.value_en ?? secondaryValue?.value,
+              ),
+              "sku",
+            ),
+          ].filter(
+            (value): value is SheinResolvedSaleAttribute => Boolean(value),
+          )
+        : undefined;
+
+      return {
+        supplier_sku: supplierSKU,
+        attributes: skuPatch.attributes,
+        sale_attributes: saleAttributes,
+      };
+    }).filter((item): item is NonNullable<typeof item> => Boolean(item)) ?? [];
+
+  return {
+    supplier_code: supplierCode,
+    skc_name: patch.skc_name,
+    sale_name: patch.sale_name,
+    main_image_url: patch.main_image_url,
+    sale_attribute: saleAttribute,
+    sku_patches: skuPatches,
+  };
+}
+
+function buildManualResolvedSaleAttribute(
+  option: SheinSaleAttributeTemplateOption,
+  attributeValueID: number | undefined,
+  value: string | undefined,
+  scope: "skc" | "sku",
+): SheinResolvedSaleAttribute | null {
+  if (!option.attribute_id || !value) {
+    return null;
+  }
+  return {
+    scope,
+    name: option.name_en ?? option.name,
+    value,
+    attribute_id: option.attribute_id,
+    attribute_value_id: attributeValueID,
+    matched_by: "manual_review",
+  };
+}
+
+function hasManualSaleAttributeSelection(selection?: {
+  valueId?: number;
+  textValue?: string;
+}) {
+  return Boolean(selection?.valueId) || Boolean(selection?.textValue?.trim());
+}
+
+function resolveManualSaleAttributeTextValue(
+  selection: { valueId?: number; textValue?: string } | undefined,
+  fallbackValue: string | undefined,
+) {
+  const customText = selection?.textValue?.trim();
+  if (customText) {
+    return customText;
+  }
+  return fallbackValue;
 }

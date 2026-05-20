@@ -587,6 +587,7 @@ func (r *stubTaskListRepo) ListTaskSummaryTasks(_ context.Context, query *TaskLi
 }
 
 func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, blockerKey string) Task {
+	colorValueID := 271
 	task := Task{
 		ID:        id,
 		Status:    TaskStatusCompleted,
@@ -606,6 +607,11 @@ func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, 
 					},
 					SKCList: []SheinSKCRequestDraft{{
 						SupplierCode: "SKC-1",
+						SaleAttribute: &SheinResolvedSaleAttribute{
+							Name:             "Color",
+							AttributeID:      27,
+							AttributeValueID: &colorValueID,
+						},
 						ImageInfo: &sheinpub.ImageDraft{
 							MainImage: "https://cdn.example.com/skc-main.png",
 						},
@@ -623,6 +629,9 @@ func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, 
 				PreviewProduct: &sheinproduct.Product{},
 				SkcList: []SheinSKCPackage{{
 					SupplierCode: "SKC-1",
+					Attributes: map[string]string{
+						"Color": "Black",
+					},
 					SKUs: []PlatformVariant{{
 						SKU: "SKU-1",
 					}},

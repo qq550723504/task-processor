@@ -155,6 +155,9 @@ func pruneSaleAttributeResolutionPatch(patch *SaleAttributeResolutionPatch) *Sal
 	if len(patch.SKUAttributes) > 0 {
 		out.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKUAttributes...)
 	}
+	if len(patch.CustomAttributeRelation) > 0 {
+		out.CustomAttributeRelation = append(out.CustomAttributeRelation, patch.CustomAttributeRelation...)
+	}
 	if len(patch.SelectionSummary) > 0 {
 		out.SelectionSummary = append([]string(nil), patch.SelectionSummary...)
 	}
@@ -324,6 +327,7 @@ func isEmptySalePatch(in *SaleAttributeResolutionPatch) bool {
 			in.SecondaryAttributeID == nil &&
 			len(in.SKCAttributes) == 0 &&
 			len(in.SKUAttributes) == 0 &&
+			len(in.CustomAttributeRelation) == 0 &&
 			len(in.SelectionSummary) == 0 &&
 			len(in.ReviewNotes) == 0)
 }

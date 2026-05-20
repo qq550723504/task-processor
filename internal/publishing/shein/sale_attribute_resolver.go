@@ -70,6 +70,7 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 	}
 	template := templates.Data[0]
 	saleAttributes := orderSaleScopeAttributes(filterSaleScopeAttributes(template.AttributeInfos), template.AttributeID)
+	resolution.TemplateOptions = buildSaleAttributeTemplateOptions(saleAttributes)
 	index := newTemplateIndex(saleAttributes)
 	log.WithFields(logrus.Fields{
 		"category_id":          resolution.CategoryID,
@@ -227,6 +228,40 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 		"candidate_count":        len(resolution.Candidates),
 	}).Info("resolved SHEIN sale attributes")
 	return resolution
+}
+
+func buildSaleAttributeTemplateOptions(attributes []sheinattribute.AttributeInfo) []SaleAttributeTemplateOption {
+	if len(attributes) == 0 {
+		return nil
+	}
+	options := make([]SaleAttributeTemplateOption, 0, len(attributes))
+	for _, attribute := range attributes {
+		option := SaleAttributeTemplateOption{
+			AttributeID: attribute.AttributeID,
+			Name:        attribute.AttributeName,
+			NameEn:      attribute.AttributeNameEn,
+			Required:    attribute.AttributeIsShow == 1,
+			Important:   attribute.AttributeLabel == 1,
+		}
+		if attribute.SKCScope != nil {
+			option.SKCScope = *attribute.SKCScope
+		}
+		if len(attribute.AttributeValueInfoList) > 0 {
+			option.AttributeValueList = make([]AttributeValueCandidate, 0, len(attribute.AttributeValueInfoList))
+			for _, value := range attribute.AttributeValueInfoList {
+				if value.AttributeValueID <= 0 {
+					continue
+				}
+				option.AttributeValueList = append(option.AttributeValueList, AttributeValueCandidate{
+					AttributeValueID: value.AttributeValueID,
+					Value:            value.AttributeValue,
+					ValueEn:          value.AttributeValueEn,
+				})
+			}
+		}
+		options = append(options, option)
+	}
+	return options
 }
 
 func applySelectedCandidate(

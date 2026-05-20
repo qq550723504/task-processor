@@ -306,12 +306,19 @@ func buildSaleAttributePayload(pkg *sheinpub.Package) *sheinpub.InspectionSaleAt
 		payload.CategoryReviewReason = pkg.SaleAttributeResolution.CategoryReviewReason
 		payload.PrimaryAttributeID = pkg.SaleAttributeResolution.PrimaryAttributeID
 		payload.SecondaryAttributeID = pkg.SaleAttributeResolution.SecondaryAttributeID
+		payload.PrimarySourceDimension = pkg.SaleAttributeResolution.PrimarySourceDimension
+		payload.SecondarySourceDimension = pkg.SaleAttributeResolution.SecondarySourceDimension
+		payload.SourceDimensions = cloneSourceDimensionsForInspection(pkg.SaleAttributeResolution.SourceDimensions)
+		payload.TemplateOptions = cloneTemplateOptionsForInspection(pkg.SaleAttributeResolution.TemplateOptions)
 		payload.SelectionSummary = append([]string(nil), pkg.SaleAttributeResolution.SelectionSummary...)
 		payload.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), pkg.SaleAttributeResolution.SKCAttributes...)
 		payload.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), pkg.SaleAttributeResolution.SKUAttributes...)
 		payload.CandidateCount = len(pkg.SaleAttributeResolution.Candidates)
 		payload.Candidates = append([]sheinpub.SaleAttributeCandidateInfo(nil), pkg.SaleAttributeResolution.Candidates...)
 		payload.ReviewNotes = append([]string(nil), pkg.SaleAttributeResolution.ReviewNotes...)
+	}
+	if payload.Status == "resolved" && !IsSaleAttributeResolved(pkg) {
+		payload.Status = "partial"
 	}
 	return payload
 }
@@ -335,6 +342,18 @@ func buildSaleAttributePayloadMap(payload *sheinpub.InspectionSaleAttributePaylo
 	}
 	out["primary_attribute_id"] = payload.PrimaryAttributeID
 	out["secondary_attribute_id"] = payload.SecondaryAttributeID
+	if payload.PrimarySourceDimension != "" {
+		out["primary_source_dimension"] = payload.PrimarySourceDimension
+	}
+	if payload.SecondarySourceDimension != "" {
+		out["secondary_source_dimension"] = payload.SecondarySourceDimension
+	}
+	if len(payload.SourceDimensions) > 0 {
+		out["source_dimensions"] = cloneSourceDimensionsForInspection(payload.SourceDimensions)
+	}
+	if len(payload.TemplateOptions) > 0 {
+		out["template_options"] = cloneTemplateOptionsForInspection(payload.TemplateOptions)
+	}
 	if len(payload.SelectionSummary) > 0 {
 		out["selection_summary"] = append([]string(nil), payload.SelectionSummary...)
 	}
@@ -418,6 +437,9 @@ func buildSKCPatchSuggestions(pkg *sheinpub.Package) []sheinpub.InspectionSKCPat
 			attr := *skc.SaleAttribute
 			entry.SaleAttribute = &attr
 		}
+		if pkgSKC := findSKCPackageBySupplierCode(pkg.SkcList, skc.SupplierCode); pkgSKC != nil {
+			entry.Attributes = cloneMap(pkgSKC.Attributes)
+		}
 		if skc.ImageInfo != nil {
 			entry.MainImageURL = skc.ImageInfo.MainImage
 		}
@@ -427,6 +449,39 @@ func buildSKCPatchSuggestions(pkg *sheinpub.Package) []sheinpub.InspectionSKCPat
 		patches = append(patches, entry)
 	}
 	return patches
+}
+
+func cloneSourceDimensionsForInspection(items []sheinpub.SourceVariantDimension) []sheinpub.SourceVariantDimension {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]sheinpub.SourceVariantDimension, 0, len(items))
+	for _, item := range items {
+		item.Values = append([]string(nil), item.Values...)
+		out = append(out, item)
+	}
+	return out
+}
+
+func cloneTemplateOptionsForInspection(items []sheinpub.SaleAttributeTemplateOption) []sheinpub.SaleAttributeTemplateOption {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]sheinpub.SaleAttributeTemplateOption, 0, len(items))
+	for _, item := range items {
+		item.AttributeValueList = append([]sheinpub.AttributeValueCandidate(nil), item.AttributeValueList...)
+		out = append(out, item)
+	}
+	return out
+}
+
+func findSKCPackageBySupplierCode(items []sheinpub.SKCPackage, supplierCode string) *sheinpub.SKCPackage {
+	for i := range items {
+		if items[i].SupplierCode == supplierCode {
+			return &items[i]
+		}
+	}
+	return nil
 }
 
 func buildSKUPatchSuggestions(items []sheinpub.SKUDraft) []sheinpub.InspectionSKUPatchPayload {

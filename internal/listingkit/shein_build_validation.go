@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	sheinproduct "task-processor/internal/shein/api/product"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
@@ -110,29 +109,6 @@ func sheinSaleAttributesReadyForSubmit(pkg *SheinPackage) bool {
 			}
 		}
 	}
-	if pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) == 0 {
-		return false
-	}
-	for _, skc := range pkg.PreviewProduct.SKCList {
-		if !sheinPreviewSaleAttributeReady(skc.SaleAttribute) {
-			return false
-		}
-		if requireSKUAttributes {
-			if len(skc.SKUS) == 0 {
-				return false
-			}
-			for _, sku := range skc.SKUS {
-				if len(sku.SaleAttributeList) == 0 {
-					return false
-				}
-				for _, attr := range sku.SaleAttributeList {
-					if !sheinPreviewSaleAttributeReady(attr) {
-						return false
-					}
-				}
-			}
-		}
-	}
 	return true
 }
 
@@ -142,10 +118,6 @@ func sheinResolvedSaleAttributeReady(attr *SheinResolvedSaleAttribute) bool {
 
 func sheinResolvedSaleAttributeValueReady(attr SheinResolvedSaleAttribute) bool {
 	return attr.AttributeID > 0 && attr.AttributeValueID != nil && *attr.AttributeValueID > 0
-}
-
-func sheinPreviewSaleAttributeReady(attr sheinproduct.SaleAttribute) bool {
-	return attr.AttributeID > 0 && attr.AttributeValueID > 0
 }
 
 func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {

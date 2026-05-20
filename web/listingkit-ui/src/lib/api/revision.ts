@@ -46,6 +46,32 @@ export type ApplyRevisionRequest = {
       selection_summary?: string[];
       review_notes?: string[];
     };
+    skc_patches?: Array<{
+      supplier_code?: string;
+      skc_name?: string;
+      sale_name?: string;
+      main_image_url?: string;
+      sale_attribute?: {
+        scope?: string;
+        name?: string;
+        value?: string;
+        attribute_id?: number;
+        attribute_value_id?: number;
+        matched_by?: string;
+      };
+      sku_patches?: Array<{
+        supplier_sku?: string;
+        attributes?: Record<string, string>;
+        sale_attributes?: Array<{
+          scope?: string;
+          name?: string;
+          value?: string;
+          attribute_id?: number;
+          attribute_value_id?: number;
+          matched_by?: string;
+        }>;
+      }>;
+    }>;
     attribute_resolution?: {
       status?: string;
       source?: string;

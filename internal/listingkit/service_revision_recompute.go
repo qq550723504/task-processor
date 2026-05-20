@@ -85,17 +85,23 @@ func normalizeSheinCategoryRefreshSaleAttributeState(pkg *sheinpub.Package) {
 	if pkg == nil || pkg.SaleAttributeResolution == nil {
 		return
 	}
-	if sheinSaleAttributesReadyForSubmit(pkg) {
-		return
+	normalizeSheinSaleAttributeState(pkg)
+	if !containsReviewNote(pkg.SaleAttributeResolution.ReviewNotes, "类目变更后已重新生成销售属性，但当前仍缺少真实 sale attribute value 映射，请重新确认规格。") {
+		pkg.SaleAttributeResolution.ReviewNotes = uniqueStrings(append(
+			[]string(nil),
+			append(
+				pkg.SaleAttributeResolution.ReviewNotes,
+				"类目变更后已重新生成销售属性，但当前仍缺少真实 sale attribute value 映射，请重新确认规格。",
+			)...,
+		))
 	}
-	if pkg.SaleAttributeResolution.Status == "" || pkg.SaleAttributeResolution.Status == "resolved" {
-		pkg.SaleAttributeResolution.Status = "partial"
+}
+
+func containsReviewNote(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
 	}
-	pkg.SaleAttributeResolution.ReviewNotes = uniqueStrings(append(
-		[]string(nil),
-		append(
-			pkg.SaleAttributeResolution.ReviewNotes,
-			"类目变更后已重新生成销售属性，但当前仍缺少真实 sale attribute value 映射，请重新确认规格。",
-		)...,
-	))
+	return false
 }

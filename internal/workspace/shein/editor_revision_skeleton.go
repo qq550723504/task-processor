@@ -85,6 +85,7 @@ func cloneSalePatch(src *SaleAttributeResolutionPatch) *SaleAttributeResolutionP
 	out := *src
 	out.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), src.SKCAttributes...)
 	out.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), src.SKUAttributes...)
+	out.CustomAttributeRelation = append(out.CustomAttributeRelation[:0:0], src.CustomAttributeRelation...)
 	out.SelectionSummary = append([]string(nil), src.SelectionSummary...)
 	out.ReviewNotes = append([]string(nil), src.ReviewNotes...)
 	return &out

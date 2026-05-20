@@ -102,6 +102,7 @@ func cloneSaleAttributeResolution(resolution *SaleAttributeResolution) *SaleAttr
 	}
 	clone := *resolution
 	clone.SourceDimensions = cloneSourceVariantDimensions(resolution.SourceDimensions)
+	clone.TemplateOptions = cloneSaleAttributeTemplateOptions(resolution.TemplateOptions)
 	clone.SKCAttributes = append([]ResolvedSaleAttribute(nil), resolution.SKCAttributes...)
 	clone.SKUAttributes = append([]ResolvedSaleAttribute(nil), resolution.SKUAttributes...)
 	clone.Candidates = cloneSaleAttributeCandidateInfos(resolution.Candidates)
@@ -153,6 +154,18 @@ func cloneSaleAttributeCandidateInfos(items []SaleAttributeCandidateInfo) []Sale
 	out := make([]SaleAttributeCandidateInfo, 0, len(items))
 	for _, item := range items {
 		item.Reasons = append([]string(nil), item.Reasons...)
+		out = append(out, item)
+	}
+	return out
+}
+
+func cloneSaleAttributeTemplateOptions(items []SaleAttributeTemplateOption) []SaleAttributeTemplateOption {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]SaleAttributeTemplateOption, 0, len(items))
+	for _, item := range items {
+		item.AttributeValueList = append([]AttributeValueCandidate(nil), item.AttributeValueList...)
 		out = append(out, item)
 	}
 	return out

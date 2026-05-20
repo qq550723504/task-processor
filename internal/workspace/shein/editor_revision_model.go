@@ -3,6 +3,7 @@ package shein
 import (
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type RevisionInput struct {
@@ -63,6 +64,7 @@ type SaleAttributeResolutionPatch struct {
 	SecondaryAttributeID    *int                             `json:"secondary_attribute_id,omitempty"`
 	SKCAttributes           []sheinpub.ResolvedSaleAttribute `json:"skc_attributes,omitempty"`
 	SKUAttributes           []sheinpub.ResolvedSaleAttribute `json:"sku_attributes,omitempty"`
+	CustomAttributeRelation []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
 	SelectionSummary        []string                         `json:"selection_summary,omitempty"`
 	ReviewNotes             []string                         `json:"review_notes,omitempty"`
 }

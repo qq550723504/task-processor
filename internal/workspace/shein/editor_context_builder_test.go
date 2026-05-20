@@ -28,3 +28,29 @@ func TestBuildSaleAttributeResolutionPatchIncludesCategoryReviewSignal(t *testin
 		t.Fatalf("category_review_reason = %#v", patch.CategoryReviewReason)
 	}
 }
+
+func TestBuildSaleAttributeResolutionPatchDowngradesResolvedStatusWhenValueIDsAreMissing(t *testing.T) {
+	pkg := &sheinpub.Package{
+		SaleAttributeResolution: &sheinpub.SaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 1001466,
+			SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+				Scope:       "skc",
+				Name:        "Plug(Voltage)",
+				Value:       "white",
+				AttributeID: 1001466,
+			}},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{SupplierCode: "SKC-1"}},
+		},
+	}
+
+	patch := BuildSaleAttributeResolutionPatch(pkg)
+	if patch == nil || patch.Status == nil {
+		t.Fatalf("patch = %#v, want status", patch)
+	}
+	if *patch.Status != "partial" {
+		t.Fatalf("patch status = %q, want partial", *patch.Status)
+	}
+}

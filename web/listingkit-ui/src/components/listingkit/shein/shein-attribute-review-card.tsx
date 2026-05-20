@@ -115,7 +115,7 @@ function SheinAttributeReviewContent({
             SHEIN 普通属性确认
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
-            先处理必填未完成项；重要建议和其他建议不会阻断提交，但补齐后资料更完整。
+            更改类目后，系统会先按最新类目重新生成普通属性；如果 AI 结果不满意，这里可以继续手工确认和修改属性值。
           </p>
         </div>
 
@@ -141,7 +141,7 @@ function SheinAttributeReviewContent({
                 必填未完成
               </p>
               <p className="mt-1 text-sm leading-6 text-amber-900">
-                这些属性来自 SHEIN 类目模板，未确认前会阻断提交。
+                这些属性来自 SHEIN 当前类目模板，未确认前会阻断提交。
               </p>
             </div>
             <div className="space-y-2">
@@ -177,7 +177,7 @@ function SheinAttributeReviewContent({
                 重要建议
               </p>
               <p className="mt-1 text-sm leading-6 text-sky-900">
-                这些不是必填阻断项，但 SHEIN 标记为重要属性，建议客户确认。
+                这些不是必填阻断项，但 SHEIN 标记为重要属性；如果 AI 生成不准确，建议在这里手工改掉。
               </p>
             </div>
             <div className="space-y-2">
