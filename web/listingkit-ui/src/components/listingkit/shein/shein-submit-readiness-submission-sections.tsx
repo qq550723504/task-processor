@@ -7,6 +7,7 @@ import type {
 
 export function SubmitActionCard({
   canRunSubmitActions,
+  isPublished,
   isPublishing,
   isSavingDraft,
   isSubmitting,
@@ -14,6 +15,7 @@ export function SubmitActionCard({
   onSubmit,
 }: {
   canRunSubmitActions: boolean;
+  isPublished?: boolean;
   isPublishing: boolean;
   isSavingDraft: boolean;
   isSubmitting?: boolean;
@@ -49,10 +51,10 @@ export function SubmitActionCard({
             {onSubmit ? (
               <Button
                 className="h-8 px-3 text-xs"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isPublished}
                 onClick={onSubmit}
               >
-                {isPublishing ? "提交中..." : "发布到 SHEIN"}
+                {isPublished ? "已发布到 SHEIN" : isPublishing ? "提交中..." : "发布到 SHEIN"}
               </Button>
             ) : null}
           </div>

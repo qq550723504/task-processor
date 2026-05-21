@@ -28,6 +28,10 @@ import {
   buildSheinCustomerIssues,
   type CustomerIssue,
 } from "@/lib/shein-studio/shein-customer-issues";
+import {
+  sheinPublishInFlight,
+  sheinPublishSucceeded,
+} from "@/lib/shein-studio/shein-submission-display";
 import type {
   SheinPreviewPayload,
   SheinReadinessItem,
@@ -100,6 +104,10 @@ export function SheinFinalReviewPanel({
     submitHint,
     summaryItems,
   } = model;
+  const publishInFlight = Boolean(
+    isSubmitting && submitAction === "publish",
+  ) || sheinPublishInFlight(shein?.submission);
+  const publishSucceeded = sheinPublishSucceeded(shein?.submission);
   const canSelectIssue = (issue: CustomerIssue) =>
     Boolean(
       issue.actionKey &&
@@ -220,6 +228,7 @@ export function SheinFinalReviewPanel({
         <FinalReviewPublishConfirmCard
           categoryId={finalReview?.category_id}
           finalImageCount={finalImages.length}
+          isPublished={publishSucceeded}
           isSubmitting={isSubmitting}
           onCancel={() => setIsPublishConfirming(false)}
           onConfirm={() => {
@@ -233,7 +242,8 @@ export function SheinFinalReviewPanel({
       <FinalReviewSubmitActions
         confirmed={confirmed}
         isSaving={isSaving}
-        isSubmitting={isSubmitting}
+        isPublished={publishSucceeded}
+        isSubmitting={publishInFlight || isSubmitting}
         manualOverrides={manualOverrides}
         onSaveFinalDraft={onSaveFinalDraft}
         onStartPublishConfirm={() => setIsPublishConfirming(true)}

@@ -244,6 +244,36 @@ describe("SheinFinalReviewPanel", () => {
     expect(onSubmit).toHaveBeenCalledWith("publish");
   });
 
+  it("disables publish action after publish succeeds", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          submission: {
+            last_action: "publish",
+            last_status: "success",
+            last_result: {
+              success: true,
+              spu_name: "h2605201253579421",
+            },
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            attributes: [{ name: "Material", value: "Cotton" }],
+            sale_attributes: [{ name: "Color", value: "Black" }],
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "已发布到 SHEIN" })).toBeDisabled();
+  });
+
   it("disables save draft while readiness is blocked", () => {
     render(
       <SheinFinalReviewPanel

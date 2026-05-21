@@ -27,6 +27,8 @@ import {
 import {
   sheinLatestSubmissionSummary,
   sheinLatestSubmissionTitle,
+  sheinPublishInFlight,
+  sheinPublishSucceeded,
   sheinSubmitPhaseLabel,
 } from "@/lib/shein-studio/shein-submission-display";
 import type {
@@ -103,7 +105,9 @@ export function SheinSubmitReadinessPanel({
   const latestSubmissionTitle = sheinLatestSubmissionTitle(submission);
   const latestSubmissionSummary = sheinLatestSubmissionSummary(submission);
   const isSavingDraft = Boolean(isSubmitting && submitAction === "save_draft");
-  const isPublishing = Boolean(isSubmitting && submitAction !== "save_draft");
+  const publishInFlight = Boolean(isSubmitting && submitAction !== "save_draft") || sheinPublishInFlight(submission);
+  const publishSucceeded = sheinPublishSucceeded(submission);
+  const isPublishing = publishInFlight;
   const backendSubmitPhase = sheinSubmitPhaseLabel(submission?.current_phase);
   const backendSubmitAction = submission?.current_action as
     | "publish"
@@ -188,9 +192,10 @@ export function SheinSubmitReadinessPanel({
         {submitReady ? (
           <SubmitActionCard
             canRunSubmitActions={canRunSubmitActions}
+            isPublished={publishSucceeded}
             isPublishing={isPublishing}
             isSavingDraft={isSavingDraft}
-            isSubmitting={isSubmitting}
+            isSubmitting={isSubmitting || publishInFlight}
             onSaveDraft={onSaveDraft}
             onSubmit={onSubmit}
           />

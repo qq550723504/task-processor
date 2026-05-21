@@ -83,6 +83,7 @@ export function FinalReviewReadinessBanner({
 export function FinalReviewPublishConfirmCard({
   categoryId,
   finalImageCount,
+  isPublished,
   isSubmitting,
   onCancel,
   onConfirm,
@@ -90,6 +91,7 @@ export function FinalReviewPublishConfirmCard({
 }: {
   categoryId?: number | null;
   finalImageCount: number;
+  isPublished?: boolean;
   isSubmitting?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -117,8 +119,8 @@ export function FinalReviewPublishConfirmCard({
           <Button variant="secondary" onClick={onCancel} type="button">
             取消
           </Button>
-          <Button disabled={isSubmitting} onClick={onConfirm} type="button">
-            确认发布
+          <Button disabled={isSubmitting || isPublished} onClick={onConfirm} type="button">
+            {isPublished ? "已发布到 SHEIN" : "确认发布"}
           </Button>
         </div>
       </div>
@@ -129,6 +131,7 @@ export function FinalReviewPublishConfirmCard({
 export function FinalReviewSubmitActions({
   confirmed,
   isSaving,
+  isPublished,
   isSubmitting,
   manualOverrides,
   onSaveFinalDraft,
@@ -140,6 +143,7 @@ export function FinalReviewSubmitActions({
 }: {
   confirmed: boolean;
   isSaving?: boolean;
+  isPublished?: boolean;
   isSubmitting?: boolean;
   manualOverrides: Record<string, number>;
   onSaveFinalDraft?: (payload: {
@@ -182,10 +186,14 @@ export function FinalReviewSubmitActions({
         {submitAction === "save_draft" ? "保存中..." : "保存到 SHEIN 草稿箱"}
       </Button>
       <Button
-        disabled={!confirmed || !ready || isSubmitting}
+        disabled={!confirmed || !ready || isSubmitting || isPublished}
         onClick={onStartPublishConfirm}
       >
-        {submitAction === "publish" ? "发布中..." : "发布到 SHEIN"}
+        {isPublished
+          ? "已发布到 SHEIN"
+          : submitAction === "publish"
+            ? "发布中..."
+            : "发布到 SHEIN"}
       </Button>
     </div>
   );

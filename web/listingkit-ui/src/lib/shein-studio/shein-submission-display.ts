@@ -1,5 +1,35 @@
 import type { SheinSubmissionReport } from "@/lib/types/listingkit";
 
+function submissionActionSucceeded(
+  submission?: SheinSubmissionReport | null,
+  action?: string | null,
+) {
+  if (!submission || submission.last_action !== action) {
+    return false;
+  }
+  const status = submission.last_status;
+  const result = submission.last_result;
+  return status === "success" || (status === "unknown" && result?.success === true);
+}
+
+export function sheinPublishSucceeded(
+  submission?: SheinSubmissionReport | null,
+) {
+  if (!submissionActionSucceeded(submission, "publish")) {
+    return false;
+  }
+  return Boolean(submission?.last_result?.spu_name?.trim());
+}
+
+export function sheinPublishInFlight(
+  submission?: SheinSubmissionReport | null,
+) {
+  return (
+    submission?.current_action === "publish" &&
+    Boolean(submission?.current_phase)
+  );
+}
+
 export function sheinSubmissionActionLabel(action?: string | null) {
   switch (action) {
     case "image_upload":

@@ -144,6 +144,8 @@ describe("SheinSubmitReadinessPanel", () => {
           last_status: "success",
           last_result: {
             message: "success",
+            success: true,
+            spu_name: "h2605201253579421",
           },
         }}
         workspaceOverview={{
@@ -172,7 +174,7 @@ describe("SheinSubmitReadinessPanel", () => {
       screen.getByText("商品资料已提交到 SHEIN 发布接口，请以 SHEIN 后台最终状态为准。"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已发布到 SHEIN" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
     expect(screen.queryByText("阻断项")).not.toBeInTheDocument();
   });
