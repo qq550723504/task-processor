@@ -106,6 +106,10 @@ export function manualPriceOverridesFromStrings(
   return out;
 }
 
+function actionableFinalReviewBlockers(items: SheinReadinessItem[]) {
+  return items.filter((item) => (item.key ?? "") !== "final_review");
+}
+
 export function buildFinalReviewModel({
   customerBlockingCount,
   shein,
@@ -121,10 +125,15 @@ export function buildFinalReviewModel({
 
   const blockers = finalReview?.blocking_items ?? [];
   const confirmed = finalReview?.confirmed === true;
-  const ready = shein?.submit_readiness?.ready === true;
   const readinessBlockers = shein?.submit_readiness?.blocking_items ?? [];
-  const visibleBlockers = blockers.length ? blockers : readinessBlockers;
-  const allBlockingItems = [...readinessBlockers, ...blockers];
+  const actionableReadinessBlockers = actionableFinalReviewBlockers(readinessBlockers);
+  const actionableFinalBlockers = actionableFinalReviewBlockers(blockers);
+  const visibleBlockers = actionableFinalBlockers.length
+    ? actionableFinalBlockers
+    : actionableReadinessBlockers;
+  const allBlockingItems = [...actionableReadinessBlockers, ...actionableFinalBlockers];
+  const ready =
+    shein?.submit_readiness?.ready === true || visibleBlockers.length === 0;
   const blockingCount = customerBlockingCount || visibleBlockers.length;
   const imageCounts = imageRoleCounts(finalReview?.images);
   const finalImages = (finalReview?.images ?? []).filter(

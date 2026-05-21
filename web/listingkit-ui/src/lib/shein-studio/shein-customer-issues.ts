@@ -65,6 +65,14 @@ function byKey(key?: string | null): IssueTemplate | null {
   if (!normalized) {
     return null;
   }
+  if (normalized === "final_review") {
+    return {
+      category: "其他问题",
+      title: "等待最终确认",
+      message: "当前页面就是最终确认页。核对无误后，可以直接保存草稿或发布到 SHEIN。",
+      actionLabel: "继续最终确认",
+    };
+  }
   if (normalized.includes("cookie") || normalized.includes("login")) {
     return {
       category: "提交接口问题",
@@ -253,12 +261,11 @@ function issueFromReadinessItem(
   severity: CustomerIssueSeverity,
 ) {
   const rawText = textOfReadinessItem(item) || item.key || "未知检查项";
+  const keyTemplate = byKey(item.key);
   const textTemplate = byText(rawText);
   return makeIssue(
-    textTemplate.category === "其他问题"
-      ? byKey(item.key) ?? textTemplate
-      : textTemplate,
-    severity,
+    keyTemplate ?? textTemplate,
+    item.key === "final_review" ? "warning" : severity,
     rawText,
   );
 }

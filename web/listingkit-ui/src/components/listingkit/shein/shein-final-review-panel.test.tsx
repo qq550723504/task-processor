@@ -152,6 +152,41 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.queryByRole("button", { name: "确认最终草稿" })).not.toBeInTheDocument();
   });
 
+  it("treats final_review as an in-page confirmation step instead of a hard blocker", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: {
+            ready: false,
+            blocking_items: [
+              {
+                key: "final_review",
+                label: "最终确认",
+                message: "提交前必须在最终确认页核对图片、价格、属性和 SKU 后确认",
+              },
+            ],
+          },
+          final_review: {
+            confirmed: false,
+            category_id: 123,
+            attributes: [{ name: "Material", value: "Cotton" }],
+            sale_attributes: [{ name: "Color", value: "Black" }],
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("资料已通过检查，请先确认当前结果无误。")).toBeInTheDocument();
+    expect(screen.getByText("等待最终确认")).toBeInTheDocument();
+    expect(screen.queryByText("价格或库存信息不完整")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).not.toBeDisabled();
+  });
+
   it("shows manual fallback attribute confirmation as done when final attributes are empty", () => {
     render(
       <SheinFinalReviewPanel
