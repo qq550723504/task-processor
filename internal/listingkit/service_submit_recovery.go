@@ -302,6 +302,16 @@ type sheinRemoteConfirmation struct {
 }
 
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+	if defaultConfirmed {
+		now := time.Now()
+		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
+		return &sheinRemoteConfirmation{
+			remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+			checkedAt:    now,
+			message:      fallbackMessage,
+			event:        &event,
+		}, nil
+	}
 	item, recordErr := lookupSheinRemoteRecord(productAPI, lookupCodes, spuName)
 	now := time.Now()
 	if recordErr == nil && item != nil {
@@ -330,15 +340,6 @@ func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.Product
 				}, nil
 			}
 		}
-	}
-	if defaultConfirmed {
-		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
-		return &sheinRemoteConfirmation{
-			remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
-			checkedAt:    now,
-			message:      fallbackMessage,
-			event:        &event,
-		}, nil
 	}
 	if recordErr != nil {
 		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
@@ -509,10 +510,10 @@ func sheinRemotePublishAccepted(pkg *SheinPackage, action string) bool {
 		return false
 	}
 	record := sheinSubmissionRecordForAction(pkg.Submission, action)
-	if sheinSubmissionResponseAccepted(recordResult(record)) {
+	if sheinSubmissionResponseAcceptedWithSPU(recordResult(record)) {
 		return true
 	}
-	return sheinSubmissionResponseAccepted(pkg.Submission.LastResult)
+	return sheinSubmissionResponseAcceptedWithSPU(pkg.Submission.LastResult)
 }
 
 func sheinSubmissionResponseAccepted(result *sheinpub.SubmissionResponse) bool {
@@ -523,6 +524,13 @@ func sheinSubmissionResponseAccepted(result *sheinpub.SubmissionResponse) bool {
 		return true
 	}
 	return strings.TrimSpace(result.Code) == "0"
+}
+
+func sheinSubmissionResponseAcceptedWithSPU(result *sheinpub.SubmissionResponse) bool {
+	if !sheinSubmissionResponseAccepted(result) {
+		return false
+	}
+	return strings.TrimSpace(result.SPUName) != ""
 }
 
 func recordResult(record *sheinpub.SubmissionRecord) *sheinpub.SubmissionResponse {

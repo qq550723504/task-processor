@@ -714,6 +714,90 @@ func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.
 	}
 }
 
+func TestRefreshSubmissionStatusSkipsRemoteLookupWhenPublishReturnedSPU(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction:  "publish",
+		LastStatus:  sheinpub.SubmissionStatusSuccess,
+		SubmittedAt: &now,
+		LastResult: &sheinpub.SubmissionResponse{
+			Code:    "0",
+			Message: "OK",
+			Success: true,
+			SPUName: "SPU-PUBLISH",
+		},
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			Status:       sheinpub.SubmissionStatusSuccess,
+			SubmittedAt:  now,
+			RequestID:    "refresh-publish-spu-skip",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+			FinishedAt:   &now,
+			Result: &sheinpub.SubmissionResponse{
+				Code:    "0",
+				Message: "OK",
+				Success: true,
+				SPUName: "SPU-PUBLISH",
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var publishCalls int32
+	var recordCalls int32
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				recordHook: func(*sheinproduct.ProductRecordRequest) {
+					atomic.AddInt32(&recordCalls, 1)
+				},
+				recordResponse: makeSheinRecordResponse(sheinproduct.RecordItem{
+					RecordID:     "record-should-not-be-used",
+					SupplierCode: "SKC-1",
+					SpuName:      "SPU-PUBLISH",
+					State:        1,
+					AuditState:   2,
+				}),
+				publishHook: func(product *sheinproduct.Product) {
+					atomic.AddInt32(&publishCalls, 1)
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.RefreshSubmissionStatus(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("refresh submission status: %v", err)
+	}
+	if got := atomic.LoadInt32(&publishCalls); got != 0 {
+		t.Fatalf("publish calls = %d, want 0", got)
+	}
+	if got := atomic.LoadInt32(&recordCalls); got != 0 {
+		t.Fatalf("record calls = %d, want 0", got)
+	}
+	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
+	}
+	if preview.Shein.Submission.Publish.RemoteRecordID != "" {
+		t.Fatalf("remote record id = %q, want empty", preview.Shein.Submission.Publish.RemoteRecordID)
+	}
+	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "accepted publish request") {
+		t.Fatalf("remote message = %q, want accepted publish message", got)
+	}
+}
+
 func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	t.Parallel()
 
@@ -1753,7 +1837,7 @@ func TestSubmitTaskRetriesSensitiveWordValidationNotesBeforeFailing(t *testing.T
 	}
 }
 
-func TestRefreshSubmissionStatusPrefersPublishSPURecord(t *testing.T) {
+func TestRefreshSubmissionStatusSkipsPublishSPURemoteRecordLookup(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -1788,11 +1872,15 @@ func TestRefreshSubmissionStatusPrefersPublishSPURecord(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
+	var recordCalls int32
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,
 		ProductService: stubSubmitProductService{},
 		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
+				recordHook: func(*sheinproduct.ProductRecordRequest) {
+					atomic.AddInt32(&recordCalls, 1)
+				},
 				recordResponse: makeSheinRecordResponse(
 					sheinproduct.RecordItem{
 						RecordID:     "record-draft-old",
@@ -1826,11 +1914,14 @@ func TestRefreshSubmissionStatusPrefersPublishSPURecord(t *testing.T) {
 	if preview.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
 		t.Fatalf("remote status = %q, want confirmed", preview.Shein.Submission.RemoteStatus)
 	}
-	if preview.Shein.Submission.Publish.RemoteRecordID != "record-publish-new" {
-		t.Fatalf("remote record id = %q, want record-publish-new", preview.Shein.Submission.Publish.RemoteRecordID)
+	if got := atomic.LoadInt32(&recordCalls); got != 0 {
+		t.Fatalf("record calls = %d, want 0", got)
 	}
-	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "publish API reported success") {
-		t.Fatalf("remote message = %q, want success message", got)
+	if preview.Shein.Submission.Publish.RemoteRecordID != "" {
+		t.Fatalf("remote record id = %q, want empty", preview.Shein.Submission.Publish.RemoteRecordID)
+	}
+	if got := preview.Shein.Submission.Publish.RemoteMessage; !strings.Contains(got, "accepted publish request") {
+		t.Fatalf("remote message = %q, want accepted publish message", got)
 	}
 	if repo.mutateCalls == 0 {
 		t.Fatal("expected RefreshSubmissionStatus to persist through mutate task result")
