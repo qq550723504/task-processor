@@ -84,7 +84,7 @@ func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.
 		defaultClient = buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientName)
 	}
 	return &listingKitRoutedImageClient{
-		defaultModel: listingKitImageModelSelectorNano,
+		defaultModel: listingKitImageModelSelectorGPTImage2,
 		defaultImage: defaultClient,
 		gptImage2:    gptClient,
 		nanobanana:   nanoClient,

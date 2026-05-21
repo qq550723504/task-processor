@@ -179,3 +179,29 @@ func TestListingKitRoutedImageClientRoutesGPTImage2WithConfiguredModel(t *testin
 		t.Fatalf("expected routed request model cleared, got %q", gpt.lastEdit.Model)
 	}
 }
+
+func TestListingKitRoutedImageClientUsesGPTImage2ByDefault(t *testing.T) {
+	nano := &stubListingKitImageGenerator{}
+	gpt := &stubListingKitImageGenerator{}
+	router := &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: gpt,
+		gptImage2:    gpt,
+		nanobanana:   nano,
+	}
+
+	if _, err := router.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "test",
+	}); err != nil {
+		t.Fatalf("GenerateImage returned error: %v", err)
+	}
+	if gpt.lastGenerate == nil {
+		t.Fatal("expected gpt image client to receive default request")
+	}
+	if gpt.lastGenerate.Model != "" {
+		t.Fatalf("expected routed request model cleared, got %q", gpt.lastGenerate.Model)
+	}
+	if nano.lastGenerate != nil {
+		t.Fatal("did not expect nanobanana client to receive default request")
+	}
+}
