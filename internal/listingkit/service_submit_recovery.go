@@ -104,8 +104,7 @@ func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, acti
 		record = completeSheinSubmitAttempt(pkg, action, requestID, response, nil, time.Now())
 		appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
 		s.rememberSheinSubmittedResolution(task, action)
-		task.Result.UpdatedAt = time.Now()
-		if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
+		if err := s.persistSuccessfulSheinSubmission(ctx, task.ID, task, action); err != nil {
 			return nil, err
 		}
 		return buildListingKitPreview(task, "shein")
@@ -142,8 +141,7 @@ func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, acti
 	}
 	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
 	s.rememberSheinSubmittedResolution(task, action)
-	task.Result.UpdatedAt = time.Now()
-	if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
+	if err := s.persistSuccessfulSheinSubmission(ctx, task.ID, task, action); err != nil {
 		return nil, err
 	}
 	return buildListingKitPreview(task, "shein")

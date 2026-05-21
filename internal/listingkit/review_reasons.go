@@ -36,7 +36,7 @@ func reviewReasonsFromResult(result *ListingKitResult) []string {
 	if reasons := normalizeReviewReasons(result.ReviewReasons); len(reasons) > 0 {
 		return reasons
 	}
-	if result.Summary == nil {
+	if result.Summary == nil || !result.Summary.NeedsReview {
 		return nil
 	}
 	return normalizeReviewReasons(result.Summary.Warnings)

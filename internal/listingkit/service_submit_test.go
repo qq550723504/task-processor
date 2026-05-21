@@ -65,7 +65,18 @@ func (r *stubSubmitRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([
 
 func (r *stubSubmitRepo) MarkProcessing(ctx context.Context, taskID string) error { return nil }
 func (r *stubSubmitRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
-	return r.SaveTaskResult(ctx, taskID, result)
+	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.task == nil || r.task.ID != taskID {
+		return ErrTaskNotFound
+	}
+	r.task.Status = TaskStatusCompleted
+	r.task.Error = ""
+	r.task.UpdatedAt = time.Now()
+	return nil
 }
 func (r *stubSubmitRepo) MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error {
 	return r.SaveTaskResult(ctx, taskID, result)

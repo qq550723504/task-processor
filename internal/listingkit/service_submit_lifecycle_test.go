@@ -165,6 +165,92 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskClearsNeedsReviewAfterPublishSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Status = TaskStatusNeedsReview
+	task.Error = "旧的待审核原因"
+	task.Result.Status = string(TaskStatusNeedsReview)
+	task.Result.ReviewReasons = []string{"需要人工确认类目"}
+	task.Result.Summary = &GenerationSummary{
+		NeedsReview:   true,
+		Warnings:      []string{"需要人工确认类目"},
+		ReviewCount:   1,
+		BlockingCount: 0,
+		IssueCount:    1,
+	}
+	task.Result.WorkflowIssues = []WorkflowIssue{{
+		Code:     "shein_review_required",
+		Severity: WorkflowIssueSeverityReview,
+		Stage:    "shein_review",
+		Message:  "需要人工确认类目",
+	}}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "publish-clear-review-123",
+	})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if preview.Status != TaskStatusCompleted {
+		t.Fatalf("preview status = %q, want %q", preview.Status, TaskStatusCompleted)
+	}
+	if preview.NeedsReview {
+		t.Fatalf("preview needs_review = true, want false")
+	}
+	if preview.Overview != nil && len(preview.Overview.ReviewReasons) != 0 {
+		t.Fatalf("preview review reasons = %#v, want none", preview.Overview.ReviewReasons)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Status != TaskStatusCompleted {
+		t.Fatalf("saved status = %q, want %q", saved.Status, TaskStatusCompleted)
+	}
+	if saved.Error != "" {
+		t.Fatalf("saved error = %q, want empty", saved.Error)
+	}
+	if saved.Result == nil || saved.Result.Status != string(TaskStatusCompleted) {
+		t.Fatalf("saved result status = %+v, want completed", saved.Result)
+	}
+	if len(saved.Result.ReviewReasons) != 0 {
+		t.Fatalf("saved review reasons = %#v, want none", saved.Result.ReviewReasons)
+	}
+	if saved.Result.Summary == nil || saved.Result.Summary.NeedsReview {
+		t.Fatalf("saved summary = %+v, want needs_review false", saved.Result.Summary)
+	}
+	if len(saved.Result.WorkflowIssues) != 0 {
+		t.Fatalf("saved workflow issues = %+v, want cleared shein review issues", saved.Result.WorkflowIssues)
+	}
+}
+
 func TestNormalizeSheinSubmitPackageRepairsResolvedSaleAttributes(t *testing.T) {
 	t.Parallel()
 

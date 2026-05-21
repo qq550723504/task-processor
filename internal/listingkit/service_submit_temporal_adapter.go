@@ -191,8 +191,7 @@ func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersis
 	record := completeSheinSubmitAttempt(pkg, in.Action, in.RequestID, in.Response, nil, time.Now())
 	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(in.TaskID, in.Action, record, in.Response, nil, startedAt))
 	s.rememberSheinSubmittedResolution(task, in.Action)
-	task.Result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, in.TaskID, task.Result)
+	return s.persistSuccessfulSheinSubmission(ctx, in.TaskID, task, in.Action)
 }
 
 func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {
@@ -256,8 +255,7 @@ func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinR
 	record = completeSheinSubmitAttempt(pkg, in.Action, in.RequestID, response, nil, time.Now())
 	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(in.TaskID, in.Action, record, record.Result, nil, record.StartedAt))
 	s.rememberSheinSubmittedResolution(task, in.Action)
-	task.Result.UpdatedAt = time.Now()
-	if err := s.repo.SaveTaskResult(ctx, in.TaskID, task.Result); err != nil {
+	if err := s.persistSuccessfulSheinSubmission(ctx, in.TaskID, task, in.Action); err != nil {
 		return nil, err
 	}
 

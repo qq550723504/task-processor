@@ -373,7 +373,7 @@ func TestGetTaskResultFallsBackToSummaryWarningsForReviewReasons(t *testing.T) {
 		Result: &ListingKitResult{
 			TaskID:  "listingkit-review-reasons-summary-1",
 			Status:  string(TaskStatusNeedsReview),
-			Summary: &GenerationSummary{Warnings: []string{"reason one", "reason one", "reason two"}},
+			Summary: &GenerationSummary{NeedsReview: true, Warnings: []string{"reason one", "reason one", "reason two"}},
 		},
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,

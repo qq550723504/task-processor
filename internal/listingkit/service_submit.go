@@ -196,14 +196,68 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	if responseErr == nil {
 		s.rememberSheinSubmittedResolution(task, action)
 	}
-	task.Result.UpdatedAt = time.Now()
-	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
+	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, action); err != nil {
 		return nil, err
 	}
 	if responseErr != nil {
 		return nil, responseErr
 	}
 	return buildListingKitPreview(task, "shein")
+}
+
+func (s *service) persistSuccessfulSheinSubmission(ctx context.Context, taskID string, task *Task, action string) error {
+	if task == nil || task.Result == nil {
+		return nil
+	}
+	if success := sheinSubmissionSucceeded(action, task.Result.Shein); success {
+		applySuccessfulSheinSubmissionState(task)
+		return s.repo.MarkCompleted(ctx, taskID, task.Result)
+	}
+	task.Result.UpdatedAt = time.Now()
+	return s.repo.SaveTaskResult(ctx, taskID, task.Result)
+}
+
+func sheinSubmissionSucceeded(action string, pkg *SheinPackage) bool {
+	if pkg == nil || pkg.Submission == nil {
+		return false
+	}
+	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	return record != nil && record.Status == sheinpub.SubmissionStatusSuccess
+}
+
+func applySuccessfulSheinSubmissionState(task *Task) {
+	if task == nil {
+		return
+	}
+	task.Status = TaskStatusCompleted
+	task.Error = ""
+	if task.Result == nil {
+		return
+	}
+	task.Result.Status = string(TaskStatusCompleted)
+	task.Result.ReviewReasons = nil
+	clearResolvedSheinReviewState(task.Result)
+	task.Result.UpdatedAt = time.Now()
+}
+
+func clearResolvedSheinReviewState(result *ListingKitResult) {
+	if result == nil {
+		return
+	}
+	if len(result.WorkflowIssues) > 0 {
+		filtered := result.WorkflowIssues[:0]
+		for _, issue := range result.WorkflowIssues {
+			if issue.Stage == "shein_review" {
+				continue
+			}
+			filtered = append(filtered, issue)
+		}
+		result.WorkflowIssues = filtered
+	}
+	if result.Summary != nil {
+		result.Summary.NeedsReview = false
+	}
+	newWorkflowRecorder(result).FinalizeSummary()
 }
 
 func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {
