@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein/shein-sale-attribute-review-card";
@@ -55,12 +55,15 @@ describe("SheinSaleAttributeReviewCard", () => {
     );
 
     expect(screen.getByText("SHEIN 销售属性确认")).toBeInTheDocument();
+    expect(screen.getByText("推荐操作")).toBeInTheDocument();
+    expect(screen.getByText("下一步")).toBeInTheDocument();
     expect(screen.getByText("状态 待补齐")).toBeInTheDocument();
     expect(screen.getByText("主规格 27")).toBeInTheDocument();
-    expect(screen.getByText("主规格确认")).toBeInTheDocument();
-    expect(screen.getByText("其他规格确认")).toBeInTheDocument();
-    expect(screen.getByText("变体覆盖检查")).toBeInTheDocument();
-    expect(screen.getByText("已映射销售属性")).toBeInTheDocument();
+    expect(screen.getByText("当前识别结果")).toBeInTheDocument();
+    expect(screen.getByText("为什么会这样匹配")).toBeInTheDocument();
+    expect(screen.getByText("当前写入资料包的规格")).toBeInTheDocument();
+    expect(screen.getByText("Color：Black")).toBeInTheDocument();
+    expect(screen.getByText("Size：One Size")).toBeInTheDocument();
     expect(screen.getAllByText("Color").length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText("Black").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("attribute_id 27 · value_id 112").length).toBeGreaterThanOrEqual(1);
@@ -110,7 +113,7 @@ describe("SheinSaleAttributeReviewCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "确认当前规格" }));
+    await user.click(screen.getByRole("button", { name: "直接确认当前结果" }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
@@ -143,10 +146,10 @@ describe("SheinSaleAttributeReviewCard", () => {
     );
 
     expect(screen.queryByRole("button", { name: "确认当前规格" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "按当前类目重新生成属性" })).toBeInTheDocument();
-    expect(screen.getByText(/缺少真实 `value_id`/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新生成属性" })).toBeInTheDocument();
+    expect(screen.getByText(/还缺少真实 `value_id`，不能直接确认/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "按当前类目重新生成属性" }));
+    await user.click(screen.getByRole("button", { name: "重新生成属性" }));
 
     expect(onRegenerate).toHaveBeenCalledTimes(1);
   });
@@ -211,13 +214,16 @@ describe("SheinSaleAttributeReviewCard", () => {
       />,
     );
 
-    expect(screen.getByText("手工填写销售属性")).toBeInTheDocument();
+    expect(screen.getByText("怎么操作")).toBeInTheDocument();
+    expect(screen.getByText("结果不对？再手工修正规格")).toBeInTheDocument();
+    expect(screen.getByText(/先选主规格字段；2 再选其他规格字段；3 最后给每个 SKC\/SKU 填值/)).toBeInTheDocument();
+    expect(screen.getByText(/如果系统当前结果已经正确，可以直接确认/)).toBeInTheDocument();
 
     await user.selectOptions(screen.getAllByRole("combobox")[0], "27");
     await user.selectOptions(screen.getAllByRole("combobox")[1], "87");
     await user.selectOptions(screen.getAllByRole("combobox")[2], "112");
     await user.selectOptions(screen.getAllByRole("combobox")[3], "991");
-    await user.click(screen.getByRole("button", { name: "保存手工销售属性" }));
+    await user.click(screen.getByRole("button", { name: "保存手工修正" }));
 
     expect(onApplyManual).toHaveBeenCalledWith({
       primaryOption: expect.objectContaining({ attribute_id: 27 }),
@@ -295,7 +301,7 @@ describe("SheinSaleAttributeReviewCard", () => {
       />,
     );
 
-    expect(screen.getByText("手工填写销售属性")).toBeInTheDocument();
+    expect(screen.getByText("结果不对？再手工修正规格")).toBeInTheDocument();
   });
 
   it("allows manually typing sale attribute text values", async () => {
@@ -363,7 +369,7 @@ describe("SheinSaleAttributeReviewCard", () => {
     await user.type(textboxes[0], "Cream Beige");
     await user.clear(textboxes[1]);
     await user.type(textboxes[1], '30"×40"');
-    await user.click(screen.getByRole("button", { name: "保存手工销售属性" }));
+    await user.click(screen.getByRole("button", { name: "保存手工修正" }));
 
     expect(onApplyManual).toHaveBeenCalledWith({
       primaryOption: expect.objectContaining({ attribute_id: 27 }),
@@ -371,5 +377,184 @@ describe("SheinSaleAttributeReviewCard", () => {
       skcSelections: { "SKC-1": expect.objectContaining({ textValue: "Cream Beige" }) },
       skuSelections: { "SKU-1": expect.objectContaining({ textValue: '30"×40"' }) },
     });
+  });
+
+  it("prefers important template as manual primary option", () => {
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              template_options: [
+                {
+                  attribute_id: 87,
+                  name: "Size",
+                  name_en: "Size",
+                  skc_scope: false,
+                  attribute_value_list: [
+                    { attribute_value_id: 991, value: "M", value_en: "M" },
+                  ],
+                },
+                {
+                  attribute_id: 1001184,
+                  name: "Style Type",
+                  name_en: "Style Type",
+                  important: true,
+                  skc_scope: true,
+                  attribute_value_list: [
+                    { attribute_value_id: 739, value: "Solid", value_en: "Solid" },
+                  ],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  attributes: { Color: "White" },
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={vi.fn()}
+      />,
+    );
+
+    const selects = screen.getAllByRole("combobox");
+    expect(selects[0]).toHaveValue("1001184");
+    expect(
+      within(selects[0]).getByRole("option", { name: "Style Type · 主规格" }),
+    ).toBeInTheDocument();
+    expect(within(selects[0]).queryByRole("option", { name: "Size" })).not.toBeInTheDocument();
+  });
+
+  it("keeps important template out of manual secondary default when primary is missing", () => {
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              template_options: [
+                {
+                  attribute_id: 1001184,
+                  name: "Style Type",
+                  name_en: "Style Type",
+                  important: true,
+                  skc_scope: true,
+                  attribute_value_list: [
+                    { attribute_value_id: 739, value: "Solid", value_en: "Solid" },
+                  ],
+                },
+                {
+                  attribute_id: 87,
+                  name: "Size",
+                  name_en: "Size",
+                  skc_scope: false,
+                  attribute_value_list: [
+                    { attribute_value_id: 991, value: "M", value_en: "M" },
+                  ],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  attributes: { Color: "White" },
+                  sku_patches: [
+                    {
+                      supplier_sku: "SKU-1",
+                      attributes: { Size: "M" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={vi.fn()}
+      />,
+    );
+
+    const selects = screen.getAllByRole("combobox");
+    expect(selects[0]).toHaveValue("1001184");
+    expect(selects[1]).toHaveValue("87");
+  });
+
+  it("keeps the selected primary template out of the secondary template options", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              template_options: [
+                {
+                  attribute_id: 27,
+                  name: "Color",
+                  name_en: "Color",
+                  important: true,
+                  skc_scope: true,
+                  attribute_value_list: [
+                    { attribute_value_id: 112, value: "White", value_en: "White" },
+                  ],
+                },
+                {
+                  attribute_id: 1001184,
+                  name: "Style Type",
+                  name_en: "Style Type",
+                  important: true,
+                  skc_scope: true,
+                  attribute_value_list: [
+                    { attribute_value_id: 739, value: "Solid", value_en: "Solid" },
+                  ],
+                },
+                {
+                  attribute_id: 87,
+                  name: "Size",
+                  name_en: "Size",
+                  skc_scope: false,
+                  attribute_value_list: [
+                    { attribute_value_id: 991, value: "M", value_en: "M" },
+                  ],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  attributes: { Color: "White" },
+                  sku_patches: [
+                    {
+                      supplier_sku: "SKU-1",
+                      attributes: { Size: "M" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={vi.fn()}
+      />,
+    );
+
+    const selects = screen.getAllByRole("combobox");
+    await user.selectOptions(selects[0], "27");
+
+    expect(selects[0]).toHaveValue("27");
+    expect(
+      within(selects[1]).queryByRole("option", { name: "Color · 主规格" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(selects[1]).getByRole("option", { name: "Style Type · 主规格" }),
+    ).toBeInTheDocument();
+    expect(within(selects[1]).getByRole("option", { name: "Size" })).toBeInTheDocument();
   });
 });

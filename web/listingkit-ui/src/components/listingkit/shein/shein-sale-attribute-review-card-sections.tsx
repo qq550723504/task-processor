@@ -49,23 +49,27 @@ function SaleAttributeRow({
 
   return (
     <div className="rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {scope ? (
-          <Badge
-            className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
-            variant="neutral"
-          >
-            {scopeLabel(scope)}
-          </Badge>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {scope ? (
+              <Badge
+                className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+                variant="neutral"
+              >
+                {scopeLabel(scope)}
+              </Badge>
+            ) : null}
+            <p className="text-sm font-medium text-zinc-900">{name}</p>
+          </div>
+          {value ? <p className="mt-1 text-sm leading-5 text-zinc-700">{value}</p> : null}
+        </div>
+        {mapped ? (
+          <p className="text-right text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+            {mapped}
+          </p>
         ) : null}
-        <p className="text-sm font-medium text-zinc-900">{name}</p>
       </div>
-      {value ? <p className="mt-1 text-sm text-zinc-700">{value}</p> : null}
-      {mapped ? (
-        <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-          {mapped}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -112,7 +116,7 @@ export function CandidateReasonList({
 }) {
   if (!candidates.length) {
     return emptyText ? (
-      <p className="rounded-xl border border-zinc-200/80 bg-white/70 px-3 py-2 text-sm text-zinc-600">
+      <p className="rounded-xl border border-zinc-200/80 bg-white/70 px-3 py-2 text-sm leading-5 text-zinc-600">
         {emptyText}
       </p>
     ) : null;
@@ -124,14 +128,22 @@ export function CandidateReasonList({
           className="rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2"
           key={`candidate-${index}-${candidate.name}-${candidate.source_dimension}`}
         >
-          <p className="text-sm font-medium text-zinc-900">
-            {candidate.name ?? "未命名候选"}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-zinc-600">
-            {candidate.source_dimension ?? "未知来源维度"}
-            {candidate.selected_scope ? ` · ${scopeLabel(candidate.selected_scope)}` : ""}
-            {candidate.attribute_id ? ` · attribute_id ${candidate.attribute_id}` : ""}
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-zinc-900">
+                {candidate.name ?? "未命名候选"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-zinc-600">
+                {candidate.source_dimension ?? "未知来源维度"}
+                {candidate.selected_scope ? ` · ${scopeLabel(candidate.selected_scope)}` : ""}
+              </p>
+            </div>
+            {candidate.attribute_id ? (
+              <p className="text-right text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                {`attribute_id ${candidate.attribute_id}`}
+              </p>
+            ) : null}
+          </div>
           {candidate.reasons?.length ? (
             <p className="mt-1 text-xs leading-5 text-zinc-600">
               {candidate.reasons.join("；")}
