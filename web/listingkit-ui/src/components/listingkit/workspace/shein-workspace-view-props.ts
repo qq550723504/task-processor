@@ -84,8 +84,7 @@ export function buildSheinWorkspaceViewProps({
           asset_id: selectedSheinImage?.id ?? "shein-product-image",
         }
       : undefined;
-  const canSubmit =
-    shein?.submit_readiness?.ready === true && shein?.final_review?.confirmed === true;
+  const canSubmit = shein?.submit_readiness?.ready === true;
   const imageGalleryProps: SheinImageGalleryProps = {
     images: sheinImages,
     mockupImages: sheinMockupImages,

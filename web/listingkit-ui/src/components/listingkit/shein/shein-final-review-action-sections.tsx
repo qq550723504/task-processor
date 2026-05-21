@@ -168,7 +168,7 @@ export function FinalReviewSubmitActions({
       </div>
       <Button
         variant="secondary"
-        disabled={isSaving || !confirmed || !ready || isSubmitting}
+        disabled={isSaving || !ready || isSubmitting}
         onClick={() =>
           onSubmit?.("save_draft", {
             confirmed: true,
@@ -180,7 +180,7 @@ export function FinalReviewSubmitActions({
         {submitAction === "save_draft" ? "保存中..." : "保存到 SHEIN 草稿箱"}
       </Button>
       <Button
-        disabled={!confirmed || !ready || isSubmitting || isPublished}
+        disabled={!ready || isSubmitting || isPublished}
         onClick={onStartPublishConfirm}
       >
         {isPublished

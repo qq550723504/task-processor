@@ -127,7 +127,7 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.queryByText("缺尺寸图")).not.toBeInTheDocument();
   });
 
-  it("removes explicit final draft confirmation step", () => {
+  it("allows first-time final review submit actions before confirmed is persisted", () => {
     render(
       <SheinFinalReviewPanel
         shein={{
@@ -147,8 +147,8 @@ describe("SheinFinalReviewPanel", () => {
     );
 
     expect(screen.getByText("资料已通过检查，请先确认当前结果无误。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: "确认最终草稿" })).not.toBeInTheDocument();
   });
 
