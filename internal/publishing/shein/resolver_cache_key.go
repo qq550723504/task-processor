@@ -61,11 +61,12 @@ func saleAttributeResolverCacheKey(req *BuildRequest, canonical *canonical.Produ
 		return ""
 	}
 	payload := map[string]any{
-		"version":           18,
-		"store_id":          sheinStoreID(req),
-		"category_id":       categoryID(pkg),
-		"category_id_list":  append([]int(nil), pkg.CategoryIDList...),
-		"source_dimensions": normalizedSourceDimensions(canonical),
+		"version":            19,
+		"store_id":           sheinStoreID(req),
+		"category_id":        categoryID(pkg),
+		"category_id_list":   append([]int(nil), pkg.CategoryIDList...),
+		"source_dimensions":  normalizedSourceDimensions(canonical),
+		"source_variant_ids": stableCanonicalSDSIdentifiers(canonical),
 	}
 	return hashCachePayload(payload)
 }
@@ -128,50 +129,11 @@ func normalizedSourceCategoryPath(canonical *canonical.Product, pkg *Package) []
 }
 
 func stableProductIdentity(canonical *canonical.Product, pkg *Package) []string {
-	values := make([]string, 0, 6)
-	if canonical != nil {
-		values = append(values, canonical.Title)
-	}
-	if pkg != nil {
-		values = append(values, pkg.SpuName, pkg.ProductNameEn, lookupAttributeValueInList(pkg.ProductAttributes, "sku"), lookupAttributeValueInList(pkg.ProductAttributes, "parent sku"))
-	}
-	for idx := range values {
-		values[idx] = normalizeText(values[idx])
-	}
-	sort.Strings(values)
-	out := values[:0]
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		out = append(out, value)
-	}
-	return out
+	return stablePackageIdentity(canonical, pkg)
 }
 
 func stableAttributeProductIdentity(pkg *Package) []string {
-	values := make([]string, 0, 4)
-	if pkg != nil {
-		spuName := pkg.SpuName
-		sku := lookupAttributeValueInList(pkg.ProductAttributes, "sku")
-		parentSKU := lookupAttributeValueInList(pkg.ProductAttributes, "parent sku")
-		values = append(values, spuName, sku, parentSKU)
-		if strings.TrimSpace(spuName) == "" && strings.TrimSpace(sku) == "" && strings.TrimSpace(parentSKU) == "" {
-			values = append(values, pkg.ProductNameEn)
-		}
-	}
-	for idx := range values {
-		values[idx] = normalizeText(values[idx])
-	}
-	sort.Strings(values)
-	out := values[:0]
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		out = append(out, value)
-	}
-	return out
+	return stablePackageAttributeIdentity(pkg)
 }
 
 func normalizedAttributeInputs(inputs []common.Attribute) []string {

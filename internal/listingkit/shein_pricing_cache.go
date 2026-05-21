@@ -117,7 +117,7 @@ func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.Pricin
 		return false
 	}
 	for _, item := range review.SKUPrices {
-		key := sheinPricingSKUAlias(item.SupplierSKU)
+		key := sheinPricingReviewSKUKey(item)
 		fact, ok := current[key]
 		if !ok || fact.CostPrice != formatMoney(item.CostCNY) || item.FinalPrice <= 0 {
 			return false
@@ -198,7 +198,7 @@ func sheinPricingSKUFacts(pkg *sheinpub.Package) map[string]sheinPricingSKUFact 
 	result := map[string]sheinPricingSKUFact{}
 	for _, skc := range pkg.RequestDraft.SKCList {
 		for _, sku := range skc.SKUList {
-			alias := sheinPricingSKUAlias(sku.SupplierSKU)
+			alias := sheinPricingDraftSKUKey(&sku)
 			if alias == "" {
 				continue
 			}
@@ -212,24 +212,7 @@ func sheinPricingSKUFacts(pkg *sheinpub.Package) map[string]sheinPricingSKUFact 
 }
 
 func sheinPricingProductIdentity(pkg *sheinpub.Package) []string {
-	if pkg == nil {
-		return nil
-	}
-	values := []string{
-		strings.TrimSpace(pkg.SpuName),
-		strings.TrimSpace(pkg.ProductNameEn),
-		strings.TrimSpace(lookupSheinAttributeValue(pkg.ProductAttributes, "sku")),
-		strings.TrimSpace(lookupSheinAttributeValue(pkg.ProductAttributes, "parent sku")),
-	}
-	normalized := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value != "" {
-			normalized = append(normalized, value)
-		}
-	}
-	sort.Strings(normalized)
-	return normalized
+	return sheinpub.StablePricingPackageIdentity(pkg)
 }
 
 func lookupSheinAttributeValue(attrs []common.Attribute, name string) string {
@@ -261,6 +244,9 @@ func sheinPricingSKUAlias(value string) string {
 	if value == "" {
 		return ""
 	}
+	if index := strings.Index(value, "-V"); index > 0 {
+		return strings.TrimSpace(value[:index])
+	}
 	parts := strings.Split(value, "-")
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -270,7 +256,51 @@ func sheinPricingSKUAlias(value string) string {
 		}
 		filtered = append(filtered, part)
 	}
-	return strings.Join(filtered, "-")
+	alias := strings.Join(filtered, "-")
+	if prefix, ok := trimStyleSuffix(alias); ok {
+		return prefix
+	}
+	return alias
+}
+
+func sheinPricingDraftSKUKey(sku *sheinpub.SKUDraft) string {
+	if sku == nil {
+		return ""
+	}
+	if source := strings.TrimSpace(sku.Attributes["source_sds_sku"]); source != "" {
+		return sheinPricingSKUAlias(source)
+	}
+	return sheinPricingSKUAlias(sku.SupplierSKU)
+}
+
+func sheinPricingReviewSKUKey(item sheinpub.SKUPriceReview) string {
+	if key := sheinPricingSKUAlias(item.SupplierSKU); key != "" {
+		return key
+	}
+	return sheinPricingSKUAlias(item.SupplierCode)
+}
+
+func trimStyleSuffix(value string) (string, bool) {
+	index := strings.LastIndex(value, "-")
+	if index <= 0 {
+		return "", false
+	}
+	suffix := strings.TrimSpace(value[index+1:])
+	if len(suffix) != 8 {
+		return "", false
+	}
+	for _, r := range suffix {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		default:
+			return "", false
+		}
+	}
+	prefix := strings.TrimSpace(value[:index])
+	if prefix == "" || !strings.ContainsAny(prefix, "0123456789") {
+		return "", false
+	}
+	return prefix, true
 }
 
 func looksLikePricingRequestToken(token string) bool {

@@ -137,10 +137,6 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	if r == nil || resolution == nil {
 		return
 	}
-	existingKey := ""
-	if resolution.Cache != nil {
-		existingKey = strings.TrimSpace(resolution.Cache.CacheKey)
-	}
 	key := attributeResolverCacheKey(req, pkg)
 	if key == "" || !shouldCacheAttributeResolution(resolution) {
 		return
@@ -148,12 +144,6 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	attachResolutionCacheInfoToAttribute(resolution, "manual_cache", key, true)
 	r.cache.Store(key, cloneAttributeResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, resolution, true)
-	if existingKey != "" && existingKey != key {
-		attachResolutionCacheInfoToAttribute(resolution, "manual_cache", existingKey, true)
-		r.cache.Store(existingKey, cloneAttributeResolution(resolution))
-		r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, existingKey, resolution, true)
-		attachResolutionCacheInfoToAttribute(resolution, "manual_cache", key, true)
-	}
 }
 
 func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error {

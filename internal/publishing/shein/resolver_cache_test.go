@@ -112,6 +112,41 @@ func TestCachedCategoryResolverCanRememberManualResolutionForSourceCategory(t *t
 	}
 }
 
+func TestCategoryResolverCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	canonical := &canonical.Product{
+		Title:        "啤酒盖铁板（包邮仅限美国直发）",
+		CategoryPath: []string{"美国本地直发", "生活用品", "铁板画"},
+	}
+	first := &Package{
+		SpuName:       "啤酒盖铁板（包邮仅限美国直发）",
+		ProductNameEn: "Vintage Metal Bottle Cap Wall Sign - Professional Lazy Expert Sloth Print",
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+			{Name: "sku", Value: "MG8014062"},
+		},
+	}
+	second := &Package{
+		SpuName:       "啤酒盖铁板（包邮仅限美国直发）",
+		ProductNameEn: "Professional Lazy Expert Metal Bottle Cap Wall Sign, Funny Sloth Gaming Decor",
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+			{Name: "sku", Value: "MG8014062"},
+		},
+	}
+
+	firstKey := categoryResolverCacheKey(req, canonical, first)
+	secondKey := categoryResolverCacheKey(req, canonical, second)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("category cache key drifted for stable SDS identifiers: first=%s second=%s", firstKey, secondKey)
+	}
+}
+
 func TestCachedAttributeResolverSkipsZeroHitResolution(t *testing.T) {
 	inner := &countingAttributeResolver{
 		out: &AttributeResolution{
@@ -307,6 +342,90 @@ func TestCachedAttributeResolverCanReusePublishedResolutionAfterListingCopyNorma
 	}
 }
 
+func TestAttributeResolverCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	first := &Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		SpuName:        "啤酒盖铁板（包邮仅限美国直发）",
+		ProductNameEn:  "Vintage Metal Bottle Cap Wall Sign - Professional Lazy Expert Sloth Print",
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+			{Name: "sku", Value: "MG8014062"},
+			{Name: "material", Value: "金属"},
+		},
+	}
+	second := &Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		SpuName:        "啤酒盖铁板（包邮仅限美国直发）",
+		ProductNameEn:  "Professional Lazy Expert Metal Bottle Cap Wall Sign, Funny Sloth Gaming Decor",
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+			{Name: "sku", Value: "MG8014062"},
+			{Name: "material", Value: "金属"},
+		},
+	}
+
+	firstKey := attributeResolverCacheKey(req, first)
+	secondKey := attributeResolverCacheKey(req, second)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("attribute cache key drifted for stable SDS identifiers: first=%s second=%s", firstKey, secondKey)
+	}
+}
+
+func TestAttributeResolverCacheKeyIgnoresDecoratedSubmitSupplierSKUsForSDS(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	first := &Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+		RequestDraft: &RequestDraft{
+			SKCList: []SKCRequestDraft{{
+				SupplierCode: "MG8014062001-8A78E611",
+				SKUList: []SKUDraft{{
+					SupplierSKU: "MG8014062001-V124111-T838E0EBE-R84A7E-8A78E611",
+					Attributes:  map[string]string{"source_sds_sku": "MG8014062001"},
+				}},
+			}},
+		},
+	}
+	second := &Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+		RequestDraft: &RequestDraft{
+			SKCList: []SKCRequestDraft{{
+				SupplierCode: "MG8014062001-8A78E611",
+				SKUList: []SKUDraft{{
+					SupplierSKU: "MG8014062001-8A78E611",
+					Attributes:  map[string]string{"source_sds_sku": "MG8014062001"},
+				}},
+			}},
+		},
+	}
+
+	firstKey := attributeResolverCacheKey(req, first)
+	secondKey := attributeResolverCacheKey(req, second)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("attribute cache key drifted across decorated submit SKUs: first=%s second=%s", firstKey, secondKey)
+	}
+}
+
 func TestCachedAttributeResolverLoadsPersistentCacheAndRefillsMemory(t *testing.T) {
 	valueID := 2001
 	store := newResolutionCacheTestStore(t)
@@ -400,7 +519,7 @@ func TestCachedAttributeResolverClearUsesStoredCacheMetadata(t *testing.T) {
 	}
 }
 
-func TestCachedAttributeResolverRememberOverwritesPreviousHitKey(t *testing.T) {
+func TestCachedAttributeResolverRememberStoresOnlyCurrentKey(t *testing.T) {
 	store := newResolutionCacheTestStore(t)
 	req := &BuildRequest{SheinStoreID: 42}
 	originalPkg := &Package{
@@ -440,16 +559,22 @@ func TestCachedAttributeResolverRememberOverwritesPreviousHitKey(t *testing.T) {
 	cache := resolver.(AttributeResolutionCache)
 	cache.RememberAttributeResolution(req, nil, patchedPkg, resolution)
 
-	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", originalKey)
+	currentKey := attributeResolverCacheKey(req, patchedPkg)
+	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", currentKey)
 	if err != nil {
-		t.Fatalf("get original key: %v", err)
+		t.Fatalf("get current key: %v", err)
 	}
 	if got == nil || !got.Manual || got.Source != "manual_cache" {
-		t.Fatalf("original key cache = %#v, want manual_cache", got)
+		t.Fatalf("current key cache = %#v, want manual_cache", got)
+	}
+	if stale, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", originalKey); err != nil {
+		t.Fatalf("get stale key: %v", err)
+	} else if stale != nil {
+		t.Fatalf("stale key cache = %#v, want nil", stale)
 	}
 	decoded := decodeAttributeCacheEntry(got)
 	if decoded == nil || decoded.Status != "resolved" || decoded.ResolvedCount != 2 {
-		t.Fatalf("decoded original key = %#v", decoded)
+		t.Fatalf("decoded current key = %#v", decoded)
 	}
 }
 
@@ -559,6 +684,43 @@ func TestCachedSaleAttributeResolverSeparatesDifferentVariantMatrices(t *testing
 	}, pkg)
 	if inner.calls != 2 {
 		t.Fatalf("inner calls = %d, want 2", inner.calls)
+	}
+}
+
+func TestSaleAttributeResolverCacheKeyUsesCanonicalSDSIdentifiers(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	firstCanonical := &canonical.Product{
+		Title: "啤酒盖铁板（包邮仅限美国直发）",
+		Variants: []canonical.Variant{{
+			SKU: "MG8014062001-OLDSTYLE",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8014062001"},
+				"Color":          {Value: "white"},
+			},
+		}},
+	}
+	secondCanonical := &canonical.Product{
+		Title: "啤酒盖铁板（包邮仅限美国直发）",
+		Variants: []canonical.Variant{{
+			SKU: "MG8014062001-NEWSTYLE",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8014062001"},
+				"Color":          {Value: "white"},
+			},
+		}},
+	}
+	pkg := &Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+	}
+
+	firstKey := saleAttributeResolverCacheKey(req, firstCanonical, pkg)
+	secondKey := saleAttributeResolverCacheKey(req, secondCanonical, pkg)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("sale attribute cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("sale attribute cache key drifted for same canonical SDS source sku: first=%s second=%s", firstKey, secondKey)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -364,5 +365,119 @@ func TestApplyDefaultSheinPricingUsesPublishedPriceCache(t *testing.T) {
 	}
 	if got := fresh.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice; got != 27.99 {
 		t.Fatalf("preview base price = %v, want cached 27.99", got)
+	}
+}
+
+func TestSheinPricingCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	req := &sheinpub.BuildRequest{SheinStoreID: 869}
+	first := &sheinpub.Package{
+		SpuName:        "啤酒盖铁板（包邮仅限美国直发）",
+		ProductNameEn:  "Vintage Metal Bottle Cap Wall Sign - Professional Lazy Expert Sloth Print",
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"美国本地直发", "生活用品", "铁板画"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+			{Name: "sku", Value: "MG8014062"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8014062001",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8014062001-8A78E611",
+					CostPrice:   "91.80",
+					Currency:    "USD",
+				}},
+			}},
+		},
+	}
+	second := &sheinpub.Package{
+		SpuName:        "啤酒盖铁板（包邮仅限美国直发）",
+		ProductNameEn:  "Professional Lazy Expert Metal Bottle Cap Wall Sign, Funny Sloth Gaming Decor",
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"美国本地直发", "生活用品", "铁板画"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+			{Name: "sku", Value: "MG8014062"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8014062001",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8014062001-8A78E611",
+					CostPrice:   "91.80",
+					Currency:    "USD",
+				}},
+			}},
+		},
+	}
+
+	firstKey := sheinPricingCacheKey(req, first)
+	secondKey := sheinPricingCacheKey(req, second)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("pricing cache key drifted for stable SDS identifiers: first=%s second=%s", firstKey, secondKey)
+	}
+}
+
+func TestSheinPricingCacheKeyIgnoresDecoratedSubmitSupplierSKUsForSDS(t *testing.T) {
+	t.Parallel()
+
+	req := &sheinpub.BuildRequest{SheinStoreID: 869}
+	first := &sheinpub.Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"美国本地直发", "生活用品", "铁板画"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8014062001-8A78E611",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8014062001-V124111-T838E0EBE-R84A7E-8A78E611",
+					Attributes:  map[string]string{"source_sds_sku": "MG8014062001"},
+					CostPrice:   "91.80",
+					Currency:    "USD",
+				}},
+			}},
+		},
+	}
+	second := &sheinpub.Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"美国本地直发", "生活用品", "铁板画"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8014062001-8A78E611",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8014062001-8A78E611",
+					Attributes:  map[string]string{"source_sds_sku": "MG8014062001"},
+					CostPrice:   "91.80",
+					Currency:    "USD",
+				}},
+			}},
+		},
+	}
+
+	firstKey := sheinPricingCacheKey(req, first)
+	secondKey := sheinPricingCacheKey(req, second)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("pricing cache key drifted across decorated submit SKUs: first=%s second=%s", firstKey, secondKey)
 	}
 }
