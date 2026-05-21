@@ -16,7 +16,10 @@ func buildSheinResolutionCacheSummary(pkg *sheinpub.Package) *SheinResolutionCac
 	if pkg.SaleAttributeResolution != nil {
 		summary.SaleAttributes = sheinpub.CloneResolutionCacheInfo(pkg.SaleAttributeResolution.Cache)
 	}
-	if summary.Category == nil && summary.Attributes == nil && summary.SaleAttributes == nil {
+	if pkg.Pricing != nil {
+		summary.Pricing = sheinpub.CloneResolutionCacheInfo(pkg.Pricing.Cache)
+	}
+	if summary.Category == nil && summary.Attributes == nil && summary.SaleAttributes == nil && summary.Pricing == nil {
 		return nil
 	}
 	return summary

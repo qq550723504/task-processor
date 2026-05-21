@@ -301,3 +301,68 @@ func TestPreviewSheinPriceApplyToTaskUsesMutation(t *testing.T) {
 		t.Fatalf("save calls = %d, want 0 when transaction mutation is available", repo.saveCalls)
 	}
 }
+
+func TestApplyDefaultSheinPricingUsesPublishedPriceCache(t *testing.T) {
+	t.Parallel()
+
+	store := &submitResolutionCacheStore{}
+	task := makeReadySheinTask()
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		RuleSnapshot: &sheinpub.PricingRule{
+			SourceCurrency:   "CNY",
+			TargetCurrency:   "USD",
+			ExchangeRate:     7.2,
+			MarkupMultiplier: 2,
+			MinimumPrice:     9.99,
+			RoundTo:          0.01,
+		},
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU:     "SKU-1",
+			SupplierCode:    "SKC-1",
+			CostCNY:         10,
+			CalculatedPrice: 19.99,
+			FinalPrice:      27.99,
+			Currency:        "USD",
+			Manual:          true,
+		}},
+		Ready: true,
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:                &stubSubmitRepo{},
+		ProductService:            stubSubmitProductService{},
+		SheinResolutionCacheStore: store,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	svc.(*service).rememberSheinSubmittedPricing(task, "publish")
+
+	fresh := makeReadySheinTask()
+	fresh.Result.Shein.Pricing = nil
+	fresh.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice = "19.99"
+	fresh.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SitePriceList = []sheinpub.SitePrice{{
+		SubSite:   "US",
+		BasePrice: "19.99",
+		Currency:  "USD",
+	}}
+	fresh.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList = []sheinproduct.PriceInfo{{
+		SubSite:   "US",
+		BasePrice: 19.99,
+		Currency:  "USD",
+	}}
+
+	svc.(*service).applyDefaultSheinPricing(fresh.Request, fresh.Result.Shein)
+
+	if fresh.Result.Shein.Pricing == nil || len(fresh.Result.Shein.Pricing.SKUPrices) != 1 {
+		t.Fatalf("pricing review = %+v, want cached review", fresh.Result.Shein.Pricing)
+	}
+	if got := fresh.Result.Shein.Pricing.SKUPrices[0].FinalPrice; got != 27.99 {
+		t.Fatalf("final price = %v, want cached 27.99", got)
+	}
+	if got := fresh.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice; got != "27.99" {
+		t.Fatalf("draft base price = %q, want cached 27.99", got)
+	}
+	if got := fresh.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice; got != 27.99 {
+		t.Fatalf("preview base price = %v, want cached 27.99", got)
+	}
+}

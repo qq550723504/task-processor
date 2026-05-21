@@ -588,6 +588,124 @@ func TestAssemblerBuildDoesNotRequestAlternativeCategoryOnSaleReview(t *testing.
 	}
 }
 
+func TestAssemblerBuildReusesPublishedResolutionCacheOnSecondBuild(t *testing.T) {
+	store := newResolutionCacheTestStore(t)
+	req := &BuildRequest{Country: "US", Language: "en", SheinStoreID: 42}
+	product := &canonical.Product{
+		Title:       "抱枕套 MG8014192",
+		Description: "中文描述",
+		CategoryPath: []string{
+			"家居",
+			"装饰",
+			"抱枕套",
+		},
+		Attributes: map[string]canonical.Attribute{
+			"material": {Value: "涤纶"},
+			"color":    {Value: "White"},
+		},
+		Variants: []canonical.Variant{{
+			SKU: "MG8014192",
+			Attributes: map[string]canonical.Attribute{
+				"Color": {Value: "White"},
+				"Size":  {Value: "45x45cm"},
+			},
+			Dimensions: &canonical.Dimensions{Length: 45, Width: 45, Height: 1, Unit: "cm"},
+			Stock:      5,
+			IsDefault:  true,
+		}},
+		Images: []canonical.Image{{URL: "main.jpg"}},
+	}
+	categoryInner := &countingCategoryResolver{
+		out: &CategoryResolution{
+			Status:         "resolved",
+			Source:         "test",
+			CategoryID:     8218,
+			CategoryIDList: []int{2030, 6012, 8218},
+			MatchedPath:    []string{"Home", "Decor", "Cushion Covers"},
+		},
+	}
+	valueID := 2001
+	attributeInner := &countingAttributeResolver{
+		out: &AttributeResolution{
+			Status:        "resolved",
+			Source:        "attribute_templates",
+			CategoryID:    8218,
+			TemplateCount: 1,
+			ResolvedCount: 1,
+			ResolvedAttributes: []ResolvedAttribute{{
+				Name:             "Material",
+				Value:            "Polyester",
+				AttributeID:      160,
+				AttributeValueID: &valueID,
+			}},
+		},
+	}
+	saleValueID := 103
+	saleInner := &countingSaleAttributeResolver{
+		out: &SaleAttributeResolution{
+			Status:                 "resolved",
+			Source:                 "sale_attribute_templates",
+			CategoryID:             8218,
+			PrimaryAttributeID:     27,
+			PrimarySourceDimension: "Color",
+			SKCAttributes: []ResolvedSaleAttribute{{
+				Scope:            "skc",
+				Name:             "Color",
+				Value:            "White",
+				AttributeID:      27,
+				AttributeValueID: &saleValueID,
+			}},
+			skcValueAssignments: map[string]ResolvedSaleAttribute{
+				"white": {
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "White",
+					AttributeID:      27,
+					AttributeValueID: &saleValueID,
+				},
+			},
+		},
+	}
+	firstCategory := NewCachedCategoryResolver(categoryInner, store)
+	firstAttribute := NewCachedAttributeResolver(attributeInner, store)
+	firstSale := NewCachedSaleAttributeResolver(saleInner, store)
+	firstAssembler := NewAssembler(AssemblerConfig{
+		CategoryResolver:      firstCategory,
+		AttributeResolver:     firstAttribute,
+		SaleAttributeResolver: firstSale,
+	})
+
+	first := firstAssembler.Build(req, product, nil)
+	if categoryInner.calls != 1 || attributeInner.calls != 1 || saleInner.calls != 1 {
+		t.Fatalf("first build resolver calls = category:%d attribute:%d sale:%d, want 1/1/1", categoryInner.calls, attributeInner.calls, saleInner.calls)
+	}
+	firstCategory.(CategoryResolutionCache).RememberCategoryResolution(req, product, first, first.CategoryResolution)
+	firstAttribute.(AttributeResolutionCache).RememberAttributeResolution(req, product, first, first.AttributeResolution)
+	firstSale.(SaleAttributeResolutionCache).RememberSaleAttributeResolution(req, product, first, first.SaleAttributeResolution)
+
+	secondCategoryInner := &countingCategoryResolver{out: categoryInner.out}
+	secondAttributeInner := &countingAttributeResolver{out: attributeInner.out}
+	secondSaleInner := &countingSaleAttributeResolver{out: saleInner.out}
+	second := NewAssembler(AssemblerConfig{
+		CategoryResolver:      NewCachedCategoryResolver(secondCategoryInner, store),
+		AttributeResolver:     NewCachedAttributeResolver(secondAttributeInner, store),
+		SaleAttributeResolver: NewCachedSaleAttributeResolver(secondSaleInner, store),
+	}).Build(req, product, nil)
+
+	if secondCategoryInner.calls != 0 || secondAttributeInner.calls != 0 || secondSaleInner.calls != 0 {
+		t.Fatalf("second build resolver calls = category:%d attribute:%d sale:%d, want 0/0/0", secondCategoryInner.calls, secondAttributeInner.calls, secondSaleInner.calls)
+	}
+	if second.CategoryResolution == nil || second.CategoryResolution.Cache == nil || second.CategoryResolution.Cache.Source != "manual_cache" {
+		t.Fatalf("second category cache = %+v, want manual_cache hit", second.CategoryResolution)
+	}
+	if second.AttributeResolution == nil || second.AttributeResolution.Cache == nil || second.AttributeResolution.Cache.Source != "manual_cache" {
+		t.Fatalf("second attribute cache = %+v, want manual_cache hit", second.AttributeResolution)
+	}
+	if second.SaleAttributeResolution == nil || second.SaleAttributeResolution.Cache == nil || second.SaleAttributeResolution.Cache.Source != "manual_cache" {
+		t.Fatalf("second sale attribute cache = %+v, want manual_cache hit", second.SaleAttributeResolution)
+	}
+}
+
 func testCanonicalProduct() *canonical.Product {
 	return &canonical.Product{
 		Title: "Running Shoes",

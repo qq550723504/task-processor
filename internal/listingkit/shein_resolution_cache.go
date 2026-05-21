@@ -14,6 +14,7 @@ func (s *service) rememberSheinSubmittedResolution(task *Task, action string) {
 	s.rememberSheinCategoryResolution(task)
 	s.rememberSheinAttributeResolution(task)
 	s.rememberSheinSaleAttributeResolution(task)
+	s.rememberSheinSubmittedPricing(task, action)
 }
 
 func (s *service) rememberSheinCategoryResolution(task *Task) {
@@ -59,7 +60,7 @@ func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, 
 	if kind == "" {
 		kind = "all"
 	}
-	if kind != "all" && kind != sheinpub.ResolutionCacheKindCategory && kind != sheinpub.ResolutionCacheKindAttribute && kind != sheinpub.ResolutionCacheKindSaleAttribute {
+	if kind != "all" && kind != sheinpub.ResolutionCacheKindCategory && kind != sheinpub.ResolutionCacheKindAttribute && kind != sheinpub.ResolutionCacheKindSaleAttribute && kind != sheinpub.ResolutionCacheKindPricing {
 		return nil, ErrInvalidSheinResolutionCacheKind
 	}
 
@@ -91,6 +92,12 @@ func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, 
 			}
 			deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindSaleAttribute)
 		}
+	}
+	if kind == "all" || kind == sheinpub.ResolutionCacheKindPricing {
+		if err := s.clearSheinPricingCache(buildReq, pkg); err != nil {
+			return nil, err
+		}
+		deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindPricing)
 	}
 
 	return &SheinResolutionCacheClearResult{

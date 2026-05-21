@@ -348,6 +348,7 @@ func BuildService(input BuildServiceInput) (*ServiceBundle, error) {
 		}),
 		SheinManagementClient:      input.ManagementClient,
 		SheinCategoryResolver:      sheinCategoryResolver,
+		SheinResolutionCacheStore:  resolutionCacheStore,
 		SheinAttributeResolver:     sheinAttributeResolver,
 		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
 		SheinPricingPolicy:         sheinPricingPolicy,

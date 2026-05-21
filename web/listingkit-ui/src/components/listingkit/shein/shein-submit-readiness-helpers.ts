@@ -118,5 +118,7 @@ export function cacheUpdatedLabel(value?: string) {
 export function hasResolutionCache(
   cache?: SheinResolutionCacheSummary | null,
 ) {
-  return Boolean(cache?.category || cache?.attributes || cache?.sale_attributes);
+  return Boolean(
+    cache?.category || cache?.attributes || cache?.sale_attributes || cache?.pricing,
+  );
 }

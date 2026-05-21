@@ -25,13 +25,26 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 		return nil
 	}
 	result := &TaskResult{
-		TaskID:        task.ID,
-		TenantID:      task.TenantID,
-		Status:        task.Status,
-		Result:        resultPayload,
-		Error:         task.Error,
-		ReviewReasons: reviewReasonsFromTask(task),
-		CreatedAt:     task.CreatedAt,
+		TaskID:                  task.ID,
+		TenantID:                task.TenantID,
+		Status:                  task.Status,
+		Result:                  resultPayload,
+		Error:                   task.Error,
+		ReviewReasons:           reviewReasonsFromTask(task),
+		CreatedAt:               task.CreatedAt,
+	}
+	if resultPayload != nil && resultPayload.Shein != nil {
+		result.SheinWorkflowStatus = deriveSheinWorkflowStatus(resultPayload.Shein)
+		if latest := latestSheinSubmissionOutcomeEvent(resultPayload.Shein); latest != nil {
+			result.SheinLatestSubmissionStatus = latest.Status
+			result.SheinLatestSubmissionError = latest.ErrorMessage
+		} else if resultPayload.Shein.Submission != nil {
+			result.SheinLatestSubmissionStatus = resultPayload.Shein.Submission.LastStatus
+			result.SheinLatestSubmissionError = resultPayload.Shein.Submission.LastError
+		}
+		if resultPayload.Shein.Submission != nil {
+			result.SheinSubmissionRemoteStatus = resultPayload.Shein.Submission.RemoteStatus
+		}
 	}
 	if taskStatusIsTerminal(task.Status) {
 		result.CompletedAt = &task.UpdatedAt

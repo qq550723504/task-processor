@@ -61,8 +61,8 @@ describe("TaskListPage", () => {
     expect(screen.getByRole("option", { name: "发布失败" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "已发布" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "草稿已保存" })).toBeInTheDocument();
-    expect(screen.getAllByText("已完成").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("草稿已保存").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("生成 已完成").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SHEIN 草稿已保存").length).toBeGreaterThan(0);
     expect(screen.getAllByText("远端已确认").length).toBeGreaterThan(0);
     expect(screen.getByText("最近提交：成功")).toBeInTheDocument();
     expect(screen.getByText(/SHEIN 远端：远端已确认 · record-123/)).toBeInTheDocument();
@@ -92,7 +92,7 @@ describe("TaskListPage", () => {
 
     render(<TaskListPage />);
 
-    expect(screen.getAllByText("发布失败").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SHEIN 发布失败").length).toBeGreaterThan(0);
     expect(
       screen.getByText("最近提交：发布失败。原始错误：方形图必须有一个"),
     ).toBeInTheDocument();

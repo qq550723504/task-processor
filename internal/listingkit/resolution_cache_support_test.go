@@ -23,6 +23,11 @@ func TestBuildSheinResolutionCacheSummary(t *testing.T) {
 				CacheKey: "attr-key",
 			},
 		},
+		Pricing: &sheinpub.PricingReview{
+			Cache: &sheinpub.ResolutionCacheInfo{
+				CacheKey: "pricing-key",
+			},
+		},
 	}
 
 	summary := buildSheinResolutionCacheSummary(pkg)
@@ -37,5 +42,8 @@ func TestBuildSheinResolutionCacheSummary(t *testing.T) {
 	}
 	if summary.SaleAttributes != nil {
 		t.Fatalf("sale summary = %+v, want nil", summary.SaleAttributes)
+	}
+	if summary.Pricing == nil || summary.Pricing.CacheKey != "pricing-key" {
+		t.Fatalf("pricing summary = %+v", summary.Pricing)
 	}
 }

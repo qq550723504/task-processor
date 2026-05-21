@@ -201,6 +201,7 @@ type SheinResolutionCacheSummary struct {
 	Category       *sheinpub.ResolutionCacheInfo `json:"category,omitempty"`
 	Attributes     *sheinpub.ResolutionCacheInfo `json:"attributes,omitempty"`
 	SaleAttributes *sheinpub.ResolutionCacheInfo `json:"sale_attributes,omitempty"`
+	Pricing        *sheinpub.ResolutionCacheInfo `json:"pricing,omitempty"`
 }
 
 type SheinImageUploadPreflight struct {

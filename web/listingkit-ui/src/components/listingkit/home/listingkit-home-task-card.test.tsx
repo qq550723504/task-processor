@@ -32,7 +32,7 @@ describe("ListingKitHomeTaskCard", () => {
 
     expect(screen.getByText("Botanical clock")).toBeInTheDocument();
     expect(screen.getByText("SHEIN")).toBeInTheDocument();
-    expect(screen.getByText("已完成")).toBeInTheDocument();
+    expect(screen.getByText("生成 已完成")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "继续处理 Botanical clock" }),
     ).toHaveAttribute("href", "/listing-kits/task-resume/workspace?platform=shein");
@@ -48,7 +48,7 @@ describe("ListingKitHomeTaskCard", () => {
       />,
     );
 
-    expect(screen.getByText("草稿已保存")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 草稿已保存")).toBeInTheDocument();
   });
 
   it("shows the SHEIN remote submission status badge when present", () => {

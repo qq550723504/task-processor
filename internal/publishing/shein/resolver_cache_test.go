@@ -233,6 +233,80 @@ func TestCachedAttributeResolverCanRememberManualResolution(t *testing.T) {
 	}
 }
 
+func TestCachedAttributeResolverCanReusePublishedResolutionAfterListingCopyNormalization(t *testing.T) {
+	valueID := 2001
+	inner := &countingAttributeResolver{
+		out: &AttributeResolution{Status: "partial", CategoryID: 8218, TemplateCount: 1},
+	}
+	resolver := NewCachedAttributeResolver(inner)
+	cache := resolver.(AttributeResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	preNormalizationPkg := &Package{
+		SpuName:        "抱枕套 MG8014192",
+		ProductNameEn:  "抱枕套",
+		Description:    "中文描述",
+		CategoryPath:   []string{"家居", "装饰", "抱枕套"},
+		CategoryID:     8218,
+		CategoryIDList: []int{2030, 6012, 8218},
+		Attributes:     map[string]string{"color": "White"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8014192"},
+			{Name: "material", Value: "涤纶"},
+			{Name: "product_size", Value: "45x45cm"},
+		},
+		RequestDraft: &RequestDraft{},
+	}
+	postNormalizationPkg := &Package{
+		SpuName:          "抱枕套 MG8014192",
+		ProductNameEn:    "Envelope Pillow Cover",
+		ProductNameMulti: "Envelope Pillow Cover",
+		Description:      "Soft polyester pillow cover for home decor.",
+		CategoryPath:     []string{"家居", "装饰", "抱枕套"},
+		CategoryID:       8218,
+		CategoryIDList:   []int{2030, 6012, 8218},
+		Attributes:       map[string]string{"color": "White"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8014192"},
+			{Name: "material", Value: "涤纶"},
+			{Name: "product_size", Value: "45x45cm"},
+		},
+		RequestDraft: &RequestDraft{
+			SKCList: []SKCRequestDraft{{
+				SKUList: []SKUDraft{{
+					SupplierSKU: "MG8014192",
+					Length:      "45",
+					Width:       "45",
+					Height:      "1",
+				}},
+			}},
+		},
+	}
+	cache.RememberAttributeResolution(req, nil, postNormalizationPkg, &AttributeResolution{
+		Status:        "resolved",
+		Source:        "manual",
+		CategoryID:    8218,
+		TemplateCount: 1,
+		ResolvedCount: 1,
+		ResolvedAttributes: []ResolvedAttribute{{
+			Name:             "Material",
+			Value:            "Polyester",
+			AttributeID:      160,
+			AttributeValueID: &valueID,
+		}},
+	})
+
+	next := resolver.Resolve(req, nil, preNormalizationPkg)
+	if inner.calls != 0 {
+		t.Fatalf("inner calls = %d, want 0", inner.calls)
+	}
+	if next.Cache == nil {
+		t.Fatal("expected cached resolution metadata after publish-history hit")
+	}
+	if got := next.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 2001 {
+		t.Fatalf("attribute value id = %v, want 2001", got)
+	}
+}
+
 func TestCachedAttributeResolverLoadsPersistentCacheAndRefillsMemory(t *testing.T) {
 	valueID := 2001
 	store := newResolutionCacheTestStore(t)

@@ -4,6 +4,7 @@ export type SheinResolutionCacheKind =
   | "category"
   | "attribute"
   | "sale_attribute"
+  | "pricing"
   | "all";
 
 export type ClearSheinResolutionCacheResponse = {

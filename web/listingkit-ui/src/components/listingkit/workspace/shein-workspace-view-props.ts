@@ -65,7 +65,7 @@ export function buildSheinWorkspaceViewProps({
   isRefreshingSubmissionStatus: boolean;
   onSelectBlockingItem: (item: SheinReadinessItem) => void;
   onRunPrimaryAction: (key?: string | null) => void;
-  onClearResolutionCache: (kind: "category" | "attribute" | "sale_attribute") => void;
+  onClearResolutionCache: (kind: "category" | "attribute" | "sale_attribute" | "pricing") => void;
   onRefreshSubmissionStatus: () => void;
 }) {
   const sheinDisplayImages =

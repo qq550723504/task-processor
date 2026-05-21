@@ -14,6 +14,10 @@ import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useExecuteAction } from "@/lib/query/use-action";
+import {
+  sheinSubmissionRemoteStatusLabel,
+  sheinWorkflowStatusLabel,
+} from "@/lib/shein-studio/shein-submission-display";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function formatStatusDate(value?: string) {
@@ -31,6 +35,35 @@ function formatStatusDate(value?: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function terminalStatusTitle(task?: ListingKitTaskResult | null) {
+  if (task?.status === "completed" && task?.shein_workflow_status === "published") {
+    return "任务生成已完成，SHEIN 已发布";
+  }
+  if (task?.status === "completed" && task?.shein_workflow_status === "draft_saved") {
+    return "任务生成已完成，SHEIN 草稿已保存";
+  }
+  if (task?.status === "completed") {
+    return "任务已处理完成";
+  }
+  if (task?.status === "needs_review") {
+    return "任务需要人工确认";
+  }
+  return "查看结果并继续";
+}
+
+function terminalStatusDescription(task?: ListingKitTaskResult | null) {
+  if (task?.status === "completed" && task?.shein_workflow_status === "published") {
+    return "生成链路已经完成，且商品资料已经发布到 SHEIN。建议进入工作台核对最终结果和提交记录。";
+  }
+  if (task?.status === "completed" && task?.shein_workflow_status === "draft_saved") {
+    return "生成链路已经完成，且商品资料已经保存到 SHEIN 草稿箱。建议进入工作台继续复核或正式发布。";
+  }
+  if (task?.status === "completed" || task?.status === "needs_review") {
+    return "建议先查看工作台和结果，再决定继续提交还是回退修改。";
+  }
+  return "建议先进入工作台或队列查看失败详情，再决定是否重新创建任务。";
 }
 
 export function TaskStatusScreen({
@@ -118,6 +151,20 @@ export function TaskStatusScreen({
           <p className="text-sm leading-6 text-zinc-600">
             创建任务后，可以先在这里查看当前进度，再决定进入工作台、队列或返回修改。
           </p>
+          {task.shein_workflow_status || task.shein_submission_remote_status ? (
+            <div className="flex flex-wrap gap-2 pt-2">
+              {task.shein_workflow_status ? (
+                <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700">
+                  SHEIN {sheinWorkflowStatusLabel(task.shein_workflow_status)}
+                </span>
+              ) : null}
+              {task.shein_submission_remote_status ? (
+                <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                  {sheinSubmissionRemoteStatusLabel(task.shein_submission_remote_status)}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <div className="grid gap-3 pt-2 md:grid-cols-3">
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
@@ -216,20 +263,8 @@ export function TaskStatusScreen({
       {isTerminal ? (
         <Card className="p-6">
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-950">
-              {task.status === "completed"
-                ? "任务已处理完成"
-                : task.status === "needs_review"
-                  ? "任务需要人工确认"
-                  : "查看结果并继续"}
-            </h2>
-            <p className="text-sm leading-6 text-zinc-600">
-              {task.status === "completed"
-                ? "建议先查看工作台和结果，再决定继续提交还是回退修改。"
-                : task.status === "needs_review"
-                  ? "建议先查看工作台和结果，再决定继续提交还是回退修改。"
-                  : "建议先进入工作台或队列查看失败详情，再决定是否重新创建任务。"}
-            </p>
+            <h2 className="text-lg font-semibold text-zinc-950">{terminalStatusTitle(task)}</h2>
+            <p className="text-sm leading-6 text-zinc-600">{terminalStatusDescription(task)}</p>
             {task.status === "completed" || task.status === "needs_review" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm leading-6 text-zinc-500">

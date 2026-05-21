@@ -261,6 +261,44 @@ describe("TaskStatusScreen", () => {
     expect(screen.getByText("Profile #17")).toBeInTheDocument();
   });
 
+  it("uses publish-aware wording when the SHEIN task is already published", () => {
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "completed",
+          shein_workflow_status: "published",
+          shein_submission_remote_status: "confirmed",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("任务生成已完成，SHEIN 已发布")).toBeInTheDocument();
+    expect(
+      screen.getByText("生成链路已经完成，且商品资料已经发布到 SHEIN。建议进入工作台核对最终结果和提交记录。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 已发布")).toBeInTheDocument();
+    expect(screen.getByText("远端已确认")).toBeInTheDocument();
+  });
+
+  it("shows SHEIN publish status for completed tasks", () => {
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "completed",
+          shein_workflow_status: "published",
+          shein_submission_remote_status: "confirmed",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 已发布")).toBeInTheDocument();
+    expect(screen.getByText("远端已确认")).toBeInTheDocument();
+  });
+
   it("can manually trigger layered temporal actions", () => {
     render(
       <TaskStatusScreen

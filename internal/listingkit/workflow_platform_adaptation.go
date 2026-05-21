@@ -48,7 +48,7 @@ func (s *service) runPlatformAdaptation(
 			appendWarning(final, "shein content optimization skipped: "+err.Error())
 		}
 	}
-	s.applyDefaultSheinPricing(final.Shein)
+	s.applyDefaultSheinPricing(task.Request, final.Shein)
 	if shouldUseSDSOfficialImages(task.Request) {
 		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSSync, sdsOptions)
 		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSSync))

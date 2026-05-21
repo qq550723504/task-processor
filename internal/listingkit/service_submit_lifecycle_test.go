@@ -308,8 +308,9 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 	}
 	cacheStore := &submitResolutionCacheStore{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
+		Repository:                repo,
+		ProductService:            stubSubmitProductService{},
+		SheinResolutionCacheStore: cacheStore,
 		SheinCategoryResolver: sheinpub.NewCachedCategoryResolver(
 			sheinpub.NewCategoryResolver(nil),
 			cacheStore,
@@ -349,13 +350,20 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 		t.Fatalf("resolution cache summary = %+v, want category/attribute/sale_attribute after publish", preview.Shein.ResolutionCache)
 	}
 	entries := cacheStore.snapshot()
-	if len(entries) != 3 {
-		t.Fatalf("cache entry count = %d, want 3: %+v", len(entries), entries)
+	if len(entries) != 4 {
+		t.Fatalf("cache entry count = %d, want 4 including pricing: %+v", len(entries), entries)
 	}
+	foundPricing := false
 	for _, entry := range entries {
 		if entry.Source != "manual_cache" || !entry.Manual {
 			t.Fatalf("cache entry = %+v, want manual_cache confirmed by publish", entry)
 		}
+		if entry.CacheKind == sheinpub.ResolutionCacheKindPricing {
+			foundPricing = true
+		}
+	}
+	if !foundPricing {
+		t.Fatalf("cache entries = %+v, want pricing cache entry", entries)
 	}
 }
 

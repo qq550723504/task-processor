@@ -73,12 +73,13 @@ type TitleDiagnostics struct {
 }
 
 type PricingReview struct {
-	RuleSnapshot     *PricingRule       `json:"rule_snapshot,omitempty"`
-	SKUPrices        []SKUPriceReview   `json:"sku_prices,omitempty"`
-	ManualOverrides  map[string]float64 `json:"manual_overrides,omitempty"`
-	MissingPriceSKUs []string           `json:"missing_price_skus,omitempty"`
-	Ready            bool               `json:"ready"`
-	UpdatedAt        *time.Time         `json:"updated_at,omitempty"`
+	RuleSnapshot     *PricingRule         `json:"rule_snapshot,omitempty"`
+	SKUPrices        []SKUPriceReview     `json:"sku_prices,omitempty"`
+	ManualOverrides  map[string]float64   `json:"manual_overrides,omitempty"`
+	MissingPriceSKUs []string             `json:"missing_price_skus,omitempty"`
+	Cache            *ResolutionCacheInfo `json:"cache,omitempty"`
+	Ready            bool                 `json:"ready"`
+	UpdatedAt        *time.Time           `json:"updated_at,omitempty"`
 }
 
 type SKUPriceReview struct {

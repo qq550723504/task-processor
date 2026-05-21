@@ -28,6 +28,10 @@ type TaskResult struct {
 	TaskID        string            `json:"task_id"`
 	TenantID      string            `json:"tenant_id,omitempty"`
 	Status        TaskStatus        `json:"status"`
+	SheinWorkflowStatus string      `json:"shein_workflow_status,omitempty"`
+	SheinLatestSubmissionStatus string `json:"shein_latest_submission_status,omitempty"`
+	SheinLatestSubmissionError string `json:"shein_latest_submission_error,omitempty"`
+	SheinSubmissionRemoteStatus string `json:"shein_submission_remote_status,omitempty"`
 	Result        *ListingKitResult `json:"result,omitempty"`
 	Error         string            `json:"error,omitempty"`
 	ReviewReasons []string          `json:"review_reasons,omitempty"`

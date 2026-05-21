@@ -43,11 +43,15 @@ func attributeResolverCacheKey(req *BuildRequest, pkg *Package) string {
 		return ""
 	}
 	payload := map[string]any{
-		"version":            13,
-		"store_id":           sheinStoreID(req),
-		"category_id":        categoryID(pkg),
-		"category_id_list":   append([]int(nil), pkg.CategoryIDList...),
-		"product_attributes": normalizedAttributeInputs(buildAttributeInputs(pkg)),
+		"version":               14,
+		"store_id":              sheinStoreID(req),
+		"category_id":           categoryID(pkg),
+		"category_id_list":      append([]int(nil), pkg.CategoryIDList...),
+		"category_path":         normalizedSourceCategoryPath(nil, pkg),
+		"product_identity":      stableAttributeProductIdentity(pkg),
+		"product_attributes":    normalizedAttributeInputs(pkg.ProductAttributes),
+		"supplemental_attrs":    normalizedStringMapInputs(pkg.Attributes),
+		"structured_attr_hints": normalizedStructuredAttributeHints(pkg.ProductAttributes),
 	}
 	return hashCachePayload(payload)
 }
@@ -145,6 +149,31 @@ func stableProductIdentity(canonical *canonical.Product, pkg *Package) []string 
 	return out
 }
 
+func stableAttributeProductIdentity(pkg *Package) []string {
+	values := make([]string, 0, 4)
+	if pkg != nil {
+		spuName := pkg.SpuName
+		sku := lookupAttributeValueInList(pkg.ProductAttributes, "sku")
+		parentSKU := lookupAttributeValueInList(pkg.ProductAttributes, "parent sku")
+		values = append(values, spuName, sku, parentSKU)
+		if strings.TrimSpace(spuName) == "" && strings.TrimSpace(sku) == "" && strings.TrimSpace(parentSKU) == "" {
+			values = append(values, pkg.ProductNameEn)
+		}
+	}
+	for idx := range values {
+		values[idx] = normalizeText(values[idx])
+	}
+	sort.Strings(values)
+	out := values[:0]
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
 func normalizedAttributeInputs(inputs []common.Attribute) []string {
 	if len(inputs) == 0 {
 		return nil
@@ -157,6 +186,42 @@ func normalizedAttributeInputs(inputs []common.Attribute) []string {
 			continue
 		}
 		result = append(result, name+"="+value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func normalizedStringMapInputs(values map[string]string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	inputs := make([]common.Attribute, 0, len(values))
+	for name, value := range values {
+		inputs = append(inputs, common.Attribute{Name: name, Value: value})
+	}
+	return normalizedAttributeInputs(inputs)
+}
+
+func normalizedStructuredAttributeHints(inputs []common.Attribute) []string {
+	if len(inputs) == 0 {
+		return nil
+	}
+	pool := newDisplayAttributeEvidencePoolFromInputs(inputs)
+	if pool == nil {
+		return nil
+	}
+	structured := pool.StructuredItems()
+	if len(structured) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(structured))
+	for _, item := range structured {
+		field := normalizeText(item.Field)
+		value := normalizeText(item.RawValue)
+		if field == "" || value == "" {
+			continue
+		}
+		result = append(result, field+"="+value)
 	}
 	sort.Strings(result)
 	return result

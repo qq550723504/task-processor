@@ -80,7 +80,7 @@ export function SheinSubmitReadinessPanel({
   submitAction?: "publish" | "save_draft" | null;
   submitErrorMessage?: string | null;
   onClearResolutionCache?:
-    | ((kind: "category" | "attribute" | "sale_attribute") => void)
+    | ((kind: "category" | "attribute" | "sale_attribute" | "pricing") => void)
     | null;
   clearingResolutionCacheKind?: string | null;
   compact?: boolean;

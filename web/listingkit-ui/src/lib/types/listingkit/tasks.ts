@@ -102,6 +102,10 @@ export type ListingKitTaskResult = {
   task_id?: string;
   tenant_id?: string;
   status?: string;
+  shein_workflow_status?: string;
+  shein_latest_submission_status?: string;
+  shein_latest_submission_error?: string;
+  shein_submission_remote_status?: string;
   result?: ListingKitTaskResultData;
   error?: string;
   review_reasons?: string[];

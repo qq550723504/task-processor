@@ -134,6 +134,19 @@ function storeResolutionAuditTitle(task: ListingKitTaskListItem) {
   return lines.join("\n");
 }
 
+function taskLifecycleBadgeLabel(status?: string) {
+  return `生成 ${taskStatusLabel(status)}`;
+}
+
+function sheinWorkflowBadgeLabel(status?: string) {
+  const label = sheinWorkflowStatusLabel(status);
+  return label ? `SHEIN ${label}` : "";
+}
+
+function sheinRemoteBadgeLabel(status?: string) {
+  return sheinSubmissionRemoteStatusLabel(status);
+}
+
 export function TaskListFilters({
   platform,
   sheinActionQueue,
@@ -590,7 +603,7 @@ function TaskRow({
               className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] ${statusTone(task.status)}`}
               variant="outline"
             >
-              {taskStatusLabel(task.status)}
+              {taskLifecycleBadgeLabel(task.status)}
             </Badge>
             {task.sds_sync_status ? (
               <Badge
@@ -605,7 +618,7 @@ function TaskRow({
                 className="rounded-full border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-orange-700"
                 variant="outline"
               >
-                {sheinWorkflowStatusLabel(task.shein_workflow_status)}
+                {sheinWorkflowBadgeLabel(task.shein_workflow_status)}
               </Badge>
             ) : null}
             {task.shein_work_queue ? (
@@ -629,9 +642,7 @@ function TaskRow({
                 className="rounded-full border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-sky-700"
                 variant="outline"
               >
-                {sheinSubmissionRemoteStatusLabel(
-                  task.shein_submission_remote_status,
-                )}
+                {sheinRemoteBadgeLabel(task.shein_submission_remote_status)}
               </Badge>
             ) : null}
             {(task.platforms ?? []).map((platform) => (

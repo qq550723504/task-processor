@@ -8,7 +8,9 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 type stubProcessStatusAssembler struct {
@@ -233,6 +235,58 @@ func TestGetTaskResultReturnsStructuredReviewReasons(t *testing.T) {
 	}
 }
 
+func TestGetTaskResultIncludesDerivedSheinSubmissionStatus(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	now := time.Now()
+	task := &Task{
+		ID:     "listingkit-shein-published-1",
+		Status: TaskStatusCompleted,
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+		},
+		Result: &ListingKitResult{
+			TaskID: "listingkit-shein-published-1",
+			Shein: &SheinPackage{
+				Submission: &sheinpub.SubmissionReport{
+					LastAction:   "publish",
+					LastStatus:   "success",
+					RemoteStatus: "confirmed",
+					Publish: &sheinpub.SubmissionRecord{
+						Action: "publish",
+						Status: "success",
+					},
+					LastResult: &sheinpub.SubmissionResponse{
+						Success: true,
+						SPUName: "SHEIN-SPU-1",
+					},
+				},
+			},
+		},
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now,
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	svc := &service{repo: repo}
+	result, err := svc.GetTaskResult(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskResult() error = %v", err)
+	}
+	if result.SheinWorkflowStatus != SheinWorkflowStatusPublished {
+		t.Fatalf("SheinWorkflowStatus = %q, want %q", result.SheinWorkflowStatus, SheinWorkflowStatusPublished)
+	}
+	if result.SheinLatestSubmissionStatus != "success" {
+		t.Fatalf("SheinLatestSubmissionStatus = %q, want success", result.SheinLatestSubmissionStatus)
+	}
+	if result.SheinSubmissionRemoteStatus != "confirmed" {
+		t.Fatalf("SheinSubmissionRemoteStatus = %q, want confirmed", result.SheinSubmissionRemoteStatus)
+	}
+}
+
 func TestGetTaskResultPrefersWorkflowIssuesForReviewReasons(t *testing.T) {
 	t.Parallel()
 
@@ -413,5 +467,179 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 	}
 	if got := result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice; got == "" {
 		t.Fatalf("request draft base price = %q, want populated price", got)
+	}
+}
+
+func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	cacheStore := &submitResolutionCacheStore{}
+	productTask := &productenrich.Task{
+		ID:      "product-task-pricing-cache-1",
+		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+	}
+	productService := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:      "Travel Bag",
+			Category:   []string{"bags"},
+			Attributes: map[string]string{"color": "black"},
+		},
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:                repo,
+		ProductService:            productService,
+		SheinResolutionCacheStore: cacheStore,
+		Assembler: &stubProcessStatusAssembler{
+			result: &ListingKitResult{
+				TaskID: "listingkit-pricing-cache-1",
+				Shein: &SheinPackage{
+					SpuName:        "Travel Bag SKU-1",
+					ProductNameEn:  "Travel Bag",
+					CategoryPath:   []string{"Bags", "Travel Bags"},
+					CategoryID:     3221,
+					CategoryIDList: []int{1, 2, 3221},
+					ProductAttributes: []common.Attribute{
+						{Name: "sku", Value: "SKU-1"},
+						{Name: "material", Value: "Canvas"},
+					},
+					RequestDraft: &sheinpub.RequestDraft{
+						SKCList: []sheinpub.SKCRequestDraft{
+							{
+								SupplierCode: "SUP-1",
+								SKUList: []sheinpub.SKUDraft{
+									{
+										SupplierSKU: "SKU-1",
+										CostPrice:   "48.8",
+										BasePrice:   "19.99",
+										Currency:    "USD",
+										SitePriceList: []sheinpub.SitePrice{{
+											SubSite:   "US",
+											BasePrice: "19.99",
+											Currency:  "USD",
+										}},
+									},
+								},
+							},
+						},
+					},
+					PreviewProduct: &sheinproduct.Product{
+						SKCList: []sheinproduct.SKC{{
+							SKUS: []sheinproduct.SKU{{
+								SupplierSKU: "SKU-1",
+								PriceInfoList: []sheinproduct.PriceInfo{{
+									SubSite:   "US",
+									BasePrice: 19.99,
+									Currency:  "USD",
+								}},
+							}},
+						}},
+					},
+				},
+				Summary: &GenerationSummary{},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	seedTask := &Task{
+		ID: "seed-pricing-cache-1",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			SheinStoreID: 869,
+		},
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{
+				SpuName:        "Travel Bag SKU-1",
+				ProductNameEn:  "Travel Bag",
+				CategoryPath:   []string{"Bags", "Travel Bags"},
+				CategoryID:     3221,
+				CategoryIDList: []int{1, 2, 3221},
+				ProductAttributes: []common.Attribute{
+					{Name: "sku", Value: "SKU-1"},
+					{Name: "material", Value: "Canvas"},
+				},
+				RequestDraft: &sheinpub.RequestDraft{
+					SKCList: []sheinpub.SKCRequestDraft{
+						{
+							SupplierCode: "SUP-1",
+							SKUList: []sheinpub.SKUDraft{
+								{
+									SupplierSKU: "SKU-1",
+									CostPrice:   "48.8",
+									BasePrice:   "27.99",
+									Currency:    "USD",
+									SitePriceList: []sheinpub.SitePrice{{
+										SubSite:   "US",
+										BasePrice: "27.99",
+										Currency:  "USD",
+									}},
+								},
+							},
+						},
+					},
+				},
+				Pricing: &sheinpub.PricingReview{
+					RuleSnapshot: &sheinpub.PricingRule{
+						SourceCurrency:   "CNY",
+						TargetCurrency:   "USD",
+						ExchangeRate:     7.2,
+						MarkupMultiplier: 2,
+						MinimumPrice:     9.99,
+						RoundTo:          0.01,
+					},
+					SKUPrices: []sheinpub.SKUPriceReview{{
+						SupplierSKU:     "SKU-1",
+						SupplierCode:    "SUP-1",
+						CostCNY:         48.8,
+						CalculatedPrice: 19.99,
+						FinalPrice:      27.99,
+						Currency:        "USD",
+						Manual:          true,
+					}},
+					Ready: true,
+				},
+			},
+		},
+	}
+	svc.(*service).rememberSheinSubmittedPricing(seedTask, "publish")
+
+	task := &Task{
+		ID:        "listingkit-pricing-cache-1",
+		Status:    TaskStatusPending,
+		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}, SheinStoreID: 869},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessListingKit(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if result.Shein == nil || result.Shein.Pricing == nil {
+		t.Fatalf("result shein pricing = %+v, want cached pricing", result.Shein)
+	}
+	if result.Shein.Pricing.Cache == nil || result.Shein.Pricing.Cache.Source != "manual_cache" {
+		t.Fatalf("pricing cache = %+v, want manual_cache", result.Shein.Pricing.Cache)
+	}
+	if got := result.Shein.Pricing.SKUPrices[0].FinalPrice; got != 27.99 {
+		t.Fatalf("final price = %v, want cached 27.99", got)
+	}
+	if got := result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice; got != "27.99" {
+		t.Fatalf("request draft base price = %q, want cached 27.99", got)
+	}
+	preview := buildSheinPreviewPayload(result.Shein, result.CanonicalProduct, nil, nil)
+	if preview == nil || preview.ResolutionCache == nil || preview.ResolutionCache.Pricing == nil {
+		t.Fatalf("preview resolution cache = %+v, want pricing cache summary", preview)
+	}
+	if preview.ResolutionCache.Pricing.Source != "manual_cache" {
+		t.Fatalf("preview pricing cache source = %q, want manual_cache", preview.ResolutionCache.Pricing.Source)
 	}
 }

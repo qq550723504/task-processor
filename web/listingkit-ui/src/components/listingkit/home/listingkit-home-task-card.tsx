@@ -44,6 +44,15 @@ function taskStatusLabel(status?: string) {
   }
 }
 
+function generationSignalLabel(status?: string) {
+  return `生成 ${taskStatusLabel(status)}`;
+}
+
+function workflowSignalLabel(status?: string | null) {
+  const label = sheinWorkflowStatusLabel(status);
+  return label ? `SHEIN ${label}` : "";
+}
+
 function platformLabel(task: ListingKitTaskListItem) {
   const platforms = task.platforms ?? [];
   if (!platforms.length) {
@@ -108,7 +117,7 @@ function compactSignals(
 
   signals.push({
     tone: "border-zinc-200 bg-zinc-100 text-zinc-700",
-    value: taskStatusLabel(task.status),
+    value: generationSignalLabel(task.status),
   });
 
   if (task.shein_work_queue) {
@@ -128,7 +137,7 @@ function compactSignals(
   if (task.shein_workflow_status) {
     signals.push({
       tone: "border-orange-200 bg-orange-50 text-orange-700",
-      value: sheinWorkflowStatusLabel(task.shein_workflow_status),
+      value: workflowSignalLabel(task.shein_workflow_status),
     });
   }
 

@@ -29,6 +29,7 @@ type service struct {
 	uploadedImageRepo              UploadedImageRepository
 	assembler                      Assembler
 	sheinCategoryResolver          sheinpub.CategoryResolver
+	sheinResolutionCacheStore      sheinpub.ResolutionCacheStore
 	sheinManagementClient          *management.ClientManager
 	sheinAttributeResolver         sheinpub.AttributeResolver
 	sheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
@@ -86,6 +87,7 @@ type ServiceConfig struct {
 	SheinDefaultStoreID            int64
 	SheinManagementClient          *management.ClientManager
 	SheinCategoryResolver          sheinpub.CategoryResolver
+	SheinResolutionCacheStore      sheinpub.ResolutionCacheStore
 	SheinAttributeResolver         sheinpub.AttributeResolver
 	SheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
 	SheinPricingPolicy             sheinpub.PricingPolicy
@@ -171,6 +173,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		uploadedImageRepo:              config.UploadedImageRepository,
 		assembler:                      config.Assembler,
 		sheinCategoryResolver:          config.SheinCategoryResolver,
+		sheinResolutionCacheStore:      config.SheinResolutionCacheStore,
 		sheinManagementClient:          config.SheinManagementClient,
 		sheinAttributeResolver:         config.SheinAttributeResolver,
 		sheinSaleAttributeResolver:     config.SheinSaleAttributeResolver,

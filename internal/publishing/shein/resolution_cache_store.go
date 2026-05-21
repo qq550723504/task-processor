@@ -13,6 +13,7 @@ const (
 	ResolutionCacheKindCategory      = "category"
 	ResolutionCacheKindAttribute     = "attribute"
 	ResolutionCacheKindSaleAttribute = "sale_attribute"
+	ResolutionCacheKindPricing       = "pricing"
 )
 
 type ResolutionCacheInfo struct {
