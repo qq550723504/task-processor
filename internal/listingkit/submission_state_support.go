@@ -2,20 +2,36 @@ package listingkit
 
 import sheinpub "task-processor/internal/publishing/shein"
 
-func applySheinSubmissionRemoteSummary(item *TaskListItem, pkg *SheinPackage) {
-	if item == nil || pkg == nil || pkg.Submission == nil {
+func applySheinSubmissionStatusFields(fields *SheinSubmissionStatusFields, pkg *SheinPackage) {
+	if fields == nil || pkg == nil {
+		return
+	}
+	fields.SheinWorkflowStatus = deriveSheinWorkflowStatus(pkg)
+	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
+		fields.SheinLatestSubmissionStatus = latest.Status
+		fields.SheinLatestSubmissionError = latest.ErrorMessage
+	} else if pkg.Submission != nil {
+		fields.SheinLatestSubmissionStatus = pkg.Submission.LastStatus
+		fields.SheinLatestSubmissionError = pkg.Submission.LastError
+	}
+	if pkg.Submission != nil {
+		fields.SheinSubmissionRemoteStatus = pkg.Submission.RemoteStatus
+	}
+}
+
+func applySheinSubmissionRemoteSummary(fields *SheinTaskListSubmissionFields, pkg *SheinPackage) {
+	if fields == nil || pkg == nil || pkg.Submission == nil {
 		return
 	}
 	submission := pkg.Submission
-	item.SheinSubmissionRemoteStatus = submission.RemoteStatus
-	item.SheinSubmissionRemoteCheckedAt = submission.RemoteCheckedAt
+	fields.SheinSubmissionRemoteCheckedAt = submission.RemoteCheckedAt
 	record := sheinPrimarySubmissionRecord(submission)
 	if record == nil {
 		return
 	}
-	item.SheinSubmissionRemoteRecordID = record.RemoteRecordID
-	if item.SheinSubmissionRemoteCheckedAt == nil {
-		item.SheinSubmissionRemoteCheckedAt = record.RemoteCheckedAt
+	fields.SheinSubmissionRemoteRecordID = record.RemoteRecordID
+	if fields.SheinSubmissionRemoteCheckedAt == nil {
+		fields.SheinSubmissionRemoteCheckedAt = record.RemoteCheckedAt
 	}
 }
 

@@ -83,7 +83,7 @@ func TestApplySheinSubmissionRemoteSummaryFallsBackToPublishRecord(t *testing.T)
 
 	checkedAt := time.Date(2026, 5, 8, 9, 0, 0, 0, time.UTC)
 	item := TaskListItem{}
-	applySheinSubmissionRemoteSummary(&item, &SheinPackage{
+	applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, &SheinPackage{
 		Submission: &sheinpub.SubmissionReport{
 			RemoteStatus: sheinpub.SubmissionRemoteStatusPending,
 			Publish: &sheinpub.SubmissionRecord{

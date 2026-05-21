@@ -36,10 +36,12 @@ func reviewReasonsFromResult(result *ListingKitResult) []string {
 	if reasons := normalizeReviewReasons(result.ReviewReasons); len(reasons) > 0 {
 		return reasons
 	}
-	if result.Summary == nil || !result.Summary.NeedsReview {
-		return nil
+	if result.Summary != nil && result.Summary.NeedsReview {
+		if reasons := normalizeReviewReasons(result.Summary.Warnings); len(reasons) > 0 {
+			return reasons
+		}
 	}
-	return normalizeReviewReasons(result.Summary.Warnings)
+	return reviewReasonsFromPlatformPackages(result)
 }
 
 func reviewReasonsFromTask(task *Task) []string {
@@ -53,4 +55,24 @@ func reviewReasonsFromTask(task *Task) []string {
 		return []string{value}
 	}
 	return nil
+}
+
+func reviewReasonsFromPlatformPackages(result *ListingKitResult) []string {
+	if result == nil {
+		return nil
+	}
+	reasons := make([]string, 0, 8)
+	if result.Shein != nil {
+		if result.Shein.Inspection != nil && result.Shein.Inspection.NeedsReview {
+			reasons = append(reasons, result.Shein.Inspection.Summary...)
+		}
+		reasons = append(reasons, result.Shein.ReviewNotes...)
+	}
+	if result.Temu != nil {
+		reasons = append(reasons, result.Temu.ReviewNotes...)
+	}
+	if result.Walmart != nil {
+		reasons = append(reasons, result.Walmart.ReviewNotes...)
+	}
+	return normalizeReviewReasons(reasons)
 }
