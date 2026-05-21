@@ -22,8 +22,54 @@ var (
 )
 
 func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {
-	platform := "shein"
-	action := "publish"
+	platform, action, err := normalizeSubmitTarget(req)
+	if err != nil {
+		return nil, err
+	}
+
+	startedAt := time.Now()
+	requestID := normalizedSubmitIdempotencyKey(req)
+	useWorkflow := s.shouldStartSheinPublishWorkflow(platform, action)
+	if useWorkflow && requestID == "" {
+		requestID = derivedSheinSubmitRequestID(taskID, action, startedAt)
+	}
+	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":" + action)
+	defer unlockSubmit()
+	task, preview, err := s.acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
+	if preview != nil || err != nil {
+		return preview, err
+	}
+	if useWorkflow {
+		return s.submitSheinTaskWithWorkflow(ctx, taskID, task, req, sheinWorkflowSubmitOptions{
+			platform:  platform,
+			action:    action,
+			requestID: requestID,
+			startedAt: startedAt,
+		})
+	}
+	return s.submitSheinTaskDirect(ctx, taskID, task, req, sheinDirectSubmitOptions{
+		action:    action,
+		requestID: requestID,
+		startedAt: startedAt,
+	})
+}
+
+type sheinWorkflowSubmitOptions struct {
+	platform  string
+	action    string
+	requestID string
+	startedAt time.Time
+}
+
+type sheinDirectSubmitOptions struct {
+	action    string
+	requestID string
+	startedAt time.Time
+}
+
+func normalizeSubmitTarget(req *SubmitTaskRequest) (platform string, action string, err error) {
+	platform = "shein"
+	action = "publish"
 	if req != nil {
 		if value := strings.ToLower(strings.TrimSpace(req.Platform)); value != "" {
 			platform = value
@@ -33,231 +79,31 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		}
 	}
 	if platform != "shein" {
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedSubmitPlatform, platform)
+		return "", "", fmt.Errorf("%w: %s", ErrUnsupportedSubmitPlatform, platform)
 	}
-	if action != "publish" && action != "save_draft" {
-		return nil, fmt.Errorf("unsupported submit action: %s", action)
+	if !isSupportedSubmitAction(action) {
+		return "", "", unsupportedSubmitActionError(action)
 	}
+	return platform, action, nil
+}
 
-	startedAt := time.Now()
-	requestID := normalizedSubmitIdempotencyKey(req)
-	if s.shouldStartSheinPublishWorkflow(platform, action) && requestID == "" {
-		requestID = derivedSheinSubmitRequestID(taskID, action, startedAt)
-	}
-	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":" + action)
-	defer unlockSubmit()
-	if s.shouldStartSheinPublishWorkflow(platform, action) {
-		task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
-		if errors.Is(err, errSheinSubmitReplayExisting) {
-			return buildListingKitPreview(task, "shein")
-		}
-		if errors.Is(err, errSheinSubmitRecoverRemote) {
-			return s.recoverSheinSubmitRemote(ctx, task, action)
-		}
-		if errors.Is(err, errSheinSubmitMissingPackage) {
-			return nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err := s.sheinPublishWorkflowClient.StartSheinPublish(ctx, SheinPublishWorkflowStartInput{
-			TaskID:         strings.TrimSpace(taskID),
-			Platform:       platform,
-			Action:         action,
-			RequestID:      requestID,
-			ConfirmedFinal: req != nil && req.ConfirmedFinal,
-			RequestedAt:    startedAt,
-		}); err != nil {
-			if shouldReplayStartedTemporalSubmit(err, requestID) {
-				return buildListingKitPreview(task, "shein")
-			}
-			failErr := s.recordSheinSubmissionFailureForState(
-				ctx,
-				taskID,
-				task.Result,
-				task.Result.Shein,
-				action,
-				requestID,
-				sheinpub.SubmissionPhaseValidate,
-				err,
-			)
-			clearErr := s.clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, action, requestID, err)
-			if failErr != nil {
-				if clearErr != nil {
-					return nil, errors.Join(failErr, clearErr)
-				}
-				return nil, failErr
-			}
-			if clearErr != nil {
-				return nil, clearErr
-			}
-			return nil, err
-		}
-		return s.GetTaskPreview(ctx, taskID, "shein")
-	}
-
+func (s *service) acquireSheinSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
 	task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
 	if errors.Is(err, errSheinSubmitReplayExisting) {
-		return buildListingKitPreview(task, "shein")
+		preview, previewErr := buildListingKitPreview(task, "shein")
+		return nil, preview, previewErr
 	}
 	if errors.Is(err, errSheinSubmitRecoverRemote) {
-		return s.recoverSheinSubmitRemote(ctx, task, action)
+		preview, previewErr := s.recoverSheinSubmitRemote(ctx, task, action)
+		return nil, preview, previewErr
 	}
 	if errors.Is(err, errSheinSubmitMissingPackage) {
-		return nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
+		return nil, nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	pkg := task.Result.Shein
-	s.normalizeSheinSubmitPackage(task, pkg, req, action)
-
-	readiness := buildSheinSubmitReadinessForAction(pkg, action)
-	if readiness == nil || !readiness.Ready {
-		err := fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness))
-		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
-			return nil, saveErr
-		}
-		return nil, err
-	}
-
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
-	if err != nil {
-		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
-			return nil, saveErr
-		}
-		return nil, err
-	}
-
-	if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhasePrepareProduct); err != nil {
-		return nil, err
-	}
-	submitProduct, err := s.prepareSheinSubmitProduct(ctx, task, pkg, action)
-	if err != nil {
-		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
-			return nil, saveErr
-		}
-		return nil, err
-	}
-	dumpSheinSubmitPayloadForDebug(taskID, action, requestID, "prepared", submitProduct)
-	setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
-	if sheinProductPendingImageUploadCount(submitProduct) > 0 {
-		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseUploadImages); err != nil {
-			return nil, err
-		}
-		if err := s.uploadSheinSubmitImages(task, pkg, submitProduct); err != nil {
-			if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
-				return nil, saveErr
-			}
-			return nil, err
-		}
-		prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
-		dumpSheinSubmitPayloadForDebug(taskID, action, requestID, "uploaded", submitProduct)
-	}
-
-	if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhasePreValidate); err != nil {
-		return nil, err
-	}
-	if err := preValidateSheinSubmitProduct(submitProduct); err != nil {
-		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
-			return nil, saveErr
-		}
-		return nil, err
-	}
-
-	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
-	setSheinSubmitSupplierCode(pkg, action, requestID, supplierCode)
-	setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
-	if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
-		return nil, err
-	}
-	response, responseErr := executeSheinSubmitRemote(productAPI, action, submitProduct)
-	if responseErr == nil {
-		responseErr = buildSheinSubmitResponseError(action, response)
-	}
-	if retryResponse, retryErr, retried := s.retrySheinSensitiveWordSubmit(ctx, taskID, pkg, action, requestID, productAPI, submitProduct, response, responseErr); retried {
-		response = retryResponse
-		responseErr = retryErr
-		setSheinSubmitSnapshot(pkg, action, requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
-	}
-
-	if responseErr == nil {
-		setSheinSubmitRemoteResponse(pkg, action, requestID, supplierCode, response)
-		task.Result.UpdatedAt = time.Now()
-		if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
-			return nil, err
-		}
-		if err := s.persistSheinSubmitPhase(ctx, taskID, task.Result, pkg, action, requestID, sheinpub.SubmissionPhasePersistResult); err != nil {
-			return nil, err
-		}
-	}
-	record := completeSheinSubmitAttempt(pkg, action, requestID, response, responseErr, time.Now())
-	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, response, responseErr, startedAt))
-	if responseErr == nil {
-		s.rememberSheinSubmittedResolution(task, action)
-	}
-	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, action); err != nil {
-		return nil, err
-	}
-	if responseErr != nil {
-		return nil, responseErr
-	}
-	return buildListingKitPreview(task, "shein")
-}
-
-func (s *service) persistSuccessfulSheinSubmission(ctx context.Context, taskID string, task *Task, action string) error {
-	if task == nil || task.Result == nil {
-		return nil
-	}
-	if success := sheinSubmissionSucceeded(action, task.Result.Shein); success {
-		applySuccessfulSheinSubmissionState(task)
-		return s.repo.MarkCompleted(ctx, taskID, task.Result)
-	}
-	task.Result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, task.Result)
-}
-
-func sheinSubmissionSucceeded(action string, pkg *SheinPackage) bool {
-	if pkg == nil || pkg.Submission == nil {
-		return false
-	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
-	return record != nil && record.Status == sheinpub.SubmissionStatusSuccess
-}
-
-func applySuccessfulSheinSubmissionState(task *Task) {
-	if task == nil {
-		return
-	}
-	task.Status = TaskStatusCompleted
-	task.Error = ""
-	if task.Result == nil {
-		return
-	}
-	task.Result.Status = string(TaskStatusCompleted)
-	task.Result.ReviewReasons = nil
-	clearResolvedSheinReviewState(task.Result)
-	task.Result.UpdatedAt = time.Now()
-}
-
-func clearResolvedSheinReviewState(result *ListingKitResult) {
-	if result == nil {
-		return
-	}
-	if len(result.WorkflowIssues) > 0 {
-		filtered := result.WorkflowIssues[:0]
-		for _, issue := range result.WorkflowIssues {
-			if issue.Stage == "shein_review" {
-				continue
-			}
-			filtered = append(filtered, issue)
-		}
-		result.WorkflowIssues = filtered
-	}
-	if result.Summary != nil {
-		result.Summary.NeedsReview = false
-	}
-	newWorkflowRecorder(result).FinalizeSummary()
+	return task, nil, nil
 }
 
 func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {
@@ -471,8 +317,16 @@ func executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string,
 		raw, _, err := productAPI.PublishProduct(submitProduct)
 		return sheinpub.BuildSubmissionResponseSummary(raw), err
 	default:
-		return nil, fmt.Errorf("unsupported submit action: %s", action)
+		return nil, unsupportedSubmitActionError(action)
 	}
+}
+
+func isSupportedSubmitAction(action string) bool {
+	return action == "publish" || action == "save_draft"
+}
+
+func unsupportedSubmitActionError(action string) error {
+	return fmt.Errorf("unsupported submit action: %s", action)
 }
 
 func sheinSubmitSupplierCode(product *sheinproduct.Product, pkg *SheinPackage) string {
@@ -500,42 +354,4 @@ func sheinSubmitSupplierCode(product *sheinproduct.Product, pkg *SheinPackage) s
 		return strings.TrimSpace(product.SPUName)
 	}
 	return ""
-}
-
-func (s *service) persistSheinSubmitPhase(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestID, phase string) error {
-	advanceSheinSubmitPhase(pkg, action, requestID, phase)
-	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, phase, sheinpub.SubmissionStatusRunning, requestID, time.Now(), "", nil))
-	if result == nil {
-		return nil
-	}
-	result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, result)
-}
-
-func (s *service) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
-	return s.recordSheinSubmissionFailureForState(ctx, taskID, result, pkg, action, "", "", submitErr)
-}
-
-func (s *service) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {
-	requestID := strings.TrimSpace(requestedID)
-	phase = strings.TrimSpace(phase)
-	if phase == "" {
-		phase = sheinpub.SubmissionPhaseValidate
-	}
-	if pkg != nil && pkg.Submission != nil {
-		if requestID == "" {
-			requestID = pkg.Submission.CurrentRequestID
-		}
-		if phase == sheinpub.SubmissionPhaseValidate && pkg.Submission.CurrentPhase != "" {
-			phase = pkg.Submission.CurrentPhase
-		}
-	}
-	record := failSheinSubmitAttempt(pkg, action, requestID, phase, submitErr, time.Now())
-	startedAt := record.SubmittedAt
-	if !record.StartedAt.IsZero() {
-		startedAt = record.StartedAt
-	}
-	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, nil, submitErr, startedAt))
-	result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, result)
 }

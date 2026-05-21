@@ -47,13 +47,19 @@ func buildTaskListItem(task *Task) TaskListItem {
 		return TaskListItem{}
 	}
 	item := TaskListItem{
-		TaskID:     task.ID,
-		TenantID:   task.TenantID,
-		Status:     task.Status,
-		Error:      task.Error,
-		CreatedAt:  task.CreatedAt,
-		UpdatedAt:  task.UpdatedAt,
-		ImageCount: 0,
+		TaskIdentityFields: TaskIdentityFields{
+			TaskID:   task.ID,
+			TenantID: task.TenantID,
+		},
+		TaskListLifecycleFields: TaskListLifecycleFields{
+			Status:    task.Status,
+			Error:     task.Error,
+			CreatedAt: task.CreatedAt,
+			UpdatedAt: task.UpdatedAt,
+		},
+		TaskListDisplayFields: TaskListDisplayFields{
+			ImageCount: 0,
+		},
 	}
 	applyTaskListRequestFields(&item, task)
 	applyTaskListStoreSnapshot(&item, task)
@@ -136,18 +142,11 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 			item.SheinStoreSite = site
 		}
 	}
-	item.SheinWorkflowStatus = deriveSheinWorkflowStatus(pkg)
+	applySheinSubmissionStatusFields(&item.SheinSubmissionStatusFields, pkg)
 	item.SheinBlockingKeys = sheinBlockingKeys(pkg)
 	item.SheinWarningKeys = sheinWarningKeys(pkg)
 	item.SheinStatusOverview = buildSheinTaskStatusOverview(pkg)
 	item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
-	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
-		item.SheinLatestSubmissionStatus = latest.Status
-		item.SheinLatestSubmissionError = latest.ErrorMessage
-	} else if pkg.Submission != nil {
-		item.SheinLatestSubmissionStatus = pkg.Submission.LastStatus
-		item.SheinLatestSubmissionError = pkg.Submission.LastError
-	}
-	applySheinSubmissionRemoteSummary(item, pkg)
+	applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, pkg)
 }

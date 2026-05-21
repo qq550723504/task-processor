@@ -1658,6 +1658,52 @@ func TestSubmitTaskPersistsSubmitRemotePhaseBeforePublishCall(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskPersistsDirectSubmitPhasesInOrder(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{
+		Platform:       "shein",
+		Action:         "publish",
+		IdempotencyKey: "phase-order-123",
+	}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	assertSubmissionPhasesContainOrderedSubsequence(
+		t,
+		repo.savedSubmissionPhases,
+		[]string{
+			sheinpub.SubmissionPhasePrepareProduct,
+			sheinpub.SubmissionPhasePreValidate,
+			sheinpub.SubmissionPhaseSubmitRemote,
+			sheinpub.SubmissionPhasePersistResult,
+		},
+	)
+}
+
 func TestSubmitTaskSerializesConcurrentSameIdempotencyKey(t *testing.T) {
 	t.Parallel()
 
@@ -2036,4 +2082,18 @@ func containsString(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func assertSubmissionPhasesContainOrderedSubsequence(t *testing.T, savedPhases []string, want []string) {
+	t.Helper()
+
+	cursor := 0
+	for _, phase := range savedPhases {
+		if cursor < len(want) && phase == want[cursor] {
+			cursor++
+		}
+	}
+	if cursor != len(want) {
+		t.Fatalf("saved submission phases = %+v, want ordered subsequence %+v", savedPhases, want)
+	}
 }

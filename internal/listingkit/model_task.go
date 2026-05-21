@@ -25,18 +25,11 @@ type Task struct {
 }
 
 type TaskResult struct {
-	TaskID        string            `json:"task_id"`
-	TenantID      string            `json:"tenant_id,omitempty"`
-	Status        TaskStatus        `json:"status"`
-	SheinWorkflowStatus string      `json:"shein_workflow_status,omitempty"`
-	SheinLatestSubmissionStatus string `json:"shein_latest_submission_status,omitempty"`
-	SheinLatestSubmissionError string `json:"shein_latest_submission_error,omitempty"`
-	SheinSubmissionRemoteStatus string `json:"shein_submission_remote_status,omitempty"`
+	TaskIdentityFields
+	TaskResultLifecycleFields
+	SheinSubmissionStatusFields
 	Result        *ListingKitResult `json:"result,omitempty"`
-	Error         string            `json:"error,omitempty"`
 	ReviewReasons []string          `json:"review_reasons,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	CompletedAt   *time.Time        `json:"completed_at,omitempty"`
 }
 
 type TaskListQuery struct {
@@ -53,39 +46,74 @@ type TaskListQuery struct {
 }
 
 type TaskListItem struct {
-	TaskID                         string                         `json:"task_id"`
-	TenantID                       string                         `json:"tenant_id,omitempty"`
-	Status                         TaskStatus                     `json:"status"`
-	Platforms                      []string                       `json:"platforms,omitempty"`
-	Title                          string                         `json:"title,omitempty"`
-	ImageCount                     int                            `json:"image_count"`
-	ProductName                    string                         `json:"product_name,omitempty"`
-	VariantLabel                   string                         `json:"variant_label,omitempty"`
-	SDSSyncStatus                  string                         `json:"sds_sync_status,omitempty"`
-	SheinWorkflowStatus            string                         `json:"shein_workflow_status,omitempty"`
-	SheinBlockingKeys              []string                       `json:"shein_blocking_keys,omitempty"`
-	SheinWarningKeys               []string                       `json:"shein_warning_keys,omitempty"`
-	SheinWorkQueue                 string                         `json:"shein_work_queue,omitempty"`
-	SheinActionQueue               string                         `json:"shein_action_queue,omitempty"`
-	SheinStoreID                   int64                          `json:"shein_store_id,omitempty"`
-	SheinStoreSite                 string                         `json:"shein_store_site,omitempty"`
-	SheinStoreProfileID            int64                          `json:"shein_store_profile_id,omitempty"`
-	SheinStoreResolvedAt           *time.Time                     `json:"shein_store_resolved_at,omitempty"`
-	SheinStoreStrategy             string                         `json:"shein_store_strategy,omitempty"`
-	SheinStoreReason               string                         `json:"shein_store_reason,omitempty"`
-	SheinStoreMatchedRuleKinds     []string                       `json:"shein_store_matched_rule_kinds,omitempty"`
-	SheinStoreManualOverride       bool                           `json:"shein_store_manual_override,omitempty"`
-	SheinStoreFallback             bool                           `json:"shein_store_fallback,omitempty"`
-	SheinStatusOverview            *sheinworkspace.StatusOverview `json:"shein_status_overview,omitempty"`
-	SheinLatestSubmissionStatus    string                         `json:"shein_latest_submission_status,omitempty"`
-	SheinLatestSubmissionError     string                         `json:"shein_latest_submission_error,omitempty"`
-	SheinSubmissionRemoteStatus    string                         `json:"shein_submission_remote_status,omitempty"`
-	SheinSubmissionRemoteCheckedAt *time.Time                     `json:"shein_submission_remote_checked_at,omitempty"`
-	SheinSubmissionRemoteRecordID  string                         `json:"shein_submission_remote_record_id,omitempty"`
-	Error                          string                         `json:"error,omitempty"`
-	CreatedAt                      time.Time                      `json:"created_at"`
-	UpdatedAt                      time.Time                      `json:"updated_at"`
-	CompletedAt                    *time.Time                     `json:"completed_at,omitempty"`
+	TaskIdentityFields
+	TaskListLifecycleFields
+	TaskListDisplayFields
+	SheinTaskListWorkflowFields
+	SheinTaskListStoreFields
+	SheinTaskListSubmissionFields
+}
+
+type TaskIdentityFields struct {
+	TaskID   string `json:"task_id"`
+	TenantID string `json:"tenant_id,omitempty"`
+}
+
+type TaskResultLifecycleFields struct {
+	Status      TaskStatus `json:"status"`
+	Error       string     `json:"error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+type TaskListLifecycleFields struct {
+	Status      TaskStatus `json:"status"`
+	Error       string     `json:"error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+type TaskListDisplayFields struct {
+	Platforms     []string `json:"platforms,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	ImageCount    int      `json:"image_count"`
+	ProductName   string   `json:"product_name,omitempty"`
+	VariantLabel  string   `json:"variant_label,omitempty"`
+	SDSSyncStatus string   `json:"sds_sync_status,omitempty"`
+}
+
+type SheinSubmissionStatusFields struct {
+	SheinWorkflowStatus         string `json:"shein_workflow_status,omitempty"`
+	SheinLatestSubmissionStatus string `json:"shein_latest_submission_status,omitempty"`
+	SheinLatestSubmissionError  string `json:"shein_latest_submission_error,omitempty"`
+	SheinSubmissionRemoteStatus string `json:"shein_submission_remote_status,omitempty"`
+}
+
+type SheinTaskListWorkflowFields struct {
+	SheinSubmissionStatusFields
+	SheinBlockingKeys   []string                       `json:"shein_blocking_keys,omitempty"`
+	SheinWarningKeys    []string                       `json:"shein_warning_keys,omitempty"`
+	SheinWorkQueue      string                         `json:"shein_work_queue,omitempty"`
+	SheinActionQueue    string                         `json:"shein_action_queue,omitempty"`
+	SheinStatusOverview *sheinworkspace.StatusOverview `json:"shein_status_overview,omitempty"`
+}
+
+type SheinTaskListStoreFields struct {
+	SheinStoreID               int64      `json:"shein_store_id,omitempty"`
+	SheinStoreSite             string     `json:"shein_store_site,omitempty"`
+	SheinStoreProfileID        int64      `json:"shein_store_profile_id,omitempty"`
+	SheinStoreResolvedAt       *time.Time `json:"shein_store_resolved_at,omitempty"`
+	SheinStoreStrategy         string     `json:"shein_store_strategy,omitempty"`
+	SheinStoreReason           string     `json:"shein_store_reason,omitempty"`
+	SheinStoreMatchedRuleKinds []string   `json:"shein_store_matched_rule_kinds,omitempty"`
+	SheinStoreManualOverride   bool       `json:"shein_store_manual_override,omitempty"`
+	SheinStoreFallback         bool       `json:"shein_store_fallback,omitempty"`
+}
+
+type SheinTaskListSubmissionFields struct {
+	SheinSubmissionRemoteCheckedAt *time.Time `json:"shein_submission_remote_checked_at,omitempty"`
+	SheinSubmissionRemoteRecordID  string     `json:"shein_submission_remote_record_id,omitempty"`
 }
 
 type SheinStoreResolutionSnapshot struct {
