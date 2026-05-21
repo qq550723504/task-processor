@@ -372,6 +372,9 @@ export function mapStudioSessionDetailToDraft(
       })) ?? [],
     selectedIds,
     createdTasks: detail.session.created_tasks ?? [],
+    generationError: detail.session.generation_error ?? "",
+    generationJobId: detail.session.generation_job_id ?? "",
+    sessionStatus: detail.session.status ?? "",
     updatedAt: detail.session.updated_at ?? new Date().toISOString(),
   });
 }

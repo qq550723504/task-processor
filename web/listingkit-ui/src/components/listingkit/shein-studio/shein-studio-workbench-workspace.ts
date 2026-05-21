@@ -7,6 +7,7 @@ import {
   mergeSheinStudioDraftState,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
+import { resumeSheinStudioDesignGeneration } from "@/lib/api/shein-studio";
 import {
   consumeSheinStudioGalleryHandoff,
   galleryHandoffToDesign,
@@ -63,6 +64,7 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveDesignCount = 0;
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
+        let resumableGenerationJobId = "";
 
         if (draft || !hasLocalWorkflowStateRef.current) {
           const galleryHandoff = activeSelectionRef.current
@@ -102,6 +104,12 @@ export function useSheinStudioWorkspaceLoader({
           });
           nextEffectiveDesignCount = draftState.designCount;
           nextEffectiveCreatedTaskCount = draftState.createdTaskCount;
+          resumableGenerationJobId =
+            draft?.sessionStatus === "generating" &&
+            draftState.designCount === 0 &&
+            draftState.createdTaskCount === 0
+              ? draft?.generationJobId ?? ""
+              : "";
           if (draftState.importedGalleryDesign) {
             hasLocalWorkflowStateRef.current = true;
             importedGalleryDesign = true;
@@ -123,6 +131,59 @@ export function useSheinStudioWorkspaceLoader({
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");
         workbench.setField("draftWarning", "");
+
+        if (resumableGenerationJobId) {
+          workbench.setField("isGenerating", true);
+          workbench.setField("generationError", "");
+          workbench.setField(
+            "generationWarning",
+            "已恢复之前发起的生成任务，正在继续等待结果。",
+          );
+          try {
+            const response =
+              await resumeSheinStudioDesignGeneration(resumableGenerationJobId);
+            if (cancelled) {
+              return;
+            }
+            if (!response.images.length) {
+              throw new Error(
+                "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
+              );
+            }
+            const nextSelectedIds = response.images.map((item) => item.id);
+            hasLocalWorkflowStateRef.current = true;
+            workbench.setField("designs", response.images);
+            workbench.setField("selectedIds", nextSelectedIds);
+            workbench.setField("createdTasks", []);
+            workbench.setField(
+              "galleryRatioCheck",
+              evaluateImportedGalleryDesigns(
+                response.images,
+                activeSelectionRef.current,
+              ),
+            );
+            workbench.setField(
+              "generationWarning",
+              response.warnings?.length
+                ? `已恢复之前的生成任务。${response.warnings.join(" ")}`
+                : "",
+            );
+            setEffectiveStep("review");
+          } catch (error) {
+            if (cancelled) {
+              return;
+            }
+            workbench.setField(
+              "generationError",
+              error instanceof Error ? error.message : String(error),
+            );
+            workbench.setField("generationWarning", "");
+          } finally {
+            if (!cancelled) {
+              workbench.setField("isGenerating", false);
+            }
+          }
+        }
       } finally {
         if (!cancelled) {
           workbench.setField("isLoadingWorkspace", false);

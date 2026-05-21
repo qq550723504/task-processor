@@ -6,6 +6,7 @@ import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handof
 
 const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
+const resumeSheinStudioDesignGeneration = vi.fn();
 const createSheinReviewTasks = vi.fn();
 const ensureSheinStudioSession = vi.fn();
 const hydrateSDSVariantSelection = vi.fn();
@@ -99,6 +100,8 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
 
 vi.mock("@/lib/api/shein-studio", () => ({
   generateSheinStudioDesigns: (...args: unknown[]) => generateSheinStudioDesigns(...args),
+  resumeSheinStudioDesignGeneration: (...args: unknown[]) =>
+    resumeSheinStudioDesignGeneration(...args),
 }));
 
 vi.mock("@/lib/api/shein-studio-sessions", () => ({
@@ -157,6 +160,7 @@ describe("SheinStudioWorkbench", () => {
     lastGenerationPanelProps = null;
     useQuery.mockReturnValue({ data: undefined, error: null });
     generateSheinStudioDesigns.mockReset();
+    resumeSheinStudioDesignGeneration.mockReset();
     createSheinReviewTasks.mockReset();
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     hydrateSDSVariantSelection.mockResolvedValue(selection);
@@ -252,6 +256,79 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
     expect(screen.queryByText("ListingKit API request failed: 408")).not.toBeInTheDocument();
+  });
+
+  it("guards against leaving the page while style generation is running", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    generateSheinStudioDesigns.mockImplementation(
+      () =>
+        new Promise(() => {
+          return undefined;
+        }),
+    );
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    fireEvent.change(screen.getByLabelText("prompt"), {
+      target: { value: "retro cherries" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("正在生成款式图")).toBeInTheDocument(),
+    );
+
+    const anchor = document.createElement("a");
+    anchor.href = "https://example.test/listing-kits";
+    document.body.appendChild(anchor);
+
+    const cancelled = !anchor.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
+    );
+    expect(cancelled).toBe(true);
+
+    anchor.remove();
+  });
+
+  it("resumes an in-flight generation job after returning to the page", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationError: "",
+      generationJobId: "job-123",
+      sessionStatus: "generating",
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+    resumeSheinStudioDesignGeneration.mockResolvedValue({
+      warnings: [],
+      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(resumeSheinStudioDesignGeneration).toHaveBeenCalledWith("job-123"),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
   });
 
   it("shows backend generation warnings when only part of the requested styles succeed", async () => {

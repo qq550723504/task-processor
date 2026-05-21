@@ -97,6 +97,9 @@ export type SheinStudioDraft = Omit<
   SheinStudioSavedBatch,
   "id" | "name" | "updatedAt"
 > & {
+  generationError?: string;
+  generationJobId?: string;
+  sessionStatus?: string;
   updatedAt: string;
 };
 

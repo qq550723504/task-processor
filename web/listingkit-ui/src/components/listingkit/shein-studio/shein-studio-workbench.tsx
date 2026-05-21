@@ -10,6 +10,7 @@ import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   useHydratedSDSVariantSelection,
+  useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
   useSheinStudioStepNavigation,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
@@ -363,6 +364,11 @@ export function SheinStudioWorkbench({
     isCreatingTasks,
     isGenerating,
     regeneratingId,
+  });
+  useSheinStudioPendingNavigationGuard({
+    enabled: Boolean(isGenerating || isCreatingTasks || regeneratingId),
+    message:
+      "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
   });
 
   return (

@@ -249,6 +249,90 @@ export async function apiAsyncRequest<T>(
   );
 }
 
+export async function apiResumeAsyncJob<T>(
+  jobId: string,
+  { timeoutMs = 3600000 }: Pick<RequestOptions, "timeoutMs"> = {},
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let lastPollError: ApiError | Error | undefined;
+
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    try {
+      const response = await fetchWithRetry(
+        buildApiUrl(`/studio/async-jobs/${encodeURIComponent(jobId)}`),
+        {
+          headers: new Headers({
+            Accept: "application/json",
+          }),
+          cache: "no-store",
+        },
+        { retries: 1, retryDelayMs: 1200 },
+      );
+      let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
+      try {
+        payload = await parseJsonResponse<AsyncJobResponse<T> & {
+          message?: string;
+        }>(response);
+      } catch (error) {
+        if (error instanceof ResponseJsonParseError) {
+          lastPollError = new ApiError(
+            "ListingKit async job poll returned invalid JSON",
+            response.status,
+            { message: error.message },
+          );
+          continue;
+        }
+        lastPollError = error instanceof Error ? error : new Error(String(error));
+        continue;
+      }
+
+      if (!payload) {
+        lastPollError = buildEmptyJsonError(
+          response.status,
+          `ListingKit async job poll returned empty response: ${response.status}`,
+        );
+        continue;
+      }
+      if (!response.ok) {
+        lastPollError = new ApiError(
+          payload.message ?? `ListingKit async job poll failed: ${response.status}`,
+          response.status,
+          payload,
+        );
+        continue;
+      }
+      if (payload.status === "succeeded") {
+        return payload.result as T;
+      }
+      if (payload.status === "failed") {
+        throw new ApiError(
+          payload.error ?? "ListingKit async job failed",
+          payload.upstream_status ?? 500,
+          payload,
+        );
+      }
+      lastPollError = undefined;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      lastPollError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  if (lastPollError instanceof ApiError) {
+    throw lastPollError;
+  }
+  if (lastPollError) {
+    throw lastPollError;
+  }
+  throw new ApiError(
+    `ListingKit async job timed out after ${timeoutMs}ms`,
+    408,
+  );
+}
+
 export async function apiFormRequest<T>(
   path: string,
   { method = "POST", formData }: FormRequestOptions,

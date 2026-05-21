@@ -4,7 +4,7 @@ import type {
   SheinStudioGenerateResponse,
   SheinStudioProductImagePrompt,
 } from "@/lib/types/shein-studio";
-import { apiAsyncRequest } from "@/lib/api/client";
+import { apiAsyncRequest, apiResumeAsyncJob } from "@/lib/api/client";
 
 export async function generateSheinStudioDesigns(
   body: SheinStudioGenerateRequest,
@@ -75,6 +75,61 @@ export async function generateSheinStudioDesigns(
       variationIntensity:
         image.variationIntensity ?? image.variation_intensity ?? body.variationIntensity,
     })),
+  } satisfies SheinStudioGenerateResponse;
+}
+
+export async function resumeSheinStudioDesignGeneration(jobId: string) {
+  const payload = await apiResumeAsyncJob<{
+    prompt: string;
+    printable_width?: number;
+    printable_height?: number;
+    image_model?: string;
+    transparent_background?: boolean;
+    warnings?: string[];
+    images?: Array<{
+      id: string;
+      image_url?: string;
+      imageUrl?: string;
+      prompt?: string;
+      revised_prompt?: string;
+      revisedPrompt?: string;
+      image_model?: string;
+      imageModel?: string;
+      transparent_background?: boolean;
+      transparentBackground?: boolean;
+      variation_intensity?: SheinStudioGenerateRequest["variationIntensity"];
+      variationIntensity?: SheinStudioGenerateRequest["variationIntensity"];
+      role?: string;
+      role_label?: string;
+      roleLabel?: string;
+    }>;
+  }>(jobId, {
+    timeoutMs: 3600000,
+  });
+
+  return {
+    prompt: payload.prompt,
+    printableWidth: payload.printable_width,
+    printableHeight: payload.printable_height,
+    imageModel: payload.image_model,
+    transparentBackground: payload.transparent_background,
+    warnings: payload.warnings ?? [],
+    images: (payload.images ?? []).map((image) => ({
+      id: image.id,
+      imageUrl: image.imageUrl ?? image.image_url,
+      prompt: image.prompt ?? payload.prompt,
+      revisedPrompt: image.revisedPrompt ?? image.revised_prompt,
+      imageModel: image.imageModel ?? image.image_model ?? payload.image_model,
+      transparentBackground:
+        image.transparentBackground ??
+        image.transparent_background ??
+        payload.transparent_background ??
+        false,
+      variationIntensity:
+        image.variationIntensity ?? image.variation_intensity,
+      role: image.role,
+      roleLabel: image.roleLabel ?? image.role_label,
+    })) satisfies SheinStudioGeneratedDesign[],
   } satisfies SheinStudioGenerateResponse;
 }
 
