@@ -13,7 +13,7 @@ export function FinalReviewHeader({ confirmed }: { confirmed: boolean }) {
           确认即将提交的资料
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-          发布前核对价格、SKU、属性和最终图片。保存最终草稿后才能从这里提交。
+          发布前核对价格、SKU、属性和最终图片。提交时会自动保存当前修改。
         </p>
       </div>
       <span
@@ -134,7 +134,6 @@ export function FinalReviewSubmitActions({
   isPublished,
   isSubmitting,
   manualOverrides,
-  onSaveFinalDraft,
   onStartPublishConfirm,
   onSubmit,
   ready,
@@ -146,13 +145,15 @@ export function FinalReviewSubmitActions({
   isPublished?: boolean;
   isSubmitting?: boolean;
   manualOverrides: Record<string, number>;
-  onSaveFinalDraft?: (payload: {
-    confirmed?: boolean;
-    submit_mode?: FinalReviewSubmitAction;
-    manual_price_overrides?: Record<string, number>;
-  }) => void;
   onStartPublishConfirm: () => void;
-  onSubmit?: (action: FinalReviewSubmitAction) => void;
+  onSubmit?: (
+    action: FinalReviewSubmitAction,
+    payload?: {
+      confirmed?: boolean;
+      submit_mode?: FinalReviewSubmitAction;
+      manual_price_overrides?: Record<string, number>;
+    },
+  ) => void;
   ready: boolean;
   submitAction?: FinalReviewSubmitAction | null;
   submitHint: string;
@@ -167,21 +168,14 @@ export function FinalReviewSubmitActions({
       </div>
       <Button
         variant="secondary"
-        disabled={isSaving}
+        disabled={isSaving || !confirmed || !ready || isSubmitting}
         onClick={() =>
-          onSaveFinalDraft?.({
+          onSubmit?.("save_draft", {
             confirmed: true,
             submit_mode: "save_draft",
             manual_price_overrides: manualOverrides,
           })
         }
-      >
-        确认最终草稿
-      </Button>
-      <Button
-        variant="secondary"
-        disabled={!confirmed || !ready || isSubmitting}
-        onClick={() => onSubmit?.("save_draft")}
       >
         {submitAction === "save_draft" ? "保存中..." : "保存到 SHEIN 草稿箱"}
       </Button>

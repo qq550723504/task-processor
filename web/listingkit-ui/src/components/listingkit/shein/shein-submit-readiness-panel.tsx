@@ -61,6 +61,7 @@ export function SheinSubmitReadinessPanel({
   onClearResolutionCache,
   clearingResolutionCacheKind,
   compact = false,
+  showSubmitActions = true,
 }: {
   readiness?: SheinSubmitReadiness | null;
   checklist?: SheinSubmitChecklist | null;
@@ -83,6 +84,7 @@ export function SheinSubmitReadinessPanel({
     | null;
   clearingResolutionCacheKind?: string | null;
   compact?: boolean;
+  showSubmitActions?: boolean;
 }) {
   if (!readiness && !checklist && !workspaceOverview) {
     return null;
@@ -189,7 +191,7 @@ export function SheinSubmitReadinessPanel({
           />
         ) : null}
 
-        {submitReady ? (
+        {showSubmitActions && submitReady ? (
           <SubmitActionCard
             canRunSubmitActions={canRunSubmitActions}
             isPublished={publishSucceeded}
@@ -199,7 +201,7 @@ export function SheinSubmitReadinessPanel({
             onSaveDraft={onSaveDraft}
             onSubmit={onSubmit}
           />
-        ) : workspaceOverview?.primary_action ? (
+        ) : showSubmitActions && workspaceOverview?.primary_action ? (
           <PrimaryActionCard
             canRunPrimary={canRunPrimary}
             onRunPrimaryAction={onRunPrimaryAction}

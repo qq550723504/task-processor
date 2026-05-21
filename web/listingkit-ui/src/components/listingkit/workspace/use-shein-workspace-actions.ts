@@ -41,6 +41,7 @@ type SubmitTaskMutation = MutationLike & {
 };
 
 type UpdateSheinFinalDraftMutation = MutationLike & {
+  mutateAsync: (payload: UpdateSheinFinalDraftRequest) => Promise<unknown>;
   mutate: (
     payload: UpdateSheinFinalDraftRequest,
     options?: {
@@ -177,7 +178,10 @@ export function useSheinWorkspaceActions({
     });
   };
 
-  const handleSubmitShein = (actionType: "publish" | "save_draft" = "publish") => {
+  const handleSubmitShein = async (
+    actionType: "publish" | "save_draft" = "publish",
+    finalDraftPayload?: UpdateSheinFinalDraftRequest,
+  ) => {
     const confirmed = window.confirm(
       actionType === "publish"
         ? "确认要直接发布到 SHEIN 吗？系统会先上传最终图片，然后提交商品资料。"
@@ -185,6 +189,16 @@ export function useSheinWorkspaceActions({
     );
     if (!confirmed) {
       return;
+    }
+    if (finalDraftPayload) {
+      setSheinFinalDraftMessage(null);
+      setSheinFinalDraftError(null);
+      try {
+        await updateSheinFinalDraft.mutateAsync(finalDraftPayload);
+      } catch (error) {
+        setSheinFinalDraftError(submitErrorMessage(error));
+        return;
+      }
     }
     setSheinSubmitAction(actionType);
     submitTask.mutate(

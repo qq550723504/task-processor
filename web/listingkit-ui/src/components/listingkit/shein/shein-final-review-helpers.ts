@@ -202,10 +202,10 @@ export function buildFinalReviewModel({
     },
   ];
   const submitHint = !ready
-    ? `还差 ${blockingCount} 个阻断项，修复后才能提交。`
-    : !confirmed
-      ? "资料已通过检查，请先确认最终草稿。"
-      : "可以保存到 SHEIN 草稿箱，也可以正式发布。";
+      ? `还差 ${blockingCount} 个阻断项，修复后才能提交。`
+      : !confirmed
+        ? "资料已通过检查，请先确认当前结果无误。"
+        : "可以保存到 SHEIN 草稿箱，也可以正式发布。";
 
   return {
     blockingCount,

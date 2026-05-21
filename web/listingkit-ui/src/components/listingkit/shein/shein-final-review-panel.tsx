@@ -47,12 +47,14 @@ type Props = {
   saveErrorMessage?: string | null;
   canSelectBlockingItem?: (item: SheinReadinessItem) => boolean;
   onSelectBlockingItem?: (item: SheinReadinessItem) => void;
-  onSaveFinalDraft?: (payload: {
-    confirmed?: boolean;
-    submit_mode?: "publish" | "save_draft";
-    manual_price_overrides?: Record<string, number>;
-  }) => void;
-  onSubmit?: (action: "publish" | "save_draft") => void;
+  onSubmit?: (
+    action: "publish" | "save_draft",
+    payload?: {
+      confirmed?: boolean;
+      submit_mode?: "publish" | "save_draft";
+      manual_price_overrides?: Record<string, number>;
+    },
+  ) => void;
 };
 
 export function SheinFinalReviewPanel({
@@ -65,7 +67,6 @@ export function SheinFinalReviewPanel({
   saveErrorMessage,
   canSelectBlockingItem,
   onSelectBlockingItem,
-  onSaveFinalDraft,
   onSubmit,
 }: Props) {
   const [isPublishConfirming, setIsPublishConfirming] = useState(false);
@@ -207,7 +208,7 @@ export function SheinFinalReviewPanel({
           nextStep={
             submitAction === "save_draft"
               ? "先检查图片上传、最终资料和阻断项，再重新保存到 SHEIN 草稿箱。"
-              : "先修复图片、类目、属性或 SKU 阻断项，确认最终草稿后再重新提交。"
+              : "先修复图片、类目、属性或 SKU 阻断项，确认当前结果后再重新提交。"
           }
         />
       ) : null}
@@ -218,10 +219,10 @@ export function SheinFinalReviewPanel({
       ) : null}
       {saveErrorMessage ? (
         <FailureGuidance
-          title="最终草稿保存失败"
+          title="保存当前修改失败"
           detail={saveErrorMessage}
-          impact="当前确认结果还没有写回最终草稿，本次提交仍会沿用上一次成功保存的版本。"
-          nextStep="先检查网络或字段完整性，确认价格、图片和 SKU 后重新保存最终草稿。"
+          impact="当前价格、图片或 SKU 修改还没有写回任务结果，本次提交不会继续执行。"
+          nextStep="先检查网络或字段完整性，确认价格、图片和 SKU 后重新提交。"
         />
       ) : null}
       {isPublishConfirming ? (
@@ -233,7 +234,11 @@ export function SheinFinalReviewPanel({
           onCancel={() => setIsPublishConfirming(false)}
           onConfirm={() => {
             setIsPublishConfirming(false);
-            onSubmit?.("publish");
+            onSubmit?.("publish", {
+              confirmed: true,
+              submit_mode: "publish",
+              manual_price_overrides: manualOverrides,
+            });
           }}
           skuCount={finalReview?.skus?.length ?? 0}
         />
@@ -245,7 +250,6 @@ export function SheinFinalReviewPanel({
         isPublished={publishSucceeded}
         isSubmitting={publishInFlight || isSubmitting}
         manualOverrides={manualOverrides}
-        onSaveFinalDraft={onSaveFinalDraft}
         onStartPublishConfirm={() => setIsPublishConfirming(true)}
         onSubmit={onSubmit}
         ready={ready}

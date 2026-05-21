@@ -114,11 +114,6 @@ export function buildSheinWorkspaceViewProps({
     submitAction: sheinActions.sheinSubmitAction,
     submitErrorMessage: formatSheinSubmitError(submitError, shein),
     canSelectBlockingItem: canSelectSheinReadinessItem,
-    onSaveFinalDraft: (payload) =>
-      sheinActions.handleSaveSheinFinalDraft(
-        payload,
-        "最终草稿已确认。资料就绪后可以保存草稿或发布。",
-      ),
     onSelectBlockingItem,
     onSubmit: sheinActions.handleSubmitShein,
   };
@@ -144,6 +139,7 @@ export function buildSheinWorkspaceViewProps({
   const finalModeReadinessProps: SheinSubmitReadinessPanelProps = {
     ...sharedReadinessProps,
     submitErrorMessage: formatSheinSubmitError(submitError, shein),
+    showSubmitActions: false,
   };
   const reviewModeReadinessProps: SheinSubmitReadinessPanelProps = {
     ...sharedReadinessProps,

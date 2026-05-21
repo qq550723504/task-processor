@@ -127,7 +127,7 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.queryByText("缺尺寸图")).not.toBeInTheDocument();
   });
 
-  it("requires final draft confirmation before publish when ready", () => {
+  it("removes explicit final draft confirmation step", () => {
     render(
       <SheinFinalReviewPanel
         shein={{
@@ -146,9 +146,10 @@ describe("SheinFinalReviewPanel", () => {
       />,
     );
 
-    expect(screen.getByText("资料已通过检查，请先确认最终草稿。")).toBeInTheDocument();
+    expect(screen.getByText("资料已通过检查，请先确认当前结果无误。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "确认最终草稿" })).not.toBeInTheDocument();
   });
 
   it("shows manual fallback attribute confirmation as done when final attributes are empty", () => {
@@ -241,7 +242,43 @@ describe("SheinFinalReviewPanel", () => {
     expect(onSubmit).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "确认发布" }));
-    expect(onSubmit).toHaveBeenCalledWith("publish");
+    expect(onSubmit).toHaveBeenCalledWith("publish", {
+      confirmed: true,
+      submit_mode: "publish",
+      manual_price_overrides: {},
+    });
+  });
+
+  it("submits save draft with auto-saved final draft payload", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            attributes: [{ name: "Material", value: "Cotton" }],
+            sale_attributes: [{ name: "Color", value: "Black" }],
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+          },
+        }}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" }));
+
+    expect(onSubmit).toHaveBeenCalledWith("save_draft", {
+      confirmed: true,
+      submit_mode: "save_draft",
+      manual_price_overrides: {},
+    });
   });
 
   it("disables publish action after publish succeeds", () => {
