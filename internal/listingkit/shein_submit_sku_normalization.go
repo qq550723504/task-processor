@@ -63,11 +63,11 @@ func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, s
 		}
 	}
 
-	if !changed {
-		return false
+	if changed {
+		applySheinStudioSupplierSKURenames(pkg, renames)
 	}
-	applySheinStudioSupplierSKURenames(pkg, renames)
-	return true
+	reconciled := reconcileSheinStudioPricingReferences(pkg)
+	return changed || reconciled
 }
 
 func matchStudioSubmitVariantOption(sds *SDSSyncOptions, draftSKC *SheinSKCRequestDraft, draftSKU *sheinpub.SKUDraft, globalIndex int) (*SDSSyncVariantOption, int) {
@@ -279,6 +279,151 @@ func remapSheinPriceOverrides(input map[string]float64, renameMap map[string][]s
 		}
 	}
 	return output
+}
+
+func reconcileSheinStudioPricingReferences(pkg *sheinpub.Package) bool {
+	if pkg == nil || pkg.RequestDraft == nil {
+		return false
+	}
+	currentSKUs := collectSheinRequestDraftSupplierSKUs(pkg.RequestDraft)
+	if len(currentSKUs) == 0 {
+		return false
+	}
+	currentSKUSet := make(map[string]struct{}, len(currentSKUs))
+	aliasMap := make(map[string][]string, len(currentSKUs))
+	for _, sku := range currentSKUs {
+		currentSKUSet[sku] = struct{}{}
+		aliasKey := sheinStudioPricingSKUAlias(sku)
+		if aliasKey == "" {
+			continue
+		}
+		duplicate := false
+		for _, existing := range aliasMap[aliasKey] {
+			if strings.EqualFold(existing, sku) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			aliasMap[aliasKey] = append(aliasMap[aliasKey], sku)
+		}
+	}
+
+	changed := false
+	if pkg.FinalDraft != nil {
+		remapped, updated := reconcileSheinPriceOverrideAliases(pkg.FinalDraft.ManualPriceOverrides, currentSKUSet, aliasMap)
+		if updated {
+			pkg.FinalDraft.ManualPriceOverrides = remapped
+			changed = true
+		}
+	}
+	if pkg.Pricing != nil {
+		remapped, updated := reconcileSheinPriceOverrideAliases(pkg.Pricing.ManualOverrides, currentSKUSet, aliasMap)
+		if updated {
+			pkg.Pricing.ManualOverrides = remapped
+			changed = true
+		}
+		occurrence := map[string]int{}
+		for index := range pkg.Pricing.SKUPrices {
+			oldSKU := strings.TrimSpace(pkg.Pricing.SKUPrices[index].SupplierSKU)
+			if oldSKU == "" {
+				continue
+			}
+			if _, ok := currentSKUSet[oldSKU]; ok {
+				continue
+			}
+			replacements := aliasMap[sheinStudioPricingSKUAlias(oldSKU)]
+			if len(replacements) == 0 {
+				continue
+			}
+			replaceIndex := occurrence[oldSKU]
+			if replaceIndex >= len(replacements) {
+				replaceIndex = len(replacements) - 1
+			}
+			if !strings.EqualFold(oldSKU, replacements[replaceIndex]) {
+				pkg.Pricing.SKUPrices[index].SupplierSKU = replacements[replaceIndex]
+				changed = true
+			}
+			occurrence[oldSKU] = replaceIndex + 1
+		}
+	}
+	return changed
+}
+
+func collectSheinRequestDraftSupplierSKUs(draft *sheinpub.RequestDraft) []string {
+	if draft == nil {
+		return nil
+	}
+	skus := make([]string, 0)
+	for _, skc := range draft.SKCList {
+		for _, sku := range skc.SKUList {
+			if value := strings.TrimSpace(sku.SupplierSKU); value != "" {
+				skus = append(skus, value)
+			}
+		}
+	}
+	return skus
+}
+
+func reconcileSheinPriceOverrideAliases(
+	input map[string]float64,
+	currentSKUSet map[string]struct{},
+	aliasMap map[string][]string,
+) (map[string]float64, bool) {
+	if len(input) == 0 {
+		return input, false
+	}
+	output := make(map[string]float64, len(input))
+	changed := false
+	for key, value := range input {
+		trimmed := strings.TrimSpace(key)
+		if _, ok := currentSKUSet[trimmed]; ok {
+			output[trimmed] = value
+			continue
+		}
+		replacements := aliasMap[sheinStudioPricingSKUAlias(trimmed)]
+		if len(replacements) == 0 {
+			output[key] = value
+			continue
+		}
+		changed = true
+		for _, replacement := range replacements {
+			output[replacement] = value
+		}
+	}
+	return output, changed
+}
+
+func sheinStudioPricingSKUAlias(value string) string {
+	value = strings.TrimSpace(strings.ToUpper(value))
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "-")
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if looksLikeStudioSubmitRequestToken(part) {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return strings.Join(filtered, "-")
+}
+
+func looksLikeStudioSubmitRequestToken(token string) bool {
+	token = strings.TrimSpace(strings.ToUpper(token))
+	if len(token) < 6 || len(token) > 9 || !strings.HasPrefix(token, "R") {
+		return false
+	}
+	for _, r := range token[1:] {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func itoa(value int) string {
