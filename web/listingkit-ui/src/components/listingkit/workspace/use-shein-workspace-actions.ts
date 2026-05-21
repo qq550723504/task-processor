@@ -182,14 +182,6 @@ export function useSheinWorkspaceActions({
     actionType: "publish" | "save_draft" = "publish",
     finalDraftPayload?: UpdateSheinFinalDraftRequest,
   ) => {
-    const confirmed = window.confirm(
-      actionType === "publish"
-        ? "确认要直接发布到 SHEIN 吗？系统会先上传最终图片，然后提交商品资料。"
-        : "确认要保存到 SHEIN 草稿箱吗？系统会先上传最终图片。",
-    );
-    if (!confirmed) {
-      return;
-    }
     if (finalDraftPayload) {
       setSheinFinalDraftMessage(null);
       setSheinFinalDraftError(null);

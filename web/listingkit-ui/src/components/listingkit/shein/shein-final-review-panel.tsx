@@ -20,7 +20,6 @@ import {
 } from "@/components/listingkit/shein/shein-final-review-sections";
 import {
   FinalReviewHeader,
-  FinalReviewPublishConfirmCard,
   FinalReviewReadinessBanner,
   FinalReviewSubmitActions,
 } from "@/components/listingkit/shein/shein-final-review-action-sections";
@@ -69,7 +68,6 @@ export function SheinFinalReviewPanel({
   onSelectBlockingItem,
   onSubmit,
 }: Props) {
-  const [isPublishConfirming, setIsPublishConfirming] = useState(false);
   const pricing = shein?.pricing;
   const [priceOverrides, setPriceOverrides] = useState<Record<string, string>>(
     () => initialPriceOverrides(pricing),
@@ -225,32 +223,12 @@ export function SheinFinalReviewPanel({
           nextStep="先检查网络或字段完整性，确认价格、图片和 SKU 后重新提交。"
         />
       ) : null}
-      {isPublishConfirming ? (
-        <FinalReviewPublishConfirmCard
-          categoryId={finalReview?.category_id}
-          finalImageCount={finalImages.length}
-          isPublished={publishSucceeded}
-          isSubmitting={isSubmitting}
-          onCancel={() => setIsPublishConfirming(false)}
-          onConfirm={() => {
-            setIsPublishConfirming(false);
-            onSubmit?.("publish", {
-              confirmed: true,
-              submit_mode: "publish",
-              manual_price_overrides: manualOverrides,
-            });
-          }}
-          skuCount={finalReview?.skus?.length ?? 0}
-        />
-      ) : null}
-
       <FinalReviewSubmitActions
         confirmed={confirmed}
         isSaving={isSaving}
         isPublished={publishSucceeded}
         isSubmitting={publishInFlight || isSubmitting}
         manualOverrides={manualOverrides}
-        onStartPublishConfirm={() => setIsPublishConfirming(true)}
         onSubmit={onSubmit}
         ready={ready}
         submitAction={submitAction}

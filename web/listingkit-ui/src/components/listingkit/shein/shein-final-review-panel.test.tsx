@@ -244,7 +244,7 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).not.toBeDisabled();
   });
 
-  it("requires publish confirmation before final submit", async () => {
+  it("submits publish with auto-saved final draft payload", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
@@ -270,13 +270,6 @@ describe("SheinFinalReviewPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "发布到 SHEIN" }));
 
-    expect(screen.getByText("确认发布到 SHEIN")).toBeInTheDocument();
-    expect(
-      screen.getByText("这会把当前已确认资料正式提交到 SHEIN，请先核对类目、图片和 SKU。"),
-    ).toBeInTheDocument();
-    expect(onSubmit).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "确认发布" }));
     expect(onSubmit).toHaveBeenCalledWith("publish", {
       confirmed: true,
       submit_mode: "publish",

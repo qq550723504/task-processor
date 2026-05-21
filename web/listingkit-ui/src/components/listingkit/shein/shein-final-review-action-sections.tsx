@@ -134,7 +134,6 @@ export function FinalReviewSubmitActions({
   isPublished,
   isSubmitting,
   manualOverrides,
-  onStartPublishConfirm,
   onSubmit,
   ready,
   submitAction,
@@ -145,7 +144,6 @@ export function FinalReviewSubmitActions({
   isPublished?: boolean;
   isSubmitting?: boolean;
   manualOverrides: Record<string, number>;
-  onStartPublishConfirm: () => void;
   onSubmit?: (
     action: FinalReviewSubmitAction,
     payload?: {
@@ -181,7 +179,13 @@ export function FinalReviewSubmitActions({
       </Button>
       <Button
         disabled={!ready || isSubmitting || isPublished}
-        onClick={onStartPublishConfirm}
+        onClick={() =>
+          onSubmit?.("publish", {
+            confirmed: true,
+            submit_mode: "publish",
+            manual_price_overrides: manualOverrides,
+          })
+        }
       >
         {isPublished
           ? "已发布到 SHEIN"
