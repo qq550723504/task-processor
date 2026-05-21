@@ -43,8 +43,8 @@ func TestClientStartSheinPublishUsesStableWorkflowID(t *testing.T) {
 	if raw.options.WorkflowIDConflictPolicy != enumspb.WORKFLOW_ID_CONFLICT_POLICY_FAIL {
 		t.Fatalf("conflict policy = %v, want fail", raw.options.WorkflowIDConflictPolicy)
 	}
-	if raw.options.WorkflowIDReusePolicy != enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY {
-		t.Fatalf("reuse policy = %v, want allow duplicate failed only", raw.options.WorkflowIDReusePolicy)
+	if raw.options.WorkflowIDReusePolicy != enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE {
+		t.Fatalf("reuse policy = %v, want allow duplicate", raw.options.WorkflowIDReusePolicy)
 	}
 	if reflect.ValueOf(raw.workflow).Pointer() != reflect.ValueOf(PublishWorkflow).Pointer() {
 		t.Fatalf("workflow = %T, want PublishWorkflow", raw.workflow)

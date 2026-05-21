@@ -76,7 +76,7 @@ func (c *Client) StartSheinPublish(ctx context.Context, in listingkit.SheinPubli
 		ID:                                       WorkflowIDForSheinPublish(in.TaskID),
 		TaskQueue:                                TaskQueueSheinSubmitPublish,
 		WorkflowIDConflictPolicy:                 enumspb.WORKFLOW_ID_CONFLICT_POLICY_FAIL,
-		WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+		WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		WorkflowExecutionErrorWhenAlreadyStarted: true,
 	}, PublishWorkflow, SheinPublishWorkflowInput{
 		TaskID:          in.TaskID,
