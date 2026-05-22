@@ -114,12 +114,6 @@ func withAdminHandlers(apply func(*adminHandlers)) HandlerOption {
 	})
 }
 
-func withSubscriptionDependencies(apply func(*subscriptionDependencies)) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		apply(&h.subscriptionDependencies)
-	})
-}
-
 func withAdminDependency[Repo comparable](repo Repo, apply func(Repo, *adminHandlers)) HandlerOption {
 	return withAdminHandlers(func(admin *adminHandlers) {
 		var zero Repo
@@ -130,23 +124,12 @@ func withAdminDependency[Repo comparable](repo Repo, apply func(Repo, *adminHand
 	})
 }
 
-func withSubscriptionDependency[Dep comparable](dep Dep, apply func(Dep, *subscriptionDependencies)) HandlerOption {
-	return withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
-		var zero Dep
-		if dep == zero {
-			return
-		}
-		apply(dep, subscription)
-	})
-}
-
 func WithDependencies(deps HandlerDependencies) HandlerOption {
 	options := []HandlerOption{
 		WithStudioAsyncJobStorePath(deps.StudioAsyncJobStorePath),
-		WithPlatformSubscriptionAccess(deps.Subscription.PlatformAdminUsers, deps.Subscription.PlatformAdminRoles),
 		withStoreAdminDependencies(deps.Admin),
 		withCatalogAdminDependencies(deps.Admin),
-		WithSubscriptionService(deps.Subscription.Service),
+		withSubscriptionConfig(deps.Subscription),
 	}
 	return func(h *handler) {
 		for _, option := range options {
@@ -155,20 +138,6 @@ func WithDependencies(deps HandlerDependencies) HandlerOption {
 			}
 		}
 	}
-}
-
-func WithSubscriptionService(service *listingsubscription.Service) HandlerOption {
-	return withSubscriptionDependency(service, func(service *listingsubscription.Service, subscription *subscriptionDependencies) {
-		subscription.subscriptionService = service
-		subscription.subscriptionHandler = listingsubscription.NewHandler(service)
-	})
-}
-
-func WithPlatformSubscriptionAccess(users []string, roles []string) HandlerOption {
-	return withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
-		subscription.platformAdminUsers = append([]string(nil), users...)
-		subscription.platformAdminRoles = append([]string(nil), roles...)
-	})
 }
 
 func WithStudioAsyncJobStorePath(path string) HandlerOption {
