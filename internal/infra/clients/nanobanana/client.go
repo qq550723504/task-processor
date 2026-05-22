@@ -32,36 +32,27 @@ type Client struct {
 }
 
 type submitRequest struct {
-	Model        string   `json:"model"`
-	Prompt       string   `json:"prompt"`
-	AspectRatio  string   `json:"aspectRatio,omitempty"`
-	ImageSize    string   `json:"imageSize,omitempty"`
-	URLs         []string `json:"urls,omitempty"`
-	WebHook      string   `json:"webHook,omitempty"`
-	ShutProgress bool     `json:"shutProgress,omitempty"`
+	Model       string   `json:"model"`
+	Prompt      string   `json:"prompt"`
+	Images      []string `json:"images,omitempty"`
+	AspectRatio string   `json:"aspectRatio,omitempty"`
+	ImageSize   string   `json:"imageSize,omitempty"`
+	ReplyType   string   `json:"replyType,omitempty"`
 }
 
 type submitResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		ID string `json:"id"`
-	} `json:"data"`
-}
-
-type resultEnvelope struct {
-	Code int           `json:"code"`
-	Msg  string        `json:"msg"`
-	Data resultPayload `json:"data"`
+	ID      string       `json:"id"`
+	Status  string       `json:"status"`
+	Results []resultItem `json:"results"`
+	Error   string       `json:"error"`
 }
 
 type resultPayload struct {
-	ID            string       `json:"id"`
-	Results       []resultItem `json:"results"`
-	Progress      int          `json:"progress"`
-	Status        string       `json:"status"`
-	FailureReason string       `json:"failure_reason"`
-	Error         string       `json:"error"`
+	ID       string       `json:"id"`
+	Results  []resultItem `json:"results"`
+	Progress int          `json:"progress"`
+	Status   string       `json:"status"`
+	Error    string       `json:"error"`
 }
 
 type resultItem struct {
@@ -95,12 +86,11 @@ func (c *Client) GenerateImage(ctx context.Context, req *openaiclient.ImageGener
 		return nil, fmt.Errorf("image generate request cannot be nil")
 	}
 	return c.submitAndPoll(ctx, submitRequest{
-		Model:        defaultString(req.Model, c.cfg.Model),
-		Prompt:       req.Prompt,
-		AspectRatio:  nanoBananaAspectRatio(req.Size),
-		ImageSize:    nanoBananaImageSize(req.Size),
-		WebHook:      "-1",
-		ShutProgress: true,
+		Model:       defaultString(req.Model, c.cfg.Model),
+		Prompt:      req.Prompt,
+		AspectRatio: nanoBananaAspectRatio(req.Size),
+		ImageSize:   nanoBananaImageSize(req.Size),
+		ReplyType:   "async",
 	})
 }
 
@@ -116,13 +106,12 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 		return nil, fmt.Errorf("nanobanana image edit requires image url")
 	}
 	return c.submitAndPoll(ctx, submitRequest{
-		Model:        defaultString(req.Model, c.cfg.Model),
-		Prompt:       req.Prompt,
-		AspectRatio:  nanoBananaAspectRatio(req.Size),
-		ImageSize:    nanoBananaImageSize(req.Size),
-		URLs:         imageURLs,
-		WebHook:      "-1",
-		ShutProgress: true,
+		Model:       defaultString(req.Model, c.cfg.Model),
+		Prompt:      req.Prompt,
+		AspectRatio: nanoBananaAspectRatio(req.Size),
+		ImageSize:   nanoBananaImageSize(req.Size),
+		Images:      imageURLs,
+		ReplyType:   "async",
 	})
 }
 
@@ -217,13 +206,16 @@ func (c *Client) submit(ctx context.Context, submitURL string, req submitRequest
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return "", fmt.Errorf("decode submit response: %w", err)
 	}
-	if parsed.Code != 0 {
-		return "", fmt.Errorf("submit nanobanana job failed: %s", parsed.Msg)
+	if strings.EqualFold(strings.TrimSpace(parsed.Status), "failed") || strings.EqualFold(strings.TrimSpace(parsed.Status), "violation") {
+		return "", &JobError{
+			Reason: strings.TrimSpace(parsed.Status),
+			Detail: strings.TrimSpace(parsed.Error),
+		}
 	}
-	if strings.TrimSpace(parsed.Data.ID) == "" {
+	if strings.TrimSpace(parsed.ID) == "" {
 		return "", fmt.Errorf("submit nanobanana job returned empty id")
 	}
-	return parsed.Data.ID, nil
+	return parsed.ID, nil
 }
 
 func (c *Client) poll(ctx context.Context, submitURL string, id string) (*resultPayload, error) {
@@ -235,15 +227,10 @@ func (c *Client) poll(ctx context.Context, submitURL string, id string) (*result
 	defer ticker.Stop()
 
 	for {
-		payload, err := json.Marshal(map[string]string{"id": id})
-		if err != nil {
-			return nil, fmt.Errorf("marshal poll request: %w", err)
-		}
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, resultURL, strings.NewReader(string(payload)))
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, resultURL+"?id="+url.QueryEscape(id), nil)
 		if err != nil {
 			return nil, fmt.Errorf("build poll request: %w", err)
 		}
-		httpReq.Header.Set("Content-Type", "application/json")
 		if strings.TrimSpace(c.cfg.APIKey) != "" {
 			httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 		}
@@ -251,27 +238,29 @@ func (c *Client) poll(ctx context.Context, submitURL string, id string) (*result
 		if err != nil {
 			return nil, fmt.Errorf("poll nanobanana job: %w", err)
 		}
-		var parsed resultEnvelope
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+			return nil, fmt.Errorf("poll nanobanana job returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		}
+		var parsed resultPayload
 		decodeErr := json.NewDecoder(resp.Body).Decode(&parsed)
 		resp.Body.Close()
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode poll response: %w", decodeErr)
 		}
-		if parsed.Code != 0 {
-			return nil, fmt.Errorf("poll nanobanana job failed: %s", parsed.Msg)
-		}
 
-		switch parsed.Data.Status {
+		switch strings.ToLower(strings.TrimSpace(parsed.Status)) {
 		case "succeeded":
-			return &parsed.Data, nil
-		case "failed":
+			return &parsed, nil
+		case "failed", "violation":
 			return nil, &JobError{
-				Reason: parsed.Data.FailureReason,
-				Detail: parsed.Data.Error,
+				Reason: strings.TrimSpace(parsed.Status),
+				Detail: strings.TrimSpace(parsed.Error),
 			}
 		case "running", "":
 		default:
-			return nil, fmt.Errorf("unexpected nanobanana job status: %s", parsed.Data.Status)
+			return nil, fmt.Errorf("unexpected nanobanana job status: %s", parsed.Status)
 		}
 
 		select {
@@ -323,7 +312,11 @@ func buildResultURL(submitURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse nanobanana submit url: %w", err)
 	}
-	parsed.Path = path.Dir(parsed.Path) + "/result"
+	if isGPTImageModelPath(parsed.Path) {
+		parsed.Path = path.Dir(parsed.Path) + "/result"
+		return parsed.String(), nil
+	}
+	parsed.Path = "/v1/api/result"
 	return parsed.String(), nil
 }
 
@@ -343,12 +336,19 @@ func buildSubmitURL(configuredURL string, model string) (string, error) {
 		default:
 			parsed.Path = strings.TrimRight(path.Dir(parsed.Path), "/") + "/completions"
 		}
+		return parsed.String(), nil
 	}
+	parsed.Path = "/v1/api/generate"
 	return parsed.String(), nil
 }
 
 func isGPTImageModel(model string) bool {
 	return strings.EqualFold(strings.TrimSpace(model), "gpt-image-2")
+}
+
+func isGPTImageModelPath(pathValue string) bool {
+	normalized := strings.TrimRight(strings.TrimSpace(pathValue), "/")
+	return normalized == "/v1/draw/completions" || strings.HasSuffix(normalized, "/completions")
 }
 
 func nanoBananaAspectRatio(size string) string {
