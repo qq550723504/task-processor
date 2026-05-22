@@ -11,7 +11,6 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
@@ -41,7 +40,6 @@ type AssetGenerationService = assetgeneration.Service
 type AssetRecipeResolver = assetrecipe.Resolver
 type AssetBundleBuilder = assetbundle.Builder
 type GenerationReviewRepository = reviewstore.Repository
-type SheinManagementClient = management.ClientManager
 
 type AIClientCredentialStore interface {
 	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error
