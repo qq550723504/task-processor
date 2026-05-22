@@ -59,8 +59,15 @@ type TemporalWorkerService interface {
 	listingkit.LayerWorkflowActivityHostSource
 }
 
+type routeHandlerService interface {
+	listingkit.TaskLifecycleService
+	listingkit.GenerationTaskService
+	listingkit.StudioMediaService
+	listingkit.StoreAdminService
+}
+
 type moduleService interface {
-	listingkit.HandlerService
+	routeHandlerService
 	listingkit.InternalListingKitService
 	listingkit.StudioSessionHandlerService
 	TemporalWorkerService

@@ -142,13 +142,6 @@ type Service interface {
 	InternalListingKitService
 }
 
-type HandlerService interface {
-	TaskLifecycleService
-	GenerationTaskService
-	StudioMediaService
-	StoreAdminService
-}
-
 type TaskHandler interface {
 	GenerateListingKit(c *gin.Context)
 	ListTasks(c *gin.Context)

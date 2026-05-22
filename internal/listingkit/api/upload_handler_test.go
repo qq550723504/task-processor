@@ -411,7 +411,7 @@ func TestGetUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	}
 }
 
-var _ listingkit.HandlerService = (*stubGenerationTaskService)(nil)
+var _ routeHandlerService = (*stubGenerationTaskService)(nil)
 
 func (s *stubGenerationTaskService) UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
 	s.uploadImagesReq = req
