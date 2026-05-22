@@ -186,6 +186,41 @@ func WithStudioAsyncJobStorePath(path string) HandlerOption {
 	}
 }
 
+func newHandlerWithDefaults(service routeHandlerService, studioAsyncJobs *studioAsyncJobStore) *handler {
+	return &handler{
+		taskLifecycleService:  service,
+		generationTaskService: service,
+		studioMediaService:    service,
+		storeAdminService:     service,
+		studioAsyncJobs:       studioAsyncJobs,
+	}
+}
+
+func (h *handler) attachOptionalServices(service routeHandlerService) {
+	if retryService, ok := service.(childTaskRetryService); ok {
+		h.childTaskRetryService = retryService
+	}
+	if deleteService, ok := service.(uploadedImageDeleteService); ok {
+		h.uploadedImageDeleteService = deleteService
+	}
+}
+
+func (h *handler) applyOptions(opts []HandlerOption) {
+	for _, opt := range opts {
+		if opt != nil {
+			opt(h)
+		}
+	}
+}
+
+func (h *handler) finalize() error {
+	h.settingsService = newSettingsService(h.storeAdminService)
+	if h.initErr != nil {
+		return h.initErr
+	}
+	return nil
+}
+
 func NewHandler(service routeHandlerService, opts ...HandlerOption) (listingkit.Handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
@@ -194,27 +229,11 @@ func NewHandler(service routeHandlerService, opts ...HandlerOption) (listingkit.
 	if err != nil {
 		return nil, err
 	}
-	h := &handler{
-		taskLifecycleService:  service,
-		generationTaskService: service,
-		studioMediaService:    service,
-		storeAdminService:     service,
-		studioAsyncJobs:       studioAsyncJobs,
-	}
-	if retryService, ok := service.(childTaskRetryService); ok {
-		h.childTaskRetryService = retryService
-	}
-	if deleteService, ok := service.(uploadedImageDeleteService); ok {
-		h.uploadedImageDeleteService = deleteService
-	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(h)
-		}
-	}
-	h.settingsService = newSettingsService(h.storeAdminService)
-	if h.initErr != nil {
-		return nil, h.initErr
+	h := newHandlerWithDefaults(service, studioAsyncJobs)
+	h.attachOptionalServices(service)
+	h.applyOptions(opts)
+	if err := h.finalize(); err != nil {
+		return nil, err
 	}
 	return h, nil
 }
