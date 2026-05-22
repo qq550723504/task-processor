@@ -12,14 +12,18 @@ import (
 )
 
 type Processor struct {
-	service       Service
+	service       processorService
 	repo          Repository
 	taskSubmitter TaskSubmitter
 	logger        *logrus.Logger
 	maxRetries    int
 }
 
-func NewProcessor(service Service, repo Repository, logger *logrus.Logger, maxRetries int) (*Processor, error) {
+type processorService interface {
+	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
+}
+
+func NewProcessor(service processorService, repo Repository, logger *logrus.Logger, maxRetries int) (*Processor, error) {
 	if service == nil {
 		return nil, fmt.Errorf("service cannot be nil")
 	}

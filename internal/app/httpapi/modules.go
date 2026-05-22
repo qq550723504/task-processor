@@ -324,7 +324,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, module.Closers...)
 	deps.sdsSyncService = buildSDSSyncService(logger, deps)
-	return &listingKitModule{handler: module.Handler, studioSessionHandler: module.StudioSessionHandler, service: module.Service, pool: module.Pool}, nil
+	return &listingKitModule{handler: module.Handler, studioSessionHandler: module.StudioSessionHandler, pool: module.Pool}, nil
 }
 
 func buildLocalTaskHealthProvider(pools map[string]worker.WorkerPool) taskrpcapi.LocalStatusProvider {

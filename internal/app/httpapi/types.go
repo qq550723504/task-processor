@@ -83,7 +83,6 @@ type amazonListingModule struct {
 type listingKitModule struct {
 	handler              listingkithttpapi.RouteHandler
 	studioSessionHandler listingkit.StudioSessionHandler
-	service              listingkit.Service
 	pool                 worker.WorkerPool
 }
 
