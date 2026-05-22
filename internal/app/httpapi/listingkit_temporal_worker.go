@@ -36,7 +36,7 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 	}
 	deps.closers = append(deps.closers, bundle.Closers...)
 
-	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.Service, logger)
+	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, logger)
 	if err != nil {
 		return fmt.Errorf("start listing kit temporal worker: %w", err)
 	}

@@ -30,13 +30,12 @@ import (
 type Module struct {
 	Handler              listingkit.Handler
 	StudioSessionHandler listingkit.StudioSessionHandler
-	Service              moduleService
 	Pool                 worker.WorkerPool
 	Closers              []func() error
 }
 
 type ServiceBundle struct {
-	Service                        moduleService
+	TemporalWorkerService          TemporalWorkerService
 	TaskRepository                 listingkit.Repository
 	StoreRepository                listingadmin.StoreRepository
 	StoreStatisticsRepository      listingadmin.StoreStatisticsRepository
@@ -51,9 +50,11 @@ type ServiceBundle struct {
 	ProductDataRepository          listingadmin.ProductDataRepository
 	SubscriptionService            *listingsubscription.Service
 	Closers                        []func() error
+
+	service moduleService
 }
 
-type temporalWorkerService interface {
+type TemporalWorkerService interface {
 	listingkit.SheinPublishActivityHostSource
 	listingkit.LayerWorkflowActivityHostSource
 }
@@ -62,7 +63,7 @@ type moduleService interface {
 	listingkit.HandlerService
 	listingkit.InternalListingKitService
 	listingkit.StudioSessionHandlerService
-	temporalWorkerService
+	TemporalWorkerService
 }
 
 type BuildModuleInput struct {
@@ -274,24 +275,24 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 		_ = closers.Close()
 	}()
 	if input.ShouldStartTemporalWorkerInProcess {
-		temporalWorkerCloser, startErr := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.Service, input.ServiceInput.Logger)
+		temporalWorkerCloser, startErr := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, input.ServiceInput.Logger)
 		if startErr != nil {
 			return nil, fmt.Errorf("start listing kit shein publish temporal worker: %w", startErr)
 		}
 		closers.Add(temporalWorkerCloser)
 	}
 
-	processor, err := listingkit.NewProcessor(bundle.Service, bundle.TaskRepository, input.ServiceInput.Logger, 2)
+	processor, err := listingkit.NewProcessor(bundle.service, bundle.TaskRepository, input.ServiceInput.Logger, 2)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit processor: %w", err)
 	}
 	pool := httpbootstrap.NewWorkerPool(processor, input.ServiceInput.Config)
 	submitter := &httpbootstrap.PoolSubmitter{Pool: pool}
-	bundle.Service.SetTaskSubmitter(submitter)
+	bundle.service.SetTaskSubmitter(submitter)
 	processor.SetTaskSubmitter(submitter)
 
 	handler, err := listingkitapi.NewHandler(
-		bundle.Service,
+		bundle.service,
 		listingkitapi.WithStudioAsyncJobStorePath(input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath),
 		listingkitapi.WithPlatformSubscriptionAccess(input.ServiceInput.Config.ListingKit.PlatformAdminUsers, input.ServiceInput.Config.ListingKit.PlatformAdminRoles),
 		listingkitapi.WithStoreRepository(bundle.StoreRepository),
@@ -311,7 +312,7 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 
-	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.Service)
+	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.service)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
 	}
@@ -319,7 +320,6 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 	return &Module{
 		Handler:              handler,
 		StudioSessionHandler: studioSessionHandler,
-		Service:              bundle.Service,
 		Pool:                 pool,
 		Closers:              closers.Snapshot(),
 	}, nil
@@ -564,7 +564,7 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 	}
 
 	return &ServiceBundle{
-		Service:                        moduleSvc,
+		TemporalWorkerService:          moduleSvc,
 		TaskRepository:                 repo,
 		StoreRepository:                storeRepo,
 		StoreStatisticsRepository:      storeStatisticsRepo,
@@ -579,5 +579,6 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 		ProductDataRepository:          productDataRepo,
 		SubscriptionService:            subscriptionService,
 		Closers:                        closers.Snapshot(),
+		service:                        moduleSvc,
 	}, nil
 }
