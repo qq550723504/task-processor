@@ -480,7 +480,11 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 		return nil, fmt.Errorf("create listing kit service: %w", err)
 	}
 
-	temporalWorkflowClient, temporalCloser, err := appruntime.DialListingKitSheinPublishTemporalClient(input.Logger)
+	return wireTemporalWorkflowClients(svc, input.Logger, closers)
+}
+
+func wireTemporalWorkflowClients(svc listingkit.Service, logger *logrus.Logger, closers *closerStack) (moduleService, error) {
+	temporalWorkflowClient, temporalCloser, err := appruntime.DialListingKitSheinPublishTemporalClient(logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect listing kit shein publish temporal client: %w", err)
 	}
@@ -519,12 +523,7 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 	return moduleSvc, nil
 }
 
-func BuildModule(input BuildModuleInput) (_ *Module, err error) {
-	bundle, err := BuildService(input.ServiceInput)
-	if err != nil {
-		return nil, err
-	}
-
+func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Module, err error) {
 	closers := &closerStack{}
 	closers.Add(bundle.Closers...)
 	defer func() {
@@ -582,6 +581,14 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 		Pool:                 pool,
 		Closers:              closers.Snapshot(),
 	}, nil
+}
+
+func BuildModule(input BuildModuleInput) (_ *Module, err error) {
+	bundle, err := BuildService(input.ServiceInput)
+	if err != nil {
+		return nil, err
+	}
+	return buildModuleRuntime(input, bundle)
 }
 
 func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
