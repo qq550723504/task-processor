@@ -111,9 +111,12 @@ type StoreAdminService interface {
 	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
 }
 
+type TaskSubmitterConfigurer interface {
+	SetTaskSubmitter(submitter TaskSubmitter)
+}
+
 type InternalListingKitService interface {
 	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
-	SetTaskSubmitter(submitter TaskSubmitter)
 	ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error)
 	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
 }

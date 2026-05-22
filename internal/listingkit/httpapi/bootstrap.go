@@ -69,6 +69,7 @@ type routeHandlerService interface {
 type moduleService interface {
 	routeHandlerService
 	listingkit.InternalListingKitService
+	listingkit.TaskSubmitterConfigurer
 	listingkit.StudioSessionHandlerService
 	listingkit.WorkflowClientConfigurer
 	TemporalWorkerService
