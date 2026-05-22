@@ -16,6 +16,9 @@ type ClientManager struct {
 	mutex sync.RWMutex
 	// 固定的baseURL
 	baseURL string
+	// 最近一次设置的用户访问令牌，供后续新建 client 复用
+	accessToken string
+	tenantID    string
 
 	// 图片下载客户端
 	imageDownloader *ImageDownloader
@@ -79,6 +82,9 @@ func (cm *ClientManager) GetClient() *ManagementAPIClient {
 	}
 
 	client = NewManagementAPIClientWithBaseURL(cm.baseURL)
+	if cm.accessToken != "" {
+		client.SetUserToken(cm.accessToken, cm.tenantID)
+	}
 	cm.clients[cm.baseURL] = client
 	return client
 }
@@ -87,6 +93,8 @@ func (cm *ClientManager) GetClient() *ManagementAPIClient {
 func (cm *ClientManager) SetUserToken(accessToken, tenantID string) {
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
+	cm.accessToken = accessToken
+	cm.tenantID = tenantID
 
 	// 为所有已创建的客户端设置令牌
 	for _, client := range cm.clients {
@@ -108,8 +116,13 @@ func (cm *ClientManager) GetStoreClient() *StoreAPIClient {
 func (cm *ClientManager) GetStoreClientWithTenant(tenantID int64) *StoreAPIClient {
 	baseClient := NewManagementAPIClientWithBaseURL(cm.baseURL)
 
-	sharedClient := cm.GetClient()
-	accessToken, _ := sharedClient.GetAccessToken()
+	cm.mutex.RLock()
+	accessToken := cm.accessToken
+	cm.mutex.RUnlock()
+	if accessToken == "" {
+		sharedClient := cm.GetClient()
+		accessToken, _ = sharedClient.GetAccessToken()
+	}
 	baseClient.SetUserToken(accessToken, fmt.Sprintf("%d", tenantID))
 
 	return &StoreAPIClient{
