@@ -6,17 +6,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
-	sdsusecase "task-processor/internal/sds/usecase"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
@@ -32,14 +26,6 @@ type ImageService interface {
 	GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error)
 	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
 }
-
-type SDSSyncService = sdsusecase.Service
-
-type AssetRepository = assetrepo.Repository
-type AssetGenerationService = assetgeneration.Service
-type AssetRecipeResolver = assetrecipe.Resolver
-type AssetBundleBuilder = assetbundle.Builder
-type GenerationReviewRepository = reviewstore.Repository
 
 type AIClientCredentialStore interface {
 	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error

@@ -38,7 +38,7 @@ func rebuildInventorySummary(inventory *asset.Inventory) *asset.InventorySummary
 	return summary
 }
 
-func resolveRecipesForPlatforms(resolver AssetRecipeResolver, platforms []string, canonical *canonical.Product) map[string][]assetrecipe.AssetRecipe {
+func resolveRecipesForPlatforms(resolver assetrecipe.Resolver, platforms []string, canonical *canonical.Product) map[string][]assetrecipe.AssetRecipe {
 	if resolver == nil {
 		return nil
 	}
@@ -179,7 +179,7 @@ func categoryPathOrNil(canonical *canonical.Product) []string {
 	return append([]string(nil), canonical.CategoryPath...)
 }
 
-func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inventory, recipesByPlatform map[string][]assetrecipe.AssetRecipe, generationPlan *assetgeneration.Result, builder AssetBundleBuilder) {
+func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inventory, recipesByPlatform map[string][]assetrecipe.AssetRecipe, generationPlan *assetgeneration.Result, builder assetbundle.Builder) {
 	if result == nil || inventory == nil || builder == nil {
 		return
 	}

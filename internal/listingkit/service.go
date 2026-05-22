@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdsusecase "task-processor/internal/sds/usecase"
 )
 
 type service struct {
@@ -24,7 +25,7 @@ type service struct {
 	studioSessionRepo              StudioSessionRepository
 	productSvc                     ProductService
 	imageSvc                       ImageService
-	sdsSyncSvc                     SDSSyncService
+	sdsSyncSvc                     sdsusecase.Service
 	uploadStore                    ImageUploadStore
 	uploadedImageRepo              UploadedImageRepository
 	assembler                      Assembler
@@ -41,11 +42,11 @@ type service struct {
 	studioPromptDiversifier        openaiclient.ChatCompleter
 	studioImageGenerator           openaiclient.ImageGenerator
 	aiCredentialStore              AIClientCredentialStore
-	assetRepo                      AssetRepository
-	reviewRepo                     GenerationReviewRepository
-	assetRecipeResolver            AssetRecipeResolver
-	assetBundleBuilder             AssetBundleBuilder
-	assetGenerator                 AssetGenerationService
+	assetRepo                      assetrepo.Repository
+	reviewRepo                     reviewstore.Repository
+	assetRecipeResolver            assetrecipe.Resolver
+	assetBundleBuilder             assetbundle.Builder
+	assetGenerator                 assetgeneration.Service
 	taskSubmitter                  TaskSubmitter
 	sheinPublishWorkflowClient     SheinPublishWorkflowClient
 	sheinPublishWorkflowEnabled    bool
@@ -66,7 +67,7 @@ type ServiceCoreDependencies struct {
 	StudioSessionRepository        StudioSessionRepository
 	ProductService                 ProductService
 	ImageService                   ImageService
-	SDSSyncService                 SDSSyncService
+	SDSSyncService                 sdsusecase.Service
 	ImageUploadStore               ImageUploadStore
 	UploadedImageRepository        UploadedImageRepository
 	StoreProfileRepository         StoreProfileRepository
@@ -77,11 +78,11 @@ type ServiceCoreDependencies struct {
 
 type ServiceAssetDependencies struct {
 	Assembler              Assembler
-	AssetRepository        AssetRepository
-	ReviewRepository       GenerationReviewRepository
-	AssetRecipeResolver    AssetRecipeResolver
-	AssetBundleBuilder     AssetBundleBuilder
-	AssetGenerationService AssetGenerationService
+	AssetRepository        assetrepo.Repository
+	ReviewRepository       reviewstore.Repository
+	AssetRecipeResolver    assetrecipe.Resolver
+	AssetBundleBuilder     assetbundle.Builder
+	AssetGenerationService assetgeneration.Service
 }
 
 type ServiceSheinDependencies struct {
@@ -372,15 +373,15 @@ func newAmazonDraftBuilder() AmazonDraftBuilder {
 	return &amazonDraftBuilder{assembler: amazonlisting.NewAssembler()}
 }
 
-func newDefaultAssetRecipeResolver() AssetRecipeResolver {
+func newDefaultAssetRecipeResolver() assetrecipe.Resolver {
 	return assetrecipe.NewStaticResolver()
 }
 
-func newDefaultAssetBundleBuilder() AssetBundleBuilder {
+func newDefaultAssetBundleBuilder() assetbundle.Builder {
 	return assetbundle.NewBuilder()
 }
 
-func newDefaultAssetGenerationService() AssetGenerationService {
+func newDefaultAssetGenerationService() assetgeneration.Service {
 	return assetgeneration.NewService(assetgeneration.Config{})
 }
 
