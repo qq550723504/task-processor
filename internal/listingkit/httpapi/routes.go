@@ -48,7 +48,11 @@ type SettingsRouteHandler interface {
 }
 
 type StoreRouteHandler interface {
-	listingkit.CustomerStoreHandler
+	ListTenantStores(c *gin.Context)
+	ListSimpleTenantStores(c *gin.Context)
+	CreateTenantStore(c *gin.Context)
+	UpdateTenantStore(c *gin.Context)
+	DeleteTenantStore(c *gin.Context)
 }
 
 type SubscriptionRouteHandler interface {
@@ -79,7 +83,10 @@ type AdminRouteHandler interface {
 }
 
 type StudioGenerationRouteHandler interface {
-	listingkit.TaskHandler
+	GenerateStudioDesigns(c *gin.Context)
+	GenerateStudioProductImages(c *gin.Context)
+	StartStudioAsyncJob(c *gin.Context)
+	GetStudioAsyncJob(c *gin.Context)
 }
 
 type RouteHandler interface {
