@@ -37,6 +37,14 @@ func withTestTaskSubmitter(taskSubmitter TaskSubmitter) testServiceConfigOption 
 	}
 }
 
+func withTestConfig(apply func(*ServiceConfig)) testServiceConfigOption {
+	return func(cfg *ServiceConfig) {
+		if apply != nil {
+			apply(cfg)
+		}
+	}
+}
+
 func withTestSheinProductAPIBuilder(builder sheinpub.ProductAPIBuilder) testServiceConfigOption {
 	return func(cfg *ServiceConfig) {
 		cfg.Shein.SheinProductAPIBuilder = builder
@@ -54,4 +62,8 @@ func withTestSheinPublishWorkflow(client SheinPublishWorkflowClient, enabled boo
 		cfg.Workflow.SheinPublishWorkflowClient = client
 		cfg.Workflow.SheinPublishWorkflowEnabled = enabled
 	}
+}
+
+func withDefaultTestSheinImageAPI() testServiceConfigOption {
+	return withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}})
 }

@@ -25,11 +25,10 @@ func TestSubmitTaskReturnsBlockedWhenReadinessIsNotReady(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:             repo,
-		ProductService:         stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{},
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -49,13 +48,12 @@ func TestSubmitTaskPersistsSheinSubmissionWhenProductAPIUnavailable(t *testing.T
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			msg: "store token missing",
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -101,10 +99,9 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -119,9 +116,9 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 					},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -191,10 +188,9 @@ func TestSubmitTaskClearsNeedsReviewAfterPublishSuccess(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -202,9 +198,9 @@ func TestSubmitTaskClearsNeedsReviewAfterPublishSuccess(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -261,10 +257,7 @@ func TestNormalizeSheinSubmitPackageRepairsResolvedSaleAttributes(t *testing.T) 
 	task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute.AttributeValueID = 0
 	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList = nil
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     &stubSubmitRepo{},
-		ProductService: stubSubmitProductService{},
-	})
+	svc, err := NewService(newTestServiceConfig(&stubSubmitRepo{}))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -310,11 +303,10 @@ func TestSubmitTaskBlocksResolvedSaleAttributesWithoutValueIDs(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:             repo,
-		ProductService:         stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{},
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -341,10 +333,9 @@ func TestSubmitTaskTreatsCodeZeroPublishWithoutValidationNotesAsAccepted(t *test
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -361,9 +352,9 @@ func TestSubmitTaskTreatsCodeZeroPublishWithoutValidationNotesAsAccepted(t *test
 					AuditState:   3,
 				}),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -393,23 +384,24 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 		t.Fatalf("create task: %v", err)
 	}
 	cacheStore := &submitResolutionCacheStore{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                repo,
-		ProductService:            stubSubmitProductService{},
-		SheinResolutionCacheStore: cacheStore,
-		SheinCategoryResolver: sheinpub.NewCachedCategoryResolver(
-			sheinpub.NewCategoryResolver(nil),
-			cacheStore,
-		),
-		SheinAttributeResolver: sheinpub.NewCachedAttributeResolver(
-			sheinpub.NewAttributeResolver(nil, nil),
-			cacheStore,
-		),
-		SheinSaleAttributeResolver: sheinpub.NewCachedSaleAttributeResolver(
-			sheinpub.NewSaleAttributeResolver(nil, nil),
-			cacheStore,
-		),
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = cacheStore
+			cfg.Shein.SheinCategoryResolver = sheinpub.NewCachedCategoryResolver(
+				sheinpub.NewCategoryResolver(nil),
+				cacheStore,
+			)
+			cfg.Shein.SheinAttributeResolver = sheinpub.NewCachedAttributeResolver(
+				sheinpub.NewAttributeResolver(nil, nil),
+				cacheStore,
+			)
+			cfg.Shein.SheinSaleAttributeResolver = sheinpub.NewCachedSaleAttributeResolver(
+				sheinpub.NewSaleAttributeResolver(nil, nil),
+				cacheStore,
+			)
+		}),
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -417,9 +409,9 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -461,10 +453,9 @@ func TestSubmitTaskDoesNotAutoConfirmRemoteRecordAfterPublishSuccess(t *testing.
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -478,9 +469,9 @@ func TestSubmitTaskDoesNotAutoConfirmRemoteRecordAfterPublishSuccess(t *testing.
 					AuditState:   3,
 				}),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -540,10 +531,9 @@ func TestSubmitTaskTreatsAcceptedPublishAsSuccessfulWithoutRemoteConfirmation(t 
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -552,9 +542,9 @@ func TestSubmitTaskTreatsAcceptedPublishAsSuccessfulWithoutRemoteConfirmation(t 
 				},
 				recordResponse: makeSheinRecordResponse(),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -584,10 +574,9 @@ func TestSubmitTaskDoesNotQueryRemoteInventoryWhenPublishSucceeds(t *testing.T) 
 		t.Fatalf("create task: %v", err)
 	}
 	var queriedSPU string
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -604,9 +593,9 @@ func TestSubmitTaskDoesNotQueryRemoteInventoryWhenPublishSucceeds(t *testing.T) 
 					Info: sheinproduct.InventoryInfo{SpuName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -635,10 +624,9 @@ func TestSubmitTaskKeepsPublishSuccessWithoutInspectingRemoteRecord(t *testing.T
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -652,9 +640,9 @@ func TestSubmitTaskKeepsPublishSuccessWithoutInspectingRemoteRecord(t *testing.T
 					AuditState:   2,
 				}),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -695,10 +683,9 @@ func TestSubmitTaskSkipsRemoteRecordLookupAfterAcceptedPublish(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	var recordCalls int32
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -710,9 +697,9 @@ func TestSubmitTaskSkipsRemoteRecordLookupAfterAcceptedPublish(t *testing.T) {
 				},
 				recordResponse: nil,
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -761,10 +748,9 @@ func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.
 	}
 	var publishCalls int32
 	var recordCalls int32
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					atomic.AddInt32(&publishCalls, 1)
@@ -779,9 +765,9 @@ func TestRefreshSubmissionStatusUpdatesRemoteRecordWithoutSubmitting(t *testing.
 					AuditState:   5,
 				}),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -845,10 +831,9 @@ func TestRefreshSubmissionStatusSkipsRemoteLookupWhenPublishReturnedSPU(t *testi
 	}
 	var publishCalls int32
 	var recordCalls int32
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				recordHook: func(*sheinproduct.ProductRecordRequest) {
 					atomic.AddInt32(&recordCalls, 1)
@@ -864,9 +849,9 @@ func TestRefreshSubmissionStatusSkipsRemoteLookupWhenPublishReturnedSPU(t *testi
 					atomic.AddInt32(&publishCalls, 1)
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -902,10 +887,9 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 	}
 	var publishCalls int32
 	var recordCalls int32
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					atomic.AddInt32(&publishCalls, 1)
@@ -923,9 +907,9 @@ func TestSubmitTaskRecoversRemoteSubmitAfterFinalSaveFailure(t *testing.T) {
 					SupplierCode: "SUP-submit-task-1",
 				}),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -980,10 +964,9 @@ func TestSubmitTaskRecoversRemoteSubmitAfterPersistResultSaveFailure(t *testing.
 	}
 	var publishCalls int32
 	var recordCalls int32
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					atomic.AddInt32(&publishCalls, 1)
@@ -1001,9 +984,9 @@ func TestSubmitTaskRecoversRemoteSubmitAfterPersistResultSaveFailure(t *testing.
 					SupplierCode: "SUP-submit-task-1",
 				}),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1050,10 +1033,9 @@ func TestSubmitTaskReplaysCompletedIdempotencyKeyWithoutPublishingAgain(t *testi
 		t.Fatalf("create task: %v", err)
 	}
 	publishCalls := 0
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalls++
@@ -1064,9 +1046,9 @@ func TestSubmitTaskReplaysCompletedIdempotencyKeyWithoutPublishingAgain(t *testi
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1100,10 +1082,9 @@ func TestSubmitTaskReturnsCurrentPreviewForSameInFlightIdempotencyKey(t *testing
 		t.Fatalf("create task: %v", err)
 	}
 	publishCalls := 0
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalls++
@@ -1114,9 +1095,9 @@ func TestSubmitTaskReturnsCurrentPreviewForSameInFlightIdempotencyKey(t *testing
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1145,10 +1126,9 @@ func TestSubmitTaskBlocksDifferentIdempotencyKeyWhileSubmitInFlight(t *testing.T
 		t.Fatalf("create task: %v", err)
 	}
 	publishCalls := 0
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalls++
@@ -1159,9 +1139,9 @@ func TestSubmitTaskBlocksDifferentIdempotencyKeyWhileSubmitInFlight(t *testing.T
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1186,14 +1166,12 @@ func TestSubmitTaskRoutesSheinPublishToTemporalWhenEnabled(t *testing.T) {
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
 	publishCalls := 0
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-		SheinProductAPIBuilder:      stubSheinProductAPIBuilder{api: stubSheinProductAPI{publishHook: func(product *sheinproduct.Product) { publishCalls++ }}},
-		SheinImageAPIBuilder:        stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{api: stubSheinProductAPI{publishHook: func(product *sheinproduct.Product) { publishCalls++ }}}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1226,12 +1204,10 @@ func TestSubmitTaskRoutesConfirmedFinalToTemporalWhenEnabled(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1267,12 +1243,10 @@ func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1306,12 +1280,10 @@ func TestSubmitTaskTemporalReplayReturnsPreviewDuringPendingWorkflowStart(t *tes
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1341,12 +1313,10 @@ func TestSubmitTaskKeepsSheinSaveDraftInlineWhenTemporalEnabled(t *testing.T) {
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
 	saveCalls := 0
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) { saveCalls++ },
 				saveResponse: &sheinproduct.SheinResponse{
@@ -1355,9 +1325,9 @@ func TestSubmitTaskKeepsSheinSaveDraftInlineWhenTemporalEnabled(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-DRAFT"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1383,12 +1353,10 @@ func TestSubmitTaskMapsTemporalRepeatedPublishToSubmitInProgress(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{startErr: ErrSubmitInProgress}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1412,12 +1380,10 @@ func TestSubmitTaskBlocksDifferentTemporalRequestWhileWorkflowStartPending(t *te
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1453,12 +1419,10 @@ func TestSubmitTaskMarksTemporalStartFailureAsFailedInsteadOfLeavingRunningAttem
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{startErr: errors.New("temporal unavailable")}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1503,12 +1467,10 @@ func TestSubmitTaskClearsTemporalLeaseWhenPersistingStartFailureFails(t *testing
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{startErr: errors.New("temporal unavailable")}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1549,12 +1511,10 @@ func TestSubmitTaskGeneratesTemporalRequestIDWhenMissing(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	workflowClient := &stubSheinPublishWorkflowClient{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                  repo,
-		ProductService:              stubSubmitProductService{},
-		SheinPublishWorkflowEnabled: true,
-		SheinPublishWorkflowClient:  workflowClient,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinPublishWorkflow(workflowClient, true),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1585,10 +1545,9 @@ func TestSubmitTaskAllowsNewAttemptWhenInFlightAttemptIsStale(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	publishCalls := 0
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalls++
@@ -1599,9 +1558,9 @@ func TestSubmitTaskAllowsNewAttemptWhenInFlightAttemptIsStale(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1630,10 +1589,9 @@ func TestSubmitTaskPersistsSubmitRemotePhaseBeforePublishCall(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					if !repo.hasSavedSubmissionPhase(sheinpub.SubmissionPhaseSubmitRemote) {
@@ -1646,9 +1604,9 @@ func TestSubmitTaskPersistsSubmitRemotePhaseBeforePublishCall(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1666,10 +1624,9 @@ func TestSubmitTaskPersistsDirectSubmitPhasesInOrder(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -1677,9 +1634,9 @@ func TestSubmitTaskPersistsDirectSubmitPhasesInOrder(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1715,10 +1672,9 @@ func TestSubmitTaskSerializesConcurrentSameIdempotencyKey(t *testing.T) {
 	var publishCalls int32
 	enteredPublish := make(chan struct{}, 2)
 	releasePublish := make(chan struct{})
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					atomic.AddInt32(&publishCalls, 1)
@@ -1731,9 +1687,9 @@ func TestSubmitTaskSerializesConcurrentSameIdempotencyKey(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1790,12 +1746,11 @@ func TestSubmitTaskBlocksConcurrentDifferentRequestAcrossServiceInstances(t *tes
 		recordResponse: makeSheinRecordResponse(),
 	}
 	newSvc := func() Service {
-		svc, err := NewService(&ServiceConfig{
-			Repository:             repo,
-			ProductService:         stubSubmitProductService{},
-			SheinProductAPIBuilder: stubSheinProductAPIBuilder{api: productAPI},
-			SheinImageAPIBuilder:   stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-		})
+		svc, err := NewService(newTestServiceConfig(
+			repo,
+			withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{api: productAPI}),
+			withDefaultTestSheinImageAPI(),
+		))
 		if err != nil {
 			t.Fatalf("new service: %v", err)
 		}
@@ -1844,10 +1799,9 @@ func TestSubmitTaskMarksPublishPreValidationNotesAsFailed(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
@@ -1863,9 +1817,9 @@ func TestSubmitTaskMarksPublishPreValidationNotesAsFailed(t *testing.T) {
 					},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1903,10 +1857,9 @@ func TestSubmitTaskRetriesSensitiveWordValidationNotesBeforeFailing(t *testing.T
 
 	var publishCalls int
 	var submitted []*sheinproduct.Product
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishFunc: func(product *sheinproduct.Product) (*sheinproduct.SheinResponse, error) {
 					publishCalls++
@@ -1930,9 +1883,9 @@ func TestSubmitTaskRetriesSensitiveWordValidationNotesBeforeFailing(t *testing.T
 					}, nil
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -2013,10 +1966,9 @@ func TestRefreshSubmissionStatusSkipsPublishSPURemoteRecordLookup(t *testing.T) 
 		t.Fatalf("create task: %v", err)
 	}
 	var recordCalls int32
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				recordHook: func(*sheinproduct.ProductRecordRequest) {
 					atomic.AddInt32(&recordCalls, 1)
@@ -2040,9 +1992,9 @@ func TestRefreshSubmissionStatusSkipsPublishSPURemoteRecordLookup(t *testing.T) 
 					},
 				),
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
