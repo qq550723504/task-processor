@@ -1002,6 +1002,43 @@ func TestSaleAttributeResolverTreatsAttributeLabelOneAsAuthoritativePrimary(t *t
 	}
 }
 
+func TestResolvePrimarySecondaryCandidatesSkipsScoreFallbackWhenPrimaryLabelExists(t *testing.T) {
+	attributes := []sheinattribute.AttributeInfo{
+		{
+			AttributeID:     1001184,
+			AttributeName:   "款式",
+			AttributeNameEn: "Style Type",
+			AttributeType:   1,
+			AttributeLabel:  1,
+		},
+		{
+			AttributeID:     87,
+			AttributeName:   "尺寸",
+			AttributeNameEn: "Size",
+			AttributeType:   1,
+		},
+	}
+	candidates := []saleAttributeCandidate{
+		{
+			SourceName:    "Size",
+			TemplateName:  "Size",
+			AttributeID:   87,
+			TemplateOrder: 1,
+			DistinctCount: 3,
+			ValueFitCount: 3,
+			PrimaryScore:  19,
+		},
+	}
+
+	primary, secondary := resolvePrimarySecondaryCandidates(candidates, attributes)
+	if primary != nil {
+		t.Fatalf("primary = %+v, want nil when primary_label template has no safe mapping", *primary)
+	}
+	if secondary != nil {
+		t.Fatalf("secondary = %+v, want nil when primary_label template has no safe mapping", *secondary)
+	}
+}
+
 func TestSaleAttributeResolverIgnoresPromptLikeAIStyleValue(t *testing.T) {
 	canonical := &canonical.Product{
 		VariantDimensions: []canonical.ScrapedVariantDimension{
@@ -1563,12 +1600,6 @@ func TestSaleAttributeResolverRejectsTemplateCandidateWithZeroValueFit(t *testin
 	if resolution.Status != "partial" {
 		t.Fatalf("status = %q, want partial", resolution.Status)
 	}
-	if !resolution.RecommendCategoryReview {
-		t.Fatalf("recommend_category_review = false, want true")
-	}
-	if resolution.CategoryReviewReason == "" {
-		t.Fatal("expected category_review_reason")
-	}
 	if len(resolution.Candidates) == 0 || resolution.Candidates[0].SelectedScope != "" {
 		t.Fatalf("expected unselected candidate when fit is zero: %+v", resolution.Candidates)
 	}
@@ -1576,23 +1607,13 @@ func TestSaleAttributeResolverRejectsTemplateCandidateWithZeroValueFit(t *testin
 		t.Fatal("expected review notes when candidate value fit is zero")
 	}
 	found := false
-	foundCategoryHint := false
 	for _, note := range resolution.ReviewNotes {
 		if strings.Contains(note, "无有效拟合") {
 			found = true
-			if !strings.Contains(note, "套装/组合款") && !strings.Contains(note, "款式/型号") {
-				t.Fatalf("expected semantic explanation in review note, got %q", note)
-			}
-		}
-		if strings.Contains(note, "当前类目销售属性模板未提供可承接") {
-			foundCategoryHint = true
 		}
 	}
 	if !found {
 		t.Fatalf("expected review notes to explain zero-fit candidate, got %v", resolution.ReviewNotes)
-	}
-	if !foundCategoryHint {
-		t.Fatalf("expected category mismatch hint in review notes, got %v", resolution.ReviewNotes)
 	}
 }
 

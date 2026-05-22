@@ -1,12 +1,6 @@
 package shein
 
 import (
-	"fmt"
-	"slices"
-	"sort"
-	"strconv"
-	"strings"
-
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/catalog/canonical"
@@ -20,13 +14,232 @@ type saleAttributeResolver struct {
 	llm openaiclient.ChatCompleter
 }
 
+// saleAttributeTemplateContext is the normalized template bundle used after the
+// first SHEIN sale-attribute template group has been loaded.
+type saleAttributeTemplateContext struct {
+	attributes []sheinattribute.AttributeInfo
+	index      *templateIndex
+}
+
+// saleAttributeCandidateState carries the mutable selection state while the
+// resolver moves through template-first matching, LLM repair, and fallback.
+type saleAttributeCandidateState struct {
+	candidates                 []saleAttributeCandidate
+	primaryCandidate           *saleAttributeCandidate
+	secondaryCandidate         *saleAttributeCandidate
+	blockUnsafePrimaryFallback bool
+}
+
 func NewSaleAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) SaleAttributeResolver {
 	return &saleAttributeResolver{api: api, llm: llm}
 }
 
+// Resolve keeps the orchestration layer short:
+// 1) initialize request state
+// 2) load template context
+// 3) resolve candidate state
+// 4) materialize the public resolution result
 func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
-	resolution := &SaleAttributeResolution{Status: "unresolved", Source: "fallback", CategoryID: categoryID(pkg)}
 	log := sheinLogger("shein/sale_attribute")
+	resolution, sourceDimensions := r.initializeResolution(canonical, pkg)
+	if early := r.validateResolutionInputs(resolution); early != nil {
+		return early
+	}
+	templateCtx, early := r.loadTemplateContext(log, resolution)
+	if early != nil {
+		return early
+	}
+	if len(sourceDimensions) == 0 {
+		resolution.Status = "partial"
+		resolution.ReviewNotes = append(resolution.ReviewNotes, "缺少源销售属性维度，当前无法构建 SHEIN SKC/SKU 映射")
+		return resolution
+	}
+
+	state := r.resolveCandidateState(resolution, sourceDimensions, templateCtx)
+	r.applyResolvedCandidates(resolution, templateCtx.index, pkg, state.candidates, state.primaryCandidate, state.secondaryCandidate)
+	if !resolution.RecommendCategoryReview {
+		if recommend, reason := buildCategoryFamilyConflictSummary(canonical, pkg); recommend {
+			resolution.RecommendCategoryReview = true
+			resolution.CategoryReviewReason = reason
+			resolution.ReviewNotes = append(resolution.ReviewNotes, buildCategoryFamilyConflictReviewNotes(canonical, pkg)...)
+		}
+	}
+	log.WithFields(logrus.Fields{
+		"category_id":            resolution.CategoryID,
+		"status":                 resolution.Status,
+		"primary_attribute_id":   resolution.PrimaryAttributeID,
+		"secondary_attribute_id": resolution.SecondaryAttributeID,
+		"candidate_count":        len(resolution.Candidates),
+	}).Info("resolved SHEIN sale attributes")
+	return resolution
+}
+
+// resolveCandidateState contains the branch-heavy middle section so Resolve can
+// stay focused on stage ordering instead of candidate mutation details.
+func (r *saleAttributeResolver) resolveCandidateState(
+	resolution *SaleAttributeResolution,
+	sourceDimensions []SourceVariantDimension,
+	templateCtx *saleAttributeTemplateContext,
+) saleAttributeCandidateState {
+	state := saleAttributeCandidateState{
+		candidates: buildSaleAttributeCandidates(sourceDimensions, templateCtx.attributes),
+	}
+	state.primaryCandidate, state.secondaryCandidate = resolvePrimarySecondaryCandidates(state.candidates, templateCtx.attributes)
+	r.applyLLMSelectionRepair(resolution, sourceDimensions, templateCtx, &state)
+	r.applyPrimaryTemplateRepair(resolution, sourceDimensions, templateCtx, &state)
+	r.enforcePrimaryTemplateConstraints(resolution, templateCtx, &state)
+	r.applySourceDimensionFallback(resolution, sourceDimensions, &state)
+	if state.primaryCandidate == nil && len(state.candidates) > 0 {
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildNoFitCandidateReviewNotes(state.candidates)...)
+	}
+	return state
+}
+
+// applyLLMSelectionRepair asks the LLM for an explicit mapping only when the
+// template-first result is weak or conflicts with the primary template rule.
+func (r *saleAttributeResolver) applyLLMSelectionRepair(
+	resolution *SaleAttributeResolution,
+	sourceDimensions []SourceVariantDimension,
+	templateCtx *saleAttributeTemplateContext,
+	state *saleAttributeCandidateState,
+) {
+	if !shouldSelectSaleAttributeMappingWithLLM(state.primaryCandidate, sourceDimensions, templateCtx.attributes) {
+		return
+	}
+	mappingDimensions := saleAttributeMappingSourceDimensions(sourceDimensions)
+	selection, err := selectSaleAttributeMappingWithLLM(r.llm, mappingDimensions, templateCtx.attributes)
+	if err != nil || selection == nil {
+		return
+	}
+	llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(state.candidates, selection, sourceDimensions, templateCtx.attributes)
+	if hasMarkedPrimarySaleTemplate(templateCtx.attributes) && (llmPrimary == nil || selectedCandidateMissesPrimarySaleTemplate(llmPrimary, templateCtx.attributes)) {
+		r.applyLLMPrimaryRetry(resolution, sourceDimensions, templateCtx, state, llmPrimary, augmentedCandidates, mappingDimensions)
+		return
+	}
+	if selectedCandidateMissesPrimarySaleTemplate(llmPrimary, templateCtx.attributes) {
+		state.candidates = augmentedCandidates
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, templateCtx.attributes))
+		state.blockUnsafePrimaryFallback = true
+		state.primaryCandidate = nil
+		state.secondaryCandidate = nil
+		return
+	}
+	if shouldUseLLMSaleAttributeMapping(state.primaryCandidate, llmPrimary, templateCtx.attributes) {
+		state.candidates = augmentedCandidates
+		state.primaryCandidate, state.secondaryCandidate = llmPrimary, llmSecondary
+		resolution.Source = "llm_sale_attribute_mapping"
+		resolution.ReviewNotes = append(resolution.ReviewNotes, selection.Reasons...)
+	}
+}
+
+// applyLLMPrimaryRetry is the stricter repair path used when the first LLM
+// answer misses the primary template marked by AttributeLabel == 1.
+func (r *saleAttributeResolver) applyLLMPrimaryRetry(
+	resolution *SaleAttributeResolution,
+	sourceDimensions []SourceVariantDimension,
+	templateCtx *saleAttributeTemplateContext,
+	state *saleAttributeCandidateState,
+	llmPrimary *saleAttributeCandidate,
+	augmentedCandidates []saleAttributeCandidate,
+	mappingDimensions []SourceVariantDimension,
+) {
+	feedback := buildPrimarySaleTemplateMismatchNote(llmPrimary, templateCtx.attributes) + "。请重新选择 primary_source_dimension,但 primary_attribute_id 必须等于 SHEIN primary_label=true 的首个模板 attribute_id。"
+	retrySelection, retryErr := selectSaleAttributeMappingWithLLMFeedback(r.llm, mappingDimensions, templateCtx.attributes, feedback)
+	if retryErr != nil || retrySelection == nil {
+		state.candidates = augmentedCandidates
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, templateCtx.attributes))
+		state.blockUnsafePrimaryFallback = true
+		state.primaryCandidate = nil
+		state.secondaryCandidate = nil
+		return
+	}
+	retryPrimary, retrySecondary, retryCandidates := matchSelectedCandidates(augmentedCandidates, retrySelection, sourceDimensions, templateCtx.attributes)
+	if retryPrimary != nil &&
+		!selectedCandidateMissesPrimarySaleTemplate(retryPrimary, templateCtx.attributes) &&
+		shouldUseLLMSaleAttributeMapping(state.primaryCandidate, retryPrimary, templateCtx.attributes) {
+		state.candidates = retryCandidates
+		state.primaryCandidate, state.secondaryCandidate = retryPrimary, retrySecondary
+		resolution.Source = "llm_sale_attribute_mapping"
+		resolution.ReviewNotes = append(resolution.ReviewNotes, retrySelection.Reasons...)
+		return
+	}
+	state.candidates = retryCandidates
+	resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(retryPrimary, templateCtx.attributes))
+	state.blockUnsafePrimaryFallback = true
+	state.primaryCandidate = nil
+	state.secondaryCandidate = nil
+}
+
+// applyPrimaryTemplateRepair rebuilds a primary candidate directly from the
+// chosen source dimension when source selection was usable but mapping was not.
+func (r *saleAttributeResolver) applyPrimaryTemplateRepair(
+	resolution *SaleAttributeResolution,
+	sourceDimensions []SourceVariantDimension,
+	templateCtx *saleAttributeTemplateContext,
+	state *saleAttributeCandidateState,
+) {
+	if resolution.Source != "llm_source_dimensions" ||
+		!hasMarkedPrimarySaleTemplate(templateCtx.attributes) ||
+		(state.primaryCandidate != nil && !selectedCandidateMissesPrimarySaleTemplate(state.primaryCandidate, templateCtx.attributes)) {
+		return
+	}
+	repairedPrimary, ok := buildPrimaryLabelCandidateFromSourceSelection(resolution.PrimarySourceDimension, sourceDimensions, templateCtx.attributes)
+	if !ok {
+		return
+	}
+	state.candidates = append(state.candidates, repairedPrimary)
+	if orderedPrimary, orderedSecondary := selectTemplateOrderedCandidates(state.candidates, templateCtx.attributes); orderedPrimary != nil {
+		state.primaryCandidate = orderedPrimary
+		state.secondaryCandidate = orderedSecondary
+		resolution.Source = "llm_sale_attribute_mapping"
+	}
+}
+
+// enforcePrimaryTemplateConstraints prevents later fallback rules from silently
+// replacing the required primary template with a scored alternative candidate.
+func (r *saleAttributeResolver) enforcePrimaryTemplateConstraints(
+	resolution *SaleAttributeResolution,
+	templateCtx *saleAttributeTemplateContext,
+	state *saleAttributeCandidateState,
+) {
+	if hasMarkedPrimarySaleTemplate(templateCtx.attributes) && selectedCandidateMissesPrimarySaleTemplate(state.primaryCandidate, templateCtx.attributes) {
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(state.primaryCandidate, templateCtx.attributes))
+		state.blockUnsafePrimaryFallback = true
+		state.primaryCandidate = nil
+		state.secondaryCandidate = nil
+	}
+	if hasMarkedPrimarySaleTemplate(templateCtx.attributes) && state.primaryCandidate == nil && len(state.candidates) > 0 {
+		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(nil, templateCtx.attributes))
+		state.blockUnsafePrimaryFallback = true
+	}
+}
+
+// applySourceDimensionFallback is the final non-LLM fallback path after all
+// primary-template guards and repair attempts have run.
+func (r *saleAttributeResolver) applySourceDimensionFallback(
+	resolution *SaleAttributeResolution,
+	sourceDimensions []SourceVariantDimension,
+	state *saleAttributeCandidateState,
+) {
+	if shouldBlockPromptDerivedAIStylePrimary(state.primaryCandidate, sourceDimensions) && resolution.Source != "llm_sale_attribute_mapping" {
+		state.blockUnsafePrimaryFallback = true
+		state.primaryCandidate = nil
+		state.secondaryCandidate = nil
+		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN Style Type 不能使用用户设计提示词作为销售属性来源，需使用稳定销售维度重新映射")
+	}
+	if state.primaryCandidate == nil && !state.blockUnsafePrimaryFallback {
+		state.primaryCandidate, state.secondaryCandidate = selectCandidatesBySourceDimensions(
+			state.candidates,
+			resolution.PrimarySourceDimension,
+			resolution.SecondarySourceDimension,
+		)
+	}
+}
+
+// initializeResolution extracts source dimensions and records the initial
+// source-dimension selection result before any template lookup begins.
+func (r *saleAttributeResolver) initializeResolution(canonical *canonical.Product, pkg *Package) (*SaleAttributeResolution, []SourceVariantDimension) {
+	resolution := &SaleAttributeResolution{Status: "unresolved", Source: "fallback", CategoryID: categoryID(pkg)}
 	sourceDimensions := saleAttributeSourceDimensions(buildSourceVariantDimensions(canonical, common.BuildVariants(canonical)))
 	resolution.SourceDimensions = append([]SourceVariantDimension(nil), sourceDimensions...)
 	if sourceSelection := selectSourceDimensions(sourceDimensions, r.llm); sourceSelection != nil {
@@ -39,7 +252,12 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 			resolution.Source = "source_dimensions_fallback"
 		}
 	}
+	return resolution, sourceDimensions
+}
 
+// validateResolutionInputs handles hard-stop checks that do not require
+// template loading or candidate construction.
+func (r *saleAttributeResolver) validateResolutionInputs(resolution *SaleAttributeResolution) *SaleAttributeResolution {
 	if resolution.CategoryID == 0 {
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "缺少 SHEIN category_id，无法解析销售属性")
 		return resolution
@@ -49,9 +267,15 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "缺少 SHEIN AttributeAPI，当前无法加载销售属性模板")
 		return resolution
 	}
+	return nil
+}
+
+// loadTemplateContext loads the first template group and normalizes it into the
+// structure used by downstream sale-attribute selection logic.
+func (r *saleAttributeResolver) loadTemplateContext(log *logrus.Entry, resolution *SaleAttributeResolution) (*saleAttributeTemplateContext, *SaleAttributeResolution) {
 	log.WithFields(logrus.Fields{
 		"category_id":         resolution.CategoryID,
-		"source_dimensions":   len(sourceDimensions),
+		"source_dimensions":   len(resolution.SourceDimensions),
 		"primary_dimension":   resolution.PrimarySourceDimension,
 		"secondary_dimension": resolution.SecondarySourceDimension,
 	}).Info("loading SHEIN sale attribute templates")
@@ -60,131 +284,46 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 销售属性模板加载失败: "+err.Error())
 		log.WithError(err).WithField("category_id", resolution.CategoryID).Warn("failed to load SHEIN sale attribute templates")
-		return resolution
+		return nil, resolution
 	}
 	if templates == nil || len(templates.Data) == 0 {
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 销售属性模板为空")
 		log.WithField("category_id", resolution.CategoryID).Warn("SHEIN sale attribute templates are empty")
-		return resolution
+		return nil, resolution
 	}
 	template := templates.Data[0]
-	saleAttributes := orderSaleScopeAttributes(filterSaleScopeAttributes(template.AttributeInfos), template.AttributeID)
-	resolution.TemplateOptions = buildSaleAttributeTemplateOptions(saleAttributes)
-	index := newTemplateIndex(saleAttributes)
+	attributes := orderSaleScopeAttributes(filterSaleScopeAttributes(template.AttributeInfos), template.AttributeID)
+	resolution.TemplateOptions = buildSaleAttributeTemplateOptions(attributes)
+	index := newTemplateIndex(attributes)
 	log.WithFields(logrus.Fields{
 		"category_id":          resolution.CategoryID,
 		"template_groups":      len(templates.Data),
-		"sale_attribute_count": len(saleAttributes),
+		"sale_attribute_count": len(attributes),
 	}).Info("loaded SHEIN sale attribute templates")
 	if len(index.attributes) == 0 {
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "当前类目未识别到可用的销售属性模板")
-		return resolution
+		return nil, resolution
 	}
-	if len(sourceDimensions) == 0 {
-		resolution.Status = "partial"
-		resolution.ReviewNotes = append(resolution.ReviewNotes, "缺少源销售属性维度，当前无法构建 SHEIN SKC/SKU 映射")
-		return resolution
-	}
+	return &saleAttributeTemplateContext{attributes: attributes, index: index}, nil
+}
 
-	candidates := buildSaleAttributeCandidates(sourceDimensions, saleAttributes)
-	var primaryCandidate, secondaryCandidate *saleAttributeCandidate
-	primaryCandidate, secondaryCandidate = selectPrimarySecondaryCandidates(candidates)
-	if orderedPrimary, orderedSecondary := selectTemplateOrderedCandidates(candidates, saleAttributes); orderedPrimary != nil {
-		primaryCandidate = orderedPrimary
-		secondaryCandidate = orderedSecondary
-	}
-	blockUnsafePrimaryFallback := false
-	if shouldSelectSaleAttributeMappingWithLLM(primaryCandidate, sourceDimensions, saleAttributes) {
-		mappingDimensions := saleAttributeMappingSourceDimensions(sourceDimensions)
-		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, mappingDimensions, saleAttributes); err == nil && selection != nil {
-			llmPrimary, llmSecondary, augmentedCandidates := matchSelectedCandidates(candidates, selection, sourceDimensions, saleAttributes)
-			if hasMarkedPrimarySaleTemplate(saleAttributes) && (llmPrimary == nil || selectedCandidateMissesPrimarySaleTemplate(llmPrimary, saleAttributes)) {
-				feedback := buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes) + "。请重新选择 primary_source_dimension，但 primary_attribute_id 必须等于 SHEIN primary_label=true 的首个模板 attribute_id。"
-				if retrySelection, retryErr := selectSaleAttributeMappingWithLLMFeedback(r.llm, mappingDimensions, saleAttributes, feedback); retryErr == nil && retrySelection != nil {
-					retryPrimary, retrySecondary, retryCandidates := matchSelectedCandidates(augmentedCandidates, retrySelection, sourceDimensions, saleAttributes)
-					if retryPrimary != nil && !selectedCandidateMissesPrimarySaleTemplate(retryPrimary, saleAttributes) && shouldUseLLMSaleAttributeMapping(primaryCandidate, retryPrimary, saleAttributes) {
-						candidates = retryCandidates
-						primaryCandidate, secondaryCandidate = retryPrimary, retrySecondary
-						resolution.Source = "llm_sale_attribute_mapping"
-						resolution.ReviewNotes = append(resolution.ReviewNotes, retrySelection.Reasons...)
-					} else {
-						candidates = retryCandidates
-						resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(retryPrimary, saleAttributes))
-						blockUnsafePrimaryFallback = true
-						primaryCandidate = nil
-						secondaryCandidate = nil
-					}
-				} else {
-					candidates = augmentedCandidates
-					resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes))
-					blockUnsafePrimaryFallback = true
-					primaryCandidate = nil
-					secondaryCandidate = nil
-				}
-			} else if selectedCandidateMissesPrimarySaleTemplate(llmPrimary, saleAttributes) {
-				candidates = augmentedCandidates
-				resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(llmPrimary, saleAttributes))
-				blockUnsafePrimaryFallback = true
-				primaryCandidate = nil
-				secondaryCandidate = nil
-			} else if shouldUseLLMSaleAttributeMapping(primaryCandidate, llmPrimary, saleAttributes) {
-				candidates = augmentedCandidates
-				primaryCandidate, secondaryCandidate = llmPrimary, llmSecondary
-				resolution.Source = "llm_sale_attribute_mapping"
-				resolution.ReviewNotes = append(resolution.ReviewNotes, selection.Reasons...)
-			}
-		}
-	}
-	if resolution.Source == "llm_source_dimensions" &&
-		hasMarkedPrimarySaleTemplate(saleAttributes) &&
-		selectedCandidateMissesPrimarySaleTemplate(primaryCandidate, saleAttributes) {
-		if repairedPrimary, ok := buildPrimaryLabelCandidateFromSourceSelection(resolution.PrimarySourceDimension, sourceDimensions, saleAttributes); ok {
-			candidates = append(candidates, repairedPrimary)
-			if orderedPrimary, orderedSecondary := selectTemplateOrderedCandidates(candidates, saleAttributes); orderedPrimary != nil {
-				primaryCandidate = orderedPrimary
-				secondaryCandidate = orderedSecondary
-				resolution.Source = "llm_sale_attribute_mapping"
-			}
-		}
-	}
-	if hasMarkedPrimarySaleTemplate(saleAttributes) && selectedCandidateMissesPrimarySaleTemplate(primaryCandidate, saleAttributes) {
-		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(primaryCandidate, saleAttributes))
-		blockUnsafePrimaryFallback = true
-		primaryCandidate = nil
-		secondaryCandidate = nil
-	}
-	if hasMarkedPrimarySaleTemplate(saleAttributes) && primaryCandidate == nil && len(candidates) > 0 {
-		resolution.ReviewNotes = append(resolution.ReviewNotes, buildPrimarySaleTemplateMismatchNote(nil, saleAttributes))
-		blockUnsafePrimaryFallback = true
-	}
-	if shouldBlockPromptDerivedAIStylePrimary(primaryCandidate, sourceDimensions) && resolution.Source != "llm_sale_attribute_mapping" {
-		blockUnsafePrimaryFallback = true
-		primaryCandidate = nil
-		secondaryCandidate = nil
-		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN Style Type 不能使用用户设计提示词作为销售属性来源，需使用 SDS 稳定销售维度重新映射")
-	}
-	if primaryCandidate == nil {
-		if !blockUnsafePrimaryFallback {
-			primaryCandidate, secondaryCandidate = selectCandidatesBySourceDimensions(
-				candidates,
-				resolution.PrimarySourceDimension,
-				resolution.SecondarySourceDimension,
-			)
-		}
-	}
-	if primaryCandidate == nil && len(candidates) > 0 {
-		resolution.ReviewNotes = append(resolution.ReviewNotes, buildNoFitCandidateReviewNotes(candidates)...)
-		resolution.ReviewNotes = append(resolution.ReviewNotes, buildCategoryTemplateGapReviewNotes(candidates, saleAttributes)...)
-		resolution.RecommendCategoryReview, resolution.CategoryReviewReason = buildCategoryTemplateGapSummary(candidates, saleAttributes)
-	}
+// applyResolvedCandidates writes the chosen candidates back into the public
+// resolution payload and computes the final resolved/partial status.
+func (r *saleAttributeResolver) applyResolvedCandidates(
+	resolution *SaleAttributeResolution,
+	index *templateIndex,
+	pkg *Package,
+	candidates []saleAttributeCandidate,
+	primaryCandidate, secondaryCandidate *saleAttributeCandidate,
+) {
 	if primaryCandidate != nil {
 		resolution.PrimarySourceDimension = primaryCandidate.SourceName
 	}
 	if secondaryCandidate != nil {
 		resolution.SecondarySourceDimension = secondaryCandidate.SourceName
-	} else if secondaryCandidate == nil && primaryCandidate != nil && normalizeText(resolution.SecondarySourceDimension) == normalizeText(primaryCandidate.SourceName) {
+	} else if primaryCandidate != nil && normalizeText(resolution.SecondarySourceDimension) == normalizeText(primaryCandidate.SourceName) {
 		resolution.SecondarySourceDimension = ""
 	}
 
@@ -212,857 +351,5 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 	default:
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "未命中可用的 SHEIN 销售属性映射")
-	}
-	if !resolution.RecommendCategoryReview {
-		if recommend, reason := buildCategoryFamilyConflictSummary(canonical, pkg); recommend {
-			resolution.RecommendCategoryReview = true
-			resolution.CategoryReviewReason = reason
-			resolution.ReviewNotes = append(resolution.ReviewNotes, buildCategoryFamilyConflictReviewNotes(canonical, pkg)...)
-		}
-	}
-	log.WithFields(logrus.Fields{
-		"category_id":            resolution.CategoryID,
-		"status":                 resolution.Status,
-		"primary_attribute_id":   resolution.PrimaryAttributeID,
-		"secondary_attribute_id": resolution.SecondaryAttributeID,
-		"candidate_count":        len(resolution.Candidates),
-	}).Info("resolved SHEIN sale attributes")
-	return resolution
-}
-
-func buildSaleAttributeTemplateOptions(attributes []sheinattribute.AttributeInfo) []SaleAttributeTemplateOption {
-	if len(attributes) == 0 {
-		return nil
-	}
-	options := make([]SaleAttributeTemplateOption, 0, len(attributes))
-	for _, attribute := range attributes {
-		option := SaleAttributeTemplateOption{
-			AttributeID: attribute.AttributeID,
-			Name:        attribute.AttributeName,
-			NameEn:      attribute.AttributeNameEn,
-			Required:    attribute.AttributeIsShow == 1,
-			Important:   attribute.AttributeLabel == 1,
-		}
-		if attribute.SKCScope != nil {
-			option.SKCScope = *attribute.SKCScope
-		}
-		if len(attribute.AttributeValueInfoList) > 0 {
-			option.AttributeValueList = make([]AttributeValueCandidate, 0, len(attribute.AttributeValueInfoList))
-			for _, value := range attribute.AttributeValueInfoList {
-				if value.AttributeValueID <= 0 {
-					continue
-				}
-				option.AttributeValueList = append(option.AttributeValueList, AttributeValueCandidate{
-					AttributeValueID: value.AttributeValueID,
-					Value:            value.AttributeValue,
-					ValueEn:          value.AttributeValueEn,
-				})
-			}
-		}
-		options = append(options, option)
-	}
-	return options
-}
-
-func applySelectedCandidate(
-	index *templateIndex,
-	candidate *saleAttributeCandidate,
-	scope string,
-	api AttributeAPI,
-	categoryID int,
-	spuName string,
-	llm openaiclient.ChatCompleter,
-	resolution *SaleAttributeResolution,
-) {
-	if candidate == nil || candidate.Match.AttributeID <= 0 || resolution == nil {
-		return
-	}
-	resolved := toResolvedSaleAttribute(candidate.Match, scope)
-	switch scope {
-	case "skc":
-		resolution.PrimaryAttributeID = resolved.AttributeID
-		resolution.PrimarySourceDimension = candidate.SourceName
-		resolution.SKCAttributes = append(resolution.SKCAttributes, resolved)
-		assignments, relations, notes, summary := buildValueAssignments(
-			candidate.Values,
-			candidate.SourceName,
-			candidate.TemplateName,
-			"skc",
-			index,
-			api,
-			categoryID,
-			spuName,
-			llm,
-		)
-		resolution.skcValueAssignments = assignments
-		resolution.SKCValueAssignments = cloneResolvedSaleAttributeMap(assignments)
-		resolution.SKCAttributes = resolvedSaleAttributesForPublicView(resolution.SKCAttributes, assignments)
-		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
-		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
-		applySaleAttributeValueSummary(resolution, summary)
-	case "sku":
-		resolution.SecondaryAttributeID = resolved.AttributeID
-		resolution.SecondarySourceDimension = candidate.SourceName
-		resolution.SKUAttributes = append(resolution.SKUAttributes, resolved)
-		assignments, relations, notes, summary := buildValueAssignments(
-			candidate.Values,
-			candidate.SourceName,
-			candidate.TemplateName,
-			"sku",
-			index,
-			api,
-			categoryID,
-			spuName,
-			llm,
-		)
-		resolution.skuValueAssignments = assignments
-		resolution.SKUValueAssignments = cloneResolvedSaleAttributeMap(assignments)
-		resolution.SKUAttributes = resolvedSaleAttributesForPublicView(resolution.SKUAttributes, assignments)
-		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
-		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
-		applySaleAttributeValueSummary(resolution, summary)
-	}
-}
-
-func resolvedSaleAttributesForPublicView(current []ResolvedSaleAttribute, assignments map[string]ResolvedSaleAttribute) []ResolvedSaleAttribute {
-	if len(current) == 0 || len(assignments) == 0 {
-		return current
-	}
-	for _, assignment := range assignments {
-		if !saleAttributeHasResolvedValue(assignment) {
-			continue
-		}
-		next := append([]ResolvedSaleAttribute(nil), current...)
-		next[0] = assignment
-		return next
-	}
-	return current
-}
-
-func filterSaleScopeAttributes(attributes []sheinattribute.AttributeInfo) []sheinattribute.AttributeInfo {
-	result := make([]sheinattribute.AttributeInfo, 0, len(attributes))
-	for _, attr := range attributes {
-		if attr.AttributeType == 1 || (attr.SKCScope != nil && *attr.SKCScope) {
-			result = append(result, attr)
-			continue
-		}
-		switch normalizeText(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)) {
-		case "color", "colour", "size", "style", "pattern", "capacity", "type", "model", "set", "颜色", "颜色分类", "尺码", "尺寸", "规格", "容量", "款式", "类型", "型号", "套装":
-			result = append(result, attr)
-		}
-	}
-	return result
-}
-
-func orderSaleScopeAttributes(attributes []sheinattribute.AttributeInfo, orderedIDs []int) []sheinattribute.AttributeInfo {
-	if len(attributes) == 0 {
-		return attributes
-	}
-	if len(orderedIDs) == 0 {
-		ordered := append([]sheinattribute.AttributeInfo(nil), attributes...)
-		sort.SliceStable(ordered, func(i, j int) bool {
-			left := isPrimarySaleTemplateAttribute(ordered[i])
-			right := isPrimarySaleTemplateAttribute(ordered[j])
-			if left != right {
-				return left
-			}
-			return false
-		})
-		return ordered
-	}
-	byID := make(map[int]sheinattribute.AttributeInfo, len(attributes))
-	for _, attr := range attributes {
-		byID[attr.AttributeID] = attr
-	}
-	ordered := make([]sheinattribute.AttributeInfo, 0, len(attributes))
-	seen := make(map[int]struct{}, len(attributes))
-	for _, id := range orderedIDs {
-		attr, ok := byID[id]
-		if !ok {
-			continue
-		}
-		ordered = append(ordered, attr)
-		seen[id] = struct{}{}
-	}
-	for _, attr := range attributes {
-		if _, ok := seen[attr.AttributeID]; ok {
-			continue
-		}
-		ordered = append(ordered, attr)
-	}
-	sort.SliceStable(ordered, func(i, j int) bool {
-		left := isPrimarySaleTemplateAttribute(ordered[i])
-		right := isPrimarySaleTemplateAttribute(ordered[j])
-		if left != right {
-			return left
-		}
-		return false
-	})
-	return ordered
-}
-
-func isPrimarySaleTemplateAttribute(attr sheinattribute.AttributeInfo) bool {
-	// SHEIN marks the authoritative primary sale attribute with attribute_label=1.
-	// This must outrank template array order, SKC scope, required flags, value fit, and variant distinctness.
-	return attr.AttributeLabel == 1
-}
-
-func matchSelectedCandidates(
-	candidates []saleAttributeCandidate,
-	selection *saleAttributeMappingSelection,
-	dimensions []SourceVariantDimension,
-	attributes []sheinattribute.AttributeInfo,
-) (*saleAttributeCandidate, *saleAttributeCandidate, []saleAttributeCandidate) {
-	if selection == nil {
-		return nil, nil, candidates
-	}
-	lookup := func(sourceName string, attributeID int) *saleAttributeCandidate {
-		sourceName = normalizeText(sourceName)
-		for i := range candidates {
-			candidate := &candidates[i]
-			if candidate.ValueFitCount == 0 {
-				continue
-			}
-			if sourceName != "" && normalizeText(candidate.SourceName) != sourceName {
-				continue
-			}
-			if attributeID > 0 && candidate.AttributeID != attributeID {
-				continue
-			}
-			return candidate
-		}
-		return nil
-	}
-	primary := lookup(selection.PrimarySourceDimension, selection.PrimaryAttributeID)
-	secondary := lookup(selection.SecondarySourceDimension, selection.SecondaryAttributeID)
-	if primary == nil {
-		if candidate, ok := buildLLMSelectedSaleAttributeCandidate(selection.PrimarySourceDimension, selection.PrimaryAttributeID, dimensions, attributes); ok {
-			candidates = append(candidates, candidate)
-			primary = &candidates[len(candidates)-1]
-		}
-	}
-	if secondary == nil {
-		if candidate, ok := buildLLMSelectedSaleAttributeCandidate(selection.SecondarySourceDimension, selection.SecondaryAttributeID, dimensions, attributes); ok {
-			candidates = append(candidates, candidate)
-			secondary = &candidates[len(candidates)-1]
-		}
-	}
-	if primary != nil && secondary != nil && primary.SourceName == secondary.SourceName {
-		secondary = nil
-	}
-	return primary, secondary, candidates
-}
-
-func buildLLMSelectedSaleAttributeCandidate(
-	sourceName string,
-	attributeID int,
-	dimensions []SourceVariantDimension,
-	attributes []sheinattribute.AttributeInfo,
-) (saleAttributeCandidate, bool) {
-	sourceName = strings.TrimSpace(sourceName)
-	if sourceName == "" || attributeID <= 0 {
-		return saleAttributeCandidate{}, false
-	}
-	var dimension *SourceVariantDimension
-	sourceOrder := 0
-	for i := range dimensions {
-		if normalizeText(dimensions[i].Name) != normalizeText(sourceName) {
-			continue
-		}
-		dimension = &dimensions[i]
-		sourceOrder = i
-		break
-	}
-	if dimension == nil || isTechnicalSaleSourceDimension(dimension.Name) {
-		return saleAttributeCandidate{}, false
-	}
-	var attr *sheinattribute.AttributeInfo
-	templateOrder := 0
-	for i := range attributes {
-		if attributes[i].AttributeID != attributeID {
-			continue
-		}
-		attr = &attributes[i]
-		templateOrder = i
-		break
-	}
-	if attr == nil {
-		return saleAttributeCandidate{}, false
-	}
-	match := buildTemplateAttributeMatch(*attr, dimension.SampleValue)
-	match.MatchedBy = "llm_sale_attribute_mapping"
-	distinct := len(uniqueNormalizedValues(dimension.Values))
-	return newSaleAttributeCandidate(*dimension, sourceOrder, templateOrder, match, distinct, distinct)
-}
-
-func buildPrimaryLabelCandidateFromSourceSelection(sourceName string, dimensions []SourceVariantDimension, attributes []sheinattribute.AttributeInfo) (saleAttributeCandidate, bool) {
-	first := firstSaleAttributeTemplate(attributes)
-	if first == nil || !isPrimarySaleTemplateAttribute(*first) {
-		return saleAttributeCandidate{}, false
-	}
-	sourceName = strings.TrimSpace(sourceName)
-	if sourceName == "" || isAIStyleSourceDimension(sourceName) || isTechnicalSaleSourceDimension(sourceName) {
-		return saleAttributeCandidate{}, false
-	}
-	if isGenericSecondaryName(sourceName) {
-		return saleAttributeCandidate{}, false
-	}
-	return buildLLMSelectedSaleAttributeCandidate(sourceName, first.AttributeID, dimensions, attributes)
-}
-
-func shouldSelectSaleAttributeMappingWithLLM(primary *saleAttributeCandidate, dimensions []SourceVariantDimension, attributes []sheinattribute.AttributeInfo) bool {
-	if len(dimensions) == 0 {
-		return false
-	}
-	if primary == nil {
-		return true
-	}
-	if selectedCandidateMissesPrimarySaleTemplate(primary, attributes) && hasAlternativePrimarySaleSourceDimension(dimensions, "") {
-		return true
-	}
-	return isWeakPrimarySaleAttributeCandidate(*primary) && hasAlternativePrimarySaleSourceDimension(dimensions, primary.SourceName)
-}
-
-func shouldUseLLMSaleAttributeMapping(current, selected *saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) bool {
-	if selected == nil {
-		return false
-	}
-	if current == nil {
-		return true
-	}
-	if normalizeText(current.SourceName) == normalizeText(selected.SourceName) && current.AttributeID == selected.AttributeID {
-		return false
-	}
-	if selectedCandidateMatchesFirstSaleTemplate(selected, attributes) && selectedCandidateMissesPrimarySaleTemplate(current, attributes) {
-		return true
-	}
-	if selected.SKCScope || selected.Required || selected.Important {
-		return true
-	}
-	return isWeakPrimarySaleAttributeCandidate(*current)
-}
-
-func selectedCandidateMissesPrimarySaleTemplate(primary *saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) bool {
-	if primary == nil || len(attributes) == 0 {
-		return false
-	}
-	first := firstSaleAttributeTemplate(attributes)
-	return first != nil && primary.AttributeID != first.AttributeID
-}
-
-func selectedCandidateMatchesFirstSaleTemplate(primary *saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) bool {
-	if primary == nil || len(attributes) == 0 {
-		return false
-	}
-	first := firstSaleAttributeTemplate(attributes)
-	return first != nil && primary.AttributeID == first.AttributeID
-}
-
-func hasMarkedPrimarySaleTemplate(attributes []sheinattribute.AttributeInfo) bool {
-	first := firstSaleAttributeTemplate(attributes)
-	return first != nil && isPrimarySaleTemplateAttribute(*first)
-}
-
-func buildPrimarySaleTemplateMismatchNote(primary *saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) string {
-	first := firstSaleAttributeTemplate(attributes)
-	if first == nil {
-		return "SHEIN 销售属性首个模板未能安全映射，已阻止使用非首位模板属性作为主销售属性"
-	}
-	firstName := firstNonEmpty(first.AttributeNameEn, first.AttributeName, strconv.Itoa(first.AttributeID))
-	if primary == nil {
-		return fmt.Sprintf("SHEIN 销售属性首个模板 %q(ID:%d) 未能安全映射，需确认主销售属性", firstName, first.AttributeID)
-	}
-	primaryName := firstNonEmpty(primary.TemplateName, primary.Match.Name, strconv.Itoa(primary.AttributeID))
-	return fmt.Sprintf(
-		"SHEIN 销售属性需按模板顺序，首个模板 %q(ID:%d) 未能安全映射，已阻止使用 %q(ID:%d) 作为主销售属性",
-		firstName,
-		first.AttributeID,
-		primaryName,
-		primary.AttributeID,
-	)
-}
-
-func selectTemplateOrderedCandidates(candidates []saleAttributeCandidate, attributes []sheinattribute.AttributeInfo) (*saleAttributeCandidate, *saleAttributeCandidate) {
-	first := firstSaleAttributeTemplate(attributes)
-	if first == nil {
-		return nil, nil
-	}
-	primary := bestCandidateForAttribute(candidates, first.AttributeID, nil)
-	if primary == nil {
-		return nil, nil
-	}
-	var secondary *saleAttributeCandidate
-	for _, attr := range attributes[1:] {
-		secondary = bestCandidateForAttribute(candidates, attr.AttributeID, primary)
-		if secondary != nil {
-			break
-		}
-	}
-	return primary, secondary
-}
-
-func firstSaleAttributeTemplate(attributes []sheinattribute.AttributeInfo) *sheinattribute.AttributeInfo {
-	if len(attributes) == 0 {
-		return nil
-	}
-	return &attributes[0]
-}
-
-func bestCandidateForAttribute(candidates []saleAttributeCandidate, attributeID int, primary *saleAttributeCandidate) *saleAttributeCandidate {
-	var best *saleAttributeCandidate
-	for i := range candidates {
-		candidate := &candidates[i]
-		if candidate.AttributeID != attributeID {
-			continue
-		}
-		if candidate.ValueFitCount == 0 && (primary == nil || !canUseFallbackSecondaryCandidate(*candidate)) {
-			continue
-		}
-		if primary != nil && (candidate.AttributeID == primary.AttributeID || normalizeText(candidate.SourceName) == normalizeText(primary.SourceName)) {
-			continue
-		}
-		if best == nil || candidate.ValueFitCount > best.ValueFitCount ||
-			(candidate.ValueFitCount == best.ValueFitCount && candidate.DistinctCount > best.DistinctCount) {
-			best = candidate
-		}
-	}
-	return best
-}
-
-func isWeakPrimarySaleAttributeCandidate(candidate saleAttributeCandidate) bool {
-	if isAIStyleSourceDimension(candidate.SourceName) {
-		return true
-	}
-	return candidate.ValueFitCount == 0
-}
-
-func shouldBlockPromptDerivedAIStylePrimary(candidate *saleAttributeCandidate, dimensions []SourceVariantDimension) bool {
-	if candidate == nil || !isAIStyleSourceDimension(candidate.SourceName) {
-		return false
-	}
-	if !shouldExtractSaleAttributeSourceValue(candidate.SourceName, candidate.SampleValue) {
-		return false
-	}
-	return hasAlternativePrimarySaleSourceDimension(dimensions, candidate.SourceName)
-}
-
-func saleAttributeMappingSourceDimensions(dimensions []SourceVariantDimension) []SourceVariantDimension {
-	if len(dimensions) == 0 || !hasAlternativePrimarySaleSourceDimension(dimensions, "ai_style") {
-		return dimensions
-	}
-	filtered := make([]SourceVariantDimension, 0, len(dimensions))
-	for _, dimension := range dimensions {
-		if isAIStyleSourceDimension(dimension.Name) && sourceDimensionRequiresExternalSaleAttributeExtraction(dimension) {
-			continue
-		}
-		filtered = append(filtered, dimension)
-	}
-	if len(filtered) == 0 {
-		return dimensions
-	}
-	return filtered
-}
-
-func hasAlternativePrimarySaleSourceDimension(dimensions []SourceVariantDimension, currentName string) bool {
-	for _, dimension := range dimensions {
-		if normalizeText(dimension.Name) == normalizeText(currentName) {
-			continue
-		}
-		if isTechnicalSaleSourceDimension(dimension.Name) || isAIStyleSourceDimension(dimension.Name) || isGenericSecondaryName(dimension.Name) {
-			continue
-		}
-		if len(uniqueNormalizedValues(dimension.Values)) == 0 {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-func selectPrimarySecondaryCandidates(candidates []saleAttributeCandidate) (*saleAttributeCandidate, *saleAttributeCandidate) {
-	if len(candidates) == 0 {
-		return nil, nil
-	}
-	sorted := append([]saleAttributeCandidate(nil), candidates...)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		a, b := sorted[i], sorted[j]
-		if a.ValueFitCount == 0 || b.ValueFitCount == 0 {
-			return a.ValueFitCount > b.ValueFitCount
-		}
-		if isPromotedPrimarySaleCandidate(a) != isPromotedPrimarySaleCandidate(b) {
-			return isPromotedPrimarySaleCandidate(a)
-		}
-		if a.TemplateOrder != b.TemplateOrder {
-			return a.TemplateOrder < b.TemplateOrder
-		}
-		if saleCandidateMatchQuality(a) != saleCandidateMatchQuality(b) {
-			return saleCandidateMatchQuality(a) > saleCandidateMatchQuality(b)
-		}
-		if a.PrimaryScore != b.PrimaryScore {
-			return a.PrimaryScore > b.PrimaryScore
-		}
-		if a.DistinctCount != b.DistinctCount {
-			return a.DistinctCount > b.DistinctCount
-		}
-		return a.SourceOrder < b.SourceOrder
-	})
-	var primary *saleAttributeCandidate
-	for i := range sorted {
-		if sorted[i].ValueFitCount == 0 {
-			continue
-		}
-		primary = &sorted[i]
-		break
-	}
-	if primary == nil {
-		return nil, nil
-	}
-
-	secondaryPool := make([]saleAttributeCandidate, 0, len(sorted))
-	for _, candidate := range sorted[1:] {
-		if candidate.ValueFitCount == 0 && !canUseFallbackSecondaryCandidate(candidate) {
-			continue
-		}
-		if candidate.SourceName == primary.SourceName || candidate.AttributeID == primary.AttributeID {
-			continue
-		}
-		secondaryPool = append(secondaryPool, candidate)
-	}
-	if len(secondaryPool) == 0 {
-		return primary, nil
-	}
-	sort.SliceStable(secondaryPool, func(i, j int) bool {
-		a, b := secondaryPool[i], secondaryPool[j]
-		if a.SecondaryScore != b.SecondaryScore {
-			return a.SecondaryScore > b.SecondaryScore
-		}
-		if a.DistinctCount != b.DistinctCount {
-			return a.DistinctCount > b.DistinctCount
-		}
-		return a.SourceOrder < b.SourceOrder
-	})
-	if secondaryPool[0].SecondaryScore == 0 && !canUseFallbackSecondaryCandidate(secondaryPool[0]) {
-		return primary, nil
-	}
-	secondary := secondaryPool[0]
-	return primary, &secondary
-}
-
-func saleCandidateMatchQuality(candidate saleAttributeCandidate) int {
-	if candidate.Match.MatchedBy == "custom_attribute_value_candidate" {
-		if isAIStyleSourceDimension(candidate.SourceName) {
-			return 1
-		}
-		return 2
-	}
-	return 3
-}
-
-func isPromotedPrimarySaleCandidate(candidate saleAttributeCandidate) bool {
-	if isAIStyleSourceDimension(candidate.SourceName) {
-		return false
-	}
-	if isColorSaleCandidate(candidate) && candidate.Important {
-		return true
-	}
-	return candidate.Required && candidate.DistinctCount > 1
-}
-
-func isColorSaleCandidate(candidate saleAttributeCandidate) bool {
-	return matchesAnyName(candidate.SourceName, []string{"color", "colour", "颜色", "颜色分类"}) ||
-		matchesAnyName(candidate.TemplateName, []string{"color", "colour", "颜色", "颜色分类"})
-}
-
-func primaryPriority(candidate saleAttributeCandidate) int {
-	score := 0
-	if candidate.Required {
-		score += 8
-	}
-	if candidate.SKCScope {
-		score += 6
-	}
-	if candidate.DistinctCount > 1 {
-		score += 4
-	}
-	score += candidate.ValueFitCount * 3
-	return score
-}
-
-func secondaryPriority(candidate saleAttributeCandidate) int {
-	score := 0
-	if candidate.DistinctCount > 1 {
-		score += 6
-	}
-	if !candidate.SKCScope {
-		score += 2
-	}
-	if isGenericSecondaryName(candidate.TemplateName) {
-		score += 2
-	}
-	score += candidate.ValueFitCount * 3
-	return score
-}
-
-func buildSaleAttributeCandidateInfos(candidates []saleAttributeCandidate, primary, secondary *saleAttributeCandidate) []SaleAttributeCandidateInfo {
-	if len(candidates) == 0 {
-		return nil
-	}
-	result := make([]SaleAttributeCandidateInfo, 0, len(candidates))
-	for _, candidate := range candidates {
-		info := SaleAttributeCandidateInfo{
-			SourceDimension: candidate.SourceName,
-			Name:            candidate.TemplateName,
-			AttributeID:     candidate.AttributeID,
-			SKCScope:        candidate.SKCScope,
-			Required:        candidate.Required,
-			Important:       candidate.Important,
-			SKCDistinct:     candidate.DistinctCount,
-			SKUDistinct:     candidate.DistinctCount,
-			TotalDistinct:   candidate.DistinctCount,
-			PrimaryScore:    candidate.PrimaryScore,
-			SecondaryScore:  candidate.SecondaryScore,
-			SampleValue:     candidate.SampleValue,
-			Reasons:         explainSaleAttributeCandidate(candidate),
-		}
-		switch {
-		case primary != nil && candidate.SourceName == primary.SourceName && candidate.AttributeID == primary.AttributeID:
-			info.SelectedScope = "skc"
-		case secondary != nil && candidate.SourceName == secondary.SourceName && candidate.AttributeID == secondary.AttributeID:
-			info.SelectedScope = "sku"
-		}
-		result = append(result, info)
-	}
-	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].SelectedScope != result[j].SelectedScope {
-			if result[i].SelectedScope == "" || result[j].SelectedScope == "" {
-				return result[i].SelectedScope != ""
-			}
-			return selectedSaleScopeRank(result[i].SelectedScope) > selectedSaleScopeRank(result[j].SelectedScope)
-		}
-		if result[i].SelectedScope != "" && result[j].SelectedScope != "" {
-			return selectedSaleScopeRank(result[i].SelectedScope) > selectedSaleScopeRank(result[j].SelectedScope)
-		}
-		if result[i].PrimaryScore != result[j].PrimaryScore {
-			return result[i].PrimaryScore > result[j].PrimaryScore
-		}
-		if result[i].SecondaryScore != result[j].SecondaryScore {
-			return result[i].SecondaryScore > result[j].SecondaryScore
-		}
-		return result[i].AttributeID < result[j].AttributeID
-	})
-	return result
-}
-
-func selectedSaleScopeRank(scope string) int {
-	switch scope {
-	case "skc":
-		return 2
-	case "sku":
-		return 1
-	default:
-		return 0
-	}
-}
-
-func selectCandidatesBySourceDimensions(candidates []saleAttributeCandidate, primaryName, secondaryName string) (*saleAttributeCandidate, *saleAttributeCandidate) {
-	if len(candidates) == 0 {
-		return nil, nil
-	}
-
-	var primaryCandidate *saleAttributeCandidate
-	var secondaryCandidate *saleAttributeCandidate
-	for i := range candidates {
-		candidate := &candidates[i]
-		if candidate.ValueFitCount == 0 && !canUseFallbackSecondaryCandidate(*candidate) {
-			continue
-		}
-		switch {
-		case primaryCandidate == nil && normalizeText(candidate.SourceName) == normalizeText(primaryName):
-			primaryCandidate = candidate
-		case secondaryCandidate == nil && normalizeText(candidate.SourceName) == normalizeText(secondaryName):
-			secondaryCandidate = candidate
-		}
-	}
-	if primaryCandidate != nil && secondaryCandidate != nil && normalizeText(primaryCandidate.SourceName) == normalizeText(secondaryCandidate.SourceName) {
-		secondaryCandidate = nil
-	}
-	return primaryCandidate, secondaryCandidate
-}
-
-func explainSaleAttributeCandidate(candidate saleAttributeCandidate) []string {
-	reasons := make([]string, 0, 4)
-	reasons = append(reasons, "源维度为 "+candidate.SourceName)
-	if candidate.Required {
-		reasons = append(reasons, "模板标记为必填销售属性")
-	}
-	if candidate.Important {
-		reasons = append(reasons, "模板标记为重要销售属性")
-	}
-	if candidate.SKCScope {
-		reasons = append(reasons, "模板标记为 SKC scope")
-	}
-	if candidate.DistinctCount > 1 {
-		reasons = append(reasons, "源维度存在多值差异")
-	}
-	if candidate.ValueFitTotal > 0 {
-		reasons = append(reasons, buildValueFitSummary(candidate.ValueFitCount, candidate.ValueFitTotal))
-	}
-	return reasons
-}
-
-func buildSelectionSummary(primary, secondary *saleAttributeCandidate) []string {
-	var summary []string
-	if primary != nil {
-		summary = append(summary, "主销售属性使用源维度 "+primary.SourceName+" 映射到 "+primary.TemplateName)
-	}
-	if secondary != nil {
-		summary = append(summary, "次销售属性使用源维度 "+secondary.SourceName+" 映射到 "+secondary.TemplateName)
-	}
-	return summary
-}
-
-type saleAttributeCoverage struct {
-	expected int
-	resolved int
-	complete bool
-}
-
-func resolvedSaleAttributeCoverage(candidate *saleAttributeCandidate, assignments map[string]ResolvedSaleAttribute) saleAttributeCoverage {
-	if candidate == nil {
-		return saleAttributeCoverage{complete: true}
-	}
-	expected := len(uniqueNormalizedValues(candidate.Values))
-	resolved := len(assignments)
-	return saleAttributeCoverage{
-		expected: expected,
-		resolved: resolved,
-		complete: expected == 0 || resolved >= expected,
-	}
-}
-
-func countTemplateValueFits(index *templateIndex, templateName string, values []string) (int, int) {
-	if index == nil || strings.TrimSpace(templateName) == "" {
-		return 0, 0
-	}
-	attr := index.FindAttribute(templateName)
-	if attr == nil {
-		return 0, 0
-	}
-	return countTemplateValueFitsForAttribute(*attr, values)
-}
-
-func buildValueFitSummary(fitCount, total int) string {
-	if total <= 0 {
-		return "源值拟合度未知"
-	}
-	return "模板值拟合度 " + strconv.Itoa(fitCount) + "/" + strconv.Itoa(total)
-}
-
-func buildNoFitCandidateReviewNotes(candidates []saleAttributeCandidate) []string {
-	notes := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		if candidate.ValueFitTotal == 0 || candidate.ValueFitCount > 0 {
-			continue
-		}
-		note := `源维度 "` + candidate.SourceName + `" 的值集合与模板属性 "` + candidate.TemplateName +
-			`" 无有效拟合（` + buildValueFitSummary(candidate.ValueFitCount, candidate.ValueFitTotal) +
-			`），当前不自动映射该销售属性`
-		if semantic := inferSourceValueSemantic(candidate.Values); semantic != "" {
-			note += "；这些值更像" + semantic
-		}
-		notes = append(notes, note)
-	}
-	return notes
-}
-
-func inferSourceValueSemantic(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	type score struct {
-		label string
-		hits  int
-	}
-	scores := []score{
-		{label: "套装/组合款", hits: countSemanticMatches(values, "套装", "套组", "组合", "桌椅", "套")},
-		{label: "款式/型号", hits: countSemanticMatches(values, "款", "型", "型号", "高椅", "矮椅", "折叠桌", "月亮椅")},
-		{label: "规格/尺寸", hits: countSemanticMatches(values, "cm", "mm", "ml", "l", "kg", "g", "x", "*")},
-	}
-	best := score{}
-	for _, current := range scores {
-		if current.hits > best.hits {
-			best = current
-		}
-	}
-	if best.hits == 0 {
-		return ""
-	}
-	return best.label
-}
-
-func countSemanticMatches(values []string, keywords ...string) int {
-	count := 0
-	for _, value := range values {
-		normalized := normalizeText(value)
-		for _, keyword := range keywords {
-			if strings.Contains(normalized, normalizeText(keyword)) {
-				count++
-				break
-			}
-		}
-	}
-	return count
-}
-
-func isGenericSecondaryName(name string) bool {
-	switch normalizeText(name) {
-	case "size", "capacity":
-		return true
-	}
-	return false
-}
-
-func canUseFallbackSecondaryCandidate(candidate saleAttributeCandidate) bool {
-	if candidate.ValueFitCount > 0 {
-		return true
-	}
-	if candidate.DistinctCount <= 1 {
-		return false
-	}
-	if isAIStyleSourceDimension(candidate.SourceName) {
-		return false
-	}
-	return isGenericSecondaryName(candidate.TemplateName) || isGenericSecondaryName(candidate.SourceName)
-}
-
-func uniqueNormalizedValues(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(values))
-	seen := make([]string, 0, len(values))
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		normalized := normalizeText(trimmed)
-		if slices.Contains(seen, normalized) {
-			continue
-		}
-		seen = append(seen, normalized)
-		result = append(result, trimmed)
-	}
-	return result
-}
-
-func toResolvedSaleAttribute(match ResolvedAttribute, scope string) ResolvedSaleAttribute {
-	return ResolvedSaleAttribute{
-		Scope:            scope,
-		Name:             match.Name,
-		Value:            match.Value,
-		AttributeID:      match.AttributeID,
-		AttributeValueID: match.AttributeValueID,
-		MatchedBy:        match.MatchedBy,
 	}
 }
