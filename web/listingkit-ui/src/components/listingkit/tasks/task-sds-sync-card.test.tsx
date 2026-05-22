@@ -1,8 +1,64 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskSDSSyncCard } from "@/components/listingkit/tasks/task-sds-sync-card";
 
 describe("TaskSDSSyncCard", () => {
+  it("shows a retry button for failed SDS child tasks", () => {
+    const onRetry = vi.fn();
+
+    render(
+      <TaskSDSSyncCard
+        task={{
+          status: "failed",
+          result: {
+            sds_sync: {
+              variant_id: 89764,
+              status: "failed",
+            },
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                status: "failed",
+                task_id: "child-1",
+              },
+            ],
+          },
+        }}
+        onRetry={onRetry}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重试子任务" }));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show a retry button for completed SDS child tasks", () => {
+    render(
+      <TaskSDSSyncCard
+        task={{
+          status: "completed",
+          result: {
+            sds_sync: {
+              variant_id: 89764,
+              status: "completed",
+            },
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                status: "completed",
+                task_id: "child-1",
+              },
+            ],
+          },
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "重试子任务" })).not.toBeInTheDocument();
+  });
+
   it("uses workflow stage status for the SDS process detail", () => {
     render(
       <TaskSDSSyncCard

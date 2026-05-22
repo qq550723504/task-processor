@@ -8,6 +8,7 @@ const push = vi.fn();
 const revisionHistoryMock = vi.fn();
 const revisionHistoryDetailMock = vi.fn();
 const executeActionMutate = vi.fn();
+const retryChildTaskMutate = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -27,12 +28,20 @@ vi.mock("@/lib/query/use-action", () => ({
   }),
 }));
 
+vi.mock("@/lib/query/use-child-task-retry", () => ({
+  useRetryChildTask: () => ({
+    mutate: retryChildTaskMutate,
+    isPending: false,
+  }),
+}));
+
 describe("TaskStatusScreen", () => {
   beforeEach(() => {
     push.mockReset();
     revisionHistoryMock.mockReset();
     revisionHistoryDetailMock.mockReset();
     executeActionMutate.mockReset();
+    retryChildTaskMutate.mockReset();
     revisionHistoryMock.mockReturnValue({
       data: { items: [] },
       isLoading: false,
@@ -324,6 +333,37 @@ describe("TaskStatusScreen", () => {
           platform: "all",
         },
       },
+    });
+  });
+
+  it("can retry the SDS design sync child task from the status screen", () => {
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "failed",
+          result: {
+            sds_sync: {
+              variant_id: 89764,
+              status: "failed",
+            },
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                task_id: "child_1",
+                status: "failed",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重试子任务" }));
+
+    expect(retryChildTaskMutate).toHaveBeenCalledWith({
+      kind: "sds_design_sync",
     });
   });
 });

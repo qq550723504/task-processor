@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -110,6 +111,37 @@ func (h *handler) RetryTaskGenerationTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, page)
+}
+
+func (h *handler) RetryTaskChildTask(c *gin.Context) {
+	if h.childTaskRetryService == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "child_task_retry_not_supported", "message": "child task retry is not supported"})
+		return
+	}
+	var req listingkit.RetryChildTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Kind) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "kind is required"})
+		return
+	}
+	result, err := h.childTaskRetryService.RetryTaskChildTask(requestContext(c), c.Param("task_id"), &req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, listingkit.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable), errors.Is(err, listingkit.ErrChildTaskNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, listingkit.ErrChildTaskRetryInvalidRequest):
+			status = http.StatusBadRequest
+		case errors.Is(err, listingkit.ErrChildTaskNotRetryable), errors.Is(err, listingkit.ErrChildTaskRetryConflict):
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": "child_task_retry_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *handler) ExecuteTaskGenerationAction(c *gin.Context) {

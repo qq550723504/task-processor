@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
@@ -60,7 +61,19 @@ function latestSDSWorkflowStage(task?: ListingKitTaskResult | null) {
   return stages[stages.length - 1];
 }
 
-export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }) {
+function sdsDesignSyncChild(task?: ListingKitTaskResult | null) {
+  return task?.result?.child_tasks?.find((child) => child.kind === "sds_design_sync");
+}
+
+export function TaskSDSSyncCard({
+  task,
+  onRetry,
+  isRetrying,
+}: {
+  task?: ListingKitTaskResult | null;
+  onRetry?: () => void;
+  isRetrying?: boolean;
+}) {
   const sync = task?.result?.sds_sync;
   if (!sync?.variant_id) {
     return null;
@@ -71,6 +84,8 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
   const warning = firstWarning(task);
   const authIssue = sdsAuthIssue(task);
   const workflowStage = latestSDSWorkflowStage(task);
+  const childTask = sdsDesignSyncChild(task);
+  const canRetry = childTask?.status === "failed";
 
   return (
     <Card className="border-zinc-200 bg-white/90 p-5">
@@ -155,6 +170,19 @@ export function TaskSDSSyncCard({ task }: { task?: ListingKitTaskResult | null }
         ) : warning ? (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
             {warning}
+          </div>
+        ) : null}
+
+        {canRetry && onRetry ? (
+          <div className="flex items-center justify-end">
+            <Button
+              disabled={isRetrying}
+              onClick={onRetry}
+              type="button"
+              variant="secondary"
+            >
+              {isRetrying ? "重试中..." : "重试子任务"}
+            </Button>
           </div>
         ) : null}
       </div>

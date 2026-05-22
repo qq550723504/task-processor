@@ -16,6 +16,7 @@ import (
 type handler struct {
 	taskLifecycleService        listingkit.TaskLifecycleService
 	generationTaskService       listingkit.GenerationTaskService
+	childTaskRetryService       childTaskRetryService
 	studioMediaService          listingkit.StudioMediaService
 	uploadedImageDeleteService  uploadedImageDeleteService
 	storeAdminService           listingkit.StoreAdminService
@@ -44,6 +45,10 @@ type routeHandlerService interface {
 	listingkit.GenerationTaskService
 	listingkit.StudioMediaService
 	listingkit.StoreAdminService
+}
+
+type childTaskRetryService interface {
+	RetryTaskChildTask(ctx context.Context, taskID string, req *listingkit.RetryChildTaskRequest) (*listingkit.TaskResult, error)
 }
 
 type uploadedImageDeleteService interface {
@@ -187,6 +192,9 @@ func NewHandler(service routeHandlerService, opts ...HandlerOption) (listingkit.
 		studioMediaService:    service,
 		storeAdminService:     service,
 		studioAsyncJobs:       studioAsyncJobs,
+	}
+	if retryService, ok := service.(childTaskRetryService); ok {
+		h.childTaskRetryService = retryService
 	}
 	if deleteService, ok := service.(uploadedImageDeleteService); ok {
 		h.uploadedImageDeleteService = deleteService

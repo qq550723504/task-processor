@@ -14,6 +14,7 @@ import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useExecuteAction } from "@/lib/query/use-action";
+import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
 import {
   sheinSubmissionRemoteStatusLabel,
   sheinWorkflowStatusLabel,
@@ -75,6 +76,7 @@ export function TaskStatusScreen({
 }) {
   const router = useRouter();
   const layerAction = useExecuteAction(taskId, {});
+  const childTaskRetry = useRetryChildTask(taskId);
   const isTerminal =
     task?.status === "completed" ||
     task?.status === "failed" ||
@@ -135,6 +137,12 @@ export function TaskStatusScreen({
           platform: "all",
         },
       },
+    });
+  };
+
+  const handleRetrySDSDesignSync = () => {
+    childTaskRetry.mutate({
+      kind: "sds_design_sync",
     });
   };
 
@@ -226,7 +234,11 @@ export function TaskStatusScreen({
         </div>
       </Card>
       <TaskRevisionHistoryPanel taskId={taskId} />
-      <TaskSDSSyncCard task={task} />
+      <TaskSDSSyncCard
+        isRetrying={childTaskRetry.isPending}
+        onRetry={handleRetrySDSDesignSync}
+        task={task}
+      />
       <TaskSourceSummary draft={taskDraft} />
       <TaskProgressNotice task={task} />
 

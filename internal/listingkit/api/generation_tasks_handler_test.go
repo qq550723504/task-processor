@@ -39,6 +39,8 @@ type stubGenerationTaskService struct {
 	query                   *listingkit.GenerationTaskQuery
 	queueQuery              *listingkit.GenerationQueueQuery
 	retryReq                *listingkit.RetryGenerationTasksRequest
+	childRetryReq           *listingkit.RetryChildTaskRequest
+	childRetryResult        *listingkit.TaskResult
 	actionReq               *listingkit.ExecuteGenerationActionRequest
 	navigationReq           *listingkit.GenerationReviewNavigationDispatchRequest
 	reviewSessionQuery      *listingkit.GenerationQueueQuery
@@ -88,6 +90,12 @@ func (s *stubGenerationTaskService) RetryTaskGenerationTasks(ctx context.Context
 	s.lastTask = taskID
 	s.retryReq = req
 	return s.page, s.err
+}
+
+func (s *stubGenerationTaskService) RetryTaskChildTask(ctx context.Context, taskID string, req *listingkit.RetryChildTaskRequest) (*listingkit.TaskResult, error) {
+	s.lastTask = taskID
+	s.childRetryReq = req
+	return s.childRetryResult, s.err
 }
 
 func (s *stubGenerationTaskService) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {

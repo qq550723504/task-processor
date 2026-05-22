@@ -168,6 +168,7 @@ type TaskHandler interface {
 	GetTaskGenerationReviewPreview(c *gin.Context)
 	DispatchTaskGenerationNavigation(c *gin.Context)
 	RetryTaskGenerationTasks(c *gin.Context)
+	RetryTaskChildTask(c *gin.Context)
 	ExecuteTaskGenerationAction(c *gin.Context)
 	GetTaskRevisionHistory(c *gin.Context)
 	GetTaskRevisionHistoryDetail(c *gin.Context)
