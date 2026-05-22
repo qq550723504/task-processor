@@ -18,20 +18,12 @@ type runtimeCategoryResolver struct {
 }
 
 func NewRuntimeCategoryResolver(factory RuntimeAPIClientFactory, llmClient ...openaiclient.ChatCompleter) CategoryResolver {
-	var suggestFallback categorySuggestFallback
-	var treeFallback categoryTreeFallback
-	var semanticVerifier categorySemanticVerifier
-	if len(llmClient) > 0 {
-		suggestFallback = newAICategorySuggestFallback(llmClient[0])
-		treeFallback = newAICategoryTreeFallback(llmClient[0])
-		semanticVerifier = newAICategorySemanticVerifier(llmClient[0])
-	}
 	return &runtimeCategoryResolver{
 		fallback:         NewCategoryResolver(nil),
 		factory:          newRuntimeAPIFactory(factory),
-		suggestFallback:  suggestFallback,
-		treeFallback:     treeFallback,
-		semanticVerifier: semanticVerifier,
+		suggestFallback:  buildAICategorySuggestFallback(llmClient...),
+		treeFallback:     buildAICategoryTreeFallback(llmClient...),
+		semanticVerifier: buildAICategorySemanticVerifier(llmClient...),
 	}
 }
 
@@ -48,6 +40,27 @@ func (r *runtimeCategoryResolver) Resolve(req *BuildRequest, canonical *canonica
 		resolution.Status = "partial"
 	}
 	return resolution
+}
+
+func buildAICategorySuggestFallback(llmClient ...openaiclient.ChatCompleter) categorySuggestFallback {
+	if len(llmClient) == 0 {
+		return nil
+	}
+	return newAICategorySuggestFallback(llmClient[0])
+}
+
+func buildAICategoryTreeFallback(llmClient ...openaiclient.ChatCompleter) categoryTreeFallback {
+	if len(llmClient) == 0 {
+		return nil
+	}
+	return newAICategoryTreeFallback(llmClient[0])
+}
+
+func buildAICategorySemanticVerifier(llmClient ...openaiclient.ChatCompleter) categorySemanticVerifier {
+	if len(llmClient) == 0 {
+		return nil
+	}
+	return newAICategorySemanticVerifier(llmClient[0])
 }
 
 func (r *runtimeCategoryResolver) buildAPI(ctx context.Context, storeID int64) (CategoryAPI, string) {

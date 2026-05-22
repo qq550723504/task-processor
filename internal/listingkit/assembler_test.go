@@ -9,6 +9,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinmanaged "task-processor/internal/publishing/sheinmanaged"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
@@ -465,7 +466,7 @@ func TestBuildPlatformImagesFallsBackToCanonicalImages(t *testing.T) {
 func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := sheinpub.NewManagedCategoryResolver(nil)
+	resolver := sheinmanaged.NewCategoryResolver(nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
@@ -496,7 +497,7 @@ func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := sheinpub.NewManagedAttributeResolver(nil, nil)
+	resolver := sheinmanaged.NewAttributeResolver(nil, nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
@@ -528,7 +529,7 @@ func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := sheinpub.NewManagedSaleAttributeResolver(nil, nil)
+	resolver := sheinmanaged.NewSaleAttributeResolver(nil, nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
