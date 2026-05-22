@@ -407,13 +407,13 @@ func (s *Service) PrepareSyncDesign(ctx context.Context, input PrepareSyncDesign
 
 	prototypes := []SyncDesignPrototype{
 		{
-			PrototypeID: page.Product.PrototypeID,
+			PrototypeID: string(page.Product.PrototypeID),
 			ProductIDs:  []int64{page.Product.ID},
 			PSDIDs:      collectPSDIDs(page.PSDs),
 			Layers: []SyncDesignLayer{
 				{
 					MaterialID:         "",
-					LayerID:            layer.ID,
+					LayerID:            string(layer.ID),
 					Content:            "",
 					ImgWidth:           layerPrintWidth(*layer),
 					ImgHeight:          layerPrintHeight(*layer),
@@ -445,13 +445,13 @@ func (s *Service) PrepareSyncDesign(ctx context.Context, input PrepareSyncDesign
 			return nil, err
 		}
 		prototypes = append(prototypes, SyncDesignPrototype{
-			PrototypeID: relatedPage.Product.PrototypeID,
+			PrototypeID: string(relatedPage.Product.PrototypeID),
 			ProductIDs:  []int64{relatedPage.Product.ID},
 			PSDIDs:      collectPSDIDs(relatedPage.PSDs),
 			Layers: []SyncDesignLayer{
 				{
 					MaterialID:         "",
-					LayerID:            relatedLayer.ID,
+					LayerID:            string(relatedLayer.ID),
 					Content:            "",
 					ImgWidth:           layerPrintWidth(*relatedLayer),
 					ImgHeight:          layerPrintHeight(*relatedLayer),

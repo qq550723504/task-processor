@@ -285,7 +285,7 @@ func collectRenderedImageObservations(items []DesignProductListItem, targetIDs [
 			MaterialImageName: strings.TrimSpace(item.MaterialImageName),
 			TaskID:            strings.TrimSpace(item.TaskID),
 			DesignTaskID:      strings.TrimSpace(item.DesignTaskID),
-			ItemID:            strings.TrimSpace(item.ID),
+			ItemID:            strings.TrimSpace(string(item.ID)),
 			ImageCount:        len(item.ImageURLs),
 			ThumbnailCount:    len(item.ThumbnailImageURLs),
 		}

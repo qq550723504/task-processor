@@ -15,7 +15,7 @@ func selectLayer(layers []DesignLayer, layerID string) (*DesignLayer, error) {
 		return &layers[0], nil
 	}
 	for i := range layers {
-		if layers[i].ID == layerID {
+		if string(layers[i].ID) == layerID {
 			return &layers[i], nil
 		}
 	}
@@ -25,8 +25,8 @@ func selectLayer(layers []DesignLayer, layerID string) (*DesignLayer, error) {
 func collectPSDIDs(psds []PSDDocument) []string {
 	ids := make([]string, 0, len(psds))
 	for _, psd := range psds {
-		if strings.TrimSpace(psd.ID) != "" {
-			ids = append(ids, psd.ID)
+		if strings.TrimSpace(string(psd.ID)) != "" {
+			ids = append(ids, string(psd.ID))
 		}
 	}
 	return ids

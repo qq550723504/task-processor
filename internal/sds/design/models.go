@@ -89,12 +89,12 @@ type DesignProductListResponse struct {
 
 // DesignProductListItem contains the rendered output images from 成品库.
 type DesignProductListItem struct {
-	ID                 string                  `json:"id"`
+	ID                 SDSFlexibleString       `json:"id"`
 	ProductID          int64                   `json:"product_id"`
 	ProductParentID    int64                   `json:"product_parent_id"`
 	DesignTaskID       string                  `json:"design_task_id"`
 	TaskID             string                  `json:"task_id"`
-	PrototypeID        string                  `json:"prototype_id"`
+	PrototypeID        SDSFlexibleString       `json:"prototype_id"`
 	BuildFinish        bool                    `json:"buildFinish"`
 	Status             int                     `json:"status"`
 	ExportName         string                  `json:"export_name"`
@@ -131,22 +131,22 @@ type MerchantProductStub struct {
 
 // DesignProduct 表示设计页里的 SKU 商品。
 type DesignProduct struct {
-	ID             int64     `json:"id"`
-	ParentID       int64     `json:"parent_id"`
-	Name           string    `json:"name"`
-	SKU            string    `json:"sku"`
-	ParentSKU      string    `json:"parentSku"`
-	PrototypeID    string    `json:"prototypeId"`
-	PrototypeType  string    `json:"prototypeType"`
-	Size           string    `json:"size"`
-	SizeID         int64     `json:"sizeId"`
-	ColorID        int64     `json:"colorId"`
-	ColorName      string    `json:"color_name"`
-	ImgURL         string    `json:"img_url"`
-	PSDImgURL      string    `json:"psd_img_url"`
-	ProductDetails any       `json:"product_details"`
-	Color          ColorInfo `json:"color"`
-	SizeDTO        SizeDTO   `json:"sizeDto"`
+	ID             int64             `json:"id"`
+	ParentID       int64             `json:"parent_id"`
+	Name           string            `json:"name"`
+	SKU            string            `json:"sku"`
+	ParentSKU      string            `json:"parentSku"`
+	PrototypeID    SDSFlexibleString `json:"prototypeId"`
+	PrototypeType  string            `json:"prototypeType"`
+	Size           string            `json:"size"`
+	SizeID         int64             `json:"sizeId"`
+	ColorID        int64             `json:"colorId"`
+	ColorName      string            `json:"color_name"`
+	ImgURL         string            `json:"img_url"`
+	PSDImgURL      string            `json:"psd_img_url"`
+	ProductDetails any               `json:"product_details"`
+	Color          ColorInfo         `json:"color"`
+	SizeDTO        SizeDTO           `json:"sizeDto"`
 }
 
 // ColorInfo 表示颜色信息。
@@ -179,38 +179,38 @@ type PrototypeGroup struct {
 
 // DesignLayer 表示设计图层。
 type DesignLayer struct {
-	ID             string   `json:"id"`
-	PrototypeID    string   `json:"prototypeId"`
-	Name           string   `json:"name"`
-	Type           int      `json:"type"`
-	Height         float64  `json:"height"`
-	Width          float64  `json:"width"`
-	PrintHeight    float64  `json:"printHeight"`
-	PrintWidth     float64  `json:"printWidth"`
-	PrintHeightAlt float64  `json:"print_height"`
-	PrintWidthAlt  float64  `json:"print_width"`
-	IsMasterMap    int      `json:"isMasterMap"`
-	IsMasterMapAlt int      `json:"is_master_map"`
-	MaskURL        string   `json:"maskUrl"`
-	MaskShowURL    string   `json:"maskShowUrl"`
-	MaskURLAlt     string   `json:"mask_url"`
-	MaskShowURLAlt string   `json:"mask_show_url"`
-	ThumbnailURL   string   `json:"thumbnailUrl"`
-	ThumbnailURLs  []string `json:"thumbnail_urls"`
-	PageType       string   `json:"pageType"`
+	ID             SDSFlexibleString `json:"id"`
+	PrototypeID    SDSFlexibleString `json:"prototypeId"`
+	Name           string            `json:"name"`
+	Type           int               `json:"type"`
+	Height         float64           `json:"height"`
+	Width          float64           `json:"width"`
+	PrintHeight    float64           `json:"printHeight"`
+	PrintWidth     float64           `json:"printWidth"`
+	PrintHeightAlt float64           `json:"print_height"`
+	PrintWidthAlt  float64           `json:"print_width"`
+	IsMasterMap    int               `json:"isMasterMap"`
+	IsMasterMapAlt int               `json:"is_master_map"`
+	MaskURL        string            `json:"maskUrl"`
+	MaskShowURL    string            `json:"maskShowUrl"`
+	MaskURLAlt     string            `json:"mask_url"`
+	MaskShowURLAlt string            `json:"mask_show_url"`
+	ThumbnailURL   string            `json:"thumbnailUrl"`
+	ThumbnailURLs  []string          `json:"thumbnail_urls"`
+	PageType       string            `json:"pageType"`
 }
 
 // PSDDocument 表示 PSD 模板文件。
 type PSDDocument struct {
-	ID           string `json:"id"`
-	PrototypeID  string `json:"prototypeId"`
-	FileID       string `json:"fileId"`
-	FileCode     string `json:"fileCode"`
-	FileName     string `json:"file_name"`
-	ShowFileName string `json:"showFileName"`
-	FileURL      string `json:"file_url"`
-	ThumbnailURL string `json:"thumbnail_url"`
-	Sort         int    `json:"sort"`
+	ID           SDSFlexibleString `json:"id"`
+	PrototypeID  SDSFlexibleString `json:"prototypeId"`
+	FileID       string            `json:"fileId"`
+	FileCode     string            `json:"fileCode"`
+	FileName     string            `json:"file_name"`
+	ShowFileName string            `json:"showFileName"`
+	FileURL      string            `json:"file_url"`
+	ThumbnailURL string            `json:"thumbnail_url"`
+	Sort         int               `json:"sort"`
 }
 
 // ResultGroupOption 表示结果分组选项。
@@ -248,6 +248,25 @@ type PSDFrame struct {
 type Point2D struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
+}
+
+// SDSFlexibleString keeps SDS identifier payloads stable when upstream flips
+// between JSON strings and JSON numbers.
+type SDSFlexibleString string
+
+func (s *SDSFlexibleString) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*s = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*s = SDSFlexibleString(text)
+		return nil
+	}
+	*s = SDSFlexibleString(raw)
+	return nil
 }
 
 // SyncDesignResponse 表示保存设计后的响应。

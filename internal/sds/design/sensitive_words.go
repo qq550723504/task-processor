@@ -99,7 +99,7 @@ func buildSensitiveDesignProductUpdates(items []DesignProductListItem, hitsByIte
 		}
 		seen[itemID] = struct{}{}
 		updates = append(updates, UpdateDesignProductRequest{
-			ID:                item.ID,
+			ID:                string(item.ID),
 			Name:              name,
 			MaterialImageName: item.MaterialImageName,
 			MaterialColor:     item.MaterialColor,
@@ -121,7 +121,7 @@ func flattenDesignProductListItems(items []DesignProductListItem) map[string]Des
 	result := make(map[string]DesignProductListItem, len(items))
 	var walk func(DesignProductListItem)
 	walk = func(item DesignProductListItem) {
-		itemID := strings.TrimSpace(item.ID)
+		itemID := strings.TrimSpace(string(item.ID))
 		if itemID != "" {
 			result[itemID] = item
 		}

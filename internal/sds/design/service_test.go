@@ -106,6 +106,57 @@ func TestSyncDesignRequestUnmarshalRealFields(t *testing.T) {
 	}
 }
 
+func TestDesignProductPageUnmarshalNumericPrototypeIDs(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+		"product": {
+			"id": 10947,
+			"parent_id": 10946,
+			"sku": "XB0602011001",
+			"parentSku": "XB0602011",
+			"prototypeId": 10019364,
+			"prototypeType": "FREE",
+			"size": "One size",
+			"sizeId": 1,
+			"colorId": 1004,
+			"color_name": "white"
+		},
+		"layers": [
+			{
+				"id": 10059417,
+				"prototypeId": 10019364,
+				"name": "素材",
+				"type": 1
+			}
+		],
+		"psds": [
+			{
+				"id": 782092292330442752,
+				"prototypeId": 10019364,
+				"fileId": "1",
+				"fileCode": "abc.psd",
+				"sort": 1
+			}
+		]
+	}`)
+
+	var page DesignProductPage
+	if err := json.Unmarshal(payload, &page); err != nil {
+		t.Fatalf("unmarshal design product page with numeric prototype ids: %v", err)
+	}
+
+	if page.Product.PrototypeID != "10019364" {
+		t.Fatalf("product prototype id = %q, want numeric value normalized to string", page.Product.PrototypeID)
+	}
+	if len(page.Layers) != 1 || page.Layers[0].PrototypeID != "10019364" || page.Layers[0].ID != "10059417" {
+		t.Fatalf("layers = %+v, want numeric ids normalized to string", page.Layers)
+	}
+	if len(page.PSDs) != 1 || page.PSDs[0].PrototypeID != "10019364" || page.PSDs[0].ID != "782092292330442752" {
+		t.Fatalf("psds = %+v, want numeric ids normalized to string", page.PSDs)
+	}
+}
+
 func TestBuildPreviewImageURLs(t *testing.T) {
 	t.Parallel()
 
