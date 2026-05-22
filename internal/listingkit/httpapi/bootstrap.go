@@ -73,6 +73,11 @@ type moduleService interface {
 	TemporalWorkerService
 }
 
+type aiCredentialStore interface {
+	listingkit.AIClientCredentialStore
+	openaiclient.ClientConfigResolver
+}
+
 type BuildModuleInput struct {
 	ServiceInput                       BuildServiceInput
 	ShouldStartTemporalWorkerInProcess bool
@@ -210,10 +215,7 @@ type BuildServiceInput struct {
 	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer         productimage.SceneRenderer
 	ManagementClient           *management.ClientManager
-	AICredentialStore          interface {
-		listingkit.AIClientCredentialStore
-		openaiclient.ClientConfigResolver
-	}
+	AICredentialStore          aiCredentialStore
 	Repositories BuildServiceRepositories
 	Hooks        BuildServiceHooks
 }
