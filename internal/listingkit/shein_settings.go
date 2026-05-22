@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/infra/clients/management/api"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/tenantbridge"
 )
@@ -48,36 +47,18 @@ func (s *service) UpdateSheinSettings(ctx context.Context, req *SheinSettings) (
 }
 
 func (s *service) listSheinStoreOptions(ctx context.Context) []SheinStoreOption {
-	if s == nil || s.sheinManagementClient == nil {
+	if s == nil || s.sheinStoreCatalog == nil {
 		return nil
 	}
 	tenantID, ok := tenantIDInt64FromContext(ctx)
 	if !ok {
 		return nil
 	}
-	page, err := s.sheinManagementClient.GetStoreClient().PageStores(&api.StorePageReqDTO{
-		Platform: "shein",
-		TenantID: tenantID,
-		PageNo:   1,
-		PageSize: 200,
-	})
-	if err != nil || page == nil || len(page.List) == 0 {
+	options, err := s.sheinStoreCatalog.ListStoreOptions(ctx, tenantID)
+	if err != nil || len(options) == 0 {
 		return nil
 	}
-	options := make([]SheinStoreOption, 0, len(page.List))
-	for _, item := range page.List {
-		if item == nil || item.ID <= 0 {
-			continue
-		}
-		options = append(options, SheinStoreOption{
-			ID:       item.ID,
-			StoreID:  strings.TrimSpace(item.StoreID),
-			Name:     strings.TrimSpace(item.Name),
-			Platform: strings.TrimSpace(item.Platform),
-			Region:   strings.TrimSpace(item.Region),
-		})
-	}
-	return options
+	return append([]SheinStoreOption(nil), options...)
 }
 
 func tenantIDInt64FromContext(ctx context.Context) (int64, bool) {

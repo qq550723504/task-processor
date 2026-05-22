@@ -25,15 +25,10 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 		return nil, err
 	}
 
-	storeID, err := s.resolveSheinStoreID(ctx, task)
-	if err != nil || storeID <= 0 {
-		return nil, fmt.Errorf("shein store id is unavailable for category search")
+	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
+	if err != nil {
+		return nil, fmt.Errorf("%w for category search", err)
 	}
-	if s.sheinManagementClient == nil {
-		return nil, fmt.Errorf("shein management client is unavailable for category search")
-	}
-
-	apiClient := sheinclient.NewAPIClient(storeID, s.sheinManagementClient)
 	if !apiClient.HasCookies() {
 		if err := apiClient.ForceRefreshCookies(); err != nil {
 			return nil, fmt.Errorf("shein store cookies are unavailable for category search: %w", err)
@@ -64,15 +59,10 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 }
 
 func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {
-	storeID, err := s.resolveSheinStoreID(ctx, task)
-	if err != nil || storeID <= 0 {
-		return nil, fmt.Errorf("shein store id is unavailable for attribute resolution")
+	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
+	if err != nil {
+		return nil, fmt.Errorf("%w for attribute resolution", err)
 	}
-	if s.sheinManagementClient == nil {
-		return nil, fmt.Errorf("shein management client is unavailable for attribute resolution")
-	}
-
-	apiClient := sheinclient.NewAPIClient(storeID, s.sheinManagementClient)
 	if !apiClient.HasCookies() {
 		if err := apiClient.ForceRefreshCookies(); err != nil {
 			return nil, fmt.Errorf("shein store cookies are unavailable for attribute resolution: %w", err)

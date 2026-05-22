@@ -33,21 +33,23 @@ func (s *service) resolveSheinSubmitSettings(ctx context.Context, task *Task) Sh
 			settings.Site = country
 		}
 	}
-	storeID, err := s.resolveSheinStoreID(ctx, task)
-	if err != nil || storeID <= 0 {
+	if task == nil {
 		return settings
 	}
-	if warehouseCode := s.resolveSheinWarehouseCode(storeID, settings.Site); warehouseCode != "" {
+	if warehouseCode := s.resolveSheinWarehouseCode(ctx, task, settings.Site); warehouseCode != "" {
 		settings.WarehouseCode = warehouseCode
 	}
 	return settings
 }
 
-func (s *service) resolveSheinWarehouseCode(storeID int64, site string) string {
-	if s == nil || s.sheinManagementClient == nil || storeID <= 0 {
+func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {
+	if s == nil || s.sheinStoreCatalog == nil || s.sheinAPIClientFactory == nil || task == nil {
 		return ""
 	}
-	apiClient := sheinclient.NewAPIClient(storeID, s.sheinManagementClient)
+	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
+	if err != nil {
+		return ""
+	}
 	if !apiClient.HasCookies() {
 		if err := apiClient.ForceRefreshCookies(); err != nil {
 			return ""

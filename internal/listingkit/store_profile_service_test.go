@@ -12,9 +12,8 @@ func TestStoreProfileServiceUpsertListAndDelete(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
-		storeProfileRepo:      newInMemoryStoreProfileRepository(),
-		routingSettingsRepo:   newInMemoryStoreRoutingSettingsRepository(),
-		sheinManagementClient: nil,
+		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "101", UserID: "user-a"})
 

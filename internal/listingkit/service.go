@@ -12,7 +12,6 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productimage"
@@ -31,7 +30,8 @@ type service struct {
 	assembler                      Assembler
 	sheinCategoryResolver          sheinpub.CategoryResolver
 	sheinResolutionCacheStore      sheinpub.ResolutionCacheStore
-	sheinManagementClient          *management.ClientManager
+	sheinStoreCatalog              SheinStoreCatalog
+	sheinAPIClientFactory          SheinAPIClientFactory
 	sheinAttributeResolver         sheinpub.AttributeResolver
 	sheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
 	sheinPricingPolicy             sheinpub.PricingPolicy
@@ -87,7 +87,8 @@ type ServiceAssetDependencies struct {
 
 type ServiceSheinDependencies struct {
 	SheinDefaultStoreID        int64
-	SheinManagementClient      *management.ClientManager
+	SheinStoreCatalog          SheinStoreCatalog
+	SheinAPIClientFactory      SheinAPIClientFactory
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinResolutionCacheStore  sheinpub.ResolutionCacheStore
 	SheinAttributeResolver     sheinpub.AttributeResolver
@@ -140,7 +141,8 @@ func NewService(config *ServiceConfig) (Service, error) {
 		assembler:                      config.Assets.Assembler,
 		sheinCategoryResolver:          config.Shein.SheinCategoryResolver,
 		sheinResolutionCacheStore:      config.Shein.SheinResolutionCacheStore,
-		sheinManagementClient:          config.Shein.SheinManagementClient,
+		sheinStoreCatalog:              config.Shein.SheinStoreCatalog,
+		sheinAPIClientFactory:          config.Shein.SheinAPIClientFactory,
 		sheinAttributeResolver:         config.Shein.SheinAttributeResolver,
 		sheinSaleAttributeResolver:     config.Shein.SheinSaleAttributeResolver,
 		sheinPricingPolicy:             config.Shein.SheinPricingPolicy,

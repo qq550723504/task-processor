@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -14,6 +16,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
 	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
@@ -24,6 +27,7 @@ import (
 	productenrich "task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinclient "task-processor/internal/shein/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -78,6 +82,82 @@ type moduleService interface {
 type aiCredentialStore interface {
 	listingkit.AIClientCredentialStore
 	openaiclient.ClientConfigResolver
+}
+
+type sheinManagementStoreCatalog struct {
+	repo listingadmin.StoreRepository
+}
+
+func (c sheinManagementStoreCatalog) GetStoreInfo(ctx context.Context, tenantID, storeID int64) (*listingkit.SheinStoreInfo, error) {
+	if c.repo == nil {
+		return nil, fmt.Errorf("listing admin store repository is not configured")
+	}
+	store, err := c.repo.GetStore(ctx, tenantID, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if store == nil || store.ID <= 0 {
+		return nil, fmt.Errorf("store info is unavailable")
+	}
+	return &listingkit.SheinStoreInfo{
+		ID:       store.ID,
+		TenantID: store.TenantID,
+		StoreID:  strings.TrimSpace(store.StoreID),
+		Name:     strings.TrimSpace(store.Name),
+		Platform: strings.TrimSpace(store.Platform),
+		Region:   strings.TrimSpace(store.Region),
+		LoginURL: strings.TrimSpace(store.LoginURL),
+		Proxy:    strings.TrimSpace(store.Proxy),
+	}, nil
+}
+
+func (c sheinManagementStoreCatalog) ListStoreOptions(ctx context.Context, tenantID int64) ([]listingkit.SheinStoreOption, error) {
+	if c.repo == nil {
+		return nil, fmt.Errorf("listing admin store repository is not configured")
+	}
+	page, err := c.repo.ListStores(ctx, listingadmin.StoreQuery{
+		TenantID: tenantID,
+		Platform: "shein",
+		Page:     1,
+		PageSize: 200,
+	})
+	if err != nil || page == nil || len(page.Items) == 0 {
+		return nil, err
+	}
+	options := make([]listingkit.SheinStoreOption, 0, len(page.Items))
+	for _, item := range page.Items {
+		if item.ID <= 0 {
+			continue
+		}
+		options = append(options, listingkit.SheinStoreOption{
+			ID:       item.ID,
+			StoreID:  strings.TrimSpace(item.StoreID),
+			Name:     strings.TrimSpace(item.Name),
+			Platform: strings.TrimSpace(item.Platform),
+			Region:   strings.TrimSpace(item.Region),
+		})
+	}
+	return options, nil
+}
+
+type sheinManagementAPIClientFactory struct {
+	client *management.ClientManager
+}
+
+func (f sheinManagementAPIClientFactory) NewSheinAPIClient(storeID int64, storeInfo *listingkit.SheinStoreInfo) *sheinclient.APIClient {
+	if storeInfo == nil {
+		return sheinclient.NewAPIClient(storeID, f.client)
+	}
+	return sheinclient.NewAPIClientWithStoreInfo(storeID, f.client, &managementapi.StoreRespDTO{
+		ID:       storeInfo.ID,
+		TenantID: storeInfo.TenantID,
+		StoreID:  storeInfo.StoreID,
+		Name:     storeInfo.Name,
+		Platform: storeInfo.Platform,
+		Region:   storeInfo.Region,
+		LoginUrl: storeInfo.LoginURL,
+		Proxy:    storeInfo.Proxy,
+	})
 }
 
 type BuildModuleInput struct {
@@ -465,7 +545,8 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 		},
 		Shein: listingkit.ServiceSheinDependencies{
 			SheinDefaultStoreID:        hooks.DefaultSheinStoreIDResolver(input.Config.Management.StoreIDs),
-			SheinManagementClient:      input.ManagementClient,
+			SheinStoreCatalog:          sheinManagementStoreCatalog{repo: repos.storeRepository},
+			SheinAPIClientFactory:      sheinManagementAPIClientFactory{client: input.ManagementClient},
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinResolutionCacheStore:  repos.resolutionCacheStore,
 			SheinAttributeResolver:     sheinAttributeResolver,
