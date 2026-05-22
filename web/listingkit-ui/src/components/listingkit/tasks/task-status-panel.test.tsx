@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 
@@ -36,6 +36,33 @@ describe("TaskStatusPanel", () => {
     expect(screen.getByText("失败的子任务")).toBeInTheDocument();
     expect(screen.getByText("product_enrich")).toBeInTheDocument();
     expect(screen.getByText("child-1")).toBeInTheDocument();
+  });
+
+  it("shows retry for failed sds design sync child tasks", () => {
+    const onRetryChildTask = vi.fn();
+
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "needs_review",
+          result: {
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                task_id: "child-1",
+                status: "failed",
+                error: "sync failed",
+              },
+            ],
+          },
+        }}
+        onRetryChildTask={onRetryChildTask}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重试子任务" }));
+
+    expect(onRetryChildTask).toHaveBeenCalledWith("sds_design_sync");
   });
 
   it("renders failed workflow stages and blocking issues", () => {

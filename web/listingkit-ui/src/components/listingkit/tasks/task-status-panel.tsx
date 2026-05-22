@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { presentTaskStatus } from "@/components/listingkit/shared/status-presentation";
 import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
@@ -55,7 +56,15 @@ function ruleLabel(kind?: string) {
   }
 }
 
-export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }) {
+export function TaskStatusPanel({
+  task,
+  onRetryChildTask,
+  retryingChildTaskKind,
+}: {
+  task?: ListingKitTaskResult | null;
+  onRetryChildTask?: (kind: string) => void;
+  retryingChildTaskKind?: string | null;
+}) {
   if (!task?.status || task.status === "completed") {
     return null;
   }
@@ -236,6 +245,18 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
                     {child.kind ?? "child_task"}
                   </div>
                   <div className="mt-1 text-zinc-600">{child.task_id}</div>
+                  {child.kind === "sds_design_sync" && onRetryChildTask ? (
+                    <div className="mt-3">
+                      <Button
+                        disabled={retryingChildTaskKind === child.kind}
+                        onClick={() => onRetryChildTask(child.kind ?? "sds_design_sync")}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {retryingChildTaskKind === child.kind ? "重试中..." : "重试子任务"}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

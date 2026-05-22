@@ -3,9 +3,9 @@ param(
     [string]$DbService = "postgresql-v18",
     [int]$LocalDbPort = 15432,
     [int]$RemoteDbPort = 5432,
-    [string]$DbUser = "root",
+    [string]$DbUser = "postgres",
     [string]$DbName = "ruoyi-vue-pro",
-    [switch]$IncludeRedis,
+    [switch]$SkipRedis,
     [string]$RedisNamespace = "yudao-cloud",
     [string]$RedisService = "redis-master",
     [int]$LocalRedisPort = 16379,
@@ -76,6 +76,7 @@ function Start-PortForwardProcess {
 $forwards = @()
 
 try {
+    Write-Host "Fixed local ports: DB=15432, Redis=16379, API=8085, UI=3000. Use one set only." -ForegroundColor Yellow
     $forwards += Start-PortForwardProcess `
         -Namespace $DbNamespace `
         -Service $DbService `
@@ -83,7 +84,7 @@ try {
         -RemotePort $RemoteDbPort `
         -LogPrefix "listingkit-db-portforward"
 
-    if ($IncludeRedis) {
+    if (-not $SkipRedis) {
         $forwards += Start-PortForwardProcess `
             -Namespace $RedisNamespace `
             -Service $RedisService `
@@ -101,12 +102,10 @@ try {
     Write-Host "  `$env:TASK_PROCESSOR_DATABASE_USER='${DbUser}'"
     Write-Host "  `$env:TASK_PROCESSOR_DATABASE_NAME='${DbName}'"
     Write-Host "  `$env:TASK_PROCESSOR_DATABASE_PASSWORD='<fill-real-password>'"
-    if ($IncludeRedis) {
-        Write-Host "  `$env:TASK_PROCESSOR_REDIS_HOST='127.0.0.1'"
-        Write-Host "  `$env:TASK_PROCESSOR_REDIS_PORT='${LocalRedisPort}'"
-        Write-Host "  `$env:TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST='127.0.0.1'"
-        Write-Host "  `$env:TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT='${LocalRedisPort}'"
-    }
+    Write-Host "  `$env:TASK_PROCESSOR_REDIS_HOST='127.0.0.1'"
+    Write-Host "  `$env:TASK_PROCESSOR_REDIS_PORT='${LocalRedisPort}'"
+    Write-Host "  `$env:TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST='127.0.0.1'"
+    Write-Host "  `$env:TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT='${LocalRedisPort}'"
     Write-Host "  go run ./cmd/product-listing-api -config config/config-dev.yaml -port 8085 -log-level info"
     Write-Host ""
     Write-Host "Suggested env overrides for local listingkit-ui:" -ForegroundColor Yellow
@@ -116,6 +115,10 @@ try {
     Write-Host "  `$env:LISTINGKIT_UI_BYPASS_AUTH_GATE='1'"
     Write-Host "  npm run dev"
     Write-Host ""
+    if ($SkipRedis) {
+        Write-Host "Redis port-forward is skipped by -SkipRedis. Use this only for static or pure read-only UI checks." -ForegroundColor DarkYellow
+        Write-Host ""
+    }
     Write-Host "This window keeps the port-forward alive. Press Ctrl+C when you are done." -ForegroundColor Yellow
 
     while ($true) {

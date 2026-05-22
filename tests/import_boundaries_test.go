@@ -29,8 +29,12 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedImports := map[string]map[string]struct{}{
 		`"task-processor/internal/shein/client"`: {
-			filepath.Clean(filepath.Join(root, "service_shein_categories.go")):     {},
-			filepath.Clean(filepath.Join(root, "service_submit_store_context.go")): {},
+			filepath.Clean(filepath.Join(root, "service_shein_categories.go")):        {},
+			filepath.Clean(filepath.Join(root, "service_submit_store_context.go")):    {},
+			filepath.Clean(filepath.Join(root, "shein_runtime.go")):                   {},
+			filepath.Clean(filepath.Join(root, "service_preview_test.go")):            {},
+			filepath.Clean(filepath.Join(root, "service_shein_store_client.go")):      {},
+			filepath.Clean(filepath.Join(root, "service_shein_store_client_test.go")): {},
 		},
 		`"task-processor/internal/shein/store"`: {
 			filepath.Clean(filepath.Join(root, "shein_submit_payload.go")): {},
@@ -121,6 +125,7 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	allowedImports := map[string]map[string]struct{}{
 		`"task-processor/internal/shein/client"`: {
 			filepath.Clean(filepath.Join(root, "managed_api_factory.go")): {},
+			filepath.Clean(filepath.Join(root, "runtime_api_factory.go")): {},
 		},
 		`"task-processor/internal/shein/content"`: {
 			filepath.Clean(filepath.Join(root, "review_content.go")):               {},
@@ -214,6 +219,7 @@ func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 		"shein_repair_support.go":               {},
 		"shein_resolution_cache.go":             {},
 		"shein_review_state.go":                 {},
+		"shein_runtime.go":                      {},
 		"shein_size_reference_images.go":        {},
 		"shein_settings.go":                     {},
 		"shein_studio_ai_product_images.go":     {},
@@ -327,6 +333,7 @@ func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
 		"listingkit_support.go":         {},
+		"listingkit_shein_support.go":   {},
 		"listingkit_temporal_worker.go": {},
 	}
 
@@ -397,6 +404,7 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/asset/repository"`:       {},
 		`"task-processor/internal/core/config"`:            {},
 		`"task-processor/internal/infra/database"`:         {},
+		`"task-processor/internal/infra/clients/openai"`:   {},
 		`"task-processor/internal/listingadmin"`:           {},
 		`"task-processor/internal/listingkit"`:             {},
 		`"task-processor/internal/listingkit/httpapi"`:     {},
@@ -405,6 +413,7 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/listingsubscription"`:    {},
 		`"task-processor/internal/publishing/shein"`:       {},
 		`"task-processor/internal/sds/usecase"`:            {},
+		`"task-processor/internal/sheinlogin"`:             {},
 		`"task-processor/internal/tenantbridge"`:           {},
 	}
 

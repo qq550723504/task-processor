@@ -11,6 +11,8 @@ vi.mock("@/auth", () => ({
 
 import {
   PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
+  PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS,
+  PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
   resolveListingKitProxyTimeoutMs,
   shouldProxyListingKitResponseAsBinary,
 } from "@/app/api/listing-kits/proxy-response";
@@ -34,6 +36,18 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     expect(resolveListingKitProxyTimeoutMs("POST", ["tasks", "123", "submit"])).toBe(
       180_000,
     );
+  });
+
+  it("extends the timeout for child task retry requests", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("POST", ["tasks", "123", "child-tasks", "retry"]),
+    ).toBe(PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS);
+  });
+
+  it("extends the timeout for shein category search requests", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("GET", ["tasks", "123", "shein", "categories"]),
+    ).toBe(PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS);
   });
 
   it("extends the timeout for slow admin collection reads", () => {

@@ -36,6 +36,7 @@ import {
 import { useUpdateSheinFinalDraft } from "@/lib/query/use-shein-final-draft";
 import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
 import { useExecuteAction } from "@/lib/query/use-action";
+import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const searchParams = useSearchParams();
@@ -91,6 +92,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     searchParams,
     focusedTarget: session.data?.session?.focused_target,
   });
+  const childTaskRetry = useRetryChildTask(taskId);
   const sheinViewProps = buildSheinWorkspaceViewProps({
     shein: preview.data?.shein,
     selectedPlatform,
@@ -204,7 +206,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         onSelectAction={(summary) => workspaceActions.handleAction(summary)}
         onSelectRecovery={workspaceActions.handleRecovery}
       />
-      <TaskStatusPanel task={taskResult.data} />
+      <TaskStatusPanel
+        task={taskResult.data}
+        onRetryChildTask={(kind) => childTaskRetry.mutate({ kind })}
+        retryingChildTaskKind={childTaskRetry.isPending ? childTaskRetry.variables?.kind ?? null : null}
+      />
       <ReviewReasonsCard task={taskResult.data} />
       <TaskProgressNotice task={taskResult.data} />
 

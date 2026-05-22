@@ -356,7 +356,8 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    expect(screen.getByText("SDS 子任务失败")).toBeInTheDocument();
+    expect(screen.getByText("失败的子任务")).toBeInTheDocument();
+    expect(screen.getByText("sds_design_sync")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试子任务" }));
 
     expect(retryChildTaskMutate).toHaveBeenCalledWith({

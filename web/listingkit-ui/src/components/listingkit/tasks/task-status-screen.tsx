@@ -67,12 +67,6 @@ function terminalStatusDescription(task?: ListingKitTaskResult | null) {
   return "建议先进入工作台或队列查看失败详情，再决定是否重新创建任务。";
 }
 
-function failedSDSDesignSyncChild(task?: ListingKitTaskResult | null) {
-  return task?.result?.child_tasks?.find(
-    (child) => child.kind === "sds_design_sync" && child.status === "failed",
-  );
-}
-
 export function TaskStatusScreen({
   taskId,
   task,
@@ -91,7 +85,6 @@ export function TaskStatusScreen({
   const taskFixes = extractTaskFixes(task);
   const taskDraftFocus = inferTaskDraftFocus(task);
   const [autoOpenEnabled, setAutoOpenEnabled] = useState(true);
-  const failedChild = failedSDSDesignSyncChild(task);
   const taskDraftIssues = useMemo(() => {
     const issues: Array<"text" | "imageUrls" | "productUrl"> = [];
     if (
@@ -211,29 +204,11 @@ export function TaskStatusScreen({
         </div>
       </Card>
 
-      <TaskStatusPanel task={task} />
-      {failedChild ? (
-        <Card className="p-6">
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-zinc-950">SDS 子任务失败</h2>
-              <p className="text-sm leading-6 text-zinc-600">
-                检测到 `sds_design_sync` 子任务失败，可以直接重试这一阶段。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                disabled={childTaskRetry.isPending}
-                onClick={handleRetrySDSDesignSync}
-                type="button"
-                variant="secondary"
-              >
-                {childTaskRetry.isPending ? "重试中..." : "重试子任务"}
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : null}
+      <TaskStatusPanel
+        task={task}
+        onRetryChildTask={handleRetrySDSDesignSync}
+        retryingChildTaskKind={childTaskRetry.isPending ? "sds_design_sync" : null}
+      />
       <Card className="p-6">
         <div className="space-y-4">
           <div className="space-y-1">
