@@ -208,6 +208,7 @@ type stubListingKitHandler struct {
 	getGenerationReviewPreviewCalled      bool
 	dispatchGenerationNavigationCalled    bool
 	retryGenerationCalled                 bool
+	retryChildTaskCalled                  bool
 	executeGenerationActionCalled         bool
 	getHistoryCalled                      bool
 	getHistoryDetailCalled                bool
@@ -685,6 +686,11 @@ func (s *stubListingKitHandler) DispatchTaskGenerationNavigation(c *gin.Context)
 
 func (s *stubListingKitHandler) RetryTaskGenerationTasks(c *gin.Context) {
 	s.retryGenerationCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
+}
+
+func (s *stubListingKitHandler) RetryTaskChildTask(c *gin.Context) {
+	s.retryChildTaskCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
 }
 
