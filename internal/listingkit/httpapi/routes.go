@@ -17,7 +17,47 @@ type PromptTemplateRouteHandler interface {
 	SetPromptTemplateStatus(c *gin.Context)
 }
 
-func AppendRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+type taskRouteHandler interface {
+	listingkit.TaskHandler
+	listingkit.CustomerStoreHandler
+}
+
+type settingsRouteHandler interface {
+	listingkit.SettingsHandler
+	listingkit.CustomerStoreHandler
+}
+
+type storeRouteHandler interface {
+	listingkit.CustomerStoreHandler
+}
+
+type subscriptionRouteHandler interface {
+	listingkit.SubscriptionHandler
+}
+
+type platformAdminRouteHandler interface {
+	listingkit.SubscriptionHandler
+}
+
+type adminRouteHandler interface {
+	listingkit.PlatformAdminHandler
+}
+
+type studioGenerationRouteHandler interface {
+	listingkit.TaskHandler
+}
+
+type routeHandler interface {
+	taskRouteHandler
+	settingsRouteHandler
+	storeRouteHandler
+	subscriptionRouteHandler
+	platformAdminRouteHandler
+	adminRouteHandler
+	studioGenerationRouteHandler
+}
+
+func AppendRouteDescriptors(routes []httproute.Descriptor, handler routeHandler) []httproute.Descriptor {
 	if handler == nil {
 		return routes
 	}
@@ -65,7 +105,7 @@ func AppendStudioSessionRouteDescriptors(routes []httproute.Descriptor, handler 
 	)
 }
 
-func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler settingsRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings", Module: "listing-kit", Handler: handler.ListSettingsNamespaces},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/:namespace/schema", Module: "listing-kit", Handler: handler.GetSettingsNamespaceSchema},
@@ -83,7 +123,7 @@ func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler listi
 	)
 }
 
-func appendStoreRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendStoreRouteDescriptors(routes []httproute.Descriptor, handler storeRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/stores", Module: "listing-kit", Handler: handler.ListTenantStores},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/stores/simple", Module: "listing-kit", Handler: handler.ListSimpleTenantStores},
@@ -93,7 +133,7 @@ func appendStoreRouteDescriptors(routes []httproute.Descriptor, handler listingk
 	)
 }
 
-func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler subscriptionRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/subscription/me", Module: "listing-kit", Handler: handler.GetCurrentSubscription},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/subscription/modules", Module: "listing-kit-admin", Handler: handler.ListSubscriptionModules},
@@ -102,7 +142,7 @@ func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler l
 	)
 }
 
-func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler platformAdminRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformTenantSubscriptions},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformSubscriptionPlans},
@@ -121,7 +161,7 @@ func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler 
 	)
 }
 
-func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler adminRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores", Module: "listing-kit-admin", Handler: handler.ListAdminStores},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores/simple", Module: "listing-kit-admin", Handler: handler.ListSimpleAdminStores},
@@ -189,7 +229,7 @@ func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler listingk
 	)
 }
 
-func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler studioGenerationRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: handler.GenerateStudioDesigns},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: handler.GenerateStudioProductImages},
@@ -198,7 +238,7 @@ func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handl
 	)
 }
 
-func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler listingkit.Handler) []httproute.Descriptor {
+func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler taskRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: handler.RegenerateSheinDataImage},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/uploads/images", Module: "listing-kit", Handler: handler.UploadListingKitImages},
