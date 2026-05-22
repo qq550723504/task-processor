@@ -27,10 +27,13 @@ type handler struct {
 	settingsService *settingsService
 }
 
-type adminHandlers struct {
-	storeHandler                *listingadmin.StoreHandler
-	storeStatisticsHandler      *listingadmin.StoreStatisticsHandler
-	importTaskHandler           *listingadmin.ImportTaskHandler
+type storeAdminHandlers struct {
+	storeHandler           *listingadmin.StoreHandler
+	storeStatisticsHandler *listingadmin.StoreStatisticsHandler
+	importTaskHandler      *listingadmin.ImportTaskHandler
+}
+
+type catalogAdminHandlers struct {
 	filterRuleHandler           *listingadmin.FilterRuleHandler
 	profitRuleHandler           *listingadmin.ProfitRuleHandler
 	pricingRuleHandler          *listingadmin.PricingRuleHandler
@@ -39,6 +42,11 @@ type adminHandlers struct {
 	productImportMappingHandler *listingadmin.ProductImportMappingHandler
 	categoryHandler             *listingadmin.CategoryHandler
 	productDataHandler          *listingadmin.ProductDataHandler
+}
+
+type adminHandlers struct {
+	storeAdminHandlers
+	catalogAdminHandlers
 }
 
 type subscriptionDependencies struct {
