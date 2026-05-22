@@ -489,10 +489,15 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 		return nil, fmt.Errorf("create listing kit service: %w", err)
 	}
 
-	return wireTemporalWorkflowClients(svc, input.Logger, closers)
+	moduleSvc, ok := svc.(moduleService)
+	if !ok {
+		return nil, fmt.Errorf("listing kit service does not implement module service contract")
+	}
+
+	return wireTemporalWorkflowClients(moduleSvc, input.Logger, closers)
 }
 
-func wireTemporalWorkflowClients(svc listingkit.Service, logger *logrus.Logger, closers *closerStack) (moduleService, error) {
+func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, closers *closerStack) (moduleService, error) {
 	temporalWorkflowClient, temporalCloser, err := appruntime.DialListingKitSheinPublishTemporalClient(logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect listing kit shein publish temporal client: %w", err)
@@ -524,12 +529,7 @@ func wireTemporalWorkflowClients(svc listingkit.Service, logger *logrus.Logger, 
 	if temporalCloser != nil {
 		closers.Add(temporalCloser)
 	}
-
-	moduleSvc, ok := svc.(moduleService)
-	if !ok {
-		return nil, fmt.Errorf("listing kit service does not implement module service contract")
-	}
-	return moduleSvc, nil
+	return svc, nil
 }
 
 func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Module, err error) {
