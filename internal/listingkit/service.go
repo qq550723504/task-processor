@@ -277,42 +277,42 @@ func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 	s.taskSubmitter = submitter
 }
 
-func ConfigureSheinPublishWorkflowClient(svc Service, client SheinPublishWorkflowClient, enabled bool) error {
+func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
+	s.sheinPublishWorkflowClient = client
+	s.sheinPublishWorkflowEnabled = enabled && client != nil
+}
+
+func ConfigureSheinPublishWorkflowClient(svc WorkflowClientConfigurer, client SheinPublishWorkflowClient, enabled bool) error {
 	if svc == nil {
 		return fmt.Errorf("listingkit service is nil")
 	}
-	impl, ok := svc.(*service)
-	if !ok {
-		return fmt.Errorf("listingkit service does not support shein publish workflow configuration")
-	}
-	impl.sheinPublishWorkflowClient = client
-	impl.sheinPublishWorkflowEnabled = enabled && client != nil
+	svc.ConfigureSheinPublishWorkflowClient(client, enabled)
 	return nil
 }
 
-func ConfigureStandardProductWorkflowClient(svc Service, client StandardProductWorkflowClient, enabled bool) error {
+func (s *service) ConfigureStandardProductWorkflowClient(client StandardProductWorkflowClient, enabled bool) {
+	s.standardProductWorkflowClient = client
+	s.standardProductWorkflowEnabled = enabled && client != nil
+}
+
+func ConfigureStandardProductWorkflowClient(svc WorkflowClientConfigurer, client StandardProductWorkflowClient, enabled bool) error {
 	if svc == nil {
 		return fmt.Errorf("listingkit service is nil")
 	}
-	impl, ok := svc.(*service)
-	if !ok {
-		return fmt.Errorf("listingkit service does not support standard product workflow configuration")
-	}
-	impl.standardProductWorkflowClient = client
-	impl.standardProductWorkflowEnabled = enabled && client != nil
+	svc.ConfigureStandardProductWorkflowClient(client, enabled)
 	return nil
 }
 
-func ConfigurePlatformAdaptWorkflowClient(svc Service, client PlatformAdaptWorkflowClient, enabled bool) error {
+func (s *service) ConfigurePlatformAdaptWorkflowClient(client PlatformAdaptWorkflowClient, enabled bool) {
+	s.platformAdaptWorkflowClient = client
+	s.platformAdaptWorkflowEnabled = enabled && client != nil
+}
+
+func ConfigurePlatformAdaptWorkflowClient(svc WorkflowClientConfigurer, client PlatformAdaptWorkflowClient, enabled bool) error {
 	if svc == nil {
 		return fmt.Errorf("listingkit service is nil")
 	}
-	impl, ok := svc.(*service)
-	if !ok {
-		return fmt.Errorf("listingkit service does not support platform adaptation workflow configuration")
-	}
-	impl.platformAdaptWorkflowClient = client
-	impl.platformAdaptWorkflowEnabled = enabled && client != nil
+	svc.ConfigurePlatformAdaptWorkflowClient(client, enabled)
 	return nil
 }
 

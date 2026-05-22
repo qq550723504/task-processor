@@ -70,6 +70,7 @@ type moduleService interface {
 	routeHandlerService
 	listingkit.InternalListingKitService
 	listingkit.StudioSessionHandlerService
+	listingkit.WorkflowClientConfigurer
 	TemporalWorkerService
 }
 

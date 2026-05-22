@@ -118,6 +118,12 @@ type InternalListingKitService interface {
 	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
 }
 
+type WorkflowClientConfigurer interface {
+	ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool)
+	ConfigureStandardProductWorkflowClient(client StandardProductWorkflowClient, enabled bool)
+	ConfigurePlatformAdaptWorkflowClient(client PlatformAdaptWorkflowClient, enabled bool)
+}
+
 type Service interface {
 	TaskLifecycleService
 	GenerationTaskService
