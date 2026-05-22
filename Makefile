@@ -2,7 +2,7 @@
 .PHONY: all build-all clean test help \
 	build-1688-crawler-api build-amazon-crawler-api build-amazon-listing \
 	build-product-listing-api build-productenrich-api build-shein-address-copy \
-	build-shein build-task build-temu
+	build-shein build-temu
 
 # 版本信息
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
@@ -25,13 +25,12 @@ help:
 	@echo "  make build-1688-crawler-api - 构建 1688 爬虫 API"
 	@echo "  make build-product-listing-api - 构建统一 ListingKit API"
 	@echo "  make build-productenrich-api - 构建兼容 productenrich API"
-	@echo "  make build-task         - 构建 legacy fallback 入口"
 	@echo "  make clean              - 清理构建文件"
 	@echo "  make test               - 运行测试"
 	@echo ""
 
 # 构建所有服务
-build-all: build-temu build-shein build-amazon-listing build-amazon-crawler-api build-1688-crawler-api build-product-listing-api build-productenrich-api build-task
+build-all: build-temu build-shein build-amazon-listing build-amazon-crawler-api build-1688-crawler-api build-product-listing-api build-productenrich-api
 	@echo "✅ 所有服务构建完成"
 
 # TEMU 上架服务
@@ -89,13 +88,6 @@ build-shein-address-copy:
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/shein-address-copy ./cmd/shein-address-copy
 	@echo "✅ SHEIN 地址复制工具构建完成: $(BIN_DIR)/shein-address-copy"
-
-# legacy fallback 入口
-build-task:
-	@echo "🔨 构建 legacy fallback 入口..."
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/task ./cmd/task
-	@echo "✅ legacy fallback 入口构建完成: $(BIN_DIR)/task"
 
 # 清理构建文件
 clean:
