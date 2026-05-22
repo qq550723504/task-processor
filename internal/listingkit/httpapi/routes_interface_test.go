@@ -54,5 +54,42 @@ func (taskOnlyRouteHandler) UpdateSheinFinalDraft(c *gin.Context)             {}
 func (taskOnlyRouteHandler) GetSubmissionEvents(c *gin.Context)               {}
 func (taskOnlyRouteHandler) ClearSheinResolutionCache(c *gin.Context)         {}
 
+type subscriptionOnlyRouteHandler struct{}
+
+func (subscriptionOnlyRouteHandler) GetCurrentSubscription(c *gin.Context)    {}
+func (subscriptionOnlyRouteHandler) ListSubscriptionModules(c *gin.Context)   {}
+func (subscriptionOnlyRouteHandler) ListSubscriptionEntitlements(c *gin.Context) {
+}
+func (subscriptionOnlyRouteHandler) UpsertSubscriptionEntitlement(c *gin.Context) {}
+
+type platformAdminSubscriptionRouteHandler struct{}
+
+func (platformAdminSubscriptionRouteHandler) ListPlatformTenantSubscriptions(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) ListPlatformSubscriptionPlans(c *gin.Context) {}
+func (platformAdminSubscriptionRouteHandler) UpsertPlatformSubscriptionPlan(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) UpsertPlatformSubscriptionPlanModule(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) DeletePlatformSubscriptionPlanModule(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) SetPlatformSubscriptionPlanStatus(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) ListPlatformSubscriptionPlanTenants(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) ListPlatformSubscriptionPlanAuditLogs(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) GetPlatformTenantSubscription(c *gin.Context) {}
+func (platformAdminSubscriptionRouteHandler) ApplyPlatformTenantSubscriptionPlan(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) SetPlatformTenantSubscriptionUsage(c *gin.Context) {
+}
+func (platformAdminSubscriptionRouteHandler) ListPlatformTenantSubscriptionAuditLogs(c *gin.Context) {
+}
+
 var _ SettingsRouteHandler = settingsOnlyRouteHandler{}
 var _ TaskRouteHandler = taskOnlyRouteHandler{}
+var _ SubscriptionRouteHandler = subscriptionOnlyRouteHandler{}
+var _ PlatformAdminRouteHandler = platformAdminSubscriptionRouteHandler{}
