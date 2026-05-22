@@ -549,23 +549,7 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 	bundle.service.SetTaskSubmitter(submitter)
 	processor.SetTaskSubmitter(submitter)
 
-	handler, err := listingkitapi.NewHandler(
-		bundle.service,
-		listingkitapi.WithStudioAsyncJobStorePath(input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath),
-		listingkitapi.WithPlatformSubscriptionAccess(input.ServiceInput.Config.ListingKit.PlatformAdminUsers, input.ServiceInput.Config.ListingKit.PlatformAdminRoles),
-		listingkitapi.WithStoreRepository(bundle.StoreRepository),
-		listingkitapi.WithStoreStatisticsRepository(bundle.StoreStatisticsRepository),
-		listingkitapi.WithImportTaskRepository(bundle.ImportTaskRepository),
-		listingkitapi.WithFilterRuleRepository(bundle.FilterRuleRepository),
-		listingkitapi.WithProfitRuleRepository(bundle.ProfitRuleRepository),
-		listingkitapi.WithPricingRuleRepository(bundle.PricingRuleRepository),
-		listingkitapi.WithOperationStrategyRepository(bundle.OperationStrategyRepository),
-		listingkitapi.WithSensitiveWordRepository(bundle.SensitiveWordRepository),
-		listingkitapi.WithProductImportMappingRepository(bundle.ProductImportMappingRepository),
-		listingkitapi.WithCategoryRepository(bundle.CategoryRepository),
-		listingkitapi.WithProductDataRepository(bundle.ProductDataRepository),
-		listingkitapi.WithSubscriptionService(bundle.SubscriptionService),
-	)
+	handler, err := listingkitapi.NewHandler(bundle.service, buildHandlerOptions(input, bundle)...)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
@@ -581,6 +565,25 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 		Pool:                 pool,
 		Closers:              closers.Snapshot(),
 	}, nil
+}
+
+func buildHandlerOptions(input BuildModuleInput, bundle *ServiceBundle) []listingkitapi.HandlerOption {
+	return []listingkitapi.HandlerOption{
+		listingkitapi.WithStudioAsyncJobStorePath(input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath),
+		listingkitapi.WithPlatformSubscriptionAccess(input.ServiceInput.Config.ListingKit.PlatformAdminUsers, input.ServiceInput.Config.ListingKit.PlatformAdminRoles),
+		listingkitapi.WithStoreRepository(bundle.StoreRepository),
+		listingkitapi.WithStoreStatisticsRepository(bundle.StoreStatisticsRepository),
+		listingkitapi.WithImportTaskRepository(bundle.ImportTaskRepository),
+		listingkitapi.WithFilterRuleRepository(bundle.FilterRuleRepository),
+		listingkitapi.WithProfitRuleRepository(bundle.ProfitRuleRepository),
+		listingkitapi.WithPricingRuleRepository(bundle.PricingRuleRepository),
+		listingkitapi.WithOperationStrategyRepository(bundle.OperationStrategyRepository),
+		listingkitapi.WithSensitiveWordRepository(bundle.SensitiveWordRepository),
+		listingkitapi.WithProductImportMappingRepository(bundle.ProductImportMappingRepository),
+		listingkitapi.WithCategoryRepository(bundle.CategoryRepository),
+		listingkitapi.WithProductDataRepository(bundle.ProductDataRepository),
+		listingkitapi.WithSubscriptionService(bundle.SubscriptionService),
+	}
 }
 
 func BuildModule(input BuildModuleInput) (_ *Module, err error) {
