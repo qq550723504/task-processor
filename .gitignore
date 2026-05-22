@@ -68,6 +68,7 @@ tmp/*
 .tmp/
 .playwright-cli/
 .tools/
+.codegraph/
 web/listingkit-ui/.data/
 node_modules/
 test-results/
