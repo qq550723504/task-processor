@@ -19,9 +19,15 @@ type ShopPauseInfo struct {
 
 // ShopPauseManager 店铺暂停管理器
 type ShopPauseManager struct {
-	pauses      map[string]*ShopPauseInfo
-	mutex       sync.RWMutex
-	storeClient StoreClient
+	pauses               map[string]*ShopPauseInfo
+	pendingRemoteResumes map[string]pendingRemoteResume
+	mutex                sync.RWMutex
+	storeClient          StoreClient
+}
+
+type pendingRemoteResume struct {
+	tenantID int64
+	shopID   int64
 }
 
 // StoreClient 店铺API客户端接口
@@ -33,7 +39,8 @@ type StoreClient interface {
 // NewShopPauseManager 创建店铺暂停管理器
 func NewShopPauseManager() *ShopPauseManager {
 	return &ShopPauseManager{
-		pauses: make(map[string]*ShopPauseInfo),
+		pauses:               make(map[string]*ShopPauseInfo),
+		pendingRemoteResumes: make(map[string]pendingRemoteResume),
 	}
 }
 
@@ -115,17 +122,7 @@ func (m *ShopPauseManager) ResumeShop(tenantID, shopID int64) {
 	delete(m.pauses, key)
 	m.mutex.Unlock()
 
-	if m.storeClient != nil {
-		logger.GetGlobalLogger("state").Infof("正在恢复店铺 %d 的暂停状态...", shopID)
-		success, err := m.storeClient.SetStorePauseStatus(shopID, false, "")
-		if err != nil {
-			logger.GetGlobalLogger("state").Errorf("恢复店铺 %d 的暂停状态失败: %v", shopID, err)
-		} else if success {
-			logger.GetGlobalLogger("state").Infof("成功恢复店铺 %d 的暂停状态", shopID)
-		} else {
-			logger.GetGlobalLogger("state").Warnf("恢复店铺 %d 的暂停状态返回失败", shopID)
-		}
-	}
+	m.resumeRemotePauseStatus(tenantID, shopID)
 
 	logger.GetGlobalLogger("state").Infof("店铺已恢复: 租户=%d, 店铺=%d", tenantID, shopID)
 }
@@ -177,6 +174,8 @@ func (m *ShopPauseManager) GetPauseInfo(tenantID, shopID int64) (*ShopPauseInfo,
 
 // CleanupExpired 清理过期的暂停记录
 func (m *ShopPauseManager) CleanupExpired() {
+	m.retryPendingRemoteResumes()
+
 	m.mutex.Lock()
 	now := time.Now()
 	expiredShops := make([]struct {
@@ -203,18 +202,8 @@ func (m *ShopPauseManager) CleanupExpired() {
 	}
 	m.mutex.Unlock()
 
-	if m.storeClient != nil {
-		for _, shop := range expiredShops {
-			logger.GetGlobalLogger("state").Infof("正在恢复店铺 %d 的暂停状态...", shop.shopID)
-			success, err := m.storeClient.SetStorePauseStatus(shop.shopID, false, "")
-			if err != nil {
-				logger.GetGlobalLogger("state").Errorf("恢复店铺 %d 的暂停状态失败: %v", shop.shopID, err)
-			} else if success {
-				logger.GetGlobalLogger("state").Infof("成功恢复店铺 %d 的暂停状态", shop.shopID)
-			} else {
-				logger.GetGlobalLogger("state").Warnf("恢复店铺 %d 的暂停状态返回失败", shop.shopID)
-			}
-		}
+	for _, shop := range expiredShops {
+		m.resumeRemotePauseStatus(shop.tenantID, shop.shopID)
 	}
 }
 
@@ -240,4 +229,62 @@ func (m *ShopPauseManager) StartCleanupTask(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+func (m *ShopPauseManager) resumeRemotePauseStatus(tenantID, shopID int64) {
+	if m.storeClient == nil {
+		return
+	}
+
+	logger.GetGlobalLogger("state").Infof("正在恢复店铺 %d 的暂停状态...", shopID)
+	success, err := m.storeClient.SetStorePauseStatus(shopID, false, "")
+	if err != nil {
+		logger.GetGlobalLogger("state").Errorf("恢复店铺 %d 的暂停状态失败: %v", shopID, err)
+		m.enqueueRemoteResumeRetry(tenantID, shopID)
+		return
+	}
+	if !success {
+		logger.GetGlobalLogger("state").Warnf("恢复店铺 %d 的暂停状态返回失败", shopID)
+		m.enqueueRemoteResumeRetry(tenantID, shopID)
+		return
+	}
+
+	logger.GetGlobalLogger("state").Infof("成功恢复店铺 %d 的暂停状态", shopID)
+	m.clearRemoteResumeRetry(tenantID, shopID)
+}
+
+func (m *ShopPauseManager) enqueueRemoteResumeRetry(tenantID, shopID int64) {
+	key := fmt.Sprintf("%d:%d", tenantID, shopID)
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.pendingRemoteResumes[key] = pendingRemoteResume{
+		tenantID: tenantID,
+		shopID:   shopID,
+	}
+}
+
+func (m *ShopPauseManager) clearRemoteResumeRetry(tenantID, shopID int64) {
+	key := fmt.Sprintf("%d:%d", tenantID, shopID)
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	delete(m.pendingRemoteResumes, key)
+}
+
+func (m *ShopPauseManager) retryPendingRemoteResumes() {
+	if m.storeClient == nil {
+		return
+	}
+
+	m.mutex.RLock()
+	pending := make([]pendingRemoteResume, 0, len(m.pendingRemoteResumes))
+	for _, item := range m.pendingRemoteResumes {
+		pending = append(pending, item)
+	}
+	m.mutex.RUnlock()
+
+	for _, item := range pending {
+		m.resumeRemotePauseStatus(item.tenantID, item.shopID)
+	}
 }

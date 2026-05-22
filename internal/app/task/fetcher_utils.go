@@ -31,9 +31,12 @@ func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*api.StoreRe
 		}
 
 		storeInfo := &api.StoreRespDTO{
-			ID:       storeDTO.ID,
-			Platform: storeDTO.Platform,
-			Name:     storeDTO.Name,
+			ID:             storeDTO.ID,
+			TenantID:       storeDTO.TenantID,
+			Platform:       storeDTO.Platform,
+			Name:           storeDTO.Name,
+			DailyLimit:     storeDTO.DailyLimit,
+			DailyLimitType: storeDTO.DailyLimitType,
 		}
 
 		logger.GetGlobalLogger("app/task").Infof("成功获取店铺信息: StoreID=%d, Platform=%s, Name=%s",
