@@ -43,7 +43,14 @@ type settingsNamespaceSchema struct {
 }
 
 type settingsService struct {
-	service listingkit.HandlerService
+	service settingsHandlerService
+}
+
+type settingsHandlerService interface {
+	GetSheinSettings(ctx context.Context) (*listingkit.SheinSettings, error)
+	UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error)
+	GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error)
+	UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error)
 }
 
 var settingsNamespaceSchemas = []settingsNamespaceSchema{
@@ -82,7 +89,7 @@ var settingsNamespaceSchemas = []settingsNamespaceSchema{
 	},
 }
 
-func newSettingsService(service listingkit.HandlerService) *settingsService {
+func newSettingsService(service settingsHandlerService) *settingsService {
 	return &settingsService{
 		service: service,
 	}

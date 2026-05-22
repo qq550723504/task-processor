@@ -13,7 +13,7 @@ import (
 )
 
 type handler struct {
-	service                     listingkit.HandlerService
+	service                     routeHandlerService
 	studioAsyncJobs             *studioAsyncJobStore
 	initErr                     error
 	storeHandler                *listingadmin.StoreHandler
@@ -32,6 +32,13 @@ type handler struct {
 	settingsService             *settingsService
 	platformAdminUsers          []string
 	platformAdminRoles          []string
+}
+
+type routeHandlerService interface {
+	listingkit.TaskLifecycleService
+	listingkit.GenerationTaskService
+	listingkit.StudioMediaService
+	listingkit.StoreAdminService
 }
 
 type HandlerOption func(*handler)
@@ -157,7 +164,7 @@ func WithStudioAsyncJobStorePath(path string) HandlerOption {
 	}
 }
 
-func NewHandler(service listingkit.HandlerService, opts ...HandlerOption) (listingkit.Handler, error) {
+func NewHandler(service routeHandlerService, opts ...HandlerOption) (listingkit.Handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
