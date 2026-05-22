@@ -63,6 +63,14 @@ type uploadedImageDeleteService interface {
 	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
 }
 
+type RouteHandler interface {
+	listingkit.TaskHandler
+	listingkit.CustomerStoreHandler
+	listingkit.PlatformAdminHandler
+	listingkit.SubscriptionHandler
+	listingkit.SettingsHandler
+}
+
 type HandlerOption func(*handler)
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -232,7 +240,7 @@ func (h *handler) finalize() error {
 	return nil
 }
 
-func NewHandler(service routeHandlerService, opts ...HandlerOption) (listingkit.Handler, error) {
+func NewHandler(service routeHandlerService, opts ...HandlerOption) (RouteHandler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}

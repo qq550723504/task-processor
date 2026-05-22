@@ -286,11 +286,3 @@ type SettingsHandler interface {
 	GetSettingsNamespace(c *gin.Context)
 	UpdateSettingsNamespace(c *gin.Context)
 }
-
-type Handler interface {
-	TaskHandler
-	CustomerStoreHandler
-	PlatformAdminHandler
-	SubscriptionHandler
-	SettingsHandler
-}
