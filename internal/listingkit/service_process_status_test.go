@@ -42,17 +42,17 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 		},
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: productService,
-		Assembler: &stubProcessStatusAssembler{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID:  "listingkit-needs-review-1",
 				Shein:   &SheinPackage{},
 				Summary: &GenerationSummary{NeedsReview: true, Warnings: []string{"scene images require manual review"}},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -111,10 +111,10 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 	}
 	cookieNote := "SHEIN 店铺 cookie 不可用，已降级为离线解析"
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: productService,
-		Assembler: &stubProcessStatusAssembler{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID: "listingkit-cookie-blocking-1",
 				Shein: &SheinPackage{
@@ -122,8 +122,8 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 				},
 				Summary: &GenerationSummary{NeedsReview: true, Warnings: []string{cookieNote}},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -409,10 +409,10 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 		},
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: productService,
-		Assembler: &stubProcessStatusAssembler{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID: "listingkit-pricing-1",
 				Shein: &SheinPackage{
@@ -432,8 +432,8 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 				},
 				Summary: &GenerationSummary{},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -488,11 +488,13 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 		},
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:                repo,
-		ProductService:            productService,
-		SheinResolutionCacheStore: cacheStore,
-		Assembler: &stubProcessStatusAssembler{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = cacheStore
+		}),
+		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID: "listingkit-pricing-cache-1",
 				Shein: &SheinPackage{
@@ -540,8 +542,8 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 				},
 				Summary: &GenerationSummary{},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}

@@ -124,10 +124,9 @@ func TestSubmitTaskPreservesDraftPriceWhenPricingReviewMissing(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -137,8 +136,8 @@ func TestSubmitTaskPreservesDraftPriceWhenPricingReviewMissing(t *testing.T) {
 					Msg:  "OK",
 				},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -179,10 +178,9 @@ func TestSubmitTaskNormalizesLegacyCNYDraftCurrencyToUSD(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -192,8 +190,8 @@ func TestSubmitTaskNormalizesLegacyCNYDraftCurrencyToUSD(t *testing.T) {
 					Msg:  "OK",
 				},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -232,10 +230,7 @@ func TestUpdateSheinFinalDraftPreservesExistingDraftPrice(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-	})
+	svc, err := NewService(newTestServiceConfig(repo))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -275,10 +270,7 @@ func TestPreviewSheinPriceApplyToTaskUsesMutation(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-	})
+	svc, err := NewService(newTestServiceConfig(repo))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -328,11 +320,12 @@ func TestApplyDefaultSheinPricingUsesPublishedPriceCache(t *testing.T) {
 		}},
 		Ready: true,
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:                &stubSubmitRepo{},
-		ProductService:            stubSubmitProductService{},
-		SheinResolutionCacheStore: store,
-	})
+	svc, err := NewService(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = store
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}

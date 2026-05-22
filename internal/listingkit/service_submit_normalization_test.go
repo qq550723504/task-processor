@@ -471,10 +471,9 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -487,8 +486,8 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 					},
 				},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -546,10 +545,9 @@ func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -559,8 +557,8 @@ func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
 					Msg:  "OK",
 				},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -595,10 +593,9 @@ func TestSubmitTaskSaveDraftDoesNotFailWhenContentOptimizerFails(t *testing.T) {
 	}
 	var submitted *sheinproduct.Product
 	contentAI := &stubSheinContentAI{err: errors.New("upstream EOF")}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -608,9 +605,11 @@ func TestSubmitTaskSaveDraftDoesNotFailWhenContentOptimizerFails(t *testing.T) {
 					Msg:  "OK",
 				},
 			},
-		},
-		SheinContentOptimizer: contentAI,
-	})
+		}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinContentOptimizer = contentAI
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -663,10 +662,9 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -677,9 +675,9 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -809,10 +807,9 @@ func TestSubmitTaskNormalizesNilSlicesToEmptyArraysForSheinPublish(t *testing.T)
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -823,9 +820,9 @@ func TestSubmitTaskNormalizesNilSlicesToEmptyArraysForSheinPublish(t *testing.T)
 					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -905,10 +902,9 @@ func TestSubmitTaskNormalizesSheinWeightToGrams(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -921,9 +917,9 @@ func TestSubmitTaskNormalizesSheinWeightToGrams(t *testing.T) {
 					},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -962,20 +958,21 @@ func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
 	contentAI := &stubSheinContentAI{
 		response: `{"title":"Optimized Bottle Cap Metal Sign for Bar and Garage Decor","description":"A durable decorative metal sign designed for wall display in bars, garages, game rooms, and home spaces."}`,
 	}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
 				},
 				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "success", Info: sheinproduct.ResponseInfo{Success: true}},
 			},
-		},
-		SheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{api: translateAPI},
-		SheinContentOptimizer:    contentAI,
-	})
+		}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinTranslateAPIBuilder = stubSheinTranslateAPIBuilder{api: translateAPI}
+			cfg.Shein.SheinContentOptimizer = contentAI
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1026,19 +1023,20 @@ func TestSubmitTaskAddsRegionalTranslationsForEnglishSheinContent(t *testing.T) 
 
 	var submitted *sheinproduct.Product
 	translateAPI := &stubSheinTranslateAPI{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
 				},
 				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "success", Info: sheinproduct.ResponseInfo{Success: true}},
 			},
-		},
-		SheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{api: translateAPI},
-	})
+		}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinTranslateAPIBuilder = stubSheinTranslateAPIBuilder{api: translateAPI}
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -1078,18 +1076,17 @@ func TestSubmitTaskCleansSheinSensitiveWordsBeforePublish(t *testing.T) {
 	}
 
 	var submitted *sheinproduct.Product
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
 				},
 				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "success", Info: sheinproduct.ResponseInfo{Success: true}},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}

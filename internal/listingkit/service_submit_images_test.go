@@ -307,16 +307,15 @@ func TestSubmitTaskSaveDraftAllowsMissingStrictPublishImageRoles(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "OK"},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -348,16 +347,15 @@ func TestSubmitTaskSaveDraftDoesNotRequireFinalConfirmation(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "OK"},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -392,10 +390,9 @@ func TestSubmitTaskPublishAllowsMissingSizeMapRole(t *testing.T) {
 	}
 
 	publishCalled := false
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalled = true
@@ -406,9 +403,9 @@ func TestSubmitTaskPublishAllowsMissingSizeMapRole(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -462,10 +459,9 @@ func TestSubmitTaskPublishRepairsMissingSKCImagesFromFinalDraft(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	var submitted *sheinproduct.Product
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -476,9 +472,9 @@ func TestSubmitTaskPublishRepairsMissingSKCImagesFromFinalDraft(t *testing.T) {
 					Info: sheinproduct.ResponseInfo{Success: true},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -563,18 +559,17 @@ func TestSubmitTaskBlocksSharedSingleImageAcrossMultipleSKCs(t *testing.T) {
 	}
 
 	publishCalled := false
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalled = true
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withDefaultTestSheinImageAPI(),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
