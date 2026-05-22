@@ -140,21 +140,47 @@ func withSubscriptionDependency[Dep comparable](dep Dep, apply func(Dep, *subscr
 	})
 }
 
+func withStoreAdminDependencies(deps AdminHandlerDependencies) HandlerOption {
+	options := []HandlerOption{
+		WithStoreRepository(deps.StoreRepository),
+		WithStoreStatisticsRepository(deps.StoreStatisticsRepository),
+		WithImportTaskRepository(deps.ImportTaskRepository),
+	}
+	return func(h *handler) {
+		for _, option := range options {
+			if option != nil {
+				option(h)
+			}
+		}
+	}
+}
+
+func withCatalogAdminDependencies(deps AdminHandlerDependencies) HandlerOption {
+	options := []HandlerOption{
+		WithFilterRuleRepository(deps.FilterRuleRepository),
+		WithProfitRuleRepository(deps.ProfitRuleRepository),
+		WithPricingRuleRepository(deps.PricingRuleRepository),
+		WithOperationStrategyRepository(deps.OperationStrategyRepository),
+		WithSensitiveWordRepository(deps.SensitiveWordRepository),
+		WithProductImportMappingRepository(deps.ProductImportMappingRepository),
+		WithCategoryRepository(deps.CategoryRepository),
+		WithProductDataRepository(deps.ProductDataRepository),
+	}
+	return func(h *handler) {
+		for _, option := range options {
+			if option != nil {
+				option(h)
+			}
+		}
+	}
+}
+
 func WithDependencies(deps HandlerDependencies) HandlerOption {
 	options := []HandlerOption{
 		WithStudioAsyncJobStorePath(deps.StudioAsyncJobStorePath),
 		WithPlatformSubscriptionAccess(deps.Subscription.PlatformAdminUsers, deps.Subscription.PlatformAdminRoles),
-		WithStoreRepository(deps.Admin.StoreRepository),
-		WithStoreStatisticsRepository(deps.Admin.StoreStatisticsRepository),
-		WithImportTaskRepository(deps.Admin.ImportTaskRepository),
-		WithFilterRuleRepository(deps.Admin.FilterRuleRepository),
-		WithProfitRuleRepository(deps.Admin.ProfitRuleRepository),
-		WithPricingRuleRepository(deps.Admin.PricingRuleRepository),
-		WithOperationStrategyRepository(deps.Admin.OperationStrategyRepository),
-		WithSensitiveWordRepository(deps.Admin.SensitiveWordRepository),
-		WithProductImportMappingRepository(deps.Admin.ProductImportMappingRepository),
-		WithCategoryRepository(deps.Admin.CategoryRepository),
-		WithProductDataRepository(deps.Admin.ProductDataRepository),
+		withStoreAdminDependencies(deps.Admin),
+		withCatalogAdminDependencies(deps.Admin),
 		WithSubscriptionService(deps.Subscription.Service),
 	}
 	return func(h *handler) {
