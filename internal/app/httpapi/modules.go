@@ -24,6 +24,7 @@ import (
 	"task-processor/internal/sdslogin"
 	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/sheinlogin"
+	sheinloginmanaged "task-processor/internal/sheinloginmanaged"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -146,8 +147,8 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 		return nil, nil, err
 	}
 	svc.ConfigureRuntimeSheinAPIClients()
-	svc.ConfigureStoreSyncClientFactory(sheinlogin.NewManagementStoreSyncClientFactory(deps.managementClient))
-	svc.ConfigureDuplicateStoreLookup(sheinlogin.NewManagementDuplicateStoreLookup(deps.managementClient))
+	svc.ConfigureStoreSyncClientFactory(sheinloginmanaged.NewStoreSyncClientFactory(deps.managementClient))
+	svc.ConfigureDuplicateStoreLookup(sheinloginmanaged.NewDuplicateStoreLookup(deps.managementClient))
 	sheinclient.ConfigureLocalLoginRefresher(svc)
 	return sheinlogin.NewHandler(svc), func() error {
 		closeErr := svc.Close()
@@ -168,7 +169,7 @@ func buildSheinLoginAccountProvider(deps *runtimeDeps) (sheinlogin.AccountProvid
 	if err == nil && repo != nil {
 		return sheinlogin.NewListingAdminAccountProvider(repo), joinClosers(closers), nil
 	}
-	return sheinlogin.NewManagementAccountProvider(deps.managementClient), nil, nil
+	return sheinloginmanaged.NewAccountProvider(deps.managementClient), nil, nil
 }
 
 func joinClosers(closers []func() error) func() error {
