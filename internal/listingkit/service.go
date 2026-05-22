@@ -200,58 +200,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config.Core.ProductService == nil {
 		return nil, fmt.Errorf("product service cannot be nil")
 	}
-	if config.Assets.Assembler == nil {
-		if config.Shein.SheinCategoryResolver == nil {
-			config.Shein.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
-		}
-		if config.Shein.SheinAttributeResolver == nil {
-			config.Shein.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
-		}
-		if config.Shein.SheinSaleAttributeResolver == nil {
-			config.Shein.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
-		}
-		config.Assets.Assembler = NewAssemblerWithConfig(AssemblerConfig{
-			AmazonBuilder:              newAmazonDraftBuilder(),
-			SheinCategoryResolver:      config.Shein.SheinCategoryResolver,
-			SheinAttributeResolver:     config.Shein.SheinAttributeResolver,
-			SheinSaleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
-			SheinPricingPolicy:         config.Shein.SheinPricingPolicy,
-			SheinTitleOptimizer:        config.Shein.SheinContentOptimizer,
-		})
-	}
-	if config.Shein.SheinCategoryResolver == nil {
-		config.Shein.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
-	}
-	if config.Shein.SheinAttributeResolver == nil {
-		config.Shein.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
-	}
-	if config.Shein.SheinSaleAttributeResolver == nil {
-		config.Shein.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
-	}
-	if config.Assets.AssetRepository == nil {
-		config.Assets.AssetRepository = assetrepo.NewMemRepository()
-	}
-	if config.Assets.ReviewRepository == nil {
-		config.Assets.ReviewRepository = reviewstore.NewMemRepository()
-	}
-	if config.Assets.AssetRecipeResolver == nil {
-		config.Assets.AssetRecipeResolver = newDefaultAssetRecipeResolver()
-	}
-	if config.Assets.AssetBundleBuilder == nil {
-		config.Assets.AssetBundleBuilder = newDefaultAssetBundleBuilder()
-	}
-	if config.Assets.AssetGenerationService == nil {
-		config.Assets.AssetGenerationService = newDefaultAssetGenerationService()
-	}
-	if config.Core.StoreProfileRepository == nil {
-		config.Core.StoreProfileRepository = newInMemoryStoreProfileRepository()
-	}
-	if config.Core.StoreRoutingSettingsRepository == nil {
-		config.Core.StoreRoutingSettingsRepository = newInMemoryStoreRoutingSettingsRepository()
-	}
-	if config.Shein.StudioPromptDiversifier == nil {
-		config.Shein.StudioPromptDiversifier = config.Shein.SheinContentOptimizer
-	}
+	config.applyDefaults()
 	defaultSettings := defaultSheinSettings(config.Shein.SheinDefaultStoreID, config.Shein.SheinPricingPolicy)
 	return &service{
 		repo:                           config.Core.Repository,
@@ -295,6 +244,73 @@ func NewService(config *ServiceConfig) (Service, error) {
 		sheinSubmitLocks: newSubmitLockManager(),
 		sheinSettings:    defaultSettings,
 	}, nil
+}
+
+func (config *ServiceConfig) applyDefaults() {
+	config.ensureSheinResolvers()
+	config.ensureAssembler()
+	config.ensureAssetDependencies()
+	config.ensureCoreRepositories()
+	config.ensureSheinDefaults()
+}
+
+func (config *ServiceConfig) ensureSheinResolvers() {
+	if config.Shein.SheinCategoryResolver == nil {
+		config.Shein.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
+	}
+	if config.Shein.SheinAttributeResolver == nil {
+		config.Shein.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
+	}
+	if config.Shein.SheinSaleAttributeResolver == nil {
+		config.Shein.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
+	}
+}
+
+func (config *ServiceConfig) ensureAssembler() {
+	if config.Assets.Assembler != nil {
+		return
+	}
+	config.Assets.Assembler = NewAssemblerWithConfig(AssemblerConfig{
+		AmazonBuilder:              newAmazonDraftBuilder(),
+		SheinCategoryResolver:      config.Shein.SheinCategoryResolver,
+		SheinAttributeResolver:     config.Shein.SheinAttributeResolver,
+		SheinSaleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
+		SheinPricingPolicy:         config.Shein.SheinPricingPolicy,
+		SheinTitleOptimizer:        config.Shein.SheinContentOptimizer,
+	})
+}
+
+func (config *ServiceConfig) ensureAssetDependencies() {
+	if config.Assets.AssetRepository == nil {
+		config.Assets.AssetRepository = assetrepo.NewMemRepository()
+	}
+	if config.Assets.ReviewRepository == nil {
+		config.Assets.ReviewRepository = reviewstore.NewMemRepository()
+	}
+	if config.Assets.AssetRecipeResolver == nil {
+		config.Assets.AssetRecipeResolver = newDefaultAssetRecipeResolver()
+	}
+	if config.Assets.AssetBundleBuilder == nil {
+		config.Assets.AssetBundleBuilder = newDefaultAssetBundleBuilder()
+	}
+	if config.Assets.AssetGenerationService == nil {
+		config.Assets.AssetGenerationService = newDefaultAssetGenerationService()
+	}
+}
+
+func (config *ServiceConfig) ensureCoreRepositories() {
+	if config.Core.StoreProfileRepository == nil {
+		config.Core.StoreProfileRepository = newInMemoryStoreProfileRepository()
+	}
+	if config.Core.StoreRoutingSettingsRepository == nil {
+		config.Core.StoreRoutingSettingsRepository = newInMemoryStoreRoutingSettingsRepository()
+	}
+}
+
+func (config *ServiceConfig) ensureSheinDefaults() {
+	if config.Shein.StudioPromptDiversifier == nil {
+		config.Shein.StudioPromptDiversifier = config.Shein.SheinContentOptimizer
+	}
 }
 
 func (config *ServiceConfig) normalizeLegacyFields() {
