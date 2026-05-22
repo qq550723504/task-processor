@@ -18,10 +18,7 @@ func TestSheinPublishActivityHostPreparePayloadPersistsPhase(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-	})
+	svc, err := NewService(newTestServiceConfig(repo))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -83,10 +80,7 @@ func TestSheinPublishActivityHostValidateReadinessReturnsBlockedError(t *testing
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-	})
+	svc, err := NewService(newTestServiceConfig(repo))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}

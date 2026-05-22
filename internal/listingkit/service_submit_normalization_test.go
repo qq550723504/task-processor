@@ -52,10 +52,9 @@ func TestSubmitTaskRebuildsNormalizedProductAttributesFromPackage(t *testing.T) 
 		t.Fatalf("create task: %v", err)
 	}
 
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -66,9 +65,9 @@ func TestSubmitTaskRebuildsNormalizedProductAttributesFromPackage(t *testing.T) 
 					Info: sheinproduct.ResponseInfo{Success: true},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
-	})
+		}),
+		withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -224,10 +223,9 @@ func TestSubmitTaskNormalizesLegacyStudioSupplierSKUs(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	var submitted *sheinproduct.Product
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -237,8 +235,8 @@ func TestSubmitTaskNormalizesLegacyStudioSupplierSKUs(t *testing.T) {
 					Msg:  "OK",
 				},
 			},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}

@@ -62,10 +62,9 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 	}
 	imageAPI := &stubSheinImageAPI{uploaded: uploadMap}
 	var submitted *sheinproduct.Product
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					submitted = product
@@ -80,9 +79,9 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 					},
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: imageAPI},
-	})
+		}),
+		withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{api: imageAPI}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -201,20 +200,19 @@ func TestSubmitTaskBlocksPublishWhenSheinImageUploadFails(t *testing.T) {
 	}
 
 	publishCalled := false
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				publishHook: func(product *sheinproduct.Product) {
 					publishCalled = true
 				},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{
+		}),
+		withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{
 			api: &stubSheinImageAPI{err: errors.New("upload rejected")},
-		},
-	})
+		}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -256,16 +254,15 @@ func TestSubmitTaskReusesSheinImageUploadCache(t *testing.T) {
 	}
 
 	imageAPI := &stubSheinImageAPI{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: stubSubmitProductService{},
-		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
 				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "OK"},
 			},
-		},
-		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: imageAPI},
-	})
+		}),
+		withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{api: imageAPI}),
+	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}

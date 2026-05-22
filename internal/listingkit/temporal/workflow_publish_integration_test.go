@@ -29,21 +29,25 @@ func TestPublishWorkflowWithConcreteActivitiesPersistsStateAndBuildsPreview(t *t
 
 	publishCalls := 0
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
-		Repository:     repo,
-		ProductService: temporalStubSubmitProductService{},
-		SheinProductAPIBuilder: temporalStubSheinProductAPIBuilder{
-			api: temporalStubSheinProductAPI{
-				publishHook: func(product *sheinproduct.Product) {
-					publishCalls++
-				},
-				publishResponse: &sheinproduct.SheinResponse{
-					Code: "0",
-					Msg:  "success",
-					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+		Core: listingkit.ServiceCoreDependencies{
+			Repository:     repo,
+			ProductService: temporalStubSubmitProductService{},
+		},
+		Shein: listingkit.ServiceSheinDependencies{
+			SheinProductAPIBuilder: temporalStubSheinProductAPIBuilder{
+				api: temporalStubSheinProductAPI{
+					publishHook: func(product *sheinproduct.Product) {
+						publishCalls++
+					},
+					publishResponse: &sheinproduct.SheinResponse{
+						Code: "0",
+						Msg:  "success",
+						Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+					},
 				},
 			},
+			SheinImageAPIBuilder: temporalStubSheinImageAPIBuilder{api: &temporalStubSheinImageAPI{}},
 		},
-		SheinImageAPIBuilder: temporalStubSheinImageAPIBuilder{api: &temporalStubSheinImageAPI{}},
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)

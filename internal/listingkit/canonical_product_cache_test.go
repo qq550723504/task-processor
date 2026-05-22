@@ -29,12 +29,12 @@ func TestRunWorkflowReusesCanonicalProductCacheWithoutSkippingDownstreamAssembly
 		},
 	}
 	assembler := &canonicalProductCacheAssembler{}
-	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: productSvc,
-		Assembler:      assembler,
-		TaskSubmitter:  noopTaskSubmitter{},
-	})
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productSvc),
+		withTestAssembler(assembler),
+		withTestTaskSubmitter(noopTaskSubmitter{}),
+	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}

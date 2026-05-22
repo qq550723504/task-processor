@@ -78,25 +78,11 @@ type AmazonDraftBuilder interface {
 	Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
 }
 
-type Service interface {
+type TaskLifecycleService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
-	ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error)
-	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
 	ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error)
-	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
-	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
-	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
-	GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
-	RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
-	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
-	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
-	GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error)
-	GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error)
-	DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error)
-	RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error)
-	ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error)
 	GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error)
 	GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error)
 	GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error)
@@ -104,6 +90,27 @@ type Service interface {
 	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
 	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
 	RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error)
+}
+
+type GenerationTaskService interface {
+	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
+	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
+	GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error)
+	GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error)
+	DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error)
+	RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error)
+	ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error)
+}
+
+type StudioMediaService interface {
+	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
+	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
+	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
+	GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
+	RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error)
+}
+
+type StoreAdminService interface {
 	ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error)
 	UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error)
 	DeleteSheinStoreProfile(ctx context.Context, id int64) error
@@ -118,48 +125,28 @@ type Service interface {
 	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
 	GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error)
 	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
+}
+
+type InternalListingKitService interface {
 	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
 	SetTaskSubmitter(submitter TaskSubmitter)
+	ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error)
+	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
+}
+
+type Service interface {
+	TaskLifecycleService
+	GenerationTaskService
+	StudioMediaService
+	StoreAdminService
+	InternalListingKitService
 }
 
 type HandlerService interface {
-	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
-	ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error)
-	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
-	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
-	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
-	GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
-	RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error)
-	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
-	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
-	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
-	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
-	GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error)
-	GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error)
-	DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error)
-	RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error)
-	ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error)
-	GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error)
-	GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error)
-	GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error)
-	ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error)
-	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
-	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
-	RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error)
-	ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error)
-	UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error)
-	DeleteSheinStoreProfile(ctx context.Context, id int64) error
-	GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error)
-	UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error)
-	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
-	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
-	GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error)
-	UpdateAIClientSettings(ctx context.Context, req *AIClientSettings) (*AIClientSettings, error)
-	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
-	SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error)
-	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
-	GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error)
-	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
+	TaskLifecycleService
+	GenerationTaskService
+	StudioMediaService
+	StoreAdminService
 }
 
 type Handler interface {

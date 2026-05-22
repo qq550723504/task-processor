@@ -61,7 +61,60 @@ type service struct {
 	sheinSettings                  SheinSettings
 }
 
+type ServiceCoreDependencies struct {
+	Repository                     Repository
+	StudioSessionRepository        StudioSessionRepository
+	ProductService                 ProductService
+	ImageService                   ImageService
+	SDSSyncService                 SDSSyncService
+	ImageUploadStore               ImageUploadStore
+	UploadedImageRepository        UploadedImageRepository
+	StoreProfileRepository         StoreProfileRepository
+	StoreRoutingSettingsRepository StoreRoutingSettingsRepository
+	TaskSubmitter                  TaskSubmitter
+	AIClientCredentialStore        AIClientCredentialStore
+}
+
+type ServiceAssetDependencies struct {
+	Assembler              Assembler
+	AssetRepository        AssetRepository
+	ReviewRepository       GenerationReviewRepository
+	AssetRecipeResolver    AssetRecipeResolver
+	AssetBundleBuilder     AssetBundleBuilder
+	AssetGenerationService AssetGenerationService
+}
+
+type ServiceSheinDependencies struct {
+	SheinDefaultStoreID        int64
+	SheinManagementClient      *management.ClientManager
+	SheinCategoryResolver      sheinpub.CategoryResolver
+	SheinResolutionCacheStore  sheinpub.ResolutionCacheStore
+	SheinAttributeResolver     sheinpub.AttributeResolver
+	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	SheinPricingPolicy         sheinpub.PricingPolicy
+	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
+	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
+	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
+	SheinContentOptimizer      openaiclient.ChatCompleter
+	StudioPromptDiversifier    openaiclient.ChatCompleter
+	StudioImageGenerator       openaiclient.ImageGenerator
+}
+
+type ServiceWorkflowDependencies struct {
+	SheinPublishWorkflowClient     SheinPublishWorkflowClient
+	SheinPublishWorkflowEnabled    bool
+	StandardProductWorkflowClient  StandardProductWorkflowClient
+	StandardProductWorkflowEnabled bool
+	PlatformAdaptWorkflowClient    PlatformAdaptWorkflowClient
+	PlatformAdaptWorkflowEnabled   bool
+}
+
 type ServiceConfig struct {
+	Core     ServiceCoreDependencies
+	Assets   ServiceAssetDependencies
+	Shein    ServiceSheinDependencies
+	Workflow ServiceWorkflowDependencies
+
 	Repository                     Repository
 	StudioSessionRepository        StudioSessionRepository
 	ProductService                 ProductService
@@ -104,107 +157,222 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
-	if config.Repository == nil {
+	config.normalizeLegacyFields()
+	if config.Core.Repository == nil {
 		return nil, fmt.Errorf("repository cannot be nil")
 	}
-	if config.ProductService == nil {
+	if config.Core.ProductService == nil {
 		return nil, fmt.Errorf("product service cannot be nil")
 	}
-	if config.Assembler == nil {
-		if config.SheinCategoryResolver == nil {
-			config.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
+	if config.Assets.Assembler == nil {
+		if config.Shein.SheinCategoryResolver == nil {
+			config.Shein.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
 		}
-		if config.SheinAttributeResolver == nil {
-			config.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
+		if config.Shein.SheinAttributeResolver == nil {
+			config.Shein.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
 		}
-		if config.SheinSaleAttributeResolver == nil {
-			config.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
+		if config.Shein.SheinSaleAttributeResolver == nil {
+			config.Shein.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
 		}
-		config.Assembler = NewAssemblerWithConfig(AssemblerConfig{
+		config.Assets.Assembler = NewAssemblerWithConfig(AssemblerConfig{
 			AmazonBuilder:              newAmazonDraftBuilder(),
-			SheinCategoryResolver:      config.SheinCategoryResolver,
-			SheinAttributeResolver:     config.SheinAttributeResolver,
-			SheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
-			SheinPricingPolicy:         config.SheinPricingPolicy,
-			SheinTitleOptimizer:        config.SheinContentOptimizer,
+			SheinCategoryResolver:      config.Shein.SheinCategoryResolver,
+			SheinAttributeResolver:     config.Shein.SheinAttributeResolver,
+			SheinSaleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
+			SheinPricingPolicy:         config.Shein.SheinPricingPolicy,
+			SheinTitleOptimizer:        config.Shein.SheinContentOptimizer,
 		})
 	}
-	if config.SheinCategoryResolver == nil {
-		config.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
+	if config.Shein.SheinCategoryResolver == nil {
+		config.Shein.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
 	}
-	if config.SheinAttributeResolver == nil {
-		config.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
+	if config.Shein.SheinAttributeResolver == nil {
+		config.Shein.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
 	}
-	if config.SheinSaleAttributeResolver == nil {
-		config.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
+	if config.Shein.SheinSaleAttributeResolver == nil {
+		config.Shein.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
 	}
-	if config.AssetRepository == nil {
-		config.AssetRepository = assetrepo.NewMemRepository()
+	if config.Assets.AssetRepository == nil {
+		config.Assets.AssetRepository = assetrepo.NewMemRepository()
 	}
-	if config.ReviewRepository == nil {
-		config.ReviewRepository = reviewstore.NewMemRepository()
+	if config.Assets.ReviewRepository == nil {
+		config.Assets.ReviewRepository = reviewstore.NewMemRepository()
 	}
-	if config.AssetRecipeResolver == nil {
-		config.AssetRecipeResolver = newDefaultAssetRecipeResolver()
+	if config.Assets.AssetRecipeResolver == nil {
+		config.Assets.AssetRecipeResolver = newDefaultAssetRecipeResolver()
 	}
-	if config.AssetBundleBuilder == nil {
-		config.AssetBundleBuilder = newDefaultAssetBundleBuilder()
+	if config.Assets.AssetBundleBuilder == nil {
+		config.Assets.AssetBundleBuilder = newDefaultAssetBundleBuilder()
 	}
-	if config.AssetGenerationService == nil {
-		config.AssetGenerationService = newDefaultAssetGenerationService()
+	if config.Assets.AssetGenerationService == nil {
+		config.Assets.AssetGenerationService = newDefaultAssetGenerationService()
 	}
-	if config.StoreProfileRepository == nil {
-		config.StoreProfileRepository = newInMemoryStoreProfileRepository()
+	if config.Core.StoreProfileRepository == nil {
+		config.Core.StoreProfileRepository = newInMemoryStoreProfileRepository()
 	}
-	if config.StoreRoutingSettingsRepository == nil {
-		config.StoreRoutingSettingsRepository = newInMemoryStoreRoutingSettingsRepository()
+	if config.Core.StoreRoutingSettingsRepository == nil {
+		config.Core.StoreRoutingSettingsRepository = newInMemoryStoreRoutingSettingsRepository()
 	}
-	if config.StudioPromptDiversifier == nil {
-		config.StudioPromptDiversifier = config.SheinContentOptimizer
+	if config.Shein.StudioPromptDiversifier == nil {
+		config.Shein.StudioPromptDiversifier = config.Shein.SheinContentOptimizer
 	}
-	defaultSettings := defaultSheinSettings(config.SheinDefaultStoreID, config.SheinPricingPolicy)
+	defaultSettings := defaultSheinSettings(config.Shein.SheinDefaultStoreID, config.Shein.SheinPricingPolicy)
 	return &service{
-		repo:                           config.Repository,
-		studioSessionRepo:              config.StudioSessionRepository,
-		productSvc:                     config.ProductService,
-		imageSvc:                       config.ImageService,
-		sdsSyncSvc:                     config.SDSSyncService,
-		uploadStore:                    config.ImageUploadStore,
-		uploadedImageRepo:              config.UploadedImageRepository,
-		assembler:                      config.Assembler,
-		sheinCategoryResolver:          config.SheinCategoryResolver,
-		sheinResolutionCacheStore:      config.SheinResolutionCacheStore,
-		sheinManagementClient:          config.SheinManagementClient,
-		sheinAttributeResolver:         config.SheinAttributeResolver,
-		sheinSaleAttributeResolver:     config.SheinSaleAttributeResolver,
-		sheinPricingPolicy:             config.SheinPricingPolicy,
-		sheinProductAPIBuilder:         config.SheinProductAPIBuilder,
-		sheinImageAPIBuilder:           config.SheinImageAPIBuilder,
-		sheinTranslateAPIBuilder:       config.SheinTranslateAPIBuilder,
-		sheinContentOptimizer:          config.SheinContentOptimizer,
-		studioPromptDiversifier:        config.StudioPromptDiversifier,
-		studioImageGenerator:           config.StudioImageGenerator,
-		aiCredentialStore:              config.AIClientCredentialStore,
-		assetRepo:                      config.AssetRepository,
-		reviewRepo:                     config.ReviewRepository,
-		assetRecipeResolver:            config.AssetRecipeResolver,
-		assetBundleBuilder:             config.AssetBundleBuilder,
-		assetGenerator:                 config.AssetGenerationService,
-		taskSubmitter:                  config.TaskSubmitter,
-		sheinPublishWorkflowClient:     config.SheinPublishWorkflowClient,
-		sheinPublishWorkflowEnabled:    config.SheinPublishWorkflowEnabled,
-		standardProductWorkflowClient:  config.StandardProductWorkflowClient,
-		standardProductWorkflowEnabled: config.StandardProductWorkflowEnabled,
-		platformAdaptWorkflowClient:    config.PlatformAdaptWorkflowClient,
-		platformAdaptWorkflowEnabled:   config.PlatformAdaptWorkflowEnabled,
-		storeProfileRepo:               config.StoreProfileRepository,
-		routingSettingsRepo:            config.StoreRoutingSettingsRepository,
+		repo:                           config.Core.Repository,
+		studioSessionRepo:              config.Core.StudioSessionRepository,
+		productSvc:                     config.Core.ProductService,
+		imageSvc:                       config.Core.ImageService,
+		sdsSyncSvc:                     config.Core.SDSSyncService,
+		uploadStore:                    config.Core.ImageUploadStore,
+		uploadedImageRepo:              config.Core.UploadedImageRepository,
+		assembler:                      config.Assets.Assembler,
+		sheinCategoryResolver:          config.Shein.SheinCategoryResolver,
+		sheinResolutionCacheStore:      config.Shein.SheinResolutionCacheStore,
+		sheinManagementClient:          config.Shein.SheinManagementClient,
+		sheinAttributeResolver:         config.Shein.SheinAttributeResolver,
+		sheinSaleAttributeResolver:     config.Shein.SheinSaleAttributeResolver,
+		sheinPricingPolicy:             config.Shein.SheinPricingPolicy,
+		sheinProductAPIBuilder:         config.Shein.SheinProductAPIBuilder,
+		sheinImageAPIBuilder:           config.Shein.SheinImageAPIBuilder,
+		sheinTranslateAPIBuilder:       config.Shein.SheinTranslateAPIBuilder,
+		sheinContentOptimizer:          config.Shein.SheinContentOptimizer,
+		studioPromptDiversifier:        config.Shein.StudioPromptDiversifier,
+		studioImageGenerator:           config.Shein.StudioImageGenerator,
+		aiCredentialStore:              config.Core.AIClientCredentialStore,
+		assetRepo:                      config.Assets.AssetRepository,
+		reviewRepo:                     config.Assets.ReviewRepository,
+		assetRecipeResolver:            config.Assets.AssetRecipeResolver,
+		assetBundleBuilder:             config.Assets.AssetBundleBuilder,
+		assetGenerator:                 config.Assets.AssetGenerationService,
+		taskSubmitter:                  config.Core.TaskSubmitter,
+		sheinPublishWorkflowClient:     config.Workflow.SheinPublishWorkflowClient,
+		sheinPublishWorkflowEnabled:    config.Workflow.SheinPublishWorkflowEnabled,
+		standardProductWorkflowClient:  config.Workflow.StandardProductWorkflowClient,
+		standardProductWorkflowEnabled: config.Workflow.StandardProductWorkflowEnabled,
+		platformAdaptWorkflowClient:    config.Workflow.PlatformAdaptWorkflowClient,
+		platformAdaptWorkflowEnabled:   config.Workflow.PlatformAdaptWorkflowEnabled,
+		storeProfileRepo:               config.Core.StoreProfileRepository,
+		routingSettingsRepo:            config.Core.StoreRoutingSettingsRepository,
 		requestDefaults: generateRequestDefaults{
-			sheinDefaultStoreID: config.SheinDefaultStoreID,
+			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
 		},
 		sheinSubmitLocks: newSubmitLockManager(),
 		sheinSettings:    defaultSettings,
 	}, nil
+}
+
+func (config *ServiceConfig) normalizeLegacyFields() {
+	if config == nil {
+		return
+	}
+	if config.Core.Repository == nil {
+		config.Core.Repository = config.Repository
+	}
+	if config.Core.StudioSessionRepository == nil {
+		config.Core.StudioSessionRepository = config.StudioSessionRepository
+	}
+	if config.Core.ProductService == nil {
+		config.Core.ProductService = config.ProductService
+	}
+	if config.Core.ImageService == nil {
+		config.Core.ImageService = config.ImageService
+	}
+	if config.Core.SDSSyncService == nil {
+		config.Core.SDSSyncService = config.SDSSyncService
+	}
+	if config.Core.ImageUploadStore == nil {
+		config.Core.ImageUploadStore = config.ImageUploadStore
+	}
+	if config.Core.UploadedImageRepository == nil {
+		config.Core.UploadedImageRepository = config.UploadedImageRepository
+	}
+	if config.Core.StoreProfileRepository == nil {
+		config.Core.StoreProfileRepository = config.StoreProfileRepository
+	}
+	if config.Core.StoreRoutingSettingsRepository == nil {
+		config.Core.StoreRoutingSettingsRepository = config.StoreRoutingSettingsRepository
+	}
+	if config.Core.TaskSubmitter == nil {
+		config.Core.TaskSubmitter = config.TaskSubmitter
+	}
+	if config.Core.AIClientCredentialStore == nil {
+		config.Core.AIClientCredentialStore = config.AIClientCredentialStore
+	}
+	if config.Assets.Assembler == nil {
+		config.Assets.Assembler = config.Assembler
+	}
+	if config.Assets.AssetRepository == nil {
+		config.Assets.AssetRepository = config.AssetRepository
+	}
+	if config.Assets.ReviewRepository == nil {
+		config.Assets.ReviewRepository = config.ReviewRepository
+	}
+	if config.Assets.AssetRecipeResolver == nil {
+		config.Assets.AssetRecipeResolver = config.AssetRecipeResolver
+	}
+	if config.Assets.AssetBundleBuilder == nil {
+		config.Assets.AssetBundleBuilder = config.AssetBundleBuilder
+	}
+	if config.Assets.AssetGenerationService == nil {
+		config.Assets.AssetGenerationService = config.AssetGenerationService
+	}
+	if config.Shein.SheinDefaultStoreID == 0 {
+		config.Shein.SheinDefaultStoreID = config.SheinDefaultStoreID
+	}
+	if config.Shein.SheinManagementClient == nil {
+		config.Shein.SheinManagementClient = config.SheinManagementClient
+	}
+	if config.Shein.SheinCategoryResolver == nil {
+		config.Shein.SheinCategoryResolver = config.SheinCategoryResolver
+	}
+	if config.Shein.SheinResolutionCacheStore == nil {
+		config.Shein.SheinResolutionCacheStore = config.SheinResolutionCacheStore
+	}
+	if config.Shein.SheinAttributeResolver == nil {
+		config.Shein.SheinAttributeResolver = config.SheinAttributeResolver
+	}
+	if config.Shein.SheinSaleAttributeResolver == nil {
+		config.Shein.SheinSaleAttributeResolver = config.SheinSaleAttributeResolver
+	}
+	if config.Shein.SheinPricingPolicy == (sheinpub.PricingPolicy{}) {
+		config.Shein.SheinPricingPolicy = config.SheinPricingPolicy
+	}
+	if config.Shein.SheinProductAPIBuilder == nil {
+		config.Shein.SheinProductAPIBuilder = config.SheinProductAPIBuilder
+	}
+	if config.Shein.SheinImageAPIBuilder == nil {
+		config.Shein.SheinImageAPIBuilder = config.SheinImageAPIBuilder
+	}
+	if config.Shein.SheinTranslateAPIBuilder == nil {
+		config.Shein.SheinTranslateAPIBuilder = config.SheinTranslateAPIBuilder
+	}
+	if config.Shein.SheinContentOptimizer == nil {
+		config.Shein.SheinContentOptimizer = config.SheinContentOptimizer
+	}
+	if config.Shein.StudioPromptDiversifier == nil {
+		config.Shein.StudioPromptDiversifier = config.StudioPromptDiversifier
+	}
+	if config.Shein.StudioImageGenerator == nil {
+		config.Shein.StudioImageGenerator = config.StudioImageGenerator
+	}
+	if config.Workflow.SheinPublishWorkflowClient == nil {
+		config.Workflow.SheinPublishWorkflowClient = config.SheinPublishWorkflowClient
+	}
+	if !config.Workflow.SheinPublishWorkflowEnabled {
+		config.Workflow.SheinPublishWorkflowEnabled = config.SheinPublishWorkflowEnabled
+	}
+	if config.Workflow.StandardProductWorkflowClient == nil {
+		config.Workflow.StandardProductWorkflowClient = config.StandardProductWorkflowClient
+	}
+	if !config.Workflow.StandardProductWorkflowEnabled {
+		config.Workflow.StandardProductWorkflowEnabled = config.StandardProductWorkflowEnabled
+	}
+	if config.Workflow.PlatformAdaptWorkflowClient == nil {
+		config.Workflow.PlatformAdaptWorkflowClient = config.PlatformAdaptWorkflowClient
+	}
+	if !config.Workflow.PlatformAdaptWorkflowEnabled {
+		config.Workflow.PlatformAdaptWorkflowEnabled = config.PlatformAdaptWorkflowEnabled
+	}
 }
 
 func defaultSheinSettings(storeID int64, policy sheinpub.PricingPolicy) SheinSettings {
