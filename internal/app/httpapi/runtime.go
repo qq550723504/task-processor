@@ -9,6 +9,7 @@ import (
 
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
@@ -102,8 +103,17 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		understanding:     productUnderstanding,
 		imageWorkDir:      imageWorkDir,
 		shared:            shared,
-		managementClient:  shared.ManagementClient,
 	}, nil
+}
+
+func (d *runtimeDeps) managementClient() *management.ClientManager {
+	if d == nil {
+		return nil
+	}
+	if d.shared == nil {
+		return nil
+	}
+	return d.shared.ManagementClient
 }
 
 func resolveImageWorkDir(cfg *config.Config) string {

@@ -99,8 +99,8 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	})
 
 	var taskRPCHandler taskrpcapi.Handler
-	if deps.managementClient != nil {
-		taskRPCHandler, err = taskrpcapi.NewHandler(deps.managementClient.GetTaskRPCClient(), localTaskHealthProvider)
+	if deps.managementClient() != nil {
+		taskRPCHandler, err = taskrpcapi.NewHandler(deps.managementClient().GetTaskRPCClient(), localTaskHealthProvider)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +128,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 }
 
 func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() error, error) {
-	if deps == nil || deps.cfg == nil || deps.managementClient == nil {
+	if deps == nil || deps.cfg == nil || deps.managementClient() == nil {
 		return nil, nil, nil
 	}
 	redisCfg := deps.cfg.EffectiveSheinCookieRedis()
@@ -147,8 +147,8 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 		return nil, nil, err
 	}
 	svc.ConfigureRuntimeSheinAPIClients()
-	svc.ConfigureStoreSyncClientFactory(sheinloginmanaged.NewStoreSyncClientFactory(deps.managementClient))
-	svc.ConfigureDuplicateStoreLookup(sheinloginmanaged.NewDuplicateStoreLookup(deps.managementClient))
+	svc.ConfigureStoreSyncClientFactory(sheinloginmanaged.NewStoreSyncClientFactory(deps.managementClient()))
+	svc.ConfigureDuplicateStoreLookup(sheinloginmanaged.NewDuplicateStoreLookup(deps.managementClient()))
 	sheinclient.ConfigureLocalLoginRefresher(svc)
 	return sheinlogin.NewHandler(svc), func() error {
 		closeErr := svc.Close()
@@ -169,7 +169,7 @@ func buildSheinLoginAccountProvider(deps *runtimeDeps) (sheinlogin.AccountProvid
 	if err == nil && repo != nil {
 		return sheinlogin.NewListingAdminAccountProvider(repo), joinClosers(closers), nil
 	}
-	return sheinloginmanaged.NewAccountProvider(deps.managementClient), nil, nil
+	return sheinloginmanaged.NewAccountProvider(deps.managementClient()), nil, nil
 }
 
 func joinClosers(closers []func() error) func() error {

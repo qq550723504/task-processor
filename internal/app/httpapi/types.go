@@ -10,7 +10,6 @@ import (
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
@@ -40,7 +39,6 @@ type runtimeDeps struct {
 	understanding              productenrich.ProductUnderstanding
 	imageWorkDir               string
 	shared                     *appbootstrap.SharedResources
-	managementClient           *management.ClientManager
 	productService             productenrich.ProductService
 	imageService               productimage.Service
 	sdsSyncService             sdsusecase.Service
