@@ -1,3 +1,3 @@
 package api
 
-var newConcreteHandler func(routeHandlerService, ...HandlerOption) (*handler, error) = NewHandler
+var newConcreteHandler func(HandlerService, ...HandlerOption) (*handler, error) = NewHandler

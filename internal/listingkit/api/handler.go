@@ -48,7 +48,7 @@ type subscriptionDependencies struct {
 	platformAdminRoles  []string
 }
 
-type routeHandlerService interface {
+type HandlerService interface {
 	listingkit.TaskLifecycleService
 	listingkit.GenerationTaskService
 	listingkit.StudioMediaService
@@ -197,7 +197,7 @@ func WithStudioAsyncJobStorePath(path string) HandlerOption {
 	})
 }
 
-func newHandlerWithDefaults(service routeHandlerService, studioAsyncJobs *studioAsyncJobStore) *handler {
+func newHandlerWithDefaults(service HandlerService, studioAsyncJobs *studioAsyncJobStore) *handler {
 	return &handler{
 		taskLifecycleService:  service,
 		generationTaskService: service,
@@ -207,7 +207,7 @@ func newHandlerWithDefaults(service routeHandlerService, studioAsyncJobs *studio
 	}
 }
 
-func (h *handler) attachOptionalServices(service routeHandlerService) {
+func (h *handler) attachOptionalServices(service HandlerService) {
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
 	}
@@ -232,7 +232,7 @@ func (h *handler) finalize() error {
 	return nil
 }
 
-func NewHandler(service routeHandlerService, opts ...HandlerOption) (*handler, error) {
+func NewHandler(service HandlerService, opts ...HandlerOption) (*handler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
