@@ -65,111 +65,126 @@ type uploadedImageDeleteService interface {
 
 type HandlerOption func(*handler)
 
-func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
+func withAdminHandlers(apply func(*adminHandlers)) HandlerOption {
 	return func(h *handler) {
-		if repo != nil {
-			h.storeHandler = listingadmin.NewStoreHandler(repo)
+		if h == nil || apply == nil {
+			return
 		}
+		apply(&h.adminHandlers)
 	}
+}
+
+func withSubscriptionDependencies(apply func(*subscriptionDependencies)) HandlerOption {
+	return func(h *handler) {
+		if h == nil || apply == nil {
+			return
+		}
+		apply(&h.subscriptionDependencies)
+	}
+}
+
+func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
+	return withAdminHandlers(func(admin *adminHandlers) {
+		if repo != nil {
+			admin.storeHandler = listingadmin.NewStoreHandler(repo)
+		}
+	})
 }
 
 func WithStoreStatisticsRepository(repo listingadmin.StoreStatisticsRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.storeStatisticsHandler = listingadmin.NewStoreStatisticsHandler(repo)
+			admin.storeStatisticsHandler = listingadmin.NewStoreStatisticsHandler(repo)
 		}
-	}
+	})
 }
 
 func WithImportTaskRepository(repo listingadmin.ImportTaskRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.importTaskHandler = listingadmin.NewImportTaskHandler(repo)
+			admin.importTaskHandler = listingadmin.NewImportTaskHandler(repo)
 		}
-	}
+	})
 }
 
 func WithFilterRuleRepository(repo listingadmin.FilterRuleRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.filterRuleHandler = listingadmin.NewFilterRuleHandler(repo)
+			admin.filterRuleHandler = listingadmin.NewFilterRuleHandler(repo)
 		}
-	}
+	})
 }
 
 func WithProfitRuleRepository(repo listingadmin.ProfitRuleRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.profitRuleHandler = listingadmin.NewProfitRuleHandler(repo)
+			admin.profitRuleHandler = listingadmin.NewProfitRuleHandler(repo)
 		}
-	}
+	})
 }
 
 func WithPricingRuleRepository(repo listingadmin.PricingRuleRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.pricingRuleHandler = listingadmin.NewPricingRuleHandler(repo)
+			admin.pricingRuleHandler = listingadmin.NewPricingRuleHandler(repo)
 		}
-	}
+	})
 }
 
 func WithOperationStrategyRepository(repo listingadmin.OperationStrategyRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.operationStrategyHandler = listingadmin.NewOperationStrategyHandler(repo)
+			admin.operationStrategyHandler = listingadmin.NewOperationStrategyHandler(repo)
 		}
-	}
+	})
 }
 
 func WithSensitiveWordRepository(repo listingadmin.SensitiveWordRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.sensitiveWordHandler = listingadmin.NewSensitiveWordHandler(repo)
+			admin.sensitiveWordHandler = listingadmin.NewSensitiveWordHandler(repo)
 		}
-	}
+	})
 }
 
 func WithProductImportMappingRepository(repo listingadmin.ProductImportMappingRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.productImportMappingHandler = listingadmin.NewProductImportMappingHandler(repo)
+			admin.productImportMappingHandler = listingadmin.NewProductImportMappingHandler(repo)
 		}
-	}
+	})
 }
 
 func WithCategoryRepository(repo listingadmin.CategoryRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.categoryHandler = listingadmin.NewCategoryHandler(repo)
+			admin.categoryHandler = listingadmin.NewCategoryHandler(repo)
 		}
-	}
+	})
 }
 
 func WithProductDataRepository(repo listingadmin.ProductDataRepository) HandlerOption {
-	return func(h *handler) {
+	return withAdminHandlers(func(admin *adminHandlers) {
 		if repo != nil {
-			h.productDataHandler = listingadmin.NewProductDataHandler(repo)
+			admin.productDataHandler = listingadmin.NewProductDataHandler(repo)
 		}
-	}
+	})
 }
 
 func WithSubscriptionService(service *listingsubscription.Service) HandlerOption {
-	return func(h *handler) {
+	return withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
 		if service != nil {
-			h.subscriptionService = service
-			h.subscriptionHandler = listingsubscription.NewHandler(service)
+			subscription.subscriptionService = service
+			subscription.subscriptionHandler = listingsubscription.NewHandler(service)
 		}
-	}
+	})
 }
 
 func WithPlatformSubscriptionAccess(users []string, roles []string) HandlerOption {
-	return func(h *handler) {
-		if h == nil {
-			return
-		}
-		h.platformAdminUsers = append([]string(nil), users...)
-		h.platformAdminRoles = append([]string(nil), roles...)
-	}
+	return withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
+		subscription.platformAdminUsers = append([]string(nil), users...)
+		subscription.platformAdminRoles = append([]string(nil), roles...)
+	})
 }
 
 func WithStudioAsyncJobStorePath(path string) HandlerOption {
