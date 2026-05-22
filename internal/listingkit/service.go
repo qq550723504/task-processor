@@ -115,41 +115,77 @@ type ServiceConfig struct {
 	Shein    ServiceSheinDependencies
 	Workflow ServiceWorkflowDependencies
 
+	// Deprecated: use Core.Repository.
 	Repository                     Repository
+	// Deprecated: use Core.StudioSessionRepository.
 	StudioSessionRepository        StudioSessionRepository
+	// Deprecated: use Core.ProductService.
 	ProductService                 ProductService
+	// Deprecated: use Core.ImageService.
 	ImageService                   ImageService
+	// Deprecated: use Core.SDSSyncService.
 	SDSSyncService                 SDSSyncService
+	// Deprecated: use Core.ImageUploadStore.
 	ImageUploadStore               ImageUploadStore
+	// Deprecated: use Core.UploadedImageRepository.
 	UploadedImageRepository        UploadedImageRepository
+	// Deprecated: use Assets.Assembler.
 	Assembler                      Assembler
+	// Deprecated: use Assets.AssetRepository.
 	AssetRepository                AssetRepository
+	// Deprecated: use Assets.ReviewRepository.
 	ReviewRepository               GenerationReviewRepository
+	// Deprecated: use Assets.AssetRecipeResolver.
 	AssetRecipeResolver            AssetRecipeResolver
+	// Deprecated: use Assets.AssetBundleBuilder.
 	AssetBundleBuilder             AssetBundleBuilder
+	// Deprecated: use Assets.AssetGenerationService.
 	AssetGenerationService         AssetGenerationService
+	// Deprecated: use Core.TaskSubmitter.
 	TaskSubmitter                  TaskSubmitter
+	// Deprecated: use Workflow.SheinPublishWorkflowClient.
 	SheinPublishWorkflowClient     SheinPublishWorkflowClient
+	// Deprecated: use Workflow.SheinPublishWorkflowEnabled.
 	SheinPublishWorkflowEnabled    bool
+	// Deprecated: use Workflow.StandardProductWorkflowClient.
 	StandardProductWorkflowClient  StandardProductWorkflowClient
+	// Deprecated: use Workflow.StandardProductWorkflowEnabled.
 	StandardProductWorkflowEnabled bool
+	// Deprecated: use Workflow.PlatformAdaptWorkflowClient.
 	PlatformAdaptWorkflowClient    PlatformAdaptWorkflowClient
+	// Deprecated: use Workflow.PlatformAdaptWorkflowEnabled.
 	PlatformAdaptWorkflowEnabled   bool
+	// Deprecated: use Core.StoreProfileRepository.
 	StoreProfileRepository         StoreProfileRepository
+	// Deprecated: use Core.StoreRoutingSettingsRepository.
 	StoreRoutingSettingsRepository StoreRoutingSettingsRepository
+	// Deprecated: use Shein.SheinDefaultStoreID.
 	SheinDefaultStoreID            int64
+	// Deprecated: use Shein.SheinManagementClient.
 	SheinManagementClient          *management.ClientManager
+	// Deprecated: use Shein.SheinCategoryResolver.
 	SheinCategoryResolver          sheinpub.CategoryResolver
+	// Deprecated: use Shein.SheinResolutionCacheStore.
 	SheinResolutionCacheStore      sheinpub.ResolutionCacheStore
+	// Deprecated: use Shein.SheinAttributeResolver.
 	SheinAttributeResolver         sheinpub.AttributeResolver
+	// Deprecated: use Shein.SheinSaleAttributeResolver.
 	SheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
+	// Deprecated: use Shein.SheinPricingPolicy.
 	SheinPricingPolicy             sheinpub.PricingPolicy
+	// Deprecated: use Shein.SheinProductAPIBuilder.
 	SheinProductAPIBuilder         sheinpub.ProductAPIBuilder
+	// Deprecated: use Shein.SheinImageAPIBuilder.
 	SheinImageAPIBuilder           sheinpub.ImageAPIBuilder
+	// Deprecated: use Shein.SheinTranslateAPIBuilder.
 	SheinTranslateAPIBuilder       sheinpub.TranslateAPIBuilder
+	// Deprecated: use Shein.SheinContentOptimizer.
 	SheinContentOptimizer          openaiclient.ChatCompleter
+	// Deprecated: use Shein.StudioPromptDiversifier.
 	StudioPromptDiversifier        openaiclient.ChatCompleter
+	// Deprecated: use Shein.StudioImageGenerator.
 	StudioImageGenerator           openaiclient.ImageGenerator
+	// Deprecated: use Core.AIClientCredentialStore.
 	AIClientCredentialStore        AIClientCredentialStore
 }
 
@@ -265,6 +301,13 @@ func (config *ServiceConfig) normalizeLegacyFields() {
 	if config == nil {
 		return
 	}
+	config.normalizeLegacyCoreFields()
+	config.normalizeLegacyAssetFields()
+	config.normalizeLegacySheinFields()
+	config.normalizeLegacyWorkflowFields()
+}
+
+func (config *ServiceConfig) normalizeLegacyCoreFields() {
 	if config.Core.Repository == nil {
 		config.Core.Repository = config.Repository
 	}
@@ -298,6 +341,9 @@ func (config *ServiceConfig) normalizeLegacyFields() {
 	if config.Core.AIClientCredentialStore == nil {
 		config.Core.AIClientCredentialStore = config.AIClientCredentialStore
 	}
+}
+
+func (config *ServiceConfig) normalizeLegacyAssetFields() {
 	if config.Assets.Assembler == nil {
 		config.Assets.Assembler = config.Assembler
 	}
@@ -316,6 +362,9 @@ func (config *ServiceConfig) normalizeLegacyFields() {
 	if config.Assets.AssetGenerationService == nil {
 		config.Assets.AssetGenerationService = config.AssetGenerationService
 	}
+}
+
+func (config *ServiceConfig) normalizeLegacySheinFields() {
 	if config.Shein.SheinDefaultStoreID == 0 {
 		config.Shein.SheinDefaultStoreID = config.SheinDefaultStoreID
 	}
@@ -355,6 +404,9 @@ func (config *ServiceConfig) normalizeLegacyFields() {
 	if config.Shein.StudioImageGenerator == nil {
 		config.Shein.StudioImageGenerator = config.StudioImageGenerator
 	}
+}
+
+func (config *ServiceConfig) normalizeLegacyWorkflowFields() {
 	if config.Workflow.SheinPublishWorkflowClient == nil {
 		config.Workflow.SheinPublishWorkflowClient = config.SheinPublishWorkflowClient
 	}
