@@ -65,22 +65,25 @@ type uploadedImageDeleteService interface {
 
 type HandlerOption func(*handler)
 
-func withAdminHandlers(apply func(*adminHandlers)) HandlerOption {
+func withHandlerState(apply func(*handler)) HandlerOption {
 	return func(h *handler) {
 		if h == nil || apply == nil {
 			return
 		}
-		apply(&h.adminHandlers)
+		apply(h)
 	}
 }
 
+func withAdminHandlers(apply func(*adminHandlers)) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		apply(&h.adminHandlers)
+	})
+}
+
 func withSubscriptionDependencies(apply func(*subscriptionDependencies)) HandlerOption {
-	return func(h *handler) {
-		if h == nil || apply == nil {
-			return
-		}
+	return withHandlerState(func(h *handler) {
 		apply(&h.subscriptionDependencies)
-	}
+	})
 }
 
 func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
@@ -188,17 +191,14 @@ func WithPlatformSubscriptionAccess(users []string, roles []string) HandlerOptio
 }
 
 func WithStudioAsyncJobStorePath(path string) HandlerOption {
-	return func(h *handler) {
-		if h == nil {
-			return
-		}
+	return withHandlerState(func(h *handler) {
 		store, err := newStudioAsyncJobStoreWithPath(path)
 		if err != nil {
 			h.initErr = err
 			return
 		}
 		h.studioAsyncJobs = store
-	}
+	})
 }
 
 func newHandlerWithDefaults(service routeHandlerService, studioAsyncJobs *studioAsyncJobStore) *handler {
