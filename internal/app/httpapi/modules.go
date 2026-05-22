@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -133,16 +134,59 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 	if strings.TrimSpace(redisCfg.Host) == "" {
 		return nil, nil, nil
 	}
-	provider := sheinlogin.NewManagementAccountProvider(deps.managementClient)
+	provider, repoCloser, err := buildSheinLoginAccountProvider(deps)
+	if err != nil {
+		return nil, nil, err
+	}
 	svc, err := sheinlogin.NewService(deps.cfg.Platforms.Shein.LoginService, redisCfg, deps.cfg.Browser, provider)
 	if err != nil {
+		if repoCloser != nil {
+			_ = repoCloser()
+		}
 		return nil, nil, err
 	}
 	svc.ConfigureRuntimeSheinAPIClients()
 	svc.ConfigureStoreSyncClientFactory(sheinlogin.NewManagementStoreSyncClientFactory(deps.managementClient))
 	svc.ConfigureDuplicateStoreLookup(sheinlogin.NewManagementDuplicateStoreLookup(deps.managementClient))
 	sheinclient.ConfigureLocalLoginRefresher(svc)
-	return sheinlogin.NewHandler(svc), svc.Close, nil
+	return sheinlogin.NewHandler(svc), func() error {
+		closeErr := svc.Close()
+		if repoCloser != nil {
+			if err := repoCloser(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+		return closeErr
+	}, nil
+}
+
+func buildSheinLoginAccountProvider(deps *runtimeDeps) (sheinlogin.AccountProvider, func() error, error) {
+	if deps == nil || deps.cfg == nil {
+		return nil, nil, fmt.Errorf("runtime deps are incomplete")
+	}
+	repo, closers, err := listingkithttpapi.BuildListingAdminStoreRepository(deps.cfg, logrus.New())
+	if err == nil && repo != nil {
+		return sheinlogin.NewListingAdminAccountProvider(repo), joinClosers(closers), nil
+	}
+	return sheinlogin.NewManagementAccountProvider(deps.managementClient), nil, nil
+}
+
+func joinClosers(closers []func() error) func() error {
+	if len(closers) == 0 {
+		return nil
+	}
+	return func() error {
+		var closeErr error
+		for i := len(closers) - 1; i >= 0; i-- {
+			if closers[i] == nil {
+				continue
+			}
+			if err := closers[i](); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+		return closeErr
+	}
 }
 
 func buildSDSCatalogHandler(logger *logrus.Logger, cfg *config.Config) sdsCatalogRouteHandler {
