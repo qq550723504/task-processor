@@ -651,20 +651,23 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 
 func buildHandlerOptions(input BuildModuleInput, bundle *ServiceBundle) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
-		listingkitapi.WithStudioAsyncJobStorePath(input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath),
-		listingkitapi.WithPlatformSubscriptionAccess(input.ServiceInput.Config.ListingKit.PlatformAdminUsers, input.ServiceInput.Config.ListingKit.PlatformAdminRoles),
-		listingkitapi.WithStoreRepository(bundle.StoreRepository),
-		listingkitapi.WithStoreStatisticsRepository(bundle.StoreStatisticsRepository),
-		listingkitapi.WithImportTaskRepository(bundle.ImportTaskRepository),
-		listingkitapi.WithFilterRuleRepository(bundle.FilterRuleRepository),
-		listingkitapi.WithProfitRuleRepository(bundle.ProfitRuleRepository),
-		listingkitapi.WithPricingRuleRepository(bundle.PricingRuleRepository),
-		listingkitapi.WithOperationStrategyRepository(bundle.OperationStrategyRepository),
-		listingkitapi.WithSensitiveWordRepository(bundle.SensitiveWordRepository),
-		listingkitapi.WithProductImportMappingRepository(bundle.ProductImportMappingRepository),
-		listingkitapi.WithCategoryRepository(bundle.CategoryRepository),
-		listingkitapi.WithProductDataRepository(bundle.ProductDataRepository),
-		listingkitapi.WithSubscriptionService(bundle.SubscriptionService),
+		listingkitapi.WithDependencies(listingkitapi.HandlerDependencies{
+			StudioAsyncJobStorePath:        input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath,
+			PlatformAdminUsers:             input.ServiceInput.Config.ListingKit.PlatformAdminUsers,
+			PlatformAdminRoles:             input.ServiceInput.Config.ListingKit.PlatformAdminRoles,
+			StoreRepository:                bundle.StoreRepository,
+			StoreStatisticsRepository:      bundle.StoreStatisticsRepository,
+			ImportTaskRepository:           bundle.ImportTaskRepository,
+			FilterRuleRepository:           bundle.FilterRuleRepository,
+			ProfitRuleRepository:           bundle.ProfitRuleRepository,
+			PricingRuleRepository:          bundle.PricingRuleRepository,
+			OperationStrategyRepository:    bundle.OperationStrategyRepository,
+			SensitiveWordRepository:        bundle.SensitiveWordRepository,
+			ProductImportMappingRepository: bundle.ProductImportMappingRepository,
+			CategoryRepository:             bundle.CategoryRepository,
+			ProductDataRepository:          bundle.ProductDataRepository,
+			SubscriptionService:            bundle.SubscriptionService,
+		}),
 	}
 }
 

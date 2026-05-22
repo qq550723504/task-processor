@@ -14,14 +14,14 @@ import (
 )
 
 type handler struct {
-	taskLifecycleService        listingkit.TaskLifecycleService
-	generationTaskService       listingkit.GenerationTaskService
-	childTaskRetryService       childTaskRetryService
-	studioMediaService          listingkit.StudioMediaService
-	uploadedImageDeleteService  uploadedImageDeleteService
-	storeAdminService           listingkit.StoreAdminService
-	studioAsyncJobs             *studioAsyncJobStore
-	initErr                     error
+	taskLifecycleService       listingkit.TaskLifecycleService
+	generationTaskService      listingkit.GenerationTaskService
+	childTaskRetryService      childTaskRetryService
+	studioMediaService         listingkit.StudioMediaService
+	uploadedImageDeleteService uploadedImageDeleteService
+	storeAdminService          listingkit.StoreAdminService
+	studioAsyncJobs            *studioAsyncJobStore
+	initErr                    error
 	adminHandlers
 	subscriptionDependencies
 	settingsService *settingsService
@@ -65,6 +65,24 @@ type uploadedImageDeleteService interface {
 
 type HandlerOption func(*handler)
 
+type HandlerDependencies struct {
+	StudioAsyncJobStorePath        string
+	PlatformAdminUsers             []string
+	PlatformAdminRoles             []string
+	StoreRepository                listingadmin.StoreRepository
+	StoreStatisticsRepository      listingadmin.StoreStatisticsRepository
+	ImportTaskRepository           listingadmin.ImportTaskRepository
+	FilterRuleRepository           listingadmin.FilterRuleRepository
+	ProfitRuleRepository           listingadmin.ProfitRuleRepository
+	PricingRuleRepository          listingadmin.PricingRuleRepository
+	OperationStrategyRepository    listingadmin.OperationStrategyRepository
+	SensitiveWordRepository        listingadmin.SensitiveWordRepository
+	ProductImportMappingRepository listingadmin.ProductImportMappingRepository
+	CategoryRepository             listingadmin.CategoryRepository
+	ProductDataRepository          listingadmin.ProductDataRepository
+	SubscriptionService            *listingsubscription.Service
+}
+
 func withHandlerState(apply func(*handler)) HandlerOption {
 	return func(h *handler) {
 		if h == nil || apply == nil {
@@ -104,6 +122,32 @@ func withSubscriptionDependency[Dep comparable](dep Dep, apply func(Dep, *subscr
 		}
 		apply(dep, subscription)
 	})
+}
+
+func WithDependencies(deps HandlerDependencies) HandlerOption {
+	options := []HandlerOption{
+		WithStudioAsyncJobStorePath(deps.StudioAsyncJobStorePath),
+		WithPlatformSubscriptionAccess(deps.PlatformAdminUsers, deps.PlatformAdminRoles),
+		WithStoreRepository(deps.StoreRepository),
+		WithStoreStatisticsRepository(deps.StoreStatisticsRepository),
+		WithImportTaskRepository(deps.ImportTaskRepository),
+		WithFilterRuleRepository(deps.FilterRuleRepository),
+		WithProfitRuleRepository(deps.ProfitRuleRepository),
+		WithPricingRuleRepository(deps.PricingRuleRepository),
+		WithOperationStrategyRepository(deps.OperationStrategyRepository),
+		WithSensitiveWordRepository(deps.SensitiveWordRepository),
+		WithProductImportMappingRepository(deps.ProductImportMappingRepository),
+		WithCategoryRepository(deps.CategoryRepository),
+		WithProductDataRepository(deps.ProductDataRepository),
+		WithSubscriptionService(deps.SubscriptionService),
+	}
+	return func(h *handler) {
+		for _, option := range options {
+			if option != nil {
+				option(h)
+			}
+		}
+	}
 }
 
 func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
