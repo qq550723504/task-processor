@@ -14,6 +14,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
@@ -51,7 +52,7 @@ type appBootstrap struct {
 	productHandler        productenrich.ProductHandler
 	imageHandler          productimage.Handler
 	amazonListingHandler  amazonlisting.Handler
-	listingKitHandler     listingkit.Handler
+	listingKitHandler     listingkithttpapi.RouteHandler
 	promptTemplateHandler promptTemplateRouteHandler
 	studioSessionHandler  listingkit.StudioSessionHandler
 	sdsCatalogHandler     sdsCatalogRouteHandler
@@ -80,7 +81,7 @@ type amazonListingModule struct {
 }
 
 type listingKitModule struct {
-	handler              listingkit.Handler
+	handler              listingkithttpapi.RouteHandler
 	studioSessionHandler listingkit.StudioSessionHandler
 	service              listingkit.Service
 	pool                 worker.WorkerPool
@@ -89,7 +90,7 @@ type listingKitModule struct {
 type productRouteHandler = productenrich.ProductHandler
 type imageRouteHandler = productimage.Handler
 type amazonListingRouteHandler = amazonlisting.Handler
-type listingKitRouteHandler = listingkit.Handler
+type listingKitRouteHandler = listingkithttpapi.RouteHandler
 type studioSessionRouteHandler = listingkit.StudioSessionHandler
 type taskRPCRouteHandler = taskrpcapi.Handler
 

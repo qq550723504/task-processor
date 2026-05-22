@@ -17,47 +17,47 @@ type PromptTemplateRouteHandler interface {
 	SetPromptTemplateStatus(c *gin.Context)
 }
 
-type taskRouteHandler interface {
+type TaskRouteHandler interface {
 	listingkit.TaskHandler
 	listingkit.CustomerStoreHandler
 }
 
-type settingsRouteHandler interface {
+type SettingsRouteHandler interface {
 	listingkit.SettingsHandler
 	listingkit.CustomerStoreHandler
 }
 
-type storeRouteHandler interface {
+type StoreRouteHandler interface {
 	listingkit.CustomerStoreHandler
 }
 
-type subscriptionRouteHandler interface {
+type SubscriptionRouteHandler interface {
 	listingkit.SubscriptionHandler
 }
 
-type platformAdminRouteHandler interface {
+type PlatformAdminRouteHandler interface {
 	listingkit.SubscriptionHandler
 }
 
-type adminRouteHandler interface {
+type AdminRouteHandler interface {
 	listingkit.PlatformAdminHandler
 }
 
-type studioGenerationRouteHandler interface {
+type StudioGenerationRouteHandler interface {
 	listingkit.TaskHandler
 }
 
-type routeHandler interface {
-	taskRouteHandler
-	settingsRouteHandler
-	storeRouteHandler
-	subscriptionRouteHandler
-	platformAdminRouteHandler
-	adminRouteHandler
-	studioGenerationRouteHandler
+type RouteHandler interface {
+	TaskRouteHandler
+	SettingsRouteHandler
+	StoreRouteHandler
+	SubscriptionRouteHandler
+	PlatformAdminRouteHandler
+	AdminRouteHandler
+	StudioGenerationRouteHandler
 }
 
-func AppendRouteDescriptors(routes []httproute.Descriptor, handler routeHandler) []httproute.Descriptor {
+func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler) []httproute.Descriptor {
 	if handler == nil {
 		return routes
 	}
@@ -105,7 +105,7 @@ func AppendStudioSessionRouteDescriptors(routes []httproute.Descriptor, handler 
 	)
 }
 
-func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler settingsRouteHandler) []httproute.Descriptor {
+func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler SettingsRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings", Module: "listing-kit", Handler: handler.ListSettingsNamespaces},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/:namespace/schema", Module: "listing-kit", Handler: handler.GetSettingsNamespaceSchema},
@@ -123,7 +123,7 @@ func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler setti
 	)
 }
 
-func appendStoreRouteDescriptors(routes []httproute.Descriptor, handler storeRouteHandler) []httproute.Descriptor {
+func appendStoreRouteDescriptors(routes []httproute.Descriptor, handler StoreRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/stores", Module: "listing-kit", Handler: handler.ListTenantStores},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/stores/simple", Module: "listing-kit", Handler: handler.ListSimpleTenantStores},
@@ -133,7 +133,7 @@ func appendStoreRouteDescriptors(routes []httproute.Descriptor, handler storeRou
 	)
 }
 
-func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler subscriptionRouteHandler) []httproute.Descriptor {
+func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler SubscriptionRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/subscription/me", Module: "listing-kit", Handler: handler.GetCurrentSubscription},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/subscription/modules", Module: "listing-kit-admin", Handler: handler.ListSubscriptionModules},
@@ -142,7 +142,7 @@ func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler s
 	)
 }
 
-func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler platformAdminRouteHandler) []httproute.Descriptor {
+func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler PlatformAdminRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformTenantSubscriptions},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformSubscriptionPlans},
@@ -161,7 +161,7 @@ func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler 
 	)
 }
 
-func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler adminRouteHandler) []httproute.Descriptor {
+func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler AdminRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores", Module: "listing-kit-admin", Handler: handler.ListAdminStores},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores/simple", Module: "listing-kit-admin", Handler: handler.ListSimpleAdminStores},
@@ -229,7 +229,7 @@ func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler adminRou
 	)
 }
 
-func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler studioGenerationRouteHandler) []httproute.Descriptor {
+func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler StudioGenerationRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: handler.GenerateStudioDesigns},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: handler.GenerateStudioProductImages},
@@ -238,7 +238,7 @@ func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handl
 	)
 }
 
-func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler taskRouteHandler) []httproute.Descriptor {
+func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler TaskRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: handler.RegenerateSheinDataImage},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/uploads/images", Module: "listing-kit", Handler: handler.UploadListingKitImages},
