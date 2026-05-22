@@ -102,3 +102,27 @@ func TestSaveCookieStateStripsNonCookieBrowserState(t *testing.T) {
 		t.Fatalf("expected cookies to be preserved, payload=%v", saved)
 	}
 }
+
+func TestLoadCookieStateReturnsStoredPayload(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	store := newRedisStoreFromClient(client)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+
+	payload := map[string]any{"cookies": []map[string]any{{"name": "sid", "value": "123"}}}
+	if err := store.SaveCookieState(ctx, 1, 2, payload, time.Hour); err != nil {
+		t.Fatalf("save cookie state: %v", err)
+	}
+
+	raw, ok, err := store.LoadCookieState(ctx, 1, 2)
+	if err != nil {
+		t.Fatalf("load cookie state: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stored cookie state to exist")
+	}
+	if raw == "" {
+		t.Fatal("expected non-empty stored cookie state payload")
+	}
+}

@@ -22,17 +22,23 @@ import (
 type CookieManager struct {
 	storeID          int64
 	managementClient *management.ClientManager
+	cookieProvider   CookieProvider
 	logger           *logrus.Entry
 	resolvedTenantID int64
 }
 
 // NewCookieManager 创建Cookie管理器
 func NewCookieManager(storeID int64, managementClient *management.ClientManager) *CookieManager {
+	return NewCookieManagerWithProvider(storeID, managementClient, nil)
+}
+
+func NewCookieManagerWithProvider(storeID int64, managementClient *management.ClientManager, cookieProvider CookieProvider) *CookieManager {
 	logger := logger.GetGlobalLogger("SheinCookieManager").WithField("storeID", storeID)
 
 	return &CookieManager{
 		storeID:          storeID,
 		managementClient: managementClient,
+		cookieProvider:   cookieProvider,
 		logger:           logger,
 	}
 }
@@ -41,8 +47,8 @@ func NewCookieManager(storeID int64, managementClient *management.ClientManager)
 func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
 
-	if cm.managementClient != nil {
-		cookieStr, tenantID, err := cm.loadCookieJSONFromRedis()
+	if cm.cookieProvider != nil || cm.managementClient != nil {
+		cookieStr, tenantID, err := cm.loadCookieJSONFromSource()
 		if err != nil {
 			cm.logger.WithError(err).Warn("从 login Redis 读取 SHEIN Cookie 失败，将回退到 management store api")
 		} else if strings.TrimSpace(cookieStr) != "" {
@@ -236,8 +242,8 @@ func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 	}
 	cm.resolvedTenantID = tenantID
 
-	if cm.managementClient != nil {
-		cookieStr, refreshedTenantID, err := cm.loadCookieJSONFromRedis()
+	if cm.cookieProvider != nil || cm.managementClient != nil {
+		cookieStr, refreshedTenantID, err := cm.loadCookieJSONFromSource()
 		if err != nil {
 			return nil, fmt.Errorf("重新登录后读取 SHEIN Cookie 失败: %w", err)
 		}
@@ -275,7 +281,19 @@ func loadLocalLoginRefresher() LocalLoginRefresher {
 	return localLoginRefresher
 }
 
-func (cm *CookieManager) loadCookieJSONFromRedis() (string, int64, error) {
+func (cm *CookieManager) loadCookieJSONFromSource() (string, int64, error) {
+	if cm.cookieProvider != nil {
+		for _, storeID := range cm.cookieLookupStoreIDs() {
+			result, err := cm.cookieProvider.GetCookie(context.Background(), storeID)
+			if err != nil {
+				return "", 0, err
+			}
+			if result != nil && strings.TrimSpace(result.CookieJSON) != "" {
+				return result.CookieJSON, result.TenantID, nil
+			}
+		}
+	}
+
 	if cm.managementClient == nil {
 		return "", 0, nil
 	}
@@ -314,13 +332,13 @@ func (cm *CookieManager) configuredLoginStoreID() int64 {
 }
 
 func (cm *CookieManager) forceLoginTenantID() int64 {
-	if tenantID, err := strconv.ParseInt(strings.TrimSpace(loadSheinLoginAccountConfig().tenantID), 10, 64); err == nil && tenantID > 0 {
-		return tenantID
-	}
 	if cm.resolvedTenantID > 0 {
 		return cm.resolvedTenantID
 	}
-	return cm.resolveTenantID()
+	if tenantID := cm.resolveTenantID(); tenantID > 0 {
+		return tenantID
+	}
+	return 0
 }
 
 func (cm *CookieManager) resolveTenantID() int64 {

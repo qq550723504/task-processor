@@ -99,25 +99,25 @@ func buildServiceInputFixture() BuildServiceInput {
 			SheinSaleAttributeLLMBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
 				return nil
 			},
-			SheinCategoryResolverBuilder: func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+			SheinCategoryResolverBuilder: func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
 				return nil
 			},
-			SheinAttributeResolverBuilder: func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+			SheinAttributeResolverBuilder: func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
 				return nil
 			},
-			SheinSaleAttributeResolverBuilder: func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+			SheinSaleAttributeResolverBuilder: func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
 				return nil
 			},
-			SheinProductAPIBuilderFactory: func() sheinpub.ProductAPIBuilder {
+			SheinProductAPIBuilderFactory: func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder {
 				return nil
 			},
-			SheinImageAPIBuilderFactory: func() sheinpub.ImageAPIBuilder {
+			SheinImageAPIBuilderFactory: func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder {
 				return nil
 			},
-			SheinTranslateAPIBuilderFactory: func() sheinpub.TranslateAPIBuilder {
+			SheinTranslateAPIBuilderFactory: func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder {
 				return nil
 			},
-			SheinAPIClientFactoryBuilder: func() listingkit.SheinAPIClientFactory {
+			SheinAPIClientFactoryBuilder: func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
 				return nil
 			},
 			StudioImageGeneratorBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {

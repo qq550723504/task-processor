@@ -7,10 +7,12 @@ import (
 
 	appruntime "task-processor/internal/app/runtime"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
+	"task-processor/internal/sheinlogin"
 )
 
 func newListingKitBuildModuleInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.BuildModuleInput {
@@ -21,6 +23,7 @@ func newListingKitBuildModuleInput(logger *logrus.Logger, deps *runtimeDeps) lis
 }
 
 func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.BuildServiceInput {
+	cookieStore := ensureListingKitSheinCookieStore(logger, deps)
 	return listingkithttpapi.BuildServiceInput{
 		Config:                     deps.cfg,
 		Logger:                     logger,
@@ -63,26 +66,26 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 			LegacyTenantResolverConfigurator: listingkithttpapi.ConfigureLegacyTenantResolver,
 			SheinCategoryLLMClientBuilder:    listingkithttpapi.BuildSheinCategoryLLMClient,
 			SheinSaleAttributeLLMBuilder:     listingkithttpapi.BuildSheinSaleAttributeLLMClient,
-			SheinCategoryResolverBuilder: func(llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
-				return buildListingKitSheinCategoryResolver(deps.managementClient, llm, cache)
+			SheinCategoryResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+				return buildListingKitSheinCategoryResolver(storeRepo, cookieStore, llm, cache)
 			},
-			SheinAttributeResolverBuilder: func(llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
-				return buildListingKitSheinAttributeResolver(deps.managementClient, llm, cache)
+			SheinAttributeResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+				return buildListingKitSheinAttributeResolver(storeRepo, cookieStore, llm, cache)
 			},
-			SheinSaleAttributeResolverBuilder: func(llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
-				return buildListingKitSheinSaleAttributeResolver(deps.managementClient, llm, cache)
+			SheinSaleAttributeResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+				return buildListingKitSheinSaleAttributeResolver(storeRepo, cookieStore, llm, cache)
 			},
-			SheinProductAPIBuilderFactory: func() sheinpub.ProductAPIBuilder {
-				return buildListingKitSheinProductAPIBuilder(deps.managementClient)
+			SheinProductAPIBuilderFactory: func(storeRepo listingadmin.StoreRepository) sheinpub.ProductAPIBuilder {
+				return buildListingKitSheinProductAPIBuilder(storeRepo, cookieStore)
 			},
-			SheinImageAPIBuilderFactory: func() sheinpub.ImageAPIBuilder {
-				return buildListingKitSheinImageAPIBuilder(deps.managementClient)
+			SheinImageAPIBuilderFactory: func(storeRepo listingadmin.StoreRepository) sheinpub.ImageAPIBuilder {
+				return buildListingKitSheinImageAPIBuilder(storeRepo, cookieStore)
 			},
-			SheinTranslateAPIBuilderFactory: func() sheinpub.TranslateAPIBuilder {
-				return buildListingKitSheinTranslateAPIBuilder(deps.managementClient)
+			SheinTranslateAPIBuilderFactory: func(storeRepo listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder {
+				return buildListingKitSheinTranslateAPIBuilder(storeRepo, cookieStore)
 			},
-			SheinAPIClientFactoryBuilder: func() listingkit.SheinAPIClientFactory {
-				return listingKitSheinAPIClientFactory{client: deps.managementClient}
+			SheinAPIClientFactoryBuilder: func(storeRepo listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
+				return listingKitSheinAPIClientFactory{repo: storeRepo, cookieStore: cookieStore}
 			},
 			StudioImageGeneratorBuilder: listingkithttpapi.BuildStudioImageGenerator,
 			DefaultSheinStoreIDResolver: listingkithttpapi.ResolveDefaultSheinStoreID,
@@ -90,6 +93,29 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 			ConfigureAuthorization:      listingkithttpapi.ConfigureListingKitAuthorization,
 		},
 	}
+}
+
+func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) *sheinlogin.RedisStore {
+	if deps == nil || deps.cfg == nil {
+		return nil
+	}
+	if deps.listingKitSheinCookieStore != nil {
+		return deps.listingKitSheinCookieStore
+	}
+	redisCfg := deps.cfg.EffectiveSheinCookieRedis()
+	if strings.TrimSpace(redisCfg.Host) == "" {
+		return nil
+	}
+	store, err := sheinlogin.NewRedisStore(redisCfg)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("failed to initialize listingkit shein cookie store; shein runtime will degrade")
+		}
+		return nil
+	}
+	deps.listingKitSheinCookieStore = store
+	deps.closers = append(deps.closers, store.Close)
+	return store
 }
 
 func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Service {

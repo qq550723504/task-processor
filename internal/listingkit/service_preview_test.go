@@ -3,14 +3,9 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinclient "task-processor/internal/shein/client"
@@ -103,7 +98,7 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 
 type previewTestCookieProvider struct{}
 
-func (previewTestCookieProvider) GetCookie(_ context.Context, _ int64) (*management.SheinCookieLookupResult, error) {
+func (previewTestCookieProvider) GetCookie(_ context.Context, _ int64) (*sheinclient.CookieLookupResult, error) {
 	return nil, nil
 }
 
@@ -151,20 +146,6 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 		t.Fatalf("MarkCompleted error = %v", err)
 	}
 
-	storeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/store/get" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"","data":{"id":870,"tenantId":373211199677923496,"storeId":"870","platform":"shein","loginUrl":"sso.geiwohuo.com"}}`))
-	}))
-	defer storeServer.Close()
-
-	client := management.NewClientManager(&config.ManagementConfig{BaseURL: storeServer.URL})
-	client.SetUserToken("preview-token", "373211199677923496")
-	client.SetSheinCookieProvider(previewTestCookieProvider{})
-
 	sheinclient.ConfigureLocalLoginRefresher(previewTestLoginRefresher{
 		err: fmt.Errorf("shein login failed: proxy connection unavailable"),
 	})
@@ -184,13 +165,13 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 			},
 		},
 		sheinAPIClientFactory: stubSheinAPIClientFactory{
-			client: sheinclient.NewAPIClientWithStoreInfo(870, client, &managementapi.StoreRespDTO{
+			client: sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{
 				ID:       870,
 				TenantID: 373211199677923496,
 				StoreID:  "870",
 				Platform: "shein",
-				LoginUrl: "sso.geiwohuo.com",
-			}),
+				LoginURL: "sso.geiwohuo.com",
+			}, previewTestCookieProvider{}),
 		},
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
 		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),

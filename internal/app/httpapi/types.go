@@ -19,6 +19,7 @@ import (
 	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
 	sdsusecase "task-processor/internal/sds/usecase"
+	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -29,23 +30,24 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg                   *config.Config
-	closers               []func() error
-	openaiMgr             *openaiclient.Manager
-	aiCredentialStore     *openaiclient.GormCredentialResolver
-	tenantPromptStore     prompt.TenantPromptStore
-	llmMgr                productenrich.LLMManager
-	inputParser           productenrich.InputParser
-	understanding         productenrich.ProductUnderstanding
-	imageWorkDir          string
-	shared                *appbootstrap.SharedResources
-	managementClient      *management.ClientManager
-	productService        productenrich.ProductService
-	imageService          productimage.Service
-	sdsSyncService        sdsusecase.Service
-	imageSubjectExtractor productimage.SubjectExtractor
-	imageWhiteBgRenderer  productimage.WhiteBackgroundRenderer
-	imageSceneRenderer    productimage.SceneRenderer
+	cfg                        *config.Config
+	closers                    []func() error
+	openaiMgr                  *openaiclient.Manager
+	aiCredentialStore          *openaiclient.GormCredentialResolver
+	tenantPromptStore          prompt.TenantPromptStore
+	llmMgr                     productenrich.LLMManager
+	inputParser                productenrich.InputParser
+	understanding              productenrich.ProductUnderstanding
+	imageWorkDir               string
+	shared                     *appbootstrap.SharedResources
+	managementClient           *management.ClientManager
+	productService             productenrich.ProductService
+	imageService               productimage.Service
+	sdsSyncService             sdsusecase.Service
+	imageSubjectExtractor      productimage.SubjectExtractor
+	imageWhiteBgRenderer       productimage.WhiteBackgroundRenderer
+	imageSceneRenderer         productimage.SceneRenderer
+	listingKitSheinCookieStore *sheinlogin.RedisStore
 }
 
 type appBootstrap struct {

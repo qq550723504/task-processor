@@ -4,6 +4,8 @@ package client
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"time"
@@ -29,15 +31,19 @@ type APIClient struct {
 
 // NewAPIClient 创建SHEIN API客户端
 func NewAPIClient(storeID int64, managementClient *management.ClientManager) *APIClient {
-	return newAPIClient(storeID, managementClient, nil)
+	return newAPIClient(storeID, managementClient, nil, nil)
 }
 
 // NewAPIClientWithStoreInfo 使用已加载的店铺配置创建SHEIN API客户端
 func NewAPIClientWithStoreInfo(storeID int64, managementClient *management.ClientManager, storeInfo *managementapi.StoreRespDTO) *APIClient {
-	return newAPIClient(storeID, managementClient, storeInfo)
+	return newAPIClient(storeID, managementClient, toStoreConfig(storeInfo), nil)
 }
 
-func newAPIClient(storeID int64, managementClient *management.ClientManager, storeInfo *managementapi.StoreRespDTO) *APIClient {
+func NewAPIClientWithStoreConfig(storeID int64, storeInfo *StoreConfig, cookieProvider CookieProvider) *APIClient {
+	return newAPIClient(storeID, nil, storeInfo, cookieProvider)
+}
+
+func newAPIClient(storeID int64, managementClient *management.ClientManager, storeInfo *StoreConfig, cookieProvider CookieProvider) *APIClient {
 	logger := logger.GetGlobalLogger("SheinAPIClient").WithField("storeID", storeID)
 
 	// 创建HTTP客户端
@@ -52,7 +58,7 @@ func newAPIClient(storeID int64, managementClient *management.ClientManager, sto
 		managementClient: managementClient,
 		httpClient:       httpClient,
 		logger:           logger,
-		cookieManager:    NewCookieManager(storeID, managementClient),
+		cookieManager:    NewCookieManagerWithProvider(storeID, managementClient, cookieProvider),
 	}
 
 	// 获取店铺配置信息（包括代理设置和端点设置）
@@ -62,11 +68,11 @@ func newAPIClient(storeID int64, managementClient *management.ClientManager, sto
 			if info, err := storeClient.GetStore(storeID); err != nil {
 				apiClient.logger.WithError(err).Warn("获取店铺配置失败，将使用默认配置")
 			} else {
-				storeInfo = info
+				storeInfo = toStoreConfig(info)
 			}
 		}
 	}
-	apiClient.applyStoreInfo(storeInfo)
+	apiClient.applyStoreConfig(storeInfo)
 
 	// 直接加载 Cookie，避免初始化时额外执行一次 GetStore 探活。
 	// 店铺配置接口不可用时，调用方会在构建期校验里进入 blocked，而不是长时间卡住。
@@ -83,26 +89,55 @@ func newAPIClient(storeID int64, managementClient *management.ClientManager, sto
 	return apiClient
 }
 
-func (c *APIClient) applyStoreInfo(storeInfo *managementapi.StoreRespDTO) {
+func toStoreConfig(storeInfo *managementapi.StoreRespDTO) *StoreConfig {
+	if storeInfo == nil {
+		return nil
+	}
+	return &StoreConfig{
+		ID:       storeInfo.ID,
+		TenantID: storeInfo.TenantID,
+		StoreID:  strings.TrimSpace(storeInfo.StoreID),
+		Name:     strings.TrimSpace(storeInfo.Name),
+		Platform: strings.TrimSpace(storeInfo.Platform),
+		Region:   strings.TrimSpace(storeInfo.Region),
+		LoginURL: strings.TrimSpace(storeInfo.LoginUrl),
+		Proxy:    strings.TrimSpace(storeInfo.Proxy),
+	}
+}
+
+func (c *APIClient) applyStoreConfig(storeInfo *StoreConfig) {
 	if storeInfo == nil {
 		return
 	}
 
 	c.tenantID = storeInfo.TenantID
+	if c.cookieManager != nil && storeInfo.TenantID > 0 {
+		c.cookieManager.resolvedTenantID = storeInfo.TenantID
+	}
 
-	// 设置代理
-	if storeInfo.Proxy != "" {
+	// 本地联调可显式禁用店铺代理，避免本机依赖代理可达性。
+	if storeInfo.Proxy != "" && !ignoreStoreProxy() {
 		c.proxyURL = storeInfo.Proxy
 		c.httpClient.SetProxyURL(storeInfo.Proxy)
 		c.logger.Infof("店铺 %d 配置了代理地址: %s", c.storeID, storeInfo.Proxy)
 	}
 
 	// 根据店铺的loginUrl来设置客户端的端点
-	if storeInfo.LoginUrl == "sso.geiwohuo.com" {
+	if storeInfo.LoginURL == "sso.geiwohuo.com" {
 		c.baseURL = "https://sso.geiwohuo.com"
 		c.logger.Infof("店铺 %d 使用第三方端点: %s", c.storeID, c.baseURL)
 	} else {
 		c.logger.Infof("店铺 %d 使用自营端点: %s", c.storeID, c.baseURL)
+	}
+}
+
+func ignoreStoreProxy() bool {
+	value := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY"))
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -199,16 +234,6 @@ func (c *APIClient) GetTenantID() int64 {
 	}
 	if c.tenantID > 0 {
 		return c.tenantID
-	}
-
-	// 从店铺信息获取tenantID
-	if c.managementClient != nil {
-		storeClient := c.managementClient.GetStoreClient()
-		if storeClient != nil {
-			if storeInfo, err := storeClient.GetStore(c.storeID); err == nil && storeInfo != nil {
-				return storeInfo.TenantID
-			}
-		}
 	}
 	return 0
 }

@@ -179,13 +179,13 @@ type BuildServiceHooks struct {
 	LegacyTenantResolverConfigurator  func(*config.Config, *logrus.Logger) (func() error, error)
 	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
 	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinCategoryResolverBuilder      func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
-	SheinAttributeResolverBuilder     func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
-	SheinSaleAttributeResolverBuilder func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
-	SheinProductAPIBuilderFactory     func() sheinpub.ProductAPIBuilder
-	SheinImageAPIBuilderFactory       func() sheinpub.ImageAPIBuilder
-	SheinTranslateAPIBuilderFactory   func() sheinpub.TranslateAPIBuilder
-	SheinAPIClientFactoryBuilder      func() listingkit.SheinAPIClientFactory
+	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	SheinProductAPIBuilderFactory     func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder
+	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
+	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
+	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
 	DefaultSheinStoreIDResolver       func([]int64) int64
 	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
@@ -488,12 +488,12 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 
 	sheinCategoryLLMClient := hooks.SheinCategoryLLMClientBuilder(input.Config, input.AICredentialStore)
 	sheinSaleAttributeLLMClient := hooks.SheinSaleAttributeLLMBuilder(input.Config, input.AICredentialStore)
-	sheinCategoryResolver := hooks.SheinCategoryResolverBuilder(sheinCategoryLLMClient, repos.resolutionCacheStore)
-	sheinAttributeResolver := hooks.SheinAttributeResolverBuilder(sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
-	sheinSaleAttributeResolver := hooks.SheinSaleAttributeResolverBuilder(sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
-	sheinProductAPIBuilder := hooks.SheinProductAPIBuilderFactory()
-	sheinImageAPIBuilder := hooks.SheinImageAPIBuilderFactory()
-	sheinTranslateAPIBuilder := hooks.SheinTranslateAPIBuilderFactory()
+	sheinCategoryResolver := hooks.SheinCategoryResolverBuilder(repos.storeRepository, sheinCategoryLLMClient, repos.resolutionCacheStore)
+	sheinAttributeResolver := hooks.SheinAttributeResolverBuilder(repos.storeRepository, sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
+	sheinSaleAttributeResolver := hooks.SheinSaleAttributeResolverBuilder(repos.storeRepository, sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
+	sheinProductAPIBuilder := hooks.SheinProductAPIBuilderFactory(repos.storeRepository)
+	sheinImageAPIBuilder := hooks.SheinImageAPIBuilderFactory(repos.storeRepository)
+	sheinTranslateAPIBuilder := hooks.SheinTranslateAPIBuilderFactory(repos.storeRepository)
 	sheinPricingPolicy := hooks.SheinPricingPolicyBuilder(input.Config)
 
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
@@ -543,7 +543,7 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 		Shein: listingkit.ServiceSheinDependencies{
 			SheinDefaultStoreID:        hooks.DefaultSheinStoreIDResolver(input.Config.Management.StoreIDs),
 			SheinStoreCatalog:          sheinManagementStoreCatalog{repo: repos.storeRepository},
-			SheinAPIClientFactory:      hooks.SheinAPIClientFactoryBuilder(),
+			SheinAPIClientFactory:      hooks.SheinAPIClientFactoryBuilder(repos.storeRepository),
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinResolutionCacheStore:  repos.resolutionCacheStore,
 			SheinAttributeResolver:     sheinAttributeResolver,

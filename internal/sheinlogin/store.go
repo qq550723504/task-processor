@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	cookieKeyPrefix     = "shein:cookie"
-	verifyCodePrefix    = "shein:verify_code"
+	cookieKeyPrefix       = "shein:cookie"
+	verifyCodePrefix      = "shein:verify_code"
 	verifyCodeQueuePrefix = "shein:verify_code_queue"
-	verifyWaitPrefix    = "shein:wait_verify_code"
-	lastLoginTimePrefix = "shein:last_login_time"
-	lastFailurePrefix   = "shein:last_failure"
+	verifyWaitPrefix      = "shein:wait_verify_code"
+	lastLoginTimePrefix   = "shein:last_login_time"
+	lastFailurePrefix     = "shein:last_failure"
 )
 
 type RedisStore struct {
@@ -96,6 +96,17 @@ func (s *RedisStore) HasCookie(ctx context.Context, tenantID, storeID int64) (bo
 		return false, err
 	}
 	return ok && ttl > 0, nil
+}
+
+func (s *RedisStore) LoadCookieState(ctx context.Context, tenantID, storeID int64) (string, bool, error) {
+	raw, err := s.client.Get(ctx, cookieKey(tenantID, storeID)).Result()
+	if err == goredis.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return raw, strings.TrimSpace(raw) != "", nil
 }
 
 func (s *RedisStore) SetVerifyWait(ctx context.Context, tenantID, storeID int64, ttl time.Duration) error {
