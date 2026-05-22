@@ -1,5 +1,10 @@
 package template
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // ListParams 是已从 SDS 前端 bundle 和真实请求中确认的分页参数。
 type ListParams struct {
 	Page               int
@@ -219,7 +224,7 @@ type VariantAttribute struct {
 
 // DesignPrototype 是 SDS 设计模板原型。
 type DesignPrototype struct {
-	PrototypeID           string                 `json:"prototypeId"`
+	PrototypeID           SDSFlexibleString      `json:"prototypeId"`
 	PrototypeGroupID      int64                  `json:"prototypeGroupId"`
 	ProductID             int64                  `json:"productId"`
 	ProductParentID       int64                  `json:"productParentId"`
@@ -233,46 +238,65 @@ type DesignPrototype struct {
 
 // DetailImage 是详情图素材。
 type DetailImage struct {
-	ID          string `json:"id"`
-	ImageURL    string `json:"imageUrl"`
-	PrototypeID string `json:"prototypeId"`
-	Sort        int    `json:"sort"`
+	ID          SDSFlexibleString `json:"id"`
+	ImageURL    string            `json:"imageUrl"`
+	PrototypeID SDSFlexibleString `json:"prototypeId"`
+	Sort        int               `json:"sort"`
 }
 
 // PrototypeResultGroup 是模板预览结果图。
 type PrototypeResultGroup struct {
-	ID             string `json:"id"`
-	ResultImage    string `json:"resultImage"`
-	Sort           int    `json:"sort"`
-	PrototypeID    string `json:"prototypeId"`
-	FaceSheetState bool   `json:"faceSheetState"`
+	ID             SDSFlexibleString `json:"id"`
+	ResultImage    string            `json:"resultImage"`
+	Sort           int               `json:"sort"`
+	PrototypeID    SDSFlexibleString `json:"prototypeId"`
+	FaceSheetState bool              `json:"faceSheetState"`
 }
 
 // PrototypeLayer 是可设计图层定义。
 type PrototypeLayer struct {
-	ID             string  `json:"id"`
-	PrototypeID    string  `json:"prototypeId"`
-	Name           string  `json:"name"`
-	Type           int     `json:"type"`
-	Height         float64 `json:"height"`
-	Width          float64 `json:"width"`
-	PrintHeight    float64 `json:"printHeight"`
-	PrintWidth     float64 `json:"printWidth"`
-	IsMasterMap    int     `json:"isMasterMap"`
-	MaskURL        string  `json:"maskUrl"`
-	MaskShowURL    string  `json:"maskShowUrl"`
-	ThumbnailURL   string  `json:"thumbnailUrl"`
-	ImageURL       string  `json:"imageUrl"`
-	PageType       string  `json:"pageType"`
-	ChineseTitle   string  `json:"chineseTitle"`
-	EnglishTitle   string  `json:"englishTitle"`
-	FontGroup      string  `json:"fontGroup"`
-	PreFilterGroup string  `json:"preFilterGroup"`
-	IsMustDesign   int     `json:"isMustDesign"`
-	WordNumLimit   int     `json:"wordNumLimit"`
-	FileNumLimit   int     `json:"fileNumLimit"`
-	UpdateDate     string  `json:"updateDate"`
-	CreateDate     string  `json:"createDate"`
+	ID             SDSFlexibleString `json:"id"`
+	PrototypeID    SDSFlexibleString `json:"prototypeId"`
+	Name           string            `json:"name"`
+	Type           int               `json:"type"`
+	Height         float64           `json:"height"`
+	Width          float64           `json:"width"`
+	PrintHeight    float64           `json:"printHeight"`
+	PrintWidth     float64           `json:"printWidth"`
+	IsMasterMap    int               `json:"isMasterMap"`
+	MaskURL        string            `json:"maskUrl"`
+	MaskShowURL    string            `json:"maskShowUrl"`
+	ThumbnailURL   string            `json:"thumbnailUrl"`
+	ImageURL       string            `json:"imageUrl"`
+	PageType       string            `json:"pageType"`
+	ChineseTitle   string            `json:"chineseTitle"`
+	EnglishTitle   string            `json:"englishTitle"`
+	FontGroup      string            `json:"fontGroup"`
+	PreFilterGroup string            `json:"preFilterGroup"`
+	IsMustDesign   int               `json:"isMustDesign"`
+	WordNumLimit   int               `json:"wordNumLimit"`
+	FileNumLimit   int               `json:"fileNumLimit"`
+	UpdateDate     string            `json:"updateDate"`
+	CreateDate     string            `json:"createDate"`
+}
+
+// SDSFlexibleString keeps SDS identifier payloads stable when upstream flips
+// between JSON strings and JSON numbers.
+type SDSFlexibleString string
+
+func (s *SDSFlexibleString) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*s = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*s = SDSFlexibleString(text)
+		return nil
+	}
+	*s = SDSFlexibleString(raw)
+	return nil
 }
 
 // IssuingBayArea 是发货仓区域。
