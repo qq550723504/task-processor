@@ -17,14 +17,34 @@ type PromptTemplateRouteHandler interface {
 	SetPromptTemplateStatus(c *gin.Context)
 }
 
-type TaskRouteHandler interface {
+type TaskActionRouteHandler interface {
 	listingkit.TaskHandler
-	listingkit.CustomerStoreHandler
+	PreviewSheinPrice(c *gin.Context)
+	SearchSheinCategories(c *gin.Context)
+	UpdateSheinFinalDraft(c *gin.Context)
+	GetSubmissionEvents(c *gin.Context)
+	ClearSheinResolutionCache(c *gin.Context)
+}
+
+type TaskRouteHandler interface {
+	TaskActionRouteHandler
+}
+
+type SettingsStoreRouteHandler interface {
+	ListSheinStoreProfiles(c *gin.Context)
+	UpsertSheinStoreProfile(c *gin.Context)
+	DeleteSheinStoreProfile(c *gin.Context)
+	GetSheinStoreRoutingSettings(c *gin.Context)
+	UpdateSheinStoreRoutingSettings(c *gin.Context)
+	GetSheinSettings(c *gin.Context)
+	UpdateSheinSettings(c *gin.Context)
+	GetAIClientSettings(c *gin.Context)
+	UpdateAIClientSettings(c *gin.Context)
 }
 
 type SettingsRouteHandler interface {
 	listingkit.SettingsHandler
-	listingkit.CustomerStoreHandler
+	SettingsStoreRouteHandler
 }
 
 type StoreRouteHandler interface {
