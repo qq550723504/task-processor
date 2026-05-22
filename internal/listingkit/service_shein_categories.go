@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	sheinpub "task-processor/internal/publishing/shein"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 	sheinclient "task-processor/internal/shein/client"
 )
@@ -59,6 +61,35 @@ func (s *service) SearchSheinCategories(ctx context.Context, taskID string, quer
 		Query:  trimmedQuery,
 		Items:  searchSheinCategoryCandidates(tree.Data, trimmedQuery),
 	}, nil
+}
+
+func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {
+	storeID, err := s.resolveSheinStoreID(ctx, task)
+	if err != nil || storeID <= 0 {
+		return nil, fmt.Errorf("shein store id is unavailable for attribute resolution")
+	}
+	if s.sheinManagementClient == nil {
+		return nil, fmt.Errorf("shein management client is unavailable for attribute resolution")
+	}
+
+	apiClient := sheinclient.NewAPIClient(storeID, s.sheinManagementClient)
+	if !apiClient.HasCookies() {
+		if err := apiClient.ForceRefreshCookies(); err != nil {
+			return nil, fmt.Errorf("shein store cookies are unavailable for attribute resolution: %w", err)
+		}
+	}
+	if !apiClient.HasCookies() {
+		return nil, fmt.Errorf("shein store cookies are unavailable for attribute resolution")
+	}
+
+	baseAPI := sheinclient.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		storeID,
+		apiClient.GetHTTPClient(),
+	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	return sheinattribute.NewClient(baseAPI), nil
 }
 
 func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {

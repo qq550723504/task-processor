@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -193,9 +193,26 @@ function SheinSaleAttributeReviewContent({
       ),
     [manualTemplateOptions, primaryOption?.attribute_id],
   );
+  const selectedSecondaryOptionID =
+    secondaryOptionID &&
+    secondaryTemplateOptions.some(
+      (option) => String(option.attribute_id ?? "") === secondaryOptionID,
+    )
+      ? secondaryOptionID
+      : String(
+          pickTemplateOptionID({
+            options: secondaryTemplateOptions,
+            candidates,
+            currentAttributeID: current.secondary_attribute_id,
+            emptyFallback: true,
+            ignoreCurrentSelection: hasMissingValueIDs,
+            scope: "secondary",
+            sourceDimension: current.secondary_source_dimension,
+          }) ?? "",
+        );
   const secondaryOption =
     secondaryTemplateOptions.find(
-      (option) => String(option.attribute_id ?? "") === secondaryOptionID,
+      (option) => String(option.attribute_id ?? "") === selectedSecondaryOptionID,
     ) ?? null;
   const canManualEdit =
     Boolean(onApplyManualSaleAttributes) &&
@@ -220,37 +237,6 @@ function SheinSaleAttributeReviewContent({
       : canManualEdit
         ? "如果系统结果不准确，展开下面的手工修正规格，按 3 步逐项修改。"
         : "请先检查系统当前识别结果。";
-
-  useEffect(() => {
-    if (
-      secondaryOptionID &&
-      secondaryTemplateOptions.some(
-        (option) => String(option.attribute_id ?? "") === secondaryOptionID,
-      )
-    ) {
-      return;
-    }
-    setSecondaryOptionID(
-      String(
-        pickTemplateOptionID({
-          options: secondaryTemplateOptions,
-          candidates,
-          currentAttributeID: current.secondary_attribute_id,
-          emptyFallback: true,
-          ignoreCurrentSelection: hasMissingValueIDs,
-          scope: "secondary",
-          sourceDimension: current.secondary_source_dimension,
-        }) ?? "",
-      ),
-    );
-  }, [
-    candidates,
-    current.secondary_attribute_id,
-    current.secondary_source_dimension,
-    hasMissingValueIDs,
-    secondaryOptionID,
-    secondaryTemplateOptions,
-  ]);
 
   return (
     <Card className="border-zinc-200 bg-white p-5">

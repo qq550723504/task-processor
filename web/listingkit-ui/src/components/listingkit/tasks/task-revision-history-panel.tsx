@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -127,14 +127,9 @@ export function TaskRevisionHistoryPanel({
 }) {
   const historyQuery = useTaskRevisionHistory(taskId, { limit: 5 });
   const items = historyQuery.data?.items ?? [];
-  const [selectedRevisionId, setSelectedRevisionId] = useState<string>("");
+  const [manualSelectedRevisionId, setManualSelectedRevisionId] = useState<string>("");
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
-
-  useEffect(() => {
-    if (!selectedRevisionId && items[0]?.revision_id) {
-      setSelectedRevisionId(items[0].revision_id);
-    }
-  }, [items, selectedRevisionId]);
+  const selectedRevisionId = manualSelectedRevisionId || items[0]?.revision_id || "";
 
   const selectedRevision = useMemo(
     () => items.find((item) => item.revision_id === selectedRevisionId),
@@ -190,7 +185,7 @@ export function TaskRevisionHistoryPanel({
                     type="button"
                     variant="outline"
                     className={`h-auto w-full justify-start rounded-2xl px-4 py-3 text-left ${selected ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
-                    onClick={() => setSelectedRevisionId(item.revision_id ?? "")}
+                    onClick={() => setManualSelectedRevisionId(item.revision_id ?? "")}
                   >
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
