@@ -28,7 +28,7 @@ import (
 )
 
 type Module struct {
-	Handler              listingkit.Handler
+	Handler              RouteHandler
 	StudioSessionHandler listingkit.StudioSessionHandler
 	Pool                 worker.WorkerPool
 	Closers              []func() error
