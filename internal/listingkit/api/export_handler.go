@@ -10,7 +10,7 @@ import (
 )
 
 func (h *handler) GetTaskExport(c *gin.Context) {
-	export, err := h.service.GetTaskExport(requestContext(c), c.Param("task_id"), c.Query("platform"))
+	export, err := h.taskLifecycleService.GetTaskExport(requestContext(c), c.Param("task_id"), c.Query("platform"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

@@ -10,7 +10,7 @@ import (
 )
 
 func (h *handler) SearchSheinCategories(c *gin.Context) {
-	result, err := h.service.SearchSheinCategories(
+	result, err := h.storeAdminService.SearchSheinCategories(
 		requestContext(c),
 		c.Param("task_id"),
 		c.Query("query"),

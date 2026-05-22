@@ -20,7 +20,7 @@ func (h *handler) GenerateStudioDesigns(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.GenerateStudioDesigns(requestContext(c), &req)
+	response, err := h.studioMediaService.GenerateStudioDesigns(requestContext(c), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {

@@ -17,7 +17,7 @@ func (h *handler) DispatchTaskGenerationNavigation(c *gin.Context) {
 		return
 	}
 	applyGenerationConditionalReadHeadersToNavigationTarget(c, &req)
-	result, err := h.service.DispatchTaskGenerationNavigation(requestContext(c), c.Param("task_id"), &req)
+	result, err := h.generationTaskService.DispatchTaskGenerationNavigation(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrGenerationActionNotFound) {

@@ -20,7 +20,7 @@ func (h *handler) SubmitTask(c *gin.Context) {
 		req.IdempotencyKey = strings.TrimSpace(c.GetHeader("Idempotency-Key"))
 	}
 
-	preview, err := h.service.SubmitTask(requestContext(c), c.Param("task_id"), &req)
+	preview, err := h.taskLifecycleService.SubmitTask(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
@@ -48,7 +48,7 @@ func (h *handler) SubmitTask(c *gin.Context) {
 }
 
 func (h *handler) RefreshSubmissionStatus(c *gin.Context) {
-	preview, err := h.service.RefreshSubmissionStatus(requestContext(c), c.Param("task_id"))
+	preview, err := h.taskLifecycleService.RefreshSubmissionStatus(requestContext(c), c.Param("task_id"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

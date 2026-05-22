@@ -10,7 +10,7 @@ import (
 )
 
 func (h *handler) ClearSheinResolutionCache(c *gin.Context) {
-	result, err := h.service.ClearSheinResolutionCache(requestContext(c), c.Param("task_id"), c.DefaultQuery("kind", "all"))
+	result, err := h.storeAdminService.ClearSheinResolutionCache(requestContext(c), c.Param("task_id"), c.DefaultQuery("kind", "all"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

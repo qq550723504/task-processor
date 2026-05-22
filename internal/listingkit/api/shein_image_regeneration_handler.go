@@ -21,7 +21,7 @@ func (h *handler) RegenerateSheinDataImage(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.RegenerateSheinDataImage(requestContext(c), c.Param("task_id"), &req)
+	response, err := h.studioMediaService.RegenerateSheinDataImage(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

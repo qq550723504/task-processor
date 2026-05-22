@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -13,7 +14,11 @@ import (
 )
 
 type handler struct {
-	service                     routeHandlerService
+	taskLifecycleService        listingkit.TaskLifecycleService
+	generationTaskService       listingkit.GenerationTaskService
+	studioMediaService          listingkit.StudioMediaService
+	uploadedImageDeleteService  uploadedImageDeleteService
+	storeAdminService           listingkit.StoreAdminService
 	studioAsyncJobs             *studioAsyncJobStore
 	initErr                     error
 	storeHandler                *listingadmin.StoreHandler
@@ -39,6 +44,10 @@ type routeHandlerService interface {
 	listingkit.GenerationTaskService
 	listingkit.StudioMediaService
 	listingkit.StoreAdminService
+}
+
+type uploadedImageDeleteService interface {
+	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
 }
 
 type HandlerOption func(*handler)
@@ -172,13 +181,22 @@ func NewHandler(service routeHandlerService, opts ...HandlerOption) (listingkit.
 	if err != nil {
 		return nil, err
 	}
-	h := &handler{service: service, studioAsyncJobs: studioAsyncJobs}
+	h := &handler{
+		taskLifecycleService:  service,
+		generationTaskService: service,
+		studioMediaService:    service,
+		storeAdminService:     service,
+		studioAsyncJobs:       studioAsyncJobs,
+	}
+	if deleteService, ok := service.(uploadedImageDeleteService); ok {
+		h.uploadedImageDeleteService = deleteService
+	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(h)
 		}
 	}
-	h.settingsService = newSettingsService(service)
+	h.settingsService = newSettingsService(h.storeAdminService)
 	if h.initErr != nil {
 		return nil, h.initErr
 	}
@@ -198,7 +216,7 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 	if req.UserID == "" {
 		req.UserID = requestUserID(c)
 	}
-	task, err := h.service.CreateGenerateTask(requestContext(c, req.TenantID), &req)
+	task, err := h.taskLifecycleService.CreateGenerateTask(requestContext(c, req.TenantID), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
@@ -217,7 +235,7 @@ func (h *handler) ListTasks(c *gin.Context) {
 		return
 	}
 	query.TenantID = requestTenantID(c, query.TenantID)
-	page, err := h.service.ListTasks(requestContext(c, query.TenantID), &query)
+	page, err := h.taskLifecycleService.ListTasks(requestContext(c, query.TenantID), &query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "task_list_failed", "message": err.Error()})
 		return
@@ -226,7 +244,7 @@ func (h *handler) ListTasks(c *gin.Context) {
 }
 
 func (h *handler) GetTaskResult(c *gin.Context) {
-	result, err := h.service.GetTaskResult(requestContext(c), c.Param("task_id"))
+	result, err := h.taskLifecycleService.GetTaskResult(requestContext(c), c.Param("task_id"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) {

@@ -16,7 +16,7 @@ func (h *handler) GetTaskRevisionHistoryDetail(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.service.GetTaskRevisionHistoryDetail(requestContext(c), c.Param("task_id"), c.Param("revision_id"), &query)
+	detail, err := h.taskLifecycleService.GetTaskRevisionHistoryDetail(requestContext(c), c.Param("task_id"), c.Param("revision_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {

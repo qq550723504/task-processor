@@ -15,7 +15,7 @@ func (h *handler) ListSheinStoreProfiles(c *gin.Context) {
 	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
 		return
 	}
-	items, err := h.service.ListSheinStoreProfiles(requestContext(c))
+	items, err := h.storeAdminService.ListSheinStoreProfiles(requestContext(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "store_profile_list_failed", "message": err.Error()})
 		return
@@ -32,7 +32,7 @@ func (h *handler) UpsertSheinStoreProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	profile, err := h.service.UpsertSheinStoreProfile(requestContext(c), &req)
+	profile, err := h.storeAdminService.UpsertSheinStoreProfile(requestContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "store_profile_upsert_failed", "message": err.Error()})
 		return
@@ -49,7 +49,7 @@ func (h *handler) DeleteSheinStoreProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid profile id"})
 		return
 	}
-	if err := h.service.DeleteSheinStoreProfile(requestContext(c), id); err != nil {
+	if err := h.storeAdminService.DeleteSheinStoreProfile(requestContext(c), id); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingkit.ErrTaskNotFound) {
 			status = http.StatusNotFound
@@ -64,7 +64,7 @@ func (h *handler) GetSheinStoreRoutingSettings(c *gin.Context) {
 	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
 		return
 	}
-	settings, err := h.service.GetSheinStoreRoutingSettings(requestContext(c))
+	settings, err := h.storeAdminService.GetSheinStoreRoutingSettings(requestContext(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "store_routing_read_failed", "message": err.Error()})
 		return
@@ -81,7 +81,7 @@ func (h *handler) UpdateSheinStoreRoutingSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	settings, err := h.service.UpdateSheinStoreRoutingSettings(requestContext(c), &req)
+	settings, err := h.storeAdminService.UpdateSheinStoreRoutingSettings(requestContext(c), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "store_routing_update_failed", "message": err.Error()})
 		return

@@ -294,7 +294,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			status = http.StatusBadRequest
 			break
 		}
-		response, callErr := h.service.GenerateStudioDesigns(ctx, &req)
+		response, callErr := h.studioMediaService.GenerateStudioDesigns(ctx, &req)
 		if callErr != nil {
 			err = callErr
 			break
@@ -312,7 +312,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			status = http.StatusBadRequest
 			break
 		}
-		response, callErr := h.service.GenerateStudioProductImages(ctx, &req)
+		response, callErr := h.studioMediaService.GenerateStudioProductImages(ctx, &req)
 		if callErr != nil {
 			err = callErr
 			break

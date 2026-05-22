@@ -47,7 +47,7 @@ func (h *handler) PreviewSheinPrice(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	preview, err := h.service.PreviewSheinPrice(requestContext(c), c.Param("task_id"), &req)
+	preview, err := h.storeAdminService.PreviewSheinPrice(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
@@ -68,7 +68,7 @@ func (h *handler) UpdateSheinFinalDraft(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	preview, err := h.service.UpdateSheinFinalDraft(requestContext(c), c.Param("task_id"), &req)
+	preview, err := h.storeAdminService.UpdateSheinFinalDraft(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
@@ -81,7 +81,7 @@ func (h *handler) UpdateSheinFinalDraft(c *gin.Context) {
 }
 
 func (h *handler) GetSubmissionEvents(c *gin.Context) {
-	events, err := h.service.GetSubmissionEvents(requestContext(c), c.Param("task_id"))
+	events, err := h.storeAdminService.GetSubmissionEvents(requestContext(c), c.Param("task_id"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {

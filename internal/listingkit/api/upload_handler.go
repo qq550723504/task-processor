@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -56,7 +55,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.UploadImages(requestContext(c), request)
+	response, err := h.studioMediaService.UploadImages(requestContext(c), request)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
@@ -74,7 +73,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 
 func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 	key := strings.TrimPrefix(c.Param("key"), "/")
-	file, err := h.service.GetUploadedImage(requestContext(c), key)
+	file, err := h.studioMediaService.GetUploadedImage(requestContext(c), key)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
@@ -93,14 +92,11 @@ func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 
 func (h *handler) DeleteUploadedListingKitImage(c *gin.Context) {
 	key := strings.TrimPrefix(c.Param("key"), "/")
-	deleteService, ok := h.service.(interface {
-		DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
-	})
-	if !ok {
+	if h.uploadedImageDeleteService == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "image_delete_unavailable", "message": "uploaded image delete is not configured"})
 		return
 	}
-	deleted, err := deleteService.DeleteUploadedImage(requestContext(c), key)
+	deleted, err := h.uploadedImageDeleteService.DeleteUploadedImage(requestContext(c), key)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
