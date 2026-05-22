@@ -2,12 +2,11 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"time"
 
 	"task-processor/internal/core/logger"
@@ -18,32 +17,25 @@ import (
 
 // APIClient SHEIN API客户端（参考TEMU设计）
 type APIClient struct {
-	storeID          int64
-	tenantID         int64
-	baseURL          string
-	proxyURL         string
-	managementClient *management.ClientManager
-	httpClient       *req.Client
-	logger           *logrus.Entry
-	cookieManager    *CookieManager
-	cookies          []*http.Cookie
-}
-
-// NewAPIClient 创建SHEIN API客户端
-func NewAPIClient(storeID int64, managementClient *management.ClientManager) *APIClient {
-	return newAPIClient(storeID, managementClient, nil, nil)
-}
-
-// NewAPIClientWithStoreInfo 使用已加载的店铺配置创建SHEIN API客户端
-func NewAPIClientWithStoreInfo(storeID int64, managementClient *management.ClientManager, storeInfo *managementapi.StoreRespDTO) *APIClient {
-	return newAPIClient(storeID, managementClient, toStoreConfig(storeInfo), nil)
+	storeID       int64
+	tenantID      int64
+	baseURL       string
+	proxyURL      string
+	httpClient    *req.Client
+	logger        *logrus.Entry
+	cookieManager *CookieManager
+	cookies       []*http.Cookie
 }
 
 func NewAPIClientWithStoreConfig(storeID int64, storeInfo *StoreConfig, cookieProvider CookieProvider) *APIClient {
-	return newAPIClient(storeID, nil, storeInfo, cookieProvider)
+	return newAPIClient(storeID, storeInfo, cookieProvider, nil)
 }
 
-func newAPIClient(storeID int64, managementClient *management.ClientManager, storeInfo *StoreConfig, cookieProvider CookieProvider) *APIClient {
+func NewAPIClientWithProviders(storeID int64, storeInfo *StoreConfig, cookieProvider CookieProvider, storeConfigProvider StoreConfigProvider) *APIClient {
+	return newAPIClient(storeID, storeInfo, cookieProvider, storeConfigProvider)
+}
+
+func newAPIClient(storeID int64, storeInfo *StoreConfig, cookieProvider CookieProvider, storeConfigProvider StoreConfigProvider) *APIClient {
 	logger := logger.GetGlobalLogger("SheinAPIClient").WithField("storeID", storeID)
 
 	// 创建HTTP客户端
@@ -53,23 +45,18 @@ func newAPIClient(storeID int64, managementClient *management.ClientManager, sto
 		SetCommonRetryBackoffInterval(1*time.Second, 5*time.Second)
 
 	apiClient := &APIClient{
-		storeID:          storeID,
-		baseURL:          "https://sellerhub.shein.com",
-		managementClient: managementClient,
-		httpClient:       httpClient,
-		logger:           logger,
-		cookieManager:    NewCookieManagerWithProvider(storeID, managementClient, cookieProvider),
+		storeID:       storeID,
+		baseURL:       "https://sellerhub.shein.com",
+		httpClient:    httpClient,
+		logger:        logger,
+		cookieManager: NewCookieManager(storeID, cookieProvider, storeConfigProvider),
 	}
 
-	// 获取店铺配置信息（包括代理设置和端点设置）
-	if storeInfo == nil && managementClient != nil {
-		storeClient := managementClient.GetStoreClient()
-		if storeClient != nil {
-			if info, err := storeClient.GetStore(storeID); err != nil {
-				apiClient.logger.WithError(err).Warn("获取店铺配置失败，将使用默认配置")
-			} else {
-				storeInfo = toStoreConfig(info)
-			}
+	if storeInfo == nil && storeConfigProvider != nil {
+		if info, err := storeConfigProvider.GetStoreConfig(context.Background(), storeID); err != nil {
+			apiClient.logger.WithError(err).Warn("获取店铺配置失败，将使用默认配置")
+		} else {
+			storeInfo = info
 		}
 	}
 	apiClient.applyStoreConfig(storeInfo)
@@ -87,22 +74,6 @@ func newAPIClient(storeID int64, managementClient *management.ClientManager, sto
 	}
 
 	return apiClient
-}
-
-func toStoreConfig(storeInfo *managementapi.StoreRespDTO) *StoreConfig {
-	if storeInfo == nil {
-		return nil
-	}
-	return &StoreConfig{
-		ID:       storeInfo.ID,
-		TenantID: storeInfo.TenantID,
-		StoreID:  strings.TrimSpace(storeInfo.StoreID),
-		Name:     strings.TrimSpace(storeInfo.Name),
-		Platform: strings.TrimSpace(storeInfo.Platform),
-		Region:   strings.TrimSpace(storeInfo.Region),
-		LoginURL: strings.TrimSpace(storeInfo.LoginUrl),
-		Proxy:    strings.TrimSpace(storeInfo.Proxy),
-	}
 }
 
 func (c *APIClient) applyStoreConfig(storeInfo *StoreConfig) {
@@ -214,11 +185,6 @@ func (c *APIClient) GetHTTPClient() *req.Client {
 // GetProxyURL 获取当前客户端配置的代理地址
 func (c *APIClient) GetProxyURL() string {
 	return c.proxyURL
-}
-
-// GetManagementClient 获取管理客户端
-func (c *APIClient) GetManagementClient() *management.ClientManager {
-	return c.managementClient
 }
 
 // GetBaseURL 获取基础URL

@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/shein/api/warehouse"
 	sheinclient "task-processor/internal/shein/client"
+	sheinmanagedclient "task-processor/internal/shein/managedclient"
 
 	"github.com/sirupsen/logrus"
 )
@@ -139,7 +140,7 @@ func (s *Service) newWarehouseClient(storeID int64) (*warehouse.Client, error) {
 		return nil, fmt.Errorf("management client is nil")
 	}
 
-	apiClient := sheinclient.NewAPIClient(storeID, s.managementClient)
+	apiClient := sheinmanagedclient.NewAPIClient(storeID, s.managementClient)
 	if !apiClient.HasCookies() {
 		return nil, fmt.Errorf("store %d has no shein cookies", storeID)
 	}

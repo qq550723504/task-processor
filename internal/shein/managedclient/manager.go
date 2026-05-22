@@ -1,21 +1,22 @@
-package client
+package managedclient
 
 import (
 	"fmt"
 	"sync"
 
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
-	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/state"
 
-	"task-processor/internal/core/logger"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	sheinclient "task-processor/internal/shein/client"
 
 	"github.com/sirupsen/logrus"
 )
 
 // ClientManager 店铺API客户端管理器
 type ClientManager struct {
-	clients          map[string]*APIClient
+	clients          map[string]*sheinclient.APIClient
 	cookieManager    *state.CookieManager
 	managementClient *management.ClientManager
 	mutex            sync.RWMutex
@@ -25,7 +26,7 @@ type ClientManager struct {
 // NewClientManager 创建新的客户端管理器
 func NewClientManager(cookieManager *state.CookieManager, managementClient *management.ClientManager) *ClientManager {
 	return &ClientManager{
-		clients:          make(map[string]*APIClient),
+		clients:          make(map[string]*sheinclient.APIClient),
 		cookieManager:    cookieManager,
 		managementClient: managementClient,
 		logger:           logger.GetGlobalLogger("SHEINClientManager"),
@@ -33,19 +34,16 @@ func NewClientManager(cookieManager *state.CookieManager, managementClient *mana
 }
 
 // GetClient 获取或创建店铺API客户端
-func (cm *ClientManager) GetClient(shopID int64, storeInfo *management_api.StoreRespDTO) (*APIClient, error) {
+func (cm *ClientManager) GetClient(shopID int64, storeInfo *managementapi.StoreRespDTO) (*sheinclient.APIClient, error) {
 	key := fmt.Sprintf("shein:cookie:%d", shopID)
 
-	// 先尝试读锁获取已存在的客户端
 	cm.mutex.RLock()
 	client, exists := cm.clients[key]
 	cm.mutex.RUnlock()
-
 	if exists {
 		return client, nil
 	}
 
-	// 双重检查锁模式：再次检查以避免重复创建
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
 
@@ -54,14 +52,12 @@ func (cm *ClientManager) GetClient(shopID int64, storeInfo *management_api.Store
 		return client, nil
 	}
 
-	// 创建新的客户端
 	client, err := cm.createClient(shopID, storeInfo)
 	if err != nil {
 		return nil, err
 	}
 
 	cm.clients[key] = client
-
 	cm.logger.Infof("成功创建并缓存店铺API客户端: 店铺=%d", shopID)
 	return client, nil
 }
@@ -80,12 +76,11 @@ func (cm *ClientManager) RemoveClient(tenantID, shopID int64) {
 }
 
 // GetAllClients 获取所有已创建的客户端信息
-func (cm *ClientManager) GetAllClients() map[string]*APIClient {
+func (cm *ClientManager) GetAllClients() map[string]*sheinclient.APIClient {
 	cm.mutex.RLock()
 	defer cm.mutex.RUnlock()
 
-	// 创建一个副本以避免外部修改
-	clientsCopy := make(map[string]*APIClient, len(cm.clients))
+	clientsCopy := make(map[string]*sheinclient.APIClient, len(cm.clients))
 	for key, client := range cm.clients {
 		clientsCopy[key] = client
 	}
@@ -93,18 +88,14 @@ func (cm *ClientManager) GetAllClients() map[string]*APIClient {
 	return clientsCopy
 }
 
-// createClient 创建新的店铺API客户端（使用已有的CookieManager）
-func (cm *ClientManager) createClient(shopID int64, storeInfo *management_api.StoreRespDTO) (*APIClient, error) {
-	// 尝试从内存获取Cookie
+func (cm *ClientManager) createClient(shopID int64, storeInfo *managementapi.StoreRespDTO) (*sheinclient.APIClient, error) {
 	cookieJSON, err := cm.cookieManager.GetCookie(shopID)
 	if err != nil {
-		// 内存中没有Cookie，尝试从管理系统获取
 		cm.logger.Warnf("内存中没有Cookie (店铺=%d)，尝试从管理系统获取", shopID)
 
 		if cm.managementClient != nil {
 			if storeClient := cm.managementClient.GetStoreClient(); storeClient != nil {
 				if cookieStr, err := storeClient.GetStoreCookie(shopID); err == nil && cookieStr != "" {
-					// 成功获取，存储到内存
 					cm.cookieManager.SetCookie(shopID, cookieStr)
 					cm.logger.Infof("✅ 成功从管理系统获取并存储Cookie: 店铺=%d", shopID)
 					cookieJSON = cookieStr
@@ -119,7 +110,6 @@ func (cm *ClientManager) createClient(shopID int64, storeInfo *management_api.St
 		}
 	}
 
-	// 创建本地的APIClient而不是使用shein_api包
 	client := NewAPIClientWithStoreInfo(shopID, cm.managementClient, storeInfo)
 	cm.logger.Infof("🔧 创建客户端: 店铺=%d, baseURL=%s", shopID, client.GetBaseURL())
 	return client, nil

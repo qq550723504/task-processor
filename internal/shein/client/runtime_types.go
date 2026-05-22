@@ -21,3 +21,7 @@ type CookieLookupResult struct {
 type CookieProvider interface {
 	GetCookie(ctx context.Context, storeID int64) (*CookieLookupResult, error)
 }
+
+type StoreConfigProvider interface {
+	GetStoreConfig(ctx context.Context, storeID int64) (*StoreConfig, error)
+}

@@ -33,18 +33,32 @@ func TestLoadSheinLoginAccountConfigFallsBackToEnv(t *testing.T) {
 	}
 }
 
-func TestCookieManagerUsesConfiguredLoginServiceTenantAndIdentifier(t *testing.T) {
+func TestCookieManagerUsesConfiguredLoginServiceIdentifierOnly(t *testing.T) {
 	ConfigureLoginAccount("1", "2")
 	t.Cleanup(func() {
 		ConfigureLoginAccount("", "")
 	})
 
-	cm := NewCookieManager(869, nil)
-	if got := cm.forceLoginTenantID(); got != 1 {
-		t.Fatalf("force login tenantID = %d, want configured tenant", got)
+	cm := NewCookieManager(869, nil, nil)
+	if got := cm.forceLoginTenantID(); got != 0 {
+		t.Fatalf("force login tenantID = %d, want no tenant fallback", got)
 	}
 	if got := cm.configuredLoginStoreID(); got != 2 {
 		t.Fatalf("configured login storeID = %d, want configured identifier", got)
+	}
+}
+
+func TestCookieManagerPrefersResolvedTenantOverConfiguredLoginServiceTenant(t *testing.T) {
+	ConfigureLoginAccount("1", "869")
+	t.Cleanup(func() {
+		ConfigureLoginAccount("", "")
+	})
+
+	cm := NewCookieManager(869, nil, nil)
+	cm.resolvedTenantID = 373211199677923496
+
+	if got := cm.forceLoginTenantID(); got != 373211199677923496 {
+		t.Fatalf("force login tenantID = %d, want resolved tenant", got)
 	}
 }
 
@@ -54,7 +68,7 @@ func TestCookieManagerCookieLookupStoreIDsUsesRequestedStoreOnly(t *testing.T) {
 		ConfigureLoginAccount("", "")
 	})
 
-	cm := NewCookieManager(870, nil)
+	cm := NewCookieManager(870, nil, nil)
 	got := cm.cookieLookupStoreIDs()
 	if len(got) != 1 || got[0] != 870 {
 		t.Fatalf("cookie lookup store ids = %v, want [870]", got)

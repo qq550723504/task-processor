@@ -20,6 +20,7 @@ import (
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 	"task-processor/internal/shein/client"
 	sheincontext "task-processor/internal/shein/context"
+	sheinmanagedclient "task-processor/internal/shein/managedclient"
 
 	"github.com/sirupsen/logrus"
 )
@@ -148,7 +149,7 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 		}
 	}
 
-	apiClient := client.NewAPIClientWithStoreInfo(taskCtx.Task.StoreID, managementClient, storeInfo)
+	apiClient := sheinmanagedclient.NewAPIClientWithStoreInfo(taskCtx.Task.StoreID, managementClient, storeInfo)
 	baseAPIClient := client.NewBaseAPIClient(
 		apiClient.GetBaseURL(),
 		apiClient.GetTenantID(),

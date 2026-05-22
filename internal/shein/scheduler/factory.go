@@ -17,6 +17,7 @@ import (
 	sheinproductapi "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/client"
 	"task-processor/internal/shein/inventory"
+	sheinmanagedclient "task-processor/internal/shein/managedclient"
 	sheinpricing "task-processor/internal/shein/pricing"
 	"task-processor/internal/shein/productsync"
 	"task-processor/internal/state"
@@ -30,7 +31,7 @@ type ActivityServiceBuilder func(config appscheduler.TaskConfig, factory *SheinT
 
 type Dependencies struct {
 	CookieManager             *state.CookieManager
-	ClientManager             *client.ClientManager
+	ClientManager             *sheinmanagedclient.ClientManager
 	FetcherBuilder            platformbase.ProductFetcherBuilder
 	PricingServiceBuilder     PricingServiceBuilder
 	ProductSyncServiceBuilder ProductSyncServiceBuilder
@@ -45,7 +46,7 @@ type Dependencies struct {
 type SheinTaskFactory struct {
 	*platformbase.BaseFactory
 	cookieManager             *state.CookieManager
-	clientManager             *client.ClientManager
+	clientManager             *sheinmanagedclient.ClientManager
 	rabbitmqClient            *rabbitmq.Client
 	fetcherBuilder            platformbase.ProductFetcherBuilder
 	pricingServiceBuilder     PricingServiceBuilder
@@ -74,7 +75,7 @@ func NewSheinTaskFactory(
 		rabbitmqClient,
 		Dependencies{
 			CookieManager:  cookieManager,
-			ClientManager:  client.NewClientManager(cookieManager, managementClient),
+			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, managementClient),
 			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
 		},
 	)
@@ -96,7 +97,7 @@ func NewSheinTaskFactoryWithFetcherBuilder(
 		rabbitmqClient,
 		Dependencies{
 			CookieManager:  cookieManager,
-			ClientManager:  client.NewClientManager(cookieManager, managementClient),
+			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, managementClient),
 			FetcherBuilder: fetcherBuilder,
 		},
 	)
@@ -131,7 +132,7 @@ func NewSheinTaskFactoryWithDependencies(
 		factory.cookieManager = state.NewCookieManager()
 	}
 	if factory.clientManager == nil {
-		factory.clientManager = client.NewClientManager(factory.cookieManager, managementClient)
+		factory.clientManager = sheinmanagedclient.NewClientManager(factory.cookieManager, managementClient)
 	}
 	factory.pricingServiceBuilder = deps.PricingServiceBuilder
 	if factory.pricingServiceBuilder == nil {

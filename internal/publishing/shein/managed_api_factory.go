@@ -5,6 +5,7 @@ import (
 	"sync"
 	"task-processor/internal/infra/clients/management"
 	sheinclient "task-processor/internal/shein/client"
+	sheinmanagedclient "task-processor/internal/shein/managedclient"
 	"time"
 )
 
@@ -41,7 +42,7 @@ func (f *managedAPIFactory) BuildBaseClient(storeID int64) (*sheinclient.BaseAPI
 		managedBaseAPICache.Delete(cacheKey)
 	}
 
-	apiClient := sheinclient.NewAPIClient(storeID, f.client)
+	apiClient := sheinmanagedclient.NewAPIClient(storeID, f.client)
 	if !apiClient.HasCookies() {
 		if err := apiClient.ForceRefreshCookies(); err == nil && apiClient.HasCookies() {
 			managedBaseAPICache.Delete(cacheKey)

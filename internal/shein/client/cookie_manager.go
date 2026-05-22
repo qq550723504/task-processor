@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
@@ -20,26 +19,22 @@ import (
 
 // CookieManager SHEIN Cookie管理器（参考TEMU实现）
 type CookieManager struct {
-	storeID          int64
-	managementClient *management.ClientManager
-	cookieProvider   CookieProvider
-	logger           *logrus.Entry
-	resolvedTenantID int64
+	storeID             int64
+	cookieProvider      CookieProvider
+	storeConfigProvider StoreConfigProvider
+	logger              *logrus.Entry
+	resolvedTenantID    int64
 }
 
 // NewCookieManager 创建Cookie管理器
-func NewCookieManager(storeID int64, managementClient *management.ClientManager) *CookieManager {
-	return NewCookieManagerWithProvider(storeID, managementClient, nil)
-}
-
-func NewCookieManagerWithProvider(storeID int64, managementClient *management.ClientManager, cookieProvider CookieProvider) *CookieManager {
+func NewCookieManager(storeID int64, cookieProvider CookieProvider, storeConfigProvider StoreConfigProvider) *CookieManager {
 	logger := logger.GetGlobalLogger("SheinCookieManager").WithField("storeID", storeID)
 
 	return &CookieManager{
-		storeID:          storeID,
-		managementClient: managementClient,
-		cookieProvider:   cookieProvider,
-		logger:           logger,
+		storeID:             storeID,
+		cookieProvider:      cookieProvider,
+		storeConfigProvider: storeConfigProvider,
+		logger:              logger,
 	}
 }
 
@@ -47,10 +42,10 @@ func NewCookieManagerWithProvider(storeID int64, managementClient *management.Cl
 func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
 
-	if cm.cookieProvider != nil || cm.managementClient != nil {
+	if cm.cookieProvider != nil {
 		cookieStr, tenantID, err := cm.loadCookieJSONFromSource()
 		if err != nil {
-			cm.logger.WithError(err).Warn("从 login Redis 读取 SHEIN Cookie 失败，将回退到 management store api")
+			cm.logger.WithError(err).Warn("从运行时 cookie provider 读取 SHEIN Cookie 失败")
 		} else if strings.TrimSpace(cookieStr) != "" {
 			cm.resolvedTenantID = tenantID
 			cookies, parseErr := cm.parseCookieString(cookieStr)
@@ -62,57 +57,8 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 		}
 	}
 
-	// 检查管理系统客户端是否可用
-	if cm.managementClient == nil {
-		cm.logger.Error("管理系统客户端为空")
-		return nil, fmt.Errorf("管理系统客户端为空")
-	}
-
-	// 从管理系统获取Cookie字符串
-	storeClient := cm.managementClient.GetStoreClient()
-	if storeClient == nil {
-		return nil, fmt.Errorf("店铺客户端未初始化")
-	}
-
-	cookieStr, err := storeClient.GetStoreCookie(cm.storeID)
-	if err != nil {
-		// 检查是否是认证错误
-		if strings.Contains(err.Error(), "访问令牌为空") || strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403") {
-			return nil, fmt.Errorf("认证失败，无法获取Cookie: %w", err)
-		}
-		return nil, fmt.Errorf("从管理系统获取Cookie失败: %w", err)
-	}
-
-	if cookieStr == "" {
-		cm.logger.WithField("storeID", cm.storeID).Info("未找到Cookie数据")
-		return nil, nil
-	}
-
-	// 解析Cookie字符串
-	cookies, err := cm.parseCookieString(cookieStr)
-	if err != nil {
-		cm.logger.WithError(err).Error("解析Cookie字符串失败")
-		return nil, fmt.Errorf("解析Cookie字符串失败: %w", err)
-	}
-
-	// 添加调试日志
-	if cm.logger.Logger.IsLevelEnabled(logrus.DebugLevel) {
-		cm.logger.WithFields(logrus.Fields{
-			"cookieStrLength": len(cookieStr),
-			"parsedCookies":   len(cookies),
-		}).Debug("Cookie解析结果")
-
-		for i, cookie := range cookies {
-			cm.logger.WithFields(logrus.Fields{
-				"index":       i,
-				"name":        cookie.Name,
-				"valueLength": len(cookie.Value),
-				"domain":      cookie.Domain,
-			}).Debug("解析的Cookie详情")
-		}
-	}
-
-	return cookies, nil
+	cm.logger.Error("cookie provider is nil")
+	return nil, fmt.Errorf("cookie provider is nil")
 }
 
 // CookieData JSON格式的Cookie数据结构
@@ -242,7 +188,7 @@ func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 	}
 	cm.resolvedTenantID = tenantID
 
-	if cm.cookieProvider != nil || cm.managementClient != nil {
+	if cm.cookieProvider != nil {
 		cookieStr, refreshedTenantID, err := cm.loadCookieJSONFromSource()
 		if err != nil {
 			return nil, fmt.Errorf("重新登录后读取 SHEIN Cookie 失败: %w", err)
@@ -293,19 +239,6 @@ func (cm *CookieManager) loadCookieJSONFromSource() (string, int64, error) {
 			}
 		}
 	}
-
-	if cm.managementClient == nil {
-		return "", 0, nil
-	}
-	for _, storeID := range cm.cookieLookupStoreIDs() {
-		cookieStr, tenantID, err := cm.managementClient.GetSheinCookie(storeID)
-		if err != nil {
-			return "", 0, err
-		}
-		if strings.TrimSpace(cookieStr) != "" {
-			return cookieStr, tenantID, nil
-		}
-	}
 	return "", 0, nil
 }
 
@@ -342,14 +275,10 @@ func (cm *CookieManager) forceLoginTenantID() int64 {
 }
 
 func (cm *CookieManager) resolveTenantID() int64 {
-	if cm.managementClient == nil {
+	if cm.storeConfigProvider == nil {
 		return 0
 	}
-	storeClient := cm.managementClient.GetStoreClient()
-	if storeClient == nil {
-		return 0
-	}
-	store, err := storeClient.GetStore(cm.storeID)
+	store, err := cm.storeConfigProvider.GetStoreConfig(context.Background(), cm.storeID)
 	if err != nil || store == nil {
 		return 0
 	}
@@ -419,17 +348,11 @@ func firstNonEmptyEnv(keys ...string) string {
 func (cm *CookieManager) TestConnection() error {
 	cm.logger.Debug("测试管理系统连接")
 
-	if cm.managementClient == nil {
-		return fmt.Errorf("管理系统客户端为空")
+	if cm.storeConfigProvider == nil {
+		return fmt.Errorf("store config provider is nil")
 	}
 
-	// 尝试获取store信息来测试连接
-	storeClient := cm.managementClient.GetStoreClient()
-	if storeClient == nil {
-		return fmt.Errorf("店铺客户端未初始化")
-	}
-
-	_, err := storeClient.GetStore(cm.storeID)
+	_, err := cm.storeConfigProvider.GetStoreConfig(context.Background(), cm.storeID)
 	if err != nil {
 		cm.logger.WithError(err).Error("管理系统连接测试失败")
 		return fmt.Errorf("管理系统连接测试失败: %w", err)

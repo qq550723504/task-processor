@@ -23,9 +23,9 @@ func TestForceRefreshCookiesUsesLocalLoginRefresher(t *testing.T) {
 	stub := &stubLocalLoginRefresher{}
 	ConfigureLocalLoginRefresher(stub)
 	t.Cleanup(func() { ConfigureLocalLoginRefresher(nil) })
-	ConfigureLoginAccount("123", "456")
 
-	manager := NewCookieManager(456, nil)
+	manager := NewCookieManager(456, nil, nil)
+	manager.resolvedTenantID = 123
 	if _, err := manager.ForceRefreshCookies(); err == nil {
 		t.Fatal("expected cookie load to fail without management client")
 	}
