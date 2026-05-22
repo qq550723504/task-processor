@@ -15,8 +15,6 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
@@ -27,7 +25,6 @@ import (
 	productenrich "task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinclient "task-processor/internal/shein/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -140,26 +137,6 @@ func (c sheinManagementStoreCatalog) ListStoreOptions(ctx context.Context, tenan
 	return options, nil
 }
 
-type sheinManagementAPIClientFactory struct {
-	client *management.ClientManager
-}
-
-func (f sheinManagementAPIClientFactory) NewSheinAPIClient(storeID int64, storeInfo *listingkit.SheinStoreInfo) *sheinclient.APIClient {
-	if storeInfo == nil {
-		return sheinclient.NewAPIClient(storeID, f.client)
-	}
-	return sheinclient.NewAPIClientWithStoreInfo(storeID, f.client, &managementapi.StoreRespDTO{
-		ID:       storeInfo.ID,
-		TenantID: storeInfo.TenantID,
-		StoreID:  storeInfo.StoreID,
-		Name:     storeInfo.Name,
-		Platform: storeInfo.Platform,
-		Region:   storeInfo.Region,
-		LoginUrl: storeInfo.LoginURL,
-		Proxy:    storeInfo.Proxy,
-	})
-}
-
 type BuildModuleInput struct {
 	ServiceInput                       BuildServiceInput
 	ShouldStartTemporalWorkerInProcess bool
@@ -197,15 +174,22 @@ type BuildServiceRepositories struct {
 }
 
 type BuildServiceHooks struct {
-	SheinPricingPolicyBuilder        func(*config.Config) sheinpub.PricingPolicy
-	ImageUploadStoreBuilder          func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore
-	LegacyTenantResolverConfigurator func(*config.Config, *logrus.Logger) (func() error, error)
-	SheinCategoryLLMClientBuilder    func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinSaleAttributeLLMBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	StudioImageGeneratorBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
-	DefaultSheinStoreIDResolver      func([]int64) int64
-	ConfigureZitadelAuth             func(config.ListingKitZitadelConfig)
-	ConfigureAuthorization           func([]string, []string) error
+	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
+	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore
+	LegacyTenantResolverConfigurator  func(*config.Config, *logrus.Logger) (func() error, error)
+	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
+	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
+	SheinCategoryResolverBuilder      func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	SheinProductAPIBuilderFactory     func() sheinpub.ProductAPIBuilder
+	SheinImageAPIBuilderFactory       func() sheinpub.ImageAPIBuilder
+	SheinTranslateAPIBuilderFactory   func() sheinpub.TranslateAPIBuilder
+	SheinAPIClientFactoryBuilder      func() listingkit.SheinAPIClientFactory
+	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
+	DefaultSheinStoreIDResolver       func([]int64) int64
+	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
+	ConfigureAuthorization            func([]string, []string) error
 }
 
 func (b CoreRepositoryBuilders) Validate() error {
@@ -274,6 +258,20 @@ func (h BuildServiceHooks) Validate() error {
 		return fmt.Errorf("build service hook shein category llm client is required")
 	case h.SheinSaleAttributeLLMBuilder == nil:
 		return fmt.Errorf("build service hook shein sale attribute llm client is required")
+	case h.SheinCategoryResolverBuilder == nil:
+		return fmt.Errorf("build service hook shein category resolver is required")
+	case h.SheinAttributeResolverBuilder == nil:
+		return fmt.Errorf("build service hook shein attribute resolver is required")
+	case h.SheinSaleAttributeResolverBuilder == nil:
+		return fmt.Errorf("build service hook shein sale attribute resolver is required")
+	case h.SheinProductAPIBuilderFactory == nil:
+		return fmt.Errorf("build service hook shein product api builder is required")
+	case h.SheinImageAPIBuilderFactory == nil:
+		return fmt.Errorf("build service hook shein image api builder is required")
+	case h.SheinTranslateAPIBuilderFactory == nil:
+		return fmt.Errorf("build service hook shein translate api builder is required")
+	case h.SheinAPIClientFactoryBuilder == nil:
+		return fmt.Errorf("build service hook shein api client factory is required")
 	case h.StudioImageGeneratorBuilder == nil:
 		return fmt.Errorf("build service hook studio image generator is required")
 	case h.DefaultSheinStoreIDResolver == nil:
@@ -296,10 +294,9 @@ type BuildServiceInput struct {
 	ImageSubjectExtractor      productimage.SubjectExtractor
 	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer         productimage.SceneRenderer
-	ManagementClient           *management.ClientManager
 	AICredentialStore          aiCredentialStore
-	Repositories BuildServiceRepositories
-	Hooks        BuildServiceHooks
+	Repositories               BuildServiceRepositories
+	Hooks                      BuildServiceHooks
 }
 
 type builtRepositories struct {
@@ -491,12 +488,12 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 
 	sheinCategoryLLMClient := hooks.SheinCategoryLLMClientBuilder(input.Config, input.AICredentialStore)
 	sheinSaleAttributeLLMClient := hooks.SheinSaleAttributeLLMBuilder(input.Config, input.AICredentialStore)
-	sheinCategoryResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewManagedCategoryResolver(input.ManagementClient, sheinCategoryLLMClient), repos.resolutionCacheStore)
-	sheinAttributeResolver := sheinpub.NewCachedAttributeResolver(sheinpub.NewManagedAttributeResolver(input.ManagementClient, sheinSaleAttributeLLMClient), repos.resolutionCacheStore)
-	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(input.ManagementClient, sheinSaleAttributeLLMClient), repos.resolutionCacheStore)
-	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(input.ManagementClient)
-	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(input.ManagementClient)
-	sheinTranslateAPIBuilder := sheinpub.NewManagedTranslateAPIBuilder(input.ManagementClient)
+	sheinCategoryResolver := hooks.SheinCategoryResolverBuilder(sheinCategoryLLMClient, repos.resolutionCacheStore)
+	sheinAttributeResolver := hooks.SheinAttributeResolverBuilder(sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
+	sheinSaleAttributeResolver := hooks.SheinSaleAttributeResolverBuilder(sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
+	sheinProductAPIBuilder := hooks.SheinProductAPIBuilderFactory()
+	sheinImageAPIBuilder := hooks.SheinImageAPIBuilderFactory()
+	sheinTranslateAPIBuilder := hooks.SheinTranslateAPIBuilderFactory()
 	sheinPricingPolicy := hooks.SheinPricingPolicyBuilder(input.Config)
 
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
@@ -546,7 +543,7 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 		Shein: listingkit.ServiceSheinDependencies{
 			SheinDefaultStoreID:        hooks.DefaultSheinStoreIDResolver(input.Config.Management.StoreIDs),
 			SheinStoreCatalog:          sheinManagementStoreCatalog{repo: repos.storeRepository},
-			SheinAPIClientFactory:      sheinManagementAPIClientFactory{client: input.ManagementClient},
+			SheinAPIClientFactory:      hooks.SheinAPIClientFactoryBuilder(),
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinResolutionCacheStore:  repos.resolutionCacheStore,
 			SheinAttributeResolver:     sheinAttributeResolver,

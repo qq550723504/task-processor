@@ -6,7 +6,10 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
+	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -27,7 +30,6 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 		ImageSubjectExtractor:      deps.imageSubjectExtractor,
 		ImageWhiteBackgroundRender: deps.imageWhiteBgRenderer,
 		ImageSceneRenderer:         deps.imageSceneRenderer,
-		ManagementClient:           deps.managementClient,
 		AICredentialStore:          deps.aiCredentialStore,
 		Repositories: listingkithttpapi.BuildServiceRepositories{
 			Core: listingkithttpapi.CoreRepositoryBuilders{
@@ -61,10 +63,31 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 			LegacyTenantResolverConfigurator: listingkithttpapi.ConfigureLegacyTenantResolver,
 			SheinCategoryLLMClientBuilder:    listingkithttpapi.BuildSheinCategoryLLMClient,
 			SheinSaleAttributeLLMBuilder:     listingkithttpapi.BuildSheinSaleAttributeLLMClient,
-			StudioImageGeneratorBuilder:      listingkithttpapi.BuildStudioImageGenerator,
-			DefaultSheinStoreIDResolver:      listingkithttpapi.ResolveDefaultSheinStoreID,
-			ConfigureZitadelAuth:             listingkithttpapi.ConfigureListingKitZitadelAuth,
-			ConfigureAuthorization:           listingkithttpapi.ConfigureListingKitAuthorization,
+			SheinCategoryResolverBuilder: func(llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+				return buildListingKitSheinCategoryResolver(deps.managementClient, llm, cache)
+			},
+			SheinAttributeResolverBuilder: func(llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+				return buildListingKitSheinAttributeResolver(deps.managementClient, llm, cache)
+			},
+			SheinSaleAttributeResolverBuilder: func(llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+				return buildListingKitSheinSaleAttributeResolver(deps.managementClient, llm, cache)
+			},
+			SheinProductAPIBuilderFactory: func() sheinpub.ProductAPIBuilder {
+				return buildListingKitSheinProductAPIBuilder(deps.managementClient)
+			},
+			SheinImageAPIBuilderFactory: func() sheinpub.ImageAPIBuilder {
+				return buildListingKitSheinImageAPIBuilder(deps.managementClient)
+			},
+			SheinTranslateAPIBuilderFactory: func() sheinpub.TranslateAPIBuilder {
+				return buildListingKitSheinTranslateAPIBuilder(deps.managementClient)
+			},
+			SheinAPIClientFactoryBuilder: func() listingkit.SheinAPIClientFactory {
+				return listingKitSheinAPIClientFactory{client: deps.managementClient}
+			},
+			StudioImageGeneratorBuilder: listingkithttpapi.BuildStudioImageGenerator,
+			DefaultSheinStoreIDResolver: listingkithttpapi.ResolveDefaultSheinStoreID,
+			ConfigureZitadelAuth:        listingkithttpapi.ConfigureListingKitZitadelAuth,
+			ConfigureAuthorization:      listingkithttpapi.ConfigureListingKitAuthorization,
 		},
 	}
 }
