@@ -344,10 +344,6 @@ describe("TaskStatusScreen", () => {
           task_id: "task_123",
           status: "failed",
           result: {
-            sds_sync: {
-              variant_id: 89764,
-              status: "failed",
-            },
             child_tasks: [
               {
                 kind: "sds_design_sync",
@@ -360,6 +356,7 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
+    expect(screen.getByText("SDS 子任务失败")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试子任务" }));
 
     expect(retryChildTaskMutate).toHaveBeenCalledWith({
