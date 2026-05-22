@@ -47,3 +47,16 @@ func TestCookieManagerUsesConfiguredLoginServiceTenantAndIdentifier(t *testing.T
 		t.Fatalf("configured login storeID = %d, want configured identifier", got)
 	}
 }
+
+func TestCookieManagerCookieLookupStoreIDsUsesRequestedStoreOnly(t *testing.T) {
+	ConfigureLoginAccount("1", "869")
+	t.Cleanup(func() {
+		ConfigureLoginAccount("", "")
+	})
+
+	cm := NewCookieManager(870, nil)
+	got := cm.cookieLookupStoreIDs()
+	if len(got) != 1 || got[0] != 870 {
+		t.Fatalf("cookie lookup store ids = %v, want [870]", got)
+	}
+}

@@ -292,21 +292,13 @@ func (cm *CookieManager) loadCookieJSONFromRedis() (string, int64, error) {
 }
 
 func (cm *CookieManager) cookieLookupStoreIDs() []int64 {
-	ids := make([]int64, 0, 2)
+	if cm.storeID > 0 {
+		return []int64{cm.storeID}
+	}
 	if configured := cm.configuredLoginStoreID(); configured > 0 {
-		ids = append(ids, configured)
+		return []int64{configured}
 	}
-	if cm.storeID > 0 && cm.storeID != idsFirst(ids) {
-		ids = append(ids, cm.storeID)
-	}
-	return ids
-}
-
-func idsFirst(ids []int64) int64 {
-	if len(ids) == 0 {
-		return 0
-	}
-	return ids[0]
+	return nil
 }
 
 func (cm *CookieManager) configuredLoginStoreID() int64 {
