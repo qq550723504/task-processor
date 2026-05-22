@@ -113,7 +113,7 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 	if r == nil || r.inner == nil {
 		return nil
 	}
-	key := attributeResolverCacheKey(req, pkg)
+	key := attributeResolverCacheKey(req, canonical, pkg)
 	if key != "" {
 		if cached, ok := r.cache.Load(key); ok {
 			if resolution, ok := cached.(*AttributeResolution); ok {
@@ -137,7 +137,7 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	if r == nil || resolution == nil {
 		return
 	}
-	key := attributeResolverCacheKey(req, pkg)
+	key := attributeResolverCacheKey(req, canonical, pkg)
 	if key == "" || !shouldCacheAttributeResolution(resolution) {
 		return
 	}
@@ -150,7 +150,7 @@ func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, ca
 	if r == nil {
 		return nil
 	}
-	key := attributeResolverCacheKey(req, pkg)
+	key := attributeResolverCacheKey(req, canonical, pkg)
 	return r.clearCacheWithInfo(ResolutionCacheKindAttribute, req, key, attributeResolutionCacheInfo(pkg))
 }
 

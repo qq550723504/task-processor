@@ -220,7 +220,7 @@ func TestCachedAttributeResolverDoesNotPersistUnsubmittedLiveResolution(t *testi
 	if second.Cache != nil {
 		t.Fatalf("live generated attribute cache metadata = %#v, want nil before final submit", second.Cache)
 	}
-	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", attributeResolverCacheKey(req, pkg))
+	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", attributeResolverCacheKey(req, nil, pkg))
 	if err != nil {
 		t.Fatalf("get persisted cache: %v", err)
 	}
@@ -369,8 +369,8 @@ func TestAttributeResolverCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
 		},
 	}
 
-	firstKey := attributeResolverCacheKey(req, first)
-	secondKey := attributeResolverCacheKey(req, second)
+	firstKey := attributeResolverCacheKey(req, nil, first)
+	secondKey := attributeResolverCacheKey(req, nil, second)
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}
@@ -416,8 +416,8 @@ func TestAttributeResolverCacheKeyIgnoresDecoratedSubmitSupplierSKUsForSDS(t *te
 		},
 	}
 
-	firstKey := attributeResolverCacheKey(req, first)
-	secondKey := attributeResolverCacheKey(req, second)
+	firstKey := attributeResolverCacheKey(req, nil, first)
+	secondKey := attributeResolverCacheKey(req, nil, second)
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}
@@ -438,7 +438,7 @@ func TestCachedAttributeResolverLoadsPersistentCacheAndRefillsMemory(t *testing.
 			{Name: "material", Value: "涤纶"},
 		},
 	}
-	cacheKey := attributeResolverCacheKey(req, pkg)
+	cacheKey := attributeResolverCacheKey(req, nil, pkg)
 	if err := store.SaveResolutionCache(context.Background(), &SheinResolutionCacheEntry{
 		StoreID:        "42",
 		CacheKind:      ResolutionCacheKindAttribute,
@@ -482,7 +482,7 @@ func TestCachedAttributeResolverClearUsesStoredCacheMetadata(t *testing.T) {
 			{Name: "material", Value: "涤纶"},
 		},
 	}
-	storedKey := attributeResolverCacheKey(req, cachedPkg)
+	storedKey := attributeResolverCacheKey(req, nil, cachedPkg)
 	if err := store.SaveResolutionCache(context.Background(), &SheinResolutionCacheEntry{
 		StoreID:        "42",
 		CacheKind:      ResolutionCacheKindAttribute,
@@ -530,7 +530,7 @@ func TestCachedAttributeResolverRememberStoresOnlyCurrentKey(t *testing.T) {
 			{Name: "material", Value: "100%涤纶"},
 		},
 	}
-	originalKey := attributeResolverCacheKey(req, originalPkg)
+	originalKey := attributeResolverCacheKey(req, nil, originalPkg)
 	menValueID := 427
 	resolution := &AttributeResolution{
 		Status:        "resolved",
@@ -559,7 +559,7 @@ func TestCachedAttributeResolverRememberStoresOnlyCurrentKey(t *testing.T) {
 	cache := resolver.(AttributeResolutionCache)
 	cache.RememberAttributeResolution(req, nil, patchedPkg, resolution)
 
-	currentKey := attributeResolverCacheKey(req, patchedPkg)
+	currentKey := attributeResolverCacheKey(req, nil, patchedPkg)
 	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", currentKey)
 	if err != nil {
 		t.Fatalf("get current key: %v", err)

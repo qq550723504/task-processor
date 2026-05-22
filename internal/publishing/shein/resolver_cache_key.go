@@ -38,7 +38,7 @@ func targetCategoryHint(req *BuildRequest) string {
 	return req.TargetCategoryHint
 }
 
-func attributeResolverCacheKey(req *BuildRequest, pkg *Package) string {
+func attributeResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
 	if pkg == nil || categoryID(pkg) == 0 {
 		return ""
 	}
@@ -48,7 +48,7 @@ func attributeResolverCacheKey(req *BuildRequest, pkg *Package) string {
 		"category_id":           categoryID(pkg),
 		"category_id_list":      append([]int(nil), pkg.CategoryIDList...),
 		"category_path":         normalizedSourceCategoryPath(nil, pkg),
-		"product_identity":      stableAttributeProductIdentity(pkg),
+		"product_identity":      stableProductIdentity(canonical, pkg),
 		"product_attributes":    normalizedAttributeInputs(pkg.ProductAttributes),
 		"supplemental_attrs":    normalizedStringMapInputs(pkg.Attributes),
 		"structured_attr_hints": normalizedStructuredAttributeHints(pkg.ProductAttributes),

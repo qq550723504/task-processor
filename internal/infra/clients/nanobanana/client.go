@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"time"
 
@@ -32,12 +31,11 @@ type Client struct {
 }
 
 type submitRequest struct {
-	Model       string   `json:"model"`
-	Prompt      string   `json:"prompt"`
-	Images      []string `json:"images,omitempty"`
-	AspectRatio string   `json:"aspectRatio,omitempty"`
-	ImageSize   string   `json:"imageSize,omitempty"`
-	ReplyType   string   `json:"replyType,omitempty"`
+	Model          string   `json:"model"`
+	Prompt         string   `json:"prompt"`
+	Image          []string `json:"image,omitempty"`
+	Size           string   `json:"size,omitempty"`
+	ResponseFormat string   `json:"response_format,omitempty"`
 }
 
 type submitResponse struct {
@@ -58,6 +56,13 @@ type resultPayload struct {
 type resultItem struct {
 	URL     string `json:"url"`
 	Content string `json:"content"`
+}
+
+type gptImageGenerationsResponse struct {
+	Created int64 `json:"created"`
+	Data    []struct {
+		URL string `json:"url"`
+	} `json:"data"`
 }
 
 func NewClient(cfg Config) *Client {
@@ -85,12 +90,11 @@ func (c *Client) GenerateImage(ctx context.Context, req *openaiclient.ImageGener
 	if req == nil {
 		return nil, fmt.Errorf("image generate request cannot be nil")
 	}
-	return c.submitAndPoll(ctx, submitRequest{
-		Model:       defaultString(req.Model, c.cfg.Model),
-		Prompt:      req.Prompt,
-		AspectRatio: nanoBananaAspectRatio(req.Size),
-		ImageSize:   nanoBananaImageSize(req.Size),
-		ReplyType:   "async",
+	return c.submitImagesGeneration(ctx, submitRequest{
+		Model:          defaultString(req.Model, c.cfg.Model),
+		Prompt:         req.Prompt,
+		Size:           normalizeGenerationSize(req.Size),
+		ResponseFormat: "url",
 	})
 }
 
@@ -105,13 +109,12 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if len(imageURLs) == 0 {
 		return nil, fmt.Errorf("nanobanana image edit requires image url")
 	}
-	return c.submitAndPoll(ctx, submitRequest{
-		Model:       defaultString(req.Model, c.cfg.Model),
-		Prompt:      req.Prompt,
-		AspectRatio: nanoBananaAspectRatio(req.Size),
-		ImageSize:   nanoBananaImageSize(req.Size),
-		Images:      imageURLs,
-		ReplyType:   "async",
+	return c.submitImagesGeneration(ctx, submitRequest{
+		Model:          defaultString(req.Model, c.cfg.Model),
+		Prompt:         req.Prompt,
+		Size:           normalizeGenerationSize(req.Size),
+		Image:          imageURLs,
+		ResponseFormat: "url",
 	})
 }
 
@@ -138,7 +141,7 @@ func cleanImageURLs(urls []string, max int) []string {
 	return cleaned
 }
 
-func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaiclient.ImageResponse, error) {
+func (c *Client) submitImagesGeneration(ctx context.Context, req submitRequest) (*openaiclient.ImageResponse, error) {
 	if strings.TrimSpace(req.Model) == "" {
 		return nil, fmt.Errorf("nanobanana model cannot be empty")
 	}
@@ -158,16 +161,11 @@ func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaic
 
 	var lastErr error
 	for attempt := 1; attempt <= c.cfg.MaxAttempts; attempt++ {
-		jobID, err := c.submit(ctx, submitURL, req)
-		if err != nil {
-			lastErr = err
-		} else {
-			result, pollErr := c.poll(ctx, submitURL, jobID)
-			if pollErr == nil {
-				return c.toImageResponse(ctx, result)
-			}
-			lastErr = pollErr
+		result, err := c.submitGenerationRequest(ctx, submitURL, req)
+		if err == nil {
+			return c.downloadGeneratedImages(ctx, result)
 		}
+		lastErr = err
 		if !shouldRetryNanobananaError(lastErr) || attempt == c.cfg.MaxAttempts || ctx.Err() != nil {
 			return nil, lastErr
 		}
@@ -180,14 +178,14 @@ func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaic
 	return nil, lastErr
 }
 
-func (c *Client) submit(ctx context.Context, submitURL string, req submitRequest) (string, error) {
+func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, req submitRequest) (*gptImageGenerationsResponse, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
-		return "", fmt.Errorf("marshal submit request: %w", err)
+		return nil, fmt.Errorf("marshal image generation request: %w", err)
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, submitURL, strings.NewReader(string(payload)))
 	if err != nil {
-		return "", fmt.Errorf("build submit request: %w", err)
+		return nil, fmt.Errorf("build image generation request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if strings.TrimSpace(c.cfg.APIKey) != "" {
@@ -195,129 +193,74 @@ func (c *Client) submit(ctx context.Context, submitURL string, req submitRequest
 	}
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("submit nanobanana job: %w", err)
+		return nil, fmt.Errorf("submit image generation request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", fmt.Errorf("submit nanobanana job returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return nil, fmt.Errorf("submit image generation request returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
-	var parsed submitResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return "", fmt.Errorf("decode submit response: %w", err)
-	}
-	if strings.EqualFold(strings.TrimSpace(parsed.Status), "failed") || strings.EqualFold(strings.TrimSpace(parsed.Status), "violation") {
-		return "", &JobError{
-			Reason: strings.TrimSpace(parsed.Status),
-			Detail: strings.TrimSpace(parsed.Error),
-		}
-	}
-	if strings.TrimSpace(parsed.ID) == "" {
-		return "", fmt.Errorf("submit nanobanana job returned empty id")
-	}
-	return parsed.ID, nil
-}
-
-func (c *Client) poll(ctx context.Context, submitURL string, id string) (*resultPayload, error) {
-	resultURL, err := buildResultURL(submitURL)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read image generation response: %w", err)
 	}
-	ticker := time.NewTicker(c.cfg.PollInterval)
-	defer ticker.Stop()
-
-	for {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, resultURL+"?id="+url.QueryEscape(id), nil)
-		if err != nil {
-			return nil, fmt.Errorf("build poll request: %w", err)
-		}
-		if strings.TrimSpace(c.cfg.APIKey) != "" {
-			httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
-		}
-		resp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("poll nanobanana job: %w", err)
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
-			return nil, fmt.Errorf("poll nanobanana job returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
-		}
-		var parsed resultPayload
-		decodeErr := json.NewDecoder(resp.Body).Decode(&parsed)
-		resp.Body.Close()
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decode poll response: %w", decodeErr)
-		}
-
-		switch strings.ToLower(strings.TrimSpace(parsed.Status)) {
-		case "succeeded":
-			return &parsed, nil
+	var providerStatus submitResponse
+	if err := json.Unmarshal(body, &providerStatus); err == nil {
+		status := strings.ToLower(strings.TrimSpace(providerStatus.Status))
+		switch status {
 		case "failed", "violation":
 			return nil, &JobError{
-				Reason: strings.TrimSpace(parsed.Status),
-				Detail: strings.TrimSpace(parsed.Error),
+				Reason: strings.TrimSpace(providerStatus.Status),
+				Detail: strings.TrimSpace(providerStatus.Error),
 			}
-		case "running", "":
-		default:
-			return nil, fmt.Errorf("unexpected nanobanana job status: %s", parsed.Status)
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("poll nanobanana job %s canceled: %w", id, ctx.Err())
-		case <-ticker.C:
+		case "running":
+			return nil, fmt.Errorf("unexpected image generation status: %s", providerStatus.Status)
 		}
 	}
+	var parsed gptImageGenerationsResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decode image generation response: %w", err)
+	}
+	if len(parsed.Data) == 0 || strings.TrimSpace(parsed.Data[0].URL) == "" {
+		return nil, fmt.Errorf("image generation response contained no url")
+	}
+	return &parsed, nil
 }
 
-func (c *Client) toImageResponse(ctx context.Context, result *resultPayload) (*openaiclient.ImageResponse, error) {
-	if result == nil || len(result.Results) == 0 {
-		return nil, fmt.Errorf("nanobanana result contained no images")
+func (c *Client) downloadGeneratedImages(ctx context.Context, resp *gptImageGenerationsResponse) (*openaiclient.ImageResponse, error) {
+	if resp == nil || len(resp.Data) == 0 {
+		return nil, fmt.Errorf("gpt image response contained no images")
 	}
-	first := result.Results[0]
-	if strings.TrimSpace(first.URL) == "" {
-		return nil, fmt.Errorf("nanobanana result missing image url")
+	data := make([]openaiclient.ImageData, 0, len(resp.Data))
+	for _, item := range resp.Data {
+		if strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build download request: %w", err)
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("download gpt image: %w", err)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read gpt image: %w", readErr)
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("download gpt image returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		data = append(data, openaiclient.ImageData{
+			URL:     item.URL,
+			B64JSON: base64.StdEncoding.EncodeToString(body),
+		})
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, first.URL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build download request: %w", err)
+	if len(data) == 0 {
+		return nil, fmt.Errorf("gpt image response contained no downloadable url")
 	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("download nanobanana image: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("download nanobanana image returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read nanobanana image: %w", err)
-	}
-	return &openaiclient.ImageResponse{
-		Data: []openaiclient.ImageData{
-			{
-				URL:           first.URL,
-				B64JSON:       base64.StdEncoding.EncodeToString(data),
-				RevisedPrompt: first.Content,
-			},
-		},
-	}, nil
-}
-
-func buildResultURL(submitURL string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(submitURL))
-	if err != nil {
-		return "", fmt.Errorf("parse nanobanana submit url: %w", err)
-	}
-	if isGPTImageModelPath(parsed.Path) {
-		parsed.Path = path.Dir(parsed.Path) + "/result"
-		return parsed.String(), nil
-	}
-	parsed.Path = "/v1/api/result"
-	return parsed.String(), nil
+	return &openaiclient.ImageResponse{Data: data, Created: resp.Created}, nil
 }
 
 func buildSubmitURL(configuredURL string, model string) (string, error) {
@@ -329,46 +272,16 @@ func buildSubmitURL(configuredURL string, model string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse nanobanana submit url: %w", err)
 	}
-	if isGPTImageModel(model) {
-		switch strings.TrimRight(parsed.Path, "/") {
-		case "", "/v1", "/v1/draw/completions":
-			parsed.Path = "/v1/draw/completions"
-		default:
-			parsed.Path = strings.TrimRight(path.Dir(parsed.Path), "/") + "/completions"
-		}
-		return parsed.String(), nil
-	}
-	parsed.Path = "/v1/api/generate"
+	parsed.Path = "/v1/images/generations"
 	return parsed.String(), nil
 }
 
-func isGPTImageModel(model string) bool {
-	return strings.EqualFold(strings.TrimSpace(model), "gpt-image-2")
-}
-
-func isGPTImageModelPath(pathValue string) bool {
-	normalized := strings.TrimRight(strings.TrimSpace(pathValue), "/")
-	return normalized == "/v1/draw/completions" || strings.HasSuffix(normalized, "/completions")
-}
-
-func nanoBananaAspectRatio(size string) string {
-	switch strings.TrimSpace(size) {
-	case "1024x1024", "1536x1536", "2048x2048":
-		return "1:1"
-	default:
-		return "auto"
+func normalizeGenerationSize(size string) string {
+	trimmed := strings.TrimSpace(size)
+	if strings.EqualFold(trimmed, "auto") {
+		return ""
 	}
-}
-
-func nanoBananaImageSize(size string) string {
-	switch strings.TrimSpace(size) {
-	case "2048x2048":
-		return "2K"
-	case "4096x4096":
-		return "4K"
-	default:
-		return "1K"
-	}
+	return trimmed
 }
 
 func defaultString(value string, fallback string) string {

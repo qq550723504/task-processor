@@ -66,8 +66,9 @@ func stableCanonicalSDSIdentifiers(canonical *canonical.Product) []string {
 		return identifiers
 	}
 
-	fallback := make([]string, 0, len(canonical.Variants))
+	fallback := make([]string, 0, len(canonical.Variants)*2)
 	for _, variant := range canonical.Variants {
+		fallback = append(fallback, variant.SKU)
 		if attr, ok := variant.Attributes["supplier_sku"]; ok {
 			fallback = append(fallback, attr.Value)
 		}
@@ -79,30 +80,36 @@ func stablePackageIdentifiers(pkg *Package) []string {
 	if pkg == nil {
 		return nil
 	}
-	requestSKCCount := 0
-	if pkg.RequestDraft != nil {
-		requestSKCCount = len(pkg.RequestDraft.SKCList)
-	}
-	primary := make([]string, 0, len(pkg.ProductAttributes)+len(pkg.SkcList)+requestSKCCount)
+	primary := make([]string, 0, len(pkg.ProductAttributes)+4)
 	primary = append(primary,
 		lookupAttributeValueInList(pkg.ProductAttributes, "product_sku"),
 		lookupAttributeValueInList(pkg.ProductAttributes, "variant_sku"),
 		lookupAttributeValueInList(pkg.ProductAttributes, "source_sds_sku"),
 		lookupAttributeValueInList(pkg.ProductAttributes, "sku"),
 	)
+	identifiers := normalizeStableIdentity(primary)
+	if len(identifiers) > 0 {
+		return identifiers
+	}
+
+	requestSKCCount := 0
+	if pkg.RequestDraft != nil {
+		requestSKCCount = len(pkg.RequestDraft.SKCList)
+	}
+	secondary := make([]string, 0, len(pkg.SkcList)+requestSKCCount)
 	for _, skc := range pkg.SkcList {
 		for _, sku := range skc.SKUs {
-			primary = append(primary, sku.Attributes["source_sds_sku"])
+			secondary = append(secondary, sku.Attributes["source_sds_sku"])
 		}
 	}
 	if pkg.RequestDraft != nil {
 		for _, skc := range pkg.RequestDraft.SKCList {
 			for _, sku := range skc.SKUList {
-				primary = append(primary, sku.Attributes["source_sds_sku"])
+				secondary = append(secondary, sku.Attributes["source_sds_sku"])
 			}
 		}
 	}
-	identifiers := normalizeStableIdentity(primary)
+	identifiers = normalizeStableIdentity(secondary)
 	if len(identifiers) > 0 {
 		return identifiers
 	}
