@@ -126,8 +126,6 @@ amazon:
 
 对应的 task 配置文件现在是：
 
-`config/config-task.yaml`
-
 ## 多实例去重
 
 如果只部署 1 台 `amazon-crawler-api`，不接 Redis 也能工作。

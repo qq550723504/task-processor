@@ -169,13 +169,11 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 - `amazon-crawler-api` 在 Amazon 来源抓取场景下部署；只处理 `1688` / `SDS POD` 来源时可不启用
 - `1688-crawler-api` 在需要独立 1688 抓取服务时部署；若当前链路未拆分到独立服务，可暂不启用
 - 平台消费者优先通过 HTTP 调用 crawler / listing API，而不是在本地直接持有所有抓取与生成能力
-- `cmd/task` 已降级为 legacy emergency fallback，不作为生产主入口
 
 对应默认配置文件：
 
 - `product-listing-api` / `shein-listing` / `temu-listing` / `amazon-listing`: [config-dev.yaml](./config/config-dev.yaml) 或对应环境配置
 - `amazon-crawler-api`: [config-amazon-crawler-api.yaml](./config/config-amazon-crawler-api.yaml)
-- `task`: [config-task.yaml](./config/config-task.yaml) 仅用于 legacy fallback
 
 启动示例：
 
@@ -310,7 +308,6 @@ task-processor/
 ├── web/                         # 前端应用
 │   └── listingkit-ui/          # ListingKit Web 工作台
 ├── cmd/                          # 应用入口（每个子目录一个 main.go）
-│   ├── task/                    # 已废弃的 legacy polling 入口（仅应急回滚）
 │   ├── 1688-crawler-api/        # 1688 爬虫 HTTP API 服务
 │   ├── amazon-crawler-api/      # Amazon 爬虫 HTTP API 服务
 │   ├── amazon-listing/          # Amazon 上架独立入口

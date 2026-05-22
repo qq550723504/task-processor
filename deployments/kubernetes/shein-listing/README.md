@@ -109,7 +109,7 @@ docker build \
 
 1. `yudao-cloud` 已开启 RabbitMQ 自动投递
 2. RabbitMQ / Redis 已在集群内可访问
-3. 生产不会再启动 `cmd/task`
+3. 生产不再依赖已移除的 legacy polling 入口
 4. SHEIN 店铺所需的管理端凭证、OpenAI、Redis、RabbitMQ 地址已准备好
 5. `amazon-crawler-external-lb` 已先部署并可从集群内访问
 

@@ -4,13 +4,12 @@
 
 `yudao-cloud 数据库选任务 -> RabbitMQ -> shein-listing / temu-listing / amazon-listing -> 状态回写`
 
-目标不是压满系统，而是先确认主链已经真正接通，而且不会再误走 `cmd/task` 老轮询链。
+目标不是压满系统，而是先确认主链已经真正接通，而且不会再误走已经移除的 legacy polling 老链路。
 
 ## 1. 先决条件
 
 验收前先确认：
 
-- `cmd/task` 没有被启动
 - 至少启动一个平台消费者：
   - `cmd/shein-listing`
   - `cmd/temu-listing`
@@ -61,11 +60,10 @@
 
 ## 3. 推荐验收流程
 
-### 步骤 1：确认没有 legacy polling
+### 步骤 1：确认运行环境里没有旧轮询二进制
 
-- 不要启动 [main.go](D:/code/task-processor/cmd/task/main.go)
-- 如果有人误启，它现在必须带 `--allow-legacy-polling`
-- 日志里如果出现 `legacy polling` / `legacy task fetcher`，说明仍有人在用旧链路
+- 部署物里不应再包含 `task` 旧二进制或 `Dockerfile.task`
+- 日志里如果出现 `legacy polling` / `legacy task fetcher`，说明仍有人在运行过期镜像或旧节点
 
 ### 步骤 2：造一批真实任务
 
@@ -151,7 +149,6 @@ pwsh ./scripts/validate-rabbitmq-flow.ps1 `
 
 本轮主链验收建议至少满足：
 
-- 没有人启动 `cmd/task`
 - 后端能自动把 DB 任务投递到 RabbitMQ
 - 平台消费者能收到并执行任务
 - 任务状态流转完整

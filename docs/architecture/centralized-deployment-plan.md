@@ -113,9 +113,8 @@
 - task 节点可以真正关闭本地浏览器依赖
 - 接口边界比“进程内依赖注入 crawler 实现”更清楚
 
-当前仓库已经提供了这两个独立入口和配置文件：
+当前仓库当前保留的独立配置入口：
 
-- `task`: [config-task.yaml](D:/code/task-processor/config/config-task.yaml)
 - `amazon-crawler-api`: [config-amazon-crawler-api.yaml](D:/code/task-processor/config/config-amazon-crawler-api.yaml)
 
 当前推荐链路是：
@@ -140,7 +139,6 @@ task -> ProductFetcher -> RemoteAPIProductFetcher -> amazon-crawler-api
 - 分布式爬虫客户端
 - 调度器分布式锁入口
 - 多入口模式
-  - `cmd/task`
   - `cmd/shein-listing`
   - `cmd/temu-listing`
   - `cmd/amazon-listing`
