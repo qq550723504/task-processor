@@ -149,14 +149,58 @@ type HandlerService interface {
 	StoreAdminService
 }
 
-type Handler interface {
+type TaskHandler interface {
 	GenerateListingKit(c *gin.Context)
 	ListTasks(c *gin.Context)
+	UploadListingKitImages(c *gin.Context)
+	GetUploadedListingKitImage(c *gin.Context)
+	DeleteUploadedListingKitImage(c *gin.Context)
+	GenerateStudioDesigns(c *gin.Context)
+	GenerateStudioProductImages(c *gin.Context)
+	StartStudioAsyncJob(c *gin.Context)
+	GetStudioAsyncJob(c *gin.Context)
+	RegenerateSheinDataImage(c *gin.Context)
+	GetTaskResult(c *gin.Context)
+	GetTaskPreview(c *gin.Context)
+	GetTaskGenerationTasks(c *gin.Context)
+	GetTaskGenerationQueue(c *gin.Context)
+	GetTaskGenerationReviewSession(c *gin.Context)
+	GetTaskGenerationReviewPreview(c *gin.Context)
+	DispatchTaskGenerationNavigation(c *gin.Context)
+	RetryTaskGenerationTasks(c *gin.Context)
+	ExecuteTaskGenerationAction(c *gin.Context)
+	GetTaskRevisionHistory(c *gin.Context)
+	GetTaskRevisionHistoryDetail(c *gin.Context)
+	GetTaskExport(c *gin.Context)
+	ApplyTaskRevision(c *gin.Context)
+	ValidateTaskRevision(c *gin.Context)
+	SubmitTask(c *gin.Context)
+	RefreshSubmissionStatus(c *gin.Context)
+}
+
+type CustomerStoreHandler interface {
 	ListTenantStores(c *gin.Context)
 	CreateTenantStore(c *gin.Context)
 	UpdateTenantStore(c *gin.Context)
 	DeleteTenantStore(c *gin.Context)
 	ListSimpleTenantStores(c *gin.Context)
+	ListSheinStoreProfiles(c *gin.Context)
+	UpsertSheinStoreProfile(c *gin.Context)
+	DeleteSheinStoreProfile(c *gin.Context)
+	GetSheinStoreRoutingSettings(c *gin.Context)
+	UpdateSheinStoreRoutingSettings(c *gin.Context)
+	GetSheinSettings(c *gin.Context)
+	UpdateSheinSettings(c *gin.Context)
+	GetAIClientSettings(c *gin.Context)
+	UpdateAIClientSettings(c *gin.Context)
+	PreviewSheinPrice(c *gin.Context)
+	SearchSheinCategories(c *gin.Context)
+	UpdateSheinFinalDraft(c *gin.Context)
+	GetSubmissionEvents(c *gin.Context)
+	ClearSheinResolutionCache(c *gin.Context)
+}
+
+type PlatformAdminHandler interface {
 	ListAdminStores(c *gin.Context)
 	GetAdminStore(c *gin.Context)
 	CreateAdminStore(c *gin.Context)
@@ -220,6 +264,9 @@ type Handler interface {
 	UpdateAdminProductData(c *gin.Context)
 	UpdateAdminProductDataStatus(c *gin.Context)
 	DeleteAdminProductData(c *gin.Context)
+}
+
+type SubscriptionHandler interface {
 	GetCurrentSubscription(c *gin.Context)
 	ListSubscriptionModules(c *gin.Context)
 	ListSubscriptionEntitlements(c *gin.Context)
@@ -237,46 +284,19 @@ type Handler interface {
 	UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context)
 	SetPlatformTenantSubscriptionUsage(c *gin.Context)
 	ListPlatformTenantSubscriptionAuditLogs(c *gin.Context)
-	UploadListingKitImages(c *gin.Context)
-	GetUploadedListingKitImage(c *gin.Context)
-	DeleteUploadedListingKitImage(c *gin.Context)
-	GenerateStudioDesigns(c *gin.Context)
-	GenerateStudioProductImages(c *gin.Context)
-	StartStudioAsyncJob(c *gin.Context)
-	GetStudioAsyncJob(c *gin.Context)
-	RegenerateSheinDataImage(c *gin.Context)
-	GetTaskResult(c *gin.Context)
-	GetTaskPreview(c *gin.Context)
-	GetTaskGenerationTasks(c *gin.Context)
-	GetTaskGenerationQueue(c *gin.Context)
-	GetTaskGenerationReviewSession(c *gin.Context)
-	GetTaskGenerationReviewPreview(c *gin.Context)
-	DispatchTaskGenerationNavigation(c *gin.Context)
-	RetryTaskGenerationTasks(c *gin.Context)
-	ExecuteTaskGenerationAction(c *gin.Context)
-	GetTaskRevisionHistory(c *gin.Context)
-	GetTaskRevisionHistoryDetail(c *gin.Context)
-	GetTaskExport(c *gin.Context)
-	ApplyTaskRevision(c *gin.Context)
-	ValidateTaskRevision(c *gin.Context)
-	SubmitTask(c *gin.Context)
-	RefreshSubmissionStatus(c *gin.Context)
+}
+
+type SettingsHandler interface {
 	ListSettingsNamespaces(c *gin.Context)
 	GetSettingsNamespaceSchema(c *gin.Context)
 	GetSettingsNamespace(c *gin.Context)
 	UpdateSettingsNamespace(c *gin.Context)
-	ListSheinStoreProfiles(c *gin.Context)
-	UpsertSheinStoreProfile(c *gin.Context)
-	DeleteSheinStoreProfile(c *gin.Context)
-	GetSheinStoreRoutingSettings(c *gin.Context)
-	UpdateSheinStoreRoutingSettings(c *gin.Context)
-	GetSheinSettings(c *gin.Context)
-	UpdateSheinSettings(c *gin.Context)
-	GetAIClientSettings(c *gin.Context)
-	UpdateAIClientSettings(c *gin.Context)
-	PreviewSheinPrice(c *gin.Context)
-	SearchSheinCategories(c *gin.Context)
-	UpdateSheinFinalDraft(c *gin.Context)
-	GetSubmissionEvents(c *gin.Context)
-	ClearSheinResolutionCache(c *gin.Context)
+}
+
+type Handler interface {
+	TaskHandler
+	CustomerStoreHandler
+	PlatformAdminHandler
+	SubscriptionHandler
+	SettingsHandler
 }
