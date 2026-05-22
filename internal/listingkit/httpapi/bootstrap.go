@@ -30,13 +30,13 @@ import (
 type Module struct {
 	Handler              listingkit.Handler
 	StudioSessionHandler listingkit.StudioSessionHandler
-	Service              listingkit.Service
+	Service              moduleService
 	Pool                 worker.WorkerPool
 	Closers              []func() error
 }
 
 type ServiceBundle struct {
-	Service                        listingkit.Service
+	Service                        moduleService
 	TaskRepository                 listingkit.Repository
 	StoreRepository                listingadmin.StoreRepository
 	StoreStatisticsRepository      listingadmin.StoreStatisticsRepository
@@ -51,6 +51,18 @@ type ServiceBundle struct {
 	ProductDataRepository          listingadmin.ProductDataRepository
 	SubscriptionService            *listingsubscription.Service
 	Closers                        []func() error
+}
+
+type temporalWorkerService interface {
+	listingkit.SheinPublishActivityHostSource
+	listingkit.LayerWorkflowActivityHostSource
+}
+
+type moduleService interface {
+	listingkit.HandlerService
+	listingkit.InternalListingKitService
+	listingkit.StudioSessionHandlerService
+	temporalWorkerService
 }
 
 type BuildModuleInput struct {
@@ -299,11 +311,7 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 
-	studioSessionService, ok := bundle.Service.(listingkit.StudioSessionHandlerService)
-	if !ok {
-		return nil, fmt.Errorf("listing kit service does not implement studio session handler service")
-	}
-	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(studioSessionService)
+	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.Service)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
 	}
@@ -550,8 +558,13 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 		closers.Add(temporalCloser)
 	}
 
+	moduleSvc, ok := svc.(moduleService)
+	if !ok {
+		return nil, fmt.Errorf("listing kit service does not implement module service contract")
+	}
+
 	return &ServiceBundle{
-		Service:                        svc,
+		Service:                        moduleSvc,
 		TaskRepository:                 repo,
 		StoreRepository:                storeRepo,
 		StoreStatisticsRepository:      storeStatisticsRepo,

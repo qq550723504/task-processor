@@ -40,7 +40,11 @@ type LayerWorkflowActivityHost interface {
 	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
 }
 
-func NewLayerWorkflowActivityHost(svc Service) (LayerWorkflowActivityHost, error) {
+type LayerWorkflowActivityHostSource interface {
+	LayerWorkflowActivityHost
+}
+
+func NewLayerWorkflowActivityHost(svc any) (LayerWorkflowActivityHost, error) {
 	if svc == nil {
 		return nil, fmt.Errorf("listingkit service is nil")
 	}

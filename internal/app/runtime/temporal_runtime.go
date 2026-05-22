@@ -41,7 +41,12 @@ func DialListingKitSheinPublishTemporalClient(logger *logrus.Logger) (listingkit
 	return listingtemporal.NewClient(rawClient), closeFn, nil
 }
 
-func StartListingKitSheinPublishTemporalWorker(svc listingkit.Service, logger *logrus.Logger) (func() error, error) {
+type listingKitTemporalWorkerService interface {
+	listingkit.SheinPublishActivityHostSource
+	listingkit.LayerWorkflowActivityHostSource
+}
+
+func StartListingKitSheinPublishTemporalWorker(svc listingKitTemporalWorkerService, logger *logrus.Logger) (func() error, error) {
 	if !envBool(envListingKitTemporalEnabled) {
 		return nil, nil
 	}

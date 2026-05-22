@@ -122,7 +122,11 @@ type SheinSubmitRemoteActivityErrorDetails struct {
 	Snapshot     *sheinpub.SubmitSnapshot     `json:"snapshot,omitempty"`
 }
 
-func NewSheinPublishActivityHost(svc Service) (SheinPublishActivityHost, error) {
+type SheinPublishActivityHostSource interface {
+	SheinPublishActivityHost
+}
+
+func NewSheinPublishActivityHost(svc any) (SheinPublishActivityHost, error) {
 	if svc == nil {
 		return nil, fmt.Errorf("listingkit service is nil")
 	}
