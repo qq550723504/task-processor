@@ -22,6 +22,12 @@ type handler struct {
 	storeAdminService           listingkit.StoreAdminService
 	studioAsyncJobs             *studioAsyncJobStore
 	initErr                     error
+	adminHandlers
+	subscriptionDependencies
+	settingsService *settingsService
+}
+
+type adminHandlers struct {
 	storeHandler                *listingadmin.StoreHandler
 	storeStatisticsHandler      *listingadmin.StoreStatisticsHandler
 	importTaskHandler           *listingadmin.ImportTaskHandler
@@ -33,11 +39,13 @@ type handler struct {
 	productImportMappingHandler *listingadmin.ProductImportMappingHandler
 	categoryHandler             *listingadmin.CategoryHandler
 	productDataHandler          *listingadmin.ProductDataHandler
-	subscriptionService         *listingsubscription.Service
-	subscriptionHandler         *listingsubscription.Handler
-	settingsService             *settingsService
-	platformAdminUsers          []string
-	platformAdminRoles          []string
+}
+
+type subscriptionDependencies struct {
+	subscriptionService *listingsubscription.Service
+	subscriptionHandler *listingsubscription.Handler
+	platformAdminUsers  []string
+	platformAdminRoles  []string
 }
 
 type routeHandlerService interface {
