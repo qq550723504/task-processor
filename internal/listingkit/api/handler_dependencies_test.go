@@ -19,9 +19,11 @@ func TestWithDependenciesConfiguresSubscriptionState(t *testing.T) {
 	roles := []string{"platform-role"}
 
 	h, err := NewHandler(&stubGenerationTaskService{}, WithDependencies(HandlerDependencies{
-		SubscriptionService: service,
-		PlatformAdminUsers:  users,
-		PlatformAdminRoles:  roles,
+		Subscription: SubscriptionDependencies{
+			Service:            service,
+			PlatformAdminUsers: users,
+			PlatformAdminRoles: roles,
+		},
 	}))
 	if err != nil {
 		t.Fatalf("create handler: %v", err)

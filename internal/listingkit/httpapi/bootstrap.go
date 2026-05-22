@@ -652,21 +652,25 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 func buildHandlerOptions(input BuildModuleInput, bundle *ServiceBundle) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
 		listingkitapi.WithDependencies(listingkitapi.HandlerDependencies{
-			StudioAsyncJobStorePath:        input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath,
-			PlatformAdminUsers:             input.ServiceInput.Config.ListingKit.PlatformAdminUsers,
-			PlatformAdminRoles:             input.ServiceInput.Config.ListingKit.PlatformAdminRoles,
-			StoreRepository:                bundle.StoreRepository,
-			StoreStatisticsRepository:      bundle.StoreStatisticsRepository,
-			ImportTaskRepository:           bundle.ImportTaskRepository,
-			FilterRuleRepository:           bundle.FilterRuleRepository,
-			ProfitRuleRepository:           bundle.ProfitRuleRepository,
-			PricingRuleRepository:          bundle.PricingRuleRepository,
-			OperationStrategyRepository:    bundle.OperationStrategyRepository,
-			SensitiveWordRepository:        bundle.SensitiveWordRepository,
-			ProductImportMappingRepository: bundle.ProductImportMappingRepository,
-			CategoryRepository:             bundle.CategoryRepository,
-			ProductDataRepository:          bundle.ProductDataRepository,
-			SubscriptionService:            bundle.SubscriptionService,
+			StudioAsyncJobStorePath: input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath,
+			Admin: listingkitapi.AdminHandlerDependencies{
+				StoreRepository:                bundle.StoreRepository,
+				StoreStatisticsRepository:      bundle.StoreStatisticsRepository,
+				ImportTaskRepository:           bundle.ImportTaskRepository,
+				FilterRuleRepository:           bundle.FilterRuleRepository,
+				ProfitRuleRepository:           bundle.ProfitRuleRepository,
+				PricingRuleRepository:          bundle.PricingRuleRepository,
+				OperationStrategyRepository:    bundle.OperationStrategyRepository,
+				SensitiveWordRepository:        bundle.SensitiveWordRepository,
+				ProductImportMappingRepository: bundle.ProductImportMappingRepository,
+				CategoryRepository:             bundle.CategoryRepository,
+				ProductDataRepository:          bundle.ProductDataRepository,
+			},
+			Subscription: listingkitapi.SubscriptionDependencies{
+				Service:            bundle.SubscriptionService,
+				PlatformAdminUsers: input.ServiceInput.Config.ListingKit.PlatformAdminUsers,
+				PlatformAdminRoles: input.ServiceInput.Config.ListingKit.PlatformAdminRoles,
+			},
 		}),
 	}
 }

@@ -65,10 +65,7 @@ type uploadedImageDeleteService interface {
 
 type HandlerOption func(*handler)
 
-type HandlerDependencies struct {
-	StudioAsyncJobStorePath        string
-	PlatformAdminUsers             []string
-	PlatformAdminRoles             []string
+type AdminHandlerDependencies struct {
 	StoreRepository                listingadmin.StoreRepository
 	StoreStatisticsRepository      listingadmin.StoreStatisticsRepository
 	ImportTaskRepository           listingadmin.ImportTaskRepository
@@ -80,7 +77,18 @@ type HandlerDependencies struct {
 	ProductImportMappingRepository listingadmin.ProductImportMappingRepository
 	CategoryRepository             listingadmin.CategoryRepository
 	ProductDataRepository          listingadmin.ProductDataRepository
-	SubscriptionService            *listingsubscription.Service
+}
+
+type SubscriptionDependencies struct {
+	Service            *listingsubscription.Service
+	PlatformAdminUsers []string
+	PlatformAdminRoles []string
+}
+
+type HandlerDependencies struct {
+	StudioAsyncJobStorePath string
+	Admin                   AdminHandlerDependencies
+	Subscription            SubscriptionDependencies
 }
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -127,19 +135,19 @@ func withSubscriptionDependency[Dep comparable](dep Dep, apply func(Dep, *subscr
 func WithDependencies(deps HandlerDependencies) HandlerOption {
 	options := []HandlerOption{
 		WithStudioAsyncJobStorePath(deps.StudioAsyncJobStorePath),
-		WithPlatformSubscriptionAccess(deps.PlatformAdminUsers, deps.PlatformAdminRoles),
-		WithStoreRepository(deps.StoreRepository),
-		WithStoreStatisticsRepository(deps.StoreStatisticsRepository),
-		WithImportTaskRepository(deps.ImportTaskRepository),
-		WithFilterRuleRepository(deps.FilterRuleRepository),
-		WithProfitRuleRepository(deps.ProfitRuleRepository),
-		WithPricingRuleRepository(deps.PricingRuleRepository),
-		WithOperationStrategyRepository(deps.OperationStrategyRepository),
-		WithSensitiveWordRepository(deps.SensitiveWordRepository),
-		WithProductImportMappingRepository(deps.ProductImportMappingRepository),
-		WithCategoryRepository(deps.CategoryRepository),
-		WithProductDataRepository(deps.ProductDataRepository),
-		WithSubscriptionService(deps.SubscriptionService),
+		WithPlatformSubscriptionAccess(deps.Subscription.PlatformAdminUsers, deps.Subscription.PlatformAdminRoles),
+		WithStoreRepository(deps.Admin.StoreRepository),
+		WithStoreStatisticsRepository(deps.Admin.StoreStatisticsRepository),
+		WithImportTaskRepository(deps.Admin.ImportTaskRepository),
+		WithFilterRuleRepository(deps.Admin.FilterRuleRepository),
+		WithProfitRuleRepository(deps.Admin.ProfitRuleRepository),
+		WithPricingRuleRepository(deps.Admin.PricingRuleRepository),
+		WithOperationStrategyRepository(deps.Admin.OperationStrategyRepository),
+		WithSensitiveWordRepository(deps.Admin.SensitiveWordRepository),
+		WithProductImportMappingRepository(deps.Admin.ProductImportMappingRepository),
+		WithCategoryRepository(deps.Admin.CategoryRepository),
+		WithProductDataRepository(deps.Admin.ProductDataRepository),
+		WithSubscriptionService(deps.Subscription.Service),
 	}
 	return func(h *handler) {
 		for _, option := range options {
