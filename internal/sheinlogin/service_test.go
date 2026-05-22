@@ -3,6 +3,8 @@ package sheinlogin
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	miniredis "github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 type stubAccountProvider struct {
@@ -84,6 +87,14 @@ func (s *stubStoreClient) UpdateStoreStatus(req *managementapi.StoreStatusUpdate
 	return s.updateStoreStatusErr == nil, s.updateStoreStatusErr
 }
 
+type stubSheinCookieProvider struct {
+	result *sheinclient.CookieLookupResult
+}
+
+func (p stubSheinCookieProvider) GetCookie(context.Context, int64) (*sheinclient.CookieLookupResult, error) {
+	return p.result, nil
+}
+
 func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{"cookies": []any{}}, time.Hour); err != nil {
@@ -95,6 +106,43 @@ func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	}
 	if !result.Success || result.LoginType != "existing" {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestServiceListWarehousesUsesInjectedAPIClientFactory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != sheinclient.GetWarehousesEndpoint() {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"0","msg":"OK","info":{"data":[{"warehouse_name":"demo-wh","warehouse_code":"WH001","sale_country_list":["US"],"warehouse_type":3}],"meta":{"count":1}}}`))
+	}))
+	defer server.Close()
+
+	svc := newTestService(t, &stubAutomation{})
+	svc.sheinAPIClientFor = func(Account) *sheinclient.APIClient {
+		return sheinclient.NewAPIClientWithStoreConfig(2, &sheinclient.StoreConfig{
+			ID:       2,
+			TenantID: 1,
+			LoginURL: server.URL,
+		}, stubSheinCookieProvider{
+			result: &sheinclient.CookieLookupResult{
+				TenantID:   1,
+				CookieJSON: `[{"name":"sid","value":"ok","domain":".shein.com","path":"/"}]`,
+			},
+		})
+	}
+
+	items, err := svc.ListWarehouses(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("ListWarehouses: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("warehouse count = %d, want 1", len(items))
+	}
+	if items[0].WarehouseCode != "WH001" {
+		t.Fatalf("warehouse code = %q, want WH001", items[0].WarehouseCode)
 	}
 }
 
@@ -201,7 +249,7 @@ func TestServiceLoginSyncsResolvedStoreIDWhenStoredValueIsEmpty(t *testing.T) {
 	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
 		return 1862049307, nil
 	}
-	svc.storeClientFor = func(int64) sheinLoginStoreClient {
+	svc.storeClientFor = func(int64) StoreSyncClient {
 		return storeClient
 	}
 	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
@@ -246,7 +294,7 @@ func TestServiceLoginDisablesStoreWhenResolvedStoreIDDiffers(t *testing.T) {
 	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
 		return 1862049307, nil
 	}
-	svc.storeClientFor = func(int64) sheinLoginStoreClient {
+	svc.storeClientFor = func(int64) StoreSyncClient {
 		return storeClient
 	}
 	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
@@ -309,7 +357,7 @@ func TestServiceLoginDisablesCurrentStoreWhenDuplicateStoreIDExists(t *testing.T
 	svc.resolveStoreID = func(context.Context, Account) (int64, error) {
 		return 1862049307, nil
 	}
-	svc.storeClientFor = func(int64) sheinLoginStoreClient {
+	svc.storeClientFor = func(int64) StoreSyncClient {
 		return storeClient
 	}
 	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {

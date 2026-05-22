@@ -138,7 +138,9 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 	if err != nil {
 		return nil, nil, err
 	}
-	svc.AttachManagementClient(deps.managementClient)
+	svc.ConfigureRuntimeSheinAPIClients()
+	svc.ConfigureStoreSyncClientFactory(sheinlogin.NewManagementStoreSyncClientFactory(deps.managementClient))
+	svc.ConfigureDuplicateStoreLookup(sheinlogin.NewManagementDuplicateStoreLookup(deps.managementClient))
 	sheinclient.ConfigureLocalLoginRefresher(svc)
 	return sheinlogin.NewHandler(svc), svc.Close, nil
 }
@@ -234,12 +236,8 @@ func configureSheinLoginService(cfg *config.Config) {
 		return
 	}
 	loginService := cfg.Platforms.Shein.LoginService
-	tenantID := strings.TrimSpace(loginService.TenantID)
-	if tenantID == "" {
-		tenantID = strings.TrimSpace(cfg.Management.TenantID)
-	}
 	identifier := strings.TrimSpace(loginService.Identifier)
-	sheinclient.ConfigureLoginAccount(tenantID, identifier)
+	sheinclient.ConfigureLoginAccount("", identifier)
 }
 
 func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {

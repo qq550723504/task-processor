@@ -122,11 +122,15 @@ func (c *APIClient) applyStoreConfig(storeInfo *StoreConfig) {
 		c.logger.Infof("店铺 %d 配置了代理地址: %s", c.storeID, storeInfo.Proxy)
 	}
 
-	// 根据店铺的loginUrl来设置客户端的端点
-	if storeInfo.LoginURL == "sso.geiwohuo.com" {
+	// 根据店铺的 loginUrl 来设置客户端端点；本地调试可传完整 URL。
+	switch {
+	case strings.HasPrefix(storeInfo.LoginURL, "http://") || strings.HasPrefix(storeInfo.LoginURL, "https://"):
+		c.baseURL = strings.TrimRight(storeInfo.LoginURL, "/")
+		c.logger.Infof("店铺 %d 使用显式端点: %s", c.storeID, c.baseURL)
+	case storeInfo.LoginURL == "sso.geiwohuo.com":
 		c.baseURL = "https://sso.geiwohuo.com"
 		c.logger.Infof("店铺 %d 使用第三方端点: %s", c.storeID, c.baseURL)
-	} else {
+	default:
 		c.logger.Infof("店铺 %d 使用自营端点: %s", c.storeID, c.baseURL)
 	}
 }

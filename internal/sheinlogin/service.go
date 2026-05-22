@@ -13,7 +13,6 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
@@ -26,7 +25,6 @@ type LocalRefresher interface {
 
 type Service struct {
 	provider           AccountProvider
-	managementClient   *management.ClientManager
 	store              *RedisStore
 	runtime            *Runtime
 	automation         Automation
@@ -40,12 +38,13 @@ type Service struct {
 	viewportHeight     int
 	sessionsMu         sync.Mutex
 	sessions           map[int64]VerifySession
+	sheinAPIClientFor  func(account Account) *sheinclient.APIClient
 	resolveStoreID     func(ctx context.Context, account Account) (int64, error)
-	storeClientFor     func(tenantID int64) sheinLoginStoreClient
+	storeClientFor     func(tenantID int64) StoreSyncClient
 	findDuplicateStore func(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error)
 }
 
-type sheinLoginStoreClient interface {
+type StoreSyncClient interface {
 	UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error)
 	UpdateStoreStatus(req *managementapi.StoreStatusUpdateReqDTO) (bool, error)
 }
@@ -83,13 +82,6 @@ func (s *Service) Close() error {
 	}
 	s.sessionsMu.Unlock()
 	return s.store.Close()
-}
-
-func (s *Service) AttachManagementClient(client *management.ClientManager) {
-	if s == nil {
-		return
-	}
-	s.managementClient = client
 }
 
 func (s *Service) Health(ctx context.Context) ServiceHealth {
@@ -161,10 +153,10 @@ func (s *Service) ListWarehouses(ctx context.Context, tenantID int64, storeID in
 	if err != nil {
 		return nil, err
 	}
-	if s.managementClient == nil {
-		return nil, fmt.Errorf("management client is nil")
+	apiClient := s.sheinAPIClient(Account{StoreID: storeID, TenantID: tenantID})
+	if apiClient == nil {
+		return nil, fmt.Errorf("shein api client is nil")
 	}
-	apiClient := sheinclient.NewAPIClient(storeID, s.managementClient)
 	if !apiClient.HasCookies() {
 		if err := apiClient.ReloadCookies(); err != nil {
 			return nil, err
@@ -733,11 +725,10 @@ func (s *Service) resolveActualStoreID(ctx context.Context, account Account) (in
 	if s != nil && s.resolveStoreID != nil {
 		return s.resolveStoreID(ctx, account)
 	}
-	if s == nil || s.managementClient == nil {
-		return 0, fmt.Errorf("management client is nil")
+	apiClient := s.sheinAPIClient(account)
+	if apiClient == nil {
+		return 0, fmt.Errorf("shein api client is nil")
 	}
-
-	apiClient := sheinclient.NewAPIClient(account.StoreID, s.managementClient)
 	if !apiClient.HasCookies() {
 		if err := apiClient.ReloadCookies(); err != nil {
 			return 0, err
@@ -762,57 +753,73 @@ func (s *Service) resolveActualStoreID(ctx context.Context, account Account) (in
 	return supplierInfo.Info.StoreID, nil
 }
 
-func (s *Service) storeClient(tenantID int64) sheinLoginStoreClient {
+func (s *Service) storeClient(tenantID int64) StoreSyncClient {
 	if s != nil && s.storeClientFor != nil {
 		return s.storeClientFor(tenantID)
 	}
-	if s == nil || s.managementClient == nil {
-		return nil
-	}
-	return s.managementClient.GetStoreClientWithTenant(tenantID)
+	return nil
 }
 
 func (s *Service) lookupDuplicateStore(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error) {
 	if s != nil && s.findDuplicateStore != nil {
 		return s.findDuplicateStore(ctx, account, actualStoreID)
 	}
-	if s == nil || s.managementClient == nil || strings.TrimSpace(actualStoreID) == "" {
-		return nil, nil
-	}
-
-	storeClient := s.managementClient.GetStoreClient()
-	if storeClient == nil {
-		return nil, nil
-	}
-
-	pageNo := 1
-	pageSize := 200
-	for {
-		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
-			Platform: "SHEIN",
-			PageNo:   pageNo,
-			PageSize: pageSize,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range page.List {
-			if item == nil || item.ID == account.StoreID {
-				continue
-			}
-			if strings.EqualFold(strings.TrimSpace(item.Platform), "shein") && strings.TrimSpace(item.StoreID) == actualStoreID {
-				return item, nil
-			}
-		}
-		if int64(pageNo*pageSize) >= page.Total || len(page.List) == 0 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-		pageNo++
-	}
 	return nil, nil
+}
+
+func (s *Service) ConfigureRuntimeSheinAPIClients() {
+	if s == nil {
+		return
+	}
+	s.sheinAPIClientFor = func(account Account) *sheinclient.APIClient {
+		return sheinclient.NewAPIClientWithStoreConfig(account.StoreID, &sheinclient.StoreConfig{
+			ID:       account.StoreID,
+			TenantID: account.TenantID,
+			Name:     strings.TrimSpace(account.ShopName),
+			Platform: strings.TrimSpace(account.Platform),
+			LoginURL: strings.TrimSpace(account.LoginURL),
+			Proxy:    strings.TrimSpace(account.Proxy),
+			StoreID:  strings.TrimSpace(account.StoreName),
+		}, serviceCookieProvider{store: s.store, tenantID: account.TenantID})
+	}
+}
+
+func (s *Service) ConfigureStoreSyncClientFactory(factory func(tenantID int64) StoreSyncClient) {
+	if s == nil {
+		return
+	}
+	s.storeClientFor = factory
+}
+
+func (s *Service) ConfigureDuplicateStoreLookup(lookup func(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error)) {
+	if s == nil {
+		return
+	}
+	s.findDuplicateStore = lookup
+}
+
+func (s *Service) sheinAPIClient(account Account) *sheinclient.APIClient {
+	if s != nil && s.sheinAPIClientFor != nil {
+		return s.sheinAPIClientFor(account)
+	}
+	return nil
+}
+
+type serviceCookieProvider struct {
+	store    *RedisStore
+	tenantID int64
+}
+
+func (p serviceCookieProvider) GetCookie(ctx context.Context, storeID int64) (*sheinclient.CookieLookupResult, error) {
+	if p.store == nil || p.tenantID <= 0 || storeID <= 0 {
+		return nil, nil
+	}
+	raw, ok, err := p.store.LoadCookieState(ctx, p.tenantID, storeID)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return &sheinclient.CookieLookupResult{
+		TenantID:   p.tenantID,
+		CookieJSON: raw,
+	}, nil
 }
