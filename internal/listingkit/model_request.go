@@ -206,7 +206,6 @@ type AIClientSettings struct {
 	APIKeySet     bool   `json:"api_key_set"`
 	BaseURL       string `json:"base_url,omitempty"`
 	Model         string `json:"model,omitempty"`
-	TimeoutSecond int    `json:"timeout_second,omitempty"`
 	Enabled       bool   `json:"enabled"`
 	UpdatedAt     string `json:"updated_at,omitempty"`
 	ResolvedScope string `json:"resolved_scope,omitempty"`

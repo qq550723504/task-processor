@@ -205,3 +205,27 @@ func TestListingKitRoutedImageClientUsesGPTImage2ByDefault(t *testing.T) {
 		t.Fatal("did not expect nanobanana client to receive default request")
 	}
 }
+
+func TestEnforceListingKitImageClientTimeoutClampsImageClients(t *testing.T) {
+	cfg := &openaiclient.ClientConfig{Timeout: 60 * time.Second}
+
+	got := enforceListingKitImageClientTimeout(listingKitImageClientNameNanobanana, cfg)
+	if got == cfg {
+		t.Fatal("expected timeout clamp to clone image client config")
+	}
+	if got.Timeout != listingKitStudioImageMinTimeout {
+		t.Fatalf("timeout = %v, want %v", got.Timeout, listingKitStudioImageMinTimeout)
+	}
+	if cfg.Timeout != 60*time.Second {
+		t.Fatalf("original timeout mutated = %v, want 60s", cfg.Timeout)
+	}
+}
+
+func TestEnforceListingKitImageClientTimeoutLeavesNonImageClientsUnchanged(t *testing.T) {
+	cfg := &openaiclient.ClientConfig{Timeout: 60 * time.Second}
+
+	got := enforceListingKitImageClientTimeout("default", cfg)
+	if got != cfg {
+		t.Fatal("expected non-image client config to be reused")
+	}
+}

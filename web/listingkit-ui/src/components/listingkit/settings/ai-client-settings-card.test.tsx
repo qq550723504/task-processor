@@ -37,7 +37,6 @@ describe("AIClientSettingsCard", () => {
             : clientName === "image_gpt_image_2"
               ? "gpt-image-2"
               : "gpt-4.1-mini",
-        timeout_second: 45,
         enabled: true,
       },
       isLoading: false,
@@ -81,7 +80,6 @@ describe("AIClientSettingsCard", () => {
       api_key: "new-secret",
       base_url: "https://new-endpoint.example.com/v1",
       model: "gpt-4.1",
-      timeout_second: 45,
       enabled: true,
     });
   });
@@ -136,7 +134,6 @@ describe("AIClientSettingsCard", () => {
         api_key_set: true,
         base_url: "https://user-ai.example.com/v1",
         model: "gemini-3.1-flash-lite",
-        timeout_second: 45,
         enabled: true,
       },
       isLoading: false,

@@ -10,6 +10,7 @@ export async function generateSheinStudioDesigns(
   body: SheinStudioGenerateRequest,
   options?: {
     onJobStarted?: (jobId: string) => void;
+    sessionId?: string;
   },
 ) {
   const payload = await apiAsyncRequest<{
@@ -52,6 +53,7 @@ export async function generateSheinStudioDesigns(
     },
     timeoutMs: 3600000,
     onJobStarted: options?.onJobStarted,
+    asyncJobSessionId: options?.sessionId,
   });
   return {
     prompt: payload.prompt,

@@ -12,14 +12,14 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 	store := &fakeAIClientCredentialStore{
 		credentials: map[string]*openaiclient.AIClientCredential{
 			"tenant-a||default": {
-			TenantID:      "tenant-a",
-			ClientName:    "default",
-			APIKey:        "existing-key",
-			BaseURL:       "https://old.example.test/v1",
-			Model:         "old-model",
-			TimeoutSecond: 30,
-			Enabled:       true,
-			UpdatedAt:     time.Now(),
+				TenantID:      "tenant-a",
+				ClientName:    "default",
+				APIKey:        "existing-key",
+				BaseURL:       "https://old.example.test/v1",
+				Model:         "old-model",
+				TimeoutSecond: 30,
+				Enabled:       true,
+				UpdatedAt:     time.Now(),
 			},
 		},
 	}
@@ -27,12 +27,11 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
 
 	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
-		Scope:         "tenant",
-		ClientName:    "default",
-		BaseURL:       "https://new.example.test/v1",
-		Model:         "new-model",
-		TimeoutSecond: 45,
-		Enabled:       true,
+		Scope:      "tenant",
+		ClientName: "default",
+		BaseURL:    "https://new.example.test/v1",
+		Model:      "new-model",
+		Enabled:    true,
 	})
 	if err != nil {
 		t.Fatalf("UpdateAIClientSettings returned error: %v", err)
@@ -44,7 +43,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 	if store.saved.APIKey != "existing-key" {
 		t.Fatalf("saved APIKey = %q, want existing-key", store.saved.APIKey)
 	}
-	if store.saved.BaseURL != "https://new.example.test/v1" || store.saved.Model != "new-model" || store.saved.TimeoutSecond != 45 {
+	if store.saved.BaseURL != "https://new.example.test/v1" || store.saved.Model != "new-model" || store.saved.TimeoutSecond != 0 {
 		t.Fatalf("saved credential = %#v", store.saved)
 	}
 }
@@ -146,5 +145,57 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 	}
 	if missing.APIKeySet {
 		t.Fatal("missing config should not report api key set")
+	}
+}
+
+func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
+	store := &fakeAIClientCredentialStore{}
+	svc := &service{aiCredentialStore: store}
+	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
+
+	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
+		Scope:      "tenant",
+		ClientName: "image_nanobanana",
+		APIKey:     "key",
+		BaseURL:    "https://example.test/v1",
+		Model:      "nano-banana-fast",
+		Enabled:    true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAIClientSettings returned error: %v", err)
+	}
+	if store.saved == nil {
+		t.Fatal("expected credential to be saved")
+	}
+	if store.saved.TimeoutSecond != 0 {
+		t.Fatalf("saved timeout = %d, want 0", store.saved.TimeoutSecond)
+	}
+}
+
+func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
+	now := time.Now()
+	store := &fakeAIClientCredentialStore{
+		credentials: map[string]*openaiclient.AIClientCredential{
+			aiCredentialKey("tenant-a", "", "image_gpt_image_2"): {
+				TenantID:      "tenant-a",
+				ClientName:    "image_gpt_image_2",
+				APIKey:        "tenant-key",
+				BaseURL:       "https://tenant.example.test/v1",
+				Model:         "gpt-image-2",
+				TimeoutSecond: 60,
+				Enabled:       true,
+				UpdatedAt:     now,
+			},
+		},
+	}
+	svc := &service{aiCredentialStore: store}
+	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
+
+	settings, err := svc.GetAIClientSettings(ctx, "tenant", "image_gpt_image_2")
+	if err != nil {
+		t.Fatalf("GetAIClientSettings returned error: %v", err)
+	}
+	if settings.ClientName != "image_gpt_image_2" {
+		t.Fatalf("client name = %q, want image_gpt_image_2", settings.ClientName)
 	}
 }

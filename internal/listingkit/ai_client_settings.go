@@ -22,7 +22,7 @@ func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientN
 	}
 	settings := &AIClientSettings{
 		Scope:         requestedScope,
-		ClientName: normalizeAIClientName(clientName),
+		ClientName:    normalizeAIClientName(clientName),
 		Enabled:       true,
 		ResolvedScope: resolvedScope,
 	}
@@ -32,7 +32,6 @@ func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientN
 	settings.APIKeySet = credential.APIKey != ""
 	settings.BaseURL = credential.BaseURL
 	settings.Model = credential.Model
-	settings.TimeoutSecond = credential.TimeoutSecond
 	settings.Enabled = credential.Enabled
 	settings.UpdatedAt = credential.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 	return settings, nil
@@ -97,7 +96,7 @@ func (s *service) UpdateAIClientSettings(ctx context.Context, req *AIClientSetti
 		APIKey:        apiKey,
 		BaseURL:       req.BaseURL,
 		Model:         req.Model,
-		TimeoutSecond: req.TimeoutSecond,
+		TimeoutSecond: 0,
 		Enabled:       req.Enabled,
 	}
 	if err := s.aiCredentialStore.SaveCredential(ctx, credential); err != nil {

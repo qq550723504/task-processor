@@ -32,8 +32,9 @@ const (
 )
 
 type startStudioAsyncJobRequest struct {
-	Path string          `json:"path"`
-	Body json.RawMessage `json:"body"`
+	Path      string          `json:"path"`
+	Body      json.RawMessage `json:"body"`
+	SessionID string          `json:"session_id,omitempty"`
 }
 
 type studioAsyncJob struct {
@@ -267,7 +268,11 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	job := h.studioAsyncJobs.create(req.Path)
 	ctx := detachedRequestContext(c)
 	baseURL := requestBaseURL(c)
-	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, baseURL, metric)
+	sessionID := strings.TrimSpace(req.SessionID)
+	if req.Path == "/studio/designs" {
+		h.syncStudioDesignAsyncJobSession(requestContext(c), sessionID, studioAsyncJobRunning, job.ID, "")
+	}
+	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, sessionID, baseURL, metric)
 
 	c.JSON(http.StatusAccepted, job)
 }
@@ -281,7 +286,7 @@ func (h *handler) GetStudioAsyncJob(c *gin.Context) {
 	c.JSON(http.StatusOK, job)
 }
 
-func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, baseURL string, usageMetric string) {
+func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string) {
 	var result any
 	var err error
 	status := http.StatusInternalServerError
@@ -304,6 +309,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 				response.Images[idx].ImageURL = absolutizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
 			}
 		}
+		h.syncStudioDesignAsyncJobSession(ctx, sessionID, studioAsyncJobSucceeded, jobID, "")
 		result = response
 	case "/studio/product-images":
 		var req listingkit.StudioProductImageRequest
@@ -332,6 +338,9 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		if strings.Contains(err.Error(), "invalid request") {
 			status = http.StatusBadRequest
 		}
+		if path == "/studio/designs" {
+			h.syncStudioDesignAsyncJobSession(ctx, sessionID, studioAsyncJobFailed, jobID, err.Error())
+		}
 		h.studioAsyncJobs.fail(jobID, err, status)
 		return
 	}
@@ -339,6 +348,34 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
 	}
 	h.studioAsyncJobs.succeed(jobID, result)
+}
+
+func (h *handler) syncStudioDesignAsyncJobSession(
+	ctx context.Context,
+	sessionID string,
+	jobStatus studioAsyncJobStatus,
+	jobID string,
+	errMessage string,
+) {
+	if h == nil || h.studioSessionService == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+
+	sessionStatus := listingkit.SheinStudioSessionStatusGenerating
+	switch jobStatus {
+	case studioAsyncJobSucceeded:
+		sessionStatus = listingkit.SheinStudioSessionStatusGenerated
+	case studioAsyncJobFailed:
+		sessionStatus = listingkit.SheinStudioSessionStatusFailed
+	}
+
+	trimmedJobID := strings.TrimSpace(jobID)
+	trimmedErr := strings.TrimSpace(errMessage)
+	_, _ = h.studioSessionService.UpdateStudioSession(ctx, sessionID, &listingkit.UpdateStudioSessionRequest{
+		Status:          &sessionStatus,
+		GenerationJobID: &trimmedJobID,
+		GenerationError: &trimmedErr,
+	})
 }
 
 func requestBaseURL(c *gin.Context) string {

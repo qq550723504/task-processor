@@ -23,6 +23,7 @@ type RequestOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
   onJobStarted?: (jobId: string) => void;
+  asyncJobSessionId?: string;
 };
 
 type FormRequestOptions = {
@@ -145,7 +146,8 @@ export async function apiAsyncRequest<T>(
     body,
     timeoutMs = 3600000,
     onJobStarted,
-  }: Pick<RequestOptions, "body" | "timeoutMs" | "onJobStarted"> = {},
+    asyncJobSessionId,
+  }: Pick<RequestOptions, "body" | "timeoutMs" | "onJobStarted" | "asyncJobSessionId"> = {},
 ): Promise<T> {
   const resumeKey = buildAsyncJobResumeKey(path, body ?? {});
   const resumed = loadAsyncJobResumeEntry(resumeKey);
@@ -153,7 +155,7 @@ export async function apiAsyncRequest<T>(
   let resumedFromStorage = Boolean(startedJobId);
 
   if (!startedJobId) {
-    const backendJob = await startBackendAsyncJob<T>(path, body);
+    const backendJob = await startBackendAsyncJob<T>(path, body, asyncJobSessionId);
     startedJobId = backendJob.jobId;
     onJobStarted?.(startedJobId);
     saveAsyncJobResumeEntry(resumeKey, startedJobId, "backend");
@@ -360,7 +362,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function startBackendAsyncJob<T>(path: string, body: unknown) {
+async function startBackendAsyncJob<T>(path: string, body: unknown, sessionId?: string) {
   const response = await fetchWithRetry(
     buildApiUrl("/studio/async-jobs"),
     {
@@ -369,7 +371,7 @@ async function startBackendAsyncJob<T>(path: string, body: unknown) {
         Accept: "application/json",
         "Content-Type": "application/json",
       }),
-      body: JSON.stringify({ path, body }),
+      body: JSON.stringify({ path, body, session_id: sessionId?.trim() || undefined }),
     },
     { retries: 0 },
   );

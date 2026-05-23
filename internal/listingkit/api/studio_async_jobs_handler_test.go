@@ -276,3 +276,46 @@ func TestStudioAsyncJobHandlerUsesExplicitFileStorePathOption(t *testing.T) {
 		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
 	}
 }
+
+func TestStudioAsyncJobSyncsSessionWhenDesignJobStarts(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubGenerationTaskService{
+		studioDesigns: &listingkit.StudioDesignResponse{
+			Prompt: "retro cherries",
+			Images: []listingkit.StudioGeneratedImage{{
+				ID:       "design-1",
+				ImageURL: "https://example.com/design.png",
+			}},
+		},
+	}
+	h, err := NewHandler(svc, WithSubscriptionService(activeStudioSubscriptionService(t)))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/async-jobs", h.StartStudioAsyncJob)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/async-jobs", strings.NewReader(`{"path":"/studio/designs","session_id":"session-1","body":{"prompt":"retro cherries","count":1}}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 body=%s", resp.Code, resp.Body.String())
+	}
+
+	if svc.updatedStudioSessionID != "session-1" {
+		t.Fatalf("updated session id = %q, want session-1", svc.updatedStudioSessionID)
+	}
+	if svc.updatedStudioSessionReq == nil || svc.updatedStudioSessionReq.Status == nil {
+		t.Fatalf("updated session req = %+v, want synced session status", svc.updatedStudioSessionReq)
+	}
+	if got := *svc.updatedStudioSessionReq.Status; got != listingkit.SheinStudioSessionStatusGenerating && got != listingkit.SheinStudioSessionStatusGenerated {
+		t.Fatalf("session status = %q, want generating/generated", got)
+	}
+	if svc.updatedStudioSessionReq.GenerationJobID == nil || strings.TrimSpace(*svc.updatedStudioSessionReq.GenerationJobID) == "" {
+		t.Fatalf("generation job id = %+v, want non-empty", svc.updatedStudioSessionReq.GenerationJobID)
+	}
+}

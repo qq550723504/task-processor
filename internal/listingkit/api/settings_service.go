@@ -83,7 +83,6 @@ var settingsNamespaceSchemas = []settingsNamespaceSchema{
 			{Key: "base_url", Label: "Endpoint", Type: "string", Required: true},
 			{Key: "model", Label: "模型", Type: "string", Required: true},
 			{Key: "api_key", Label: "API Key", Type: "secret"},
-			{Key: "timeout_second", Label: "超时秒数", Type: "number"},
 			{Key: "enabled", Label: "启用状态", Type: "boolean"},
 		},
 	},

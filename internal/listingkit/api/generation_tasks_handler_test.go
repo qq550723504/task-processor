@@ -51,6 +51,8 @@ type stubGenerationTaskService struct {
 	aiSettingsReq           *listingkit.AIClientSettings
 	upsertStoreProfileReq   *listingkit.ListingKitStoreProfile
 	updateStoreRoutingReq   *listingkit.ListingKitStoreRoutingSettings
+	updatedStudioSessionID  string
+	updatedStudioSessionReq *listingkit.UpdateStudioSessionRequest
 }
 
 func (s *stubGenerationTaskService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
@@ -138,6 +140,14 @@ func (s *stubGenerationTaskService) ValidateTaskRevision(ctx context.Context, ta
 
 func (s *stubGenerationTaskService) SubmitTask(ctx context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (s *stubGenerationTaskService) UpdateStudioSession(ctx context.Context, sessionID string, req *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error) {
+	s.updatedStudioSessionID = sessionID
+	s.updatedStudioSessionReq = req
+	return &listingkit.SheinStudioSessionDetail{
+		Session: &listingkit.SheinStudioSession{ID: sessionID},
+	}, s.err
 }
 
 func TestGetTaskGenerationTasksReturnsPage(t *testing.T) {

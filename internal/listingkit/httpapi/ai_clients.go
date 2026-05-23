@@ -19,6 +19,7 @@ const (
 	listingKitImageModelSelectorGPTImage2 = "gpt-image-2"
 	listingKitImageModelSelectorNano      = "nanobanana"
 	sheinSaleAttributeClientName          = "scorer"
+	listingKitStudioImageMinTimeout       = 300 * time.Second
 )
 
 func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
@@ -343,7 +344,7 @@ func resolveStrictListingKitImageClient(
 	if resolved == nil || resolved.Config == nil {
 		return nil, errListingKitAIClientNotConfigured(clientName)
 	}
-	config := resolved.Config
+	config := enforceListingKitImageClientTimeout(normalizeListingKitClientName(clientName), resolved.Config)
 	if strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.BaseURL) == "" || strings.TrimSpace(config.Model) == "" {
 		return nil, errListingKitAIClientNotConfigured(clientName)
 	}
@@ -362,4 +363,21 @@ func resolveStrictListingKitImageClient(
 	}
 	cache[cacheKey] = client
 	return client, nil
+}
+
+func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {
+	if cfg == nil {
+		return nil
+	}
+	switch clientName {
+	case listingKitImageClientName, listingKitImageClientNameGPTImage2, listingKitImageClientNameNanobanana:
+		if cfg.Timeout >= listingKitStudioImageMinTimeout {
+			return cfg
+		}
+		cloned := *cfg
+		cloned.Timeout = listingKitStudioImageMinTimeout
+		return &cloned
+	default:
+		return cfg
+	}
 }

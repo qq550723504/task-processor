@@ -17,13 +17,12 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 
 	svc := &stubGenerationTaskService{
 		aiSettings: &listingkit.AIClientSettings{
-			Scope:         "tenant",
-			ClientName:    "default",
-			BaseURL:       "https://tenant-scope.local/v1",
-			Model:         "tenant-model-v1",
-			TimeoutSecond: 61,
-			Enabled:       true,
-			APIKeySet:     true,
+			Scope:      "tenant",
+			ClientName: "default",
+			BaseURL:    "https://tenant-scope.local/v1",
+			Model:      "tenant-model-v1",
+			Enabled:    true,
+			APIKeySet:  true,
 		},
 	}
 
@@ -37,13 +36,12 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 	router.PUT("/settings/:namespace", h.UpdateSettingsNamespace)
 
 	body, err := json.Marshal(map[string]any{
-		"scope":          "tenant",
-		"client_name":    "default",
-		"base_url":       "https://tenant-scope.local/v1",
-		"model":          "tenant-model-v1",
-		"timeout_second": 61,
-		"enabled":        true,
-		"api_key":        "tenant-key-123",
+		"scope":       "tenant",
+		"client_name": "default",
+		"base_url":    "https://tenant-scope.local/v1",
+		"model":       "tenant-model-v1",
+		"enabled":     true,
+		"api_key":     "tenant-key-123",
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)

@@ -583,7 +583,6 @@ export type AIClientSettings = {
   api_key_set?: boolean;
   base_url?: string;
   model?: string;
-  timeout_second?: number;
   enabled?: boolean;
   updated_at?: string;
   resolved_scope?: "tenant" | "user" | string;

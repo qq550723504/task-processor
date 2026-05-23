@@ -45,7 +45,6 @@ describe("ai client settings api", () => {
       client_name: "default",
       base_url: "https://api.openai.com/v1",
       model: "gpt-4.1",
-      timeout_second: 60,
       enabled: true,
       api_key: "secret",
     });
@@ -59,7 +58,6 @@ describe("ai client settings api", () => {
           client_name: "default",
           base_url: "https://api.openai.com/v1",
           model: "gpt-4.1",
-          timeout_second: 60,
           enabled: true,
           api_key: "secret",
         }),

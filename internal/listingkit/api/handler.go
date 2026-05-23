@@ -18,6 +18,7 @@ type handler struct {
 	generationTaskService      listingkit.GenerationTaskService
 	childTaskRetryService      childTaskRetryService
 	studioMediaService         listingkit.StudioMediaService
+	studioSessionService       studioSessionAsyncJobService
 	uploadedImageDeleteService uploadedImageDeleteService
 	storeAdminService          listingkit.StoreAdminService
 	studioAsyncJobs            *studioAsyncJobStore
@@ -69,6 +70,10 @@ type childTaskRetryService interface {
 
 type uploadedImageDeleteService interface {
 	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
+}
+
+type studioSessionAsyncJobService interface {
+	UpdateStudioSession(ctx context.Context, sessionID string, req *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error)
 }
 
 type HandlerOption func(*handler)
@@ -164,6 +169,9 @@ func newHandlerWithDefaults(service HandlerService, studioAsyncJobs *studioAsync
 func (h *handler) attachOptionalServices(service HandlerService) {
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
+	}
+	if sessionService, ok := service.(studioSessionAsyncJobService); ok {
+		h.studioSessionService = sessionService
 	}
 	if deleteService, ok := service.(uploadedImageDeleteService); ok {
 		h.uploadedImageDeleteService = deleteService

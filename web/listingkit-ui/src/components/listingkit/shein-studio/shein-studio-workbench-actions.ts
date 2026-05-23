@@ -174,6 +174,7 @@ export function useSheinStudioDesignActions({
     })();
 
     try {
+      const sessionId = await sessionSyncPromise;
       const response = await generateSheinStudioDesigns(
         buildSheinStudioGenerateRequest({
           prompt: prompt.trim(),
@@ -187,25 +188,22 @@ export function useSheinStudioDesignActions({
           transparentBackground,
         }),
         {
+          sessionId,
           onJobStarted: (jobId) => {
-            void sessionSyncPromise
-              .then((sessionId) => {
-                if (!sessionId) {
-                  return;
-                }
-                return updateSheinStudioSession(
-                  sessionId,
-                  {
-                    status: "generating",
-                    generationJobId: jobId,
-                    generationError: "",
-                  },
-                  {
-                    timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-                  },
-                );
-              })
-              .catch(() => undefined);
+            if (!sessionId) {
+              return;
+            }
+            void updateSheinStudioSession(
+              sessionId,
+              {
+                status: "generating",
+                generationJobId: jobId,
+                generationError: "",
+              },
+              {
+                timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+              },
+            ).catch(() => undefined);
           },
         },
       );

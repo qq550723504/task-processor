@@ -50,7 +50,6 @@ type AISettingsForm = {
   api_key: string;
   base_url: string;
   model: string;
-  timeout_second: string;
   enabled: boolean;
 };
 
@@ -72,7 +71,6 @@ export function AIClientSettingsCard() {
       api_key: "",
       base_url: data?.base_url ?? "",
       model: data?.model ?? "",
-      timeout_second: String(data?.timeout_second ?? 60),
       enabled: data?.enabled ?? true,
     };
   }, [clientName, scope, settings.data]);
@@ -90,7 +88,6 @@ export function AIClientSettingsCard() {
       api_key: form.api_key.trim() || undefined,
       base_url: form.base_url.trim(),
       model: form.model.trim(),
-      timeout_second: Number(form.timeout_second) || 0,
       enabled: form.enabled,
     });
   };
@@ -161,7 +158,7 @@ export function AIClientSettingsCard() {
           <span className="ml-1 font-semibold">{resolvedScopeLabel}</span>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr_140px]">
+        <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr]">
           <Label className="space-y-1">
             <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
               配置范围
@@ -193,12 +190,6 @@ export function AIClientSettingsCard() {
             hint={selectedClient.modelHint}
             value={form.model}
             onChange={(value) => set("model", value)}
-          />
-          <Input
-            label="超时秒数"
-            hint="留空时使用系统默认"
-            value={form.timeout_second}
-            onChange={(value) => set("timeout_second", value)}
           />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
