@@ -92,6 +92,9 @@ func TestSKUUtils_ParseWeight(t *testing.T) {
 		{"milligrams", "250mg", 0.25},
 		{"plain_number", "50", 50},
 		{"with_spaces", "  75  ", 75},
+		{"unit_word_with_space", "3.52 ounces", 99.79},
+		{"kilograms_with_space", "0.35 kg", 350},
+		{"grams_with_comma", "1,200 grams", 1200},
 		{"invalid", "abc", 0},
 	}
 

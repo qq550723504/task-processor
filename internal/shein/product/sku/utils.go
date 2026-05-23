@@ -2,6 +2,7 @@ package sku
 
 import (
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,8 @@ const (
 	minSheinWeightGrams = 0.01
 	maxSheinWeightGrams = 50000000
 )
+
+var sheinWeightPattern = regexp.MustCompile(`^\s*([0-9]+(?:\.[0-9]+)?)\s*([a-z]+)?\s*$`)
 
 func NewSKUUtils() *SKUUtils {
 	return &SKUUtils{}
@@ -49,38 +52,32 @@ func (u *SKUUtils) ParseWeight(weightStr string) float64 {
 	}
 
 	normalized := strings.ToLower(strings.TrimSpace(weightStr))
-	unit := "g"
-	switch {
-	case strings.HasSuffix(normalized, "kg"):
-		unit = "kg"
-		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "kg"))
-	case strings.HasSuffix(normalized, "lb"):
-		unit = "lb"
-		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "lb"))
-	case strings.HasSuffix(normalized, "oz"):
-		unit = "oz"
-		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "oz"))
-	case strings.HasSuffix(normalized, "mg"):
-		unit = "mg"
-		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "mg"))
-	case strings.HasSuffix(normalized, "g"):
-		unit = "g"
-		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "g"))
+	normalized = strings.ReplaceAll(normalized, ",", "")
+
+	matches := sheinWeightPattern.FindStringSubmatch(normalized)
+	if len(matches) != 3 {
+		return 0
 	}
 
-	weight, err := strconv.ParseFloat(normalized, 64)
+	weight, err := strconv.ParseFloat(matches[1], 64)
 	if err != nil {
 		return 0
 	}
+
+	unit := matches[2]
 	switch unit {
-	case "kg":
+	case "", "g", "gram", "grams":
+		return math.Round(weight*100) / 100
+	case "kg", "kilogram", "kilograms":
 		weight *= 1000
-	case "lb":
+	case "lb", "lbs", "pound", "pounds":
 		weight *= 453.59237
-	case "oz":
+	case "oz", "ounce", "ounces":
 		weight *= 28.349523125
-	case "mg":
+	case "mg", "milligram", "milligrams":
 		weight /= 1000
+	default:
+		return 0
 	}
 	return math.Round(weight*100) / 100
 }

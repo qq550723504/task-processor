@@ -46,3 +46,20 @@ func TestRepairVariantWeights_UsesFallbackWeightWhenVariantSourceMissing(t *test
 		t.Fatalf("variant A1 weight = %q, want %q", got, "430")
 	}
 }
+
+func TestRepairVariantWeights_ParsesAmazonWeightTextFormats(t *testing.T) {
+	handler := &SaleAttributeHandler{}
+	data := sheinattr.ResultSaleAttribute{
+		Variants: []sheinattr.Variant{
+			{ASIN: "A1", Weight: types.FlexibleString("")},
+		},
+	}
+	products := []map[string]string{
+		{"asin": "A1", "weight": "3.52 ounces"},
+	}
+
+	fixed := handler.repairVariantWeights(data, products)
+	if got := fixed.Variants[0].Weight.String(); got != "99.79" {
+		t.Fatalf("variant A1 weight = %q, want %q", got, "99.79")
+	}
+}
