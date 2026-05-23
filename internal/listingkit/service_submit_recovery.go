@@ -107,7 +107,7 @@ func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, acti
 		if err := s.persistSuccessfulSheinSubmission(ctx, task.ID, task, action); err != nil {
 			return nil, err
 		}
-		return buildListingKitPreview(task, "shein")
+		return s.buildTaskPreview(ctx, task, "shein")
 	}
 	if record == nil || strings.TrimSpace(record.SupplierCode) == "" {
 		return nil, fmt.Errorf("%w: stale SHEIN submit has no supplier code", ErrSubmitInProgress)
@@ -144,7 +144,7 @@ func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, acti
 	if err := s.persistSuccessfulSheinSubmission(ctx, task.ID, task, action); err != nil {
 		return nil, err
 	}
-	return buildListingKitPreview(task, "shein")
+	return s.buildTaskPreview(ctx, task, "shein")
 }
 
 func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error) {
@@ -224,7 +224,7 @@ func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*
 	if remoteErr != nil {
 		return nil, remoteErr
 	}
-	return buildListingKitPreview(task, "shein")
+	return s.buildTaskPreview(ctx, task, "shein")
 }
 
 func (s *service) refreshSheinSubmitRemoteStatus(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {

@@ -209,6 +209,7 @@ export function buildSheinAdvancedReviewDetailsProps({
       isApplying,
       onConfirmAttributes: sheinActions.handleConfirmSheinAttributes,
       onConfirmFallbackAttributes: sheinActions.handleConfirmSheinFallbackAttributes,
+      onRegenerateAttributes: sheinActions.handleRegenerateSheinAttributes,
     },
     saleAttributeReviewProps: {
       editorContext: shein?.editor_context,

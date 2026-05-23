@@ -949,6 +949,303 @@ func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *te
 	}
 }
 
+func TestApplyTaskRevisionDecoratesPreviewWithLiveSheinCookieBlocker(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	task := &Task{
+		ID:       "task-apply-shein-cookie-live-blocker",
+		TenantID: "227",
+		UserID:   "user-cookie-2",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 870,
+			Text:         "insulated cooler bag",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-cookie-live-blocker",
+			CanonicalProduct: &canonical.Product{
+				Title: "insulated cooler bag",
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+						"Size":  {Value: "One size"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   10489,
+				CategoryPath: []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 10489,
+				},
+				AttributeResolution: &SheinAttributeResolution{
+					Status:        "resolved",
+					ResolvedCount: 1,
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:                  "resolved",
+					PrimaryAttributeID:      27,
+					RecommendCategoryReview: false,
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+
+	apiClient := sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{
+		ID:       870,
+		TenantID: 227,
+		LoginURL: "sso.geiwohuo.com",
+	}, stubRevisionCookieProvider{})
+
+	svc := &service{
+		repo:                       repo,
+		sheinStoreCatalog:          &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+		sheinAPIClientFactory:      stubSheinAPIClientFactory{client: apiClient},
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleResolver{},
+	}
+
+	categoryID := 10489
+	productTypeID := 7190
+	topCategoryID := 2866
+	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				Status:         stringPtr("resolved"),
+				Source:         stringPtr("manual_search"),
+				MatchedPath:    []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				CategoryID:     &categoryID,
+				CategoryIDList: []int{2866, 4396, 4425, 10489},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  &topCategoryID,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				RecommendCategoryReview: boolPtr(false),
+				CategoryReviewReason:    stringPtr(""),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.SubmitReadiness == nil {
+		t.Fatalf("preview = %+v", preview)
+	}
+	found := false
+	for _, item := range preview.Shein.SubmitReadiness.BlockingItems {
+		if item.Key == sheinCookieUnavailableIssueCode {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("blocking items = %+v, want live shein cookie blocker in preview", preview.Shein.SubmitReadiness.BlockingItems)
+	}
+	if !strings.Contains(strings.Join(preview.Shein.ReviewNotes, "\n"), "cookie 不可用") {
+		t.Fatalf("preview review notes = %#v, want live cookie note", preview.Shein.ReviewNotes)
+	}
+}
+
+func TestApplyTaskRevisionRegeneratesSheinSaleAttributesWithoutCategoryConfirmation(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	task := &Task{
+		ID: "task-apply-shein-regenerate-sale-attributes",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Text:         "metal wall sign",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-regenerate-sale-attributes",
+			CanonicalProduct: &canonical.Product{
+				Title: "metal wall sign",
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   3894,
+				CategoryPath: []string{"家居&生活", "家居装饰", "家居装饰摆件&配件", "铁皮画标牌"},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 3894,
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:             "resolved",
+					PrimaryAttributeID: 27,
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{
+		repo:                       repo,
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{},
+	}
+
+	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Actor:    "workspace",
+		Reason:   "Regenerate SHEIN sale attributes",
+		Shein: &SheinRevisionInput{
+			RegenerateSaleAttributes: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.EditorContext == nil || preview.Shein.EditorContext.SaleAttributes == nil {
+		t.Fatalf("preview = %+v", preview)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution == nil {
+		t.Fatal("expected sale attribute resolution after regenerate")
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID != 1001466 {
+		t.Fatalf("primary attribute id = %d, want regenerated 1001466", repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.Status != "partial" {
+		t.Fatalf("sale attribute status = %q, want partial after regenerate without value ids", repo.task.Result.Shein.SaleAttributeResolution.Status)
+	}
+	if !containsReviewNote(repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes, "当前销售属性仍缺少真实 sale attribute value 映射，请重新确认规格。") {
+		t.Fatalf("sale attribute review notes = %#v, want follow-up note after regenerate", repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes)
+	}
+}
+
+func TestApplyTaskRevisionRegeneratesSheinAttributesWithoutTouchingSaleAttributes(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	secondaryValueID := 417
+	task := &Task{
+		ID: "task-apply-shein-regenerate-attributes",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Text:         "metal wall sign",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-regenerate-attributes",
+			CanonicalProduct: &canonical.Product{
+				Title: "metal wall sign",
+				Attributes: map[string]canonical.Attribute{
+					"Material": {Value: "Metal"},
+				},
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+						"Size":  {Value: "90x180cm"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   3894,
+				CategoryPath: []string{"家居&生活", "家居装饰", "家居装饰摆件&配件", "铁皮画标牌"},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 3894,
+				},
+				AttributeResolution: &SheinAttributeResolution{
+					Status:        "partial",
+					ResolvedCount: 0,
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:               "resolved",
+					PrimaryAttributeID:   27,
+					SecondaryAttributeID: 87,
+					SKCAttributes: []SheinResolvedSaleAttribute{{
+						Scope:            "skc",
+						Name:             "Color",
+						Value:            "white",
+						AttributeID:      27,
+						AttributeValueID: &secondaryValueID,
+					}},
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{
+						SupplierCode: "SKC-1",
+						SKUList: []SheinSKUDraft{{
+							SupplierSKU: "SKU-1",
+							SaleAttributes: []SheinResolvedSaleAttribute{{
+								Scope:            "sku",
+								Name:             "Size",
+								Value:            "90x180cm",
+								AttributeID:      87,
+								AttributeValueID: &secondaryValueID,
+							}},
+						}},
+					}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{
+		repo:                       repo,
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{},
+	}
+
+	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Actor:    "workspace",
+		Reason:   "Regenerate SHEIN attributes",
+		Shein: &SheinRevisionInput{
+			RegenerateAttributes: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.EditorContext == nil || preview.Shein.EditorContext.Attributes == nil {
+		t.Fatalf("preview = %+v", preview)
+	}
+	if repo.task.Result.Shein.AttributeResolution == nil || repo.task.Result.Shein.AttributeResolution.ResolvedCount != 1 {
+		t.Fatalf("attribute resolution = %+v, want regenerated attributes", repo.task.Result.Shein.AttributeResolution)
+	}
+	if len(repo.task.Result.Shein.ResolvedAttributes) != 1 || repo.task.Result.Shein.ResolvedAttributes[0].AttributeID != 7001 {
+		t.Fatalf("resolved attributes = %+v, want regenerated attribute id 7001", repo.task.Result.Shein.ResolvedAttributes)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution == nil || repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID != 27 {
+		t.Fatalf("sale attribute resolution = %+v, want untouched current sale attributes", repo.task.Result.Shein.SaleAttributeResolution)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID != 87 {
+		t.Fatalf("secondary attribute id = %d, want 87", repo.task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID)
+	}
+}
+
 func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 	t.Parallel()
 

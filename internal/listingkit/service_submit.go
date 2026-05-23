@@ -90,7 +90,7 @@ func normalizeSubmitTarget(req *SubmitTaskRequest) (platform string, action stri
 func (s *service) acquireSheinSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
 	task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
 	if errors.Is(err, errSheinSubmitReplayExisting) {
-		preview, previewErr := buildListingKitPreview(task, "shein")
+		preview, previewErr := s.buildTaskPreview(ctx, task, "shein")
 		return nil, preview, previewErr
 	}
 	if errors.Is(err, errSheinSubmitRecoverRemote) {

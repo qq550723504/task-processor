@@ -64,7 +64,7 @@ func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *App
 	if err != nil {
 		return nil, err
 	}
-	preview, err := buildListingKitPreview(task, effectiveReq.Platform)
+	preview, err := s.buildTaskPreview(ctx, task, effectiveReq.Platform)
 	if err != nil {
 		return nil, err
 	}

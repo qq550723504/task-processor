@@ -22,11 +22,13 @@ export function SheinAttributeReviewCard({
   isApplying,
   onConfirmAttributes,
   onConfirmFallbackAttributes,
+  onRegenerateAttributes,
 }: {
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
   onConfirmFallbackAttributes?: () => void;
+  onRegenerateAttributes?: () => void;
 }) {
   const current = editorContext?.attributes?.current;
 
@@ -55,6 +57,7 @@ export function SheinAttributeReviewCard({
       key={pendingCandidatesSignature([...pendingCandidates, ...recommendedCandidates])}
       onConfirmAttributes={onConfirmAttributes}
       onConfirmFallbackAttributes={onConfirmFallbackAttributes}
+      onRegenerateAttributes={onRegenerateAttributes}
       pendingCandidates={pendingCandidates}
       recommendedCandidates={recommendedCandidates}
       resolvedAttributes={resolvedAttributes}
@@ -67,6 +70,7 @@ function SheinAttributeReviewContent({
   isApplying,
   onConfirmAttributes,
   onConfirmFallbackAttributes,
+  onRegenerateAttributes,
   pendingCandidates,
   recommendedCandidates,
   resolvedAttributes,
@@ -75,6 +79,7 @@ function SheinAttributeReviewContent({
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
   onConfirmFallbackAttributes?: () => void;
+  onRegenerateAttributes?: () => void;
   pendingCandidates: SheinPendingAttributeCandidate[];
   recommendedCandidates: SheinPendingAttributeCandidate[];
   resolvedAttributes: SheinResolvedAttribute[];
@@ -117,6 +122,18 @@ function SheinAttributeReviewContent({
           <p className="mt-1 text-sm leading-6 text-zinc-700">
             更改类目后，系统会先按最新类目重新生成普通属性；如果 AI 结果不满意，这里可以继续手工确认和修改属性值。
           </p>
+          {onRegenerateAttributes ? (
+            <div className="mt-3">
+              <Button
+                className="h-9"
+                disabled={isApplying}
+                onClick={() => onRegenerateAttributes()}
+                variant="secondary"
+              >
+                {isApplying ? "重新生成中..." : "重新生成普通属性"}
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">

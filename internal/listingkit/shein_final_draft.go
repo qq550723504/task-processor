@@ -66,7 +66,7 @@ func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req 
 	if err != nil {
 		return nil, err
 	}
-	return buildListingKitPreview(task, "shein")
+	return s.buildTaskPreview(ctx, task, "shein")
 }
 
 func applySheinFinalImageDraft(pkg *sheinpub.Package) {

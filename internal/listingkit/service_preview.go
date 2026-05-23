@@ -13,11 +13,10 @@ func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform st
 	if err != nil {
 		return nil, err
 	}
-	preview, err := buildListingKitPreview(task, platform)
+	preview, err := s.buildTaskPreview(ctx, task, platform)
 	if err != nil {
 		return nil, err
 	}
-	s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)
 	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
 	if err != nil {
 		return nil, err

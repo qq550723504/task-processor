@@ -33,7 +33,7 @@ func (s *service) submitSheinTaskDirect(ctx context.Context, taskID string, task
 	if responseErr != nil {
 		return nil, responseErr
 	}
-	return buildListingKitPreview(task, "shein")
+	return s.buildTaskPreview(ctx, task, "shein")
 }
 
 func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {

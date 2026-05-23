@@ -37,6 +37,29 @@ describe("SheinAttributeReviewCard", () => {
     expect(screen.getByText("还有 1 个普通属性未命中模板值")).toBeInTheDocument();
   });
 
+  it("allows regenerating current attributes", async () => {
+    const user = userEvent.setup();
+    const onRegenerateAttributes = vi.fn();
+
+    render(
+      <SheinAttributeReviewCard
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              review_notes: ["还有 1 个普通属性未命中模板值"],
+            },
+          },
+        }}
+        onRegenerateAttributes={onRegenerateAttributes}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重新生成普通属性" }));
+
+    expect(onRegenerateAttributes).toHaveBeenCalledTimes(1);
+  });
+
   it("returns manually selected pending attribute candidates", async () => {
     const user = userEvent.setup();
     const onConfirmAttributes = vi.fn();

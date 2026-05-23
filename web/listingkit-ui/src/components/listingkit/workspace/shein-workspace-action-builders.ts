@@ -203,6 +203,36 @@ export function buildConfirmSheinFallbackAttributesRevision(
   };
 }
 
+export function buildRegenerateSheinAttributesRevision(
+  sheinPreview?: SheinPreviewPayload,
+): ApplyRevisionRequest | null {
+  const current = sheinPreview?.editor_context?.attributes?.current;
+  const category = sheinPreview?.editor_context?.category?.current;
+  const categoryId = category?.category_id ?? sheinPreview?.category_id;
+
+  if (!current || !categoryId) {
+    return null;
+  }
+
+  return {
+    platform: "shein",
+    actor: "workspace",
+    reason: "Regenerate SHEIN attributes",
+    shein: {
+      regenerate_attributes: true,
+      category_resolution: {
+        category_id: categoryId,
+        category_id_list: category?.category_id_list,
+        product_type_id: category?.product_type_id,
+        top_category_id: category?.top_category_id,
+        matched_path: category?.category_path,
+        source: category?.source ?? "manual_refresh",
+        status: "resolved",
+      },
+    },
+  };
+}
+
 export function buildConfirmCurrentSheinSaleAttributesRevision(
   sheinPreview?: SheinPreviewPayload,
 ): ApplyRevisionRequest | null {
@@ -229,6 +259,36 @@ export function buildConfirmCurrentSheinSaleAttributesRevision(
         review_notes: [
           "SHEIN 销售属性已按当前主规格和其他规格人工确认。",
         ],
+      },
+    },
+  };
+}
+
+export function buildRegenerateSheinSaleAttributesRevision(
+  sheinPreview?: SheinPreviewPayload,
+): ApplyRevisionRequest | null {
+  const current = sheinPreview?.editor_context?.sale_attributes?.current;
+  const category = sheinPreview?.editor_context?.category?.current;
+  const categoryId = category?.category_id ?? sheinPreview?.category_id;
+
+  if (!current || !categoryId) {
+    return null;
+  }
+
+  return {
+    platform: "shein",
+    actor: "workspace",
+    reason: "Regenerate SHEIN sale attributes",
+    shein: {
+      regenerate_sale_attributes: true,
+      category_resolution: {
+        category_id: categoryId,
+        category_id_list: category?.category_id_list,
+        product_type_id: category?.product_type_id,
+        top_category_id: category?.top_category_id,
+        matched_path: category?.category_path,
+        source: category?.source ?? "manual_refresh",
+        status: "resolved",
       },
     },
   };

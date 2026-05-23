@@ -7,26 +7,28 @@ import (
 )
 
 type RevisionInput struct {
-	SpuName                 *string                       `json:"spu_name,omitempty"`
-	ProductNameEn           *string                       `json:"product_name_en,omitempty"`
-	BrandName               *string                       `json:"brand_name,omitempty"`
-	Description             *string                       `json:"description,omitempty"`
-	SellingPoints           []string                      `json:"selling_points,omitempty"`
-	CategoryName            *string                       `json:"category_name,omitempty"`
-	CategoryPath            []string                      `json:"category_path,omitempty"`
-	CategoryID              *int                          `json:"category_id,omitempty"`
-	CategoryIDList          []int                         `json:"category_id_list,omitempty"`
-	ProductTypeID           *int                          `json:"product_type_id,omitempty"`
-	TopCategoryID           *int                          `json:"top_category_id,omitempty"`
-	Images                  *common.ImageSet              `json:"images,omitempty"`
-	ProductAttributes       []common.Attribute            `json:"product_attributes,omitempty"`
-	ResolvedAttributes      []sheinpub.ResolvedAttribute  `json:"resolved_attributes,omitempty"`
-	CategoryResolution      *CategoryResolutionPatch      `json:"category_resolution,omitempty"`
-	AttributeResolution     *AttributeResolutionPatch     `json:"attribute_resolution,omitempty"`
-	SaleAttributeResolution *SaleAttributeResolutionPatch `json:"sale_attribute_resolution,omitempty"`
-	SKCPatches              []SKCRevisionPatch            `json:"skc_patches,omitempty"`
-	RequestDraft            *sheinpub.RequestDraft        `json:"request_draft,omitempty"`
-	ReviewNotes             []string                      `json:"review_notes,omitempty"`
+	SpuName                  *string                       `json:"spu_name,omitempty"`
+	ProductNameEn            *string                       `json:"product_name_en,omitempty"`
+	BrandName                *string                       `json:"brand_name,omitempty"`
+	Description              *string                       `json:"description,omitempty"`
+	SellingPoints            []string                      `json:"selling_points,omitempty"`
+	CategoryName             *string                       `json:"category_name,omitempty"`
+	CategoryPath             []string                      `json:"category_path,omitempty"`
+	CategoryID               *int                          `json:"category_id,omitempty"`
+	CategoryIDList           []int                         `json:"category_id_list,omitempty"`
+	ProductTypeID            *int                          `json:"product_type_id,omitempty"`
+	TopCategoryID            *int                          `json:"top_category_id,omitempty"`
+	Images                   *common.ImageSet              `json:"images,omitempty"`
+	ProductAttributes        []common.Attribute            `json:"product_attributes,omitempty"`
+	ResolvedAttributes       []sheinpub.ResolvedAttribute  `json:"resolved_attributes,omitempty"`
+	CategoryResolution       *CategoryResolutionPatch      `json:"category_resolution,omitempty"`
+	AttributeResolution      *AttributeResolutionPatch     `json:"attribute_resolution,omitempty"`
+	RegenerateAttributes     bool                          `json:"regenerate_attributes,omitempty"`
+	SaleAttributeResolution  *SaleAttributeResolutionPatch `json:"sale_attribute_resolution,omitempty"`
+	RegenerateSaleAttributes bool                          `json:"regenerate_sale_attributes,omitempty"`
+	SKCPatches               []SKCRevisionPatch            `json:"skc_patches,omitempty"`
+	RequestDraft             *sheinpub.RequestDraft        `json:"request_draft,omitempty"`
+	ReviewNotes              []string                      `json:"review_notes,omitempty"`
 }
 
 type CategoryResolutionPatch struct {
@@ -56,17 +58,17 @@ type AttributeResolutionPatch struct {
 }
 
 type SaleAttributeResolutionPatch struct {
-	Status                  *string                          `json:"status,omitempty"`
-	Source                  *string                          `json:"source,omitempty"`
-	RecommendCategoryReview *bool                            `json:"recommend_category_review,omitempty"`
-	CategoryReviewReason    *string                          `json:"category_review_reason,omitempty"`
-	PrimaryAttributeID      *int                             `json:"primary_attribute_id,omitempty"`
-	SecondaryAttributeID    *int                             `json:"secondary_attribute_id,omitempty"`
-	SKCAttributes           []sheinpub.ResolvedSaleAttribute `json:"skc_attributes,omitempty"`
-	SKUAttributes           []sheinpub.ResolvedSaleAttribute `json:"sku_attributes,omitempty"`
+	Status                  *string                                  `json:"status,omitempty"`
+	Source                  *string                                  `json:"source,omitempty"`
+	RecommendCategoryReview *bool                                    `json:"recommend_category_review,omitempty"`
+	CategoryReviewReason    *string                                  `json:"category_review_reason,omitempty"`
+	PrimaryAttributeID      *int                                     `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID    *int                                     `json:"secondary_attribute_id,omitempty"`
+	SKCAttributes           []sheinpub.ResolvedSaleAttribute         `json:"skc_attributes,omitempty"`
+	SKUAttributes           []sheinpub.ResolvedSaleAttribute         `json:"sku_attributes,omitempty"`
 	CustomAttributeRelation []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
-	SelectionSummary        []string                         `json:"selection_summary,omitempty"`
-	ReviewNotes             []string                         `json:"review_notes,omitempty"`
+	SelectionSummary        []string                                 `json:"selection_summary,omitempty"`
+	ReviewNotes             []string                                 `json:"review_notes,omitempty"`
 }
 
 type SKCRevisionPatch struct {

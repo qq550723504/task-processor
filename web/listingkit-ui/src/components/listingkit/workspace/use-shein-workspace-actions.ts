@@ -10,6 +10,8 @@ import {
   buildApplyManualSheinSaleAttributesRevision,
   buildApplySuggestedSheinCategoryRevision,
   buildConfirmCurrentSheinCategoryRevision,
+  buildRegenerateSheinAttributesRevision,
+  buildRegenerateSheinSaleAttributesRevision,
   buildConfirmCurrentSheinSaleAttributesRevision,
   buildConfirmSheinAttributesRevision,
   buildConfirmSheinFallbackAttributesRevision,
@@ -125,6 +127,14 @@ export function useSheinWorkspaceActions({
     applyRevision.mutate(revision);
   };
 
+  const handleRegenerateSheinAttributes = () => {
+    const revision = buildRegenerateSheinAttributesRevision(sheinPreview);
+    if (!revision) {
+      return;
+    }
+    applyRevision.mutate(revision);
+  };
+
   const handleConfirmCurrentSheinSaleAttributes = () => {
     const revision =
       buildConfirmCurrentSheinSaleAttributesRevision(sheinPreview);
@@ -135,7 +145,7 @@ export function useSheinWorkspaceActions({
   };
 
   const handleRegenerateSheinSaleAttributes = () => {
-    const revision = buildConfirmCurrentSheinCategoryRevision(sheinPreview);
+    const revision = buildRegenerateSheinSaleAttributesRevision(sheinPreview);
     if (!revision) {
       return;
     }
@@ -240,6 +250,7 @@ export function useSheinWorkspaceActions({
     handleApplyManualSheinCategory,
     handleConfirmSheinAttributes,
     handleConfirmSheinFallbackAttributes,
+    handleRegenerateSheinAttributes,
     handleConfirmCurrentSheinSaleAttributes,
     handleRegenerateSheinSaleAttributes,
     handleApplyManualSheinSaleAttributes,

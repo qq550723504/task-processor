@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -25,6 +26,10 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	if task.Result.Shein.CategoryID > 0 {
 		buildReq.TargetCategoryHint = strconv.Itoa(task.Result.Shein.CategoryID)
 	}
+	if req.Shein.RegenerateAttributes {
+		s.refreshSheinAttributeDerivedState(task, buildReq)
+		return
+	}
 	sheinpub.RefreshDerivedState(
 		buildReq,
 		task.Result.CanonicalProduct,
@@ -35,7 +40,8 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		s.sheinSaleAttributeResolver,
 		s.sheinPricingPolicy,
 	)
-	if strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task)) == "" {
+	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))
+	if cookieNote == "" {
 		stripSheinCookieUnavailableReviewNotes(task.Result.Shein)
 	}
 	applySheinSaleAttributeReviewOverride(task.Result.Shein, req.Shein.SaleAttributeResolution)
@@ -43,7 +49,38 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(task.Result.Shein)
 	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)
+	if cookieNote != "" {
+		refreshSheinReviewState(task.Result.Shein, cookieNote)
+		return
+	}
 	refreshSheinReviewState(task.Result.Shein)
+}
+
+func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinpub.BuildRequest) {
+	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil || task.Result.CanonicalProduct == nil {
+		return
+	}
+	pkg := task.Result.Shein
+	pkg.ProductAttributes = common.BuildAttributes(task.Result.CanonicalProduct.Attributes)
+	if pkg.RequestDraft == nil {
+		pkg.RequestDraft = &sheinpub.RequestDraft{}
+	}
+	if s.sheinAttributeResolver != nil {
+		pkg.AttributeResolution = s.sheinAttributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
+		sheinpub.ApplyAttributeResolution(pkg, pkg.AttributeResolution)
+	}
+	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))
+	if cookieNote == "" {
+		stripSheinCookieUnavailableReviewNotes(pkg)
+	}
+	sheinpub.NormalizeListingCopy(pkg, task.Result.CanonicalProduct, buildReq.Language)
+	syncSheinDraftFromPackage(pkg)
+	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	if cookieNote != "" {
+		refreshSheinReviewState(pkg, cookieNote)
+		return
+	}
+	refreshSheinReviewState(pkg)
 }
 
 func applySheinSaleAttributeReviewOverride(pkg *sheinpub.Package, patch *SheinSaleAttributeResolutionPatch) {
@@ -73,7 +110,16 @@ func applySheinSaleAttributeReviewOverride(pkg *sheinpub.Package, patch *SheinSa
 }
 
 func shouldRefreshSheinDerivedState(req *SheinRevisionInput) bool {
-	if req == nil || req.CategoryResolution == nil {
+	if req == nil {
+		return false
+	}
+	if req.RegenerateAttributes {
+		return true
+	}
+	if req.RegenerateSaleAttributes {
+		return true
+	}
+	if req.CategoryResolution == nil {
 		return false
 	}
 	if req.AttributeResolution != nil {

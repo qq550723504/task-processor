@@ -21,7 +21,7 @@ func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string
 		return s.GetTaskPreview(ctx, taskID, "shein")
 	}
 	if shouldReplayStartedTemporalSubmit(err, opts.requestID) {
-		return buildListingKitPreview(task, "shein")
+		return s.buildTaskPreview(ctx, task, "shein")
 	}
 	return nil, s.handleSheinWorkflowStartFailure(ctx, taskID, task, opts, err)
 }
