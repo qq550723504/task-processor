@@ -38,6 +38,7 @@ type Module struct {
 type ServiceBundle struct {
 	TemporalWorkerService          TemporalWorkerService
 	TaskRepository                 listingkit.Repository
+	StudioAsyncJobRepository       listingkit.StudioAsyncJobRepository
 	StoreRepository                listingadmin.StoreRepository
 	StoreStatisticsRepository      listingadmin.StoreStatisticsRepository
 	ImportTaskRepository           listingadmin.ImportTaskRepository
@@ -151,6 +152,7 @@ type AdminRepositoryBuilders struct {
 
 type CoreRepositoryBuilders struct {
 	Task                 func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error)
+	StudioAsyncJob       func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
 	Subscription         func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
 	Asset                func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
 	Review               func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
@@ -189,6 +191,8 @@ func (b CoreRepositoryBuilders) Validate() error {
 	switch {
 	case b.Task == nil:
 		return fmt.Errorf("core repository builder task is required")
+	case b.StudioAsyncJob == nil:
+		return fmt.Errorf("core repository builder studio async job is required")
 	case b.Subscription == nil:
 		return fmt.Errorf("core repository builder subscription is required")
 	case b.Asset == nil:
@@ -294,6 +298,7 @@ type BuildServiceInput struct {
 
 type builtRepositories struct {
 	taskRepository                 listingkit.Repository
+	studioAsyncJobRepository       listingkit.StudioAsyncJobRepository
 	storeRepository                listingadmin.StoreRepository
 	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
 	importTaskRepository           listingadmin.ImportTaskRepository
@@ -368,6 +373,10 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 	repoBuilders := input.Repositories
 
 	taskRepository, err := buildWithClosers(repoBuilders.Core.Task, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	studioAsyncJobRepository, err := buildWithClosers(repoBuilders.Core.StudioAsyncJob, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -454,6 +463,7 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 
 	return &builtRepositories{
 		taskRepository:                 taskRepository,
+		studioAsyncJobRepository:       studioAsyncJobRepository,
 		storeRepository:                storeRepository,
 		storeStatisticsRepository:      storeStatisticsRepository,
 		importTaskRepository:           importTaskRepository,
@@ -652,7 +662,7 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 func buildHandlerOptions(input BuildModuleInput, bundle *ServiceBundle) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
 		listingkitapi.WithDependencies(listingkitapi.HandlerDependencies{
-			StudioAsyncJobStorePath: input.ServiceInput.Config.ListingKit.StudioAsyncJobStorePath,
+			StudioAsyncJobRepository: bundle.StudioAsyncJobRepository,
 			Admin: listingkitapi.AdminHandlerDependencies{
 				StoreRepository:                bundle.StoreRepository,
 				StoreStatisticsRepository:      bundle.StoreStatisticsRepository,
@@ -706,6 +716,7 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 	return &ServiceBundle{
 		TemporalWorkerService:          moduleSvc,
 		TaskRepository:                 repositories.taskRepository,
+		StudioAsyncJobRepository:       repositories.studioAsyncJobRepository,
 		StoreRepository:                repositories.storeRepository,
 		StoreStatisticsRepository:      repositories.storeStatisticsRepository,
 		ImportTaskRepository:           repositories.importTaskRepository,

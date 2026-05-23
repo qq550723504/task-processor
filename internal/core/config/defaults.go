@@ -32,7 +32,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("management.httpClient.insecureSkipVerify", defaults.Management.HTTPClient.InsecureSkipVerify)
 	v.SetDefault("debug.save_publish_json", defaults.Debug.SavePublishJSON)
 	v.SetDefault("debug.productEnrichMockLLM", defaults.Debug.ProductEnrichMockLLM)
-	v.SetDefault("listingkit.studioAsyncJobStorePath", defaults.ListingKit.StudioAsyncJobStorePath)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)
 	v.SetDefault("listingkit.platformAdminUsers", defaults.ListingKit.PlatformAdminUsers)
 	v.SetDefault("listingkit.platformAdminRoles", defaults.ListingKit.PlatformAdminRoles)

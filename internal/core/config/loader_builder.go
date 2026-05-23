@@ -180,7 +180,6 @@ func BuildConfig(v *viper.Viper) *Config {
 			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
 		},
 		ListingKit: ListingKitConfig{
-			StudioAsyncJobStorePath: v.GetString("listingkit.studioAsyncJobStorePath"),
 			SheinSubmitDebugDumpDir: v.GetString("listingkit.sheinSubmitDebugDumpDir"),
 			PlatformAdminUsers:      getStringSlice(v, "listingkit.platformAdminUsers"),
 			PlatformAdminRoles:      getStringSlice(v, "listingkit.platformAdminRoles"),
@@ -244,14 +243,14 @@ func BuildConfig(v *viper.Viper) *Config {
 
 func BuildHTTPClientConfig(v *viper.Viper, prefix string) HTTPClientConfig {
 	return HTTPClientConfig{
-		BaseURL:              v.GetString(prefix + ".baseURL"),
-		Timeout:              time.Duration(v.GetInt(prefix+".timeout")) * time.Second,
-		MaxRetries:           v.GetInt(prefix + ".maxRetries"),
-		RetryDelay:           time.Duration(v.GetInt(prefix+".retryDelay")) * time.Second,
-		MaxIdleConns:         v.GetInt(prefix + ".maxIdleConns"),
-		MaxConnsPerHost:      v.GetInt(prefix + ".maxConnsPerHost"),
-		InsecureSkipVerify:   v.GetBool(prefix + ".insecureSkipVerify"),
-		Headers:              v.GetStringMapString(prefix + ".headers"),
+		BaseURL:            v.GetString(prefix + ".baseURL"),
+		Timeout:            time.Duration(v.GetInt(prefix+".timeout")) * time.Second,
+		MaxRetries:         v.GetInt(prefix + ".maxRetries"),
+		RetryDelay:         time.Duration(v.GetInt(prefix+".retryDelay")) * time.Second,
+		MaxIdleConns:       v.GetInt(prefix + ".maxIdleConns"),
+		MaxConnsPerHost:    v.GetInt(prefix + ".maxConnsPerHost"),
+		InsecureSkipVerify: v.GetBool(prefix + ".insecureSkipVerify"),
+		Headers:            v.GetStringMapString(prefix + ".headers"),
 	}
 }
 

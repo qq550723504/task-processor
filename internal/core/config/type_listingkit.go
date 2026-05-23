@@ -1,7 +1,6 @@
 package config
 
 type ListingKitConfig struct {
-	StudioAsyncJobStorePath string                  `mapstructure:"studioAsyncJobStorePath" yaml:"studioAsyncJobStorePath"`
 	SheinSubmitDebugDumpDir string                  `mapstructure:"sheinSubmitDebugDumpDir" yaml:"sheinSubmitDebugDumpDir"`
 	PlatformAdminUsers      []string                `mapstructure:"platformAdminUsers" yaml:"platformAdminUsers"`
 	PlatformAdminRoles      []string                `mapstructure:"platformAdminRoles" yaml:"platformAdminRoles"`

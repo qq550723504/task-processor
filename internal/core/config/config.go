@@ -553,9 +553,6 @@ func knownEnvBindings() map[string]envBinding {
 		"debug.productEnrichMockLLM": {
 			Primary: "TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM",
 		},
-		"listingkit.studioAsyncJobStorePath": {
-			Primary: "LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH",
-		},
 		"listingkit.sheinSubmitDebugDumpDir": {
 			Primary: "LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR",
 		},

@@ -193,7 +193,6 @@ func TestNewViper_BindsProductEnrichMockLLMEnvironmentVariable(t *testing.T) {
 }
 
 func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
-	t.Setenv("LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH", "D:/tmp/studio-jobs.json")
 	t.Setenv("LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR", "D:/tmp/shein-submit-dumps")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-a,user-b")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_ROLES", "role-a,role-b")
@@ -210,7 +209,6 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 
 	v := newViper()
 
-	assert.Equal(t, "D:/tmp/studio-jobs.json", v.GetString("listingkit.studioAsyncJobStorePath"))
 	assert.Equal(t, "D:/tmp/shein-submit-dumps", v.GetString("listingkit.sheinSubmitDebugDumpDir"))
 	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.platformAdminUsers"))
 	assert.Equal(t, []string{"role-a", "role-b"}, getStringSlice(v, "listingkit.platformAdminRoles"))
@@ -460,7 +458,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 		"  baseURL: \"https://api.example.test/v1\"",
 		"  timeout: 30",
 		"listingkit:",
-		"  studioAsyncJobStorePath: \"./data/jobs.json\"",
 		"  sheinSubmitDebugDumpDir: \"./.local/tmp/shein-dumps\"",
 		"  platformAdminUsers: [\"user-a\"]",
 		"  platformAdminRoles: [\"platform_admin\"]",
@@ -482,7 +479,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	cfg, err := LoadConfigFromFile(configPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "./data/jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
 	assert.Equal(t, "./.local/tmp/shein-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
 	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)

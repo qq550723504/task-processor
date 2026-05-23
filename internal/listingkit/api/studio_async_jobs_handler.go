@@ -6,29 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
-)
-
-const (
-	studioAsyncJobTTL    = time.Hour
-	studioAsyncJobMaxLen = 256
-)
-
-type studioAsyncJobStatus string
-
-const (
-	studioAsyncJobRunning   studioAsyncJobStatus = "running"
-	studioAsyncJobSucceeded studioAsyncJobStatus = "succeeded"
-	studioAsyncJobFailed    studioAsyncJobStatus = "failed"
 )
 
 type startStudioAsyncJobRequest struct {
@@ -38,201 +22,103 @@ type startStudioAsyncJobRequest struct {
 }
 
 type studioAsyncJob struct {
-	ID             string               `json:"job_id"`
-	Path           string               `json:"path"`
-	Status         studioAsyncJobStatus `json:"status"`
-	Result         any                  `json:"result,omitempty"`
-	Error          string               `json:"error,omitempty"`
-	UpstreamStatus int                  `json:"upstream_status,omitempty"`
-	CreatedAt      time.Time            `json:"created_at"`
-	UpdatedAt      time.Time            `json:"updated_at"`
-	FinishedAt     *time.Time           `json:"finished_at,omitempty"`
+	ID             string                          `json:"job_id"`
+	Path           string                          `json:"path"`
+	Status         listingkit.StudioAsyncJobStatus `json:"status"`
+	Result         any                             `json:"result,omitempty"`
+	Error          string                          `json:"error,omitempty"`
+	UpstreamStatus int                             `json:"upstream_status,omitempty"`
+	CreatedAt      time.Time                       `json:"created_at"`
+	UpdatedAt      time.Time                       `json:"updated_at"`
+	FinishedAt     *time.Time                      `json:"finished_at,omitempty"`
 }
 
 type studioAsyncJobStore struct {
-	mu       sync.Mutex
-	jobs     map[string]*studioAsyncJob
-	ttl      time.Duration
-	max      int
-	filePath string
+	repo listingkit.StudioAsyncJobRepository
 }
 
-func newStudioAsyncJobStore() *studioAsyncJobStore {
-	return &studioAsyncJobStore{
-		jobs: make(map[string]*studioAsyncJob),
-		ttl:  studioAsyncJobTTL,
-		max:  studioAsyncJobMaxLen,
+func newStudioAsyncJobStore(repo listingkit.StudioAsyncJobRepository) (*studioAsyncJobStore, error) {
+	if repo == nil {
+		repo = listingkit.NewMemStudioAsyncJobRepository()
 	}
+	return &studioAsyncJobStore{repo: repo}, nil
 }
 
-func newDefaultStudioAsyncJobStore() (*studioAsyncJobStore, error) {
-	return newStudioAsyncJobStoreWithPath("")
-}
-
-func newStudioAsyncJobStoreWithPath(path string) (*studioAsyncJobStore, error) {
-	if path = strings.TrimSpace(path); path != "" {
-		store, err := newStudioAsyncJobFileStore(path, studioAsyncJobTTL, studioAsyncJobMaxLen)
-		if err != nil {
-			return nil, err
-		}
-		return store, nil
-	}
-	return newStudioAsyncJobStore(), nil
-}
-
-func newStudioAsyncJobFileStore(path string, ttl time.Duration, max int) (*studioAsyncJobStore, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
-	}
-	store := &studioAsyncJobStore{
-		jobs:     make(map[string]*studioAsyncJob),
-		ttl:      ttl,
-		max:      max,
-		filePath: path,
-	}
-	if err := store.loadFromFile(); err != nil {
-		return nil, err
-	}
-	return store, nil
-}
-
-func (s *studioAsyncJobStore) create(path string) studioAsyncJob {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.cleanupLocked(time.Now())
-	job := &studioAsyncJob{
+func (s *studioAsyncJobStore) create(ctx context.Context, path string) (studioAsyncJob, error) {
+	now := time.Now().UTC()
+	record := &listingkit.StudioAsyncJobRecord{
 		ID:        newStudioAsyncJobID(),
 		Path:      path,
-		Status:    studioAsyncJobRunning,
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		Status:    listingkit.StudioAsyncJobStatusRunning,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
-	s.jobs[job.ID] = job
-	s.persistLocked()
-	return cloneStudioAsyncJob(job)
+	if err := s.repo.CreateStudioAsyncJob(ctx, record); err != nil {
+		return studioAsyncJob{}, err
+	}
+	return mapStudioAsyncJobRecord(record)
 }
 
-func (s *studioAsyncJobStore) get(id string) (studioAsyncJob, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.cleanupLocked(time.Now())
-	job, ok := s.jobs[id]
-	if !ok {
+func (s *studioAsyncJobStore) get(ctx context.Context, id string) (studioAsyncJob, bool) {
+	record, err := s.repo.GetStudioAsyncJob(ctx, id)
+	if err != nil || record == nil {
 		return studioAsyncJob{}, false
 	}
-	return cloneStudioAsyncJob(job), true
+	job, err := mapStudioAsyncJobRecord(record)
+	if err != nil {
+		return studioAsyncJob{}, false
+	}
+	return job, true
 }
 
-func (s *studioAsyncJobStore) succeed(id string, result any) {
-	s.update(id, studioAsyncJobSucceeded, result, "", http.StatusOK)
+func (s *studioAsyncJobStore) succeed(ctx context.Context, id string, result any) {
+	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusSucceeded, result, "", http.StatusOK)
 }
 
-func (s *studioAsyncJobStore) fail(id string, err error, status int) {
+func (s *studioAsyncJobStore) fail(ctx context.Context, id string, err error, status int) {
 	message := "async job failed"
 	if err != nil {
 		message = err.Error()
 	}
-	s.update(id, studioAsyncJobFailed, nil, message, status)
+	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusFailed, nil, message, status)
 }
 
-func (s *studioAsyncJobStore) update(id string, status studioAsyncJobStatus, result any, message string, upstreamStatus int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	job, ok := s.jobs[id]
-	if !ok {
-		return
+func (s *studioAsyncJobStore) update(ctx context.Context, id string, status listingkit.StudioAsyncJobStatus, result any, message string, upstreamStatus int) error {
+	record, err := s.repo.GetStudioAsyncJob(ctx, id)
+	if err != nil || record == nil {
+		return err
 	}
 	now := time.Now().UTC()
-	job.Status = status
-	job.Result = result
-	job.Error = message
-	job.UpstreamStatus = upstreamStatus
-	job.UpdatedAt = now
-	job.FinishedAt = &now
-	s.persistLocked()
-}
-
-func (s *studioAsyncJobStore) cleanupLocked(now time.Time) {
-	for id, job := range s.jobs {
-		if now.Sub(job.UpdatedAt) > s.ttl {
-			delete(s.jobs, id)
-		}
-	}
-	if len(s.jobs) <= s.max {
-		return
-	}
-	for id := range s.jobs {
-		delete(s.jobs, id)
-		if len(s.jobs) <= s.max {
-			return
-		}
-	}
-}
-
-func (s *studioAsyncJobStore) loadFromFile() error {
-	if strings.TrimSpace(s.filePath) == "" {
-		return nil
-	}
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
+	record.Status = status
+	record.Error = message
+	record.UpstreamStatus = upstreamStatus
+	record.UpdatedAt = now
+	record.FinishedAt = &now
+	if err := record.EncodeResult(result); err != nil {
 		return err
 	}
-	var payload struct {
-		Jobs []*studioAsyncJob `json:"jobs"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return err
-	}
-	now := time.Now()
-	for _, job := range payload.Jobs {
-		if job == nil || job.ID == "" || now.Sub(job.UpdatedAt) > s.ttl {
-			continue
-		}
-		cloned := cloneStudioAsyncJob(job)
-		s.jobs[cloned.ID] = &cloned
-	}
-	return nil
+	return s.repo.UpdateStudioAsyncJob(ctx, record)
 }
 
-func (s *studioAsyncJobStore) persistLocked() {
-	if strings.TrimSpace(s.filePath) == "" {
-		return
+func mapStudioAsyncJobRecord(record *listingkit.StudioAsyncJobRecord) (studioAsyncJob, error) {
+	if record == nil {
+		return studioAsyncJob{}, nil
 	}
-	payload := struct {
-		Jobs []*studioAsyncJob `json:"jobs"`
-	}{
-		Jobs: make([]*studioAsyncJob, 0, len(s.jobs)),
-	}
-	for _, job := range s.jobs {
-		cloned := cloneStudioAsyncJob(job)
-		payload.Jobs = append(payload.Jobs, &cloned)
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
+	result, err := record.DecodeResult()
 	if err != nil {
-		return
+		return studioAsyncJob{}, err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.filePath), 0o755); err != nil {
-		return
-	}
-	_ = os.WriteFile(s.filePath, data, 0o644)
-}
-
-func cloneStudioAsyncJob(job *studioAsyncJob) studioAsyncJob {
-	if job == nil {
-		return studioAsyncJob{}
-	}
-	cloned := *job
-	if job.FinishedAt != nil {
-		finished := *job.FinishedAt
-		cloned.FinishedAt = &finished
-	}
-	return cloned
+	return studioAsyncJob{
+		ID:             record.ID,
+		Path:           record.Path,
+		Status:         record.Status,
+		Result:         result,
+		Error:          record.Error,
+		UpstreamStatus: record.UpstreamStatus,
+		CreatedAt:      record.CreatedAt,
+		UpdatedAt:      record.UpdatedAt,
+		FinishedAt:     record.FinishedAt,
+	}, nil
 }
 
 func newStudioAsyncJobID() string {
@@ -265,12 +151,17 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 		return
 	}
 
-	job := h.studioAsyncJobs.create(req.Path)
+	reqCtx := requestContext(c)
+	job, err := h.studioAsyncJobs.create(reqCtx, req.Path)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "async_job_create_failed", "message": err.Error()})
+		return
+	}
 	ctx := detachedRequestContext(c)
 	baseURL := requestBaseURL(c)
 	sessionID := strings.TrimSpace(req.SessionID)
 	if req.Path == "/studio/designs" {
-		h.syncStudioDesignAsyncJobSession(requestContext(c), sessionID, studioAsyncJobRunning, job.ID, "")
+		h.syncStudioDesignAsyncJobSession(reqCtx, sessionID, listingkit.StudioAsyncJobStatusRunning, job.ID, "")
 	}
 	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, sessionID, baseURL, metric)
 
@@ -278,7 +169,7 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 }
 
 func (h *handler) GetStudioAsyncJob(c *gin.Context) {
-	job, ok := h.studioAsyncJobs.get(c.Param("job_id"))
+	job, ok := h.studioAsyncJobs.get(requestContext(c), c.Param("job_id"))
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "studio async job not found"})
 		return
@@ -309,7 +200,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 				response.Images[idx].ImageURL = absolutizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
 			}
 		}
-		h.syncStudioDesignAsyncJobSession(ctx, sessionID, studioAsyncJobSucceeded, jobID, "")
+		h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusSucceeded, jobID, "")
 		result = response
 	case "/studio/product-images":
 		var req listingkit.StudioProductImageRequest
@@ -339,21 +230,21 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			status = http.StatusBadRequest
 		}
 		if path == "/studio/designs" {
-			h.syncStudioDesignAsyncJobSession(ctx, sessionID, studioAsyncJobFailed, jobID, err.Error())
+			h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusFailed, jobID, err.Error())
 		}
-		h.studioAsyncJobs.fail(jobID, err, status)
+		h.studioAsyncJobs.fail(ctx, jobID, err, status)
 		return
 	}
 	if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
 		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
 	}
-	h.studioAsyncJobs.succeed(jobID, result)
+	h.studioAsyncJobs.succeed(ctx, jobID, result)
 }
 
 func (h *handler) syncStudioDesignAsyncJobSession(
 	ctx context.Context,
 	sessionID string,
-	jobStatus studioAsyncJobStatus,
+	jobStatus listingkit.StudioAsyncJobStatus,
 	jobID string,
 	errMessage string,
 ) {
@@ -363,9 +254,9 @@ func (h *handler) syncStudioDesignAsyncJobSession(
 
 	sessionStatus := listingkit.SheinStudioSessionStatusGenerating
 	switch jobStatus {
-	case studioAsyncJobSucceeded:
+	case listingkit.StudioAsyncJobStatusSucceeded:
 		sessionStatus = listingkit.SheinStudioSessionStatusGenerated
-	case studioAsyncJobFailed:
+	case listingkit.StudioAsyncJobStatusFailed:
 		sessionStatus = listingkit.SheinStudioSessionStatusFailed
 	}
 

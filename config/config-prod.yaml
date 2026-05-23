@@ -58,7 +58,6 @@ management:
   storeIDs: [869] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
 
 listingkit:
-  studioAsyncJobStorePath: ""
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []

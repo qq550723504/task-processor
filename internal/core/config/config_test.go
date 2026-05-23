@@ -193,7 +193,6 @@ func TestConfigBuildIncludesDebugConfig(t *testing.T) {
 
 func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	v := viper.New()
-	v.Set("listingkit.studioAsyncJobStorePath", "./.local/tmp/studio-jobs.json")
 	v.Set("listingkit.sheinSubmitDebugDumpDir", "./.local/tmp/shein-submit-dumps")
 	v.Set("listingkit.platformAdminUsers", []string{"user-a", "user-b"})
 	v.Set("listingkit.platformAdminRoles", []string{"role-a", "role-b"})
@@ -210,7 +209,6 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 
 	cfg := BuildConfig(v)
 
-	assert.Equal(t, "./.local/tmp/studio-jobs.json", cfg.ListingKit.StudioAsyncJobStorePath)
 	assert.Equal(t, "./.local/tmp/shein-submit-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
 	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"role-a", "role-b"}, cfg.ListingKit.PlatformAdminRoles)

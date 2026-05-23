@@ -36,6 +36,19 @@ func BuildListingKitTaskRepository(cfg *config.Config, logger *logrus.Logger) (l
 	return listingkitstore.NewMemTaskRepository(), nil, nil
 }
 
+func BuildListingKitStudioAsyncJobRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitStudioAsyncJobRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit studio async job repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory listingkit studio async job repository")
+	return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+}
+
 func BuildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
 		repo, closer, err := newDBListingAdminStoreRepository(cfg.Database, logger)
@@ -353,6 +366,23 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 		return nil, nil, fmt.Errorf("listingkit auto-migrate failed: %w", err)
 	}
 	repo := listingkitstore.NewTaskRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitStudioAsyncJobRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StudioAsyncJobRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingkit.AutoMigrateStudioAsyncJobRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit studio async job auto-migrate failed: %w", err)
+	}
+	repo := listingkit.NewGormStudioAsyncJobRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

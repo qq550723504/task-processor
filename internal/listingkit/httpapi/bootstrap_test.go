@@ -26,6 +26,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				Task: func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error) {
 					return nil, nil, nil
 				},
+				StudioAsyncJob: func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				Subscription: func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
 					return nil, nil, nil
 				},

@@ -99,9 +99,9 @@ type SubscriptionDependencies struct {
 }
 
 type HandlerDependencies struct {
-	StudioAsyncJobStorePath string
-	Admin                   AdminHandlerDependencies
-	Subscription            SubscriptionDependencies
+	StudioAsyncJobRepository listingkit.StudioAsyncJobRepository
+	Admin                    AdminHandlerDependencies
+	Subscription             SubscriptionDependencies
 }
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -131,7 +131,7 @@ func withAdminDependency[Repo comparable](repo Repo, apply func(Repo, *adminHand
 
 func WithDependencies(deps HandlerDependencies) HandlerOption {
 	options := []HandlerOption{
-		WithStudioAsyncJobStorePath(deps.StudioAsyncJobStorePath),
+		WithStudioAsyncJobRepository(deps.StudioAsyncJobRepository),
 		withStoreAdminDependencies(deps.Admin),
 		withCatalogAdminDependencies(deps.Admin),
 		withSubscriptionConfig(deps.Subscription),
@@ -145,9 +145,9 @@ func WithDependencies(deps HandlerDependencies) HandlerOption {
 	}
 }
 
-func WithStudioAsyncJobStorePath(path string) HandlerOption {
+func WithStudioAsyncJobRepository(repo listingkit.StudioAsyncJobRepository) HandlerOption {
 	return withHandlerState(func(h *handler) {
-		store, err := newStudioAsyncJobStoreWithPath(path)
+		store, err := newStudioAsyncJobStore(repo)
 		if err != nil {
 			h.initErr = err
 			return
@@ -198,7 +198,7 @@ func NewHandler(service HandlerService, opts ...HandlerOption) (*handler, error)
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
-	studioAsyncJobs, err := newDefaultStudioAsyncJobStore()
+	studioAsyncJobs, err := newStudioAsyncJobStore(nil)
 	if err != nil {
 		return nil, err
 	}

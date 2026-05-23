@@ -37,6 +37,7 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 		Repositories: listingkithttpapi.BuildServiceRepositories{
 			Core: listingkithttpapi.CoreRepositoryBuilders{
 				Task:                 listingkithttpapi.BuildListingKitTaskRepository,
+				StudioAsyncJob:       listingkithttpapi.BuildListingKitStudioAsyncJobRepository,
 				Subscription:         listingkithttpapi.BuildListingSubscriptionRepository,
 				Asset:                listingkithttpapi.BuildAssetRepository,
 				Review:               listingkithttpapi.BuildListingKitReviewRepository,

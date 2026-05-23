@@ -13,8 +13,6 @@ data:
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION: "us-east-1"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT: "https://oss.shuomiai.com"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE: "true"
-  # Mount this path to persistent storage if API restarts must retain Studio async job status.
-  LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH: "/data/listingkit-studio-async-jobs.json"
   # ListingKit layer workflows and publish workflows run on Temporal when enabled.
   # Replace the address with the real Temporal frontend Service in the cluster.
   LISTINGKIT_TEMPORAL_ENABLED: "1"

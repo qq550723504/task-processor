@@ -18,7 +18,6 @@ Core ListingKit keys now live under:
 
 ```yaml
 listingkit:
-  studioAsyncJobStorePath: ""
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
@@ -37,7 +36,6 @@ listingkit:
 
 Relevant env bindings:
 
-- `LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH`
 - `LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR`
 - `LISTINGKIT_PLATFORM_ADMIN_USERS`
 - `LISTINGKIT_PLATFORM_ADMIN_ROLES`
@@ -64,12 +62,10 @@ they exist.
    `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED`,
    `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED`,
    `LISTINGKIT_ZITADEL_ALLOWED_*`.
-4. If Studio async job recovery matters across pod restarts, set
-   `LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH` to a persistent volume mount.
-5. If you want user-level data isolation in addition to tenant-level isolation,
+4. If you want user-level data isolation in addition to tenant-level isolation,
    enable `TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED` only after
    confirming historical rows have `user_id` populated.
-6. Remove any operator runbooks that tell engineers to patch
+5. Remove any operator runbooks that tell engineers to patch
    `internal/app/httpapi/zitadel_auth.go` behavior with ad hoc env changes; the
    middleware now consumes injected runtime config only.
 
@@ -81,7 +77,7 @@ they exist.
    authorization is enabled.
 3. Confirm a permitted user can open the main ListingKit pages and any intended
    operator/admin sections.
-4. Restart the API pod and verify async Studio jobs survive if a persistent
-   `LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH` is configured.
+4. Restart the API pod and verify Studio async jobs remain queryable from the
+   database-backed API.
 5. Check API startup logs for config validation errors instead of silent auth
    fallback behavior.

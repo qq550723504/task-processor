@@ -46,7 +46,7 @@ Scope:
 - Go async job API under `internal/listingkit/api/studio_async_jobs_handler.go`
 - route registration in `internal/app/httpapi/server.go`
 - UI `apiAsyncRequest` backend-first flow and Next fallback
-- `LISTINGKIT_STUDIO_ASYNC_JOB_STORE_PATH` deployment/env wiring
+- database-backed Studio async job persistence wiring
 
 Validation:
 - `go test ./internal/listingkit/api -run StudioAsyncJob -count=1`
