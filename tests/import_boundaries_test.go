@@ -33,6 +33,7 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			filepath.Clean(filepath.Join(root, "service_submit_store_context.go")):    {},
 			filepath.Clean(filepath.Join(root, "shein_runtime.go")):                   {},
 			filepath.Clean(filepath.Join(root, "service_preview_test.go")):            {},
+			filepath.Clean(filepath.Join(root, "service_revision_test.go")):           {},
 			filepath.Clean(filepath.Join(root, "service_shein_store_client.go")):      {},
 			filepath.Clean(filepath.Join(root, "service_shein_store_client_test.go")): {},
 		},

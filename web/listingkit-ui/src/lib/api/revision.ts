@@ -11,6 +11,8 @@ export type ApplyRevisionRequest = {
   actor?: string;
   reason?: string;
   shein?: {
+    regenerate_attributes?: boolean;
+    regenerate_sale_attributes?: boolean;
     category_resolution?: {
       category_id?: number;
       category_id_list?: number[];
