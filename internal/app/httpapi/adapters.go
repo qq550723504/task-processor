@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
+	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/database"
@@ -53,20 +54,7 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 }
 
 func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (prompt.TenantPromptStore, func() error, error) {
-	if cfg == nil {
-		return nil, nil, fmt.Errorf("database config is nil")
-	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
-	}
-	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
-		return nil, nil, fmt.Errorf("tenant prompt auto-migrate failed: %w", err)
-	}
-	store := prompt.NewGormTenantPromptStore(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
-	return store, closer, nil
+	return bootstrapresources.NewDBTenantPromptStore(cfg, logger)
 }
 
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {

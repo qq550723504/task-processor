@@ -156,7 +156,7 @@ func (r *registryImpl) GetTenant(tenantID string, key string) (string, error) {
 	if ok {
 		return value, nil
 	}
-	return "", fmt.Errorf("prompt %q not configured for tenant %q", key, normalizedTenantID)
+	return "", fmt.Errorf("%w: prompt %q not configured for tenant %q", ErrTenantPromptNotFound, key, normalizedTenantID)
 }
 
 func (r *registryImpl) RenderTenant(tenantID string, key string, vars map[string]any) (string, error) {

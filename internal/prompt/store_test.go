@@ -189,6 +189,21 @@ func TestGetTenantFromContextWithGlobalFallbackUsesGlobalPromptWhenTenantMissing
 	require.Equal(t, "global prompt", got)
 }
 
+func TestGetTenantFromContextWithGlobalFallbackUsesGlobalPromptWithRealRegistry(t *testing.T) {
+	previous := GlobalRegistry
+	registry := newTestRegistry()
+	registry.cache = map[string]string{
+		"tmpl.key": "global prompt",
+	}
+	GlobalRegistry = registry
+	defer func() { GlobalRegistry = previous }()
+
+	got, err := GetTenantFromContextWithGlobalFallback(context.Background(), "tmpl.key")
+
+	require.NoError(t, err)
+	require.Equal(t, "global prompt", got)
+}
+
 func TestRenderTenantFromContextWithGlobalFallbackUsesGlobalRenderWhenTenantMissing(t *testing.T) {
 	previous := GlobalRegistry
 	GlobalRegistry = promptRegistryStub{
@@ -205,7 +220,7 @@ func TestRenderTenantFromContextWithGlobalFallbackUsesGlobalRenderWhenTenantMiss
 func TestGetTenantFromContextWithGlobalFallbackPreservesNonMissingErrors(t *testing.T) {
 	previous := GlobalRegistry
 	GlobalRegistry = promptRegistryStub{
-		tenantErr: errors.New("db down"),
+		tenantErr:     errors.New("db down"),
 		globalPrompts: map[string]string{"tmpl.key": "global prompt"},
 	}
 	defer func() { GlobalRegistry = previous }()

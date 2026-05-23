@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Module struct{}
@@ -59,6 +62,9 @@ func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformR
 	if err := initPrompts(ctx, rt); err != nil {
 		rt.Logger.Warnf("prompt init failed, fallback will be used: %v", err)
 	}
+	if err := configureTenantPromptStore(rt, bootstrapresources.NewDBTenantPromptStore); err != nil {
+		rt.Logger.Warnf("tenant prompt store init failed, tenant overrides disabled: %v", err)
+	}
 
 	configureScheduler(rt)
 	configureStoreGuard(rt)
@@ -94,6 +100,26 @@ func initPrompts(ctx context.Context, rt consumer.PlatformRuntimeContext) error 
 		promptsDir = "./prompts"
 	}
 	return prompt.InitGlobal(ctx, promptsDir, rt.Config.Prompts.HotReload, rt.Logger.WithField("component", "prompt"))
+}
+
+type tenantPromptStoreOpener func(*config.DatabaseConfig, *logrus.Logger) (prompt.TenantPromptStore, func() error, error)
+
+func configureTenantPromptStore(rt consumer.PlatformRuntimeContext, opener tenantPromptStoreOpener) error {
+	if rt.Config == nil || rt.Config.Database == nil {
+		return nil
+	}
+	if opener == nil {
+		return fmt.Errorf("tenant prompt store opener is nil")
+	}
+
+	store, _, err := opener(rt.Config.Database, rt.Logger)
+	if err != nil {
+		return fmt.Errorf("create tenant prompt store: %w", err)
+	}
+	if err := prompt.SetTenantPromptStore(store); err != nil {
+		return fmt.Errorf("attach tenant prompt store: %w", err)
+	}
+	return nil
 }
 
 func configureScheduler(rt consumer.PlatformRuntimeContext) {

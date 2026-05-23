@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/core/metrics"
 	managementAPI "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
 	shein "task-processor/internal/shein"
@@ -45,6 +46,8 @@ func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 }
 
 func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipeline) error {
+	ctx = injectTaskTenantContext(ctx, &task)
+
 	logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 		"task_id":         task.ID,
 		"tenant_id":       task.TenantID,
@@ -74,6 +77,13 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipel
 
 	h.handleSuccess(task)
 	return nil
+}
+
+func injectTaskTenantContext(ctx context.Context, task *model.Task) context.Context {
+	if task == nil || task.TenantID == 0 {
+		return ctx
+	}
+	return listingkit.WithTenantID(ctx, fmt.Sprintf("%d", task.TenantID))
 }
 
 func (h *TaskHandler) rollbackReservedDailyQuota(taskCtx *sheincontext.TaskContext) {
