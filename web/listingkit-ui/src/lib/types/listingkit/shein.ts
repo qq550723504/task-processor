@@ -110,6 +110,7 @@ export type SheinWorkspaceOverview = {
 export type SheinResolutionCacheInfo = {
   status?: string;
   source?: string;
+  hit_source?: string;
   short_key?: string;
   hit_count?: number;
   updated_at?: string;

@@ -25,7 +25,7 @@ func decodeCategoryCacheEntry(entry *SheinResolutionCacheEntry) *CategoryResolut
 	if err := json.Unmarshal([]byte(entry.ResolutionJSON), &resolution); err != nil {
 		return nil
 	}
-	attachResolutionCacheInfoToCategory(&resolution, cacheEntrySource(entry), entry.CacheKey, entry.Manual)
+	attachResolutionCacheInfoToCategory(&resolution, cacheEntrySource(entry), entry.CacheKey, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
 	if resolution.Cache != nil {
 		resolution.Cache.HitCount = entry.HitCount
 		resolution.Cache.UpdatedAt = &entry.UpdatedAt
@@ -41,7 +41,7 @@ func decodeAttributeCacheEntry(entry *SheinResolutionCacheEntry) *AttributeResol
 	if err := json.Unmarshal([]byte(entry.ResolutionJSON), &resolution); err != nil {
 		return nil
 	}
-	attachResolutionCacheInfoToAttribute(&resolution, cacheEntrySource(entry), entry.CacheKey, entry.Manual)
+	attachResolutionCacheInfoToAttribute(&resolution, cacheEntrySource(entry), entry.CacheKey, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
 	if resolution.Cache != nil {
 		resolution.Cache.HitCount = entry.HitCount
 		resolution.Cache.UpdatedAt = &entry.UpdatedAt
@@ -57,7 +57,7 @@ func decodeSaleAttributeCacheEntry(entry *SheinResolutionCacheEntry) *SaleAttrib
 	if err := json.Unmarshal([]byte(entry.ResolutionJSON), &resolution); err != nil {
 		return nil
 	}
-	attachResolutionCacheInfoToSaleAttribute(&resolution, cacheEntrySource(entry), entry.CacheKey, entry.Manual)
+	attachResolutionCacheInfoToSaleAttribute(&resolution, cacheEntrySource(entry), entry.CacheKey, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
 	if resolution.Cache != nil {
 		resolution.Cache.HitCount = entry.HitCount
 		resolution.Cache.UpdatedAt = &entry.UpdatedAt
@@ -70,6 +70,13 @@ func cacheEntrySource(entry *SheinResolutionCacheEntry) string {
 		return "manual_cache"
 	}
 	return "history_cache"
+}
+
+func cacheHitSourceFromEntry(entry *SheinResolutionCacheEntry) string {
+	if entry != nil && entry.Manual {
+		return ResolutionCacheHitSourcePersistentManualCache
+	}
+	return ResolutionCacheHitSourcePersistentHistoryCache
 }
 
 func buildResolutionCacheEntry(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution any, manual bool) *SheinResolutionCacheEntry {
@@ -144,39 +151,42 @@ func buildResolutionCacheSourceIdentity(kind string, canonical *canonical.Produc
 	return string(data)
 }
 
-func attachResolutionCacheInfoToCategory(resolution *CategoryResolution, source string, key string, manual bool) {
+func attachResolutionCacheInfoToCategory(resolution *CategoryResolution, source string, key string, manual bool, hitSource string, status string) {
 	if resolution == nil {
 		return
 	}
-	resolution.Cache = buildResolutionCacheInfo(source, key, manual)
+	resolution.Cache = buildResolutionCacheInfo(source, key, manual, hitSource, status)
 }
 
-func attachResolutionCacheInfoToAttribute(resolution *AttributeResolution, source string, key string, manual bool) {
+func attachResolutionCacheInfoToAttribute(resolution *AttributeResolution, source string, key string, manual bool, hitSource string, status string) {
 	if resolution == nil {
 		return
 	}
-	resolution.Cache = buildResolutionCacheInfo(source, key, manual)
+	resolution.Cache = buildResolutionCacheInfo(source, key, manual, hitSource, status)
 }
 
-func attachResolutionCacheInfoToSaleAttribute(resolution *SaleAttributeResolution, source string, key string, manual bool) {
+func attachResolutionCacheInfoToSaleAttribute(resolution *SaleAttributeResolution, source string, key string, manual bool, hitSource string, status string) {
 	if resolution == nil {
 		return
 	}
-	resolution.Cache = buildResolutionCacheInfo(source, key, manual)
+	resolution.Cache = buildResolutionCacheInfo(source, key, manual, hitSource, status)
 }
 
-func buildResolutionCacheInfo(source string, key string, manual bool) *ResolutionCacheInfo {
+func buildResolutionCacheInfo(source string, key string, manual bool, hitSource string, status string) *ResolutionCacheInfo {
 	now := time.Now()
-	status := "stored"
-	switch source {
-	case "memory_cache", "history_cache", "manual_cache":
-		status = "hit"
-	case "live_resolver", "static_fallback", "llm":
+	if strings.TrimSpace(status) == "" {
 		status = "stored"
+		switch source {
+		case "memory_cache", "history_cache", "manual_cache":
+			status = "hit"
+		case "live_resolver", "static_fallback", "llm":
+			status = "stored"
+		}
 	}
 	return &ResolutionCacheInfo{
 		Status:    status,
 		Source:    source,
+		HitSource: hitSource,
 		CacheKey:  key,
 		ShortKey:  shortResolutionCacheKey(key),
 		UpdatedAt: &now,

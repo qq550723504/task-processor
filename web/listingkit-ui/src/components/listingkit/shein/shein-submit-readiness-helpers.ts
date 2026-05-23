@@ -92,19 +92,45 @@ export function normalizedSubmissionStatus(
 export function cacheSourceLabel(source?: string) {
   switch (source) {
     case "manual_cache":
-      return "Manual";
+      return "人工缓存";
     case "history_cache":
-      return "DB";
+      return "历史缓存";
     case "memory_cache":
-      return "Memory";
+      return "内存缓存";
     case "live_resolver":
-      return "Live";
+      return "实时解析";
     case "static_fallback":
-      return "Static";
+      return "静态兜底";
     case "llm":
       return "LLM";
     default:
       return source ?? "未知";
+  }
+}
+
+export function cacheHitSourceLabel(hitSource?: string, status?: string) {
+  switch (hitSource) {
+    case "memory_cache":
+      return "内存缓存命中";
+    case "persistent_manual_cache":
+      return "数据库人工缓存命中";
+    case "persistent_history_cache":
+      return "数据库历史缓存命中";
+    case "publish_remembered":
+      return status === "stored" ? "发布后写入缓存" : "发布缓存复用";
+    default:
+      return null;
+  }
+}
+
+export function cacheStatusLabel(status?: string) {
+  switch (status) {
+    case "hit":
+      return "已命中";
+    case "stored":
+      return "已写入";
+    default:
+      return status ?? "未知";
   }
 }
 

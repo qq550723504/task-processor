@@ -96,7 +96,7 @@ func (r *cachedCategoryResolver) RememberCategoryResolution(req *BuildRequest, c
 	if key == "" || !shouldCacheCategoryResolution(resolution) {
 		return
 	}
-	attachResolutionCacheInfoToCategory(resolution, "manual_cache", key, true)
+	attachResolutionCacheInfoToCategory(resolution, "manual_cache", key, true, ResolutionCacheHitSourcePublishRemembered, "stored")
 	r.cache.Store(key, cloneCategoryResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindCategory, req, canonical, pkg, key, resolution, true)
 }
@@ -141,7 +141,7 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	if key == "" || !shouldCacheAttributeResolution(resolution) {
 		return
 	}
-	attachResolutionCacheInfoToAttribute(resolution, "manual_cache", key, true)
+	attachResolutionCacheInfoToAttribute(resolution, "manual_cache", key, true, ResolutionCacheHitSourcePublishRemembered, "stored")
 	r.cache.Store(key, cloneAttributeResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, resolution, true)
 }
@@ -201,7 +201,7 @@ func (r *cachedSaleAttributeResolver) RememberSaleAttributeResolution(req *Build
 	if key == "" || !shouldCacheSaleAttributeResolution(resolution) {
 		return
 	}
-	attachResolutionCacheInfoToSaleAttribute(resolution, "manual_cache", key, true)
+	attachResolutionCacheInfoToSaleAttribute(resolution, "manual_cache", key, true, ResolutionCacheHitSourcePublishRemembered, "stored")
 	r.cache.Store(key, cloneSaleAttributeResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindSaleAttribute, req, canonical, pkg, key, resolution, true)
 }

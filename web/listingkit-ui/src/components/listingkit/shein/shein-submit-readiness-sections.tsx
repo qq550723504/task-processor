@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  cacheHitSourceLabel,
+  cacheStatusLabel,
   cacheSourceLabel,
   cacheUpdatedLabel,
   fieldPathsLabel,
@@ -27,6 +29,9 @@ export function ResolutionCacheRow({
   onClear?: ((kind: ResolutionCacheKind) => void) | null;
   isClearing?: boolean;
 }) {
+  const hitSourceLabel = cacheHitSourceLabel(item?.hit_source, item?.status);
+  const showHitCount = item?.status === "hit" && typeof item?.hit_count === "number";
+
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white/80 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -34,12 +39,15 @@ export function ResolutionCacheRow({
           <p className="text-sm font-semibold text-zinc-950">{title}</p>
           <p className="text-xs leading-5 text-zinc-600">
             {item
-              ? `${cacheSourceLabel(item.source)} · ${item.short_key ?? "无 key"}`
+              ? `解析来源：${cacheSourceLabel(item.source)} · ${item.short_key ?? "无 key"}`
               : "暂无缓存信息"}
           </p>
           {item ? (
             <p className="text-[11px] leading-5 text-zinc-500">
-              {item.status ?? "未知"} · 命中 {item.hit_count ?? 0} ·{" "}
+              {cacheStatusLabel(item.status)}
+              {hitSourceLabel ? ` · ${hitSourceLabel}` : ""}
+              {showHitCount ? ` · 命中 ${item.hit_count ?? 0} 次` : ""}
+              {" · "}
               {cacheUpdatedLabel(item.updated_at)}
               {item.manual ? " · 人工确认" : ""}
             </p>

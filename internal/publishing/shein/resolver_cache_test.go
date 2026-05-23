@@ -463,8 +463,14 @@ func TestCachedAttributeResolverLoadsPersistentCacheAndRefillsMemory(t *testing.
 	if first.Cache == nil || first.Cache.Source != "manual_cache" {
 		t.Fatalf("first cache metadata = %#v, want manual_cache", first.Cache)
 	}
+	if first.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("first hit source = %q, want %q", first.Cache.HitSource, ResolutionCacheHitSourcePersistentManualCache)
+	}
 	if second.Cache == nil || second.Cache.Source != "manual_cache" {
 		t.Fatalf("second cache metadata = %#v, want manual memory hit", second.Cache)
+	}
+	if second.Cache.HitSource != ResolutionCacheHitSourceMemoryCache {
+		t.Fatalf("second hit source = %q, want %q", second.Cache.HitSource, ResolutionCacheHitSourceMemoryCache)
 	}
 	if got := second.ResolvedAttributes[0].AttributeValueID; got == nil || *got != valueID {
 		t.Fatalf("attribute value id = %v, want %d", got, valueID)

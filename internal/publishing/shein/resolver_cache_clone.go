@@ -8,8 +8,8 @@ import (
 func cloneCategoryResolutionWithCacheNote(resolution *CategoryResolution) *CategoryResolution {
 	clone := cloneCategoryResolution(resolution)
 	if clone != nil {
-		if clone.Cache != nil && clone.Cache.Source != "manual_cache" {
-			clone.Cache.Source = "memory_cache"
+		if clone.Cache != nil {
+			clone.Cache.HitSource = ResolutionCacheHitSourceMemoryCache
 			clone.Cache.Status = "hit"
 		}
 		clone.ReviewNotes = append(clone.ReviewNotes, "SHEIN 类目缓存命中: 已复用同一底版商品的人工/历史类目解析结果")
@@ -20,8 +20,8 @@ func cloneCategoryResolutionWithCacheNote(resolution *CategoryResolution) *Categ
 func cloneAttributeResolutionWithCacheNote(resolution *AttributeResolution) *AttributeResolution {
 	clone := cloneAttributeResolution(resolution)
 	if clone != nil {
-		if clone.Cache != nil && clone.Cache.Source != "manual_cache" {
-			clone.Cache.Source = "memory_cache"
+		if clone.Cache != nil {
+			clone.Cache.HitSource = ResolutionCacheHitSourceMemoryCache
 			clone.Cache.Status = "hit"
 		}
 		clone.ReviewNotes = append(clone.ReviewNotes, "SHEIN 普通属性缓存命中: 已复用同一底版商品的人工/历史属性解析结果")
@@ -32,8 +32,8 @@ func cloneAttributeResolutionWithCacheNote(resolution *AttributeResolution) *Att
 func cloneSaleAttributeResolutionWithCacheNote(resolution *SaleAttributeResolution) *SaleAttributeResolution {
 	clone := cloneSaleAttributeResolution(resolution)
 	if clone != nil {
-		if clone.Cache != nil && clone.Cache.Source != "manual_cache" {
-			clone.Cache.Source = "memory_cache"
+		if clone.Cache != nil {
+			clone.Cache.HitSource = ResolutionCacheHitSourceMemoryCache
 			clone.Cache.Status = "hit"
 		}
 		clone.ReviewNotes = append(clone.ReviewNotes, "SHEIN 销售属性缓存命中: 已复用同一底版商品的人工/历史销售属性解析结果")

@@ -14,11 +14,17 @@ const (
 	ResolutionCacheKindAttribute     = "attribute"
 	ResolutionCacheKindSaleAttribute = "sale_attribute"
 	ResolutionCacheKindPricing       = "pricing"
+
+	ResolutionCacheHitSourceMemoryCache            = "memory_cache"
+	ResolutionCacheHitSourcePersistentManualCache  = "persistent_manual_cache"
+	ResolutionCacheHitSourcePersistentHistoryCache = "persistent_history_cache"
+	ResolutionCacheHitSourcePublishRemembered      = "publish_remembered"
 )
 
 type ResolutionCacheInfo struct {
 	Status    string     `json:"status,omitempty"`
 	Source    string     `json:"source,omitempty"`
+	HitSource string     `json:"hit_source,omitempty"`
 	CacheKey  string     `json:"cache_key,omitempty"`
 	ShortKey  string     `json:"short_key,omitempty"`
 	HitCount  int        `json:"hit_count,omitempty"`

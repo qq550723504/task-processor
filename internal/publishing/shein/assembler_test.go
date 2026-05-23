@@ -698,11 +698,20 @@ func TestAssemblerBuildReusesPublishedResolutionCacheOnSecondBuild(t *testing.T)
 	if second.CategoryResolution == nil || second.CategoryResolution.Cache == nil || second.CategoryResolution.Cache.Source != "manual_cache" {
 		t.Fatalf("second category cache = %+v, want manual_cache hit", second.CategoryResolution)
 	}
+	if second.CategoryResolution.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("second category hit source = %q, want %q", second.CategoryResolution.Cache.HitSource, ResolutionCacheHitSourcePersistentManualCache)
+	}
 	if second.AttributeResolution == nil || second.AttributeResolution.Cache == nil || second.AttributeResolution.Cache.Source != "manual_cache" {
 		t.Fatalf("second attribute cache = %+v, want manual_cache hit", second.AttributeResolution)
 	}
+	if second.AttributeResolution.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("second attribute hit source = %q, want %q", second.AttributeResolution.Cache.HitSource, ResolutionCacheHitSourcePersistentManualCache)
+	}
 	if second.SaleAttributeResolution == nil || second.SaleAttributeResolution.Cache == nil || second.SaleAttributeResolution.Cache.Source != "manual_cache" {
 		t.Fatalf("second sale attribute cache = %+v, want manual_cache hit", second.SaleAttributeResolution)
+	}
+	if second.SaleAttributeResolution.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("second sale attribute hit source = %q, want %q", second.SaleAttributeResolution.Cache.HitSource, ResolutionCacheHitSourcePersistentManualCache)
 	}
 }
 

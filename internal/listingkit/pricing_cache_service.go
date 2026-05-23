@@ -36,7 +36,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	if key == "" {
 		return
 	}
-	attachPricingCacheInfo(review, "manual_cache", key, true, 0, nil)
+	attachPricingCacheInfo(review, "manual_cache", key, true, sheinpub.ResolutionCacheHitSourcePublishRemembered, "stored", 0, nil)
 	task.Result.Shein.Pricing = review
 	_ = s.sheinResolutionCacheStore.SaveResolutionCache(context.Background(), &sheinpub.SheinResolutionCacheEntry{
 		StoreID:        sheinPricingStoreID(req),
@@ -67,7 +67,7 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 	if !sheinPricingReviewApplicable(pkg, review) {
 		return nil
 	}
-	attachPricingCacheInfo(review, cacheEntrySourceLabel(entry), entry.CacheKey, entry.Manual, entry.HitCount, &entry.UpdatedAt)
+	attachPricingCacheInfo(review, cacheEntrySourceLabel(entry), entry.CacheKey, entry.Manual, pricingCacheHitSource(entry), "hit", entry.HitCount, &entry.UpdatedAt)
 	logPricingCacheEvent("hit", buildReq, pkg, review.Cache, logrus.Fields{
 		"cache_kind": sheinpub.ResolutionCacheKindPricing,
 		"hit_count":  entry.HitCount,
@@ -370,6 +370,8 @@ func attachPricingCacheInfo(
 	source string,
 	key string,
 	manual bool,
+	hitSource string,
+	status string,
 	hitCount int,
 	updatedAt *time.Time,
 ) {
@@ -377,8 +379,9 @@ func attachPricingCacheInfo(
 		return
 	}
 	info := &sheinpub.ResolutionCacheInfo{
-		Status:    pricingCacheStatusForSource(source),
+		Status:    pricingCacheStatusForSource(source, status),
 		Source:    source,
+		HitSource: hitSource,
 		CacheKey:  key,
 		ShortKey:  sheinPricingShortKey(key),
 		HitCount:  hitCount,
@@ -392,7 +395,10 @@ func attachPricingCacheInfo(
 	review.Cache = info
 }
 
-func pricingCacheStatusForSource(source string) string {
+func pricingCacheStatusForSource(source string, status string) string {
+	if strings.TrimSpace(status) != "" {
+		return status
+	}
 	switch source {
 	case "manual_cache", "history_cache", "memory_cache":
 		return "hit"
@@ -406,6 +412,13 @@ func cacheEntrySourceLabel(entry *sheinpub.SheinResolutionCacheEntry) string {
 		return "manual_cache"
 	}
 	return "history_cache"
+}
+
+func pricingCacheHitSource(entry *sheinpub.SheinResolutionCacheEntry) string {
+	if entry != nil && entry.Manual {
+		return sheinpub.ResolutionCacheHitSourcePersistentManualCache
+	}
+	return sheinpub.ResolutionCacheHitSourcePersistentHistoryCache
 }
 
 func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpub.Package, info *sheinpub.ResolutionCacheInfo, fields logrus.Fields) {

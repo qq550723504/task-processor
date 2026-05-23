@@ -423,7 +423,7 @@ func TestGetTaskResultRefreshesStaleSheinCookieReviewState(t *testing.T) {
 				},
 			},
 			Shein: &SheinPackage{
-				CategoryID: 10489,
+				CategoryID:  10489,
 				ReviewNotes: []string{"SHEIN 店铺 cookie 不可用，已降级为离线解析"},
 				CategoryResolution: &sheinpub.CategoryResolution{
 					Status:      "resolved",
@@ -708,6 +708,9 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 	if result.Shein.Pricing.Cache == nil || result.Shein.Pricing.Cache.Source != "manual_cache" {
 		t.Fatalf("pricing cache = %+v, want manual_cache", result.Shein.Pricing.Cache)
 	}
+	if result.Shein.Pricing.Cache.HitSource != sheinpub.ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("pricing hit source = %q, want %q", result.Shein.Pricing.Cache.HitSource, sheinpub.ResolutionCacheHitSourcePersistentManualCache)
+	}
 	if got := result.Shein.Pricing.SKUPrices[0].FinalPrice; got != 27.99 {
 		t.Fatalf("final price = %v, want cached 27.99", got)
 	}
@@ -720,5 +723,8 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 	}
 	if preview.ResolutionCache.Pricing.Source != "manual_cache" {
 		t.Fatalf("preview pricing cache source = %q, want manual_cache", preview.ResolutionCache.Pricing.Source)
+	}
+	if preview.ResolutionCache.Pricing.HitSource != sheinpub.ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("preview pricing hit source = %q, want %q", preview.ResolutionCache.Pricing.HitSource, sheinpub.ResolutionCacheHitSourcePersistentManualCache)
 	}
 }

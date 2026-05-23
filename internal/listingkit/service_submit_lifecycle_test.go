@@ -427,6 +427,11 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 		preview.Shein.ResolutionCache.SaleAttributes == nil {
 		t.Fatalf("resolution cache summary = %+v, want category/attribute/sale_attribute after publish", preview.Shein.ResolutionCache)
 	}
+	if preview.Shein.ResolutionCache.Category.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered ||
+		preview.Shein.ResolutionCache.Attributes.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered ||
+		preview.Shein.ResolutionCache.SaleAttributes.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered {
+		t.Fatalf("resolution cache hit sources = %+v, want publish_remembered", preview.Shein.ResolutionCache)
+	}
 	entries := cacheStore.snapshot()
 	if len(entries) != 4 {
 		t.Fatalf("cache entry count = %d, want 4 including pricing: %+v", len(entries), entries)
