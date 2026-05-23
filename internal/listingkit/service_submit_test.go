@@ -254,11 +254,15 @@ type stubSheinProductAPIBuilder struct {
 	api         sheinproduct.ProductAPI
 	msg         string
 	lastStoreID *int64
+	lastCtx     *context.Context
 }
 
-func (s stubSheinProductAPIBuilder) BuildProductAPI(_ context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
+func (s stubSheinProductAPIBuilder) BuildProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
 	if s.lastStoreID != nil {
 		*s.lastStoreID = storeID
+	}
+	if s.lastCtx != nil {
+		*s.lastCtx = ctx
 	}
 	return s.api, s.msg
 }
@@ -267,11 +271,15 @@ type stubSheinImageAPIBuilder struct {
 	api         sheinimage.ImageAPI
 	msg         string
 	lastStoreID *int64
+	lastCtx     *context.Context
 }
 
-func (s stubSheinImageAPIBuilder) BuildImageAPI(_ context.Context, storeID int64) (sheinimage.ImageAPI, string) {
+func (s stubSheinImageAPIBuilder) BuildImageAPI(ctx context.Context, storeID int64) (sheinimage.ImageAPI, string) {
 	if s.lastStoreID != nil {
 		*s.lastStoreID = storeID
+	}
+	if s.lastCtx != nil {
+		*s.lastCtx = ctx
 	}
 	return s.api, s.msg
 }
@@ -478,7 +486,9 @@ func makeReadySheinTask() *Task {
 	valueID := 2493
 	sizeValueID := 267
 	return &Task{
-		ID: "submit-task-1",
+		ID:       "submit-task-1",
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
 		Request: &GenerateRequest{
 			SheinStoreID: 869,
 		},
@@ -661,5 +671,72 @@ func TestBuildSheinSubmitProductAPIUsesResolvedProfileStoreID(t *testing.T) {
 	}
 	if lastStoreID != 903 {
 		t.Fatalf("builder store id = %d, want 903", lastStoreID)
+	}
+}
+
+func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testing.T) {
+	t.Parallel()
+
+	var builderCtx context.Context
+	svc := &service{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api:     &stubSheinProductAPI{},
+			lastCtx: &builderCtx,
+		},
+	}
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{SheinStoreID: 870},
+	}
+
+	api, err := svc.buildSheinSubmitProductAPI(context.Background(), task)
+	if err != nil {
+		t.Fatalf("buildSheinSubmitProductAPI error = %v", err)
+	}
+	if api == nil {
+		t.Fatal("expected product api")
+	}
+	identity := openaiclient.IdentityFromContext(builderCtx)
+	if identity.TenantID != task.TenantID {
+		t.Fatalf("builder context tenant id = %q, want %q", identity.TenantID, task.TenantID)
+	}
+	if identity.UserID != task.UserID {
+		t.Fatalf("builder context user id = %q, want %q", identity.UserID, task.UserID)
+	}
+}
+
+func TestUploadSheinSubmitImagesInjectsTaskTenantIntoBuilderContext(t *testing.T) {
+	t.Parallel()
+
+	var builderCtx context.Context
+	svc := &service{
+		sheinImageAPIBuilder: stubSheinImageAPIBuilder{
+			api:     &stubSheinImageAPI{uploaded: map[string]string{"https://example.com/source.jpg": "https://img.shein.com/uploaded.jpg"}},
+			lastCtx: &builderCtx,
+		},
+	}
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{SheinStoreID: 870},
+	}
+	product := &sheinproduct.Product{
+		ImageInfo: &sheinproduct.ImageInfo{
+			ImageInfoList: []sheinproduct.ImageDetail{{
+				ImageURL: "https://example.com/source.jpg",
+			}},
+		},
+	}
+
+	if err := svc.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, product); err != nil {
+		t.Fatalf("uploadSheinSubmitImages error = %v", err)
+	}
+	identity := openaiclient.IdentityFromContext(builderCtx)
+	if identity.TenantID != task.TenantID {
+		t.Fatalf("builder context tenant id = %q, want %q", identity.TenantID, task.TenantID)
+	}
+	if identity.UserID != task.UserID {
+		t.Fatalf("builder context user id = %q, want %q", identity.UserID, task.UserID)
 	}
 }

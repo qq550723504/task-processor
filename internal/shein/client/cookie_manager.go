@@ -42,23 +42,28 @@ func NewCookieManager(storeID int64, cookieProvider CookieProvider, storeConfigP
 func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
 
-	if cm.cookieProvider != nil {
-		cookieStr, tenantID, err := cm.loadCookieJSONFromSource()
-		if err != nil {
-			cm.logger.WithError(err).Warn("从运行时 cookie provider 读取 SHEIN Cookie 失败")
-		} else if strings.TrimSpace(cookieStr) != "" {
-			cm.resolvedTenantID = tenantID
-			cookies, parseErr := cm.parseCookieString(cookieStr)
-			if parseErr != nil {
-				cm.logger.WithError(parseErr).Error("解析 Redis Cookie 字符串失败")
-				return nil, fmt.Errorf("解析 Redis Cookie 字符串失败: %w", parseErr)
-			}
-			return cookies, nil
-		}
+	if cm.cookieProvider == nil {
+		cm.logger.Error("cookie provider is nil")
+		return nil, fmt.Errorf("cookie provider is nil")
 	}
 
-	cm.logger.Error("cookie provider is nil")
-	return nil, fmt.Errorf("cookie provider is nil")
+	cookieStr, tenantID, err := cm.loadCookieJSONFromSource()
+	if err != nil {
+		cm.logger.WithError(err).Warn("从运行时 cookie provider 读取 SHEIN Cookie 失败")
+		return nil, err
+	}
+	if strings.TrimSpace(cookieStr) == "" {
+		cm.logger.Warn("cookie provider returned empty cookie payload")
+		return nil, nil
+	}
+
+	cm.resolvedTenantID = tenantID
+	cookies, parseErr := cm.parseCookieString(cookieStr)
+	if parseErr != nil {
+		cm.logger.WithError(parseErr).Error("解析 Redis Cookie 字符串失败")
+		return nil, fmt.Errorf("解析 Redis Cookie 字符串失败: %w", parseErr)
+	}
+	return cookies, nil
 }
 
 // CookieData JSON格式的Cookie数据结构

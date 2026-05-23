@@ -233,11 +233,15 @@ func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (s
 	if s.sheinProductAPIBuilder == nil {
 		return nil, fmt.Errorf("shein product api builder is not configured")
 	}
-	storeID, err := s.resolveSheinStoreID(ctx, task)
+	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
 	if err != nil || storeID <= 0 {
 		return nil, fmt.Errorf("shein store id is unavailable for submit")
 	}
-	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(ctx, storeID)
+	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(runtimeCtx, storeID)
 	if productAPI == nil {
 		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
 	}
@@ -245,6 +249,10 @@ func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (s
 }
 
 func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {
+	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	if err != nil {
+		return nil, err
+	}
 	submitProduct, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
 	if err != nil {
 		return nil, err
@@ -256,16 +264,16 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 	if sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, task.Request.Country) {
 		if s.sheinTranslateAPIBuilder != nil {
 			var fallback string
-			storeID, resolveErr := s.resolveSheinStoreID(ctx, task)
+			storeID, resolveErr := s.resolveSheinStoreID(runtimeCtx, task)
 			if resolveErr == nil && storeID > 0 {
-				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(ctx, storeID)
+				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(runtimeCtx, storeID)
 			}
 			if translateAPI == nil && strings.TrimSpace(fallback) != "" {
 				translateAPI = nil
 			}
 		}
 	}
-	if err := sheinpub.PrepareSubmitProductContent(ctx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
+	if err := sheinpub.PrepareSubmitProductContent(runtimeCtx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
 		return nil, err
 	}
 	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
@@ -281,11 +289,15 @@ func (s *service) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *
 	if s.sheinImageAPIBuilder == nil {
 		return fmt.Errorf("shein image upload api builder is not configured")
 	}
-	storeID, err := s.resolveSheinStoreID(context.Background(), task)
+	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	if err != nil {
+		return err
+	}
+	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
 	if err != nil || storeID <= 0 {
 		return fmt.Errorf("shein store id is unavailable for image upload")
 	}
-	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(ctx, storeID)
+	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(runtimeCtx, storeID)
 	if imageAPI == nil {
 		return fmt.Errorf("shein image upload unavailable: %s", fallback)
 	}
