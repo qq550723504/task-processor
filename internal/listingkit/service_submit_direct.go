@@ -47,7 +47,7 @@ func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID st
 		if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseUploadImages); err != nil {
 			return nil, err
 		}
-		if err := s.uploadSheinSubmitImages(task, pkg, submitProduct); err != nil {
+		if err := s.uploadSheinSubmitImages(ctx, task, pkg, submitProduct); err != nil {
 			return nil, s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 		}
 		prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))

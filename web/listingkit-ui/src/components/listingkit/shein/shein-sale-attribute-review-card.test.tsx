@@ -154,6 +154,71 @@ describe("SheinSaleAttributeReviewCard", () => {
     expect(onRegenerate).toHaveBeenCalledTimes(1);
   });
 
+  it("offers regeneration when sale attribute templates are still unavailable", async () => {
+    const onRegenerate = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  skc_name: "White",
+                  attributes: { Color: "white" },
+                  sku_patches: [
+                    {
+                      supplier_sku: "SKU-1",
+                      attributes: { Size: "One size" },
+                    },
+                  ],
+                },
+              ],
+              review_notes: [
+                "缺少 SHEIN AttributeAPI，当前无法加载销售属性模板",
+                "当前销售属性仍缺少真实 sale attribute value 映射，请重新确认规格。",
+              ],
+            },
+          },
+        }}
+        onRegenerateSaleAttributes={onRegenerate}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新生成属性" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/当前还没有拿到可用的销售属性模板或主规格识别结果/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新生成属性" }));
+
+    expect(onRegenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a loading label while regenerating sale attributes", () => {
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              review_notes: ["缺少 SHEIN AttributeAPI，当前无法加载销售属性模板"],
+            },
+          },
+        }}
+        isApplying
+        onRegenerateSaleAttributes={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新生成中..." })).toBeDisabled();
+  });
+
   it("allows manually filling sale attribute value ids", async () => {
     const onApplyManual = vi.fn();
     const user = userEvent.setup();

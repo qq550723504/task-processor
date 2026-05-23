@@ -91,7 +91,7 @@ func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPrepare
 	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseUploadImages); err != nil {
 		return nil, err
 	}
-	if err := s.uploadSheinSubmitImages(task, pkg, in.Product); err != nil {
+	if err := s.uploadSheinSubmitImages(ctx, task, pkg, in.Product); err != nil {
 		return nil, err
 	}
 	prepareSheinProductForSubmit(in.Product, s.resolveSheinSubmitSettings(ctx, task))

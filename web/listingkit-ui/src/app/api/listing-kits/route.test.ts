@@ -12,6 +12,7 @@ vi.mock("@/auth", () => ({
 import {
   PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
   PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS,
+  PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
   resolveListingKitProxyTimeoutMs,
   shouldProxyListingKitResponseAsBinary,
@@ -35,6 +36,12 @@ describe("resolveListingKitProxyTimeoutMs", () => {
   it("extends the timeout for task submit requests", () => {
     expect(resolveListingKitProxyTimeoutMs("POST", ["tasks", "123", "submit"])).toBe(
       180_000,
+    );
+  });
+
+  it("extends the timeout for task revision requests", () => {
+    expect(resolveListingKitProxyTimeoutMs("POST", ["tasks", "123", "revision"])).toBe(
+      PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
     );
   });
 

@@ -1,6 +1,7 @@
 export const PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
 export const PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS = 30_000;
 export const PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS = 180_000;
+export const PROXY_REVISION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS = 60_000;
 
@@ -8,6 +9,14 @@ export function resolveListingKitProxyTimeoutMs(
   method: string,
   path: string[],
 ) {
+  if (
+    method.toUpperCase() === "POST" &&
+    path.length === 3 &&
+    path[0] === "tasks" &&
+    path[2] === "revision"
+  ) {
+    return PROXY_REVISION_UPSTREAM_TIMEOUT_MS;
+  }
   if (
     method.toUpperCase() === "POST" &&
     path.length === 3 &&

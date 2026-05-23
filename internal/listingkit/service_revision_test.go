@@ -2,14 +2,17 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 type stubApplyRevisionRepo struct {
@@ -92,6 +95,43 @@ func (stubRevisionSheinSaleMissingValueResolver) Resolve(req *sheinpub.BuildRequ
 			Value:       "white",
 			AttributeID: 1001466,
 			MatchedBy:   "test",
+		}},
+	}
+}
+
+type stubRevisionSheinContextAwareSaleResolver struct {
+	tenantID string
+	userID   string
+}
+
+type stubRevisionCookieProvider struct {
+	result *sheinclient.CookieLookupResult
+	err    error
+}
+
+func (p stubRevisionCookieProvider) GetCookie(context.Context, int64) (*sheinclient.CookieLookupResult, error) {
+	return p.result, p.err
+}
+
+func (r *stubRevisionSheinContextAwareSaleResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
+	if req != nil {
+		identity := openaiclient.IdentityFromContext(req.Context)
+		r.tenantID = identity.TenantID
+		r.userID = identity.UserID
+	}
+	valueID := 2493
+	return &sheinpub.SaleAttributeResolution{
+		Status:                  "resolved",
+		PrimaryAttributeID:      27,
+		PrimarySourceDimension:  "Color",
+		RecommendCategoryReview: false,
+		SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+			Scope:            "skc",
+			Name:             "Color",
+			Value:            "Black",
+			AttributeID:      27,
+			AttributeValueID: &valueID,
+			MatchedBy:        "test",
 		}},
 	}
 }
@@ -701,6 +741,211 @@ func TestApplyTaskRevisionDowngradesManualResolvedSaleAttributesWithoutValueIDs(
 	}
 	if len(repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes) == 0 {
 		t.Fatalf("review notes = %+v, want normalization note", repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes)
+	}
+}
+
+func TestApplyTaskRevisionRefreshUsesTaskIdentityForSheinRuntime(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	capturedResolver := &stubRevisionSheinContextAwareSaleResolver{}
+	task := &Task{
+		ID:       "task-apply-shein-runtime-context",
+		TenantID: "373211199677923496",
+		UserID:   "user-ctx-1",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 870,
+			Text:         "insulated cooler bag",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-runtime-context",
+			CanonicalProduct: &canonical.Product{
+				Title: "insulated cooler bag",
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   10489,
+				CategoryPath: []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 10489,
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{
+		repo:                       repo,
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: capturedResolver,
+	}
+
+	categoryID := 10489
+	productTypeID := 7190
+	topCategoryID := 2866
+	_, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				Status:         stringPtr("resolved"),
+				Source:         stringPtr("manual_search"),
+				MatchedPath:    []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				CategoryID:     &categoryID,
+				CategoryIDList: []int{2866, 4396, 4425, 10489},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  &topCategoryID,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				RecommendCategoryReview: boolPtr(false),
+				CategoryReviewReason:    stringPtr(""),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if capturedResolver.tenantID != task.TenantID {
+		t.Fatalf("tenant id = %q, want %q", capturedResolver.tenantID, task.TenantID)
+	}
+	if capturedResolver.userID != task.UserID {
+		t.Fatalf("user id = %q, want %q", capturedResolver.userID, task.UserID)
+	}
+}
+
+func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	cookieNote := "SHEIN 店铺 cookie 不可用，已降级为离线解析"
+	task := &Task{
+		ID:       "task-apply-shein-cookie-stale",
+		TenantID: "227",
+		UserID:   "user-cookie-1",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 870,
+			Text:         "insulated cooler bag",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-cookie-stale",
+			CanonicalProduct: &canonical.Product{
+				Title: "insulated cooler bag",
+				Variants: []canonical.Variant{{
+					SKU: "SKU-1",
+					Attributes: map[string]canonical.Attribute{
+						"Color": {Value: "white"},
+						"Size":  {Value: "One size"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   10489,
+				CategoryPath: []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				ReviewNotes:  []string{cookieNote},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:      "resolved",
+					CategoryID:  10489,
+					ReviewNotes: []string{cookieNote},
+				},
+				AttributeResolution: &SheinAttributeResolution{
+					Status:        "resolved",
+					ResolvedCount: 1,
+					ReviewNotes:   []string{cookieNote},
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:             "partial",
+					PrimaryAttributeID: 1001184,
+					ReviewNotes:        []string{cookieNote},
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+
+	apiClient := sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{
+		ID:       870,
+		TenantID: 227,
+		LoginURL: "sso.geiwohuo.com",
+	}, stubRevisionCookieProvider{
+		result: &sheinclient.CookieLookupResult{
+			TenantID:   227,
+			CookieJSON: `[{"name":"sid","value":"abc","domain":".shein.com","path":"/"}]`,
+		},
+	})
+
+	svc := &service{
+		repo:                       repo,
+		sheinStoreCatalog:          &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+		sheinAPIClientFactory:      stubSheinAPIClientFactory{client: apiClient},
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleResolver{},
+	}
+
+	categoryID := 10489
+	productTypeID := 7190
+	topCategoryID := 2866
+	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				Status:         stringPtr("resolved"),
+				Source:         stringPtr("manual_search"),
+				MatchedPath:    []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				CategoryID:     &categoryID,
+				CategoryIDList: []int{2866, 4396, 4425, 10489},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  &topCategoryID,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				RecommendCategoryReview: boolPtr(false),
+				CategoryReviewReason:    stringPtr(""),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.SubmitReadiness == nil {
+		t.Fatalf("preview = %+v", preview)
+	}
+	for _, item := range preview.Shein.SubmitReadiness.BlockingItems {
+		if item.Key == sheinCookieUnavailableIssueCode {
+			t.Fatalf("blocking items = %+v, want stale shein cookie blocker removed", preview.Shein.SubmitReadiness.BlockingItems)
+		}
+	}
+	if len(repo.task.Result.Shein.ReviewNotes) != 0 {
+		t.Fatalf("shein review notes = %#v, want stale cookie notes cleared", repo.task.Result.Shein.ReviewNotes)
+	}
+	if len(repo.task.Result.Shein.CategoryResolution.ReviewNotes) != 0 {
+		t.Fatalf("category review notes = %#v, want stale cookie notes cleared", repo.task.Result.Shein.CategoryResolution.ReviewNotes)
+	}
+	if len(repo.task.Result.Shein.AttributeResolution.ReviewNotes) != 0 {
+		t.Fatalf("attribute review notes = %#v, want stale cookie notes cleared", repo.task.Result.Shein.AttributeResolution.ReviewNotes)
+	}
+	if len(repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes) != 1 || strings.Contains(repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes[0], "cookie 不可用") {
+		t.Fatalf("sale attribute review notes = %#v, want only non-cookie follow-up note", repo.task.Result.Shein.SaleAttributeResolution.ReviewNotes)
 	}
 }
 

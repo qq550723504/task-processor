@@ -204,7 +204,7 @@ func NewProductAPIBuilder(client *management.ClientManager) sheinpub.ProductAPIB
 	return &productAPIBuilder{factory: newAPIFactory(client)}
 }
 
-func (b *productAPIBuilder) BuildProductAPI(storeID int64) (sheinproduct.ProductAPI, string) {
+func (b *productAPIBuilder) BuildProductAPI(_ context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
 	if b == nil || b.factory == nil {
 		return nil, "management client 不可用，SHEIN 提交未启用"
 	}
@@ -223,7 +223,7 @@ func NewImageAPIBuilder(client *management.ClientManager) sheinpub.ImageAPIBuild
 	return &imageAPIBuilder{factory: newAPIFactory(client)}
 }
 
-func (b *imageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageAPI, string) {
+func (b *imageAPIBuilder) BuildImageAPI(_ context.Context, storeID int64) (sheinimage.ImageAPI, string) {
 	if b == nil || b.factory == nil {
 		return nil, "management client 不可用，SHEIN 图片上传未启用"
 	}
@@ -242,7 +242,7 @@ func NewTranslateAPIBuilder(client *management.ClientManager) sheinpub.Translate
 	return &translateAPIBuilder{factory: newAPIFactory(client)}
 }
 
-func (b *translateAPIBuilder) BuildTranslateAPI(storeID int64) (sheintranslate.TranslateAPI, string) {
+func (b *translateAPIBuilder) BuildTranslateAPI(_ context.Context, storeID int64) (sheintranslate.TranslateAPI, string) {
 	if b == nil || b.factory == nil {
 		return nil, "management client 不可用，SHEIN 翻译未启用"
 	}

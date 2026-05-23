@@ -16,11 +16,11 @@ func NewRuntimeImageAPIBuilder(factory RuntimeAPIClientFactory) ImageAPIBuilder 
 	}
 }
 
-func (b *runtimeImageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageAPI, string) {
+func (b *runtimeImageAPIBuilder) BuildImageAPI(ctx context.Context, storeID int64) (sheinimage.ImageAPI, string) {
 	if b == nil || b.factory == nil {
 		return nil, "shein runtime client factory 不可用，SHEIN 图片上传未启用"
 	}
-	baseClient, fallback := b.factory.BuildBaseClient(context.Background(), storeID)
+	baseClient, fallback := b.factory.BuildBaseClient(ctx, storeID)
 	if baseClient == nil {
 		return nil, fallback
 	}

@@ -78,7 +78,7 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 
 	page, err := p.repo.ListStores(ctx, listingadmin.StoreQuery{
 		TenantID: tenantID,
-		Platform: "shein",
+		Platform: "SHEIN",
 		Page:     1,
 		PageSize: 200,
 	})

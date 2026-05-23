@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"strconv"
+	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -20,7 +21,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		applyStudioStyleDimension(task.Result.CanonicalProduct, task.Request.Options.SDS)
 	}
 
-	buildReq := buildSheinPublishRequest(task.Request)
+	buildReq := buildSheinPublishRequestForTask(task, task.Request)
 	if task.Result.Shein.CategoryID > 0 {
 		buildReq.TargetCategoryHint = strconv.Itoa(task.Result.Shein.CategoryID)
 	}
@@ -34,6 +35,9 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		s.sheinSaleAttributeResolver,
 		s.sheinPricingPolicy,
 	)
+	if strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task)) == "" {
+		stripSheinCookieUnavailableReviewNotes(task.Result.Shein)
+	}
 	applySheinSaleAttributeReviewOverride(task.Result.Shein, req.Shein.SaleAttributeResolution)
 	normalizeSheinCategoryRefreshSaleAttributeState(task.Result.Shein)
 	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)

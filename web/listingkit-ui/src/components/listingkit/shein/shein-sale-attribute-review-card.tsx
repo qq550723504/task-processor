@@ -165,6 +165,15 @@ function SheinSaleAttributeReviewContent({
       candidate.selected_scope !== "primary" &&
       candidate.selected_scope !== "secondary",
   );
+  const needsTemplateRefresh =
+    !current.primary_attribute_id ||
+    manualTemplateOptions.length === 0 ||
+    current.review_notes?.some(
+      (note) =>
+        note.includes("缺少 SHEIN AttributeAPI") ||
+        note.includes("模板未就绪") ||
+        note.includes("无法加载销售属性模板"),
+    ) === true;
   const isPartial =
     current.status === "partial" ||
     current.status === "blocked" ||
@@ -180,8 +189,7 @@ function SheinSaleAttributeReviewContent({
   const canRegenerate =
     Boolean(onRegenerateSaleAttributes) &&
     isPartial &&
-    Boolean(current.primary_attribute_id) &&
-    hasMissingValueIDs;
+    (hasMissingValueIDs || needsTemplateRefresh);
   const primaryOption =
     primaryTemplateOptions.find(
       (option) => String(option.attribute_id ?? "") === primaryOptionID,
@@ -258,7 +266,7 @@ function SheinSaleAttributeReviewContent({
                 variant="secondary"
                 onClick={() => onRegenerateSaleAttributes?.()}
               >
-                重新生成属性
+                {isApplying ? "重新生成中..." : "重新生成属性"}
               </Button>
             ) : null}
             {canSaveManual ? (
@@ -274,7 +282,7 @@ function SheinSaleAttributeReviewContent({
                   })
                 }
               >
-                保存手工修正
+                {isApplying ? "保存中..." : "保存手工修正"}
               </Button>
             ) : null}
             {canConfirm ? (
@@ -284,7 +292,7 @@ function SheinSaleAttributeReviewContent({
                 variant="secondary"
                 onClick={() => onConfirmCurrentSaleAttributes?.()}
               >
-                直接确认当前结果
+                {isApplying ? "保存中..." : "直接确认当前结果"}
               </Button>
             ) : null}
           </div>
@@ -350,6 +358,15 @@ function SheinSaleAttributeReviewContent({
             <p className="text-sm leading-6 text-amber-900">
               当前销售属性只有 `attribute_id`，还缺少真实 `value_id`，不能直接确认。
               你可以先重新生成属性；如果结果仍不准确，下面也可以手工修正规格。
+            </p>
+          </div>
+        ) : null}
+
+        {canRegenerate && !hasMissingValueIDs && needsTemplateRefresh ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+            <p className="text-sm leading-6 text-amber-900">
+              当前还没有拿到可用的销售属性模板或主规格识别结果，暂时不能直接确认。
+              请先点“重新生成属性”在线重试；拿到模板后，这里才会出现可确认或可手工修正的规格控件。
             </p>
           </div>
         ) : null}

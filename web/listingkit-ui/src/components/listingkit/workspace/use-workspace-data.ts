@@ -35,14 +35,24 @@ export function useWorkspaceData({
   searchParams: URLSearchParams;
 }) {
   const buildSheinBlockingActionSummary = ({
+    cookieBlocked,
     categoryBlocked,
     attributeBlocked,
     saleAttributeBlocked,
   }: {
+    cookieBlocked: boolean;
     categoryBlocked: boolean;
     attributeBlocked: boolean;
     saleAttributeBlocked: boolean;
   }): ResolvedActionSummary | undefined => {
+    if (cookieBlocked) {
+      return {
+        title: "重新登录店铺",
+        summary: "先重新登录当前 SHEIN 店铺，恢复在线类目、属性和销售属性能力后再继续提交。",
+        cta_kind: "review",
+        action_key: "store_login",
+      };
+    }
     if (attributeBlocked) {
       return {
         title: "确认普通属性",
@@ -157,6 +167,7 @@ export function useWorkspaceData({
   const sheinBlockingKeys = new Set(
     sheinPreviewPayload?.submit_readiness?.blocking_items?.map((item) => item.key) ?? [],
   );
+  const sheinCookieBlocked = sheinBlockingKeys.has("shein_cookie_unavailable");
   const sheinCategoryBlocked =
     sheinBlockingKeys.has("category") || sheinBlockingKeys.has("category_review");
   const sheinAttributeBlocked =
@@ -174,6 +185,7 @@ export function useWorkspaceData({
     !isSheinFinalReviewMode &&
     (sheinCategoryBlocked || sheinAttributeBlocked || sheinSaleAttributeBlocked);
   const sheinBlockingActionSummary = buildSheinBlockingActionSummary({
+    cookieBlocked: sheinCookieBlocked,
     categoryBlocked: sheinCategoryBlocked,
     attributeBlocked: sheinAttributeBlocked,
     saleAttributeBlocked: sheinSaleAttributeBlocked,

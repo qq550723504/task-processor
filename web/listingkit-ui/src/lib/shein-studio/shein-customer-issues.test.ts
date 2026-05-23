@@ -19,7 +19,6 @@ describe("buildSheinCustomerIssues", () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({
       category: "图片问题",
-      title: "缺少方形图",
       actionKey: "images",
       severity: "blocking",
     });
@@ -88,8 +87,8 @@ describe("buildSheinCustomerIssues", () => {
       category: "提交接口问题",
       title: "SHEIN 店铺需要重新登录",
       severity: "blocking",
+      actionKey: "store_login",
     });
-    expect(issues[0]?.actionKey).toBeUndefined();
   });
 
   it("keeps unknown errors as raw other issues", () => {

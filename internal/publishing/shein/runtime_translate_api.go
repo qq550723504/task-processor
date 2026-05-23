@@ -16,11 +16,11 @@ func NewRuntimeTranslateAPIBuilder(factory RuntimeAPIClientFactory) TranslateAPI
 	}
 }
 
-func (b *runtimeTranslateAPIBuilder) BuildTranslateAPI(storeID int64) (sheintranslate.TranslateAPI, string) {
+func (b *runtimeTranslateAPIBuilder) BuildTranslateAPI(ctx context.Context, storeID int64) (sheintranslate.TranslateAPI, string) {
 	if b == nil || b.factory == nil {
 		return nil, "shein runtime client factory 不可用，SHEIN 翻译未启用"
 	}
-	baseClient, fallback := b.factory.BuildBaseClient(context.Background(), storeID)
+	baseClient, fallback := b.factory.BuildBaseClient(ctx, storeID)
 	if baseClient == nil {
 		return nil, fallback
 	}

@@ -237,7 +237,7 @@ func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (s
 	if err != nil || storeID <= 0 {
 		return nil, fmt.Errorf("shein store id is unavailable for submit")
 	}
-	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(storeID)
+	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(ctx, storeID)
 	if productAPI == nil {
 		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
 	}
@@ -258,7 +258,7 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 			var fallback string
 			storeID, resolveErr := s.resolveSheinStoreID(ctx, task)
 			if resolveErr == nil && storeID > 0 {
-				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(storeID)
+				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(ctx, storeID)
 			}
 			if translateAPI == nil && strings.TrimSpace(fallback) != "" {
 				translateAPI = nil
@@ -277,7 +277,7 @@ func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg
 	return submitProduct, nil
 }
 
-func (s *service) uploadSheinSubmitImages(task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
+func (s *service) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
 	if s.sheinImageAPIBuilder == nil {
 		return fmt.Errorf("shein image upload api builder is not configured")
 	}
@@ -285,7 +285,7 @@ func (s *service) uploadSheinSubmitImages(task *Task, pkg *SheinPackage, submitP
 	if err != nil || storeID <= 0 {
 		return fmt.Errorf("shein store id is unavailable for image upload")
 	}
-	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(storeID)
+	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(ctx, storeID)
 	if imageAPI == nil {
 		return fmt.Errorf("shein image upload unavailable: %s", fallback)
 	}

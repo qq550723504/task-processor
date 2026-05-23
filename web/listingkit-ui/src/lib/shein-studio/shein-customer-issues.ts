@@ -17,6 +17,7 @@ export type CustomerIssueCategory =
 export type CustomerIssueSeverity = "blocking" | "warning" | "error";
 
 export type CustomerIssueActionKey =
+  | "store_login"
   | "images"
   | "category"
   | "attributes"
@@ -79,7 +80,8 @@ function byKey(key?: string | null): IssueTemplate | null {
       title: "SHEIN 店铺需要重新登录",
       message:
         "当前店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
-      actionLabel: "查看处理提示",
+      actionLabel: "去登录店铺",
+      actionKey: "store_login",
     };
   }
   if (normalized.includes("image") || normalized.includes("preview_product")) {
@@ -147,7 +149,8 @@ function byText(rawText: string): IssueTemplate {
       title: "SHEIN 店铺需要重新登录",
       message:
         "当前店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
-      actionLabel: "查看处理提示",
+      actionLabel: "去登录店铺",
+      actionKey: "store_login",
     };
   }
   if (text.includes("spu_name")) {

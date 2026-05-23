@@ -39,11 +39,13 @@ export function useWorkspaceNavigationActions({
   baseQuery,
   searchParams,
   focusedTarget,
+  sheinStoreID,
 }: {
   taskId: string;
   baseQuery: QueueQuery;
   searchParams: SearchParamsLike;
   focusedTarget?: ReviewTarget;
+  sheinStoreID?: number | null;
 }) {
   const router = useRouter();
   const dispatch = useDispatchNavigation(taskId, baseQuery);
@@ -91,6 +93,7 @@ export function useWorkspaceNavigationActions({
         router,
         searchParams: searchParams.toString(),
         key: actionSummary.action_key,
+        storeID: sheinStoreID,
       });
       return;
     }
@@ -151,6 +154,7 @@ export function useWorkspaceNavigationActions({
       router,
       searchParams: searchParams.toString(),
       key: item.key,
+      storeID: sheinStoreID,
     });
   };
 
@@ -160,6 +164,7 @@ export function useWorkspaceNavigationActions({
       router,
       searchParams: searchParams.toString(),
       key,
+      storeID: sheinStoreID,
     });
   };
 
@@ -180,14 +185,23 @@ function navigateOrScrollSheinActionTarget({
   router,
   searchParams,
   key,
+  storeID,
 }: {
   taskId: string;
   router: ReturnType<typeof useRouter>;
   searchParams: string;
   key?: string | null;
+  storeID?: number | null;
 }) {
   const normalizedKey = normalizeSheinWorkspaceActionKey(key);
   if (!normalizedKey) {
+    return;
+  }
+  if (normalizedKey === "store_login") {
+    const target = storeID
+      ? `/listing-kits/shein-login?store_id=${storeID}`
+      : "/listing-kits/shein-login";
+    router.push(target);
     return;
   }
   const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);

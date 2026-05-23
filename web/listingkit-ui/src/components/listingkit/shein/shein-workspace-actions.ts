@@ -1,6 +1,7 @@
 import type { SheinReadinessItem } from "@/lib/types/listingkit";
 
 export type SheinWorkspaceActionKey =
+  | "store_login"
   | "category"
   | "category_review"
   | "attributes"
@@ -11,6 +12,7 @@ export type SheinWorkspaceActionKey =
   | "pricing";
 
 const SHEIN_REPAIR_TARGETS: Record<SheinWorkspaceActionKey, string> = {
+  store_login: "shein-store-login",
   category: "shein-category-review-card",
   category_review: "shein-category-review-card",
   attributes: "shein-attribute-review-card",
@@ -27,6 +29,13 @@ export function normalizeSheinWorkspaceActionKey(
   const normalized = (key ?? "").toLowerCase();
   if (!normalized) {
     return false;
+  }
+  if (
+    normalized === "store_login" ||
+    normalized.includes("cookie") ||
+    normalized.includes("login")
+  ) {
+    return "store_login";
   }
   if (normalized === "category" || normalized === "category_review") {
     return normalized;

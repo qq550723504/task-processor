@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -165,11 +167,100 @@ func buildSheinLoginAccountProvider(deps *runtimeDeps) (sheinlogin.AccountProvid
 	if deps == nil || deps.cfg == nil {
 		return nil, nil, fmt.Errorf("runtime deps are incomplete")
 	}
-	repo, closers, err := listingkithttpapi.BuildListingAdminStoreRepository(deps.cfg, logrus.New())
+	localLogger := logrus.New()
+	repo, closers, err := listingkithttpapi.BuildListingAdminStoreRepository(deps.cfg, localLogger)
 	if err == nil && repo != nil {
 		return sheinlogin.NewListingAdminAccountProvider(repo), joinClosers(closers), nil
 	}
-	return sheinloginmanaged.NewAccountProvider(deps.managementClient()), nil, nil
+	fallback := sheinloginmanaged.NewAccountProvider(deps.managementClient())
+	provider := &retryingSheinLoginAccountProvider{
+		cfg:      deps.cfg,
+		logger:   localLogger,
+		fallback: fallback,
+		lastErr:  err,
+	}
+	if err != nil {
+		localLogger.WithError(err).Warn("shein login local store repository unavailable at startup; will retry locally and temporarily fall back to management provider")
+	}
+	return provider, provider.Close, nil
+}
+
+type retryingSheinLoginAccountProvider struct {
+	cfg      *config.Config
+	logger   *logrus.Logger
+	fallback sheinlogin.AccountProvider
+
+	mu         sync.Mutex
+	local      sheinlogin.AccountProvider
+	localClose func() error
+	lastErr    error
+}
+
+func (p *retryingSheinLoginAccountProvider) ListAccounts(ctx context.Context, tenantID int64) ([]sheinlogin.Account, error) {
+	if tenantID <= 0 {
+		return nil, fmt.Errorf("tenant id is required")
+	}
+	if local := p.ensureLocalProvider(); local != nil {
+		return local.ListAccounts(ctx, tenantID)
+	}
+	if p.fallback == nil {
+		if p.lastErr != nil {
+			return nil, p.lastErr
+		}
+		return nil, fmt.Errorf("shein login account provider is unavailable")
+	}
+	return p.fallback.ListAccounts(ctx, tenantID)
+}
+
+func (p *retryingSheinLoginAccountProvider) GetAccount(ctx context.Context, tenantID int64, storeID int64) (*sheinlogin.Account, error) {
+	if tenantID <= 0 {
+		return nil, fmt.Errorf("tenant id is required")
+	}
+	if local := p.ensureLocalProvider(); local != nil {
+		return local.GetAccount(ctx, tenantID, storeID)
+	}
+	if p.fallback == nil {
+		if p.lastErr != nil {
+			return nil, p.lastErr
+		}
+		return nil, fmt.Errorf("shein login account provider is unavailable")
+	}
+	return p.fallback.GetAccount(ctx, tenantID, storeID)
+}
+
+func (p *retryingSheinLoginAccountProvider) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.localClose == nil {
+		return nil
+	}
+	closeFn := p.localClose
+	p.localClose = nil
+	p.local = nil
+	return closeFn()
+}
+
+func (p *retryingSheinLoginAccountProvider) ensureLocalProvider() sheinlogin.AccountProvider {
+	if p == nil || p.cfg == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.local != nil {
+		return p.local
+	}
+	repo, closers, err := listingkithttpapi.BuildListingAdminStoreRepository(p.cfg, p.logger)
+	if err != nil || repo == nil {
+		p.lastErr = err
+		return nil
+	}
+	p.local = sheinlogin.NewListingAdminAccountProvider(repo)
+	p.localClose = joinClosers(closers)
+	p.lastErr = nil
+	if p.logger != nil {
+		p.logger.Info("shein login account provider switched to local listing admin repository")
+	}
+	return p.local
 }
 
 func joinClosers(closers []func() error) func() error {

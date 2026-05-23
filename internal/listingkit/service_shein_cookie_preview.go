@@ -11,14 +11,16 @@ func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, ta
 		return
 	}
 
-	note := s.resolveSheinCookieAvailabilityNote(ctx, task)
-	if strings.TrimSpace(note) == "" {
-		return
-	}
-
 	pkg := *task.Result.Shein
 	pkg.ReviewNotes = append([]string(nil), task.Result.Shein.ReviewNotes...)
-	refreshSheinReviewState(&pkg, note)
+	stripSheinCookieUnavailableReviewNotes(&pkg)
+
+	note := s.resolveSheinCookieAvailabilityNote(ctx, task)
+	if strings.TrimSpace(note) != "" {
+		refreshSheinReviewState(&pkg, note)
+	} else {
+		refreshSheinReviewState(&pkg)
+	}
 
 	rebuilt := buildSheinPreviewPayload(
 		&pkg,
@@ -35,9 +37,6 @@ func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, ta
 
 func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {
 	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
-		return ""
-	}
-	if sheinCookieUnavailable(task.Result.Shein) {
 		return ""
 	}
 	if s.sheinStoreCatalog == nil || s.sheinAPIClientFactory == nil {

@@ -148,7 +148,7 @@ type temporalStubSheinProductAPIBuilder struct {
 	msg string
 }
 
-func (s temporalStubSheinProductAPIBuilder) BuildProductAPI(storeID int64) (sheinproduct.ProductAPI, string) {
+func (s temporalStubSheinProductAPIBuilder) BuildProductAPI(_ context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
 	return s.api, s.msg
 }
 
@@ -157,7 +157,7 @@ type temporalStubSheinImageAPIBuilder struct {
 	msg string
 }
 
-func (s temporalStubSheinImageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageAPI, string) {
+func (s temporalStubSheinImageAPIBuilder) BuildImageAPI(_ context.Context, storeID int64) (sheinimage.ImageAPI, string) {
 	return s.api, s.msg
 }
 

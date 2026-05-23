@@ -77,6 +77,39 @@ func sheinCookieUnavailableReviewNotes(pkg *SheinPackage) []string {
 	return filtered
 }
 
+func stripSheinCookieUnavailableReviewNotes(pkg *SheinPackage) {
+	if pkg == nil {
+		return
+	}
+	pkg.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.ReviewNotes)
+	if pkg.CategoryResolution != nil {
+		pkg.CategoryResolution.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.CategoryResolution.ReviewNotes)
+	}
+	if pkg.AttributeResolution != nil {
+		pkg.AttributeResolution.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.AttributeResolution.ReviewNotes)
+	}
+	if pkg.SaleAttributeResolution != nil {
+		pkg.SaleAttributeResolution.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.SaleAttributeResolution.ReviewNotes)
+	}
+}
+
+func filterOutSheinCookieUnavailableReviewNotes(notes []string) []string {
+	if len(notes) == 0 {
+		return nil
+	}
+	filtered := make([]string, 0, len(notes))
+	for _, note := range notes {
+		if isSheinCookieUnavailableText(note) {
+			continue
+		}
+		filtered = append(filtered, note)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
 func sheinCookieUnavailable(pkg *SheinPackage) bool {
 	return len(sheinCookieUnavailableReviewNotes(pkg)) > 0
 }

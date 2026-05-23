@@ -256,7 +256,7 @@ type stubSheinProductAPIBuilder struct {
 	lastStoreID *int64
 }
 
-func (s stubSheinProductAPIBuilder) BuildProductAPI(storeID int64) (sheinproduct.ProductAPI, string) {
+func (s stubSheinProductAPIBuilder) BuildProductAPI(_ context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
 	if s.lastStoreID != nil {
 		*s.lastStoreID = storeID
 	}
@@ -269,7 +269,7 @@ type stubSheinImageAPIBuilder struct {
 	lastStoreID *int64
 }
 
-func (s stubSheinImageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageAPI, string) {
+func (s stubSheinImageAPIBuilder) BuildImageAPI(_ context.Context, storeID int64) (sheinimage.ImageAPI, string) {
 	if s.lastStoreID != nil {
 		*s.lastStoreID = storeID
 	}
@@ -282,7 +282,7 @@ type stubSheinTranslateAPIBuilder struct {
 	lastStoreID *int64
 }
 
-func (s stubSheinTranslateAPIBuilder) BuildTranslateAPI(storeID int64) (sheintranslateapi.TranslateAPI, string) {
+func (s stubSheinTranslateAPIBuilder) BuildTranslateAPI(_ context.Context, storeID int64) (sheintranslateapi.TranslateAPI, string) {
 	if s.lastStoreID != nil {
 		*s.lastStoreID = storeID
 	}

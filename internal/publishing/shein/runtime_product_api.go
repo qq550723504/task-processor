@@ -16,11 +16,11 @@ func NewRuntimeProductAPIBuilder(factory RuntimeAPIClientFactory) ProductAPIBuil
 	}
 }
 
-func (b *runtimeProductAPIBuilder) BuildProductAPI(storeID int64) (sheinproduct.ProductAPI, string) {
+func (b *runtimeProductAPIBuilder) BuildProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
 	if b == nil || b.factory == nil {
 		return nil, "shein runtime client factory 不可用，SHEIN 提交未启用"
 	}
-	baseClient, fallback := b.factory.BuildBaseClient(context.Background(), storeID)
+	baseClient, fallback := b.factory.BuildBaseClient(ctx, storeID)
 	if baseClient == nil {
 		return nil, fallback
 	}

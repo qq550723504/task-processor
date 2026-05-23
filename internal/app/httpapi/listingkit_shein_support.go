@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"strings"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -12,6 +11,7 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/sheinlogin"
+	"task-processor/internal/tenantbridge"
 )
 
 type listingKitSheinAPIClientFactory struct {
@@ -47,20 +47,6 @@ func (f listingKitSheinRuntimeFactory) resolveStoreConfig(ctx context.Context, s
 		store, err := f.repo.GetStore(ctx, tenantID, storeID)
 		if err == nil && store != nil && store.ID > 0 {
 			return toSheinClientStoreConfigFromListingAdmin(store)
-		}
-	}
-	page, err := f.repo.ListStores(ctx, listingadmin.StoreQuery{
-		Platform: "shein",
-		Page:     1,
-		PageSize: 200,
-	})
-	if err != nil || page == nil {
-		return nil
-	}
-	for _, item := range page.Items {
-		if item.ID == storeID {
-			store := item
-			return toSheinClientStoreConfigFromListingAdmin(&store)
 		}
 	}
 	return nil
@@ -130,7 +116,10 @@ func tenantIDFromContext(ctx context.Context) int64 {
 	if identity.TenantID == "" {
 		return 0
 	}
-	tenantID, _ := strconv.ParseInt(strings.TrimSpace(identity.TenantID), 10, 64)
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, strings.TrimSpace(identity.TenantID))
+	if err != nil || tenantID <= 0 {
+		return 0
+	}
 	return tenantID
 }
 

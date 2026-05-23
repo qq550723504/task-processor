@@ -91,6 +91,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     baseQuery,
     searchParams,
     focusedTarget: session.data?.session?.focused_target,
+    sheinStoreID:
+      preview.data?.shein?.store_resolution?.store_id ??
+      taskResult.data?.result?.shein_store_resolution?.store_id,
   });
   const childTaskRetry = useRetryChildTask(taskId);
   const sheinViewProps = buildSheinWorkspaceViewProps({

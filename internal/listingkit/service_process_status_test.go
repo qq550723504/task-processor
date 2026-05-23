@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -389,6 +390,82 @@ func TestGetTaskResultFallsBackToSummaryWarningsForReviewReasons(t *testing.T) {
 	}
 	if got, want := result.ReviewReasons, []string{"reason one", "reason two"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("ReviewReasons = %#v, want %#v", got, want)
+	}
+}
+
+func TestGetTaskResultRefreshesStaleSheinCookieReviewState(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	now := time.Now()
+	task := &Task{
+		ID:     "listingkit-review-reasons-cookie-refresh-1",
+		Status: TaskStatusNeedsReview,
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+		},
+		Result: &ListingKitResult{
+			TaskID:        "listingkit-review-reasons-cookie-refresh-1",
+			Status:        string(TaskStatusNeedsReview),
+			ReviewReasons: []string{sheinCookieUnavailableMessage},
+			WorkflowIssues: []WorkflowIssue{{
+				Code:     sheinCookieUnavailableIssueCode,
+				Severity: WorkflowIssueSeverityBlocking,
+				Stage:    "shein_review",
+				Message:  sheinCookieUnavailableMessage,
+				Detail:   "SHEIN 店铺 cookie 不可用，已降级为离线解析",
+			}},
+			Summary: &GenerationSummary{
+				NeedsReview: true,
+				Warnings: []string{
+					sheinCookieUnavailableMessage,
+					"SHEIN 销售属性尚未完成真实 sale attribute 映射，当前仍需要人工确认变体规格",
+				},
+			},
+			Shein: &SheinPackage{
+				CategoryID: 10489,
+				ReviewNotes: []string{"SHEIN 店铺 cookie 不可用，已降级为离线解析"},
+				CategoryResolution: &sheinpub.CategoryResolution{
+					Status:      "resolved",
+					CategoryID:  10489,
+					MatchedPath: []string{"运动&户外", "露营&远足", "野餐和营地厨房", "户外保温包"},
+				},
+				AttributeResolution: &sheinpub.AttributeResolution{
+					Status:        "resolved",
+					ResolvedCount: 16,
+				},
+				SaleAttributeResolution: &sheinpub.SaleAttributeResolution{
+					Status:      "partial",
+					ReviewNotes: []string{"SHEIN 店铺 cookie 不可用，已降级为离线解析"},
+				},
+			},
+		},
+		Error:     sheinCookieUnavailableMessage,
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now,
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	svc := &service{repo: repo}
+	result, err := svc.GetTaskResult(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskResult() error = %v", err)
+	}
+	if len(result.ReviewReasons) != 1 || result.ReviewReasons[0] != "SHEIN 销售属性尚未完成真实 sale attribute 映射，当前仍需要人工确认变体规格" {
+		t.Fatalf("ReviewReasons = %#v, want refreshed sale attribute review reason", result.ReviewReasons)
+	}
+	if result.Error != "SHEIN 销售属性尚未完成真实 sale attribute 映射，当前仍需要人工确认变体规格" {
+		t.Fatalf("Error = %q, want refreshed sale attribute review reason", result.Error)
+	}
+	for _, issue := range result.Result.WorkflowIssues {
+		if issue.Code == sheinCookieUnavailableIssueCode {
+			t.Fatalf("WorkflowIssues = %+v, want stale shein cookie issue removed", result.Result.WorkflowIssues)
+		}
+	}
+	if len(result.Result.Shein.ReviewNotes) != 1 || strings.Contains(result.Result.Shein.ReviewNotes[0], "cookie 不可用") {
+		t.Fatalf("Shein review notes = %#v, want cookie note removed", result.Result.Shein.ReviewNotes)
 	}
 }
 

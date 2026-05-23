@@ -66,7 +66,7 @@ func TestListingAdminAccountProviderLoadsSheinAccountsFromRepository(t *testing.
 			{
 				ID:       12,
 				TenantID: 7,
-				Platform: "shein",
+				Platform: "SHEIN",
 				Username: "demo-user",
 				Password: "secret",
 				LoginURL: "sellerhub.shein.com",
@@ -77,7 +77,7 @@ func TestListingAdminAccountProviderLoadsSheinAccountsFromRepository(t *testing.
 			{
 				ID:       99,
 				TenantID: 7,
-				Platform: "temu",
+				Platform: "TEMU",
 				Username: "ignored",
 				Password: "ignored",
 			},
