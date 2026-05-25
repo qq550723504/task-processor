@@ -18,6 +18,19 @@ func applyOwnedTenantQuery(db *gorm.DB, tenantID int64, ownerUserID string) *gor
 	return db
 }
 
+func normalizePage(page, pageSize int) (int, int) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	return page, pageSize
+}
+
 func findPagedRows[T any](db *gorm.DB, page, pageSize int, rows *[]T) (total int64, normalizedPage int, normalizedPageSize int, err error) {
 	normalizedPage, normalizedPageSize = normalizePage(page, pageSize)
 	if err = db.Count(&total).Error; err != nil {
