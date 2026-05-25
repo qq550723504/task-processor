@@ -376,6 +376,24 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	}
 }
 
+func TestBuildListingKitWorkflowDependenciesDefaultsToDisabledClients(t *testing.T) {
+	t.Parallel()
+
+	workflow := buildListingKitWorkflowDependencies()
+	if workflow.SheinPublishWorkflowEnabled {
+		t.Fatal("expected shein publish workflow to default disabled")
+	}
+	if workflow.StandardProductWorkflowEnabled {
+		t.Fatal("expected standard product workflow to default disabled")
+	}
+	if workflow.PlatformAdaptWorkflowEnabled {
+		t.Fatal("expected platform adapt workflow to default disabled")
+	}
+	if workflow.SheinPublishWorkflowClient != nil || workflow.StandardProductWorkflowClient != nil || workflow.PlatformAdaptWorkflowClient != nil {
+		t.Fatal("expected workflow clients to default nil")
+	}
+}
+
 func TestNewSubmitModuleInputScopesBuildServiceDependencies(t *testing.T) {
 	t.Parallel()
 
