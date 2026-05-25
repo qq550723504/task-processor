@@ -830,6 +830,20 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 	return buildModuleRuntime(input, bundle)
 }
 
+func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
+	task := buildTaskModule(newTaskModuleInput(input, repositories))
+	admin := buildAdminModule(newAdminModuleInput(repositories))
+	submit := buildSubmitModule(newSubmitModuleInput(input, repositories))
+	moduleSvc, err := buildModuleService(input, repositories, submit, closers)
+	if err != nil {
+		return nil, err
+	}
+	temporal := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
+	handlerDependencies := task.handlerDependenciesWithAdmin(admin)
+
+	return assembleServiceBundle(repositories, moduleSvc, temporal.workerService, handlerDependencies, closers.Snapshot()), nil
+}
+
 func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
@@ -845,15 +859,5 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 	if err != nil {
 		return nil, err
 	}
-	task := buildTaskModule(newTaskModuleInput(input, repositories))
-	admin := buildAdminModule(newAdminModuleInput(repositories))
-	submit := buildSubmitModule(newSubmitModuleInput(input, repositories))
-	moduleSvc, err := buildModuleService(input, repositories, submit, closers)
-	if err != nil {
-		return nil, err
-	}
-	temporal := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
-	handlerDependencies := task.handlerDependenciesWithAdmin(admin)
-
-	return assembleServiceBundle(repositories, moduleSvc, temporal.workerService, handlerDependencies, closers.Snapshot()), nil
+	return buildServiceRuntime(input, repositories, closers)
 }

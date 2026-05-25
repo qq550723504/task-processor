@@ -708,6 +708,31 @@ func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
 	}
 }
 
+func TestBuildServiceRuntimeAssemblesBundleFromRegistrars(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	closers := &closerStack{}
+	repositories, err := buildRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildRepositories: %v", err)
+	}
+
+	bundle, err := buildServiceRuntime(input, repositories, closers)
+	if err != nil {
+		t.Fatalf("buildServiceRuntime: %v", err)
+	}
+	if bundle == nil {
+		t.Fatal("expected service bundle")
+	}
+	if bundle.runtime.service == nil {
+		t.Fatal("expected runtime service")
+	}
+	if bundle.runtime.handlerDependencies.Subscription.Service != bundle.SubscriptionService {
+		t.Fatal("expected runtime handler dependencies to preserve subscription service")
+	}
+}
+
 func TestBuildModuleRuntimeUsesPrivateRuntimePayload(t *testing.T) {
 	t.Parallel()
 
