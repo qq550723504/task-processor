@@ -371,6 +371,12 @@ type serviceRuntimeModules struct {
 	temporal temporalModule
 }
 
+type serviceRuntimeAssembly struct {
+	service             moduleService
+	modules             serviceRuntimeModules
+	handlerDependencies listingkitapi.HandlerDependencies
+}
+
 func (in BuildServiceInput) Validate() error {
 	if in.Config == nil {
 		return fmt.Errorf("build service config is required")
@@ -848,16 +854,26 @@ func buildServiceRuntimeModules(input BuildServiceInput, repositories *builtRepo
 	}
 }
 
-func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
+func assembleServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (serviceRuntimeAssembly, error) {
 	modules := buildServiceRuntimeModules(input, repositories)
 	moduleSvc, err := buildModuleService(input, repositories, modules.submit, closers)
 	if err != nil {
-		return nil, err
+		return serviceRuntimeAssembly{}, err
 	}
 	modules.temporal = buildTemporalModule(temporalModuleInput{Service: moduleSvc})
-	handlerDependencies := modules.task.handlerDependenciesWithAdmin(modules.admin)
+	return serviceRuntimeAssembly{
+		service:             moduleSvc,
+		modules:             modules,
+		handlerDependencies: modules.task.handlerDependenciesWithAdmin(modules.admin),
+	}, nil
+}
 
-	return assembleServiceBundle(repositories, moduleSvc, modules.temporal.workerService, handlerDependencies, closers.Snapshot()), nil
+func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
+	assembly, err := assembleServiceRuntime(input, repositories, closers)
+	if err != nil {
+		return nil, err
+	}
+	return assembleServiceBundle(repositories, assembly.service, assembly.modules.temporal.workerService, assembly.handlerDependencies, closers.Snapshot()), nil
 }
 
 func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {

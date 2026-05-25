@@ -758,6 +758,34 @@ func TestBuildServiceRuntimeModulesComposeTaskAdminAndSubmitRegistrars(t *testin
 	}
 }
 
+func TestAssembleServiceRuntimeBuildsTemporalAndHandlerDependencies(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	closers := &closerStack{}
+	repositories, err := buildRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildRepositories: %v", err)
+	}
+
+	assembly, err := assembleServiceRuntime(input, repositories, closers)
+	if err != nil {
+		t.Fatalf("assembleServiceRuntime: %v", err)
+	}
+	if assembly.service == nil {
+		t.Fatal("expected runtime assembly service")
+	}
+	if assembly.modules.temporal.workerService == nil {
+		t.Fatal("expected runtime assembly temporal worker service")
+	}
+	if assembly.handlerDependencies.Subscription.Service != repositories.subscriptionService {
+		t.Fatal("expected runtime assembly to preserve subscription service")
+	}
+	if assembly.handlerDependencies.Admin.StoreRepository != repositories.storeRepository {
+		t.Fatal("expected runtime assembly to preserve admin store repository")
+	}
+}
+
 func TestBuildModuleRuntimeUsesPrivateRuntimePayload(t *testing.T) {
 	t.Parallel()
 
