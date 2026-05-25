@@ -632,3 +632,39 @@ func TestRabbitMQServiceConsumerLifecycleStateSnapshotReflectsFlagsAndContext(t 
 		t.Fatal("expected lifecycle snapshot to preserve service context")
 	}
 }
+
+func TestRabbitMQServiceStopStateSnapshotCapturesStopDependencies(t *testing.T) {
+	serviceCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	provider := stubStoreAssignmentProvider{stores: []int64{11}}
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+	svc.started = true
+	svc.consumerActive = true
+	svc.ctx = serviceCtx
+	svc.cancel = cancel
+	svc.storeAssignmentProvider = provider
+
+	state := svc.stopStateSnapshot()
+	if !state.started {
+		t.Fatal("expected stop state to preserve started flag")
+	}
+	if state.consumer != svc.consumer {
+		t.Fatal("expected stop state to preserve consumer")
+	}
+	if state.cancel == nil {
+		t.Fatal("expected stop state to preserve cancel func")
+	}
+	providerState, ok := state.provider.(stubStoreAssignmentProvider)
+	if !ok {
+		t.Fatalf("provider type = %T, want stubStoreAssignmentProvider", state.provider)
+	}
+	if len(providerState.stores) != 1 || providerState.stores[0] != 11 {
+		t.Fatalf("provider stores = %v, want [11]", providerState.stores)
+	}
+}
