@@ -364,6 +364,13 @@ type buildListingKitServiceConfigInput struct {
 	submit       submitModule
 }
 
+type serviceRuntimeModules struct {
+	task     taskModule
+	admin    adminModule
+	submit   submitModule
+	temporal temporalModule
+}
+
 func (in BuildServiceInput) Validate() error {
 	if in.Config == nil {
 		return fmt.Errorf("build service config is required")
@@ -830,18 +837,27 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 	return buildModuleRuntime(input, bundle)
 }
 
-func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
+func buildServiceRuntimeModules(input BuildServiceInput, repositories *builtRepositories) serviceRuntimeModules {
 	task := buildTaskModule(newTaskModuleInput(input, repositories))
 	admin := buildAdminModule(newAdminModuleInput(repositories))
 	submit := buildSubmitModule(newSubmitModuleInput(input, repositories))
-	moduleSvc, err := buildModuleService(input, repositories, submit, closers)
+	return serviceRuntimeModules{
+		task:   task,
+		admin:  admin,
+		submit: submit,
+	}
+}
+
+func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
+	modules := buildServiceRuntimeModules(input, repositories)
+	moduleSvc, err := buildModuleService(input, repositories, modules.submit, closers)
 	if err != nil {
 		return nil, err
 	}
-	temporal := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
-	handlerDependencies := task.handlerDependenciesWithAdmin(admin)
+	modules.temporal = buildTemporalModule(temporalModuleInput{Service: moduleSvc})
+	handlerDependencies := modules.task.handlerDependenciesWithAdmin(modules.admin)
 
-	return assembleServiceBundle(repositories, moduleSvc, temporal.workerService, handlerDependencies, closers.Snapshot()), nil
+	return assembleServiceBundle(repositories, moduleSvc, modules.temporal.workerService, handlerDependencies, closers.Snapshot()), nil
 }
 
 func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {

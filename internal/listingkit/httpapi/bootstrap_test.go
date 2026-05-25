@@ -733,6 +733,31 @@ func TestBuildServiceRuntimeAssemblesBundleFromRegistrars(t *testing.T) {
 	}
 }
 
+func TestBuildServiceRuntimeModulesComposeTaskAdminAndSubmitRegistrars(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	input.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore {
+		return &httpapiStubImageUploadStore{}
+	}
+	closers := &closerStack{}
+	repositories, err := buildRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildRepositories: %v", err)
+	}
+
+	modules := buildServiceRuntimeModules(input, repositories)
+	if modules.task.handlerDependencies.Admin.StoreRepository != nil {
+		t.Fatal("expected task module to remain admin-agnostic before composition")
+	}
+	if modules.admin.handlerDependencies.StoreRepository != repositories.storeRepository {
+		t.Fatal("expected admin module to preserve store repository")
+	}
+	if modules.submit.assets.imageUploadStore == nil {
+		t.Fatal("expected submit module to build image upload store")
+	}
+}
+
 func TestBuildModuleRuntimeUsesPrivateRuntimePayload(t *testing.T) {
 	t.Parallel()
 
