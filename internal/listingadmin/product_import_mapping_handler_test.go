@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -123,6 +124,23 @@ func TestProductImportMappingHandlerSoftDeletesWithinTenant(t *testing.T) {
 	}
 	if row.Deleted != 1 {
 		t.Fatalf("deleted = %d, want 1", row.Deleted)
+	}
+}
+
+func TestProductImportMappingHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newProductImportMappingTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/product-import-mappings?importTaskId=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /product-import-mappings?importTaskId=abc = %d, body=%s, want 400", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_import_task_id"`) {
+		t.Fatalf("body = %s, want invalid_import_task_id", resp.Body.String())
 	}
 }
 

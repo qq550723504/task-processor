@@ -27,9 +27,19 @@ func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) 
 		PlatformProductID:       strings.TrimSpace(c.Query("platformProductId")),
 		PlatformParentProductID: strings.TrimSpace(c.Query("platformParentProductId")),
 	}, scope)
-	query.ImportTaskID = queryInt64Ptr(c, "importTaskId")
-	query.StoreID = queryInt64Ptr(c, "storeId")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.ImportTaskID, ok = queryInt64PtrStrict(c, "importTaskId", "invalid_import_task_id")
+	if !ok {
+		return
+	}
+	query.StoreID, ok = queryInt64PtrStrict(c, "storeId", "invalid_store_id")
+	if !ok {
+		return
+	}
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 
 	page, err := h.repo.ListProductImportMappings(requestIdentityContext(c), *query)
 	if err != nil {
