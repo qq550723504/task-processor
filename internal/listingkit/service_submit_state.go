@@ -2,22 +2,24 @@ package listingkit
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
+func (s *service) taskSubmissionStateOrDefault() *taskSubmissionStateService {
+	if s.taskSubmissionState != nil {
+		return s.taskSubmissionState
+	}
+	s.taskSubmissionState = newTaskSubmissionStateService(taskSubmissionStateServiceConfig{
+		repo:                   s.repo,
+		rememberSheinSubmitted: s.rememberSheinSubmittedResolution,
+	})
+	return s.taskSubmissionState
+}
+
 func (s *service) persistSuccessfulSheinSubmission(ctx context.Context, taskID string, task *Task, action string) error {
-	if task == nil || task.Result == nil {
-		return nil
-	}
-	if success := sheinSubmissionSucceeded(action, task.Result.Shein); success {
-		applySuccessfulSheinSubmissionState(task)
-		return s.repo.MarkCompleted(ctx, taskID, task.Result)
-	}
-	task.Result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, task.Result)
+	return s.taskSubmissionStateOrDefault().persistSuccessfulSheinSubmission(ctx, taskID, task, action)
 }
 
 func sheinSubmissionSucceeded(action string, pkg *SheinPackage) bool {
@@ -64,84 +66,29 @@ func clearResolvedSheinReviewState(result *ListingKitResult) {
 }
 
 func (s *service) persistSheinDirectSubmitPhase(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, phase string) error {
-	var result *ListingKitResult
-	if task != nil {
-		result = task.Result
-	}
-	return s.persistSheinSubmitPhase(ctx, taskID, result, pkg, opts.action, opts.requestID, phase)
+	return s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, phase)
 }
 
 func (s *service) persistSheinSubmitPhase(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestID, phase string) error {
-	advanceSheinSubmitPhase(pkg, action, requestID, phase)
-	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, phase, sheinpub.SubmissionStatusRunning, requestID, time.Now(), "", nil))
-	if result == nil {
-		return nil
-	}
-	result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, result)
+	return s.taskSubmissionStateOrDefault().persistSheinSubmitPhase(ctx, taskID, result, pkg, action, requestID, phase)
 }
 
 func (s *service) persistSuccessfulSheinDirectResponse(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, supplierCode string, response *sheinpub.SubmissionResponse) error {
-	if task == nil || task.Result == nil {
-		return nil
-	}
-	setSheinSubmitRemoteResponse(pkg, opts.action, opts.requestID, supplierCode, response)
-	task.Result.UpdatedAt = time.Now()
-	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
-		return err
-	}
-	return s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePersistResult)
+	return s.taskSubmissionStateOrDefault().persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response)
 }
 
 func (s *service) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {
-	record := completeSheinSubmitAttempt(pkg, opts.action, opts.requestID, response, responseErr, time.Now())
-	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, opts.action, record, response, responseErr, opts.startedAt))
-	if responseErr == nil {
-		s.rememberSheinSubmittedResolution(task, opts.action)
-	}
-	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, opts.action); err != nil {
-		return err
-	}
-	return responseErr
+	return s.taskSubmissionStateOrDefault().finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
 }
 
 func (s *service) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
-	return s.recordSheinSubmissionFailureForState(ctx, taskID, result, pkg, action, "", "", submitErr)
+	return s.taskSubmissionStateOrDefault().recordSheinSubmissionFailure(ctx, taskID, result, pkg, action, submitErr)
 }
 
 func (s *service) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {
-	requestID := strings.TrimSpace(requestedID)
-	phase = strings.TrimSpace(phase)
-	if phase == "" {
-		phase = sheinpub.SubmissionPhaseValidate
-	}
-	if pkg != nil && pkg.Submission != nil {
-		if requestID == "" {
-			requestID = pkg.Submission.CurrentRequestID
-		}
-		if phase == sheinpub.SubmissionPhaseValidate && pkg.Submission.CurrentPhase != "" {
-			phase = pkg.Submission.CurrentPhase
-		}
-	}
-	record := failSheinSubmitAttempt(pkg, action, requestID, phase, submitErr, time.Now())
-	startedAt := record.SubmittedAt
-	if !record.StartedAt.IsZero() {
-		startedAt = record.StartedAt
-	}
-	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, nil, submitErr, startedAt))
-	if result == nil {
-		return nil
-	}
-	result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, result)
+	return s.taskSubmissionStateOrDefault().recordSheinSubmissionFailureForState(ctx, taskID, result, pkg, action, requestedID, phase, submitErr)
 }
 
 func (s *service) failSheinDirectSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, action string, submitErr error) error {
-	if task == nil {
-		return submitErr
-	}
-	if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, submitErr); saveErr != nil {
-		return saveErr
-	}
-	return submitErr
+	return s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, action, submitErr)
 }

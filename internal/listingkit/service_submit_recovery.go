@@ -7,296 +7,36 @@ import (
 	"strings"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func (s *service) beginSheinSubmitLease(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, error) {
-	return s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil {
-			return ErrTaskResultUnavailable
-		}
-		pkg := task.Result.Shein
-		if pkg == nil || pkg.PreviewProduct == nil {
-			return errSheinSubmitMissingPackage
-		}
-		if findSheinSubmissionRecordByRequestID(pkg, action, requestID) != nil {
-			return errSheinSubmitReplayExisting
-		}
-		sameRequestNeedsRecovery := pkg.Submission != nil &&
-			pkg.Submission.CurrentRequestID == requestID &&
-			(pkg.Submission.CurrentPhase != sheinpub.SubmissionPhaseSubmitRemote ||
-				sheinSubmitRemoteResponsePersisted(pkg, action, requestID))
-		if pkg.Submission != nil && (sameRequestNeedsRecovery || sheinSubmitAttemptNeedsRemoteRecovery(pkg.Submission, action, startedAt)) {
-			record := sheinSubmissionRecordForAction(pkg.Submission, action)
-			if record != nil && strings.TrimSpace(record.SupplierCode) != "" {
-				appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, pkg.Submission.CurrentPhase, sheinpub.SubmissionStatusRunning, requestID, startedAt, "远端可能已收到，正在刷新诊断状态", nil))
-				return errSheinSubmitRecoverRemote
-			}
-		}
-		if active := findActiveSheinSubmitAttempt(pkg, action, startedAt); active != nil {
-			if active.CurrentRequestID == requestID {
-				return errSheinSubmitReplayExisting
-			}
-			return &SubmitInProgressError{
-				Platform:       "shein",
-				Action:         action,
-				Phase:          active.CurrentPhase,
-				RequestID:      active.CurrentRequestID,
-				LeaseExpiresAt: active.LeaseExpiresAt,
-			}
-		}
-		beginSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt)
-		appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseValidate, sheinpub.SubmissionStatusRunning, requestID, startedAt, "", nil))
-		task.Result.UpdatedAt = startedAt
-		return nil
-	})
-}
-
-func sheinSubmitRemoteResponsePersisted(pkg *SheinPackage, action, requestID string) bool {
-	if pkg == nil || pkg.Submission == nil {
-		return false
-	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
-	if record == nil || record.RequestID != requestID {
-		return false
-	}
-	return record.Result != nil
+	return s.taskSubmissionRecoveryOrDefault().beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
 }
 
 func (s *service) mutateTaskResult(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
-	if txRepo, ok := s.repo.(TaskResultTransactionRepository); ok {
-		return txRepo.MutateTaskResult(ctx, taskID, mutate)
-	}
-	task, err := s.repo.GetTask(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if mutate != nil {
-		if err := mutate(task); err != nil {
-			return task, err
-		}
-	}
-	if task.Result != nil {
-		if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
-			return nil, err
-		}
-	}
-	return task, nil
+	return s.taskSubmissionRecoveryOrDefault().mutateTaskResult(ctx, taskID, mutate)
 }
 
 func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
-	if task == nil || task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
-		return nil, ErrTaskResultUnavailable
-	}
-	pkg := task.Result.Shein
-	report := pkg.Submission
-	record := sheinSubmissionRecordForAction(report, action)
-	requestID := report.CurrentRequestID
-	now := time.Now()
-	response := recordResult(record)
-	if response == nil {
-		response = report.LastResult
-	}
-	if sheinSubmissionResponseAccepted(response) || (action == "save_draft" && saveDraftSucceeded(action, response)) {
-		appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, requestID, now, "恢复本地提交完成状态", nil))
-		record = completeSheinSubmitAttempt(pkg, action, requestID, response, nil, time.Now())
-		appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
-		s.rememberSheinSubmittedResolution(task, action)
-		if err := s.persistSuccessfulSheinSubmission(ctx, task.ID, task, action); err != nil {
-			return nil, err
-		}
-		return s.buildTaskPreview(ctx, task, "shein")
-	}
-	if record == nil || strings.TrimSpace(record.SupplierCode) == "" {
-		return nil, fmt.Errorf("%w: stale SHEIN submit has no supplier code", ErrSubmitInProgress)
-	}
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
-	if err != nil {
-		return nil, err
-	}
-	advanceSheinSubmitPhase(pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote)
-	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(task.ID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, now, "远端可能已收到，正在刷新诊断状态", nil))
-	event, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, task.ID, pkg, productAPI, action, requestID, record.SupplierCode, now)
-	if event != nil {
-		appendSheinSubmissionEvent(pkg, *event)
-	}
-	if remoteErr != nil {
-		record = failSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
-		appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, remoteErr, record.StartedAt))
-		task.Result.UpdatedAt = time.Now()
-		if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
-			return nil, err
-		}
-		return nil, remoteErr
-	}
-	response = record.Result
-	if response == nil && report.LastResult != nil {
-		response = report.LastResult
-	}
-	record = completeSheinSubmitAttempt(pkg, action, requestID, response, nil, time.Now())
-	if record.Result == nil {
-		record.Status = sheinpub.SubmissionStatusSuccess
-	}
-	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
-	s.rememberSheinSubmittedResolution(task, action)
-	if err := s.persistSuccessfulSheinSubmission(ctx, task.ID, task, action); err != nil {
-		return nil, err
-	}
-	return s.buildTaskPreview(ctx, task, "shein")
+	return s.taskSubmissionRecoveryOrDefault().recoverSheinSubmitRemote(ctx, task, action)
 }
 
 func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error) {
-	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":refresh_submission_status")
-	defer unlockSubmit()
-
-	task, err := s.repo.GetTask(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if task.Result == nil {
-		return nil, ErrTaskResultUnavailable
-	}
-	pkg := task.Result.Shein
-	if pkg == nil || pkg.Submission == nil {
-		return nil, fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
-	}
-	report := pkg.Submission
-	action := strings.TrimSpace(report.LastAction)
-	if action == "" {
-		if report.Publish != nil {
-			action = "publish"
-		} else if report.SaveDraft != nil {
-			action = "save_draft"
-		}
-	}
-	record := sheinSubmissionRecordForAction(report, action)
-	if record == nil {
-		return nil, fmt.Errorf("%w: shein submission record is not available", ErrSubmitBlocked)
-	}
-	supplierCode := strings.TrimSpace(record.SupplierCode)
-	if supplierCode == "" {
-		supplierCode = sheinSubmitSupplierCode(nil, pkg)
-	}
-	if supplierCode == "" {
-		return nil, fmt.Errorf("%w: shein supplier code is not available", ErrSubmitBlocked)
-	}
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
-	if err != nil {
-		return nil, err
-	}
-	requestID := strings.TrimSpace(record.RequestID)
-	startedAt := time.Now()
-	lookupCodes := collectSheinRemoteLookupCodes(pkg, supplierCode)
-	defaultConfirmed := action == "publish" && sheinRemotePublishAccepted(pkg, action)
-	fallbackMessage := "refreshing SHEIN remote record"
-	if defaultConfirmed {
-		fallbackMessage = "SHEIN accepted publish request; remote record not yet visible"
-	}
-	confirmation, remoteErr := s.resolveSheinSubmitRemoteStatus(productAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
-	task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
-			return fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
-		}
-		currentAction := strings.TrimSpace(task.Result.Shein.Submission.LastAction)
-		if currentAction == "" {
-			currentAction = action
-		}
-		if currentAction != action {
-			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
-		}
-		currentRecord := sheinSubmissionRecordForAction(task.Result.Shein.Submission, action)
-		if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
-			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
-		}
-		appendSheinSubmissionEvent(task.Result.Shein, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, startedAt, "刷新 SHEIN 远端提交状态", nil))
-		if confirmation.event != nil {
-			appendSheinSubmissionEvent(task.Result.Shein, *confirmation.event)
-		}
-		setSheinSubmitRemoteRecord(task.Result.Shein, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
-		task.Result.UpdatedAt = time.Now()
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if remoteErr != nil {
-		return nil, remoteErr
-	}
-	return s.buildTaskPreview(ctx, task, "shein")
+	return s.taskSubmissionOrDefault().RefreshSubmissionStatus(ctx, taskID)
 }
 
 func (s *service) refreshSheinSubmitRemoteStatus(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
-	lookupCodes := collectSheinRemoteLookupCodes(pkg, supplierCode)
-	defaultConfirmed := action == "publish" && sheinRemotePublishAccepted(pkg, action)
-	fallbackMessage := "refreshing SHEIN remote record"
-	if defaultConfirmed {
-		fallbackMessage = "SHEIN accepted publish request; remote record not yet visible"
-	}
-	if len(lookupCodes) == 0 {
-		now := time.Now()
-		remoteStatus := sheinpub.SubmissionRemoteStatusPending
-		detail := "SHEIN submit succeeded, but supplier code is unavailable for remote confirmation"
-		if defaultConfirmed {
-			remoteStatus = sheinpub.SubmissionRemoteStatusConfirmed
-			detail = "SHEIN accepted publish request, but supplier code is unavailable for remote confirmation"
-		}
-		setSheinSubmitRemoteRecord(pkg, action, requestID, remoteStatus, nil, now, detail)
-		return ptrSheinSubmissionEvent(buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, remoteStatus, requestID, startedAt, detail, nil)), nil
-	}
-	confirmation, err := s.resolveSheinSubmitRemoteStatus(productAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
-	setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
-	return confirmation.event, err
-}
-
-func ptrSheinSubmissionEvent(event sheinpub.SubmissionEvent) *sheinpub.SubmissionEvent {
-	return &event
+	return s.taskSubmissionRecoveryOrDefault().refreshSheinSubmitRemoteStatus(ctx, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
 }
 
 func (s *service) clearSheinSubmitLease(ctx context.Context, taskID, action, requestID string) error {
-	_, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
-			return nil
-		}
-		clearSheinSubmitInFlight(task.Result.Shein.Submission, action, requestID)
-		task.Result.UpdatedAt = time.Now()
-		return nil
-	})
-	return err
+	return s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLease(ctx, taskID, action, requestID)
 }
 
 func (s *service) clearSheinSubmitLeaseAfterStartFailure(ctx context.Context, taskID, action, requestID string, startErr error) error {
-	_, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
-			return nil
-		}
-		pkg := task.Result.Shein
-		record := sheinSubmissionRecordForAction(pkg.Submission, action)
-		if record != nil && record.RequestID == requestID && record.Status == sheinpub.SubmissionStatusRunning {
-			finishedAt := time.Now()
-			record.Status = sheinpub.SubmissionStatusFailed
-			record.Phase = sheinpub.SubmissionPhaseValidate
-			record.FinishedAt = &finishedAt
-			if startErr != nil {
-				record.Error = startErr.Error()
-			}
-			listingsubmission.ApplyRecord(pkg, record)
-			appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, nil, startErr, record.StartedAt))
-		}
-		clearSheinSubmitInFlight(pkg.Submission, action, requestID)
-		task.Result.UpdatedAt = time.Now()
-		return nil
-	})
-	return err
-}
-
-type sheinRemoteConfirmation struct {
-	remoteStatus string
-	record       *sheinproduct.RecordItem
-	checkedAt    time.Time
-	message      string
-	event        *sheinpub.SubmissionEvent
+	return s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, action, requestID, startErr)
 }
 
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
@@ -355,6 +95,23 @@ func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.Product
 		message:      "record not found",
 		event:        &event,
 	}, nil
+}
+
+func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryService {
+	if s.taskSubmissionRecovery != nil {
+		return s.taskSubmissionRecovery
+	}
+	s.taskSubmissionRecovery = newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo:                       s.repo,
+		buildTaskPreview:           s.buildTaskPreview,
+		buildSheinSubmitProductAPI: s.buildSheinSubmitProductAPI,
+		rememberSheinSubmitted:     s.rememberSheinSubmittedResolution,
+		persistSuccessfulSubmission: func(ctx context.Context, taskID string, task *Task, action string) error {
+			return s.persistSuccessfulSheinSubmission(ctx, taskID, task, action)
+		},
+		resolveRemoteStatusCallback: s.resolveSheinSubmitRemoteStatus,
+	})
+	return s.taskSubmissionRecovery
 }
 
 func classifySheinRemoteRecord(action string, item *sheinproduct.RecordItem, publishAccepted bool) (string, string, error) {

@@ -21,6 +21,13 @@ import (
 
 type service struct {
 	repo                           Repository
+	taskLifecycle                  *taskLifecycleService
+	taskSubmission                 *taskSubmissionService
+	taskSubmissionRecovery         *taskSubmissionRecoveryService
+	taskSubmissionExecution        *taskSubmissionExecutionService
+	taskSubmissionState            *taskSubmissionStateService
+	taskDirectSubmission           *taskDirectSubmissionService
+	taskTemporalSubmissionAdapter  *taskTemporalSubmissionAdapter
 	studioSessionRepo              StudioSessionRepository
 	productSvc                     ProductService
 	imageSvc                       ImageService
@@ -129,6 +136,12 @@ func NewService(config *ServiceConfig) (Service, error) {
 		return nil, fmt.Errorf("product service cannot be nil")
 	}
 	config.applyDefaults()
+	svc := newServiceWithConfig(config)
+	svc.initializeCollaborators()
+	return svc, nil
+}
+
+func newServiceWithConfig(config *ServiceConfig) *service {
 	defaultSettings := defaultSheinSettings(config.Shein.SheinDefaultStoreID, config.Shein.SheinPricingPolicy)
 	return &service{
 		repo:                           config.Core.Repository,
@@ -172,7 +185,41 @@ func NewService(config *ServiceConfig) (Service, error) {
 		},
 		sheinSubmitLocks: newSubmitLockManager(),
 		sheinSettings:    defaultSettings,
-	}, nil
+	}
+}
+
+func (s *service) initializeCollaborators() {
+	if s == nil {
+		return
+	}
+	s.initializeTaskCollaborators()
+	s.initializeSubmitCollaborators()
+	s.initializeTemporalCollaborators()
+}
+
+func (s *service) initializeTaskCollaborators() {
+	if s == nil {
+		return
+	}
+	s.taskLifecycle = s.taskLifecycleOrDefault()
+}
+
+func (s *service) initializeSubmitCollaborators() {
+	if s == nil {
+		return
+	}
+	s.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
+	s.taskSubmission = s.taskSubmissionOrDefault()
+	s.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
+	s.taskSubmissionState = s.taskSubmissionStateOrDefault()
+	s.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
+}
+
+func (s *service) initializeTemporalCollaborators() {
+	if s == nil {
+		return
+	}
+	s.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
 }
 
 func (config *ServiceConfig) applyDefaults() {

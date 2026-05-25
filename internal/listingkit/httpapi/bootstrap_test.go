@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -14,8 +15,14 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/reviewstore"
+	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/productenrich"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinimageapi "task-processor/internal/shein/api/image"
+	sheinproductapi "task-processor/internal/shein/api/product"
+	sheintranslateapi "task-processor/internal/shein/api/translate"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 func buildServiceInputFixture() BuildServiceInput {
@@ -205,3 +212,702 @@ func TestBuildServiceClosesResourcesInReverseOrderOnFailure(t *testing.T) {
 		t.Fatalf("closed = %v, want [store task]", closed)
 	}
 }
+
+func TestAssembleServiceBundleMapsRuntimeDependenciesAndClosers(t *testing.T) {
+	t.Parallel()
+
+	taskRepo := listingkitstore.NewMemTaskRepository()
+	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
+		Core: listingkit.ServiceCoreDependencies{
+			Repository:     taskRepo,
+			ProductService: httpapiStubProductService{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	moduleSvc, ok := svc.(moduleService)
+	if !ok {
+		t.Fatalf("service type = %T, want moduleService", svc)
+	}
+	repos := &builtRepositories{
+		taskRepository:      taskRepo,
+		subscriptionService: &listingsubscription.Service{},
+	}
+	closers := []func() error{func() error { return nil }}
+
+	task := buildTaskModule(taskModuleInput{
+		TaskRepository:      taskRepo,
+		SubscriptionService: repos.subscriptionService,
+	})
+	admin := buildAdminModule(adminModuleInput{})
+	temporal := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
+
+	bundle := assembleServiceBundle(repos, moduleSvc, temporal.workerService, task.handlerDependenciesWithAdmin(admin), closers)
+	if bundle == nil {
+		t.Fatal("expected bundle")
+	}
+	if bundle.TaskRepository != repos.taskRepository {
+		t.Fatal("expected task repository to be mapped")
+	}
+	if bundle.SubscriptionService != repos.subscriptionService {
+		t.Fatal("expected subscription service to be mapped")
+	}
+	if bundle.TemporalWorkerService != moduleSvc {
+		t.Fatal("expected temporal worker service to be mapped")
+	}
+	if bundle.runtime.handlerDependencies.Subscription.Service != repos.subscriptionService {
+		t.Fatal("expected runtime handler dependencies to preserve subscription service")
+	}
+	if !reflect.DeepEqual(bundle.Closers, closers) {
+		t.Fatalf("closers = %#v, want %#v", bundle.Closers, closers)
+	}
+}
+
+func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
+	t.Parallel()
+
+	taskRepo := listingkitstore.NewMemTaskRepository()
+	assetRepo := assetrepo.NewMemRepository()
+	reviewRepo := reviewstore.NewMemRepository()
+	assembler := listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{})
+	uploadStore := &httpapiStubImageUploadStore{}
+	apiFactory := &httpapiStubSheinAPIClientFactory{}
+
+	cfg := buildListingKitServiceConfig(buildListingKitServiceConfigInput{
+		input: BuildServiceInput{
+			Config: &config.Config{},
+		},
+		repositories: &builtRepositories{
+			taskRepository:   taskRepo,
+			assetRepository:  assetRepo,
+			reviewRepository: reviewRepo,
+		},
+		submit: submitModule{
+			assets: submitAssetDependencies{
+				assembler:        assembler,
+				imageUploadStore: uploadStore,
+			},
+			shein: submitSheinDependencies{
+				pricingPolicy:    sheinpub.PricingPolicy{},
+				apiClientFactory: apiFactory,
+				defaultStoreID:   903,
+			},
+		},
+	})
+
+	if cfg.Core.Repository != taskRepo {
+		t.Fatal("expected task repository to be mapped into service config")
+	}
+	if cfg.Core.ImageUploadStore != uploadStore {
+		t.Fatal("expected submit image upload store to be mapped into service config")
+	}
+	if cfg.Assets.Assembler != assembler {
+		t.Fatal("expected assembler to be mapped into service config")
+	}
+	if cfg.Assets.AssetRepository != assetRepo {
+		t.Fatal("expected asset repository to be mapped into service config")
+	}
+	if cfg.Assets.ReviewRepository != reviewRepo {
+		t.Fatal("expected review repository to be mapped into service config")
+	}
+	if cfg.Shein.SheinStoreCatalog == nil {
+		t.Fatal("expected shein store catalog to be set")
+	}
+	if cfg.Shein.SheinAPIClientFactory != apiFactory {
+		t.Fatal("expected shein api client factory to be mapped from submit module")
+	}
+	if cfg.Shein.SheinDefaultStoreID != 903 {
+		t.Fatalf("default shein store id = %d, want 903", cfg.Shein.SheinDefaultStoreID)
+	}
+}
+
+func TestNewSubmitModuleInputScopesBuildServiceDependencies(t *testing.T) {
+	t.Parallel()
+
+	input := buildServiceInputFixture()
+	repos := &builtRepositories{
+		storeRepository:      &listingadmin.GormStoreRepository{},
+		resolutionCacheStore: &httpapiStubResolutionCacheStore{},
+	}
+
+	submitInput := newSubmitModuleInput(input, repos)
+	if submitInput.Config != input.Config {
+		t.Fatal("expected submit input to preserve config")
+	}
+	if submitInput.Logger != input.Logger {
+		t.Fatal("expected submit input to preserve logger")
+	}
+	if submitInput.AICredentialStore != input.AICredentialStore {
+		t.Fatal("expected submit input to preserve ai credential store")
+	}
+	if submitInput.StoreRepository != repos.storeRepository {
+		t.Fatal("expected submit input to use submit-scoped store repository")
+	}
+	if submitInput.ResolutionCacheStore != repos.resolutionCacheStore {
+		t.Fatal("expected submit input to use submit-scoped resolution cache store")
+	}
+	if reflect.ValueOf(submitInput.Hooks.SheinCategoryLLMClientBuilder).Pointer() != reflect.ValueOf(input.Hooks.SheinCategoryLLMClientBuilder).Pointer() {
+		t.Fatal("expected submit input to preserve shein category llm builder")
+	}
+	if reflect.ValueOf(submitInput.Hooks.ImageUploadStoreBuilder).Pointer() != reflect.ValueOf(input.Hooks.ImageUploadStoreBuilder).Pointer() {
+		t.Fatal("expected submit input to preserve image upload store builder")
+	}
+}
+
+func TestMergeBuiltRepositoriesCombinesCoreAndAdminGroups(t *testing.T) {
+	t.Parallel()
+
+	taskRepo := listingkitstore.NewMemTaskRepository()
+	subscriptionSvc := &listingsubscription.Service{}
+	assetRepo := assetrepo.NewMemRepository()
+	reviewRepo := reviewstore.NewMemRepository()
+	adminStoreRepo := listingadmin.StoreRepository(nil)
+	adminCategoryRepo := listingadmin.CategoryRepository(nil)
+
+	repos := mergeBuiltRepositories(
+		&builtCoreRepositories{
+			taskRepository: taskRepo,
+		},
+		&builtLateCoreRepositories{
+			subscriptionService: subscriptionSvc,
+			assetRepository:     assetRepo,
+			reviewRepository:    reviewRepo,
+		},
+		&builtAdminRepositories{
+			storeRepository:    adminStoreRepo,
+			categoryRepository: adminCategoryRepo,
+		},
+	)
+
+	if repos.taskRepository != taskRepo {
+		t.Fatal("expected core task repository to be preserved")
+	}
+	if repos.subscriptionService != subscriptionSvc {
+		t.Fatal("expected core subscription service to be preserved")
+	}
+	if repos.assetRepository != assetRepo {
+		t.Fatal("expected core asset repository to be preserved")
+	}
+	if repos.reviewRepository != reviewRepo {
+		t.Fatal("expected core review repository to be preserved")
+	}
+	if repos.storeRepository != adminStoreRepo {
+		t.Fatal("expected admin store repository to be preserved")
+	}
+	if repos.categoryRepository != adminCategoryRepo {
+		t.Fatal("expected admin category repository to be preserved")
+	}
+}
+
+func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
+	t.Parallel()
+
+	uploadStore := &httpapiStubImageUploadStore{}
+	apiFactory := &httpapiStubSheinAPIClientFactory{}
+	categoryLLM := &httpapiStubChatCompleter{id: "category"}
+	saleAttrLLM := &httpapiStubChatCompleter{id: "sale-attr"}
+	productAPIBuilder := &httpapiStubProductAPIBuilder{}
+	imageAPIBuilder := &httpapiStubImageAPIBuilder{}
+	translateAPIBuilder := &httpapiStubTranslateAPIBuilder{}
+	imageGenerator := &httpapiStubImageGenerator{}
+	storeRepo := &listingadmin.GormStoreRepository{}
+	resolutionCache := &httpapiStubResolutionCacheStore{}
+	categoryResolverBuilt := false
+	attributeResolverBuilt := false
+	saleAttributeResolverBuilt := false
+
+	module := buildSubmitModule(submitModuleInput{
+		Config:            &config.Config{Management: config.ManagementConfig{StoreIDs: []int64{903}}},
+		Logger:            logrus.New(),
+		AICredentialStore: nil,
+		Hooks: submitModuleHooks{
+			SheinPricingPolicyBuilder: func(*config.Config) sheinpub.PricingPolicy {
+				return sheinpub.PricingPolicy{}
+			},
+			ImageUploadStoreBuilder: func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore {
+				return uploadStore
+			},
+			SheinCategoryLLMClientBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+				return categoryLLM
+			},
+			SheinSaleAttributeLLMBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+				return saleAttrLLM
+			},
+			SheinCategoryResolverBuilder: func(repo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+				categoryResolverBuilt = true
+				if repo != storeRepo || llm != categoryLLM || cache != resolutionCache {
+					t.Fatal("expected category resolver builder to receive submit-scoped dependencies")
+				}
+				return nil
+			},
+			SheinAttributeResolverBuilder: func(repo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+				attributeResolverBuilt = true
+				if repo != storeRepo || llm != saleAttrLLM || cache != resolutionCache {
+					t.Fatal("expected attribute resolver builder to receive submit-scoped dependencies")
+				}
+				return nil
+			},
+			SheinSaleAttributeResolverBuilder: func(repo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+				saleAttributeResolverBuilt = true
+				if repo != storeRepo || llm != saleAttrLLM || cache != resolutionCache {
+					t.Fatal("expected sale attribute resolver builder to receive submit-scoped dependencies")
+				}
+				return nil
+			},
+			SheinProductAPIBuilderFactory: func(repo listingadmin.StoreRepository) sheinpub.ProductAPIBuilder {
+				if repo != storeRepo {
+					t.Fatal("expected product api builder to receive store repository")
+				}
+				return productAPIBuilder
+			},
+			SheinImageAPIBuilderFactory: func(repo listingadmin.StoreRepository) sheinpub.ImageAPIBuilder {
+				if repo != storeRepo {
+					t.Fatal("expected image api builder to receive store repository")
+				}
+				return imageAPIBuilder
+			},
+			SheinTranslateAPIBuilderFactory: func(repo listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder {
+				if repo != storeRepo {
+					t.Fatal("expected translate api builder to receive store repository")
+				}
+				return translateAPIBuilder
+			},
+			SheinAPIClientFactoryBuilder: func(repo listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
+				if repo != storeRepo {
+					t.Fatal("expected api client factory builder to receive store repository")
+				}
+				return apiFactory
+			},
+			StudioImageGeneratorBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
+				return imageGenerator
+			},
+			DefaultSheinStoreIDResolver: func(ids []int64) int64 {
+				if !reflect.DeepEqual(ids, []int64{903}) {
+					t.Fatalf("store ids = %v, want [903]", ids)
+				}
+				return ids[0]
+			},
+		},
+		StoreRepository:      storeRepo,
+		ResolutionCacheStore: resolutionCache,
+	})
+
+	if module.assets.imageUploadStore != uploadStore {
+		t.Fatal("expected submit asset dependencies to preserve image upload store")
+	}
+	if module.shein.contentOptimizer != categoryLLM {
+		t.Fatal("expected shein category llm client to be built by submit module")
+	}
+	if module.shein.productAPIBuilder != productAPIBuilder {
+		t.Fatal("expected shein product api builder to be built by submit module")
+	}
+	if module.shein.imageAPIBuilder != imageAPIBuilder {
+		t.Fatal("expected shein image api builder to be built by submit module")
+	}
+	if module.shein.translateAPIBuilder != translateAPIBuilder {
+		t.Fatal("expected shein translate api builder to be built by submit module")
+	}
+	if module.shein.apiClientFactory != apiFactory {
+		t.Fatal("expected shein api client factory to be built by submit module")
+	}
+	if module.studio.imageGenerator != imageGenerator {
+		t.Fatal("expected studio image generator to be built by submit module")
+	}
+	if module.shein.defaultStoreID != 903 {
+		t.Fatalf("default shein store id = %d, want 903", module.shein.defaultStoreID)
+	}
+	if module.assets.assembler == nil {
+		t.Fatal("expected assembler to be built from submit-scoped dependencies")
+	}
+	if module.shein.categoryResolver != nil {
+		t.Fatal("expected category resolver output to reflect builder return value")
+	}
+	if module.shein.attributeResolver != nil {
+		t.Fatal("expected attribute resolver output to reflect builder return value")
+	}
+	if module.shein.saleAttributeResolver != nil {
+		t.Fatal("expected sale attribute resolver output to reflect builder return value")
+	}
+	if !categoryResolverBuilt || !attributeResolverBuilt || !saleAttributeResolverBuilt {
+		t.Fatal("expected shein resolver builders to be invoked by submit module")
+	}
+}
+
+func TestBuildTaskModuleScopesRuntimeHandlerDependencies(t *testing.T) {
+	t.Parallel()
+
+	subscriptionService := &listingsubscription.Service{}
+	module := buildTaskModule(taskModuleInput{
+		TaskRepository:           listingkitstore.NewMemTaskRepository(),
+		SubscriptionService:      subscriptionService,
+		PlatformAdminUsers:       []string{"task-admin"},
+		PlatformAdminRoles:       []string{"task-role"},
+		StudioAsyncJobRepository: nil,
+	})
+
+	if module.taskRepository == nil {
+		t.Fatal("expected task repository to be preserved")
+	}
+	if module.handlerDependencies.Subscription.Service != subscriptionService {
+		t.Fatal("expected subscription service to be mapped into handler dependencies")
+	}
+	if !reflect.DeepEqual(module.handlerDependencies.Subscription.PlatformAdminUsers, []string{"task-admin"}) {
+		t.Fatalf("platform admin users = %v, want [task-admin]", module.handlerDependencies.Subscription.PlatformAdminUsers)
+	}
+	if !reflect.DeepEqual(module.handlerDependencies.Subscription.PlatformAdminRoles, []string{"task-role"}) {
+		t.Fatalf("platform admin roles = %v, want [task-role]", module.handlerDependencies.Subscription.PlatformAdminRoles)
+	}
+}
+
+func TestBuildAdminModuleMapsAdminRepositories(t *testing.T) {
+	t.Parallel()
+
+	storeRepo := &listingadmin.GormStoreRepository{}
+	categoryRepo := &listingadmin.GormCategoryRepository{}
+
+	module := buildAdminModule(adminModuleInput{
+		StoreRepository:    storeRepo,
+		CategoryRepository: categoryRepo,
+	})
+	if module.handlerDependencies.StoreRepository != storeRepo {
+		t.Fatal("expected store repository to be mapped into admin handler dependencies")
+	}
+	if module.handlerDependencies.CategoryRepository != categoryRepo {
+		t.Fatal("expected category repository to be mapped into admin handler dependencies")
+	}
+}
+
+func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
+	t.Parallel()
+
+	uploadStore := &httpapiStubImageUploadStore{}
+	module := buildSubmitModule(submitModuleInput{
+		Config: &config.Config{
+			Management: config.ManagementConfig{StoreIDs: []int64{701}},
+		},
+		Logger: logrus.New(),
+		Hooks: submitModuleHooks{
+			ImageUploadStoreBuilder: func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore {
+				return uploadStore
+			},
+			DefaultSheinStoreIDResolver: func(ids []int64) int64 {
+				if len(ids) == 1 {
+					return ids[0]
+				}
+				return 0
+			},
+		},
+	})
+
+	if module.assets.imageUploadStore != uploadStore {
+		t.Fatal("expected submit image upload store to be built from scoped hooks")
+	}
+	if module.shein.defaultStoreID != 701 {
+		t.Fatalf("default shein store id = %d, want 701", module.shein.defaultStoreID)
+	}
+	if module.shein.contentOptimizer != nil {
+		t.Fatal("expected omitted shein optimizer hook to leave zero value output")
+	}
+	if module.shein.productAPIBuilder != nil {
+		t.Fatal("expected omitted submit builders to leave zero value outputs")
+	}
+	if module.studio.imageGenerator != nil {
+		t.Fatal("expected omitted studio image generator hook to leave zero value output")
+	}
+	if module.assets.assembler == nil {
+		t.Fatal("expected assembler to still be built when optional hooks are omitted")
+	}
+}
+
+func TestBuildTemporalModuleExposesWorkerRuntime(t *testing.T) {
+	t.Parallel()
+
+	taskRepo := listingkitstore.NewMemTaskRepository()
+	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
+		Core: listingkit.ServiceCoreDependencies{
+			Repository:     taskRepo,
+			ProductService: httpapiStubProductService{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	moduleSvc, ok := svc.(moduleService)
+	if !ok {
+		t.Fatalf("service type = %T, want moduleService", svc)
+	}
+
+	module := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
+	if module.workerService == nil {
+		t.Fatal("expected temporal worker service boundary")
+	}
+	workerSvc, ok := any(module.workerService).(TemporalWorkerService)
+	if !ok {
+		t.Fatalf("worker service type = %T, want TemporalWorkerService", module.workerService)
+	}
+	if workerSvc != moduleSvc {
+		t.Fatal("expected temporal module to preserve worker-capable service")
+	}
+}
+
+func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
+	t.Parallel()
+
+	bundle, err := BuildService(buildSuccessfulServiceInputFixture())
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+	if bundle.runtime.handlerDependencies.StudioAsyncJobRepository != bundle.StudioAsyncJobRepository {
+		t.Fatal("expected runtime handler dependencies to preserve studio async job repository")
+	}
+	if bundle.runtime.handlerDependencies.Subscription.Service != bundle.SubscriptionService {
+		t.Fatal("expected runtime handler dependencies to preserve subscription service")
+	}
+	if bundle.runtime.handlerDependencies.Admin.StoreRepository != bundle.StoreRepository {
+		t.Fatal("expected runtime handler dependencies to preserve admin store repository")
+	}
+	if bundle.TemporalWorkerService == nil {
+		t.Fatal("expected temporal worker service to be exposed")
+	}
+}
+
+func TestBuildModuleRuntimeUsesPrivateRuntimePayload(t *testing.T) {
+	t.Parallel()
+
+	moduleSvc := newTestModuleService(t)
+	runtimeTaskRepo := listingkitstore.NewMemTaskRepository()
+	bundle := &ServiceBundle{
+		TemporalWorkerService: nil,
+		TaskRepository:        nil,
+		runtime: serviceBundleRuntime{
+			temporalWorkerService: moduleSvc,
+			service:               moduleSvc,
+			taskRepository:        runtimeTaskRepo,
+			handlerDependencies: buildTaskModule(taskModuleInput{
+				TaskRepository:           runtimeTaskRepo,
+				StudioAsyncJobRepository: nil,
+				SubscriptionService:      &listingsubscription.Service{},
+			}).handlerDependenciesWithAdmin(buildAdminModule(adminModuleInput{})),
+		},
+	}
+
+	module, err := buildModuleRuntime(BuildModuleInput{
+		ServiceInput: BuildServiceInput{
+			Config: buildSuccessfulServiceInputFixture().Config,
+			Logger: logrus.New(),
+		},
+	}, bundle)
+	if err != nil {
+		t.Fatalf("build module runtime: %v", err)
+	}
+	if module == nil {
+		t.Fatal("expected module runtime")
+	}
+	if module.Pool == nil {
+		t.Fatal("expected worker pool when runtime payload provides processor dependencies")
+	}
+}
+
+func TestBuildModuleAssemblesRuntimeFromModuleRegistrars(t *testing.T) {
+	t.Parallel()
+
+	module, err := BuildModule(BuildModuleInput{
+		ServiceInput: buildSuccessfulServiceInputFixture(),
+	})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+	if module == nil {
+		t.Fatal("expected module")
+	}
+	if module.Handler == nil {
+		t.Fatal("expected handler from public BuildModule entrypoint")
+	}
+	if module.StudioSessionHandler == nil {
+		t.Fatal("expected studio session handler from public BuildModule entrypoint")
+	}
+	if module.Pool == nil {
+		t.Fatal("expected worker pool from public BuildModule entrypoint")
+	}
+}
+
+func TestBuildServiceComposesSubmitRegistrarThroughPublicEntryPoint(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	storeRepo := &listingadmin.GormStoreRepository{}
+	resolutionCache := &httpapiStubResolutionCacheStore{}
+	categoryLLM := &httpapiStubChatCompleter{id: "category"}
+	imageUploadStore := &httpapiStubImageUploadStore{}
+	categoryResolverBuilt := false
+	imageUploadStoreBuilt := false
+
+	input.Repositories.Admin.Store = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+		return storeRepo, nil, nil
+	}
+	input.Repositories.Core.SheinResolutionCache = func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {
+		return resolutionCache, nil, nil
+	}
+	input.Hooks.SheinCategoryLLMClientBuilder = func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+		return categoryLLM
+	}
+	input.Hooks.SheinCategoryResolverBuilder = func(repo listingadmin.StoreRepository, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+		categoryResolverBuilt = true
+		if repo != storeRepo || llm != categoryLLM || cache != resolutionCache {
+			t.Fatal("expected submit registrar to resolve shein category dependencies through BuildService")
+		}
+		return nil
+	}
+	input.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore {
+		imageUploadStoreBuilt = true
+		return imageUploadStore
+	}
+
+	bundle, err := BuildService(input)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+	if !categoryResolverBuilt {
+		t.Fatal("expected submit registrar category resolver builder to run")
+	}
+	if !imageUploadStoreBuilt {
+		t.Fatal("expected submit registrar image upload store builder to run")
+	}
+	if bundle == nil {
+		t.Fatal("expected bundle")
+	}
+}
+
+func buildSuccessfulServiceInputFixture() BuildServiceInput {
+	input := buildServiceInputFixture()
+	input.Logger = logrus.New()
+	input.ProductService = httpapiStubProductService{}
+	input.Repositories.Core.Task = func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error) {
+		return listingkitstore.NewMemTaskRepository(), nil, nil
+	}
+	input.Repositories.Core.StudioAsyncJob = func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
+		return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	}
+	input.Repositories.Core.Subscription = func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
+		return listingsubscription.NewMemRepository(), nil, nil
+	}
+	return input
+}
+
+func newTestModuleService(t *testing.T) moduleService {
+	t.Helper()
+
+	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
+		Core: listingkit.ServiceCoreDependencies{
+			Repository:     listingkitstore.NewMemTaskRepository(),
+			ProductService: httpapiStubProductService{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	moduleSvc, ok := svc.(moduleService)
+	if !ok {
+		t.Fatalf("service type = %T, want moduleService", svc)
+	}
+	return moduleSvc
+}
+
+type httpapiStubProductService struct{}
+
+type httpapiStubChatCompleter struct {
+	id string
+}
+
+func (s *httpapiStubChatCompleter) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	return nil, nil
+}
+
+func (s *httpapiStubChatCompleter) Generate(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (s *httpapiStubChatCompleter) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (s *httpapiStubChatCompleter) GetDefaultModel() string {
+	return s.id
+}
+
+type httpapiStubProductAPIBuilder struct{}
+
+func (*httpapiStubProductAPIBuilder) BuildProductAPI(context.Context, int64) (sheinproductapi.ProductAPI, string) {
+	return nil, ""
+}
+
+type httpapiStubImageAPIBuilder struct{}
+
+func (*httpapiStubImageAPIBuilder) BuildImageAPI(context.Context, int64) (sheinimageapi.ImageAPI, string) {
+	return nil, ""
+}
+
+type httpapiStubTranslateAPIBuilder struct{}
+
+func (*httpapiStubTranslateAPIBuilder) BuildTranslateAPI(context.Context, int64) (sheintranslateapi.TranslateAPI, string) {
+	return nil, ""
+}
+
+type httpapiStubImageGenerator struct{}
+
+func (*httpapiStubImageGenerator) GenerateImage(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
+	return nil, nil
+}
+
+func (*httpapiStubImageGenerator) EditImage(context.Context, *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
+	return nil, nil
+}
+
+func (*httpapiStubImageGenerator) GetDefaultModel() string {
+	return ""
+}
+
+type httpapiStubResolutionCacheStore struct{}
+
+func (*httpapiStubResolutionCacheStore) GetResolutionCache(context.Context, string, string, string) (*sheinpub.SheinResolutionCacheEntry, error) {
+	return nil, nil
+}
+
+func (*httpapiStubResolutionCacheStore) SaveResolutionCache(context.Context, *sheinpub.SheinResolutionCacheEntry) error {
+	return nil
+}
+
+func (*httpapiStubResolutionCacheStore) DeleteResolutionCache(context.Context, string, string, string) error {
+	return nil
+}
+
+type httpapiStubImageUploadStore struct{}
+
+func (httpapiStubImageUploadStore) Save(context.Context, *listingkit.ImageUploadInput) (*listingkit.StoredUploadedImage, error) {
+	return nil, nil
+}
+func (httpapiStubImageUploadStore) Open(context.Context, string) (*listingkit.StoredUploadedImage, error) {
+	return nil, nil
+}
+func (httpapiStubImageUploadStore) Delete(context.Context, string) error { return nil }
+
+type httpapiStubSheinAPIClientFactory struct{}
+
+func (httpapiStubSheinAPIClientFactory) NewSheinAPIClient(int64, *listingkit.SheinStoreInfo) *sheinclient.APIClient {
+	return nil
+}
+
+func (httpapiStubProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {
+	return nil, nil
+}
+
+func (httpapiStubProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
+	return nil, nil
+}
+
+func (httpapiStubProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
+	return nil, nil
+}
+
+func (httpapiStubProductService) SetTaskSubmitter(productenrich.TaskSubmitter) {}

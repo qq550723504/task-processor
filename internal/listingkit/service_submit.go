@@ -10,7 +10,6 @@ import (
 	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
-	sheintranslateapi "task-processor/internal/shein/api/translate"
 )
 
 const sheinSubmitInFlightTTL = listingsubmission.InFlightTTL
@@ -22,36 +21,7 @@ var (
 )
 
 func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {
-	platform, action, err := normalizeSubmitTarget(req)
-	if err != nil {
-		return nil, err
-	}
-
-	startedAt := time.Now()
-	requestID := normalizedSubmitIdempotencyKey(req)
-	useWorkflow := s.shouldStartSheinPublishWorkflow(platform, action)
-	if useWorkflow && requestID == "" {
-		requestID = derivedSheinSubmitRequestID(taskID, action, startedAt)
-	}
-	unlockSubmit := s.sheinSubmitLocks.lock(taskID + ":" + action)
-	defer unlockSubmit()
-	task, preview, err := s.acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
-	if preview != nil || err != nil {
-		return preview, err
-	}
-	if useWorkflow {
-		return s.submitSheinTaskWithWorkflow(ctx, taskID, task, req, sheinWorkflowSubmitOptions{
-			platform:  platform,
-			action:    action,
-			requestID: requestID,
-			startedAt: startedAt,
-		})
-	}
-	return s.submitSheinTaskDirect(ctx, taskID, task, req, sheinDirectSubmitOptions{
-		action:    action,
-		requestID: requestID,
-		startedAt: startedAt,
-	})
+	return s.taskSubmissionOrDefault().SubmitTask(ctx, taskID, req)
 }
 
 type sheinWorkflowSubmitOptions struct {
@@ -114,6 +84,46 @@ func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool 
 		action == "publish"
 }
 
+func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
+	if s.taskSubmission != nil {
+		return s.taskSubmission
+	}
+	if s.sheinSubmitLocks == nil {
+		s.sheinSubmitLocks = newSubmitLockManager()
+	}
+	s.taskSubmission = newTaskSubmissionService(taskSubmissionServiceConfig{
+		repo: s.repo,
+		lockSubmit: func(key string) func() {
+			return s.sheinSubmitLocks.lock(key)
+		},
+		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,
+		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
+		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
+		submitSheinTaskDirect:           s.submitSheinTaskDirect,
+		buildTaskPreview:                s.buildTaskPreview,
+		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		mutateTaskResult:                s.mutateTaskResult,
+		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
+	})
+	return s.taskSubmission
+}
+
+func (s *service) taskSubmissionExecutionOrDefault() *taskSubmissionExecutionService {
+	if s.taskSubmissionExecution != nil {
+		return s.taskSubmissionExecution
+	}
+	s.taskSubmissionExecution = newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder:   s.sheinProductAPIBuilder,
+		sheinImageAPIBuilder:     s.sheinImageAPIBuilder,
+		sheinTranslateAPIBuilder: s.sheinTranslateAPIBuilder,
+		sheinContentOptimizer:    s.sheinContentOptimizer,
+		currentSheinPricingRule:  s.currentSheinPricingRule,
+		resolveSheinStoreID:      s.resolveSheinStoreID,
+		resolveSubmitSettings:    s.resolveSheinSubmitSettings,
+	})
+	return s.taskSubmissionExecution
+}
+
 func sheinProductAttributesReadyForSubmit(attrs []sheinproduct.ProductAttribute) bool {
 	if len(attrs) == 0 {
 		return false
@@ -161,30 +171,7 @@ func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
 }
 
 func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
-	normalizeSheinStudioSubmitSupplierSKUs(task, pkg, normalizedSubmitIdempotencyKey(req))
-	if pkg.Pricing == nil || !pkg.Pricing.Ready {
-		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), nil)
-		applySheinPricingReview(pkg, review)
-	} else {
-		// Submit clones PreviewProduct, so ensure any persisted ready pricing is
-		// reapplied after SKU normalization and before submit payload generation.
-		applySheinPricingReview(pkg, pkg.Pricing)
-	}
-	if req != nil && req.ConfirmedFinal {
-		if pkg.FinalDraft == nil {
-			pkg.FinalDraft = &sheinpub.FinalDraft{}
-		}
-		now := time.Now()
-		pkg.FinalDraft.Confirmed = true
-		pkg.FinalDraft.ConfirmedAt = &now
-		pkg.FinalDraft.UpdatedAt = &now
-		if pkg.FinalDraft.SubmitMode == "" {
-			pkg.FinalDraft.SubmitMode = action
-		}
-	}
-	repairSheinSubmitSaleAttributes(pkg)
-	applySheinFinalImageDraft(pkg)
-	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
+	s.taskSubmissionExecutionOrDefault().normalizeSheinSubmitPackage(task, pkg, req, action)
 }
 
 func repairSheinSubmitSaleAttributes(pkg *SheinPackage) {
@@ -230,107 +217,23 @@ func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
 }
 
 func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (sheinproduct.ProductAPI, error) {
-	if s.sheinProductAPIBuilder == nil {
-		return nil, fmt.Errorf("shein product api builder is not configured")
-	}
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
-	if err != nil {
-		return nil, err
-	}
-	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
-	if err != nil || storeID <= 0 {
-		return nil, fmt.Errorf("shein store id is unavailable for submit")
-	}
-	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(runtimeCtx, storeID)
-	if productAPI == nil {
-		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
-	}
-	return productAPI, nil
+	return s.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
 }
 
 func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
-	if err != nil {
-		return nil, err
-	}
-	submitProduct, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
-	if err != nil {
-		return nil, err
-	}
-	if attrs := sheinpub.BuildProductAttributes(pkg); sheinProductAttributesReadyForSubmit(attrs) {
-		submitProduct.ProductAttributeList = attrs
-	}
-	var translateAPI sheintranslateapi.TranslateAPI
-	if sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, task.Request.Country) {
-		if s.sheinTranslateAPIBuilder != nil {
-			var fallback string
-			storeID, resolveErr := s.resolveSheinStoreID(runtimeCtx, task)
-			if resolveErr == nil && storeID > 0 {
-				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(runtimeCtx, storeID)
-			}
-			if translateAPI == nil && strings.TrimSpace(fallback) != "" {
-				translateAPI = nil
-			}
-		}
-	}
-	if err := sheinpub.PrepareSubmitProductContent(runtimeCtx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
-		return nil, err
-	}
-	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
-	if action == "publish" {
-		if err := validateSheinProductPublishPayload(submitProduct); err != nil {
-			return nil, err
-		}
-	}
-	return submitProduct, nil
+	return s.taskSubmissionExecutionOrDefault().prepareSheinSubmitProduct(ctx, task, pkg, action)
 }
 
 func (s *service) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
-	if s.sheinImageAPIBuilder == nil {
-		return fmt.Errorf("shein image upload api builder is not configured")
-	}
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
-	if err != nil {
-		return err
-	}
-	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
-	if err != nil || storeID <= 0 {
-		return fmt.Errorf("shein store id is unavailable for image upload")
-	}
-	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(runtimeCtx, storeID)
-	if imageAPI == nil {
-		return fmt.Errorf("shein image upload unavailable: %s", fallback)
-	}
-	_, uploadCache, err := uploadSheinProductImages(submitProduct, imageAPI, sheinImageUploadCache(pkg))
-	if err != nil {
-		return err
-	}
-	if len(uploadCache) > 0 {
-		if pkg.FinalDraft == nil {
-			pkg.FinalDraft = &sheinpub.FinalDraft{}
-		}
-		pkg.FinalDraft.SheinImageUploadCache = uploadCache
-		now := time.Now()
-		pkg.FinalDraft.UpdatedAt = &now
-	}
-	return nil
+	return s.taskSubmissionExecutionOrDefault().uploadSheinSubmitImages(ctx, task, pkg, submitProduct)
 }
 
 func preValidateSheinSubmitProduct(submitProduct *sheinproduct.Product) error {
-	return sheinpub.PreValidateSubmitProduct(submitProduct)
+	return defaultTaskSubmissionExecutionService.preValidateSheinSubmitProduct(submitProduct)
 }
 
 func executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
-	switch action {
-	case "save_draft":
-		raw, _, err := productAPI.SaveDraftProduct(submitProduct)
-		return sheinpub.BuildSubmissionResponseSummary(raw), err
-	case "publish":
-		raw, _, err := productAPI.PublishProduct(submitProduct)
-		return sheinpub.BuildSubmissionResponseSummary(raw), err
-	default:
-		return nil, unsupportedSubmitActionError(action)
-	}
+	return defaultTaskSubmissionExecutionService.executeSheinSubmitRemote(productAPI, action, submitProduct)
 }
 
 func isSupportedSubmitAction(action string) bool {

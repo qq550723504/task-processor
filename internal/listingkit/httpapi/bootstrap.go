@@ -53,7 +53,15 @@ type ServiceBundle struct {
 	SubscriptionService            *listingsubscription.Service
 	Closers                        []func() error
 
-	service moduleService
+	runtime serviceBundleRuntime
+}
+
+type serviceBundleRuntime struct {
+	temporalWorkerService TemporalWorkerService
+	taskRepository        listingkit.Repository
+	service               moduleService
+	handlerDependencies   listingkitapi.HandlerDependencies
+	closers               []func() error
 }
 
 type TemporalWorkerService interface {
@@ -320,6 +328,42 @@ type builtRepositories struct {
 	resolutionCacheStore           sheinpub.ResolutionCacheStore
 }
 
+type builtCoreRepositories struct {
+	taskRepository           listingkit.Repository
+	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
+}
+
+type builtLateCoreRepositories struct {
+	subscriptionService            *listingsubscription.Service
+	assetRepository                assetrepo.Repository
+	reviewRepository               reviewstore.Repository
+	studioSessionRepository        listingkit.StudioSessionRepository
+	uploadedImageRepository        listingkit.UploadedImageRepository
+	storeProfileRepository         listingkit.StoreProfileRepository
+	storeRoutingSettingsRepository listingkit.StoreRoutingSettingsRepository
+	resolutionCacheStore           sheinpub.ResolutionCacheStore
+}
+
+type builtAdminRepositories struct {
+	storeRepository                listingadmin.StoreRepository
+	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
+	importTaskRepository           listingadmin.ImportTaskRepository
+	filterRuleRepository           listingadmin.FilterRuleRepository
+	profitRuleRepository           listingadmin.ProfitRuleRepository
+	pricingRuleRepository          listingadmin.PricingRuleRepository
+	operationStrategyRepository    listingadmin.OperationStrategyRepository
+	sensitiveWordRepository        listingadmin.SensitiveWordRepository
+	productImportMappingRepository listingadmin.ProductImportMappingRepository
+	categoryRepository             listingadmin.CategoryRepository
+	productDataRepository          listingadmin.ProductDataRepository
+}
+
+type buildListingKitServiceConfigInput struct {
+	input        BuildServiceInput
+	repositories *builtRepositories
+	submit       submitModule
+}
+
 func (in BuildServiceInput) Validate() error {
 	if in.Config == nil {
 		return fmt.Errorf("build service config is required")
@@ -369,62 +413,27 @@ func buildWithClosers[T any](builder func(*config.Config, *logrus.Logger) (T, []
 	return value, nil
 }
 
-func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRepositories, error) {
-	repoBuilders := input.Repositories
+func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*builtCoreRepositories, error) {
+	repoBuilders := input.Repositories.Core
 
-	taskRepository, err := buildWithClosers(repoBuilders.Core.Task, input.Config, input.Logger, closers)
+	taskRepository, err := buildWithClosers(repoBuilders.Task, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	studioAsyncJobRepository, err := buildWithClosers(repoBuilders.Core.StudioAsyncJob, input.Config, input.Logger, closers)
+	studioAsyncJobRepository, err := buildWithClosers(repoBuilders.StudioAsyncJob, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	storeRepository, err := buildWithClosers(repoBuilders.Admin.Store, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	storeStatisticsRepository, err := buildWithClosers(repoBuilders.Admin.StoreStatistics, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	importTaskRepository, err := buildWithClosers(repoBuilders.Admin.ImportTask, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	filterRuleRepository, err := buildWithClosers(repoBuilders.Admin.FilterRule, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	profitRuleRepository, err := buildWithClosers(repoBuilders.Admin.ProfitRule, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	pricingRuleRepository, err := buildWithClosers(repoBuilders.Admin.PricingRule, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	operationStrategyRepository, err := buildWithClosers(repoBuilders.Admin.OperationStrategy, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	sensitiveWordRepository, err := buildWithClosers(repoBuilders.Admin.SensitiveWord, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	productImportMappingRepository, err := buildWithClosers(repoBuilders.Admin.ProductImportMapping, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	categoryRepository, err := buildWithClosers(repoBuilders.Admin.Category, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	productDataRepository, err := buildWithClosers(repoBuilders.Admin.ProductData, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	subscriptionRepository, err := buildWithClosers(repoBuilders.Core.Subscription, input.Config, input.Logger, closers)
+	return &builtCoreRepositories{
+		taskRepository:           taskRepository,
+		studioAsyncJobRepository: studioAsyncJobRepository,
+	}, nil
+}
+
+func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*builtLateCoreRepositories, error) {
+	repoBuilders := input.Repositories.Core
+
+	subscriptionRepository, err := buildWithClosers(repoBuilders.Subscription, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -432,49 +441,36 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 	if err != nil {
 		return nil, fmt.Errorf("create listing subscription service: %w", err)
 	}
-	assetRepository, err := buildWithClosers(repoBuilders.Core.Asset, input.Config, input.Logger, closers)
+	assetRepository, err := buildWithClosers(repoBuilders.Asset, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	reviewRepository, err := buildWithClosers(repoBuilders.Core.Review, input.Config, input.Logger, closers)
+	reviewRepository, err := buildWithClosers(repoBuilders.Review, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	studioSessionRepository, err := buildWithClosers(repoBuilders.Core.StudioSession, input.Config, input.Logger, closers)
+	studioSessionRepository, err := buildWithClosers(repoBuilders.StudioSession, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	uploadedImageRepository, err := buildWithClosers(repoBuilders.Core.UploadedImage, input.Config, input.Logger, closers)
+	uploadedImageRepository, err := buildWithClosers(repoBuilders.UploadedImage, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	storeProfileRepository, err := buildWithClosers(repoBuilders.Core.StoreProfile, input.Config, input.Logger, closers)
+	storeProfileRepository, err := buildWithClosers(repoBuilders.StoreProfile, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	storeRoutingSettingsRepository, err := buildWithClosers(repoBuilders.Core.StoreRoutingSettings, input.Config, input.Logger, closers)
+	storeRoutingSettingsRepository, err := buildWithClosers(repoBuilders.StoreRoutingSettings, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	resolutionCacheStore, err := buildWithClosers(repoBuilders.Core.SheinResolutionCache, input.Config, input.Logger, closers)
+	resolutionCacheStore, err := buildWithClosers(repoBuilders.SheinResolutionCache, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
 
-	return &builtRepositories{
-		taskRepository:                 taskRepository,
-		studioAsyncJobRepository:       studioAsyncJobRepository,
-		storeRepository:                storeRepository,
-		storeStatisticsRepository:      storeStatisticsRepository,
-		importTaskRepository:           importTaskRepository,
-		filterRuleRepository:           filterRuleRepository,
-		profitRuleRepository:           profitRuleRepository,
-		pricingRuleRepository:          pricingRuleRepository,
-		operationStrategyRepository:    operationStrategyRepository,
-		sensitiveWordRepository:        sensitiveWordRepository,
-		productImportMappingRepository: productImportMappingRepository,
-		categoryRepository:             categoryRepository,
-		productDataRepository:          productDataRepository,
+	return &builtLateCoreRepositories{
 		subscriptionService:            subscriptionService,
 		assetRepository:                assetRepository,
 		reviewRepository:               reviewRepository,
@@ -486,18 +482,119 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 	}, nil
 }
 
-func buildModuleService(input BuildServiceInput, repos *builtRepositories, closers *closerStack) (moduleService, error) {
-	hooks := input.Hooks
+func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*builtAdminRepositories, error) {
+	repoBuilders := input.Repositories.Admin
 
-	sheinCategoryLLMClient := hooks.SheinCategoryLLMClientBuilder(input.Config, input.AICredentialStore)
-	sheinSaleAttributeLLMClient := hooks.SheinSaleAttributeLLMBuilder(input.Config, input.AICredentialStore)
-	sheinCategoryResolver := hooks.SheinCategoryResolverBuilder(repos.storeRepository, sheinCategoryLLMClient, repos.resolutionCacheStore)
-	sheinAttributeResolver := hooks.SheinAttributeResolverBuilder(repos.storeRepository, sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
-	sheinSaleAttributeResolver := hooks.SheinSaleAttributeResolverBuilder(repos.storeRepository, sheinSaleAttributeLLMClient, repos.resolutionCacheStore)
-	sheinProductAPIBuilder := hooks.SheinProductAPIBuilderFactory(repos.storeRepository)
-	sheinImageAPIBuilder := hooks.SheinImageAPIBuilderFactory(repos.storeRepository)
-	sheinTranslateAPIBuilder := hooks.SheinTranslateAPIBuilderFactory(repos.storeRepository)
-	sheinPricingPolicy := hooks.SheinPricingPolicyBuilder(input.Config)
+	storeRepository, err := buildWithClosers(repoBuilders.Store, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	storeStatisticsRepository, err := buildWithClosers(repoBuilders.StoreStatistics, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	importTaskRepository, err := buildWithClosers(repoBuilders.ImportTask, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	filterRuleRepository, err := buildWithClosers(repoBuilders.FilterRule, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	profitRuleRepository, err := buildWithClosers(repoBuilders.ProfitRule, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	pricingRuleRepository, err := buildWithClosers(repoBuilders.PricingRule, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	operationStrategyRepository, err := buildWithClosers(repoBuilders.OperationStrategy, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	sensitiveWordRepository, err := buildWithClosers(repoBuilders.SensitiveWord, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	productImportMappingRepository, err := buildWithClosers(repoBuilders.ProductImportMapping, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	categoryRepository, err := buildWithClosers(repoBuilders.Category, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	productDataRepository, err := buildWithClosers(repoBuilders.ProductData, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &builtAdminRepositories{
+		storeRepository:                storeRepository,
+		storeStatisticsRepository:      storeStatisticsRepository,
+		importTaskRepository:           importTaskRepository,
+		filterRuleRepository:           filterRuleRepository,
+		profitRuleRepository:           profitRuleRepository,
+		pricingRuleRepository:          pricingRuleRepository,
+		operationStrategyRepository:    operationStrategyRepository,
+		sensitiveWordRepository:        sensitiveWordRepository,
+		productImportMappingRepository: productImportMappingRepository,
+		categoryRepository:             categoryRepository,
+		productDataRepository:          productDataRepository,
+	}, nil
+}
+
+func mergeBuiltRepositories(core *builtCoreRepositories, lateCore *builtLateCoreRepositories, admin *builtAdminRepositories) *builtRepositories {
+	repos := &builtRepositories{}
+	if core != nil {
+		repos.taskRepository = core.taskRepository
+		repos.studioAsyncJobRepository = core.studioAsyncJobRepository
+	}
+	if lateCore != nil {
+		repos.subscriptionService = lateCore.subscriptionService
+		repos.assetRepository = lateCore.assetRepository
+		repos.reviewRepository = lateCore.reviewRepository
+		repos.studioSessionRepository = lateCore.studioSessionRepository
+		repos.uploadedImageRepository = lateCore.uploadedImageRepository
+		repos.storeProfileRepository = lateCore.storeProfileRepository
+		repos.storeRoutingSettingsRepository = lateCore.storeRoutingSettingsRepository
+		repos.resolutionCacheStore = lateCore.resolutionCacheStore
+	}
+	if admin != nil {
+		repos.storeRepository = admin.storeRepository
+		repos.storeStatisticsRepository = admin.storeStatisticsRepository
+		repos.importTaskRepository = admin.importTaskRepository
+		repos.filterRuleRepository = admin.filterRuleRepository
+		repos.profitRuleRepository = admin.profitRuleRepository
+		repos.pricingRuleRepository = admin.pricingRuleRepository
+		repos.operationStrategyRepository = admin.operationStrategyRepository
+		repos.sensitiveWordRepository = admin.sensitiveWordRepository
+		repos.productImportMappingRepository = admin.productImportMappingRepository
+		repos.categoryRepository = admin.categoryRepository
+		repos.productDataRepository = admin.productDataRepository
+	}
+	return repos
+}
+
+func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRepositories, error) {
+	coreRepos, err := buildCoreRepositories(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	adminRepos, err := buildAdminRepositories(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	lateCoreRepos, err := buildLateCoreRepositories(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	return mergeBuiltRepositories(coreRepos, lateCoreRepos, adminRepos), nil
+}
+
+func buildModuleService(input BuildServiceInput, repos *builtRepositories, submit submitModule, closers *closerStack) (moduleService, error) {
+	hooks := input.Hooks
 
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
 	listingkit.ConfigureOwnerScopeRequired(input.Config.ListingKit.OwnerScopeRequired)
@@ -512,62 +609,13 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 		closers.Add(legacyTenantResolverCloser)
 	}
 
-	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
-		Core: listingkit.ServiceCoreDependencies{
-			Repository:                     repos.taskRepository,
-			StudioSessionRepository:        repos.studioSessionRepository,
-			ProductService:                 input.ProductService,
-			ImageService:                   input.ImageService,
-			SDSSyncService:                 input.SDSSyncService,
-			ImageUploadStore:               hooks.ImageUploadStoreBuilder(input.Config, input.Logger),
-			UploadedImageRepository:        repos.uploadedImageRepository,
-			StoreProfileRepository:         repos.storeProfileRepository,
-			StoreRoutingSettingsRepository: repos.storeRoutingSettingsRepository,
-			AIClientCredentialStore:        input.AICredentialStore,
-		},
-		Assets: listingkit.ServiceAssetDependencies{
-			Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
-				SheinCategoryResolver:      sheinCategoryResolver,
-				SheinAttributeResolver:     sheinAttributeResolver,
-				SheinSaleAttributeResolver: sheinSaleAttributeResolver,
-				SheinPricingPolicy:         sheinPricingPolicy,
-				SheinTitleOptimizer:        sheinCategoryLLMClient,
-			}),
-			AssetRepository:     repos.assetRepository,
-			ReviewRepository:    repos.reviewRepository,
-			AssetRecipeResolver: assetrecipe.NewStaticResolver(),
-			AssetBundleBuilder:  assetbundle.NewBuilder(),
-			AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
-				SubjectExtractor:        input.ImageSubjectExtractor,
-				WhiteBackgroundRenderer: input.ImageWhiteBackgroundRender,
-				DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(input.ImageSceneRenderer),
-			}),
-		},
-		Shein: listingkit.ServiceSheinDependencies{
-			SheinDefaultStoreID:        hooks.DefaultSheinStoreIDResolver(input.Config.Management.StoreIDs),
-			SheinStoreCatalog:          sheinManagementStoreCatalog{repo: repos.storeRepository},
-			SheinAPIClientFactory:      hooks.SheinAPIClientFactoryBuilder(repos.storeRepository),
-			SheinCategoryResolver:      sheinCategoryResolver,
-			SheinResolutionCacheStore:  repos.resolutionCacheStore,
-			SheinAttributeResolver:     sheinAttributeResolver,
-			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
-			SheinPricingPolicy:         sheinPricingPolicy,
-			SheinProductAPIBuilder:     sheinProductAPIBuilder,
-			SheinImageAPIBuilder:       sheinImageAPIBuilder,
-			SheinTranslateAPIBuilder:   sheinTranslateAPIBuilder,
-			SheinContentOptimizer:      sheinCategoryLLMClient,
-			StudioPromptDiversifier:    sheinCategoryLLMClient,
-			StudioImageGenerator:       hooks.StudioImageGeneratorBuilder(input.Config, input.AICredentialStore),
-		},
-		Workflow: listingkit.ServiceWorkflowDependencies{
-			SheinPublishWorkflowClient:     nil,
-			SheinPublishWorkflowEnabled:    false,
-			StandardProductWorkflowClient:  nil,
-			StandardProductWorkflowEnabled: false,
-			PlatformAdaptWorkflowClient:    nil,
-			PlatformAdaptWorkflowEnabled:   false,
-		},
+	serviceConfig := buildListingKitServiceConfig(buildListingKitServiceConfigInput{
+		input:        input,
+		repositories: repos,
+		submit:       submit,
 	})
+
+	svc, err := listingkit.NewService(serviceConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit service: %w", err)
 	}
@@ -578,6 +626,59 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, close
 	}
 
 	return wireTemporalWorkflowClients(moduleSvc, input.Logger, closers)
+}
+
+func buildListingKitServiceConfig(in buildListingKitServiceConfigInput) *listingkit.ServiceConfig {
+	return &listingkit.ServiceConfig{
+		Core: listingkit.ServiceCoreDependencies{
+			Repository:                     in.repositories.taskRepository,
+			StudioSessionRepository:        in.repositories.studioSessionRepository,
+			ProductService:                 in.input.ProductService,
+			ImageService:                   in.input.ImageService,
+			SDSSyncService:                 in.input.SDSSyncService,
+			ImageUploadStore:               in.submit.assets.imageUploadStore,
+			UploadedImageRepository:        in.repositories.uploadedImageRepository,
+			StoreProfileRepository:         in.repositories.storeProfileRepository,
+			StoreRoutingSettingsRepository: in.repositories.storeRoutingSettingsRepository,
+			AIClientCredentialStore:        in.input.AICredentialStore,
+		},
+		Assets: listingkit.ServiceAssetDependencies{
+			Assembler:           in.submit.assets.assembler,
+			AssetRepository:     in.repositories.assetRepository,
+			ReviewRepository:    in.repositories.reviewRepository,
+			AssetRecipeResolver: assetrecipe.NewStaticResolver(),
+			AssetBundleBuilder:  assetbundle.NewBuilder(),
+			AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
+				SubjectExtractor:        in.input.ImageSubjectExtractor,
+				WhiteBackgroundRenderer: in.input.ImageWhiteBackgroundRender,
+				DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(in.input.ImageSceneRenderer),
+			}),
+		},
+		Shein: listingkit.ServiceSheinDependencies{
+			SheinDefaultStoreID:        in.submit.shein.defaultStoreID,
+			SheinStoreCatalog:          sheinManagementStoreCatalog{repo: in.repositories.storeRepository},
+			SheinAPIClientFactory:      in.submit.shein.apiClientFactory,
+			SheinCategoryResolver:      in.submit.shein.categoryResolver,
+			SheinResolutionCacheStore:  in.repositories.resolutionCacheStore,
+			SheinAttributeResolver:     in.submit.shein.attributeResolver,
+			SheinSaleAttributeResolver: in.submit.shein.saleAttributeResolver,
+			SheinPricingPolicy:         in.submit.shein.pricingPolicy,
+			SheinProductAPIBuilder:     in.submit.shein.productAPIBuilder,
+			SheinImageAPIBuilder:       in.submit.shein.imageAPIBuilder,
+			SheinTranslateAPIBuilder:   in.submit.shein.translateAPIBuilder,
+			SheinContentOptimizer:      in.submit.shein.contentOptimizer,
+			StudioPromptDiversifier:    in.submit.shein.contentOptimizer,
+			StudioImageGenerator:       in.submit.studio.imageGenerator,
+		},
+		Workflow: listingkit.ServiceWorkflowDependencies{
+			SheinPublishWorkflowClient:     nil,
+			SheinPublishWorkflowEnabled:    false,
+			StandardProductWorkflowClient:  nil,
+			StandardProductWorkflowEnabled: false,
+			PlatformAdaptWorkflowClient:    nil,
+			PlatformAdaptWorkflowEnabled:   false,
+		},
+	}
 }
 
 func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, closers *closerStack) (moduleService, error) {
@@ -617,7 +718,7 @@ func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, close
 
 func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Module, err error) {
 	closers := &closerStack{}
-	closers.Add(bundle.Closers...)
+	closers.Add(bundle.runtime.closers...)
 	defer func() {
 		if err == nil {
 			return
@@ -625,28 +726,28 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 		_ = closers.Close()
 	}()
 	if input.ShouldStartTemporalWorkerInProcess {
-		temporalWorkerCloser, startErr := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, input.ServiceInput.Logger)
+		temporalWorkerCloser, startErr := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.runtime.temporalWorkerService, input.ServiceInput.Logger)
 		if startErr != nil {
 			return nil, fmt.Errorf("start listing kit shein publish temporal worker: %w", startErr)
 		}
 		closers.Add(temporalWorkerCloser)
 	}
 
-	processor, err := listingkit.NewProcessor(bundle.service, bundle.TaskRepository, input.ServiceInput.Logger, 2)
+	processor, err := listingkit.NewProcessor(bundle.runtime.service, bundle.runtime.taskRepository, input.ServiceInput.Logger, 2)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit processor: %w", err)
 	}
 	pool := httpbootstrap.NewWorkerPool(processor, input.ServiceInput.Config)
 	submitter := &httpbootstrap.PoolSubmitter{Pool: pool}
-	bundle.service.SetTaskSubmitter(submitter)
+	bundle.runtime.service.SetTaskSubmitter(submitter)
 	processor.SetTaskSubmitter(submitter)
 
-	handler, err := listingkitapi.NewHandler(bundle.service, buildHandlerOptions(input, bundle)...)
+	handler, err := listingkitapi.NewHandler(bundle.runtime.service, buildHandlerOptions(bundle.runtime.handlerDependencies)...)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 
-	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.service)
+	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.runtime.service)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
 	}
@@ -659,29 +760,37 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 	}, nil
 }
 
-func buildHandlerOptions(input BuildModuleInput, bundle *ServiceBundle) []listingkitapi.HandlerOption {
+func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleService, workerService TemporalWorkerService, handlerDependencies listingkitapi.HandlerDependencies, closers []func() error) *ServiceBundle {
+	return &ServiceBundle{
+		TemporalWorkerService:          workerService,
+		TaskRepository:                 repositories.taskRepository,
+		StudioAsyncJobRepository:       repositories.studioAsyncJobRepository,
+		StoreRepository:                repositories.storeRepository,
+		StoreStatisticsRepository:      repositories.storeStatisticsRepository,
+		ImportTaskRepository:           repositories.importTaskRepository,
+		FilterRuleRepository:           repositories.filterRuleRepository,
+		ProfitRuleRepository:           repositories.profitRuleRepository,
+		PricingRuleRepository:          repositories.pricingRuleRepository,
+		OperationStrategyRepository:    repositories.operationStrategyRepository,
+		SensitiveWordRepository:        repositories.sensitiveWordRepository,
+		ProductImportMappingRepository: repositories.productImportMappingRepository,
+		CategoryRepository:             repositories.categoryRepository,
+		ProductDataRepository:          repositories.productDataRepository,
+		SubscriptionService:            repositories.subscriptionService,
+		Closers:                        closers,
+		runtime: serviceBundleRuntime{
+			temporalWorkerService: workerService,
+			taskRepository:        repositories.taskRepository,
+			service:               moduleSvc,
+			handlerDependencies:   handlerDependencies,
+			closers:               closers,
+		},
+	}
+}
+
+func buildHandlerOptions(handlerDependencies listingkitapi.HandlerDependencies) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
-		listingkitapi.WithDependencies(listingkitapi.HandlerDependencies{
-			StudioAsyncJobRepository: bundle.StudioAsyncJobRepository,
-			Admin: listingkitapi.AdminHandlerDependencies{
-				StoreRepository:                bundle.StoreRepository,
-				StoreStatisticsRepository:      bundle.StoreStatisticsRepository,
-				ImportTaskRepository:           bundle.ImportTaskRepository,
-				FilterRuleRepository:           bundle.FilterRuleRepository,
-				ProfitRuleRepository:           bundle.ProfitRuleRepository,
-				PricingRuleRepository:          bundle.PricingRuleRepository,
-				OperationStrategyRepository:    bundle.OperationStrategyRepository,
-				SensitiveWordRepository:        bundle.SensitiveWordRepository,
-				ProductImportMappingRepository: bundle.ProductImportMappingRepository,
-				CategoryRepository:             bundle.CategoryRepository,
-				ProductDataRepository:          bundle.ProductDataRepository,
-			},
-			Subscription: listingkitapi.SubscriptionDependencies{
-				Service:            bundle.SubscriptionService,
-				PlatformAdminUsers: input.ServiceInput.Config.ListingKit.PlatformAdminUsers,
-				PlatformAdminRoles: input.ServiceInput.Config.ListingKit.PlatformAdminRoles,
-			},
-		}),
+		listingkitapi.WithDependencies(handlerDependencies),
 	}
 }
 
@@ -708,28 +817,15 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 	if err != nil {
 		return nil, err
 	}
-	moduleSvc, err := buildModuleService(input, repositories, closers)
+	task := buildTaskModule(newTaskModuleInput(input, repositories))
+	admin := buildAdminModule(newAdminModuleInput(repositories))
+	submit := buildSubmitModule(newSubmitModuleInput(input, repositories))
+	moduleSvc, err := buildModuleService(input, repositories, submit, closers)
 	if err != nil {
 		return nil, err
 	}
+	temporal := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
+	handlerDependencies := task.handlerDependenciesWithAdmin(admin)
 
-	return &ServiceBundle{
-		TemporalWorkerService:          moduleSvc,
-		TaskRepository:                 repositories.taskRepository,
-		StudioAsyncJobRepository:       repositories.studioAsyncJobRepository,
-		StoreRepository:                repositories.storeRepository,
-		StoreStatisticsRepository:      repositories.storeStatisticsRepository,
-		ImportTaskRepository:           repositories.importTaskRepository,
-		FilterRuleRepository:           repositories.filterRuleRepository,
-		ProfitRuleRepository:           repositories.profitRuleRepository,
-		PricingRuleRepository:          repositories.pricingRuleRepository,
-		OperationStrategyRepository:    repositories.operationStrategyRepository,
-		SensitiveWordRepository:        repositories.sensitiveWordRepository,
-		ProductImportMappingRepository: repositories.productImportMappingRepository,
-		CategoryRepository:             repositories.categoryRepository,
-		ProductDataRepository:          repositories.productDataRepository,
-		SubscriptionService:            repositories.subscriptionService,
-		Closers:                        closers.Snapshot(),
-		service:                        moduleSvc,
-	}, nil
+	return assembleServiceBundle(repositories, moduleSvc, temporal.workerService, handlerDependencies, closers.Snapshot()), nil
 }

@@ -2,38 +2,29 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func (s *service) submitSheinTaskDirect(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinDirectSubmitOptions) (*ListingKitPreview, error) {
-	pkg := task.Result.Shein
-	s.normalizeSheinSubmitPackage(task, pkg, req, opts.action)
+	return s.taskDirectSubmissionOrDefault().submitSheinTaskDirect(ctx, taskID, task, req, opts)
+}
 
-	readiness := buildSheinSubmitReadinessForAction(pkg, opts.action)
-	if readiness == nil || !readiness.Ready {
-		return nil, s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness)))
+func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
+	if s.taskDirectSubmission != nil {
+		return s.taskDirectSubmission
 	}
-
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
-	if err != nil {
-		return nil, s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
-	}
-
-	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePrepareProduct); err != nil {
-		return nil, err
-	}
-	submitProduct, err := s.prepareSheinDirectSubmitProduct(ctx, taskID, task, pkg, opts)
-	if err != nil {
-		return nil, err
-	}
-	responseErr := s.completeSheinDirectRemoteSubmit(ctx, taskID, task, pkg, productAPI, submitProduct, opts)
-	if responseErr != nil {
-		return nil, responseErr
-	}
-	return s.buildTaskPreview(ctx, task, "shein")
+	s.taskDirectSubmission = newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{
+		normalizeSheinSubmitPackage:     s.normalizeSheinSubmitPackage,
+		failSheinDirectSubmit:           s.failSheinDirectSubmit,
+		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		persistSheinDirectSubmitPhase:   s.persistSheinDirectSubmitPhase,
+		prepareSheinDirectSubmitProduct: s.prepareSheinDirectSubmitProduct,
+		completeSheinDirectRemoteSubmit: s.completeSheinDirectRemoteSubmit,
+		buildTaskPreview:                s.buildTaskPreview,
+	})
+	return s.taskDirectSubmission
 }
 
 func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {
