@@ -1,6 +1,13 @@
 package listingadmin
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
+)
 
 func TestListingStoreToStoreUsesAuditFallbacks(t *testing.T) {
 	t.Parallel()
@@ -55,5 +62,68 @@ func TestApplyStoreCreateDefaultsFillsRegionDailyLimitTypeAndAuditNames(t *testi
 	}
 	if row.Updater != "updated-1" {
 		t.Fatalf("updater = %q, want updated-1", row.Updater)
+	}
+}
+
+func TestApplyStoreAccessScopeHonorsTenantAndOwnerWithoutDeletedFilter(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	seedRows := []listingStore{
+		{TenantID: 101, OwnerUserID: "user-a", Name: "active", Username: "active", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", Name: "deleted", Username: "deleted", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 1},
+		{TenantID: 101, OwnerUserID: "user-b", Name: "other-owner", Username: "other-owner", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 0},
+	}
+	for _, row := range seedRows {
+		if err := db.Table("listing_store").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	var rows []listingStore
+	err = applyStoreAccessScope(db.Table("listing_store"), StoreQuery{TenantID: 101, OwnerUserID: "user-a"}).
+		Where("deleted = 1").
+		Find(&rows).Error
+	if err != nil {
+		t.Fatalf("query rows: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Name != "deleted" {
+		t.Fatalf("rows = %+v, want deleted row for same tenant/owner only", rows)
+	}
+}
+
+func TestTakeStoreAccessRowRespectsDeletedState(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	row := listingStore{TenantID: 101, OwnerUserID: "user-a", Name: "deleted", Username: "deleted", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 1}
+	if err := db.Table("listing_store").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+	ctx := withRequestIdentity(context.TODO(), "user-a", nil)
+
+	var loaded listingStore
+	err = takeStoreAccessRow(ctx, db.Table("listing_store"), 101, row.ID, 1, &loaded)
+	if err != nil {
+		t.Fatalf("takeStoreAccessRow: %v", err)
+	}
+	if loaded.Name != "deleted" {
+		t.Fatalf("loaded = %+v, want deleted row", loaded)
 	}
 }

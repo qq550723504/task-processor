@@ -172,13 +172,7 @@ func (r *GormStoreRepository) ListStores(ctx context.Context, query StoreQuery) 
 
 func (r *GormStoreRepository) GetStore(ctx context.Context, tenantID, id int64) (*Store, error) {
 	var row listingStore
-	err := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 0", id).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrStoreNotFound
-	}
+	err := takeStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 0, &row)
 	if err != nil {
 		return nil, err
 	}
@@ -242,15 +236,8 @@ func (r *GormStoreRepository) UpdateStore(ctx context.Context, store *Store) (*S
 	if strings.TrimSpace(row.Password) != "" {
 		updates["password"] = row.Password
 	}
-	res := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    row.TenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 0", row.ID).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrStoreNotFound
+	if err := updateStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), row.TenantID, row.ID, 0, updates); err != nil {
+		return nil, err
 	}
 	return r.GetStore(ctx, row.TenantID, row.ID)
 }
@@ -266,31 +253,14 @@ func (r *GormStoreRepository) UpdateStoreStatus(ctx context.Context, tenantID, i
 	if strings.TrimSpace(remark) != "" {
 		updates["remark"] = strings.TrimSpace(remark)
 	}
-	res := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 0", id).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrStoreNotFound
+	if err := updateStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 0, updates); err != nil {
+		return nil, err
 	}
 	return r.GetStore(ctx, tenantID, id)
 }
 
 func (r *GormStoreRepository) DeleteStore(ctx context.Context, tenantID, id int64) error {
-	res := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 0", id).Update("deleted", 1)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrStoreNotFound
-	}
-	return nil
+	return updateStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 0, map[string]any{"deleted": 1})
 }
 
 func (r *GormStoreRepository) ListDeletedStores(ctx context.Context, tenantID int64) ([]Store, error) {
@@ -318,31 +288,14 @@ func (r *GormStoreRepository) ListDeletedStores(ctx context.Context, tenantID in
 }
 
 func (r *GormStoreRepository) RestoreStore(ctx context.Context, tenantID, id int64) (*Store, error) {
-	res := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 1", id).Update("deleted", 0)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrStoreNotFound
+	if err := updateStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 1, map[string]any{"deleted": 0}); err != nil {
+		return nil, err
 	}
 	return r.GetStore(ctx, tenantID, id)
 }
 
 func (r *GormStoreRepository) PermanentlyDeleteStore(ctx context.Context, tenantID, id int64) error {
-	res := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 1", id).Delete(&listingStore{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrStoreNotFound
-	}
-	return nil
+	return deleteStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 1)
 }
 
 func (r *GormStoreRepository) ExtendStoreValidity(ctx context.Context, tenantID, id int64, days int) (*Store, error) {
@@ -350,13 +303,7 @@ func (r *GormStoreRepository) ExtendStoreValidity(ctx context.Context, tenantID,
 		days = 30
 	}
 	var row listingStore
-	err := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 0", id).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrStoreNotFound
-	}
+	err := takeStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 0, &row)
 	if err != nil {
 		return nil, err
 	}
@@ -365,15 +312,12 @@ func (r *GormStoreRepository) ExtendStoreValidity(ctx context.Context, tenantID,
 		base = *row.ValidUntil
 	}
 	nextValidUntil := base.AddDate(0, 0, days)
-	if err := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	}).Where("id = ? AND deleted = 0", id).Updates(map[string]any{
+	if err := updateStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), tenantID, id, 0, map[string]any{
 		"valid_until": nextValidUntil,
 		"expired":     false,
 		"updater":     requestUserIDFromContext(ctx),
 		"updated_by":  requestUserIDFromContext(ctx),
-	}).Error; err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return r.GetStore(ctx, tenantID, id)
