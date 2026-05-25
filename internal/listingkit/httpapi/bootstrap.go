@@ -868,25 +868,16 @@ func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, close
 	}
 	if temporalWorkflowClient != nil {
 		if err := listingkit.ConfigureSheinPublishWorkflowClient(svc, temporalWorkflowClient, true); err != nil {
-			if temporalCloser != nil {
-				_ = temporalCloser()
-			}
-			return nil, err
+			return nil, closeTemporalWorkflowClientOnError(err, temporalCloser)
 		}
 		if standardClient, ok := temporalWorkflowClient.(listingkit.StandardProductWorkflowClient); ok {
 			if err := listingkit.ConfigureStandardProductWorkflowClient(svc, standardClient, true); err != nil {
-				if temporalCloser != nil {
-					_ = temporalCloser()
-				}
-				return nil, err
+				return nil, closeTemporalWorkflowClientOnError(err, temporalCloser)
 			}
 		}
 		if platformClient, ok := temporalWorkflowClient.(listingkit.PlatformAdaptWorkflowClient); ok {
 			if err := listingkit.ConfigurePlatformAdaptWorkflowClient(svc, platformClient, true); err != nil {
-				if temporalCloser != nil {
-					_ = temporalCloser()
-				}
-				return nil, err
+				return nil, closeTemporalWorkflowClientOnError(err, temporalCloser)
 			}
 		}
 	}
@@ -894,6 +885,13 @@ func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, close
 		closers.Add(temporalCloser)
 	}
 	return svc, nil
+}
+
+func closeTemporalWorkflowClientOnError(err error, temporalCloser func() error) error {
+	if err != nil && temporalCloser != nil {
+		_ = temporalCloser()
+	}
+	return err
 }
 
 func prepareModuleRuntimeClosers(input BuildModuleInput, bundle *ServiceBundle) (_ *closerStack, err error) {

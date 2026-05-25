@@ -1038,6 +1038,31 @@ func TestPrepareModuleRuntimeClosersPreservesExistingRuntimeClosers(t *testing.T
 	}
 }
 
+func TestCloseTemporalWorkflowClientOnErrorOnlyClosesOnFailure(t *testing.T) {
+	t.Parallel()
+
+	closed := false
+	closer := func() error {
+		closed = true
+		return nil
+	}
+
+	if err := closeTemporalWorkflowClientOnError(nil, closer); err != nil {
+		t.Fatalf("closeTemporalWorkflowClientOnError(nil): %v", err)
+	}
+	if closed {
+		t.Fatal("expected nil error to skip closer")
+	}
+
+	expectedErr := errors.New("boom")
+	if err := closeTemporalWorkflowClientOnError(expectedErr, closer); !errors.Is(err, expectedErr) {
+		t.Fatalf("err = %v, want %v", err, expectedErr)
+	}
+	if !closed {
+		t.Fatal("expected non-nil error to trigger closer")
+	}
+}
+
 func TestBuildModuleAssemblesRuntimeFromModuleRegistrars(t *testing.T) {
 	t.Parallel()
 
