@@ -967,6 +967,40 @@ func TestBuildModuleRuntimeUsesPrivateRuntimePayload(t *testing.T) {
 	}
 }
 
+func TestAssembleModuleRuntimeBuildsProcessorAndPool(t *testing.T) {
+	t.Parallel()
+
+	moduleSvc := newTestModuleService(t)
+	runtimeTaskRepo := listingkitstore.NewMemTaskRepository()
+	bundle := &ServiceBundle{
+		runtime: serviceBundleRuntime{
+			service:        moduleSvc,
+			taskRepository: runtimeTaskRepo,
+			handlerDependencies: buildTaskModule(taskModuleInput{
+				TaskRepository:           runtimeTaskRepo,
+				StudioAsyncJobRepository: nil,
+				SubscriptionService:      &listingsubscription.Service{},
+			}).handlerDependenciesWithAdmin(buildAdminModule(adminModuleInput{})),
+		},
+	}
+
+	assembly, err := assembleModuleRuntime(BuildModuleInput{
+		ServiceInput: BuildServiceInput{
+			Config: buildSuccessfulServiceInputFixture().Config,
+			Logger: logrus.New(),
+		},
+	}, bundle)
+	if err != nil {
+		t.Fatalf("assembleModuleRuntime: %v", err)
+	}
+	if assembly.processor == nil {
+		t.Fatal("expected runtime assembly processor")
+	}
+	if assembly.pool == nil {
+		t.Fatal("expected runtime assembly pool")
+	}
+}
+
 func TestPrepareModuleRuntimeClosersPreservesExistingRuntimeClosers(t *testing.T) {
 	t.Parallel()
 

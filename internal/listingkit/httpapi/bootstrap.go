@@ -419,6 +419,11 @@ type serviceRuntimeAssembly struct {
 	handlerDependencies listingkitapi.HandlerDependencies
 }
 
+type moduleRuntimeAssembly struct {
+	processor *listingkit.Processor
+	pool      worker.WorkerPool
+}
+
 func (in BuildServiceInput) Validate() error {
 	if in.Config == nil {
 		return fmt.Errorf("build service config is required")
@@ -904,7 +909,7 @@ func prepareModuleRuntimeClosers(input BuildModuleInput, bundle *ServiceBundle) 
 	return closers, nil
 }
 
-func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers *closerStack) (*Module, error) {
+func assembleModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (*moduleRuntimeAssembly, error) {
 	processor, err := listingkit.NewProcessor(bundle.runtime.service, bundle.runtime.taskRepository, input.ServiceInput.Logger, 2)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit processor: %w", err)
@@ -913,7 +918,17 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 	submitter := &httpbootstrap.PoolSubmitter{Pool: pool}
 	bundle.runtime.service.SetTaskSubmitter(submitter)
 	processor.SetTaskSubmitter(submitter)
+	return &moduleRuntimeAssembly{
+		processor: processor,
+		pool:      pool,
+	}, nil
+}
 
+func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers *closerStack) (*Module, error) {
+	assembly, err := assembleModuleRuntime(input, bundle)
+	if err != nil {
+		return nil, err
+	}
 	handler, err := listingkitapi.NewHandler(bundle.runtime.service, buildHandlerOptions(bundle.runtime.handlerDependencies)...)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
@@ -927,7 +942,7 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 	return &Module{
 		Handler:              handler,
 		StudioSessionHandler: studioSessionHandler,
-		Pool:                 pool,
+		Pool:                 assembly.pool,
 		Closers:              closers.Snapshot(),
 	}, nil
 }
