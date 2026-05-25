@@ -1,6 +1,11 @@
 package listingadmin
 
-import "gorm.io/gorm"
+import (
+	"context"
+	"errors"
+
+	"gorm.io/gorm"
+)
 
 func applyOwnedTenantQuery(db *gorm.DB, tenantID int64, ownerUserID string) *gorm.DB {
 	db = db.Where("deleted = 0")
@@ -22,4 +27,31 @@ func findPagedRows[T any](db *gorm.DB, page, pageSize int, rows *[]T) (total int
 		return 0, normalizedPage, normalizedPageSize, err
 	}
 	return total, normalizedPage, normalizedPageSize, nil
+}
+
+func takeOwnedTenantRow[T any](ctx context.Context, db *gorm.DB, tenantID, id int64, ownerColumn string, row *T, notFound error) error {
+	err := applyOwnerScope(
+		db.Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		ownerColumn,
+	).Take(row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return notFound
+	}
+	return err
+}
+
+func updateOwnedTenantRow(ctx context.Context, db *gorm.DB, tenantID, id int64, ownerColumn string, updates map[string]any, notFound error) error {
+	res := applyOwnerScope(
+		db.Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
+		ctx,
+		ownerColumn,
+	).Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return notFound
+	}
+	return nil
 }

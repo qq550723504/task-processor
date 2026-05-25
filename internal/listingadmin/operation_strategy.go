@@ -170,14 +170,7 @@ func (r *GormOperationStrategyRepository) ListOperationStrategies(ctx context.Co
 
 func (r *GormOperationStrategyRepository) GetOperationStrategy(ctx context.Context, tenantID, id int64) (*OperationStrategy, error) {
 	var row listingOperationStrategy
-	err := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrOperationStrategyNotFound
-	}
+	err := takeOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), tenantID, id, "owner_user_id", &row, ErrOperationStrategyNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -228,16 +221,8 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Co
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrOperationStrategyNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), row.TenantID, row.ID, "owner_user_id", updates, ErrOperationStrategyNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetOperationStrategy(ctx, row.TenantID, row.ID)
 }
@@ -251,16 +236,8 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategyStatus(ctx cont
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrOperationStrategyNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), tenantID, id, "owner_user_id", updates, ErrOperationStrategyNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetOperationStrategy(ctx, tenantID, id)
 }
@@ -271,18 +248,7 @@ func (r *GormOperationStrategyRepository) DeleteOperationStrategy(ctx context.Co
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrOperationStrategyNotFound
-	}
-	return nil
+	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), tenantID, id, "owner_user_id", updates, ErrOperationStrategyNotFound)
 }
 
 func applyOperationStrategyQuery(db *gorm.DB, query OperationStrategyQuery) *gorm.DB {

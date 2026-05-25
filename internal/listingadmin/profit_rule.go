@@ -170,14 +170,7 @@ func (r *GormProfitRuleRepository) ListProfitRules(ctx context.Context, query Pr
 
 func (r *GormProfitRuleRepository) GetProfitRule(ctx context.Context, tenantID, id int64) (*ProfitRule, error) {
 	var row listingProfitRule
-	err := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_profit_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrProfitRuleNotFound
-	}
+	err := takeOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_profit_rule"), tenantID, id, "owner_user_id", &row, ErrProfitRuleNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -226,16 +219,8 @@ func (r *GormProfitRuleRepository) UpdateProfitRule(ctx context.Context, rule *P
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_profit_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrProfitRuleNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_profit_rule"), row.TenantID, row.ID, "owner_user_id", updates, ErrProfitRuleNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetProfitRule(ctx, row.TenantID, row.ID)
 }
@@ -249,16 +234,8 @@ func (r *GormProfitRuleRepository) UpdateProfitRuleStatus(ctx context.Context, t
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_profit_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrProfitRuleNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_profit_rule"), tenantID, id, "owner_user_id", updates, ErrProfitRuleNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetProfitRule(ctx, tenantID, id)
 }
@@ -269,18 +246,7 @@ func (r *GormProfitRuleRepository) DeleteProfitRule(ctx context.Context, tenantI
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_profit_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrProfitRuleNotFound
-	}
-	return nil
+	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_profit_rule"), tenantID, id, "owner_user_id", updates, ErrProfitRuleNotFound)
 }
 
 func applyProfitRuleDefaults(row *listingProfitRule) {

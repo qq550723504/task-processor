@@ -1,6 +1,8 @@
 package listingadmin
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -89,5 +91,56 @@ func TestApplyOwnedTenantQueryAppliesDeletedTenantAndOwnerFilters(t *testing.T) 
 	}
 	if len(rows) != 1 || rows[0].Name != "keep" {
 		t.Fatalf("rows = %+v, want only active tenant-owned row", rows)
+	}
+}
+
+func TestTakeOwnedTenantRowMapsMissingRecordToNotFoundError(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	type ownedRow struct {
+		ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
+		TenantID    int64  `gorm:"column:tenant_id"`
+		OwnerUserID string `gorm:"column:owner_user_id"`
+		Deleted     int16  `gorm:"column:deleted"`
+		Name        string `gorm:"column:name"`
+	}
+	if err := db.Table("owned_rows").AutoMigrate(&ownedRow{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	var row ownedRow
+	notFound := errors.New("owned row not found")
+	err = takeOwnedTenantRow(context.TODO(), db.Table("owned_rows"), 101, 999, "owner_user_id", &row, notFound)
+	if !errors.Is(err, notFound) {
+		t.Fatalf("err = %v, want %v", err, notFound)
+	}
+}
+
+func TestUpdateOwnedTenantRowMapsMissingRecordToNotFoundError(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	type ownedRow struct {
+		ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
+		TenantID    int64  `gorm:"column:tenant_id"`
+		OwnerUserID string `gorm:"column:owner_user_id"`
+		Deleted     int16  `gorm:"column:deleted"`
+		Name        string `gorm:"column:name"`
+	}
+	if err := db.Table("owned_rows").AutoMigrate(&ownedRow{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	notFound := errors.New("owned row not found")
+	err = updateOwnedTenantRow(context.TODO(), db.Table("owned_rows"), 101, 999, "owner_user_id", map[string]any{"name": "updated"}, notFound)
+	if !errors.Is(err, notFound) {
+		t.Fatalf("err = %v, want %v", err, notFound)
 	}
 }

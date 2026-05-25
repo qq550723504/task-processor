@@ -205,14 +205,7 @@ func (r *GormFilterRuleRepository) ListFilterRules(ctx context.Context, query Fi
 
 func (r *GormFilterRuleRepository) GetFilterRule(ctx context.Context, tenantID, id int64) (*FilterRule, error) {
 	var row listingFilterRule
-	err := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrFilterRuleNotFound
-	}
+	err := takeOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_filter_rule"), tenantID, id, "owner_user_id", &row, ErrFilterRuleNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -267,16 +260,8 @@ func (r *GormFilterRuleRepository) UpdateFilterRule(ctx context.Context, rule *F
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrFilterRuleNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_filter_rule"), row.TenantID, row.ID, "owner_user_id", updates, ErrFilterRuleNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetFilterRule(ctx, row.TenantID, row.ID)
 }
@@ -290,16 +275,8 @@ func (r *GormFilterRuleRepository) UpdateFilterRuleStatus(ctx context.Context, t
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrFilterRuleNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_filter_rule"), tenantID, id, "owner_user_id", updates, ErrFilterRuleNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetFilterRule(ctx, tenantID, id)
 }
@@ -310,18 +287,7 @@ func (r *GormFilterRuleRepository) DeleteFilterRule(ctx context.Context, tenantI
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrFilterRuleNotFound
-	}
-	return nil
+	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_filter_rule"), tenantID, id, "owner_user_id", updates, ErrFilterRuleNotFound)
 }
 
 func applyFilterRuleDefaults(row *listingFilterRule) {

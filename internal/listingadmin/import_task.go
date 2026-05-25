@@ -227,18 +227,7 @@ func (r *GormImportTaskRepository) DeleteImportTask(ctx context.Context, tenantI
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_product_import_task").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrImportTaskNotFound
-	}
-	return nil
+	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_import_task"), tenantID, id, "owner_user_id", updates, ErrImportTaskNotFound)
 }
 
 func applyImportTaskQuery(db *gorm.DB, query ImportTaskQuery) *gorm.DB {

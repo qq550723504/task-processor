@@ -237,14 +237,7 @@ func (r *GormProductDataRepository) ListProductData(ctx context.Context, query P
 
 func (r *GormProductDataRepository) GetProductData(ctx context.Context, tenantID, id int64) (*ProductData, error) {
 	var row listingProductData
-	err := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrProductDataNotFound
-	}
+	err := takeOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_data"), tenantID, id, "owner_user_id", &row, ErrProductDataNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -311,16 +304,8 @@ func (r *GormProductDataRepository) UpdateProductData(ctx context.Context, produ
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", row.TenantID, row.ID),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrProductDataNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_data"), row.TenantID, row.ID, "owner_user_id", updates, ErrProductDataNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetProductData(ctx, row.TenantID, row.ID)
 }
@@ -331,16 +316,8 @@ func (r *GormProductDataRepository) UpdateProductDataStatus(ctx context.Context,
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrProductDataNotFound
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_data"), tenantID, id, "owner_user_id", updates, ErrProductDataNotFound); err != nil {
+		return nil, err
 	}
 	return r.GetProductData(ctx, tenantID, id)
 }
@@ -351,18 +328,7 @@ func (r *GormProductDataRepository) DeleteProductData(ctx context.Context, tenan
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	res := applyOwnerScope(
-		r.db.WithContext(ctx).Table("listing_product_data").Where("tenant_id = ? AND id = ? AND deleted = 0", tenantID, id),
-		ctx,
-		"owner_user_id",
-	).Updates(updates)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrProductDataNotFound
-	}
-	return nil
+	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_data"), tenantID, id, "owner_user_id", updates, ErrProductDataNotFound)
 }
 
 func applyProductDataQuery(db *gorm.DB, query ProductDataQuery) *gorm.DB {
