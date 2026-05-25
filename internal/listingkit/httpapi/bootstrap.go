@@ -333,6 +333,14 @@ type builtCoreRepositories struct {
 	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
 }
 
+type coreTaskRepositories struct {
+	taskRepository listingkit.Repository
+}
+
+type coreAsyncRepositories struct {
+	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
+}
+
 type builtLateCoreRepositories struct {
 	subscriptionService            *listingsubscription.Service
 	assetRepository                assetrepo.Repository
@@ -461,18 +469,36 @@ func buildWithClosers[T any](builder func(*config.Config, *logrus.Logger) (T, []
 }
 
 func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*builtCoreRepositories, error) {
-	repoBuilders := input.Repositories.Core
-
-	taskRepository, err := buildWithClosers(repoBuilders.Task, input.Config, input.Logger, closers)
+	taskRepos, err := buildCoreTaskRepositories(input, closers)
 	if err != nil {
 		return nil, err
 	}
-	studioAsyncJobRepository, err := buildWithClosers(repoBuilders.StudioAsyncJob, input.Config, input.Logger, closers)
+	asyncRepos, err := buildCoreAsyncRepositories(input, closers)
 	if err != nil {
 		return nil, err
 	}
 	return &builtCoreRepositories{
-		taskRepository:           taskRepository,
+		taskRepository:           taskRepos.taskRepository,
+		studioAsyncJobRepository: asyncRepos.studioAsyncJobRepository,
+	}, nil
+}
+
+func buildCoreTaskRepositories(input BuildServiceInput, closers *closerStack) (*coreTaskRepositories, error) {
+	taskRepository, err := buildWithClosers(input.Repositories.Core.Task, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	return &coreTaskRepositories{
+		taskRepository: taskRepository,
+	}, nil
+}
+
+func buildCoreAsyncRepositories(input BuildServiceInput, closers *closerStack) (*coreAsyncRepositories, error) {
+	studioAsyncJobRepository, err := buildWithClosers(input.Repositories.Core.StudioAsyncJob, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	return &coreAsyncRepositories{
 		studioAsyncJobRepository: studioAsyncJobRepository,
 	}, nil
 }

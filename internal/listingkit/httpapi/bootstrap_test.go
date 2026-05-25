@@ -556,6 +556,30 @@ func TestBuildAdminRepositoriesComposesCatalogAndRulePhases(t *testing.T) {
 	}
 }
 
+func TestBuildCoreRepositoriesComposesTaskAndAsyncPhases(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	input.Repositories.Core.Task = func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error) {
+		return listingkitstore.NewMemTaskRepository(), nil, nil
+	}
+	input.Repositories.Core.StudioAsyncJob = func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
+		return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	}
+	closers := &closerStack{}
+
+	coreRepos, err := buildCoreRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildCoreRepositories: %v", err)
+	}
+	if coreRepos.taskRepository == nil {
+		t.Fatal("expected core task repository")
+	}
+	if coreRepos.studioAsyncJobRepository == nil {
+		t.Fatal("expected core studio async job repository")
+	}
+}
+
 func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	t.Parallel()
 
