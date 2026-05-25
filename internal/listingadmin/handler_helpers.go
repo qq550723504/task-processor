@@ -32,6 +32,22 @@ func bindJSON(c *gin.Context, target any) bool {
 	return true
 }
 
+func bindAndValidateJSON[T any](c *gin.Context, target *T, code string, prepare func(*T), validate func(*T) error) bool {
+	if !bindJSON(c, target) {
+		return false
+	}
+	if prepare != nil {
+		prepare(target)
+	}
+	if validate != nil {
+		if err := validate(target); err != nil {
+			writeValidationError(c, code, err)
+			return false
+		}
+	}
+	return true
+}
+
 func requestPageParams(c *gin.Context) (page int, pageSize int) {
 	return queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		queryInt(c, "page_size", queryInt(c, "pageSize", 20))

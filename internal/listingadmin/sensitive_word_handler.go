@@ -48,12 +48,9 @@ func (h *SensitiveWordHandler) GetSensitiveWord(c *gin.Context) {
 
 func (h *SensitiveWordHandler) CreateSensitiveWord(c *gin.Context) {
 	var req SensitiveWord
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateSensitiveWord(&req); err != nil {
-		writeValidationError(c, "invalid_sensitive_word", err)
+	if !bindAndValidateJSON(c, &req, "invalid_sensitive_word", func(value *SensitiveWord) {
+		value.TenantID = requestTenantID(c)
+	}, validateSensitiveWord) {
 		return
 	}
 	word, err := h.repo.CreateSensitiveWord(requestIdentityContext(c), &req)
@@ -70,13 +67,10 @@ func (h *SensitiveWordHandler) UpdateSensitiveWord(c *gin.Context) {
 		return
 	}
 	var req SensitiveWord
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateSensitiveWord(&req); err != nil {
-		writeValidationError(c, "invalid_sensitive_word", err)
+	if !bindAndValidateJSON(c, &req, "invalid_sensitive_word", func(value *SensitiveWord) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateSensitiveWord) {
 		return
 	}
 	word, err := h.repo.UpdateSensitiveWord(requestIdentityContext(c), &req)

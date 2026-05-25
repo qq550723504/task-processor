@@ -107,6 +107,67 @@ func TestWriteInternalHandlerErrorWritesInternalErrorPayload(t *testing.T) {
 	}
 }
 
+func TestBindAndValidateJSONPreparesPayloadBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"demo"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	type payload struct {
+		Name     string `json:"name"`
+		TenantID int64  `json:"tenantId"`
+	}
+
+	var req payload
+	ok := bindAndValidateJSON(ctx, &req, "invalid_payload", func(value *payload) {
+		value.TenantID = 101
+	}, func(value *payload) error {
+		if value.TenantID != 101 {
+			return errors.New("tenant id missing")
+		}
+		return nil
+	})
+
+	if !ok {
+		t.Fatal("expected bindAndValidateJSON to succeed")
+	}
+	if req.TenantID != 101 {
+		t.Fatalf("tenantID = %d, want 101", req.TenantID)
+	}
+}
+
+func TestBindAndValidateJSONWritesValidationError(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"demo"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	type payload struct {
+		Name string `json:"name"`
+	}
+
+	var req payload
+	ok := bindAndValidateJSON(ctx, &req, "invalid_payload", nil, func(value *payload) error {
+		return errors.New("boom")
+	})
+
+	if ok {
+		t.Fatal("expected bindAndValidateJSON to fail")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_payload"`) {
+		t.Fatalf("body = %s, want invalid_payload", recorder.Body.String())
+	}
+}
+
 func TestRequestPageParamsSupportsLegacyAndCurrentKeys(t *testing.T) {
 	t.Parallel()
 

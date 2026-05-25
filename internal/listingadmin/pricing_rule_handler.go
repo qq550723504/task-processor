@@ -48,12 +48,9 @@ func (h *PricingRuleHandler) GetPricingRule(c *gin.Context) {
 
 func (h *PricingRuleHandler) CreatePricingRule(c *gin.Context) {
 	var req PricingRule
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validatePricingRule(&req); err != nil {
-		writeValidationError(c, "invalid_pricing_rule", err)
+	if !bindAndValidateJSON(c, &req, "invalid_pricing_rule", func(value *PricingRule) {
+		value.TenantID = requestTenantID(c)
+	}, validatePricingRule) {
 		return
 	}
 	rule, err := h.repo.CreatePricingRule(requestIdentityContext(c), &req)
@@ -70,13 +67,10 @@ func (h *PricingRuleHandler) UpdatePricingRule(c *gin.Context) {
 		return
 	}
 	var req PricingRule
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validatePricingRule(&req); err != nil {
-		writeValidationError(c, "invalid_pricing_rule", err)
+	if !bindAndValidateJSON(c, &req, "invalid_pricing_rule", func(value *PricingRule) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validatePricingRule) {
 		return
 	}
 	rule, err := h.repo.UpdatePricingRule(requestIdentityContext(c), &req)

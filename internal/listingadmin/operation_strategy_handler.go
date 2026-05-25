@@ -46,12 +46,9 @@ func (h *OperationStrategyHandler) GetOperationStrategy(c *gin.Context) {
 
 func (h *OperationStrategyHandler) CreateOperationStrategy(c *gin.Context) {
 	var req OperationStrategy
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateOperationStrategy(&req); err != nil {
-		writeValidationError(c, "invalid_operation_strategy", err)
+	if !bindAndValidateJSON(c, &req, "invalid_operation_strategy", func(value *OperationStrategy) {
+		value.TenantID = requestTenantID(c)
+	}, validateOperationStrategy) {
 		return
 	}
 	strategy, err := h.repo.CreateOperationStrategy(requestIdentityContext(c), &req)
@@ -68,13 +65,10 @@ func (h *OperationStrategyHandler) UpdateOperationStrategy(c *gin.Context) {
 		return
 	}
 	var req OperationStrategy
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateOperationStrategy(&req); err != nil {
-		writeValidationError(c, "invalid_operation_strategy", err)
+	if !bindAndValidateJSON(c, &req, "invalid_operation_strategy", func(value *OperationStrategy) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateOperationStrategy) {
 		return
 	}
 	strategy, err := h.repo.UpdateOperationStrategy(requestIdentityContext(c), &req)

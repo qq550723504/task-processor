@@ -54,12 +54,9 @@ func (h *ProductImportMappingHandler) GetProductImportMapping(c *gin.Context) {
 
 func (h *ProductImportMappingHandler) CreateProductImportMapping(c *gin.Context) {
 	var req ProductImportMapping
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateProductImportMapping(&req); err != nil {
-		writeValidationError(c, "invalid_product_import_mapping", err)
+	if !bindAndValidateJSON(c, &req, "invalid_product_import_mapping", func(value *ProductImportMapping) {
+		value.TenantID = requestTenantID(c)
+	}, validateProductImportMapping) {
 		return
 	}
 	mapping, err := h.repo.CreateProductImportMapping(requestIdentityContext(c), &req)
@@ -76,13 +73,10 @@ func (h *ProductImportMappingHandler) UpdateProductImportMapping(c *gin.Context)
 		return
 	}
 	var req ProductImportMapping
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateProductImportMapping(&req); err != nil {
-		writeValidationError(c, "invalid_product_import_mapping", err)
+	if !bindAndValidateJSON(c, &req, "invalid_product_import_mapping", func(value *ProductImportMapping) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateProductImportMapping) {
 		return
 	}
 	mapping, err := h.repo.UpdateProductImportMapping(requestIdentityContext(c), &req)

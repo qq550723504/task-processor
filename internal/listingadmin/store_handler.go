@@ -60,15 +60,15 @@ func (h *StoreHandler) GetStore(c *gin.Context) {
 
 func (h *StoreHandler) CreateStore(c *gin.Context) {
 	var req Store
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	req.OwnerUserID = requestUserID(c)
-	req.CreatedBy = requestUserID(c)
-	req.UpdatedBy = requestUserID(c)
-	if err := validateStore(&req, true); err != nil {
-		writeValidationError(c, "invalid_store", err)
+	if !bindAndValidateJSON(c, &req, "invalid_store", func(value *Store) {
+		userID := requestUserID(c)
+		value.TenantID = requestTenantID(c)
+		value.OwnerUserID = userID
+		value.CreatedBy = userID
+		value.UpdatedBy = userID
+	}, func(value *Store) error {
+		return validateStore(value, true)
+	}) {
 		return
 	}
 	store, err := h.repo.CreateStore(requestIdentityContext(c), &req)
@@ -85,15 +85,15 @@ func (h *StoreHandler) UpdateStore(c *gin.Context) {
 		return
 	}
 	var req Store
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	req.OwnerUserID = requestUserID(c)
-	req.UpdatedBy = requestUserID(c)
-	if err := validateStore(&req, false); err != nil {
-		writeValidationError(c, "invalid_store", err)
+	if !bindAndValidateJSON(c, &req, "invalid_store", func(value *Store) {
+		userID := requestUserID(c)
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+		value.OwnerUserID = userID
+		value.UpdatedBy = userID
+	}, func(value *Store) error {
+		return validateStore(value, false)
+	}) {
 		return
 	}
 	store, err := h.repo.UpdateStore(requestIdentityContext(c), &req)

@@ -47,12 +47,9 @@ func (h *CategoryHandler) GetCategory(c *gin.Context) {
 
 func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 	var req Category
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateCategory(&req); err != nil {
-		writeValidationError(c, "invalid_category", err)
+	if !bindAndValidateJSON(c, &req, "invalid_category", func(value *Category) {
+		value.TenantID = requestTenantID(c)
+	}, validateCategory) {
 		return
 	}
 	category, err := h.repo.CreateCategory(requestIdentityContext(c), &req)
@@ -69,13 +66,10 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 		return
 	}
 	var req Category
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateCategory(&req); err != nil {
-		writeValidationError(c, "invalid_category", err)
+	if !bindAndValidateJSON(c, &req, "invalid_category", func(value *Category) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateCategory) {
 		return
 	}
 	category, err := h.repo.UpdateCategory(requestIdentityContext(c), &req)

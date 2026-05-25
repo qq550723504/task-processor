@@ -53,12 +53,9 @@ func (h *ProductDataHandler) GetProductData(c *gin.Context) {
 
 func (h *ProductDataHandler) CreateProductData(c *gin.Context) {
 	var req ProductData
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateProductData(&req); err != nil {
-		writeValidationError(c, "invalid_product_data", err)
+	if !bindAndValidateJSON(c, &req, "invalid_product_data", func(value *ProductData) {
+		value.TenantID = requestTenantID(c)
+	}, validateProductData) {
 		return
 	}
 	product, err := h.repo.CreateProductData(requestIdentityContext(c), &req)
@@ -75,13 +72,10 @@ func (h *ProductDataHandler) UpdateProductData(c *gin.Context) {
 		return
 	}
 	var req ProductData
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateProductData(&req); err != nil {
-		writeValidationError(c, "invalid_product_data", err)
+	if !bindAndValidateJSON(c, &req, "invalid_product_data", func(value *ProductData) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateProductData) {
 		return
 	}
 	product, err := h.repo.UpdateProductData(requestIdentityContext(c), &req)

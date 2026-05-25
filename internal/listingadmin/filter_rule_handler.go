@@ -51,12 +51,9 @@ func (h *FilterRuleHandler) GetFilterRule(c *gin.Context) {
 
 func (h *FilterRuleHandler) CreateFilterRule(c *gin.Context) {
 	var req FilterRule
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateFilterRule(&req); err != nil {
-		writeValidationError(c, "invalid_filter_rule", err)
+	if !bindAndValidateJSON(c, &req, "invalid_filter_rule", func(value *FilterRule) {
+		value.TenantID = requestTenantID(c)
+	}, validateFilterRule) {
 		return
 	}
 	rule, err := h.repo.CreateFilterRule(requestIdentityContext(c), &req)
@@ -73,13 +70,10 @@ func (h *FilterRuleHandler) UpdateFilterRule(c *gin.Context) {
 		return
 	}
 	var req FilterRule
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateFilterRule(&req); err != nil {
-		writeValidationError(c, "invalid_filter_rule", err)
+	if !bindAndValidateJSON(c, &req, "invalid_filter_rule", func(value *FilterRule) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateFilterRule) {
 		return
 	}
 	rule, err := h.repo.UpdateFilterRule(requestIdentityContext(c), &req)

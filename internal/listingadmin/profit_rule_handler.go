@@ -49,12 +49,9 @@ func (h *ProfitRuleHandler) GetProfitRule(c *gin.Context) {
 
 func (h *ProfitRuleHandler) CreateProfitRule(c *gin.Context) {
 	var req ProfitRule
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.TenantID = requestTenantID(c)
-	if err := validateProfitRule(&req); err != nil {
-		writeValidationError(c, "invalid_profit_rule", err)
+	if !bindAndValidateJSON(c, &req, "invalid_profit_rule", func(value *ProfitRule) {
+		value.TenantID = requestTenantID(c)
+	}, validateProfitRule) {
 		return
 	}
 	rule, err := h.repo.CreateProfitRule(requestIdentityContext(c), &req)
@@ -71,13 +68,10 @@ func (h *ProfitRuleHandler) UpdateProfitRule(c *gin.Context) {
 		return
 	}
 	var req ProfitRule
-	if !bindJSON(c, &req) {
-		return
-	}
-	req.ID = id
-	req.TenantID = requestTenantID(c)
-	if err := validateProfitRule(&req); err != nil {
-		writeValidationError(c, "invalid_profit_rule", err)
+	if !bindAndValidateJSON(c, &req, "invalid_profit_rule", func(value *ProfitRule) {
+		value.ID = id
+		value.TenantID = requestTenantID(c)
+	}, validateProfitRule) {
 		return
 	}
 	rule, err := h.repo.UpdateProfitRule(requestIdentityContext(c), &req)
