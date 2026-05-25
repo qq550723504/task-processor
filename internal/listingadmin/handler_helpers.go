@@ -179,6 +179,19 @@ func queryDate(c *gin.Context, key string) (string, bool) {
 	return parsed.Format("2006-01-02"), true
 }
 
+func queryPositiveInt(c *gin.Context, key string, fallback int, errorCode string) (int, bool) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return fallback, true
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		writeValidationError(c, errorCode, errors.New(key+" must be a positive integer"))
+		return 0, false
+	}
+	return parsed, true
+}
+
 func writeHandlerErrorResponse(c *gin.Context, status int, code string, err error) {
 	c.JSON(status, gin.H{"error": code, "message": err.Error()})
 }

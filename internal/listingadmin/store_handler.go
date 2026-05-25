@@ -175,7 +175,10 @@ func (h *StoreHandler) ExtendStoreValidity(c *gin.Context) {
 	if !ok {
 		return
 	}
-	days := queryInt(c, "days", 30)
+	days, ok := queryPositiveInt(c, "days", 30, "invalid_days")
+	if !ok {
+		return
+	}
 	store, err := h.repo.ExtendStoreValidity(requestIdentityContext(c), requestTenantID(c), id, days)
 	if err != nil {
 		writeStoreError(c, err, "store_validity_extend_failed")

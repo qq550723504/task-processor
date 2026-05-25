@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -408,6 +409,41 @@ func TestStoreHandlerExtendsValidityFromExistingDate(t *testing.T) {
 	}
 	if updated.ValidUntil == nil || !updated.ValidUntil.Equal(validUntil.AddDate(0, 0, 30)) {
 		t.Fatalf("validUntil = %v, want +30 days", updated.ValidUntil)
+	}
+}
+
+func TestStoreHandlerRejectsInvalidValidityDays(t *testing.T) {
+	router := newStoreTestRouter(t)
+	validUntil := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
+	seedStore(t, router.db, listingStore{
+		TenantID:   809,
+		Name:       "SHEIN US",
+		Username:   "shein",
+		Password:   "secret",
+		Platform:   "SHEIN",
+		ShopType:   "semi",
+		Status:     0,
+		ValidUntil: &validUntil,
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/stores/1/extend-validity?days=0", nil)
+	req.Header.Set("X-Tenant-ID", "809")
+	req.Header.Set("X-User-ID", "user-809")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("PUT /stores/1/extend-validity?days=0 = %d, body=%s, want 400", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_days"`) {
+		t.Fatalf("body = %s, want invalid_days", resp.Body.String())
+	}
+	var row listingStore
+	if err := router.db.Table("listing_store").Where("id = ?", int64(1)).Take(&row).Error; err != nil {
+		t.Fatalf("load row: %v", err)
+	}
+	if row.ValidUntil == nil || !row.ValidUntil.Equal(validUntil) {
+		t.Fatalf("validUntil = %v, want unchanged %v", row.ValidUntil, validUntil)
 	}
 }
 

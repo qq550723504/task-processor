@@ -315,3 +315,39 @@ func TestQueryDateRejectsInvalidDate(t *testing.T) {
 		t.Fatalf("body = %s, want invalid_date", recorder.Body.String())
 	}
 }
+
+func TestQueryPositiveIntAcceptsValidValue(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?days=15", nil)
+
+	value, ok := queryPositiveInt(ctx, "days", 30, "invalid_days")
+	if !ok {
+		t.Fatal("expected queryPositiveInt to accept valid value")
+	}
+	if value != 15 {
+		t.Fatalf("value = %d, want 15", value)
+	}
+}
+
+func TestQueryPositiveIntRejectsZeroOrNegativeValue(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?days=0", nil)
+
+	if _, ok := queryPositiveInt(ctx, "days", 30, "invalid_days"); ok {
+		t.Fatal("expected queryPositiveInt to reject zero")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_days"`) {
+		t.Fatalf("body = %s, want invalid_days", recorder.Body.String())
+	}
+}
