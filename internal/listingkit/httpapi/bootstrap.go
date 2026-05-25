@@ -358,6 +358,13 @@ type builtAdminRepositories struct {
 	productDataRepository          listingadmin.ProductDataRepository
 }
 
+type repositoryAssembly struct {
+	core     *builtCoreRepositories
+	admin    *builtAdminRepositories
+	lateCore *builtLateCoreRepositories
+	merged   *builtRepositories
+}
+
 type buildListingKitServiceConfigInput struct {
 	input        BuildServiceInput
 	repositories *builtRepositories
@@ -590,7 +597,7 @@ func mergeBuiltRepositories(core *builtCoreRepositories, lateCore *builtLateCore
 	return repos
 }
 
-func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRepositories, error) {
+func assembleRepositories(input BuildServiceInput, closers *closerStack) (*repositoryAssembly, error) {
 	coreRepos, err := buildCoreRepositories(input, closers)
 	if err != nil {
 		return nil, err
@@ -603,7 +610,20 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 	if err != nil {
 		return nil, err
 	}
-	return mergeBuiltRepositories(coreRepos, lateCoreRepos, adminRepos), nil
+	return &repositoryAssembly{
+		core:     coreRepos,
+		admin:    adminRepos,
+		lateCore: lateCoreRepos,
+		merged:   mergeBuiltRepositories(coreRepos, lateCoreRepos, adminRepos),
+	}, nil
+}
+
+func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRepositories, error) {
+	assembly, err := assembleRepositories(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	return assembly.merged, nil
 }
 
 func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {

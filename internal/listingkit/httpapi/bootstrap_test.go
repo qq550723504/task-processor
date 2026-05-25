@@ -436,6 +436,39 @@ func TestMergeBuiltRepositoriesCombinesCoreAndAdminGroups(t *testing.T) {
 	}
 }
 
+func TestAssembleRepositoriesBuildsAllRepositoryPhases(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	closers := &closerStack{}
+
+	assembly, err := assembleRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("assembleRepositories: %v", err)
+	}
+	if assembly.core == nil {
+		t.Fatal("expected core repositories to be built")
+	}
+	if assembly.admin == nil {
+		t.Fatal("expected admin repositories to be built")
+	}
+	if assembly.lateCore == nil {
+		t.Fatal("expected late core repositories to be built")
+	}
+	if assembly.merged == nil {
+		t.Fatal("expected merged repositories to be built")
+	}
+	if assembly.merged.taskRepository != assembly.core.taskRepository {
+		t.Fatal("expected merged repositories to preserve core task repository")
+	}
+	if assembly.merged.storeRepository != assembly.admin.storeRepository {
+		t.Fatal("expected merged repositories to preserve admin store repository")
+	}
+	if assembly.merged.subscriptionService != assembly.lateCore.subscriptionService {
+		t.Fatal("expected merged repositories to preserve late core subscription service")
+	}
+}
+
 func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	t.Parallel()
 
