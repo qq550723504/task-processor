@@ -436,6 +436,24 @@ func TestMergeBuiltRepositoriesCombinesCoreAndAdminGroups(t *testing.T) {
 	}
 }
 
+func TestMergeBuiltRepositoriesPreservesPartialPhaseInputs(t *testing.T) {
+	t.Parallel()
+
+	taskRepo := listingkitstore.NewMemTaskRepository()
+	repos := mergeBuiltRepositories(
+		&builtCoreRepositories{taskRepository: taskRepo},
+		nil,
+		&builtAdminRepositories{},
+	)
+
+	if repos.taskRepository != taskRepo {
+		t.Fatal("expected partial core repositories to be preserved")
+	}
+	if repos.subscriptionService != nil {
+		t.Fatal("expected missing late core repositories to remain unset")
+	}
+}
+
 func TestAssembleRepositoriesBuildsAllRepositoryPhases(t *testing.T) {
 	t.Parallel()
 

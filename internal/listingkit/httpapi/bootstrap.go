@@ -600,35 +600,50 @@ func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*bui
 	}, nil
 }
 
+func applyCoreRepositories(repos *builtRepositories, core *builtCoreRepositories) {
+	if repos == nil || core == nil {
+		return
+	}
+	repos.taskRepository = core.taskRepository
+	repos.studioAsyncJobRepository = core.studioAsyncJobRepository
+}
+
+func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCoreRepositories) {
+	if repos == nil || lateCore == nil {
+		return
+	}
+	repos.subscriptionService = lateCore.subscriptionService
+	repos.assetRepository = lateCore.assetRepository
+	repos.reviewRepository = lateCore.reviewRepository
+	repos.studioSessionRepository = lateCore.studioSessionRepository
+	repos.uploadedImageRepository = lateCore.uploadedImageRepository
+	repos.storeProfileRepository = lateCore.storeProfileRepository
+	repos.storeRoutingSettingsRepository = lateCore.storeRoutingSettingsRepository
+	repos.resolutionCacheStore = lateCore.resolutionCacheStore
+}
+
+func applyAdminRepositories(repos *builtRepositories, admin *builtAdminRepositories) {
+	if repos == nil || admin == nil {
+		return
+	}
+	repos.storeRepository = admin.storeRepository
+	repos.storeStatisticsRepository = admin.storeStatisticsRepository
+	repos.importTaskRepository = admin.importTaskRepository
+	repos.filterRuleRepository = admin.filterRuleRepository
+	repos.profitRuleRepository = admin.profitRuleRepository
+	repos.pricingRuleRepository = admin.pricingRuleRepository
+	repos.operationStrategyRepository = admin.operationStrategyRepository
+	repos.sensitiveWordRepository = admin.sensitiveWordRepository
+	repos.productImportMappingRepository = admin.productImportMappingRepository
+	repos.categoryRepository = admin.categoryRepository
+	repos.productDataRepository = admin.productDataRepository
+}
+
 func mergeBuiltRepositories(core *builtCoreRepositories, lateCore *builtLateCoreRepositories, admin *builtAdminRepositories) *builtRepositories {
 	repos := &builtRepositories{}
-	if core != nil {
-		repos.taskRepository = core.taskRepository
-		repos.studioAsyncJobRepository = core.studioAsyncJobRepository
-	}
-	if lateCore != nil {
-		repos.subscriptionService = lateCore.subscriptionService
-		repos.assetRepository = lateCore.assetRepository
-		repos.reviewRepository = lateCore.reviewRepository
-		repos.studioSessionRepository = lateCore.studioSessionRepository
-		repos.uploadedImageRepository = lateCore.uploadedImageRepository
-		repos.storeProfileRepository = lateCore.storeProfileRepository
-		repos.storeRoutingSettingsRepository = lateCore.storeRoutingSettingsRepository
-		repos.resolutionCacheStore = lateCore.resolutionCacheStore
-	}
-	if admin != nil {
-		repos.storeRepository = admin.storeRepository
-		repos.storeStatisticsRepository = admin.storeStatisticsRepository
-		repos.importTaskRepository = admin.importTaskRepository
-		repos.filterRuleRepository = admin.filterRuleRepository
-		repos.profitRuleRepository = admin.profitRuleRepository
-		repos.pricingRuleRepository = admin.pricingRuleRepository
-		repos.operationStrategyRepository = admin.operationStrategyRepository
-		repos.sensitiveWordRepository = admin.sensitiveWordRepository
-		repos.productImportMappingRepository = admin.productImportMappingRepository
-		repos.categoryRepository = admin.categoryRepository
-		repos.productDataRepository = admin.productDataRepository
-	}
+	applyCoreRepositories(repos, core)
+	applyLateCoreRepositories(repos, lateCore)
+	applyAdminRepositories(repos, admin)
 	return repos
 }
 
