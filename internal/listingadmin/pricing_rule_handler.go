@@ -21,9 +21,19 @@ func (h *PricingRuleHandler) ListPricingRules(c *gin.Context) {
 		RuleCode: strings.TrimSpace(c.Query("ruleCode")),
 		RuleType: strings.TrimSpace(c.Query("ruleType")),
 	}, scope)
-	query.StoreID = queryInt64Ptr(c, "storeId")
-	query.CategoryID = queryInt64Ptr(c, "categoryId")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.StoreID, ok = queryInt64PtrStrict(c, "storeId", "invalid_store_id")
+	if !ok {
+		return
+	}
+	query.CategoryID, ok = queryInt64PtrStrict(c, "categoryId", "invalid_category_id")
+	if !ok {
+		return
+	}
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 
 	page, err := h.repo.ListPricingRules(requestIdentityContext(c), *query)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -47,6 +48,23 @@ func TestProfitRuleHandlerListsRulesWithinRequestTenant(t *testing.T) {
 	}
 	if page.Items[0].RuleCode != "PR-SHEIN" || page.Items[0].TenantID != 101 {
 		t.Fatalf("items = %+v, want tenant 101 rule only", page.Items)
+	}
+}
+
+func TestProfitRuleHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newProfitRuleTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/profit-rules?storeId=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /profit-rules invalid filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_store_id"`) {
+		t.Fatalf("response body = %s, want invalid_store_id", resp.Body.String())
 	}
 }
 

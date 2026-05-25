@@ -24,9 +24,19 @@ func (h *FilterRuleHandler) ListFilterRules(c *gin.Context) {
 		PriceType:       strings.TrimSpace(c.Query("priceType")),
 		FulfillmentType: strings.TrimSpace(c.Query("fulfillmentType")),
 	}, scope)
-	query.StoreID = queryInt64Ptr(c, "storeId")
-	query.CategoryID = queryInt64Ptr(c, "categoryId")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.StoreID, ok = queryInt64PtrStrict(c, "storeId", "invalid_store_id")
+	if !ok {
+		return
+	}
+	query.CategoryID, ok = queryInt64PtrStrict(c, "categoryId", "invalid_category_id")
+	if !ok {
+		return
+	}
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 
 	page, err := h.repo.ListFilterRules(requestIdentityContext(c), *query)
 	if err != nil {
