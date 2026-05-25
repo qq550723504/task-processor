@@ -170,15 +170,10 @@ func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query Im
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applyImportTaskQuery(r.db.WithContext(ctx).Table("listing_product_import_task"), query)
-
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingProductImportTask
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]ImportTask, 0, len(rows))

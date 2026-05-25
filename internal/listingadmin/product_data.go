@@ -222,14 +222,10 @@ func (r *GormProductDataRepository) ListProductData(ctx context.Context, query P
 	if r == nil || r.db == nil {
 		return nil, errors.New("product data repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applyProductDataQuery(r.db.WithContext(ctx).Table("listing_product_data"), query)
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingProductData
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]ProductData, 0, len(rows))

@@ -190,14 +190,10 @@ func (r *GormFilterRuleRepository) ListFilterRules(ctx context.Context, query Fi
 	if r == nil || r.db == nil {
 		return nil, errors.New("filter rule repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applyFilterRuleQuery(r.db.WithContext(ctx).Table("listing_filter_rule"), query)
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingFilterRule
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]FilterRule, 0, len(rows))

@@ -238,15 +238,10 @@ func (r *GormStoreRepository) ListStores(ctx context.Context, query StoreQuery) 
 	if r == nil || r.db == nil {
 		return nil, errors.New("store repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applyStoreQuery(r.db.WithContext(ctx).Table("listing_store"), query)
-
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingStore
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]Store, 0, len(rows))

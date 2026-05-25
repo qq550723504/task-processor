@@ -172,14 +172,10 @@ func (r *GormProductImportMappingRepository) ListProductImportMappings(ctx conte
 	if r == nil || r.db == nil {
 		return nil, errors.New("product import mapping repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applyProductImportMappingQuery(r.db.WithContext(ctx).Table("listing_product_import_mapping"), query)
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingProductImportMapping
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]ProductImportMapping, 0, len(rows))

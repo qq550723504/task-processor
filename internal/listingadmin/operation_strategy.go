@@ -155,14 +155,10 @@ func (r *GormOperationStrategyRepository) ListOperationStrategies(ctx context.Co
 	if r == nil || r.db == nil {
 		return nil, errors.New("operation strategy repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applyOperationStrategyQuery(r.db.WithContext(ctx).Table("listing_operation_strategy"), query)
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingOperationStrategy
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]OperationStrategy, 0, len(rows))

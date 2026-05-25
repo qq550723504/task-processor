@@ -128,14 +128,10 @@ func (r *GormSensitiveWordRepository) ListSensitiveWords(ctx context.Context, qu
 	if r == nil || r.db == nil {
 		return nil, errors.New("sensitive word repository database is not configured")
 	}
-	page, pageSize := normalizePage(query.Page, query.PageSize)
 	db := applySensitiveWordQuery(r.db.WithContext(ctx).Table("listing_sensitive_word"), query)
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
 	var rows []listingSensitiveWord
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+	total, page, pageSize, err := findPagedRows(db, query.Page, query.PageSize, &rows)
+	if err != nil {
 		return nil, err
 	}
 	items := make([]SensitiveWord, 0, len(rows))
