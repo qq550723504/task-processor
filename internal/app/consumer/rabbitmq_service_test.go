@@ -477,6 +477,33 @@ func TestStoreAssignmentSyncCoordinatorShouldRunOnlyWithDynamicAssignments(t *te
 	}
 }
 
+func TestConsumerGuardCoordinatorSnapshotStateReflectsServiceHealth(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+	svc.started = true
+	svc.consumerActive = true
+	svc.ctx = context.Background()
+	svc.GetConsumer().RegisterHandler("shein.tasks", noopRabbitHandler{})
+
+	state := newConsumerGuardCoordinator(svc).snapshotState()
+	if !state.started || !state.consumerActive {
+		t.Fatalf("state = %+v, want started and active", state)
+	}
+	if state.ctx == nil {
+		t.Fatal("expected guard state to capture service context")
+	}
+	if state.connected {
+		t.Fatal("expected disconnected service in test snapshot")
+	}
+	if state.consumersHealthy {
+		t.Fatal("expected unhealthy consumers before queue workers are running")
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",

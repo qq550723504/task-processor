@@ -509,62 +509,7 @@ func (s *RabbitMQService) syncInitialStoreAssignments(ctx context.Context) {
 }
 
 func (s *RabbitMQService) startConsumerGuard() {
-	s.mutex.RLock()
-	ctx := s.ctx
-	s.mutex.RUnlock()
-
-	if ctx == nil {
-		return
-	}
-
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-
-		ticker := time.NewTicker(consumerGuardInterval)
-		defer ticker.Stop()
-
-		s.reconcileConsumers()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.reconcileConsumers()
-			}
-		}
-	}()
-}
-
-func (s *RabbitMQService) reconcileConsumers() {
-	s.mutex.RLock()
-	started := s.started
-	connected := s.connManager.IsConnected()
-	consumerActive := s.consumerActive
-	serviceCtx := s.ctx
-	s.mutex.RUnlock()
-
-	action := decideConsumerAction(started, connected, consumerActive, s.consumer.HasHealthyRequiredConsumers())
-	if action == consumerActionNone || serviceCtx == nil {
-		return
-	}
-
-	switch action {
-	case consumerActionPause:
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.pauseConsumers(stopCtx, "rabbitmq disconnected"); err != nil {
-			s.logger.WithError(err).Warn("暂停消费者失败")
-		}
-	case consumerActionResume:
-		if err := s.resumeConsumers("rabbitmq reconnected or consumer previously paused"); err != nil {
-			s.logger.WithError(err).Warn("恢复消费者失败")
-		}
-	case consumerActionRestart:
-		if err := s.restartConsumers("required consumers unhealthy"); err != nil {
-			s.logger.WithError(err).Warn("重启消费者失败")
-		}
-	}
+	newConsumerGuardCoordinator(s).start()
 }
 
 func decideConsumerAction(started, connected, consumerActive, consumersHealthy bool) consumerReconcileAction {
