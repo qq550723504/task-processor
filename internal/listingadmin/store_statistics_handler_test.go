@@ -58,10 +58,10 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 		EnableAutoLogin:   &trueValue,
 		Status:            0,
 	})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P1", Status: 0})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P2", Status: 1})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P3", Status: 5})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P4", Status: 10})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P1", Status: 0, CreateTime: timePtr(time.Date(2026, 5, 15, 8, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P2", Status: 1, CreateTime: timePtr(time.Date(2026, 5, 15, 8, 30, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P3", Status: 5, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P4", Status: 10, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 30, 0, 0, time.UTC))})
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P5", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
 
 	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15", nil)
@@ -227,6 +227,51 @@ func TestStoreStatisticsHandlerAcceptsTenantIDQueryFallback(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Name != "Query Tenant Store" {
 		t.Fatalf("statistics items = %+v, want query-tenant scoped store", items)
+	}
+}
+
+func TestStoreStatisticsHandlerFiltersTaskCountsByDate(t *testing.T) {
+	router := newStoreStatisticsTestRouter(t)
+	trueValue := true
+	limit := 10
+	seedStore(t, router.db, listingStore{
+		ID:                1,
+		TenantID:          101,
+		StoreID:           "SHEIN-US",
+		Name:              "SHEIN US",
+		Username:          "shein-us",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		Region:            "US",
+		DailyLimit:        &limit,
+		DailyLimitType:    "fixed",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D1", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D2", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D3", Status: 5, CreateTime: timePtr(time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC))})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var items []StoreStatistics
+	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %+v, want one store", items)
+	}
+	got := items[0]
+	if got.CompletedCount != 1 || got.QueuedCount != 0 {
+		t.Fatalf("statistics = %+v, want only tasks from 2026-05-15 counted", got)
 	}
 }
 

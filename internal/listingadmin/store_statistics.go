@@ -59,8 +59,28 @@ func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context,
 	if r == nil || r.db == nil {
 		return nil, errors.New("store statistics repository database is not configured")
 	}
+	query.Date = normalizeStatisticsDate(query.Date)
 
-	var stores []listingStore
+	stores, err := r.listEligibleStores(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(stores) == 0 {
+		return []StoreStatistics{}, nil
+	}
+
+	items := make([]StoreStatistics, 0, len(stores))
+	for _, store := range stores {
+		counts, err := r.countTasks(ctx, store.TenantID, store.ID, query.Date)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, buildStoreStatistics(store, counts))
+	}
+	return items, nil
+}
+
+func (r *GormStoreStatisticsRepository) listEligibleStores(ctx context.Context, query StoreStatisticsQuery) ([]listingStore, error) {
 	db := r.db.WithContext(ctx).Table("listing_store").
 		Where("deleted = 0 AND status = 0").
 		Where("enable_auto_listing = ? AND enable_auto_login = ?", true, true)
@@ -70,22 +90,11 @@ func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context,
 	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
 		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
+	var stores []listingStore
 	if err := db.Order("id asc").Find(&stores).Error; err != nil {
 		return nil, err
 	}
-	if len(stores) == 0 {
-		return []StoreStatistics{}, nil
-	}
-
-	items := make([]StoreStatistics, 0, len(stores))
-	for _, store := range stores {
-		counts, err := r.countTasks(ctx, store.TenantID, store.ID)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, buildStoreStatistics(store, counts))
-	}
-	return items, nil
+	return stores, nil
 }
 
 type storeTaskStatisticsCounts struct {
@@ -95,17 +104,22 @@ type storeTaskStatisticsCounts struct {
 	Hold      int
 }
 
-func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID, storeID int64) (storeTaskStatisticsCounts, error) {
+func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID, storeID int64, date string) (storeTaskStatisticsCounts, error) {
 	var rows []struct {
 		Status int16
 		Count  int64
 	}
-	err := r.db.WithContext(ctx).Table("listing_product_import_task").
+	db := r.db.WithContext(ctx).Table("listing_product_import_task").
 		Select("status, count(*) as count").
 		Where("deleted = 0 AND tenant_id = ? AND store_id = ?", tenantID, storeID).
-		Where("status IN ?", []int16{0, 1, 2, 5, 10}).
-		Group("status").
-		Scan(&rows).Error
+		Where("status IN ?", []int16{0, 1, 2, 5, 10})
+	if date != "" {
+		start, end, ok := statisticsDateRange(date)
+		if ok {
+			db = db.Where("create_time >= ? AND create_time < ?", start, end)
+		}
+	}
+	err := db.Group("status").Scan(&rows).Error
 	if err != nil {
 		return storeTaskStatisticsCounts{}, err
 	}
@@ -167,4 +181,12 @@ func normalizeStatisticsDate(value string) string {
 		return value
 	}
 	return parsed.Format("2006-01-02")
+}
+
+func statisticsDateRange(value string) (time.Time, time.Time, bool) {
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}, time.Time{}, false
+	}
+	return parsed, parsed.AddDate(0, 0, 1), true
 }
