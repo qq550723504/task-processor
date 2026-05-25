@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -52,6 +53,23 @@ func TestImportTaskHandlerListsTasksWithinRequestTenant(t *testing.T) {
 	}
 	if page.Items[0].ProductID != "B001" || page.Items[0].TenantID != 101 {
 		t.Fatalf("items = %+v, want tenant 101 task only", page.Items)
+	}
+}
+
+func TestImportTaskHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newImportTaskTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/import-tasks?storeId=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /import-tasks invalid filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_store_id"`) {
+		t.Fatalf("response body = %s, want invalid_store_id", resp.Body.String())
 	}
 }
 
