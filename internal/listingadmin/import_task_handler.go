@@ -56,8 +56,7 @@ func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
 
 func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 	var req BatchCreateImportTaskRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	tenantID := requestTenantID(c)
@@ -152,9 +151,7 @@ func validateBatchCreateImportTask(tenantID int64, req BatchCreateImportTaskRequ
 }
 
 func writeImportTaskError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrImportTaskNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "import_task_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrImportTaskNotFound, status: http.StatusNotFound, errorCode: "import_task_not_found"},
+	)
 }

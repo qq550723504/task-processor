@@ -51,8 +51,7 @@ func (h *PricingRuleHandler) GetPricingRule(c *gin.Context) {
 
 func (h *PricingRuleHandler) CreatePricingRule(c *gin.Context) {
 	var req PricingRule
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -74,8 +73,7 @@ func (h *PricingRuleHandler) UpdatePricingRule(c *gin.Context) {
 		return
 	}
 	var req PricingRule
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -101,8 +99,7 @@ func (h *PricingRuleHandler) UpdatePricingRuleStatus(c *gin.Context) {
 		Status int16  `json:"status"`
 		Remark string `json:"remark"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	rule, err := h.repo.UpdatePricingRuleStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
@@ -148,9 +145,7 @@ func validatePricingRule(rule *PricingRule) error {
 }
 
 func writePricingRuleError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrPricingRuleNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "pricing_rule_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrPricingRuleNotFound, status: http.StatusNotFound, errorCode: "pricing_rule_not_found"},
+	)
 }

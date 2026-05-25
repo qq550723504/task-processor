@@ -56,8 +56,7 @@ func (h *ProductDataHandler) GetProductData(c *gin.Context) {
 
 func (h *ProductDataHandler) CreateProductData(c *gin.Context) {
 	var req ProductData
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -79,8 +78,7 @@ func (h *ProductDataHandler) UpdateProductData(c *gin.Context) {
 		return
 	}
 	var req ProductData
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -105,8 +103,7 @@ func (h *ProductDataHandler) UpdateProductDataStatus(c *gin.Context) {
 	var req struct {
 		Status int16 `json:"status"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	product, err := h.repo.UpdateProductDataStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status)
@@ -140,9 +137,7 @@ func validateProductData(product *ProductData) error {
 }
 
 func writeProductDataError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrProductDataNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "product_data_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrProductDataNotFound, status: http.StatusNotFound, errorCode: "product_data_not_found"},
+	)
 }

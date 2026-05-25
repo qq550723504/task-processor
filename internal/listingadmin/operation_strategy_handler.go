@@ -49,8 +49,7 @@ func (h *OperationStrategyHandler) GetOperationStrategy(c *gin.Context) {
 
 func (h *OperationStrategyHandler) CreateOperationStrategy(c *gin.Context) {
 	var req OperationStrategy
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -72,8 +71,7 @@ func (h *OperationStrategyHandler) UpdateOperationStrategy(c *gin.Context) {
 		return
 	}
 	var req OperationStrategy
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -99,8 +97,7 @@ func (h *OperationStrategyHandler) UpdateOperationStrategyStatus(c *gin.Context)
 		Status int16  `json:"status"`
 		Remark string `json:"remark"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	strategy, err := h.repo.UpdateOperationStrategyStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
@@ -138,9 +135,7 @@ func validateOperationStrategy(strategy *OperationStrategy) error {
 }
 
 func writeOperationStrategyError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrOperationStrategyNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "operation_strategy_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrOperationStrategyNotFound, status: http.StatusNotFound, errorCode: "operation_strategy_not_found"},
+	)
 }

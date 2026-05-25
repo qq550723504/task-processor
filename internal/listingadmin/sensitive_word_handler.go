@@ -52,8 +52,7 @@ func (h *SensitiveWordHandler) GetSensitiveWord(c *gin.Context) {
 
 func (h *SensitiveWordHandler) CreateSensitiveWord(c *gin.Context) {
 	var req SensitiveWord
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -75,8 +74,7 @@ func (h *SensitiveWordHandler) UpdateSensitiveWord(c *gin.Context) {
 		return
 	}
 	var req SensitiveWord
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -102,8 +100,7 @@ func (h *SensitiveWordHandler) UpdateSensitiveWordStatus(c *gin.Context) {
 		Status int16  `json:"status"`
 		Remark string `json:"remark"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	word, err := h.repo.UpdateSensitiveWordStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
@@ -153,9 +150,7 @@ func queryIntPtr(c *gin.Context, key string) *int {
 }
 
 func writeSensitiveWordError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrSensitiveWordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "sensitive_word_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrSensitiveWordNotFound, status: http.StatusNotFound, errorCode: "sensitive_word_not_found"},
+	)
 }

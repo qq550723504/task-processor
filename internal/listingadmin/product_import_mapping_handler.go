@@ -57,8 +57,7 @@ func (h *ProductImportMappingHandler) GetProductImportMapping(c *gin.Context) {
 
 func (h *ProductImportMappingHandler) CreateProductImportMapping(c *gin.Context) {
 	var req ProductImportMapping
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -80,8 +79,7 @@ func (h *ProductImportMappingHandler) UpdateProductImportMapping(c *gin.Context)
 		return
 	}
 	var req ProductImportMapping
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -107,8 +105,7 @@ func (h *ProductImportMappingHandler) UpdateProductImportMappingStatus(c *gin.Co
 		Status int16  `json:"status"`
 		Remark string `json:"remark"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	mapping, err := h.repo.UpdateProductImportMappingStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
@@ -150,9 +147,7 @@ func validateProductImportMapping(mapping *ProductImportMapping) error {
 }
 
 func writeProductImportMappingError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrProductImportMappingNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "product_import_mapping_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrProductImportMappingNotFound, status: http.StatusNotFound, errorCode: "product_import_mapping_not_found"},
+	)
 }

@@ -54,8 +54,7 @@ func (h *FilterRuleHandler) GetFilterRule(c *gin.Context) {
 
 func (h *FilterRuleHandler) CreateFilterRule(c *gin.Context) {
 	var req FilterRule
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -77,8 +76,7 @@ func (h *FilterRuleHandler) UpdateFilterRule(c *gin.Context) {
 		return
 	}
 	var req FilterRule
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -104,8 +102,7 @@ func (h *FilterRuleHandler) UpdateFilterRuleStatus(c *gin.Context) {
 		Status int16  `json:"status"`
 		Remark string `json:"remark"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	rule, err := h.repo.UpdateFilterRuleStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
@@ -149,9 +146,7 @@ func validateFilterRule(rule *FilterRule) error {
 }
 
 func writeFilterRuleError(c *gin.Context, err error, code string) {
-	if errors.Is(err, ErrFilterRuleNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "filter_rule_not_found", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrFilterRuleNotFound, status: http.StatusNotFound, errorCode: "filter_rule_not_found"},
+	)
 }

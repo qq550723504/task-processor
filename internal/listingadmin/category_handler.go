@@ -48,8 +48,7 @@ func (h *CategoryHandler) GetCategory(c *gin.Context) {
 
 func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 	var req Category
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.TenantID = requestTenantID(c)
@@ -71,8 +70,7 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 		return
 	}
 	var req Category
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	req.ID = id
@@ -97,8 +95,7 @@ func (h *CategoryHandler) UpdateCategoryStatus(c *gin.Context) {
 	var req struct {
 		Status int16 `json:"status"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+	if !bindJSON(c, &req) {
 		return
 	}
 	category, err := h.repo.UpdateCategoryStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status)
@@ -136,12 +133,8 @@ func validateCategory(category *Category) error {
 }
 
 func writeCategoryError(c *gin.Context, err error, code string) {
-	switch {
-	case errors.Is(err, ErrCategoryNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": "category_not_found", "message": err.Error()})
-	case errors.Is(err, ErrCategoryHasChildren):
-		c.JSON(http.StatusConflict, gin.H{"error": "category_has_children", "message": err.Error()})
-	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": code, "message": err.Error()})
-	}
+	writeMappedHandlerError(c, err, code,
+		handlerErrorRule{match: ErrCategoryNotFound, status: http.StatusNotFound, errorCode: "category_not_found"},
+		handlerErrorRule{match: ErrCategoryHasChildren, status: http.StatusConflict, errorCode: "category_has_children"},
+	)
 }
