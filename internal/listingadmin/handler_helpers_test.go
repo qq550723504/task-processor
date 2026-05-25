@@ -279,3 +279,39 @@ func TestPathIDWritesInvalidIDError(t *testing.T) {
 		t.Fatalf("body = %s, want invalid_id", recorder.Body.String())
 	}
 }
+
+func TestQueryDateNormalizesValidDate(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?date=2026-05-15", nil)
+
+	value, ok := queryDate(ctx, "date")
+	if !ok {
+		t.Fatal("expected queryDate to accept valid date")
+	}
+	if value != "2026-05-15" {
+		t.Fatalf("value = %q, want 2026-05-15", value)
+	}
+}
+
+func TestQueryDateRejectsInvalidDate(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?date=2026/05/15", nil)
+
+	if _, ok := queryDate(ctx, "date"); ok {
+		t.Fatal("expected queryDate to reject invalid date")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_date"`) {
+		t.Fatalf("body = %s, want invalid_date", recorder.Body.String())
+	}
+}

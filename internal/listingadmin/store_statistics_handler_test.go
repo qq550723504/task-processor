@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -272,6 +273,22 @@ func TestStoreStatisticsHandlerFiltersTaskCountsByDate(t *testing.T) {
 	got := items[0]
 	if got.CompletedCount != 1 || got.QueuedCount != 0 {
 		t.Fatalf("statistics = %+v, want only tasks from 2026-05-15 counted", got)
+	}
+}
+
+func TestStoreStatisticsHandlerRejectsInvalidDateFormat(t *testing.T) {
+	router := newStoreStatisticsTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026/05/15", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /store-statistics invalid date = %d, body=%s, want 400", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_date"`) {
+		t.Fatalf("body = %s, want invalid_date", resp.Body.String())
 	}
 }
 

@@ -20,7 +20,11 @@ func (h *StoreStatisticsHandler) ListStoreStatistics(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "tenant id is required"})
 		return
 	}
-	query := applyListQueryScope(&StoreStatisticsQuery{Date: c.Query("date")}, scope)
+	date, ok := queryDate(c, "date")
+	if !ok {
+		return
+	}
+	query := applyListQueryScope(&StoreStatisticsQuery{Date: date}, scope)
 	items, err := h.repo.ListStoreStatistics(requestIdentityContext(c), *query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})

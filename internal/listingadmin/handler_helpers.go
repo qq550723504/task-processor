@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -163,6 +164,19 @@ func queryIntPtr(c *gin.Context, key string) *int {
 		return nil
 	}
 	return &parsed
+}
+
+func queryDate(c *gin.Context, key string) (string, bool) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return "", true
+	}
+	parsed, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		writeValidationError(c, "invalid_date", errors.New("date must use YYYY-MM-DD format"))
+		return "", false
+	}
+	return parsed.Format("2006-01-02"), true
 }
 
 func writeHandlerErrorResponse(c *gin.Context, status int, code string, err error) {
