@@ -733,15 +733,9 @@ func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, close
 	return svc, nil
 }
 
-func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Module, err error) {
+func prepareModuleRuntimeClosers(input BuildModuleInput, bundle *ServiceBundle) (_ *closerStack, err error) {
 	closers := &closerStack{}
 	closers.Add(bundle.runtime.closers...)
-	defer func() {
-		if err == nil {
-			return
-		}
-		_ = closers.Close()
-	}()
 	if input.ShouldStartTemporalWorkerInProcess {
 		temporalWorkerCloser, startErr := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.runtime.temporalWorkerService, input.ServiceInput.Logger)
 		if startErr != nil {
@@ -749,7 +743,10 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 		}
 		closers.Add(temporalWorkerCloser)
 	}
+	return closers, nil
+}
 
+func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers *closerStack) (*Module, error) {
 	processor, err := listingkit.NewProcessor(bundle.runtime.service, bundle.runtime.taskRepository, input.ServiceInput.Logger, 2)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit processor: %w", err)
@@ -775,6 +772,20 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 		Pool:                 pool,
 		Closers:              closers.Snapshot(),
 	}, nil
+}
+
+func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Module, err error) {
+	closers, err := prepareModuleRuntimeClosers(input, bundle)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		_ = closers.Close()
+	}()
+	return createModuleRuntime(input, bundle, closers)
 }
 
 func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleService, workerService TemporalWorkerService, handlerDependencies listingkitapi.HandlerDependencies, closers []func() error) *ServiceBundle {

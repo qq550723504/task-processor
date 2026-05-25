@@ -745,6 +745,43 @@ func TestBuildModuleRuntimeUsesPrivateRuntimePayload(t *testing.T) {
 	}
 }
 
+func TestPrepareModuleRuntimeClosersPreservesExistingRuntimeClosers(t *testing.T) {
+	t.Parallel()
+
+	closed := false
+	bundle := &ServiceBundle{
+		runtime: serviceBundleRuntime{
+			closers: []func() error{
+				func() error {
+					closed = true
+					return nil
+				},
+			},
+		},
+	}
+
+	closers, err := prepareModuleRuntimeClosers(BuildModuleInput{
+		ServiceInput: BuildServiceInput{
+			Logger: logrus.New(),
+		},
+	}, bundle)
+	if err != nil {
+		t.Fatalf("prepareModuleRuntimeClosers: %v", err)
+	}
+	if closers == nil {
+		t.Fatal("expected closer stack")
+	}
+	if len(closers.Snapshot()) != 1 {
+		t.Fatalf("expected one inherited closer, got %d", len(closers.Snapshot()))
+	}
+	if err := closers.Close(); err != nil {
+		t.Fatalf("close closers: %v", err)
+	}
+	if !closed {
+		t.Fatal("expected inherited runtime closer to run")
+	}
+}
+
 func TestBuildModuleAssemblesRuntimeFromModuleRegistrars(t *testing.T) {
 	t.Parallel()
 
