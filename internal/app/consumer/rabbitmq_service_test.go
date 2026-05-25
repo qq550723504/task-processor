@@ -504,6 +504,23 @@ func TestConsumerGuardCoordinatorSnapshotStateReflectsServiceHealth(t *testing.T
 	}
 }
 
+func TestQueueHandlerBuilderDetectsCrawlerPlatforms(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleHybrid,
+		},
+	}, logrus.New())
+
+	builder := newQueueHandlerBuilder(svc)
+	if !builder.isCrawlerPlatform("amazon.crawler") {
+		t.Fatal("expected amazon.crawler to be detected as crawler platform")
+	}
+	if builder.isCrawlerPlatform("shein") {
+		t.Fatal("did not expect shein to be detected as crawler platform")
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",

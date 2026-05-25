@@ -356,74 +356,7 @@ func (s *RabbitMQService) registerMessageHandlers() {
 }
 
 func (s *RabbitMQService) buildQueueHandlers() map[string]rabbitmq.MessageHandler {
-	handlers := s.processorRegistry.GetAllHandlers()
-	queueHandlers := make(map[string]rabbitmq.MessageHandler)
-
-	for platform, handler := range handlers {
-		isCrawler := platform == "amazon.crawler" || platform == "1688.crawler"
-
-		if isCrawler {
-			if !s.config.Node.HandlesCrawlerWork() {
-				s.logger.Infof("跳过爬虫处理器注册: platform=%s, role=%s", platform, s.config.Node.NormalizedRole())
-				continue
-			}
-			regions := s.config.Node.Regions
-			if len(regions) > 0 {
-				for _, region := range regions {
-					basePlatform := strings.TrimSuffix(platform, ".crawler")
-					queueName := fmt.Sprintf("%s.crawler.%s", basePlatform, strings.ToLower(region))
-					queueHandlers[queueName] = handler
-				}
-				s.logger.Infof("注册爬虫处理器（按 region）: 平台=%s, regions=%v", platform, regions)
-			} else {
-				queueName := platform // e.g. "amazon.crawler"
-				queueHandlers[queueName] = handler
-				s.logger.Infof("注册爬虫处理器（全局队列）: 平台=%s", platform)
-			}
-			continue
-		}
-
-		if !s.config.Node.HandlesTaskWork() {
-			s.logger.Infof("跳过任务处理器注册: platform=%s, role=%s", platform, s.config.Node.NormalizedRole())
-			continue
-		}
-
-		if s.usesDedicatedStoreQueues() {
-			if len(s.ownedStores) == 0 {
-				s.logger.Infof("跳过共享队列注册: 平台=%s, useStoreQueues=true, ownedStores=0", platform)
-				continue
-			}
-			for _, storeID := range s.ownedStores {
-				queueName := fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
-				queueHandlers[queueName] = handler
-			}
-			s.logger.Infof("注册处理器: 平台=%s, 店铺=%v", platform, s.ownedStores)
-		} else {
-			s.registerSharedPlatformHandlers(queueHandlers, platform, handler)
-		}
-	}
-
-	if len(handlers) == 0 {
-		s.logger.Warn("没有注册任何消息处理器")
-	}
-	return queueHandlers
-}
-
-func (s *RabbitMQService) registerSharedPlatformHandlers(queueHandlers map[string]rabbitmq.MessageHandler, platform string, handler rabbitmq.MessageHandler) {
-	queueName := fmt.Sprintf("%s.tasks", platform)
-	queueHandlers[queueName] = handler
-
-	if strings.EqualFold(platform, "shein") {
-		buckets := s.sharedBucketsForPlatform(platform)
-		for _, bucket := range buckets {
-			bucketQueueName := fmt.Sprintf("%s.tasks.bucket.%d", platform, bucket)
-			queueHandlers[bucketQueueName] = handler
-		}
-		s.logger.Infof("注册处理器（平台共享分桶队列）: 平台=%s, buckets=%v", platform, buckets)
-		return
-	}
-
-	s.logger.Infof("注册处理器（平台共享队列）: 平台=%s", platform)
+	return newQueueHandlerBuilder(s).build()
 }
 
 func (s *RabbitMQService) sharedBucketsForPlatform(platform string) []int {
