@@ -37,7 +37,7 @@ func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) 
 
 	page, err := h.repo.ListProductImportMappings(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "product_import_mapping_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "product_import_mapping_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -63,12 +63,12 @@ func (h *ProductImportMappingHandler) CreateProductImportMapping(c *gin.Context)
 	}
 	req.TenantID = requestTenantID(c)
 	if err := validateProductImportMapping(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_product_import_mapping", "message": err.Error()})
+		writeValidationError(c, "invalid_product_import_mapping", err)
 		return
 	}
 	mapping, err := h.repo.CreateProductImportMapping(requestIdentityContext(c), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "product_import_mapping_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "product_import_mapping_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, mapping)
@@ -86,7 +86,7 @@ func (h *ProductImportMappingHandler) UpdateProductImportMapping(c *gin.Context)
 	req.ID = id
 	req.TenantID = requestTenantID(c)
 	if err := validateProductImportMapping(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_product_import_mapping", "message": err.Error()})
+		writeValidationError(c, "invalid_product_import_mapping", err)
 		return
 	}
 	mapping, err := h.repo.UpdateProductImportMapping(requestIdentityContext(c), &req)

@@ -43,7 +43,7 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 
 	page, err := h.repo.ListStores(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "store_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -72,12 +72,12 @@ func (h *StoreHandler) CreateStore(c *gin.Context) {
 	req.CreatedBy = requestUserID(c)
 	req.UpdatedBy = requestUserID(c)
 	if err := validateStore(&req, true); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_store", "message": err.Error()})
+		writeValidationError(c, "invalid_store", err)
 		return
 	}
 	store, err := h.repo.CreateStore(requestIdentityContext(c), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "store_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, store)
@@ -97,7 +97,7 @@ func (h *StoreHandler) UpdateStore(c *gin.Context) {
 	req.OwnerUserID = requestUserID(c)
 	req.UpdatedBy = requestUserID(c)
 	if err := validateStore(&req, false); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_store", "message": err.Error()})
+		writeValidationError(c, "invalid_store", err)
 		return
 	}
 	store, err := h.repo.UpdateStore(requestIdentityContext(c), &req)
@@ -143,7 +143,7 @@ func (h *StoreHandler) DeleteStore(c *gin.Context) {
 func (h *StoreHandler) ListDeletedStores(c *gin.Context) {
 	items, err := h.repo.ListDeletedStores(requestIdentityContext(c), requestTenantID(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_deleted_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "store_deleted_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, items)
@@ -197,7 +197,7 @@ func (h *StoreHandler) ListSimpleStores(c *gin.Context) {
 		PageSize:    200,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "store_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "store_list_failed", err)
 		return
 	}
 	items := make([]gin.H, 0, len(page.Items))

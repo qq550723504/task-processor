@@ -73,6 +73,40 @@ func TestWriteMappedHandlerErrorFallsBackToInternalError(t *testing.T) {
 	}
 }
 
+func TestWriteValidationErrorWritesBadRequestPayload(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	writeValidationError(ctx, "invalid_store", errors.New("store is invalid"))
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_store"`) {
+		t.Fatalf("body = %s, want invalid_store", recorder.Body.String())
+	}
+}
+
+func TestWriteInternalHandlerErrorWritesInternalErrorPayload(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	writeInternalHandlerError(ctx, "store_list_failed", errors.New("boom"))
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"store_list_failed"`) {
+		t.Fatalf("body = %s, want store_list_failed", recorder.Body.String())
+	}
+}
+
 func TestRequestPageParamsSupportsLegacyAndCurrentKeys(t *testing.T) {
 	t.Parallel()
 

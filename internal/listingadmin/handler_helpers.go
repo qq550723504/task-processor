@@ -151,6 +151,14 @@ func writeHandlerErrorResponse(c *gin.Context, status int, code string, err erro
 	c.JSON(status, gin.H{"error": code, "message": err.Error()})
 }
 
+func writeValidationError(c *gin.Context, code string, err error) {
+	writeHandlerErrorResponse(c, http.StatusBadRequest, code, err)
+}
+
+func writeInternalHandlerError(c *gin.Context, code string, err error) {
+	writeHandlerErrorResponse(c, http.StatusInternalServerError, code, err)
+}
+
 func writeMappedHandlerError(c *gin.Context, err error, fallbackCode string, rules ...handlerErrorRule) {
 	for _, rule := range rules {
 		if errors.Is(err, rule.match) {

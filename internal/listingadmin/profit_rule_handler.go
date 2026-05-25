@@ -32,7 +32,7 @@ func (h *ProfitRuleHandler) ListProfitRules(c *gin.Context) {
 
 	page, err := h.repo.ListProfitRules(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "profit_rule_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "profit_rule_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -58,12 +58,12 @@ func (h *ProfitRuleHandler) CreateProfitRule(c *gin.Context) {
 	}
 	req.TenantID = requestTenantID(c)
 	if err := validateProfitRule(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_profit_rule", "message": err.Error()})
+		writeValidationError(c, "invalid_profit_rule", err)
 		return
 	}
 	rule, err := h.repo.CreateProfitRule(requestIdentityContext(c), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "profit_rule_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "profit_rule_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, rule)
@@ -81,7 +81,7 @@ func (h *ProfitRuleHandler) UpdateProfitRule(c *gin.Context) {
 	req.ID = id
 	req.TenantID = requestTenantID(c)
 	if err := validateProfitRule(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_profit_rule", "message": err.Error()})
+		writeValidationError(c, "invalid_profit_rule", err)
 		return
 	}
 	rule, err := h.repo.UpdateProfitRule(requestIdentityContext(c), &req)

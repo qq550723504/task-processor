@@ -34,7 +34,7 @@ func (h *FilterRuleHandler) ListFilterRules(c *gin.Context) {
 
 	page, err := h.repo.ListFilterRules(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "filter_rule_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "filter_rule_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -60,12 +60,12 @@ func (h *FilterRuleHandler) CreateFilterRule(c *gin.Context) {
 	}
 	req.TenantID = requestTenantID(c)
 	if err := validateFilterRule(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_filter_rule", "message": err.Error()})
+		writeValidationError(c, "invalid_filter_rule", err)
 		return
 	}
 	rule, err := h.repo.CreateFilterRule(requestIdentityContext(c), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "filter_rule_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "filter_rule_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, rule)
@@ -83,7 +83,7 @@ func (h *FilterRuleHandler) UpdateFilterRule(c *gin.Context) {
 	req.ID = id
 	req.TenantID = requestTenantID(c)
 	if err := validateFilterRule(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_filter_rule", "message": err.Error()})
+		writeValidationError(c, "invalid_filter_rule", err)
 		return
 	}
 	rule, err := h.repo.UpdateFilterRule(requestIdentityContext(c), &req)

@@ -49,7 +49,7 @@ func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
 
 	page, err := h.repo.ListImportTasks(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "import_task_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "import_task_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -63,7 +63,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 	tenantID := requestTenantID(c)
 	productIDs := uniqueProductIDs(req.ProductIDs)
 	if err := validateBatchCreateImportTask(tenantID, req, productIDs); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_import_task", "message": err.Error()})
+		writeValidationError(c, "invalid_import_task", err)
 		return
 	}
 
@@ -88,7 +88,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 	}
 	items, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "import_task_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "import_task_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, BatchCreateImportTaskResponse{CreatedCount: len(items), Items: items})

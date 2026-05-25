@@ -28,7 +28,7 @@ func (h *CategoryHandler) ListCategories(c *gin.Context) {
 
 	items, err := h.repo.ListCategories(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "category_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "category_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, items)
@@ -54,7 +54,7 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 	}
 	req.TenantID = requestTenantID(c)
 	if err := validateCategory(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_category", "message": err.Error()})
+		writeValidationError(c, "invalid_category", err)
 		return
 	}
 	category, err := h.repo.CreateCategory(requestIdentityContext(c), &req)
@@ -77,7 +77,7 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 	req.ID = id
 	req.TenantID = requestTenantID(c)
 	if err := validateCategory(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_category", "message": err.Error()})
+		writeValidationError(c, "invalid_category", err)
 		return
 	}
 	category, err := h.repo.UpdateCategory(requestIdentityContext(c), &req)

@@ -29,7 +29,7 @@ func (h *OperationStrategyHandler) ListOperationStrategies(c *gin.Context) {
 
 	page, err := h.repo.ListOperationStrategies(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "operation_strategy_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "operation_strategy_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -55,12 +55,12 @@ func (h *OperationStrategyHandler) CreateOperationStrategy(c *gin.Context) {
 	}
 	req.TenantID = requestTenantID(c)
 	if err := validateOperationStrategy(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_operation_strategy", "message": err.Error()})
+		writeValidationError(c, "invalid_operation_strategy", err)
 		return
 	}
 	strategy, err := h.repo.CreateOperationStrategy(requestIdentityContext(c), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "operation_strategy_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "operation_strategy_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, strategy)
@@ -78,7 +78,7 @@ func (h *OperationStrategyHandler) UpdateOperationStrategy(c *gin.Context) {
 	req.ID = id
 	req.TenantID = requestTenantID(c)
 	if err := validateOperationStrategy(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_operation_strategy", "message": err.Error()})
+		writeValidationError(c, "invalid_operation_strategy", err)
 		return
 	}
 	strategy, err := h.repo.UpdateOperationStrategy(requestIdentityContext(c), &req)

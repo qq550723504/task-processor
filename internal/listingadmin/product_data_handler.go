@@ -36,7 +36,7 @@ func (h *ProductDataHandler) ListProductData(c *gin.Context) {
 
 	page, err := h.repo.ListProductData(requestIdentityContext(c), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "product_data_list_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "product_data_list_failed", err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
@@ -62,12 +62,12 @@ func (h *ProductDataHandler) CreateProductData(c *gin.Context) {
 	}
 	req.TenantID = requestTenantID(c)
 	if err := validateProductData(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_product_data", "message": err.Error()})
+		writeValidationError(c, "invalid_product_data", err)
 		return
 	}
 	product, err := h.repo.CreateProductData(requestIdentityContext(c), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "product_data_create_failed", "message": err.Error()})
+		writeInternalHandlerError(c, "product_data_create_failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, product)
@@ -85,7 +85,7 @@ func (h *ProductDataHandler) UpdateProductData(c *gin.Context) {
 	req.ID = id
 	req.TenantID = requestTenantID(c)
 	if err := validateProductData(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_product_data", "message": err.Error()})
+		writeValidationError(c, "invalid_product_data", err)
 		return
 	}
 	product, err := h.repo.UpdateProductData(requestIdentityContext(c), &req)
