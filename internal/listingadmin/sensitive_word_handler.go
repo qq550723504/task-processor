@@ -22,8 +22,15 @@ func (h *SensitiveWordHandler) ListSensitiveWords(c *gin.Context) {
 		Tags:     strings.TrimSpace(c.Query("tags")),
 		Remark:   strings.TrimSpace(c.Query("remark")),
 	}, scope)
-	query.Level = queryIntPtr(c, "level")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.Level, ok = queryIntPtrStrict(c, "level", "invalid_level")
+	if !ok {
+		return
+	}
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 
 	page, err := h.repo.ListSensitiveWords(requestIdentityContext(c), *query)
 	if err != nil {

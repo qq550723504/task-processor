@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -47,6 +48,23 @@ func TestCategoryHandlerListsCategoriesWithinRequestTenant(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Code != "APPAREL" || items[0].TenantID != 101 {
 		t.Fatalf("items = %+v, want tenant 101 category only", items)
+	}
+}
+
+func TestCategoryHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newCategoryTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/categories?level=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /categories invalid filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_level"`) {
+		t.Fatalf("response body = %s, want invalid_level", resp.Body.String())
 	}
 }
 

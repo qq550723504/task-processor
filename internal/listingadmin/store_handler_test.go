@@ -62,6 +62,23 @@ func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
 	}
 }
 
+func TestStoreHandlerRejectsInvalidStatusFilter(t *testing.T) {
+	router := newStoreTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/stores?status=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /stores invalid filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_status"`) {
+		t.Fatalf("body = %s, want invalid_status", resp.Body.String())
+	}
+}
+
 func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	body := bytes.NewBufferString(`{

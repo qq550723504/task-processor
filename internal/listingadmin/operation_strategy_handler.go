@@ -20,8 +20,15 @@ func (h *OperationStrategyHandler) ListOperationStrategies(c *gin.Context) {
 		Name:     strings.TrimSpace(c.Query("name")),
 		Platform: strings.TrimSpace(c.Query("platform")),
 	}, scope)
-	query.StoreID = queryInt64Ptr(c, "storeId")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.StoreID, ok = queryInt64PtrStrict(c, "storeId", "invalid_store_id")
+	if !ok {
+		return
+	}
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 
 	page, err := h.repo.ListOperationStrategies(requestIdentityContext(c), *query)
 	if err != nil {

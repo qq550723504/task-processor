@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -48,6 +49,23 @@ func TestSensitiveWordHandlerListsWordsWithinRequestTenant(t *testing.T) {
 	}
 	if page.Items[0].Word != "restricted" || page.Items[0].TenantID != 101 {
 		t.Fatalf("items = %+v, want tenant 101 word only", page.Items)
+	}
+}
+
+func TestSensitiveWordHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newSensitiveWordTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/sensitive-words?level=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /sensitive-words invalid filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_level"`) {
+		t.Fatalf("response body = %s, want invalid_level", resp.Body.String())
 	}
 }
 

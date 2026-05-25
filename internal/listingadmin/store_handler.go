@@ -34,7 +34,11 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 	query.EnableDraft = queryBoolPtr(c, "enableDraft")
 	query.EnableAutoPrice = queryBoolPtr(c, "enableAutoPrice")
 	query.EnableRebargain = queryBoolPtr(c, "enableRebargain")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 	query.Expired = queryBoolPtr(c, "expired")
 
 	page, err := h.repo.ListStores(requestIdentityContext(c), *query)

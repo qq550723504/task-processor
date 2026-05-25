@@ -20,9 +20,19 @@ func (h *CategoryHandler) ListCategories(c *gin.Context) {
 		Name: strings.TrimSpace(c.Query("name")),
 		Code: strings.TrimSpace(c.Query("code")),
 	}, scope)
-	query.ParentID = queryInt64Ptr(c, "parentId")
-	query.Level = queryIntPtr(c, "level")
-	query.Status = queryInt16Ptr(c, "status")
+	var ok bool
+	query.ParentID, ok = queryInt64PtrStrict(c, "parentId", "invalid_parent_id")
+	if !ok {
+		return
+	}
+	query.Level, ok = queryIntPtrStrict(c, "level", "invalid_level")
+	if !ok {
+		return
+	}
+	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
+	if !ok {
+		return
+	}
 
 	items, err := h.repo.ListCategories(requestIdentityContext(c), *query)
 	if err != nil {

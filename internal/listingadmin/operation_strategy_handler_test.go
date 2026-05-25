@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -49,6 +50,23 @@ func TestOperationStrategyHandlerListsWithinRequestTenant(t *testing.T) {
 	}
 	if page.Items[0].Name != "SHEIN stock guard" || page.Items[0].TenantID != 101 {
 		t.Fatalf("items = %+v, want tenant 101 strategy only", page.Items)
+	}
+}
+
+func TestOperationStrategyHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newOperationStrategyTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/operation-strategies?storeId=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /operation-strategies invalid filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_store_id"`) {
+		t.Fatalf("response body = %s, want invalid_store_id", resp.Body.String())
 	}
 }
 
