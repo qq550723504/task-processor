@@ -264,10 +264,7 @@ func applySensitiveWordDefaults(row *listingSensitiveWord) {
 }
 
 func applySensitiveWordQuery(db *gorm.DB, query SensitiveWordQuery) *gorm.DB {
-	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
-		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
-	}
+	db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
 	if query.Word != "" {
 		db = db.Where("word LIKE ?", "%"+query.Word+"%")
 	}

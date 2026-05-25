@@ -286,13 +286,7 @@ func (r *GormOperationStrategyRepository) DeleteOperationStrategy(ctx context.Co
 }
 
 func applyOperationStrategyQuery(db *gorm.DB, query OperationStrategyQuery) *gorm.DB {
-	db = db.Where("deleted = 0")
-	if query.TenantID > 0 {
-		db = db.Where("tenant_id = ?", query.TenantID)
-	}
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
-		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
-	}
+	db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
 	if query.Name != "" {
 		db = db.Where("name LIKE ?", "%"+query.Name+"%")
 	}

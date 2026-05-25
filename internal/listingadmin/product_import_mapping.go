@@ -318,10 +318,7 @@ func applyProductImportMappingDefaults(row *listingProductImportMapping) {
 }
 
 func applyProductImportMappingQuery(db *gorm.DB, query ProductImportMappingQuery) *gorm.DB {
-	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
-		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
-	}
+	db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
 	if query.ImportTaskID != nil {
 		db = db.Where("import_task_id = ?", *query.ImportTaskID)
 	}

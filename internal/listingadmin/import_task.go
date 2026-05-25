@@ -242,13 +242,7 @@ func (r *GormImportTaskRepository) DeleteImportTask(ctx context.Context, tenantI
 }
 
 func applyImportTaskQuery(db *gorm.DB, query ImportTaskQuery) *gorm.DB {
-	db = db.Where("deleted = 0")
-	if query.TenantID > 0 {
-		db = db.Where("tenant_id = ?", query.TenantID)
-	}
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
-		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
-	}
+	db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
 	if query.StoreID != nil {
 		db = db.Where("store_id = ?", *query.StoreID)
 	}

@@ -366,10 +366,7 @@ func (r *GormProductDataRepository) DeleteProductData(ctx context.Context, tenan
 }
 
 func applyProductDataQuery(db *gorm.DB, query ProductDataQuery) *gorm.DB {
-	db = db.Where("tenant_id = ? AND deleted = 0", query.TenantID)
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
-		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
-	}
+	db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
 	if query.StoreID != nil {
 		db = db.Where("store_id = ?", *query.StoreID)
 	}

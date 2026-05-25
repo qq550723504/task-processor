@@ -51,3 +51,43 @@ func TestFindPagedRowsNormalizesPagingAndOrdersByLatestID(t *testing.T) {
 		t.Fatalf("rows = %+v, want descending id order", rows)
 	}
 }
+
+func TestApplyOwnedTenantQueryAppliesDeletedTenantAndOwnerFilters(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	type ownedRow struct {
+		ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
+		TenantID    int64  `gorm:"column:tenant_id"`
+		OwnerUserID string `gorm:"column:owner_user_id"`
+		Deleted     int16  `gorm:"column:deleted"`
+		Name        string `gorm:"column:name"`
+	}
+	if err := db.Table("owned_rows").AutoMigrate(&ownedRow{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []ownedRow{
+		{TenantID: 101, OwnerUserID: "user-a", Deleted: 0, Name: "keep"},
+		{TenantID: 101, OwnerUserID: "user-b", Deleted: 0, Name: "other-owner"},
+		{TenantID: 202, OwnerUserID: "user-a", Deleted: 0, Name: "other-tenant"},
+		{TenantID: 101, OwnerUserID: "user-a", Deleted: 1, Name: "deleted"},
+	} {
+		if err := db.Table("owned_rows").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	var rows []ownedRow
+	err = applyOwnedTenantQuery(db.Table("owned_rows"), 101, "user-a").Find(&rows).Error
+	if err != nil {
+		t.Fatalf("query rows: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Name != "keep" {
+		t.Fatalf("rows = %+v, want only active tenant-owned row", rows)
+	}
+}

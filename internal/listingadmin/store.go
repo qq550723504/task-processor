@@ -480,11 +480,15 @@ func applyStoreQuery(db *gorm.DB, query StoreQuery) *gorm.DB {
 	} else {
 		db = db.Where("deleted = 0")
 	}
-	if query.TenantID > 0 {
-		db = db.Where("tenant_id = ?", query.TenantID)
-	}
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
-		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
+	if query.Deleted == nil {
+		db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
+	} else {
+		if query.TenantID > 0 {
+			db = db.Where("tenant_id = ?", query.TenantID)
+		}
+		if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+			db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
+		}
 	}
 	if query.StoreID != "" {
 		db = db.Where("store_id LIKE ?", "%"+query.StoreID+"%")
