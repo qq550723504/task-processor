@@ -135,8 +135,6 @@ func validatePricingRule(rule *PricingRule) error {
 	return nil
 }
 
-func writePricingRuleError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrPricingRuleNotFound, status: http.StatusNotFound, errorCode: "pricing_rule_not_found"},
-	)
-}
+var writePricingRuleError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrPricingRuleNotFound, status: http.StatusNotFound, errorCode: "pricing_rule_not_found"},
+)

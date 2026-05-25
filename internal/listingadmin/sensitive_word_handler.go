@@ -127,8 +127,6 @@ func validateSensitiveWord(word *SensitiveWord) error {
 	return nil
 }
 
-func writeSensitiveWordError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrSensitiveWordNotFound, status: http.StatusNotFound, errorCode: "sensitive_word_not_found"},
-	)
-}
+var writeSensitiveWordError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrSensitiveWordNotFound, status: http.StatusNotFound, errorCode: "sensitive_word_not_found"},
+)

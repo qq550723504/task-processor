@@ -137,8 +137,6 @@ func validateProductImportMapping(mapping *ProductImportMapping) error {
 	return nil
 }
 
-func writeProductImportMappingError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrProductImportMappingNotFound, status: http.StatusNotFound, errorCode: "product_import_mapping_not_found"},
-	)
-}
+var writeProductImportMappingError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrProductImportMappingNotFound, status: http.StatusNotFound, errorCode: "product_import_mapping_not_found"},
+)

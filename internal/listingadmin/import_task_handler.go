@@ -135,8 +135,6 @@ func validateBatchCreateImportTask(tenantID int64, req BatchCreateImportTaskRequ
 	return nil
 }
 
-func writeImportTaskError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrImportTaskNotFound, status: http.StatusNotFound, errorCode: "import_task_not_found"},
-	)
-}
+var writeImportTaskError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrImportTaskNotFound, status: http.StatusNotFound, errorCode: "import_task_not_found"},
+)

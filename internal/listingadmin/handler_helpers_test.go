@@ -73,6 +73,27 @@ func TestWriteMappedHandlerErrorFallsBackToInternalError(t *testing.T) {
 	}
 }
 
+func TestNewMappedHandlerErrorWriterAppliesConfiguredRules(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	writer := newMappedHandlerErrorWriter(
+		handlerErrorRule{match: ErrCategoryNotFound, status: http.StatusNotFound, errorCode: "category_not_found"},
+		handlerErrorRule{match: ErrCategoryHasChildren, status: http.StatusConflict, errorCode: "category_has_children"},
+	)
+	writer(ctx, ErrCategoryHasChildren, "category_delete_failed")
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"category_has_children"`) {
+		t.Fatalf("body = %s, want category_has_children", recorder.Body.String())
+	}
+}
+
 func TestWriteValidationErrorWritesBadRequestPayload(t *testing.T) {
 	t.Parallel()
 

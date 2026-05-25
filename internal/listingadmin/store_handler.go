@@ -219,8 +219,6 @@ func validateStore(store *Store, requirePassword bool) error {
 	return nil
 }
 
-func writeStoreError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrStoreNotFound, status: http.StatusNotFound, errorCode: "store_not_found"},
-	)
-}
+var writeStoreError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrStoreNotFound, status: http.StatusNotFound, errorCode: "store_not_found"},
+)

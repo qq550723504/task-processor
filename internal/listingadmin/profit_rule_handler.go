@@ -130,8 +130,6 @@ func validateProfitRule(rule *ProfitRule) error {
 	return nil
 }
 
-func writeProfitRuleError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrProfitRuleNotFound, status: http.StatusNotFound, errorCode: "profit_rule_not_found"},
-	)
-}
+var writeProfitRuleError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrProfitRuleNotFound, status: http.StatusNotFound, errorCode: "profit_rule_not_found"},
+)

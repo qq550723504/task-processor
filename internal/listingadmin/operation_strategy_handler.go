@@ -125,8 +125,6 @@ func validateOperationStrategy(strategy *OperationStrategy) error {
 	return nil
 }
 
-func writeOperationStrategyError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrOperationStrategyNotFound, status: http.StatusNotFound, errorCode: "operation_strategy_not_found"},
-	)
-}
+var writeOperationStrategyError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrOperationStrategyNotFound, status: http.StatusNotFound, errorCode: "operation_strategy_not_found"},
+)

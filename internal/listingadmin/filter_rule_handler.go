@@ -136,8 +136,6 @@ func validateFilterRule(rule *FilterRule) error {
 	return nil
 }
 
-func writeFilterRuleError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrFilterRuleNotFound, status: http.StatusNotFound, errorCode: "filter_rule_not_found"},
-	)
-}
+var writeFilterRuleError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrFilterRuleNotFound, status: http.StatusNotFound, errorCode: "filter_rule_not_found"},
+)

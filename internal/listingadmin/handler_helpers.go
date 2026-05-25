@@ -17,6 +17,8 @@ type handlerErrorRule struct {
 	errorCode string
 }
 
+type handlerErrorWriter func(c *gin.Context, err error, code string)
+
 type listQueryScope struct {
 	TenantID    int64
 	OwnerUserID string
@@ -173,6 +175,12 @@ func writeValidationError(c *gin.Context, code string, err error) {
 
 func writeInternalHandlerError(c *gin.Context, code string, err error) {
 	writeHandlerErrorResponse(c, http.StatusInternalServerError, code, err)
+}
+
+func newMappedHandlerErrorWriter(rules ...handlerErrorRule) handlerErrorWriter {
+	return func(c *gin.Context, err error, code string) {
+		writeMappedHandlerError(c, err, code, rules...)
+	}
 }
 
 func writeMappedHandlerError(c *gin.Context, err error, fallbackCode string, rules ...handlerErrorRule) {

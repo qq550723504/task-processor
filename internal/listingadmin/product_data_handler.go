@@ -127,8 +127,6 @@ func validateProductData(product *ProductData) error {
 	return nil
 }
 
-func writeProductDataError(c *gin.Context, err error, code string) {
-	writeMappedHandlerError(c, err, code,
-		handlerErrorRule{match: ErrProductDataNotFound, status: http.StatusNotFound, errorCode: "product_data_not_found"},
-	)
-}
+var writeProductDataError = newMappedHandlerErrorWriter(
+	handlerErrorRule{match: ErrProductDataNotFound, status: http.StatusNotFound, errorCode: "product_data_not_found"},
+)
