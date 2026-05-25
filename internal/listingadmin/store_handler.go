@@ -22,12 +22,12 @@ func NewStoreHandler(repo StoreRepository) *StoreHandler {
 }
 
 func (h *StoreHandler) ListStores(c *gin.Context) {
-	pageNum, pageSize := requestPageParams(c)
+	scope := requestListScope(c)
 	query := StoreQuery{
-		TenantID:    requestTenantID(c),
-		OwnerUserID: requestScopedOwnerUserID(c),
-		Page:        pageNum,
-		PageSize:    pageSize,
+		TenantID:    scope.TenantID,
+		OwnerUserID: scope.OwnerUserID,
+		Page:        scope.Page,
+		PageSize:    scope.PageSize,
 		Name:        strings.TrimSpace(c.Query("name")),
 		Username:    strings.TrimSpace(c.Query("username")),
 		ShopType:    strings.TrimSpace(c.Query("shopType")),
@@ -192,9 +192,10 @@ func (h *StoreHandler) ExtendStoreValidity(c *gin.Context) {
 }
 
 func (h *StoreHandler) ListSimpleStores(c *gin.Context) {
+	scope := requestListScope(c)
 	page, err := h.repo.ListStores(requestIdentityContext(c), StoreQuery{
-		TenantID:    requestTenantID(c),
-		OwnerUserID: requestScopedOwnerUserID(c),
+		TenantID:    scope.TenantID,
+		OwnerUserID: scope.OwnerUserID,
 		Page:        1,
 		PageSize:    200,
 	})

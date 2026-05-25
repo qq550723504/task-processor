@@ -15,9 +15,10 @@ func NewCategoryHandler(repo CategoryRepository) *CategoryHandler {
 }
 
 func (h *CategoryHandler) ListCategories(c *gin.Context) {
+	scope := requestListScope(c)
 	query := CategoryQuery{
-		TenantID:    requestTenantID(c),
-		OwnerUserID: requestScopedOwnerUserID(c),
+		TenantID:    scope.TenantID,
+		OwnerUserID: scope.OwnerUserID,
 		Name:        strings.TrimSpace(c.Query("name")),
 		Code:        strings.TrimSpace(c.Query("code")),
 	}

@@ -13,6 +13,13 @@ type handlerErrorRule struct {
 	errorCode string
 }
 
+type listQueryScope struct {
+	TenantID    int64
+	OwnerUserID string
+	Page        int
+	PageSize    int
+}
+
 func bindJSON(c *gin.Context, target any) bool {
 	if err := c.ShouldBindJSON(target); err != nil {
 		writeHandlerErrorResponse(c, http.StatusBadRequest, "invalid_request", err)
@@ -24,6 +31,16 @@ func bindJSON(c *gin.Context, target any) bool {
 func requestPageParams(c *gin.Context) (page int, pageSize int) {
 	return queryInt(c, "page", queryInt(c, "pageNo", 1)),
 		queryInt(c, "page_size", queryInt(c, "pageSize", 20))
+}
+
+func requestListScope(c *gin.Context) listQueryScope {
+	page, pageSize := requestPageParams(c)
+	return listQueryScope{
+		TenantID:    requestTenantID(c),
+		OwnerUserID: requestScopedOwnerUserID(c),
+		Page:        page,
+		PageSize:    pageSize,
+	}
 }
 
 func writeHandlerErrorResponse(c *gin.Context, status int, code string, err error) {

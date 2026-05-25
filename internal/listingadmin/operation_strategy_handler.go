@@ -15,12 +15,12 @@ func NewOperationStrategyHandler(repo OperationStrategyRepository) *OperationStr
 }
 
 func (h *OperationStrategyHandler) ListOperationStrategies(c *gin.Context) {
-	pageNum, pageSize := requestPageParams(c)
+	scope := requestListScope(c)
 	query := OperationStrategyQuery{
-		TenantID:    requestTenantID(c),
-		OwnerUserID: requestScopedOwnerUserID(c),
-		Page:        pageNum,
-		PageSize:    pageSize,
+		TenantID:    scope.TenantID,
+		OwnerUserID: scope.OwnerUserID,
+		Page:        scope.Page,
+		PageSize:    scope.PageSize,
 		Name:        strings.TrimSpace(c.Query("name")),
 		Platform:    strings.TrimSpace(c.Query("platform")),
 	}

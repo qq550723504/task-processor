@@ -17,12 +17,12 @@ func NewProductImportMappingHandler(repo ProductImportMappingRepository) *Produc
 }
 
 func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) {
-	pageNum, pageSize := requestPageParams(c)
+	scope := requestListScope(c)
 	query := ProductImportMappingQuery{
-		TenantID:                requestTenantID(c),
-		OwnerUserID:             requestScopedOwnerUserID(c),
-		Page:                    pageNum,
-		PageSize:                pageSize,
+		TenantID:                scope.TenantID,
+		OwnerUserID:             scope.OwnerUserID,
+		Page:                    scope.Page,
+		PageSize:                scope.PageSize,
 		Platform:                strings.TrimSpace(c.Query("platform")),
 		Region:                  strings.TrimSpace(c.Query("region")),
 		ProductID:               strings.TrimSpace(c.Query("productId")),

@@ -86,3 +86,25 @@ func TestRequestPageParamsSupportsLegacyAndCurrentKeys(t *testing.T) {
 		t.Fatalf("page/pageSize = %d/%d, want 3/55", page, pageSize)
 	}
 }
+
+func TestRequestListScopeBuildsTenantOwnerAndPagingContext(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?page=2&page_size=30", nil)
+	ctx.Request.Header.Set("X-Tenant-ID", "101")
+	ctx.Request.Header.Set("X-User-ID", "user-101")
+
+	scope := requestListScope(ctx)
+	if scope.TenantID != 101 {
+		t.Fatalf("tenantID = %d, want 101", scope.TenantID)
+	}
+	if scope.OwnerUserID != "user-101" {
+		t.Fatalf("ownerUserID = %q, want user-101", scope.OwnerUserID)
+	}
+	if scope.Page != 2 || scope.PageSize != 30 {
+		t.Fatalf("page/pageSize = %d/%d, want 2/30", scope.Page, scope.PageSize)
+	}
+}
