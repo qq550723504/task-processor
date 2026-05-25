@@ -452,6 +452,31 @@ func TestRabbitMQServicePreloadOwnedStoreConfigsRequestsEachStore(t *testing.T) 
 	}
 }
 
+func TestStoreAssignmentSyncCoordinatorShouldRunOnlyWithDynamicAssignments(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:   config.NodeRoleTask,
+			NodeID: "node-a",
+		},
+	}, logrus.New())
+	coordinator := newStoreAssignmentSyncCoordinator(svc)
+
+	if coordinator.shouldRun(storeAssignmentSyncState{}) {
+		t.Fatal("expected empty state to skip sync")
+	}
+
+	state := storeAssignmentSyncState{
+		provider:       stubStoreAssignmentProvider{stores: []int64{1}},
+		useStoreQueues: true,
+		ctx:            context.Background(),
+		nodeID:         "node-a",
+	}
+	if !coordinator.shouldRun(state) {
+		t.Fatal("expected valid dynamic assignment state to run")
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",

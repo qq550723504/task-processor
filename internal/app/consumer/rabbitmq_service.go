@@ -501,47 +501,11 @@ func (s *RabbitMQService) getRegisteredPlatforms() []string {
 }
 
 func (s *RabbitMQService) startStoreAssignmentSync() {
-	s.mutex.RLock()
-	provider := s.storeAssignmentProvider
-	useStoreQueues := s.useStoreQueues
-	ctx := s.ctx
-	nodeID := s.config.Node.NodeID
-	s.mutex.RUnlock()
-
-	if !useStoreQueues || provider == nil || strings.TrimSpace(nodeID) == "" || ctx == nil {
-		return
-	}
-
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-
-		s.syncStoreAssignments(ctx)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.syncStoreAssignments(ctx)
-			}
-		}
-	}()
+	newStoreAssignmentSyncCoordinator(s).start()
 }
 
 func (s *RabbitMQService) syncInitialStoreAssignments(ctx context.Context) {
-	s.mutex.RLock()
-	provider := s.storeAssignmentProvider
-	useStoreQueues := s.useStoreQueues
-	nodeID := s.config.Node.NodeID
-	s.mutex.RUnlock()
-
-	if !useStoreQueues || provider == nil || strings.TrimSpace(nodeID) == "" || ctx == nil {
-		return
-	}
-
-	s.syncStoreAssignments(ctx)
+	newStoreAssignmentSyncCoordinator(s).syncInitial(ctx)
 }
 
 func (s *RabbitMQService) startConsumerGuard() {
@@ -676,38 +640,6 @@ func (s *RabbitMQService) restartConsumers(reason string) error {
 	return nil
 }
 
-func (s *RabbitMQService) syncStoreAssignments(ctx context.Context) {
-	s.mutex.RLock()
-	provider := s.storeAssignmentProvider
-	nodeID := s.config.Node.NodeID
-	currentStores := append([]int64(nil), s.ownedStores...)
-	started := s.started
-	s.mutex.RUnlock()
-
-	if provider == nil || strings.TrimSpace(nodeID) == "" {
-		return
-	}
-
-	ownedStores, err := provider.GetOwnedStores(ctx, nodeID)
-	if err != nil {
-		s.logger.WithError(err).WithField("node_id", nodeID).Warn("refresh dynamic store assignments failed")
-		return
-	}
-	if slices.Equal(currentStores, ownedStores) {
-		return
-	}
-
-	s.logger.WithFields(logrus.Fields{
-		"node_id":    nodeID,
-		"old_stores": currentStores,
-		"new_stores": ownedStores,
-	}).Info("dynamic store assignments changed, reloading consumers")
-
-	if err := s.reloadOwnedStores(ctx, ownedStores, started); err != nil {
-		s.logger.WithError(err).WithField("node_id", nodeID).Error("reload consumers for dynamic store assignments failed")
-	}
-}
-
 func (s *RabbitMQService) preloadOwnedStoreConfigs(storeIDs []int64) {
 	if s.storeAPI == nil || len(storeIDs) == 0 {
 		return
@@ -723,35 +655,6 @@ func (s *RabbitMQService) preloadOwnedStoreConfigs(storeIDs []int64) {
 		s.logger.Infof("✅ 预加载店铺 %d 配置成功", storeID)
 	}
 	s.logger.Info("店铺配置预加载完成")
-}
-
-func (s *RabbitMQService) reloadOwnedStores(ctx context.Context, ownedStores []int64, started bool) error {
-	s.mutex.Lock()
-	s.ownedStores = append([]int64(nil), ownedStores...)
-	s.processorRegistry.UpdateComponents(
-		s.resultReporter,
-		s.storeAPI,
-		append([]int64(nil), s.ownedStores...),
-		&s.useStoreQueues,
-		s.deduplicator,
-	)
-	platforms := s.getRegisteredPlatforms()
-	s.mutex.Unlock()
-
-	if s.usesDedicatedStoreQueues() && len(ownedStores) > 0 {
-		for _, platform := range platforms {
-			if err := s.initializer.InitializeStoreQueues(platform, ownedStores); err != nil {
-				return fmt.Errorf("初始化动态店铺队列失败: %w", err)
-			}
-		}
-	}
-	s.preloadOwnedStoreConfigs(ownedStores)
-
-	s.registerMessageHandlers()
-	if !started {
-		return nil
-	}
-	return s.consumer.Restart()
 }
 
 func (s *RabbitMQService) waitForBackgroundWorkers(ctx context.Context) error {
