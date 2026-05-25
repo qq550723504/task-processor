@@ -54,8 +54,8 @@ export function TaskLauncher() {
           <Button variant="secondary" onClick={() => router.push("/listing-kits/sds")}>
             Open POD
           </Button>
-          <Button variant="secondary" onClick={() => router.push("/listing-kits/shein")}>
-            Open SHEIN Studio
+          <Button variant="secondary" onClick={() => router.push("/listing-kits/sds")}>
+            Open POD
           </Button>
           <Button
             disabled={!normalizedTaskId}

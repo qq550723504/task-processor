@@ -112,9 +112,9 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
                 重试加载
               </Button>
             ) : null}
-            <Link href="/listing-kits/shein">
+            <Link href="/listing-kits/sds">
               <Button variant={loadError ? "secondary" : "default"}>
-                返回 SHEIN 工作室
+                返回 POD 工作室
               </Button>
             </Link>
           </div>
@@ -152,7 +152,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       params.set("variantIds", currentBatch.selection.selectedVariantIds.join(","));
     }
     const query = params.toString();
-    return query ? `/listing-kits/shein?${query}` : "/listing-kits/shein";
+    return query ? `/listing-kits/sds?${query}` : "/listing-kits/sds";
   })();
 
   async function updateBatch(next: Partial<SheinStudioSavedBatch>) {
@@ -246,7 +246,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Link href="/listing-kits/shein">
+            <Link href="/listing-kits/sds">
               <Button>返回工作室</Button>
             </Link>
             <Link href={studioHref}>

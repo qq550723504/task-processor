@@ -90,12 +90,6 @@ const PRIMARY_NAV_ITEMS = [
     match: "prefix",
   },
   {
-    label: "SHEIN 工作台",
-    href: "/listing-kits/shein",
-    icon: ShoppingBag,
-    match: "prefix",
-  },
-  {
     label: "标准商品",
     href: "/listing-kits/canonical-products",
     icon: PackageCheck,

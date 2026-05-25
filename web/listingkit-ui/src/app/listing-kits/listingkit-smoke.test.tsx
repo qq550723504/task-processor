@@ -7,7 +7,7 @@ vi.mock("@/auth", () => ({
 
 import { shouldBypassListingKitProxyAuth } from "@/app/api/listing-kits/proxy-auth";
 import { selectListingKitMockPayload } from "@/app/api/listing-kits/proxy-mock";
-import ListingKitSheinStudioPage from "@/app/listing-kits/shein/page";
+import ListingKitSDSPage from "@/app/listing-kits/sds/page";
 import ListingKitStyleGalleryRoute from "@/app/listing-kits/style-gallery/page";
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-page-shell", () => ({
@@ -56,8 +56,8 @@ describe("ListingKit lightweight smoke", () => {
     expect(payload).toEqual({ task_id: "task-1", status: "completed" });
   });
 
-  it("mounts the SHEIN Studio route shell", () => {
-    render(<ListingKitSheinStudioPage />);
+  it("mounts the SDS route shell", () => {
+    render(<ListingKitSDSPage />);
 
     expect(screen.getByText("SHEIN Studio shell mounted")).toBeInTheDocument();
   });

@@ -19,7 +19,7 @@ const deleteSheinStudioBatch = vi.fn();
 let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/listing-kits/shein",
+  usePathname: () => "/listing-kits/sds",
   useSearchParams: () => new URLSearchParams("step=generate"),
 }));
 

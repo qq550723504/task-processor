@@ -89,7 +89,7 @@ export function QueueTaskNavigation({ taskId }: { taskId: string }) {
           </Link>
         </Button>
         <Button asChild variant="outline" size="sm">
-          <Link href="/listing-kits/shein">返回 SHEIN 工作室</Link>
+          <Link href="/listing-kits/sds">返回 POD 工作室</Link>
         </Button>
       </div>
     </div>

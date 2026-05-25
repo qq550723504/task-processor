@@ -65,9 +65,9 @@ export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
-        <Link href="/listing-kits/shein" className={primaryLinkClass}>
+        <Link href="/listing-kits/sds" className={primaryLinkClass}>
           <Plus className="mr-2 h-4 w-4" />
-          新建 SHEIN 批次
+          新建 POD 批次
         </Link>
       </div>
     </section>
@@ -525,8 +525,8 @@ export function TaskListContent({
         title="暂无任务"
         description="先从 SHEIN Studio 创建一个批次，生成后会出现在这里。"
         action={
-          <Link href="/listing-kits/shein" className={primaryLinkClass}>
-            新建 SHEIN 批次
+          <Link href="/listing-kits/sds" className={primaryLinkClass}>
+            新建 POD 批次
           </Link>
         }
       />

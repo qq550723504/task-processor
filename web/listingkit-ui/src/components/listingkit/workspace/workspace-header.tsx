@@ -57,10 +57,10 @@ export function WorkspaceHeader({
             </Link>
             {showSheinStudioLink ? (
               <Link
-                href="/listing-kits/shein"
+                href="/listing-kits/sds"
                 className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
               >
-                返回 SHEIN 工作室
+                返回 POD 工作室
               </Link>
             ) : null}
             {showLayerActions ? (

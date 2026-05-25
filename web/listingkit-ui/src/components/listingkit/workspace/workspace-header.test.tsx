@@ -35,7 +35,7 @@ describe("WorkspaceHeader", () => {
     );
   });
 
-  it("shows navigation links for tasks and shein studio", () => {
+  it("shows navigation links for tasks and pod studio", () => {
     render(
       <WorkspaceHeader
         title="测试任务"
@@ -50,8 +50,8 @@ describe("WorkspaceHeader", () => {
       screen.getByRole("link", { name: "返回任务列表" }),
     ).toHaveAttribute("href", "/listing-kits");
     expect(
-      screen.getByRole("link", { name: "返回 SHEIN 工作室" }),
-    ).toHaveAttribute("href", "/listing-kits/shein");
+      screen.getByRole("link", { name: "返回 POD 工作室" }),
+    ).toHaveAttribute("href", "/listing-kits/sds");
     expect(screen.getByText("任务状态")).toBeInTheDocument();
     expect(screen.getByText("待确认")).toBeInTheDocument();
     expect(screen.getByText("最近更新")).toBeInTheDocument();

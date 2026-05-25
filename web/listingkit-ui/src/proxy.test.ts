@@ -36,11 +36,11 @@ describe("ListingKit ZITADEL proxy", () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
 
-    const response = await callProxy("/listing-kits/shein?step=generate");
+    const response = await callProxy("/listing-kits/sds?step=generate");
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/login?returnTo=%2Flisting-kits%2Fshein%3Fstep%3Dgenerate",
+      "http://localhost/login?returnTo=%2Flisting-kits%2Fsds%3Fstep%3Dgenerate",
     );
   });
 
@@ -89,14 +89,14 @@ describe("ListingKit ZITADEL proxy", () => {
   it("keeps the local bypass path available outside production", async () => {
     vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
 
-    const response = await callProxy("/listing-kits/shein");
+    const response = await callProxy("/listing-kits/sds");
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
   });
 
   it("returns 503 when ZITADEL auth is required but not configured", async () => {
-    const response = await callProxy("/listing-kits/shein");
+    const response = await callProxy("/listing-kits/sds");
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
