@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -134,6 +135,23 @@ func TestProductDataHandlerSoftDeletesWithinTenant(t *testing.T) {
 	}
 	if row.Deleted != 1 {
 		t.Fatalf("deleted = %d, want 1", row.Deleted)
+	}
+}
+
+func TestProductDataHandlerRejectsInvalidNumericFilters(t *testing.T) {
+	t.Parallel()
+
+	router := newProductDataTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/product-data?storeId=abc", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /product-data?storeId=abc = %d, body=%s, want 400", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_store_id"`) {
+		t.Fatalf("body = %s, want invalid_store_id", resp.Body.String())
 	}
 }
 

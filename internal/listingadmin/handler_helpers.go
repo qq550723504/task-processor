@@ -141,6 +141,19 @@ func queryInt64Ptr(c *gin.Context, key string) *int64 {
 	return &parsed
 }
 
+func queryInt64PtrStrict(c *gin.Context, key string, errorCode string) (*int64, bool) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil, true
+	}
+	parsed := parseTenantID(value)
+	if parsed <= 0 {
+		writeValidationError(c, errorCode, errors.New(key+" must be a positive integer"))
+		return nil, false
+	}
+	return &parsed, true
+}
+
 func queryInt16Ptr(c *gin.Context, key string) *int16 {
 	value := strings.TrimSpace(c.Query(key))
 	if value == "" {
@@ -154,6 +167,20 @@ func queryInt16Ptr(c *gin.Context, key string) *int16 {
 	return &out
 }
 
+func queryInt16PtrStrict(c *gin.Context, key string, errorCode string) (*int16, bool) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil, true
+	}
+	parsed, err := strconv.ParseInt(value, 10, 16)
+	if err != nil {
+		writeValidationError(c, errorCode, errors.New(key+" must be a valid integer"))
+		return nil, false
+	}
+	out := int16(parsed)
+	return &out, true
+}
+
 func queryIntPtr(c *gin.Context, key string) *int {
 	value := strings.TrimSpace(c.Query(key))
 	if value == "" {
@@ -164,6 +191,19 @@ func queryIntPtr(c *gin.Context, key string) *int {
 		return nil
 	}
 	return &parsed
+}
+
+func queryIntPtrStrict(c *gin.Context, key string, errorCode string) (*int, bool) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil, true
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		writeValidationError(c, errorCode, errors.New(key+" must be a valid integer"))
+		return nil, false
+	}
+	return &parsed, true
 }
 
 func queryDate(c *gin.Context, key string) (string, bool) {

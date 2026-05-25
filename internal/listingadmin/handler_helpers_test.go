@@ -351,3 +351,60 @@ func TestQueryPositiveIntRejectsZeroOrNegativeValue(t *testing.T) {
 		t.Fatalf("body = %s, want invalid_days", recorder.Body.String())
 	}
 }
+
+func TestQueryInt64PtrStrictRejectsInvalidPositiveInteger(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?storeId=abc", nil)
+
+	if _, ok := queryInt64PtrStrict(ctx, "storeId", "invalid_store_id"); ok {
+		t.Fatal("expected queryInt64PtrStrict to reject invalid value")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_store_id"`) {
+		t.Fatalf("body = %s, want invalid_store_id", recorder.Body.String())
+	}
+}
+
+func TestQueryInt16PtrStrictRejectsInvalidInteger(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?status=bad", nil)
+
+	if _, ok := queryInt16PtrStrict(ctx, "status", "invalid_status"); ok {
+		t.Fatal("expected queryInt16PtrStrict to reject invalid value")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_status"`) {
+		t.Fatalf("body = %s, want invalid_status", recorder.Body.String())
+	}
+}
+
+func TestQueryIntPtrStrictRejectsInvalidInteger(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?shelfStatus=bad", nil)
+
+	if _, ok := queryIntPtrStrict(ctx, "shelfStatus", "invalid_shelf_status"); ok {
+		t.Fatal("expected queryIntPtrStrict to reject invalid value")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_shelf_status"`) {
+		t.Fatalf("body = %s, want invalid_shelf_status", recorder.Body.String())
+	}
+}
