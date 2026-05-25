@@ -249,6 +249,24 @@ func TestPrepareModuleServiceEnvironmentAddsLegacyTenantResolverCloser(t *testin
 	}
 }
 
+func TestConfigureModuleServiceAuthorizationWrapsAuthorizationError(t *testing.T) {
+	t.Parallel()
+
+	input := buildServiceInputFixture()
+	input.Config = &config.Config{}
+	input.Hooks.ConfigureAuthorization = func([]string, []string) error {
+		return errors.New("auth boom")
+	}
+
+	err := configureModuleServiceAuthorization(input, &closerStack{})
+	if err == nil {
+		t.Fatal("expected authorization error")
+	}
+	if !strings.Contains(err.Error(), "configure listing kit authorization") {
+		t.Fatalf("err = %v, want wrapped authorization error", err)
+	}
+}
+
 func TestAssembleServiceBundleMapsRuntimeDependenciesAndClosers(t *testing.T) {
 	t.Parallel()
 

@@ -757,12 +757,19 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 }
 
 func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {
-	hooks := input.Hooks
+	configureModuleServicePolicies(input)
+	return configureModuleServiceAuthorization(input, closers)
+}
 
+func configureModuleServicePolicies(input BuildServiceInput) {
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
 	listingkit.ConfigureOwnerScopeRequired(input.Config.ListingKit.OwnerScopeRequired)
 	listingadmin.ConfigureOwnerScopeRequired(input.Config.ListingKit.OwnerScopeRequired)
-	hooks.ConfigureZitadelAuth(input.Config.ListingKit.Zitadel)
+	input.Hooks.ConfigureZitadelAuth(input.Config.ListingKit.Zitadel)
+}
+
+func configureModuleServiceAuthorization(input BuildServiceInput, closers *closerStack) error {
+	hooks := input.Hooks
 	if err := hooks.ConfigureAuthorization(input.Config.ListingKit.PlatformAdminUsers, input.Config.ListingKit.PlatformAdminRoles); err != nil {
 		return fmt.Errorf("configure listing kit authorization: %w", err)
 	}
