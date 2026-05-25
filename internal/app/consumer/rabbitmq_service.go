@@ -283,18 +283,8 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	}
 
 	// 4. 预加载店铺配置（如果启用）
-	if s.storeAPI != nil && s.usesDedicatedStoreQueues() && len(s.ownedStores) > 0 {
-		s.logger.Infof("开始预加载 %d 个店铺配置...", len(s.ownedStores))
-		for _, storeID := range s.ownedStores {
-			_, err := s.storeAPI.GetStore(storeID)
-			if err != nil {
-				s.logger.Warnf("预加载店铺 %d 配置失败: %v", storeID, err)
-				// 不阻止启动，继续执行
-			} else {
-				s.logger.Infof("✅ 预加载店铺 %d 配置成功", storeID)
-			}
-		}
-		s.logger.Info("店铺配置预加载完成")
+	if s.usesDedicatedStoreQueues() {
+		s.preloadOwnedStoreConfigs(s.ownedStores)
 	}
 
 	// 5. 注册消息处理器
@@ -718,6 +708,23 @@ func (s *RabbitMQService) syncStoreAssignments(ctx context.Context) {
 	}
 }
 
+func (s *RabbitMQService) preloadOwnedStoreConfigs(storeIDs []int64) {
+	if s.storeAPI == nil || len(storeIDs) == 0 {
+		return
+	}
+
+	s.logger.Infof("开始预加载 %d 个店铺配置...", len(storeIDs))
+	for _, storeID := range storeIDs {
+		_, err := s.storeAPI.GetStore(storeID)
+		if err != nil {
+			s.logger.Warnf("预加载店铺 %d 配置失败: %v", storeID, err)
+			continue
+		}
+		s.logger.Infof("✅ 预加载店铺 %d 配置成功", storeID)
+	}
+	s.logger.Info("店铺配置预加载完成")
+}
+
 func (s *RabbitMQService) reloadOwnedStores(ctx context.Context, ownedStores []int64, started bool) error {
 	s.mutex.Lock()
 	s.ownedStores = append([]int64(nil), ownedStores...)
@@ -738,13 +745,7 @@ func (s *RabbitMQService) reloadOwnedStores(ctx context.Context, ownedStores []i
 			}
 		}
 	}
-	if s.storeAPI != nil && len(ownedStores) > 0 {
-		for _, storeID := range ownedStores {
-			if _, err := s.storeAPI.GetStore(storeID); err != nil {
-				s.logger.WithError(err).WithField("store_id", storeID).Warn("预加载动态店铺配置失败")
-			}
-		}
-	}
+	s.preloadOwnedStoreConfigs(ownedStores)
 
 	s.registerMessageHandlers()
 	if !started {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 
@@ -29,6 +30,16 @@ func (noopProcessor) Start(_ context.Context) error { return nil }
 func (noopProcessor) ProcessTask(_ context.Context, _ worker.WorkerJob) error { return nil }
 
 func (noopProcessor) Close(_ context.Context) {}
+
+type countingStoreAPI struct {
+	stubStoreAPI
+	calls []int64
+}
+
+func (s *countingStoreAPI) GetStore(id int64) (*managementapi.StoreRespDTO, error) {
+	s.calls = append(s.calls, id)
+	return s.stubStoreAPI.GetStore(id)
+}
 
 type stubStoreAssignmentProvider struct {
 	stores []int64
@@ -409,6 +420,34 @@ func TestNormalizeOwnedBuckets(t *testing.T) {
 	for i := range expected {
 		if got[i] != expected[i] {
 			t.Fatalf("expected bucket %d at index %d, got %d", expected[i], i, got[i])
+		}
+	}
+}
+
+func TestRabbitMQServicePreloadOwnedStoreConfigsRequestsEachStore(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+
+	storeAPI := &countingStoreAPI{
+		stubStoreAPI: stubStoreAPI{
+			store: &managementapi.StoreRespDTO{ID: 1},
+		},
+	}
+	svc.storeAPI = storeAPI
+
+	svc.preloadOwnedStoreConfigs([]int64{11, 22, 33})
+
+	expected := []int64{11, 22, 33}
+	if len(storeAPI.calls) != len(expected) {
+		t.Fatalf("expected %d preload calls, got %d", len(expected), len(storeAPI.calls))
+	}
+	for i := range expected {
+		if storeAPI.calls[i] != expected[i] {
+			t.Fatalf("expected preload call for store %d at index %d, got %d", expected[i], i, storeAPI.calls[i])
 		}
 	}
 }
