@@ -593,7 +593,7 @@ func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRep
 	return mergeBuiltRepositories(coreRepos, lateCoreRepos, adminRepos), nil
 }
 
-func buildModuleService(input BuildServiceInput, repos *builtRepositories, submit submitModule, closers *closerStack) (moduleService, error) {
+func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {
 	hooks := input.Hooks
 
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
@@ -601,14 +601,19 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, submi
 	listingadmin.ConfigureOwnerScopeRequired(input.Config.ListingKit.OwnerScopeRequired)
 	hooks.ConfigureZitadelAuth(input.Config.ListingKit.Zitadel)
 	if err := hooks.ConfigureAuthorization(input.Config.ListingKit.PlatformAdminUsers, input.Config.ListingKit.PlatformAdminRoles); err != nil {
-		return nil, fmt.Errorf("configure listing kit authorization: %w", err)
+		return fmt.Errorf("configure listing kit authorization: %w", err)
 	}
-	if legacyTenantResolverCloser, err := hooks.LegacyTenantResolverConfigurator(input.Config, input.Logger); err != nil {
-		return nil, fmt.Errorf("configure listing kit legacy tenant resolver: %w", err)
-	} else if legacyTenantResolverCloser != nil {
+	legacyTenantResolverCloser, err := hooks.LegacyTenantResolverConfigurator(input.Config, input.Logger)
+	if err != nil {
+		return fmt.Errorf("configure listing kit legacy tenant resolver: %w", err)
+	}
+	if legacyTenantResolverCloser != nil {
 		closers.Add(legacyTenantResolverCloser)
 	}
+	return nil
+}
 
+func createModuleService(input BuildServiceInput, repos *builtRepositories, submit submitModule) (moduleService, error) {
 	serviceConfig := buildListingKitServiceConfig(buildListingKitServiceConfigInput{
 		input:        input,
 		repositories: repos,
@@ -623,6 +628,18 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, submi
 	moduleSvc, ok := svc.(moduleService)
 	if !ok {
 		return nil, fmt.Errorf("listing kit service does not implement module service contract")
+	}
+	return moduleSvc, nil
+}
+
+func buildModuleService(input BuildServiceInput, repos *builtRepositories, submit submitModule, closers *closerStack) (moduleService, error) {
+	if err := prepareModuleServiceEnvironment(input, closers); err != nil {
+		return nil, err
+	}
+
+	moduleSvc, err := createModuleService(input, repos, submit)
+	if err != nil {
+		return nil, err
 	}
 
 	return wireTemporalWorkflowClients(moduleSvc, input.Logger, closers)

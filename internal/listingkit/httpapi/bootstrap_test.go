@@ -213,6 +213,42 @@ func TestBuildServiceClosesResourcesInReverseOrderOnFailure(t *testing.T) {
 	}
 }
 
+func TestPrepareModuleServiceEnvironmentAddsLegacyTenantResolverCloser(t *testing.T) {
+	t.Parallel()
+
+	input := buildServiceInputFixture()
+	input.Config = &config.Config{}
+	closed := false
+	authorized := false
+	input.Hooks.ConfigureAuthorization = func([]string, []string) error {
+		authorized = true
+		return nil
+	}
+	input.Hooks.LegacyTenantResolverConfigurator = func(*config.Config, *logrus.Logger) (func() error, error) {
+		return func() error {
+			closed = true
+			return nil
+		}, nil
+	}
+
+	closers := &closerStack{}
+	if err := prepareModuleServiceEnvironment(input, closers); err != nil {
+		t.Fatalf("prepareModuleServiceEnvironment: %v", err)
+	}
+	if !authorized {
+		t.Fatal("expected authorization hook to run")
+	}
+	if len(closers.Snapshot()) != 1 {
+		t.Fatalf("expected one closer, got %d", len(closers.Snapshot()))
+	}
+	if err := closers.Close(); err != nil {
+		t.Fatalf("close closers: %v", err)
+	}
+	if !closed {
+		t.Fatal("expected legacy tenant resolver closer to run")
+	}
+}
+
 func TestAssembleServiceBundleMapsRuntimeDependenciesAndClosers(t *testing.T) {
 	t.Parallel()
 
