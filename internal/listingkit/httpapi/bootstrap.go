@@ -368,6 +368,23 @@ type builtAdminRepositories struct {
 	productDataRepository          listingadmin.ProductDataRepository
 }
 
+type adminCatalogRepositories struct {
+	storeRepository                listingadmin.StoreRepository
+	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
+	importTaskRepository           listingadmin.ImportTaskRepository
+	productImportMappingRepository listingadmin.ProductImportMappingRepository
+	categoryRepository             listingadmin.CategoryRepository
+	productDataRepository          listingadmin.ProductDataRepository
+}
+
+type adminRuleRepositories struct {
+	filterRuleRepository        listingadmin.FilterRuleRepository
+	profitRuleRepository        listingadmin.ProfitRuleRepository
+	pricingRuleRepository       listingadmin.PricingRuleRepository
+	operationStrategyRepository listingadmin.OperationStrategyRepository
+	sensitiveWordRepository     listingadmin.SensitiveWordRepository
+}
+
 type repositoryAssembly struct {
 	core     *builtCoreRepositories
 	admin    *builtAdminRepositories
@@ -538,6 +555,30 @@ func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *close
 }
 
 func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*builtAdminRepositories, error) {
+	catalog, err := buildAdminCatalogRepositories(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := buildAdminRuleRepositories(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	return &builtAdminRepositories{
+		storeRepository:                catalog.storeRepository,
+		storeStatisticsRepository:      catalog.storeStatisticsRepository,
+		importTaskRepository:           catalog.importTaskRepository,
+		filterRuleRepository:           rules.filterRuleRepository,
+		profitRuleRepository:           rules.profitRuleRepository,
+		pricingRuleRepository:          rules.pricingRuleRepository,
+		operationStrategyRepository:    rules.operationStrategyRepository,
+		sensitiveWordRepository:        rules.sensitiveWordRepository,
+		productImportMappingRepository: catalog.productImportMappingRepository,
+		categoryRepository:             catalog.categoryRepository,
+		productDataRepository:          catalog.productDataRepository,
+	}, nil
+}
+
+func buildAdminCatalogRepositories(input BuildServiceInput, closers *closerStack) (*adminCatalogRepositories, error) {
 	repoBuilders := input.Repositories.Admin
 
 	storeRepository, err := buildWithClosers(repoBuilders.Store, input.Config, input.Logger, closers)
@@ -552,6 +593,32 @@ func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*bui
 	if err != nil {
 		return nil, err
 	}
+	productImportMappingRepository, err := buildWithClosers(repoBuilders.ProductImportMapping, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	categoryRepository, err := buildWithClosers(repoBuilders.Category, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	productDataRepository, err := buildWithClosers(repoBuilders.ProductData, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &adminCatalogRepositories{
+		storeRepository:                storeRepository,
+		storeStatisticsRepository:      storeStatisticsRepository,
+		importTaskRepository:           importTaskRepository,
+		productImportMappingRepository: productImportMappingRepository,
+		categoryRepository:             categoryRepository,
+		productDataRepository:          productDataRepository,
+	}, nil
+}
+
+func buildAdminRuleRepositories(input BuildServiceInput, closers *closerStack) (*adminRuleRepositories, error) {
+	repoBuilders := input.Repositories.Admin
+
 	filterRuleRepository, err := buildWithClosers(repoBuilders.FilterRule, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
@@ -572,31 +639,13 @@ func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*bui
 	if err != nil {
 		return nil, err
 	}
-	productImportMappingRepository, err := buildWithClosers(repoBuilders.ProductImportMapping, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	categoryRepository, err := buildWithClosers(repoBuilders.Category, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
-	productDataRepository, err := buildWithClosers(repoBuilders.ProductData, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
 
-	return &builtAdminRepositories{
-		storeRepository:                storeRepository,
-		storeStatisticsRepository:      storeStatisticsRepository,
-		importTaskRepository:           importTaskRepository,
-		filterRuleRepository:           filterRuleRepository,
-		profitRuleRepository:           profitRuleRepository,
-		pricingRuleRepository:          pricingRuleRepository,
-		operationStrategyRepository:    operationStrategyRepository,
-		sensitiveWordRepository:        sensitiveWordRepository,
-		productImportMappingRepository: productImportMappingRepository,
-		categoryRepository:             categoryRepository,
-		productDataRepository:          productDataRepository,
+	return &adminRuleRepositories{
+		filterRuleRepository:        filterRuleRepository,
+		profitRuleRepository:        profitRuleRepository,
+		pricingRuleRepository:       pricingRuleRepository,
+		operationStrategyRepository: operationStrategyRepository,
+		sensitiveWordRepository:     sensitiveWordRepository,
 	}, nil
 }
 

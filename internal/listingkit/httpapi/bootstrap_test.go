@@ -520,6 +520,42 @@ func TestBuildLateCoreRepositoriesSeparatesSubscriptionAndRepositoryDependencies
 	}
 }
 
+func TestBuildAdminRepositoriesComposesCatalogAndRulePhases(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	input.Repositories.Admin.Store = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+		return &listingadmin.GormStoreRepository{}, nil, nil
+	}
+	input.Repositories.Admin.ImportTask = func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
+		return &listingadmin.GormImportTaskRepository{}, nil, nil
+	}
+	input.Repositories.Admin.FilterRule = func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error) {
+		return &listingadmin.GormFilterRuleRepository{}, nil, nil
+	}
+	input.Repositories.Admin.PricingRule = func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error) {
+		return &listingadmin.GormPricingRuleRepository{}, nil, nil
+	}
+	closers := &closerStack{}
+
+	adminRepos, err := buildAdminRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildAdminRepositories: %v", err)
+	}
+	if adminRepos.storeRepository == nil {
+		t.Fatal("expected admin catalog store repository")
+	}
+	if adminRepos.importTaskRepository == nil {
+		t.Fatal("expected admin catalog import task repository")
+	}
+	if adminRepos.filterRuleRepository == nil {
+		t.Fatal("expected admin rule filter repository")
+	}
+	if adminRepos.pricingRuleRepository == nil {
+		t.Fatal("expected admin rule pricing repository")
+	}
+}
+
 func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	t.Parallel()
 
