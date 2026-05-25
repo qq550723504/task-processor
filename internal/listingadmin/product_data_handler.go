@@ -16,11 +16,7 @@ func NewProductDataHandler(repo ProductDataRepository) *ProductDataHandler {
 
 func (h *ProductDataHandler) ListProductData(c *gin.Context) {
 	scope := requestListScope(c)
-	query := ProductDataQuery{
-		TenantID:          scope.TenantID,
-		OwnerUserID:       scope.OwnerUserID,
-		Page:              scope.Page,
-		PageSize:          scope.PageSize,
+	query := applyListQueryScope(&ProductDataQuery{
 		Platform:          strings.TrimSpace(c.Query("platform")),
 		Region:            strings.TrimSpace(c.Query("region")),
 		ProductID:         strings.TrimSpace(c.Query("productId")),
@@ -28,13 +24,13 @@ func (h *ProductDataHandler) ListProductData(c *gin.Context) {
 		Title:             strings.TrimSpace(c.Query("title")),
 		Brand:             strings.TrimSpace(c.Query("brand")),
 		PlatformProductID: strings.TrimSpace(c.Query("platformProductId")),
-	}
+	}, scope)
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 	query.ShelfStatus = queryIntPtr(c, "shelfStatus")
 
-	page, err := h.repo.ListProductData(requestIdentityContext(c), query)
+	page, err := h.repo.ListProductData(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "product_data_list_failed", err)
 		return

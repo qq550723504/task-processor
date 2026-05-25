@@ -143,6 +143,29 @@ func TestRequestListScopeBuildsTenantOwnerAndPagingContext(t *testing.T) {
 	}
 }
 
+func TestApplyListQueryScopeSetsSharedFields(t *testing.T) {
+	t.Parallel()
+
+	scope := listQueryScope{
+		TenantID:    101,
+		OwnerUserID: "user-101",
+		Page:        3,
+		PageSize:    25,
+	}
+
+	storeQuery := StoreQuery{}
+	applyListQueryScope(&storeQuery, scope)
+	if storeQuery.TenantID != 101 || storeQuery.OwnerUserID != "user-101" || storeQuery.Page != 3 || storeQuery.PageSize != 25 {
+		t.Fatalf("storeQuery = %+v, want shared scope fields applied", storeQuery)
+	}
+
+	categoryQuery := CategoryQuery{}
+	applyListQueryScope(&categoryQuery, scope)
+	if categoryQuery.TenantID != 101 || categoryQuery.OwnerUserID != "user-101" {
+		t.Fatalf("categoryQuery = %+v, want shared scope fields applied", categoryQuery)
+	}
+}
+
 func TestRequestTenantIDFallsBackToTenantQueryParam(t *testing.T) {
 	t.Parallel()
 

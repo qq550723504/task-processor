@@ -18,19 +18,15 @@ func NewProfitRuleHandler(repo ProfitRuleRepository) *ProfitRuleHandler {
 
 func (h *ProfitRuleHandler) ListProfitRules(c *gin.Context) {
 	scope := requestListScope(c)
-	query := ProfitRuleQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Page:        scope.Page,
-		PageSize:    scope.PageSize,
-		Name:        strings.TrimSpace(c.Query("name")),
-		RuleCode:    strings.TrimSpace(c.Query("ruleCode")),
-	}
+	query := applyListQueryScope(&ProfitRuleQuery{
+		Name:     strings.TrimSpace(c.Query("name")),
+		RuleCode: strings.TrimSpace(c.Query("ruleCode")),
+	}, scope)
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListProfitRules(requestIdentityContext(c), query)
+	page, err := h.repo.ListProfitRules(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "profit_rule_list_failed", err)
 		return

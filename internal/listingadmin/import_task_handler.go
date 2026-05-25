@@ -34,20 +34,16 @@ func NewImportTaskHandler(repo ImportTaskRepository) *ImportTaskHandler {
 
 func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
 	scope := requestListScope(c)
-	query := ImportTaskQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Page:        scope.Page,
-		PageSize:    scope.PageSize,
-		Platform:    strings.TrimSpace(c.Query("platform")),
-		Region:      strings.TrimSpace(c.Query("region")),
-		ProductID:   strings.TrimSpace(c.Query("productId")),
-	}
+	query := applyListQueryScope(&ImportTaskQuery{
+		Platform:  strings.TrimSpace(c.Query("platform")),
+		Region:    strings.TrimSpace(c.Query("region")),
+		ProductID: strings.TrimSpace(c.Query("productId")),
+	}, scope)
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListImportTasks(requestIdentityContext(c), query)
+	page, err := h.repo.ListImportTasks(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "import_task_list_failed", err)
 		return

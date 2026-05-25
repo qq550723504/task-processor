@@ -16,17 +16,15 @@ func NewCategoryHandler(repo CategoryRepository) *CategoryHandler {
 
 func (h *CategoryHandler) ListCategories(c *gin.Context) {
 	scope := requestListScope(c)
-	query := CategoryQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Name:        strings.TrimSpace(c.Query("name")),
-		Code:        strings.TrimSpace(c.Query("code")),
-	}
+	query := applyListQueryScope(&CategoryQuery{
+		Name: strings.TrimSpace(c.Query("name")),
+		Code: strings.TrimSpace(c.Query("code")),
+	}, scope)
 	query.ParentID = queryInt64Ptr(c, "parentId")
 	query.Level = queryIntPtr(c, "level")
 	query.Status = queryInt16Ptr(c, "status")
 
-	items, err := h.repo.ListCategories(requestIdentityContext(c), query)
+	items, err := h.repo.ListCategories(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "category_list_failed", err)
 		return

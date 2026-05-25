@@ -18,21 +18,17 @@ func NewFilterRuleHandler(repo FilterRuleRepository) *FilterRuleHandler {
 
 func (h *FilterRuleHandler) ListFilterRules(c *gin.Context) {
 	scope := requestListScope(c)
-	query := FilterRuleQuery{
-		TenantID:        scope.TenantID,
-		OwnerUserID:     scope.OwnerUserID,
-		Page:            scope.Page,
-		PageSize:        scope.PageSize,
+	query := applyListQueryScope(&FilterRuleQuery{
 		Name:            strings.TrimSpace(c.Query("name")),
 		RuleCode:        strings.TrimSpace(c.Query("ruleCode")),
 		PriceType:       strings.TrimSpace(c.Query("priceType")),
 		FulfillmentType: strings.TrimSpace(c.Query("fulfillmentType")),
-	}
+	}, scope)
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.CategoryID = queryInt64Ptr(c, "categoryId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListFilterRules(requestIdentityContext(c), query)
+	page, err := h.repo.ListFilterRules(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "filter_rule_list_failed", err)
 		return

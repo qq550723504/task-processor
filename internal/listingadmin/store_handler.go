@@ -20,11 +20,7 @@ func NewStoreHandler(repo StoreRepository) *StoreHandler {
 
 func (h *StoreHandler) ListStores(c *gin.Context) {
 	scope := requestListScope(c)
-	query := StoreQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Page:        scope.Page,
-		PageSize:    scope.PageSize,
+	query := applyListQueryScope(&StoreQuery{
 		Name:        strings.TrimSpace(c.Query("name")),
 		Username:    strings.TrimSpace(c.Query("username")),
 		ShopType:    strings.TrimSpace(c.Query("shopType")),
@@ -32,7 +28,7 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 		Platform:    strings.TrimSpace(c.Query("platform")),
 		SKUGenerate: strings.TrimSpace(c.Query("skuGenerateStrategy")),
 		PriceType:   strings.TrimSpace(c.Query("priceType")),
-	}
+	}, scope)
 	query.EnableAutoListing = queryBoolPtr(c, "enableAutoListing")
 	query.EnableAutoLogin = queryBoolPtr(c, "enableAutoLogin")
 	query.EnableDraft = queryBoolPtr(c, "enableDraft")
@@ -41,7 +37,7 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 	query.Status = queryInt16Ptr(c, "status")
 	query.Expired = queryBoolPtr(c, "expired")
 
-	page, err := h.repo.ListStores(requestIdentityContext(c), query)
+	page, err := h.repo.ListStores(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "store_list_failed", err)
 		return
@@ -190,12 +186,10 @@ func (h *StoreHandler) ExtendStoreValidity(c *gin.Context) {
 
 func (h *StoreHandler) ListSimpleStores(c *gin.Context) {
 	scope := requestListScope(c)
-	page, err := h.repo.ListStores(requestIdentityContext(c), StoreQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Page:        1,
-		PageSize:    200,
-	})
+	query := applyListQueryScope(&StoreQuery{}, scope)
+	query.Page = 1
+	query.PageSize = 200
+	page, err := h.repo.ListStores(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "store_list_failed", err)
 		return

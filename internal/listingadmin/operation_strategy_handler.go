@@ -16,18 +16,14 @@ func NewOperationStrategyHandler(repo OperationStrategyRepository) *OperationStr
 
 func (h *OperationStrategyHandler) ListOperationStrategies(c *gin.Context) {
 	scope := requestListScope(c)
-	query := OperationStrategyQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Page:        scope.Page,
-		PageSize:    scope.PageSize,
-		Name:        strings.TrimSpace(c.Query("name")),
-		Platform:    strings.TrimSpace(c.Query("platform")),
-	}
+	query := applyListQueryScope(&OperationStrategyQuery{
+		Name:     strings.TrimSpace(c.Query("name")),
+		Platform: strings.TrimSpace(c.Query("platform")),
+	}, scope)
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListOperationStrategies(requestIdentityContext(c), query)
+	page, err := h.repo.ListOperationStrategies(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "operation_strategy_list_failed", err)
 		return

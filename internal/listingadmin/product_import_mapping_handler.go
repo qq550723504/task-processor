@@ -18,11 +18,7 @@ func NewProductImportMappingHandler(repo ProductImportMappingRepository) *Produc
 
 func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) {
 	scope := requestListScope(c)
-	query := ProductImportMappingQuery{
-		TenantID:                scope.TenantID,
-		OwnerUserID:             scope.OwnerUserID,
-		Page:                    scope.Page,
-		PageSize:                scope.PageSize,
+	query := applyListQueryScope(&ProductImportMappingQuery{
 		Platform:                strings.TrimSpace(c.Query("platform")),
 		Region:                  strings.TrimSpace(c.Query("region")),
 		ProductID:               strings.TrimSpace(c.Query("productId")),
@@ -30,12 +26,12 @@ func (h *ProductImportMappingHandler) ListProductImportMappings(c *gin.Context) 
 		SKU:                     strings.TrimSpace(c.Query("sku")),
 		PlatformProductID:       strings.TrimSpace(c.Query("platformProductId")),
 		PlatformParentProductID: strings.TrimSpace(c.Query("platformParentProductId")),
-	}
+	}, scope)
 	query.ImportTaskID = queryInt64Ptr(c, "importTaskId")
 	query.StoreID = queryInt64Ptr(c, "storeId")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListProductImportMappings(requestIdentityContext(c), query)
+	page, err := h.repo.ListProductImportMappings(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "product_import_mapping_list_failed", err)
 		return

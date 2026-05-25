@@ -16,20 +16,16 @@ func NewSensitiveWordHandler(repo SensitiveWordRepository) *SensitiveWordHandler
 
 func (h *SensitiveWordHandler) ListSensitiveWords(c *gin.Context) {
 	scope := requestListScope(c)
-	query := SensitiveWordQuery{
-		TenantID:    scope.TenantID,
-		OwnerUserID: scope.OwnerUserID,
-		Page:        scope.Page,
-		PageSize:    scope.PageSize,
-		Word:        strings.TrimSpace(c.Query("word")),
-		Language:    strings.TrimSpace(c.Query("language")),
-		Tags:        strings.TrimSpace(c.Query("tags")),
-		Remark:      strings.TrimSpace(c.Query("remark")),
-	}
+	query := applyListQueryScope(&SensitiveWordQuery{
+		Word:     strings.TrimSpace(c.Query("word")),
+		Language: strings.TrimSpace(c.Query("language")),
+		Tags:     strings.TrimSpace(c.Query("tags")),
+		Remark:   strings.TrimSpace(c.Query("remark")),
+	}, scope)
 	query.Level = queryIntPtr(c, "level")
 	query.Status = queryInt16Ptr(c, "status")
 
-	page, err := h.repo.ListSensitiveWords(requestIdentityContext(c), query)
+	page, err := h.repo.ListSensitiveWords(requestIdentityContext(c), *query)
 	if err != nil {
 		writeInternalHandlerError(c, "sensitive_word_list_failed", err)
 		return
