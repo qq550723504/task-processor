@@ -534,6 +534,28 @@ func TestRabbitMQServiceInitializeCrawlerQueuesSkipsEmptyRegions(t *testing.T) {
 	}
 }
 
+func TestApplyRabbitMQServiceDefaultsFillsMissingValues(t *testing.T) {
+	cfg := &config.RabbitMQConfig{}
+
+	applyRabbitMQServiceDefaults(cfg)
+
+	if cfg.ReconnectInterval != 5*time.Second {
+		t.Fatalf("ReconnectInterval = %v, want 5s", cfg.ReconnectInterval)
+	}
+	if cfg.MaxReconnectTries != 10 {
+		t.Fatalf("MaxReconnectTries = %d, want 10", cfg.MaxReconnectTries)
+	}
+	if cfg.Consumer.PrefetchCount != 1 {
+		t.Fatalf("PrefetchCount = %d, want 1", cfg.Consumer.PrefetchCount)
+	}
+	if cfg.Consumer.RetryDelay != 5*time.Second {
+		t.Fatalf("RetryDelay = %v, want 5s", cfg.Consumer.RetryDelay)
+	}
+	if cfg.Consumer.MaxRetries != 3 {
+		t.Fatalf("MaxRetries = %d, want 3", cfg.Consumer.MaxRetries)
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",

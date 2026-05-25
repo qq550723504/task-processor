@@ -68,48 +68,12 @@ const (
 
 // NewRabbitMQService 创建RabbitMQ服务
 func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *RabbitMQService {
-	// 设置默认值
-	if cfg.ReconnectInterval == 0 {
-		cfg.ReconnectInterval = 5 * time.Second
-	}
-	if cfg.MaxReconnectTries == 0 {
-		cfg.MaxReconnectTries = 10
-	}
-	if cfg.Consumer.PrefetchCount == 0 {
-		cfg.Consumer.PrefetchCount = 1
-	}
-	if cfg.Consumer.RetryDelay == 0 {
-		cfg.Consumer.RetryDelay = 5 * time.Second
-	}
-	if cfg.Consumer.MaxRetries == 0 {
-		cfg.Consumer.MaxRetries = 3
-	}
+	applyRabbitMQServiceDefaults(cfg)
 
-	// 创建连接管理器
-	connConfig := rabbitmq.ConnectionConfig{
-		URL:               cfg.URL,
-		ReconnectInterval: cfg.ReconnectInterval,
-		MaxReconnectTries: cfg.MaxReconnectTries,
-	}
-	connManager := rabbitmq.NewConnectionManager(connConfig, logger)
-
-	// 创建客户端
+	connManager := newRabbitMQConnectionManager(cfg, logger)
 	client := rabbitmq.NewClient(connManager, logger)
-
-	// 转换消费者配置
-	consumerConfig := rabbitmq.ConsumerConfig{
-		PrefetchCount:  cfg.Consumer.PrefetchCount,
-		PrefetchSize:   cfg.Consumer.PrefetchSize,
-		RetryDelay:     cfg.Consumer.RetryDelay,
-		MaxRetries:     cfg.Consumer.MaxRetries,
-		MaxConcurrency: cfg.Node.MaxConcurrency,
-	}
-	consumer := rabbitmq.NewMessageConsumer(client, consumerConfig, logger)
-
-	// 创建初始化器
+	consumer := newRabbitMQConsumer(client, cfg, logger)
 	initializer := rabbitmq.NewQueueInitializer(client, logger)
-
-	// 创建增强的处理器注册表（暂时传nil，后续通过SetComponents设置）
 	processorRegistry := NewTaskProcessorRegistry(nil, nil, nil, false, nil, logger)
 
 	return &RabbitMQService{
