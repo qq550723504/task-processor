@@ -412,3 +412,38 @@ func TestNormalizeOwnedBuckets(t *testing.T) {
 		}
 	}
 }
+
+func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+
+	serviceCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stopped := make(chan struct{})
+	svc.ctx = serviceCtx
+	svc.cancel = cancel
+	svc.started = true
+	svc.wg.Add(1)
+	go func() {
+		defer svc.wg.Done()
+		<-serviceCtx.Done()
+		close(stopped)
+	}()
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), time.Second)
+	defer stopCancel()
+	if err := svc.Stop(stopCtx); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("expected Stop to wait for background worker shutdown")
+	}
+}

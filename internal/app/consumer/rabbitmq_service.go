@@ -753,46 +753,75 @@ func (s *RabbitMQService) reloadOwnedStores(ctx context.Context, ownedStores []i
 	return s.consumer.Restart()
 }
 
+func (s *RabbitMQService) waitForBackgroundWorkers(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // Stop 停止RabbitMQ服务
 func (s *RabbitMQService) Stop(ctx context.Context) error {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	if !s.started {
+		s.mutex.Unlock()
 		s.logger.Info("RabbitMQ服务未启动，无需停止")
 		return nil
 	}
 
 	s.logger.Info("停止RabbitMQ服务...")
+	s.started = false
+	s.consumerActive = false
+	consumer := s.consumer
+	deduplicator := s.deduplicator
+	cancel := s.cancel
+	connManager := s.connManager
+	provider := s.storeAssignmentProvider
+	s.mutex.Unlock()
 
 	// 1. 停止消费者
-	if err := s.consumer.Stop(ctx); err != nil {
+	if err := consumer.Stop(ctx); err != nil {
 		s.logger.Errorf("停止消费者失败: %v", err)
+		return err
 	}
 
 	// 2. 停止去重器
-	if s.deduplicator != nil {
-		s.deduplicator.Stop()
+	if deduplicator != nil {
+		deduplicator.Stop()
 	}
 
 	// 3. 取消上下文
-	if s.cancel != nil {
-		s.cancel()
+	if cancel != nil {
+		cancel()
 	}
 
-	// 4. 关闭连接
-	if err := s.connManager.Close(); err != nil {
+	// 4. 等待后台协程退出，避免 guard / assignment sync 在资源关闭后继续工作
+	if err := s.waitForBackgroundWorkers(ctx); err != nil {
+		s.logger.Errorf("等待RabbitMQ后台协程退出失败: %v", err)
+		return err
+	}
+
+	// 5. 关闭连接
+	if err := connManager.Close(); err != nil {
 		s.logger.Errorf("关闭RabbitMQ连接失败: %v", err)
+		return err
 	}
 
-	if s.storeAssignmentProvider != nil {
-		if err := s.storeAssignmentProvider.Close(); err != nil {
+	if provider != nil {
+		if err := provider.Close(); err != nil {
 			s.logger.Errorf("关闭动态店铺归属提供器失败: %v", err)
+			return err
 		}
 	}
 
-	s.started = false
-	s.consumerActive = false
 	s.logger.Info("RabbitMQ服务停止完成")
 	return nil
 }
