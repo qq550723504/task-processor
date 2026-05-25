@@ -408,3 +408,22 @@ func TestQueryIntPtrStrictRejectsInvalidInteger(t *testing.T) {
 		t.Fatalf("body = %s, want invalid_shelf_status", recorder.Body.String())
 	}
 }
+
+func TestQueryBoolPtrStrictRejectsInvalidBoolean(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?expired=maybe", nil)
+
+	if _, ok := queryBoolPtrStrict(ctx, "expired", "invalid_expired"); ok {
+		t.Fatal("expected queryBoolPtrStrict to reject invalid value")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_expired"`) {
+		t.Fatalf("body = %s, want invalid_expired", recorder.Body.String())
+	}
+}

@@ -129,6 +129,19 @@ func queryBoolPtr(c *gin.Context, key string) *bool {
 	return &parsed
 }
 
+func queryBoolPtrStrict(c *gin.Context, key string, errorCode string) (*bool, bool) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil, true
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		writeValidationError(c, errorCode, errors.New(key+" must be true or false"))
+		return nil, false
+	}
+	return &parsed, true
+}
+
 func queryInt64PtrStrict(c *gin.Context, key string, errorCode string) (*int64, bool) {
 	value := strings.TrimSpace(c.Query(key))
 	if value == "" {

@@ -79,6 +79,23 @@ func TestStoreHandlerRejectsInvalidStatusFilter(t *testing.T) {
 	}
 }
 
+func TestStoreHandlerRejectsInvalidBooleanFilter(t *testing.T) {
+	router := newStoreTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/stores?enableAutoListing=maybe", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("GET /stores invalid boolean filter = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"invalid_enable_auto_listing"`) {
+		t.Fatalf("body = %s, want invalid_enable_auto_listing", resp.Body.String())
+	}
+}
+
 func TestStoreHandlerCreatesStoreWithRequestTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	body := bytes.NewBufferString(`{

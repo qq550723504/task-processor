@@ -29,17 +29,35 @@ func (h *StoreHandler) ListStores(c *gin.Context) {
 		SKUGenerate: strings.TrimSpace(c.Query("skuGenerateStrategy")),
 		PriceType:   strings.TrimSpace(c.Query("priceType")),
 	}, scope)
-	query.EnableAutoListing = queryBoolPtr(c, "enableAutoListing")
-	query.EnableAutoLogin = queryBoolPtr(c, "enableAutoLogin")
-	query.EnableDraft = queryBoolPtr(c, "enableDraft")
-	query.EnableAutoPrice = queryBoolPtr(c, "enableAutoPrice")
-	query.EnableRebargain = queryBoolPtr(c, "enableRebargain")
 	var ok bool
+	query.EnableAutoListing, ok = queryBoolPtrStrict(c, "enableAutoListing", "invalid_enable_auto_listing")
+	if !ok {
+		return
+	}
+	query.EnableAutoLogin, ok = queryBoolPtrStrict(c, "enableAutoLogin", "invalid_enable_auto_login")
+	if !ok {
+		return
+	}
+	query.EnableDraft, ok = queryBoolPtrStrict(c, "enableDraft", "invalid_enable_draft")
+	if !ok {
+		return
+	}
+	query.EnableAutoPrice, ok = queryBoolPtrStrict(c, "enableAutoPrice", "invalid_enable_auto_price")
+	if !ok {
+		return
+	}
+	query.EnableRebargain, ok = queryBoolPtrStrict(c, "enableRebargain", "invalid_enable_rebargain")
+	if !ok {
+		return
+	}
 	query.Status, ok = queryInt16PtrStrict(c, "status", "invalid_status")
 	if !ok {
 		return
 	}
-	query.Expired = queryBoolPtr(c, "expired")
+	query.Expired, ok = queryBoolPtrStrict(c, "expired", "invalid_expired")
+	if !ok {
+		return
+	}
 
 	page, err := h.repo.ListStores(requestIdentityContext(c), *query)
 	if err != nil {
