@@ -556,6 +556,25 @@ func TestApplyRabbitMQServiceDefaultsFillsMissingValues(t *testing.T) {
 	}
 }
 
+func TestSetStoreAssignmentProviderForcesStoreQueueMode(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+
+	if svc.useStoreQueues {
+		t.Fatal("expected store queue mode to be disabled before provider is set")
+	}
+
+	svc.SetStoreAssignmentProvider(stubStoreAssignmentProvider{stores: []int64{11}})
+
+	if !svc.useStoreQueues {
+		t.Fatal("expected store queue mode to be enabled after provider is set")
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",

@@ -113,14 +113,8 @@ func (c *storeAssignmentSyncCoordinator) sync(ctx context.Context) {
 
 func (c *storeAssignmentSyncCoordinator) reloadOwnedStores(ctx context.Context, ownedStores []int64, started bool) error {
 	c.service.mutex.Lock()
-	c.service.ownedStores = append([]int64(nil), ownedStores...)
-	c.service.processorRegistry.UpdateComponents(
-		c.service.resultReporter,
-		c.service.storeAPI,
-		append([]int64(nil), c.service.ownedStores...),
-		&c.service.useStoreQueues,
-		c.service.deduplicator,
-	)
+	c.service.applyComponentDependencies(nil, nil, ownedStores, nil)
+	c.service.syncProcessorRegistryComponents()
 	platforms := c.service.getRegisteredPlatforms()
 	c.service.mutex.Unlock()
 

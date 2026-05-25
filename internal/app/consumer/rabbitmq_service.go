@@ -116,29 +116,8 @@ func (s *RabbitMQService) SetComponents(
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// 只更新非 nil 的字段，避免覆盖已有组件
-	if resultReporter != nil {
-		s.resultReporter = resultReporter
-	}
-	if storeAPI != nil {
-		s.storeAPI = storeAPI
-	}
-	if ownedStores != nil {
-		s.ownedStores = ownedStores
-	}
-	s.useStoreQueues = s.config.Node.UseStoreQueues
-	if deduplicator != nil {
-		s.deduplicator = deduplicator
-	}
-
-	// 原地更新注册表依赖，避免重建和迁移注册表对象。
-	s.processorRegistry.UpdateComponents(
-		s.resultReporter,
-		s.storeAPI,
-		s.ownedStores,
-		&s.useStoreQueues,
-		s.deduplicator,
-	)
+	s.applyComponentDependencies(resultReporter, storeAPI, ownedStores, deduplicator)
+	s.syncProcessorRegistryComponents()
 
 	s.logger.Info("设置服务组件完成")
 }
@@ -148,9 +127,8 @@ func (s *RabbitMQService) SetStoreAssignmentProvider(provider StoreAssignmentPro
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.storeAssignmentProvider = provider
-	if provider != nil {
-		s.useStoreQueues = true
-	}
+	s.useStoreQueues = s.config.Node.UseStoreQueues || provider != nil
+	s.syncProcessorRegistryComponents()
 }
 
 // SetQueueConfigs 设置队列配置
