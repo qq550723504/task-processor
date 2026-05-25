@@ -33,11 +33,12 @@ func NewImportTaskHandler(repo ImportTaskRepository) *ImportTaskHandler {
 }
 
 func (h *ImportTaskHandler) ListImportTasks(c *gin.Context) {
+	pageNum, pageSize := requestPageParams(c)
 	query := ImportTaskQuery{
 		TenantID:    requestTenantID(c),
 		OwnerUserID: requestScopedOwnerUserID(c),
-		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
-		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
+		Page:        pageNum,
+		PageSize:    pageSize,
 		Platform:    strings.TrimSpace(c.Query("platform")),
 		Region:      strings.TrimSpace(c.Query("region")),
 		ProductID:   strings.TrimSpace(c.Query("productId")),

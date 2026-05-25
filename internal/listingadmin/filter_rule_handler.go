@@ -17,11 +17,12 @@ func NewFilterRuleHandler(repo FilterRuleRepository) *FilterRuleHandler {
 }
 
 func (h *FilterRuleHandler) ListFilterRules(c *gin.Context) {
+	pageNum, pageSize := requestPageParams(c)
 	query := FilterRuleQuery{
 		TenantID:        requestTenantID(c),
 		OwnerUserID:     requestScopedOwnerUserID(c),
-		Page:            queryInt(c, "page", queryInt(c, "pageNo", 1)),
-		PageSize:        queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
+		Page:            pageNum,
+		PageSize:        pageSize,
 		Name:            strings.TrimSpace(c.Query("name")),
 		RuleCode:        strings.TrimSpace(c.Query("ruleCode")),
 		PriceType:       strings.TrimSpace(c.Query("priceType")),

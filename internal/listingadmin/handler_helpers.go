@@ -21,6 +21,11 @@ func bindJSON(c *gin.Context, target any) bool {
 	return true
 }
 
+func requestPageParams(c *gin.Context) (page int, pageSize int) {
+	return queryInt(c, "page", queryInt(c, "pageNo", 1)),
+		queryInt(c, "page_size", queryInt(c, "pageSize", 20))
+}
+
 func writeHandlerErrorResponse(c *gin.Context, status int, code string, err error) {
 	c.JSON(status, gin.H{"error": code, "message": err.Error()})
 }

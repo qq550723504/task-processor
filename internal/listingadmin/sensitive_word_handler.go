@@ -16,11 +16,12 @@ func NewSensitiveWordHandler(repo SensitiveWordRepository) *SensitiveWordHandler
 }
 
 func (h *SensitiveWordHandler) ListSensitiveWords(c *gin.Context) {
+	pageNum, pageSize := requestPageParams(c)
 	query := SensitiveWordQuery{
 		TenantID:    requestTenantID(c),
 		OwnerUserID: requestScopedOwnerUserID(c),
-		Page:        queryInt(c, "page", queryInt(c, "pageNo", 1)),
-		PageSize:    queryInt(c, "page_size", queryInt(c, "pageSize", 20)),
+		Page:        pageNum,
+		PageSize:    pageSize,
 		Word:        strings.TrimSpace(c.Query("word")),
 		Language:    strings.TrimSpace(c.Query("language")),
 		Tags:        strings.TrimSpace(c.Query("tags")),

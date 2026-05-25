@@ -72,3 +72,17 @@ func TestWriteMappedHandlerErrorFallsBackToInternalError(t *testing.T) {
 		t.Fatalf("body = %s, want store_update_failed", recorder.Body.String())
 	}
 }
+
+func TestRequestPageParamsSupportsLegacyAndCurrentKeys(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?pageNo=3&pageSize=55", nil)
+
+	page, pageSize := requestPageParams(ctx)
+	if page != 3 || pageSize != 55 {
+		t.Fatalf("page/pageSize = %d/%d, want 3/55", page, pageSize)
+	}
+}
