@@ -70,6 +70,13 @@ type serviceStopState struct {
 	provider     StoreAssignmentProvider
 }
 
+type serviceStatsState struct {
+	started        bool
+	useStoreQueues bool
+	ownedStores    []int64
+	ownedBuckets   []int
+}
+
 const consumerGuardInterval = 5 * time.Second
 
 type consumerReconcileAction string
@@ -486,6 +493,17 @@ func (s *RabbitMQService) markStopped() {
 	s.consumerActive = false
 }
 
+func (s *RabbitMQService) statsStateSnapshot() serviceStatsState {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return serviceStatsState{
+		started:        s.started,
+		useStoreQueues: s.useStoreQueues,
+		ownedStores:    append([]int64(nil), s.ownedStores...),
+		ownedBuckets:   append([]int(nil), s.ownedBuckets...),
+	}
+}
+
 func (s *RabbitMQService) pauseConsumers(ctx context.Context, reason string) error {
 	state := s.consumerLifecycleStateSnapshot()
 	if !state.started || !state.consumerActive {
@@ -634,17 +652,16 @@ func (s *RabbitMQService) GetUnhealthyRequiredQueues() []string {
 
 // GetStats 获取服务统计信息
 func (s *RabbitMQService) GetStats() map[string]any {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	state := s.statsStateSnapshot()
 
 	stats := make(map[string]any)
-	stats["started"] = s.started
+	stats["started"] = state.started
 	stats["connected"] = s.IsConnected()
 	stats["required_consumers_healthy"] = s.HasHealthyRequiredConsumers()
 	stats["unhealthy_required_queues"] = s.GetUnhealthyRequiredQueues()
-	stats["use_store_queues"] = s.useStoreQueues
-	stats["owned_stores"] = append([]int64(nil), s.ownedStores...)
-	stats["owned_buckets"] = append([]int(nil), s.ownedBuckets...)
+	stats["use_store_queues"] = state.useStoreQueues
+	stats["owned_stores"] = state.ownedStores
+	stats["owned_buckets"] = state.ownedBuckets
 
 	// 处理器统计
 	stats["processors"] = s.processorRegistry.GetStats()

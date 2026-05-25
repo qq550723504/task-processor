@@ -668,3 +668,33 @@ func TestRabbitMQServiceStopStateSnapshotCapturesStopDependencies(t *testing.T) 
 		t.Fatalf("provider stores = %v, want [11]", providerState.stores)
 	}
 }
+
+func TestRabbitMQServiceStatsStateSnapshotCopiesRoutingState(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+	svc.started = true
+	svc.ownedStores = []int64{11, 22}
+	svc.ownedBuckets = []int{1, 3}
+	svc.useStoreQueues = true
+
+	state := svc.statsStateSnapshot()
+	if !state.started || !state.useStoreQueues {
+		t.Fatalf("state = %+v, want started and store queues enabled", state)
+	}
+	if len(state.ownedStores) != 2 || state.ownedStores[0] != 11 || state.ownedStores[1] != 22 {
+		t.Fatalf("owned stores = %v, want [11 22]", state.ownedStores)
+	}
+	if len(state.ownedBuckets) != 2 || state.ownedBuckets[0] != 1 || state.ownedBuckets[1] != 3 {
+		t.Fatalf("owned buckets = %v, want [1 3]", state.ownedBuckets)
+	}
+
+	svc.ownedStores[0] = 99
+	svc.ownedBuckets[0] = 9
+	if state.ownedStores[0] != 11 || state.ownedBuckets[0] != 1 {
+		t.Fatal("expected stats snapshot to copy routing slices")
+	}
+}
