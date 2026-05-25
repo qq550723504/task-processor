@@ -106,18 +106,6 @@ func (h *ImportTaskHandler) DeleteImportTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
-func queryInt64Ptr(c *gin.Context, key string) *int64 {
-	value := strings.TrimSpace(c.Query(key))
-	if value == "" {
-		return nil
-	}
-	parsed := parseTenantID(value)
-	if parsed <= 0 {
-		return nil
-	}
-	return &parsed
-}
-
 func uniqueProductIDs(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))

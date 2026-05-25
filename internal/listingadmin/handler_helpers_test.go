@@ -108,3 +108,35 @@ func TestRequestListScopeBuildsTenantOwnerAndPagingContext(t *testing.T) {
 		t.Fatalf("page/pageSize = %d/%d, want 2/30", scope.Page, scope.PageSize)
 	}
 }
+
+func TestRequestTenantIDFallsBackToTenantQueryParam(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?tenant_id=303", nil)
+
+	if tenantID := requestTenantID(ctx); tenantID != 303 {
+		t.Fatalf("tenantID = %d, want 303", tenantID)
+	}
+}
+
+func TestPathIDWritesInvalidIDError(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Params = gin.Params{{Key: "id", Value: "bad"}}
+
+	if _, ok := pathID(ctx); ok {
+		t.Fatal("expected pathID to fail for invalid value")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"invalid_id"`) {
+		t.Fatalf("body = %s, want invalid_id", recorder.Body.String())
+	}
+}

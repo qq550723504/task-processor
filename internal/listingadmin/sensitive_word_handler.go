@@ -3,7 +3,6 @@ package listingadmin
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -136,18 +135,6 @@ func validateSensitiveWord(word *SensitiveWord) error {
 		return errors.New("level cannot be negative")
 	}
 	return nil
-}
-
-func queryIntPtr(c *gin.Context, key string) *int {
-	value := strings.TrimSpace(c.Query(key))
-	if value == "" {
-		return nil
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return nil
-	}
-	return &parsed
 }
 
 func writeSensitiveWordError(c *gin.Context, err error, code string) {

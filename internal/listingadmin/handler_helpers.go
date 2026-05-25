@@ -3,8 +3,12 @@ package listingadmin
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/tenantbridge"
 )
 
 type handlerErrorRule struct {
@@ -41,6 +45,106 @@ func requestListScope(c *gin.Context) listQueryScope {
 		Page:        page,
 		PageSize:    pageSize,
 	}
+}
+
+func requestTenantID(c *gin.Context) int64 {
+	rawTenantID := ""
+	for _, header := range []string{"X-Tenant-ID", "X-Tenant-Id", "X-Tenant", "tenant-id"} {
+		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
+			rawTenantID = value
+			break
+		}
+	}
+	if rawTenantID == "" {
+		rawTenantID = strings.TrimSpace(c.Query("tenant_id"))
+	}
+	if rawTenantID == "" {
+		return 0
+	}
+	value, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), rawTenantID)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func requestUserID(c *gin.Context) string {
+	for _, header := range []string{"X-User-ID", "X-User-Id", "X-User"} {
+		if userID := requestUserIDHeader(c.GetHeader(header)); userID != "" {
+			return userID
+		}
+	}
+	return requestUserIDHeader(c.Query("user_id"))
+}
+
+func pathID(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id", "message": "id must be a positive integer"})
+		return 0, false
+	}
+	return id, true
+}
+
+func queryInt(c *gin.Context, key string, fallback int) int {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func queryBoolPtr(c *gin.Context, key string) *bool {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func queryInt64Ptr(c *gin.Context, key string) *int64 {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil
+	}
+	parsed := parseTenantID(value)
+	if parsed <= 0 {
+		return nil
+	}
+	return &parsed
+}
+
+func queryInt16Ptr(c *gin.Context, key string) *int16 {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 16)
+	if err != nil {
+		return nil
+	}
+	out := int16(parsed)
+	return &out
+}
+
+func queryIntPtr(c *gin.Context, key string) *int {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func writeHandlerErrorResponse(c *gin.Context, status int, code string, err error) {
