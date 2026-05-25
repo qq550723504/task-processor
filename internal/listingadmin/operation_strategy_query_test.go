@@ -1,0 +1,89 @@
+package listingadmin
+
+import (
+	"context"
+	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
+)
+
+func TestFindOperationStrategyRowsUsesRequestOwnerScope(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingOperationStrategy{
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 11, Name: "keep", Platform: "SHEIN", Status: 1, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-b", StoreID: 11, Name: "other-owner", Platform: "SHEIN", Status: 1, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 11, Name: "deleted", Platform: "SHEIN", Status: 1, Deleted: 1},
+	} {
+		if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+	ctx := withRequestIdentity(context.TODO(), "user-a", nil)
+
+	rows, total, page, pageSize, err := findOperationStrategyRows(ctx, db.Table("listing_operation_strategy"), OperationStrategyQuery{
+		TenantID: 101,
+		Page:     1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("findOperationStrategyRows: %v", err)
+	}
+	if total != 1 || page != 1 || pageSize != 20 {
+		t.Fatalf("result meta = total:%d page:%d pageSize:%d, want 1/1/20", total, page, pageSize)
+	}
+	if len(rows) != 1 || rows[0].Name != "keep" {
+		t.Fatalf("rows = %+v, want only active owner-scoped row", rows)
+	}
+}
+
+func TestFindOperationStrategyRowsAppliesResourceFilters(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	storeID := int64(21)
+	status := int16(2)
+	for _, row := range []listingOperationStrategy{
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 21, Name: "Alpha Daily", Platform: "SHEIN", Status: 2, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 21, Name: "Alpha Daily", Platform: "AMZ", Status: 2, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 22, Name: "Beta Daily", Platform: "SHEIN", Status: 2, Deleted: 0},
+	} {
+		if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+	ctx := withRequestIdentity(context.TODO(), "user-a", nil)
+
+	rows, total, _, _, err := findOperationStrategyRows(ctx, db.Table("listing_operation_strategy"), OperationStrategyQuery{
+		TenantID: 101,
+		Name:     "Alpha",
+		StoreID:  &storeID,
+		Platform: "SHEIN",
+		Status:   &status,
+	})
+	if err != nil {
+		t.Fatalf("findOperationStrategyRows: %v", err)
+	}
+	if total != 1 || len(rows) != 1 || rows[0].Platform != "SHEIN" {
+		t.Fatalf("rows = %+v total=%d, want only fully matched SHEIN row", rows, total)
+	}
+}
