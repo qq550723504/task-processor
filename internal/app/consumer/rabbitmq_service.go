@@ -221,78 +221,14 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	s.mutex.Unlock()
 
-	// 1. 建立连接。启动阶段不因依赖瞬时不可用直接退出，而是持续重试直到成功或上下文取消。
-	if err := s.connectWithRetry(s.ctx); err != nil {
-		return fmt.Errorf("建立RabbitMQ连接失败: %w", err)
+	if err := s.startInfrastructure(); err != nil {
+		return err
 	}
-
-	// 2. 注册重连回调（重连后自动重启消费者）
-	s.connManager.RegisterReconnectCallback(func() error {
-		s.logger.Info("连接恢复，重新初始化队列和重启消费者...")
-
-		// 重新初始化队列
-		if err := s.initializer.InitializeAll(); err != nil {
-			s.logger.Errorf("重连后初始化队列失败: %v", err)
-			return err
-		}
-
-		// 重启消费者
-		if err := s.consumer.Restart(); err != nil {
-			s.logger.Errorf("重连后重启消费者失败: %v", err)
-			return err
-		}
-
-		s.logger.Info("✅ 重连后恢复完成")
-		return nil
-	})
-
-	// 3. 初始化队列和交换机
-	if err := s.initializer.InitializeAll(); err != nil {
-		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
+	if err := s.initializeQueueTopology(); err != nil {
+		return err
 	}
-
-	// 3.1 在首次注册处理器前，先同步一次动态店铺归属，避免新分片启动时短暂回退到共享队列。
-	s.syncInitialStoreAssignments(s.ctx)
-
-	// 4. 初始化店铺专属队列（仅在显式启用店铺亲和模式时）
-	if s.config.Node.HandlesTaskWork() {
-		platforms := s.getRegisteredPlatforms()
-		if !s.usesDedicatedStoreQueues() && len(platforms) > 0 {
-			if err := s.initializer.InitializePlatformQueues(platforms); err != nil {
-				return fmt.Errorf("初始化平台共享队列失败: %w", err)
-			}
-			s.logger.Infof("平台共享队列初始化完成: platforms=%v", platforms)
-		}
-	}
-
-	if s.config.Node.HandlesTaskWork() && s.usesDedicatedStoreQueues() && len(s.ownedStores) > 0 {
-		platforms := s.getRegisteredPlatforms()
-		for _, platform := range platforms {
-			if err := s.initializer.InitializeStoreQueues(platform, s.ownedStores); err != nil {
-				return fmt.Errorf("初始化平台 %s 店铺队列失败: %w", platform, err)
-			}
-		}
-		s.logger.Infof("店铺专属队列初始化完成: platforms=%v, stores=%v", platforms, s.ownedStores)
-	}
-
-	// 4.1 初始化 region 爬虫队列（如果配置了 regions）
-	if s.config.Node.HandlesCrawlerWork() && len(s.config.Node.Regions) > 0 {
-		if err := s.initializer.InitializeRegionCrawlerQueues(s.config.Node.Regions); err != nil {
-			return fmt.Errorf("初始化 region 爬虫队列失败: %w", err)
-		}
-	}
-
-	// 4. 预加载店铺配置（如果启用）
-	if s.usesDedicatedStoreQueues() {
-		s.preloadOwnedStoreConfigs(s.ownedStores)
-	}
-
-	// 5. 注册消息处理器
-	s.registerMessageHandlers()
-
-	// 6. 启动消费者
-	if err := s.consumer.Start(s.ctx); err != nil {
-		return fmt.Errorf("启动消息消费者失败: %w", err)
+	if err := s.startConsumers(); err != nil {
+		return err
 	}
 
 	s.mutex.Lock()
@@ -302,6 +238,99 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	s.startConsumerGuard()
 	s.startStoreAssignmentSync()
 	s.logger.Info("RabbitMQ服务启动完成")
+	return nil
+}
+
+func (s *RabbitMQService) startInfrastructure() error {
+	// 建立连接。启动阶段不因依赖瞬时不可用直接退出，而是持续重试直到成功或上下文取消。
+	if err := s.connectWithRetry(s.ctx); err != nil {
+		return fmt.Errorf("建立RabbitMQ连接失败: %w", err)
+	}
+
+	// 注册重连回调（重连后自动重启消费者）
+	s.connManager.RegisterReconnectCallback(func() error {
+		return s.handleReconnect()
+	})
+	return nil
+}
+
+func (s *RabbitMQService) handleReconnect() error {
+	s.logger.Info("连接恢复，重新初始化队列和重启消费者...")
+
+	if err := s.initializer.InitializeAll(); err != nil {
+		s.logger.Errorf("重连后初始化队列失败: %v", err)
+		return err
+	}
+	if err := s.consumer.Restart(); err != nil {
+		s.logger.Errorf("重连后重启消费者失败: %v", err)
+		return err
+	}
+
+	s.logger.Info("✅ 重连后恢复完成")
+	return nil
+}
+
+func (s *RabbitMQService) initializeQueueTopology() error {
+	if err := s.initializer.InitializeAll(); err != nil {
+		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
+	}
+
+	// 在首次注册处理器前，先同步一次动态店铺归属，避免新分片启动时短暂回退到共享队列。
+	s.syncInitialStoreAssignments(s.ctx)
+
+	if err := s.initializeTaskQueues(); err != nil {
+		return err
+	}
+	if err := s.initializeCrawlerQueues(); err != nil {
+		return err
+	}
+	if s.usesDedicatedStoreQueues() {
+		s.preloadOwnedStoreConfigs(s.ownedStores)
+	}
+
+	s.registerMessageHandlers()
+	return nil
+}
+
+func (s *RabbitMQService) initializeTaskQueues() error {
+	if !s.config.Node.HandlesTaskWork() {
+		return nil
+	}
+
+	platforms := s.getRegisteredPlatforms()
+	if !s.usesDedicatedStoreQueues() && len(platforms) > 0 {
+		if err := s.initializer.InitializePlatformQueues(platforms); err != nil {
+			return fmt.Errorf("初始化平台共享队列失败: %w", err)
+		}
+		s.logger.Infof("平台共享队列初始化完成: platforms=%v", platforms)
+		return nil
+	}
+
+	if s.usesDedicatedStoreQueues() && len(s.ownedStores) > 0 {
+		for _, platform := range platforms {
+			if err := s.initializer.InitializeStoreQueues(platform, s.ownedStores); err != nil {
+				return fmt.Errorf("初始化平台 %s 店铺队列失败: %w", platform, err)
+			}
+		}
+		s.logger.Infof("店铺专属队列初始化完成: platforms=%v, stores=%v", platforms, s.ownedStores)
+	}
+	return nil
+}
+
+func (s *RabbitMQService) initializeCrawlerQueues() error {
+	if !s.config.Node.HandlesCrawlerWork() || len(s.config.Node.Regions) == 0 {
+		return nil
+	}
+	if err := s.initializer.InitializeRegionCrawlerQueues(s.config.Node.Regions); err != nil {
+		return fmt.Errorf("初始化 region 爬虫队列失败: %w", err)
+	}
+	return nil
+}
+
+func (s *RabbitMQService) startConsumers() error {
+	if err := s.consumer.Start(s.ctx); err != nil {
+		return fmt.Errorf("启动消息消费者失败: %w", err)
+	}
 	return nil
 }
 

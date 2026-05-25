@@ -521,6 +521,19 @@ func TestQueueHandlerBuilderDetectsCrawlerPlatforms(t *testing.T) {
 	}
 }
 
+func TestRabbitMQServiceInitializeCrawlerQueuesSkipsEmptyRegions(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleCrawler,
+		},
+	}, logrus.New())
+
+	if err := svc.initializeCrawlerQueues(); err != nil {
+		t.Fatalf("initializeCrawlerQueues() error = %v", err)
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",
