@@ -469,6 +469,39 @@ func TestAssembleRepositoriesBuildsAllRepositoryPhases(t *testing.T) {
 	}
 }
 
+func TestBuildLateCoreRepositoriesSeparatesSubscriptionAndRepositoryDependencies(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	input.Repositories.Core.Asset = func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error) {
+		return assetrepo.NewMemRepository(), nil, nil
+	}
+	input.Repositories.Core.Review = func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error) {
+		return reviewstore.NewMemRepository(), nil, nil
+	}
+	input.Repositories.Core.SheinResolutionCache = func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {
+		return &httpapiStubResolutionCacheStore{}, nil, nil
+	}
+	closers := &closerStack{}
+
+	lateCore, err := buildLateCoreRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildLateCoreRepositories: %v", err)
+	}
+	if lateCore.subscriptionService == nil {
+		t.Fatal("expected late core subscription service")
+	}
+	if lateCore.assetRepository == nil {
+		t.Fatal("expected late core asset repository")
+	}
+	if lateCore.reviewRepository == nil {
+		t.Fatal("expected late core review repository")
+	}
+	if lateCore.resolutionCacheStore == nil {
+		t.Fatal("expected late core resolution cache store")
+	}
+}
+
 func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	t.Parallel()
 

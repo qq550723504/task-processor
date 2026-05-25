@@ -344,6 +344,16 @@ type builtLateCoreRepositories struct {
 	resolutionCacheStore           sheinpub.ResolutionCacheStore
 }
 
+type lateCoreRepositoryDependencies struct {
+	assetRepository                assetrepo.Repository
+	reviewRepository               reviewstore.Repository
+	studioSessionRepository        listingkit.StudioSessionRepository
+	uploadedImageRepository        listingkit.UploadedImageRepository
+	storeProfileRepository         listingkit.StoreProfileRepository
+	storeRoutingSettingsRepository listingkit.StoreRoutingSettingsRepository
+	resolutionCacheStore           sheinpub.ResolutionCacheStore
+}
+
 type builtAdminRepositories struct {
 	storeRepository                listingadmin.StoreRepository
 	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
@@ -451,9 +461,29 @@ func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*buil
 }
 
 func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*builtLateCoreRepositories, error) {
-	repoBuilders := input.Repositories.Core
+	subscriptionService, err := buildSubscriptionService(input, closers)
+	if err != nil {
+		return nil, err
+	}
+	dependencies, err := buildLateCoreRepositoryDependencies(input, closers)
+	if err != nil {
+		return nil, err
+	}
 
-	subscriptionRepository, err := buildWithClosers(repoBuilders.Subscription, input.Config, input.Logger, closers)
+	return &builtLateCoreRepositories{
+		subscriptionService:            subscriptionService,
+		assetRepository:                dependencies.assetRepository,
+		reviewRepository:               dependencies.reviewRepository,
+		studioSessionRepository:        dependencies.studioSessionRepository,
+		uploadedImageRepository:        dependencies.uploadedImageRepository,
+		storeProfileRepository:         dependencies.storeProfileRepository,
+		storeRoutingSettingsRepository: dependencies.storeRoutingSettingsRepository,
+		resolutionCacheStore:           dependencies.resolutionCacheStore,
+	}, nil
+}
+
+func buildSubscriptionService(input BuildServiceInput, closers *closerStack) (*listingsubscription.Service, error) {
+	subscriptionRepository, err := buildWithClosers(input.Repositories.Core.Subscription, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -461,6 +491,12 @@ func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*
 	if err != nil {
 		return nil, fmt.Errorf("create listing subscription service: %w", err)
 	}
+	return subscriptionService, nil
+}
+
+func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *closerStack) (*lateCoreRepositoryDependencies, error) {
+	repoBuilders := input.Repositories.Core
+
 	assetRepository, err := buildWithClosers(repoBuilders.Asset, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
@@ -490,8 +526,7 @@ func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*
 		return nil, err
 	}
 
-	return &builtLateCoreRepositories{
-		subscriptionService:            subscriptionService,
+	return &lateCoreRepositoryDependencies{
 		assetRepository:                assetRepository,
 		reviewRepository:               reviewRepository,
 		studioSessionRepository:        studioSessionRepository,
