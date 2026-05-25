@@ -3,6 +3,7 @@ package listingadmin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -59,7 +60,11 @@ func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context,
 	if r == nil || r.db == nil {
 		return nil, errors.New("store statistics repository database is not configured")
 	}
-	query.Date = normalizeStatisticsDate(query.Date)
+	date, err := resolveStatisticsDate(query.Date)
+	if err != nil {
+		return nil, err
+	}
+	query.Date = date
 
 	stores, err := r.listEligibleStores(ctx, query)
 	if err != nil {
@@ -171,16 +176,16 @@ func buildStoreStatistics(store listingStore, counts storeTaskStatisticsCounts) 
 	}
 }
 
-func normalizeStatisticsDate(value string) string {
+func resolveStatisticsDate(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return time.Now().Format("2006-01-02")
+		return time.Now().Format("2006-01-02"), nil
 	}
 	parsed, err := time.Parse("2006-01-02", value)
 	if err != nil {
-		return value
+		return "", fmt.Errorf("date must use YYYY-MM-DD format")
 	}
-	return parsed.Format("2006-01-02")
+	return parsed.Format("2006-01-02"), nil
 }
 
 func statisticsDateRange(value string) (time.Time, time.Time, bool) {
