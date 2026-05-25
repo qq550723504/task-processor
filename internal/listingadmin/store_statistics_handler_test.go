@@ -198,6 +198,38 @@ func TestStoreStatisticsHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 	}
 }
 
+func TestStoreStatisticsHandlerAcceptsTenantIDQueryFallback(t *testing.T) {
+	router := newStoreStatisticsTestRouter(t)
+	trueValue := true
+	seedStore(t, router.db, listingStore{
+		ID:                1,
+		TenantID:          101,
+		Name:              "Query Tenant Store",
+		Username:          "query-tenant",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics?tenant_id=101", nil)
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics?tenant_id=101 = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var items []StoreStatistics
+	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "Query Tenant Store" {
+		t.Fatalf("statistics items = %+v, want query-tenant scoped store", items)
+	}
+}
+
 type storeStatisticsTestRouter struct {
 	engine *gin.Engine
 	db     *gorm.DB

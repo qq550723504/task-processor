@@ -15,7 +15,7 @@ func NewStoreStatisticsHandler(repo StoreStatisticsRepository) *StoreStatisticsH
 }
 
 func (h *StoreStatisticsHandler) ListStoreStatistics(c *gin.Context) {
-	tenantID := parseTenantID(c.GetHeader("X-Tenant-ID"))
+	tenantID := requestTenantID(c)
 	if tenantID <= 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "tenant id is required"})
 		return
