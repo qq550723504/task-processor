@@ -55,6 +55,12 @@ type RabbitMQService struct {
 	mutex          sync.RWMutex
 }
 
+type consumerLifecycleState struct {
+	started        bool
+	consumerActive bool
+	ctx            context.Context
+}
+
 const consumerGuardInterval = 5 * time.Second
 
 type consumerReconcileAction string
@@ -435,52 +441,57 @@ func decideConsumerAction(started, connected, consumerActive, consumersHealthy b
 	return consumerActionNone
 }
 
-func (s *RabbitMQService) pauseConsumers(ctx context.Context, reason string) error {
+func (s *RabbitMQService) consumerLifecycleStateSnapshot() consumerLifecycleState {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return consumerLifecycleState{
+		started:        s.started,
+		consumerActive: s.consumerActive,
+		ctx:            s.ctx,
+	}
+}
+
+func (s *RabbitMQService) setConsumerActive(active bool) {
 	s.mutex.Lock()
-	if !s.started || !s.consumerActive {
-		s.mutex.Unlock()
+	defer s.mutex.Unlock()
+	s.consumerActive = active
+}
+
+func (s *RabbitMQService) pauseConsumers(ctx context.Context, reason string) error {
+	state := s.consumerLifecycleStateSnapshot()
+	if !state.started || !state.consumerActive {
 		return nil
 	}
-	s.mutex.Unlock()
 
 	s.logger.WithField("reason", reason).Warn("暂停 RabbitMQ 消费者")
 	if err := s.consumer.Stop(ctx); err != nil {
 		return err
 	}
 
-	s.mutex.Lock()
-	s.consumerActive = false
-	s.mutex.Unlock()
+	s.setConsumerActive(false)
 	return nil
 }
 
 func (s *RabbitMQService) resumeConsumers(reason string) error {
-	s.mutex.Lock()
-	if !s.started || s.consumerActive || s.ctx == nil {
-		s.mutex.Unlock()
+	state := s.consumerLifecycleStateSnapshot()
+	if !state.started || state.consumerActive || state.ctx == nil {
 		return nil
 	}
-	serviceCtx := s.ctx
-	s.mutex.Unlock()
 
 	s.logger.WithField("reason", reason).Info("恢复 RabbitMQ 消费者")
-	if err := s.consumer.Start(serviceCtx); err != nil {
+	if err := s.consumer.Start(state.ctx); err != nil {
 		return err
 	}
 
-	s.mutex.Lock()
-	s.consumerActive = true
-	s.mutex.Unlock()
+	s.setConsumerActive(true)
 	return nil
 }
 
 func (s *RabbitMQService) restartConsumers(reason string) error {
-	s.mutex.RLock()
-	if !s.started || !s.consumerActive {
-		s.mutex.RUnlock()
+	state := s.consumerLifecycleStateSnapshot()
+	if !state.started || !state.consumerActive {
 		return nil
 	}
-	s.mutex.RUnlock()
 
 	s.logger.WithField("reason", reason).Warn("重启 RabbitMQ 消费者")
 	if err := s.consumer.Restart(); err != nil {

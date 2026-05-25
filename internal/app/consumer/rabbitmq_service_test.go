@@ -609,3 +609,26 @@ func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 		t.Fatal("expected Stop to wait for background worker shutdown")
 	}
 }
+
+func TestRabbitMQServiceConsumerLifecycleStateSnapshotReflectsFlagsAndContext(t *testing.T) {
+	serviceCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+	svc.started = true
+	svc.consumerActive = true
+	svc.ctx = serviceCtx
+
+	state := svc.consumerLifecycleStateSnapshot()
+	if !state.started || !state.consumerActive {
+		t.Fatalf("state = %+v, want started and active", state)
+	}
+	if state.ctx != serviceCtx {
+		t.Fatal("expected lifecycle snapshot to preserve service context")
+	}
+}
