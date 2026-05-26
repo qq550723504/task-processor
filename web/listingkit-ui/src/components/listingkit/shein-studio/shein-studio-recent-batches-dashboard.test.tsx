@@ -1,10 +1,68 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 
 describe("SheinStudioRecentBatchesDashboard", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("restores dashboard filter and selection context from local storage", async () => {
+    window.localStorage.setItem(
+      "listingkit:shein-studio:recent-batches-dashboard",
+      JSON.stringify({
+        statusFilter: "risk",
+        activeRiskLabel: "生成失败",
+        selectedSummaryIds: ["batch:batch-2"],
+      }),
+    );
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Healthy Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Failed Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [{ tone: "danger", label: "生成失败" }],
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      await screen.findByText("当前只显示包含“生成失败”的风险批次。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("已选择 1 个批次")).toBeInTheDocument();
+    expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
+  });
+
   it("renders recent batch cards and forwards selection", () => {
     const onSelectSummary = vi.fn();
 

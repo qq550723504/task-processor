@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
@@ -16,6 +16,15 @@ type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks" | "risk";
 type RecentBatchAlertAction = {
   action: RecentBatchCardAction;
   label: string;
+};
+
+const DASHBOARD_PREFERENCES_STORAGE_KEY =
+  "listingkit:shein-studio:recent-batches-dashboard";
+
+type RecentBatchesDashboardPreferences = {
+  statusFilter?: RecentBatchStatusFilter;
+  activeRiskLabel?: string;
+  selectedSummaryIds?: string[];
 };
 
 function recentBatchAlertToneClass(tone: "warning" | "danger") {
@@ -121,6 +130,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
     string[] | null
   >(null);
+  const [preferencesHydrated, setPreferencesHydrated] = useState(false);
   const selectedSummaryIds =
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
@@ -456,6 +466,56 @@ export function SheinStudioRecentBatchesDashboard({
           left.label.localeCompare(right.label),
       );
   }, [summaries]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(DASHBOARD_PREFERENCES_STORAGE_KEY);
+      if (!raw) {
+        setPreferencesHydrated(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as RecentBatchesDashboardPreferences;
+      if (parsed.statusFilter) {
+        setStatusFilter(parsed.statusFilter);
+      }
+      if (parsed.activeRiskLabel) {
+        setActiveRiskLabel(parsed.activeRiskLabel);
+      }
+      if (
+        parsed.selectedSummaryIds?.length &&
+        selectedSummaryIds.length === 0
+      ) {
+        const validIds = parsed.selectedSummaryIds.filter((key) =>
+          summaryById.has(key),
+        );
+        if (validIds.length > 0) {
+          setSelectedSummaryIds(validIds);
+        }
+      }
+    } catch {
+      // Ignore malformed local state and continue with defaults.
+    } finally {
+      setPreferencesHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !preferencesHydrated) {
+      return;
+    }
+    const payload: RecentBatchesDashboardPreferences = {
+      statusFilter,
+      activeRiskLabel,
+      selectedSummaryIds,
+    };
+    window.localStorage.setItem(
+      DASHBOARD_PREFERENCES_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  }, [activeRiskLabel, preferencesHydrated, selectedSummaryIds, statusFilter]);
 
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
