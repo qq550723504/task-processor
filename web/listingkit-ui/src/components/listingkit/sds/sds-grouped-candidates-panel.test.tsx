@@ -69,6 +69,9 @@ describe("SDSGroupedCandidatesPanel", () => {
     );
 
     expect(screen.getByText("Baseline 检查中")).toBeInTheDocument();
+    expect(
+      screen.getByText("正在检查 baseline 状态..."),
+    ).toBeInTheDocument();
 
     rerender(
       <SDSGroupedCandidatesPanel
@@ -85,5 +88,36 @@ describe("SDSGroupedCandidatesPanel", () => {
     );
 
     expect(screen.getByText("Baseline 缺失")).toBeInTheDocument();
+    expect(screen.getByText("baseline missing")).toBeInTheDocument();
+  });
+
+  it("shows failed baseline reasons inline", () => {
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "sync failed upstream",
+            status: "failed",
+          },
+        }}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Baseline 异常")).toBeInTheDocument();
+    expect(screen.getByText("sync failed upstream")).toBeInTheDocument();
   });
 });

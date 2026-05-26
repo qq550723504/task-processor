@@ -85,6 +85,21 @@ export function SDSGroupedCandidatesPanel({
                     印刷区域 {item.printableWidth} × {item.printableHeight}
                   </div>
                 ) : null}
+                {baseline.status !== "ready" ? (
+                  <div
+                    className={`rounded-xl px-3 py-2 text-xs leading-5 ${
+                      active
+                        ? "bg-white/10 text-emerald-50"
+                        : baseline.status === "failed"
+                          ? "bg-rose-50 text-rose-700"
+                          : baseline.status === "missing"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {buildBaselineHelperText(baseline)}
+                  </div>
+                ) : null}
                 <div className="flex gap-2 pt-1">
                   <Button
                     className="flex-1"
@@ -143,4 +158,17 @@ function BaselineStatusBadge({
       {label}
     </Badge>
   );
+}
+
+function buildBaselineHelperText(baseline: GroupedCandidateBaselineState) {
+  if (baseline.status === "loading") {
+    return baseline.reason || "正在读取 baseline 状态，稍后就能判断是否可加入分组。";
+  }
+  if (baseline.status === "failed") {
+    return baseline.reason || "baseline 检查失败，建议先排查这款 SDS 商品的缓存或转换链路。";
+  }
+  if (baseline.status === "missing") {
+    return baseline.reason || "这款商品还没有 baseline 缓存，暂时不能加入 grouped 批量上品。";
+  }
+  return "";
 }
