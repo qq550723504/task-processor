@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
@@ -118,6 +118,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
   const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
   const [activeRiskLabel, setActiveRiskLabel] = useState("");
+  const previousSelectedSummaryIdsRef = useRef<string[] | null>(null);
   const selectedSummaryIds =
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
@@ -297,9 +298,19 @@ export function SheinStudioRecentBatchesDashboard({
     summariesToKeep: SheinStudioRecentBatchSummary[],
   ) {
     setBulkQueueFeedback("");
+    previousSelectedSummaryIdsRef.current = selectedSummaryIds;
     setSelectedSummaryIds(
       summariesToKeep.map((summary) => `${summary.source}:${summary.id}`),
     );
+  }
+
+  function restorePreviousSelectedSummaries() {
+    if (!previousSelectedSummaryIdsRef.current) {
+      return;
+    }
+    setBulkQueueFeedback("");
+    setSelectedSummaryIds(previousSelectedSummaryIdsRef.current);
+    previousSelectedSummaryIdsRef.current = null;
   }
 
   function launchBulkQueue(
@@ -519,6 +530,16 @@ export function SheinStudioRecentBatchesDashboard({
                   variant="secondary"
                 >
                   仅保留可继续批次 {selectedHealthyBatches.length} 个
+                </Button>
+              ) : null}
+              {previousSelectedSummaryIdsRef.current?.length ? (
+                <Button
+                  onClick={restorePreviousSelectedSummaries}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  恢复上一次选择 {previousSelectedSummaryIdsRef.current.length} 个
                 </Button>
               ) : null}
             </div>
