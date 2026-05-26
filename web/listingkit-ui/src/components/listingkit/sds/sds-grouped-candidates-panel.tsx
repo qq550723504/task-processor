@@ -13,12 +13,18 @@ type GroupedCandidateBaselineState = {
   status: SDSBaselineStatus | "loading";
 };
 
+type WarmSummary = {
+  failedCount: number;
+  successCount: number;
+};
+
 export function SDSGroupedCandidatesPanel({
   items,
   activeSelection,
   baselineStatuses,
   isWarmingAll = false,
   recentlyWarmedSelectionIds = [],
+  warmSummary,
   onRemove,
   onSelect,
   onWarmAll,
@@ -28,6 +34,7 @@ export function SDSGroupedCandidatesPanel({
   baselineStatuses: Record<string, GroupedCandidateBaselineState>;
   isWarmingAll?: boolean;
   recentlyWarmedSelectionIds?: string[];
+  warmSummary?: WarmSummary | null;
   onRemove: (selection: SDSProductVariantSelection) => void;
   onSelect: (
     selection: SDSProductVariantSelection,
@@ -77,6 +84,19 @@ export function SDSGroupedCandidatesPanel({
           ) : null}
         </div>
       </div>
+      {warmSummary ? (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${
+            warmSummary.failedCount > 0
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+          }`}
+        >
+          {warmSummary.failedCount > 0
+            ? `本次批量预热完成：成功 ${warmSummary.successCount} 款，失败 ${warmSummary.failedCount} 款。失败项可以继续单独重试。`
+            : `本次批量预热完成：${warmSummary.successCount} 款商品已准备就绪，现在可以直接加入 grouped 批量上品。`}
+        </div>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
           const selectionId = buildGroupedSDSSelectionID(item);

@@ -55,6 +55,10 @@ export function SDSProductBrowser({
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
   const [isWarmingGroupedCandidates, setIsWarmingGroupedCandidates] = useState(false);
   const [recentlyWarmedSelectionIds, setRecentlyWarmedSelectionIds] = useState<string[]>([]);
+  const [warmSummary, setWarmSummary] = useState<{
+    failedCount: number;
+    successCount: number;
+  } | null>(null);
   const [groupedCandidateBaselineStatuses, setGroupedCandidateBaselineStatuses] =
     useState<Record<string, { reason: string; status: SDSBaselineStatus | "loading" }>>({});
 
@@ -124,6 +128,7 @@ export function SDSProductBrowser({
     if (groupedCandidates.length === 0) {
       setGroupedCandidateBaselineStatuses({});
       setRecentlyWarmedSelectionIds([]);
+      setWarmSummary(null);
       return;
     }
 
@@ -193,6 +198,18 @@ export function SDSProductBrowser({
       window.clearTimeout(timer);
     };
   }, [recentlyWarmedSelectionIds]);
+
+  useEffect(() => {
+    if (!warmSummary) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setWarmSummary(null);
+    }, 6000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [warmSummary]);
 
   function updateQuery(next: Record<string, string | undefined>) {
     const params = sanitizedNavigationSearchParams(searchParams);
@@ -332,11 +349,17 @@ export function SDSProductBrowser({
         ...current,
         ...Object.fromEntries(entries),
       }));
+      const successCount = entries.filter(([, value]) => value.status === "ready").length;
+      const failedCount = entries.length - successCount;
       setRecentlyWarmedSelectionIds(
         entries
           .filter(([, value]) => value.status === "ready")
           .map(([selectionId]) => selectionId),
       );
+      setWarmSummary({
+        failedCount,
+        successCount,
+      });
     } finally {
       setIsWarmingGroupedCandidates(false);
     }
@@ -399,6 +422,7 @@ export function SDSProductBrowser({
           isWarmingAll={isWarmingGroupedCandidates}
           items={groupedCandidates}
           recentlyWarmedSelectionIds={recentlyWarmedSelectionIds}
+          warmSummary={warmSummary}
           onRemove={removeSDSGroupedCandidate}
           onSelect={(selection, baseline) => {
             const handoff = buildGroupedCandidateHandoff(baseline);

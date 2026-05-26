@@ -207,4 +207,36 @@ describe("SDSGroupedCandidatesPanel", () => {
       screen.getByText("baseline 刚预热完成，现在可以直接加入 grouped 批量上品。"),
     ).toBeInTheDocument();
   });
+
+  it("shows a warm summary banner after bulk warmup", () => {
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "",
+            status: "ready",
+          },
+        }}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+        warmSummary={{ failedCount: 1, successCount: 2 }}
+      />,
+    );
+
+    expect(
+      screen.getByText("本次批量预热完成：成功 2 款，失败 1 款。失败项可以继续单独重试。"),
+    ).toBeInTheDocument();
+  });
 });
