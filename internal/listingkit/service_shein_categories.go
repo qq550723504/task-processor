@@ -15,47 +15,7 @@ import (
 const maxSheinCategorySearchResults = 20
 
 func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {
-	trimmedQuery := strings.TrimSpace(query)
-	if trimmedQuery == "" {
-		return nil, ErrInvalidSheinCategorySearchQuery
-	}
-
-	task, err := s.repo.GetTask(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-
-	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
-	if err != nil {
-		return nil, fmt.Errorf("%w for category search", err)
-	}
-	if !apiClient.HasCookies() {
-		if err := apiClient.ForceRefreshCookies(); err != nil {
-			return nil, fmt.Errorf("shein store cookies are unavailable for category search: %w", err)
-		}
-	}
-	if !apiClient.HasCookies() {
-		return nil, fmt.Errorf("shein store cookies are unavailable for category search")
-	}
-
-	baseAPI := sheinclient.NewBaseAPIClient(
-		apiClient.GetBaseURL(),
-		apiClient.GetTenantID(),
-		storeID,
-		apiClient.GetHTTPClient(),
-	)
-	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
-	categoryAPI := sheincategory.NewClient(baseAPI)
-	tree, err := categoryAPI.GetCategoryTree()
-	if err != nil {
-		return nil, err
-	}
-
-	return &SheinCategorySearchResult{
-		TaskID: taskID,
-		Query:  trimmedQuery,
-		Items:  searchSheinCategoryCandidates(tree.Data, trimmedQuery),
-	}, nil
+	return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)
 }
 
 func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {
