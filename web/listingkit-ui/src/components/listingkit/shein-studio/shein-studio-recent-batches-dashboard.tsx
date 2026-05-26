@@ -13,6 +13,12 @@ type StoreOption = {
 type RecentBatchCardAction = "generate" | "review" | "tasks";
 type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks";
 
+function recentBatchAlertToneClass(tone: "warning" | "danger") {
+  return tone === "danger"
+    ? "border-rose-200 bg-rose-50 text-rose-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
+}
+
 function formatRecentBatchTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -569,6 +575,19 @@ export function SheinStudioRecentBatchesDashboard({
                         更新于 {formatRecentBatchTimestamp(summary.updatedAt)}
                       </span>
                     </div>
+                    {summary.alerts?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium">
+                        {summary.alerts.map((alert, index) => (
+                          <span
+                            className={`rounded-full border px-2.5 py-1 ${recentBatchAlertToneClass(alert.tone)}`}
+                            key={`${summaryKey}:alert:${index}`}
+                            title={alert.detail}
+                          >
+                            {alert.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     <dl className="mt-4 space-y-2 text-sm text-zinc-700">
                       <div className="flex items-start justify-between gap-3">
                         <dt className="text-zinc-500">主商品</dt>

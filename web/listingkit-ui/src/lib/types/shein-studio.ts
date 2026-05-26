@@ -159,4 +159,11 @@ export type SheinStudioRecentBatchSummary = {
   designCount: number;
   createdTaskCount: number;
   updatedAt: string;
+  alerts?: SheinStudioRecentBatchAlert[];
+};
+
+export type SheinStudioRecentBatchAlert = {
+  tone: "warning" | "danger";
+  label: string;
+  detail?: string;
 };

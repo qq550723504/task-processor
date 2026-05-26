@@ -63,6 +63,7 @@ describe("buildRecentBatchSummaries", () => {
       designCount: 1,
       createdTaskCount: 0,
       storeSummary: "869",
+      alerts: [],
     });
   });
 
@@ -101,6 +102,11 @@ describe("buildRecentBatchSummaries", () => {
       primaryProductName: "tee",
       productCount: 1,
       promptPreview: "prompt a",
+      alerts: [
+        expect.objectContaining({
+          label: "未保存草稿",
+        }),
+      ],
     });
   });
 
@@ -152,5 +158,113 @@ describe("buildRecentBatchSummaries", () => {
       "Draft Group",
       "Older Batch",
     ]);
+  });
+
+  it("derives grouped baseline and eligibility alerts from persisted batches", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-1",
+        name: "Blocked Batch",
+        prompt: "blocked prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        groupedSelections: [
+          {
+            selectionId: "sel-1",
+            sheinStoreId: "869",
+            selection: hoodie,
+            eligible: false,
+            eligibilityReason: "印刷区域待确认",
+            baselineStatus: "missing",
+            baselineReason: "尚未预热",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0].alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Baseline 未就绪",
+          detail: "尚未预热",
+        }),
+        expect.objectContaining({
+          label: "Grouped 商品待处理",
+          detail: "印刷区域待确认",
+        }),
+      ]),
+    );
+  });
+
+  it("flags persisted batches with designs but no selected styles", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-1",
+        name: "Needs Review",
+        prompt: "needs review",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [{ id: "design-1" }],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0].alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "待确认款式",
+        }),
+      ]),
+    );
+  });
+
+  it("derives draft generation failure alerts", () => {
+    const summaries = buildRecentBatchSummaries([], {
+      draft: {
+        prompt: "draft prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        generationError: "image generation timeout",
+        groups: [
+          {
+            id: "group-1",
+            name: "Group 1",
+            primarySelection: selection,
+            groupedSelections: [],
+            sheinStoreId: "869",
+            currentPrompt: "prompt a",
+            promptHistory: [],
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-05-26T11:00:00.000Z",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T11:00:00.000Z",
+      },
+    });
+
+    expect(summaries[0].alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "未保存草稿",
+        }),
+        expect.objectContaining({
+          label: "生成失败",
+          detail: "image generation timeout",
+        }),
+      ]),
+    );
   });
 });

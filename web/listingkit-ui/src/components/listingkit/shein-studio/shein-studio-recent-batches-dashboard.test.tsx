@@ -385,6 +385,45 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("已建 2 个任务")).toBeInTheDocument();
   });
 
+  it("renders homepage risk alerts when a batch needs attention", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Attention Batch",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "Baseline 未就绪",
+                detail: "尚未预热",
+              },
+              {
+                tone: "warning",
+                label: "待确认款式",
+                detail: "需要确认设计",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Baseline 未就绪")).toBeInTheDocument();
+    expect(screen.getByText("待确认款式")).toBeInTheDocument();
+  });
+
   it("emits selected persisted batch ids for continue-generate mode", () => {
     const onOpenBatchQueue = vi.fn();
 

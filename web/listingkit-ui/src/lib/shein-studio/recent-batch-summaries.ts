@@ -2,6 +2,7 @@ import { pickActiveSheinStudioGroup } from "@/components/listingkit/shein-studio
 import type {
   SheinStudioDraft,
   SheinStudioGroupedWorkspace,
+  SheinStudioRecentBatchAlert,
   SheinStudioRecentBatchSummary,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
@@ -21,6 +22,98 @@ function buildStoreSummaryFromAssignments(assignments: string[]) {
 
 function pickSummaryGroup(groups?: SheinStudioGroupedWorkspace[]) {
   return groups?.length ? pickActiveSheinStudioGroup(groups) : null;
+}
+
+function buildGroupedSelectionAlerts(
+  groupedSelections: {
+    eligible?: boolean;
+    eligibilityReason?: string;
+    baselineStatus?: string;
+    baselineReason?: string;
+  }[],
+) {
+  const alerts: SheinStudioRecentBatchAlert[] = [];
+  if (
+    groupedSelections.some(
+      (item) => item.baselineStatus && item.baselineStatus !== "ready",
+    )
+  ) {
+    const reason = groupedSelections.find(
+      (item) => item.baselineStatus && item.baselineStatus !== "ready",
+    )?.baselineReason;
+    alerts.push({
+      tone: "danger",
+      label: "Baseline 未就绪",
+      detail: reason?.trim() || "组内仍有商品需要先完成 baseline 预热或修复。",
+    });
+  }
+  if (groupedSelections.some((item) => item.eligible === false)) {
+    const reason = groupedSelections.find((item) => item.eligible === false)
+      ?.eligibilityReason;
+    alerts.push({
+      tone: "warning",
+      label: "Grouped 商品待处理",
+      detail: reason?.trim() || "组内仍有商品暂时不能加入当前批次处理。",
+    });
+  }
+  return alerts;
+}
+
+function buildSelectionReviewAlert(input: {
+  designCount: number;
+  selectedIds: string[];
+}) {
+  if (input.designCount > 0 && input.selectedIds.length === 0) {
+    return {
+      tone: "warning",
+      label: "待确认款式",
+      detail: "这批已经生成设计，但还没有确认要继续创建任务的款式。",
+    } satisfies SheinStudioRecentBatchAlert;
+  }
+  return null;
+}
+
+function buildPersistedBatchAlerts(batch: SheinStudioSavedBatch) {
+  const group = pickSummaryGroup(batch.groups);
+  const groupedSelections = group?.groupedSelections ?? batch.groupedSelections ?? [];
+  const alerts = buildGroupedSelectionAlerts(groupedSelections);
+  const reviewAlert = buildSelectionReviewAlert({
+    designCount: group?.designs.length ?? batch.designs.length,
+    selectedIds: group?.selectedIds ?? batch.selectedIds,
+  });
+  if (reviewAlert) {
+    alerts.push(reviewAlert);
+  }
+  return alerts;
+}
+
+function buildRecoverableDraftAlerts(
+  draft: SheinStudioDraft,
+  group: SheinStudioGroupedWorkspace,
+) {
+  const alerts: SheinStudioRecentBatchAlert[] = [
+    {
+      tone: "warning",
+      label: "未保存草稿",
+      detail: "当前恢复的是本地草稿，建议尽快保存成批次以免后续丢失。",
+    },
+    ...buildGroupedSelectionAlerts(group.groupedSelections),
+  ];
+  if (draft.generationError?.trim()) {
+    alerts.push({
+      tone: "danger",
+      label: "生成失败",
+      detail: draft.generationError.trim(),
+    });
+  }
+  const reviewAlert = buildSelectionReviewAlert({
+    designCount: group.designs.length,
+    selectedIds: group.selectedIds,
+  });
+  if (reviewAlert) {
+    alerts.push(reviewAlert);
+  }
+  return alerts;
 }
 
 function buildPersistedBatchSummary(
@@ -55,6 +148,7 @@ function buildPersistedBatchSummary(
     designCount: group?.designs.length ?? batch.designs.length,
     createdTaskCount: group?.createdTasks.length ?? batch.createdTasks.length,
     updatedAt: group?.updatedAt ?? batch.updatedAt,
+    alerts: buildPersistedBatchAlerts(batch),
   };
 }
 
@@ -80,6 +174,7 @@ function buildRecoverableDraftSummary(
     designCount: group.designs.length,
     createdTaskCount: group.createdTasks.length,
     updatedAt: group.updatedAt || draft.updatedAt,
+    alerts: buildRecoverableDraftAlerts(draft, group),
   };
 }
 
