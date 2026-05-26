@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   buildGroupedSDSSelectionID,
@@ -18,23 +19,38 @@ type WarmSummary = {
   successCount: number;
 };
 
+type RecentBatchOption = {
+  id: string;
+  title: string;
+};
+
 export function SDSGroupedCandidatesPanel({
+  activeBatchId = "",
+  activeBatchLabel = "",
   items,
   activeSelection,
   baselineStatuses,
   isWarmingAll = false,
+  recentBatches = [],
   recentlyWarmedSelectionIds = [],
   warmSummary,
+  onAddToBatch,
+  onCreateBatch,
   onRemove,
   onSelect,
   onWarmAll,
 }: {
+  activeBatchId?: string;
+  activeBatchLabel?: string;
   items: SDSProductVariantSelection[];
   activeSelection?: SDSProductVariantSelection;
   baselineStatuses: Record<string, GroupedCandidateBaselineState>;
   isWarmingAll?: boolean;
+  recentBatches?: RecentBatchOption[];
   recentlyWarmedSelectionIds?: string[];
   warmSummary?: WarmSummary | null;
+  onAddToBatch?: (selection: SDSProductVariantSelection, batchId: string) => void;
+  onCreateBatch?: (selection: SDSProductVariantSelection) => void;
   onRemove: (selection: SDSProductVariantSelection) => void;
   onSelect: (
     selection: SDSProductVariantSelection,
@@ -48,6 +64,7 @@ export function SDSGroupedCandidatesPanel({
 
   const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
   const recentlyWarmedSet = new Set(recentlyWarmedSelectionIds);
+  const [batchPickerSelectionId, setBatchPickerSelectionId] = useState("");
   const warmableItems = items.filter((item) => {
     const selectionId = buildGroupedSDSSelectionID(item);
     const status = baselineStatuses[selectionId]?.status ?? "loading";
@@ -106,6 +123,10 @@ export function SDSGroupedCandidatesPanel({
             status: "loading" as const,
             reason: "正在检查 baseline 状态...",
           };
+          const otherBatchOptions = recentBatches.filter(
+            (batch) => batch.id !== activeBatchId,
+          );
+          const showBatchPicker = batchPickerSelectionId === selectionId;
           return (
             <div
               className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${
@@ -184,6 +205,67 @@ export function SDSGroupedCandidatesPanel({
                     移除
                   </Button>
                 </div>
+                {baseline.status === "ready" && onAddToBatch ? (
+                  <div className="space-y-2 pt-2">
+                    {activeBatchId ? (
+                      <Button
+                        className="w-full"
+                        onClick={() => onAddToBatch(item, activeBatchId)}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        加入当前批次{activeBatchLabel ? ` · ${activeBatchLabel}` : ""}
+                      </Button>
+                    ) : null}
+                    {otherBatchOptions.length > 0 ? (
+                      <div className="space-y-2">
+                        <Button
+                          className="w-full"
+                          onClick={() =>
+                            setBatchPickerSelectionId((current) =>
+                              current === selectionId ? "" : selectionId,
+                            )
+                          }
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          加入其他批次
+                        </Button>
+                        {showBatchPicker ? (
+                          <div className="flex flex-wrap gap-2">
+                            {otherBatchOptions.map((batch) => (
+                              <Button
+                                key={batch.id}
+                                onClick={() => {
+                                  onAddToBatch(item, batch.id);
+                                  setBatchPickerSelectionId("");
+                                }}
+                                size="sm"
+                                type="button"
+                                variant="ghost"
+                              >
+                                {batch.title}
+                              </Button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {onCreateBatch ? (
+                      <Button
+                        className="w-full"
+                        onClick={() => onCreateBatch(item)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        新建批次并加入
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           );

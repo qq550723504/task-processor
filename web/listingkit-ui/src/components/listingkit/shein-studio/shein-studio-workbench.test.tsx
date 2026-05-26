@@ -18,6 +18,7 @@ const listSheinStudioBatches = vi.fn();
 const loadSheinStudioDraft = vi.fn();
 const saveSheinStudioBatch = vi.fn();
 const saveSheinStudioDraftWithOptions = vi.fn();
+const setActiveSheinStudioBatchId = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const useSDSGroupedCandidates = vi.fn();
@@ -152,6 +153,8 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
   saveSheinStudioBatch: (...args: unknown[]) => saveSheinStudioBatch(...args),
   saveSheinStudioDraftWithOptions: (...args: unknown[]) =>
     saveSheinStudioDraftWithOptions(...args),
+  setActiveSheinStudioBatchId: (...args: unknown[]) =>
+    setActiveSheinStudioBatchId(...args),
 }));
 
 vi.mock("@/lib/query/use-shein-store-selector", () => ({

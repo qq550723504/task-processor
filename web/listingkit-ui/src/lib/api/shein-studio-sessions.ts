@@ -276,6 +276,7 @@ export async function getSheinStudioSessionBatch(
 export async function upsertSheinStudioSessionBatch(
   input: {
     id?: string;
+    name?: string;
     prompt: string;
     styleCount: string;
     variationIntensity?: SheinStudioVariationIntensity;
@@ -303,7 +304,7 @@ export async function upsertSheinStudioSessionBatch(
       method: "POST",
       body: {
         id: input.id,
-        batch_name: deriveBatchName(input.prompt),
+        batch_name: input.name?.trim() || deriveBatchName(input.prompt),
         prompt: input.prompt,
         style_count: input.styleCount,
         variation_intensity: input.variationIntensity,

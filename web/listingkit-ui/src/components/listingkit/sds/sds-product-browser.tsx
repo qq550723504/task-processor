@@ -36,6 +36,11 @@ import {
   removeSDSGroupedCandidate,
   saveSDSGroupedCandidate,
 } from "@/lib/utils/sds-grouped-candidates";
+import {
+  getActiveSheinStudioBatchId,
+  listSheinStudioBatches,
+  saveSheinStudioBatch,
+} from "@/lib/utils/shein-studio-batches";
 import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
@@ -59,6 +64,10 @@ export function SDSProductBrowser({
     failedCount: number;
     successCount: number;
   } | null>(null);
+  const [recentBatches, setRecentBatches] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [activeBatchId, setActiveBatchId] = useState("");
   const [groupedCandidateBaselineStatuses, setGroupedCandidateBaselineStatuses] =
     useState<Record<string, { reason: string; status: SDSBaselineStatus | "loading" }>>({});
 
@@ -123,6 +132,54 @@ export function SDSProductBrowser({
     });
     return counts;
   }, [groupedCandidates]);
+  const activeBatchLabel = useMemo(
+    () => recentBatches.find((batch) => batch.id === activeBatchId)?.name ?? "",
+    [activeBatchId, recentBatches],
+  );
+
+  async function refreshRecentBatches() {
+    try {
+      const items = await listSheinStudioBatches();
+      setRecentBatches(
+        items.map((item) => ({
+          id: item.id,
+          name: item.name,
+        })),
+      );
+    } catch {
+      setRecentBatches([]);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void listSheinStudioBatches()
+      .then((items) => {
+        if (cancelled) {
+          return;
+        }
+        setRecentBatches(
+          items.map((item) => ({
+            id: item.id,
+            name: item.name,
+          })),
+        );
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setRecentBatches([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setActiveBatchId(getActiveSheinStudioBatchId());
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (groupedCandidates.length === 0) {
@@ -365,6 +422,99 @@ export function SDSProductBrowser({
     }
   }
 
+  async function handleAddCandidateToBatch(
+    selection: SDSProductVariantSelection,
+    batchId: string,
+  ) {
+    const batches = await listSheinStudioBatches();
+    const target = batches.find((item) => item.id === batchId);
+    if (!target) {
+      return;
+    }
+    const selectionId = buildGroupedSDSSelectionID(selection);
+    const groupedSelections = [
+      ...(target.groupedSelections ?? []).filter(
+        (item) => item.selectionId !== selectionId,
+      ),
+      {
+        selectionId,
+        selection,
+        baselineStatus: "ready" as const,
+        baselineReason: "",
+        sheinStoreId: target.sheinStoreId,
+        eligible: true,
+      },
+    ];
+    const saved = await saveSheinStudioBatch({
+      id: target.id,
+      prompt: target.prompt,
+      styleCount: target.styleCount,
+      variationIntensity: target.variationIntensity,
+      productImageCount: target.productImageCount,
+      productImagePrompt: target.productImagePrompt,
+      productImagePrompts: target.productImagePrompts,
+      artworkModel: target.artworkModel,
+      transparentBackground: target.transparentBackground,
+      sheinStoreId: target.sheinStoreId,
+      imageStrategy: target.imageStrategy,
+      groupedImageMode: target.groupedImageMode,
+      selectedSdsImages: target.selectedSdsImages,
+      renderSizeImagesWithSds: target.renderSizeImagesWithSds,
+      selection: target.selection ?? selection,
+      groupedSelections,
+      groups: target.groups,
+      designs: target.designs,
+      selectedIds: target.selectedIds,
+      createdTasks: target.createdTasks,
+    }, {
+      makeActive: batchId === activeBatchId,
+    });
+    await refreshRecentBatches();
+    if (saved?.id && batchId === activeBatchId) {
+      setActiveBatchId(saved.id);
+    }
+  }
+
+  async function handleCreateBatchFromCandidate(
+    selection: SDSProductVariantSelection,
+  ) {
+    const selectionId = buildGroupedSDSSelectionID(selection);
+    const saved = await saveSheinStudioBatch({
+      prompt: selection.productName,
+      styleCount: "1",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: false,
+      sheinStoreId: "",
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection,
+      groupedSelections: [
+        {
+          selectionId,
+          selection,
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "",
+          eligible: true,
+        },
+      ],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+    await refreshRecentBatches();
+    if (saved?.id) {
+      setActiveBatchId(saved.id);
+    }
+  }
+
   const pickerOpen = Boolean(pickerProductId);
 
   return (
@@ -417,11 +567,23 @@ export function SDSProductBrowser({
           onSelect={applySelection}
         />
         <SDSGroupedCandidatesPanel
+          activeBatchId={activeBatchId}
+          activeBatchLabel={activeBatchLabel}
           activeSelection={currentSelection}
           baselineStatuses={groupedCandidateBaselineStatuses}
           isWarmingAll={isWarmingGroupedCandidates}
           items={groupedCandidates}
+          onAddToBatch={(selection, batchId) => {
+            void handleAddCandidateToBatch(selection, batchId);
+          }}
+          onCreateBatch={(selection) => {
+            void handleCreateBatchFromCandidate(selection);
+          }}
           recentlyWarmedSelectionIds={recentlyWarmedSelectionIds}
+          recentBatches={recentBatches.map((batch) => ({
+            id: batch.id,
+            title: batch.name,
+          }))}
           warmSummary={warmSummary}
           onRemove={removeSDSGroupedCandidate}
           onSelect={(selection, baseline) => {

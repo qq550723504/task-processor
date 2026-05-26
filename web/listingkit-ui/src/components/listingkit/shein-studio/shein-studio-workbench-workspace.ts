@@ -22,6 +22,7 @@ import {
   listSheinStudioBatches,
   loadSheinStudioDraft,
   saveSheinStudioBatch,
+  setActiveSheinStudioBatchId,
   type SheinStudioSaveInput,
 } from "@/lib/utils/shein-studio-batches";
 
@@ -280,6 +281,7 @@ export function useSheinStudioBatchActions({
 
   function handleLoadBatch(batch: SheinStudioSavedBatch) {
     hasLocalWorkflowStateRef.current = true;
+    setActiveSheinStudioBatchId(batch.id);
     workbench.applyBatch(batch);
     hasCustomizedSdsSelectionRef.current =
       (batch.selectedSdsImages?.length ?? 0) > 0;

@@ -26,8 +26,11 @@ import type {
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
+const ACTIVE_BATCH_STORAGE_KEY = "listingkit:shein-studio:active-batch-id";
+
 export type SheinStudioSaveInput = {
   id?: string;
+  name?: string;
   prompt: string;
   styleCount: string;
   variationIntensity?: SheinStudioVariationIntensity;
@@ -54,6 +57,32 @@ type SaveDraftOptions = {
   source?: string;
   signal?: AbortSignal;
 };
+
+type SaveBatchOptions = {
+  makeActive?: boolean;
+};
+
+function canUseBatchStorage() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+export function getActiveSheinStudioBatchId() {
+  if (!canUseBatchStorage()) {
+    return "";
+  }
+  return window.localStorage.getItem(ACTIVE_BATCH_STORAGE_KEY) ?? "";
+}
+
+export function setActiveSheinStudioBatchId(batchId: string) {
+  if (!canUseBatchStorage()) {
+    return;
+  }
+  if (!batchId.trim()) {
+    window.localStorage.removeItem(ACTIVE_BATCH_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(ACTIVE_BATCH_STORAGE_KEY, batchId);
+}
 
 export async function loadSheinStudioDraft(selection?: SDSProductVariantSelection) {
   if (!selection?.variantId) {
@@ -173,10 +202,14 @@ export async function getSheinStudioBatch(batchID: string) {
   return normalizeBatch(await getSheinStudioSessionBatch(batchID));
 }
 
-export async function saveSheinStudioBatch(input: SheinStudioSaveInput) {
-  return normalizeBatch(
+export async function saveSheinStudioBatch(
+  input: SheinStudioSaveInput,
+  options?: SaveBatchOptions,
+) {
+  const saved = normalizeBatch(
     await upsertSheinStudioSessionBatch({
       id: input.id,
+      name: input.name,
       prompt: input.prompt,
       styleCount: input.styleCount,
       variationIntensity: input.variationIntensity,
@@ -198,8 +231,15 @@ export async function saveSheinStudioBatch(input: SheinStudioSaveInput) {
       designs: input.designs,
     }),
   );
+  if (saved?.id && options?.makeActive !== false) {
+    setActiveSheinStudioBatchId(saved.id);
+  }
+  return saved;
 }
 
 export async function deleteSheinStudioBatch(batchID: string) {
   await deleteSheinStudioSessionBatch(batchID);
+  if (getActiveSheinStudioBatchId() === batchID) {
+    setActiveSheinStudioBatchId("");
+  }
 }

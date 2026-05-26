@@ -127,6 +127,53 @@ describe("SDSGroupedCandidatesPanel", () => {
     expect(screen.getByRole("button", { name: "回选并重试" })).toBeInTheDocument();
   });
 
+  it("offers add-to-batch actions for ready candidates", () => {
+    const onAddToBatch = vi.fn();
+    const onCreateBatch = vi.fn();
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    render(
+      <SDSGroupedCandidatesPanel
+        activeBatchId="batch-1"
+        activeBatchLabel="Retro Cherries"
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "",
+            status: "ready",
+          },
+        }}
+        items={[item]}
+        onAddToBatch={onAddToBatch}
+        onCreateBatch={onCreateBatch}
+        onRemove={() => {}}
+        onSelect={() => {}}
+        recentBatches={[
+          { id: "batch-1", title: "Retro Cherries" },
+          { id: "batch-2", title: "Second Batch" },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "加入当前批次 · Retro Cherries" }));
+    expect(onAddToBatch).toHaveBeenCalledWith(item, "batch-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "加入其他批次" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second Batch" }));
+    expect(onAddToBatch).toHaveBeenCalledWith(item, "batch-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "新建批次并加入" }));
+    expect(onCreateBatch).toHaveBeenCalledWith(item);
+  });
+
   it("surfaces a bulk warm action for missing and failed candidates", () => {
     const onWarmAll = vi.fn();
     const items = [
