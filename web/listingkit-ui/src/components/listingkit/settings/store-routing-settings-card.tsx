@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { ListingKitSettingsSection } from "@/components/listingkit/settings/listingkit-settings-section";
 import { useStoreProfiles } from "@/lib/query/use-store-profiles";
 import { useStoreRouting, useUpdateStoreRouting } from "@/lib/query/use-store-routing";
+import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 
 type RoutingForm = {
   selection_strategy: string;
@@ -97,7 +97,7 @@ export function StoreRoutingSettingsCard() {
             <option value="">不指定</option>
             {fallbackOptions.map((item) => (
               <option key={item.id ?? item.store_id} value={String(item.store_id)}>
-                {formatProfileLabel(item)}
+                {formatSheinStoreOptionLabel(item)}
               </option>
             ))}
           </Select>
@@ -135,14 +135,4 @@ export function StoreRoutingSettingsCard() {
       ) : null}
     </ListingKitSettingsSection>
   );
-}
-
-function formatProfileLabel(item: {
-  store_id: number;
-  store?: { name?: string; store_id?: string; region?: string };
-  site?: string;
-}) {
-  const primary = item.store?.name?.trim() || item.store?.store_id?.trim() || `店铺 ${item.store_id}`;
-  const meta = [item.store?.region?.trim(), item.site?.trim()].filter(Boolean).join(" / ");
-  return meta ? `${primary} (${meta})` : primary;
 }

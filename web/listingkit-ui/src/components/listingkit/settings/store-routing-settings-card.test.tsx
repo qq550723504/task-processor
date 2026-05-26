@@ -63,8 +63,12 @@ describe("StoreRoutingSettingsCard", () => {
   it("renders enabled store profiles as fallback options", () => {
     render(<StoreRoutingSettingsCard />);
 
-    expect(screen.getByRole("option", { name: "US 主店 (US / US)" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "US 备用店 (US / US)" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "US 主店 (SHEIN-US-869 / US)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "US 备用店 (SHEIN-US-870 / US)" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "`manual` 先尊重任务里显式指定的店铺；`priority` 按启用 profile 的优先级选；`country` 会优先匹配 profile 里的国家规则。",

@@ -27,6 +27,7 @@ import {
 } from "@/lib/api/shein-login";
 import { useSheinLoginAccounts } from "@/lib/query/use-shein-login";
 import { buildSheinLoginStatusMap } from "@/components/listingkit/stores/store-login-status";
+import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import type { SheinLoginWarehouse } from "@/lib/types/shein-login";
 import { SHEIN_SITE_OPTIONS } from "@/components/listingkit/stores/shein-site-options";
 
@@ -116,6 +117,7 @@ export function StoreProfileSettingsPanel() {
         byID.set(item.id, {
           id: item.id,
           name: item.name,
+          storeId: item.storeId,
           platform: item.platform,
           region: item.region,
         });
@@ -356,7 +358,12 @@ export function StoreProfileSettingsPanel() {
             <option value="">请选择店铺</option>
             {sheinStores.map((store) => (
               <option key={store.id} value={String(store.id)}>
-                {formatStoreOptionLabel(store)}
+                {formatSheinStoreOptionLabel({
+                  store_id: store.id,
+                  name: store.name,
+                  storeId: store.storeId,
+                  region: store.region,
+                })}
               </option>
             ))}
           </Select>
@@ -554,12 +561,6 @@ export function StoreProfileSettingsPanel() {
       </section>
     </section>
   );
-}
-
-function formatStoreOptionLabel(store: StoreOption) {
-  const primary = store.name?.trim() || store.storeId?.trim() || `店铺 ${store.id}`;
-  const meta = [store.storeId?.trim(), store.region?.trim()].filter(Boolean).join(" / ");
-  return meta ? `${primary} (${meta})` : primary;
 }
 
 function buildSiteOptions(current: string) {

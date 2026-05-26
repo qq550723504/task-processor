@@ -10,6 +10,7 @@ export const listingStoreSchema = z
     id: z.number(),
     tenantId: z.number().optional(),
     name: z.string(),
+    storeId: z.string().optional(),
     username: z.string(),
     password: z.string().optional(),
     loginUrl: z.string().optional(),

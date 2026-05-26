@@ -30,4 +30,16 @@ describe("formatSheinStoreOptionLabel", () => {
       }),
     ).toBe("shein-us-2 (US)");
   });
+
+  it("supports flat tenant store options and avoids duplicate region/site labels", () => {
+    expect(
+      formatSheinStoreOptionLabel({
+        store_id: 870,
+        name: "US 备用店",
+        storeId: "SHEIN-US-870",
+        region: "US",
+        site: "US",
+      }),
+    ).toBe("US 备用店 (SHEIN-US-870 / US)");
+  });
 });
