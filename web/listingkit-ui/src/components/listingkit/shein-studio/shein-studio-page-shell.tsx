@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
+import { Button } from "@/components/ui/button";
 import { SheinProductPickerModal } from "@/components/listingkit/shein-studio/shein-product-picker-modal";
 import {
   SheinStudioStepTabs,
@@ -79,6 +80,12 @@ export function SheinStudioPageShell({
         "这一步会把已确认的资料带入正式任务，继续保存草稿或提交发布。",
     },
   }[visibleStep];
+  const scrollToSection = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
 
   return (
     <div
@@ -208,20 +215,53 @@ export function SheinStudioPageShell({
         )}
 
         <div className="space-y-6">
+          {visibleStep === "select" ? (
+            <section className="rounded-[1.5rem] border border-zinc-200/80 bg-white/80 px-5 py-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-zinc-950">
+                    先继续最近批次，或新建一个批次再开始选品。
+                  </p>
+                  <p className="text-sm text-zinc-600">
+                    如果只是接着处理上一轮内容，优先从最近批次进入会更快。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => scrollToSection("shein-studio-recent-batches")}
+                    type="button"
+                    variant="secondary"
+                  >
+                    继续最近批次
+                  </Button>
+                  <Button
+                    onClick={() => scrollToSection("shein-studio-product-picker")}
+                    type="button"
+                  >
+                    新建批次后选品
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : null}
           {visibleStep === "select" || hasSelection ? (
-            <SheinStudioWorkbenchSlot
-              activeStep={visibleStep}
-              selection={liveSelection}
-              workbenchKey={hasSelection ? workbenchKey : "recent-batches-home"}
-            />
+            <div id="shein-studio-recent-batches">
+              <SheinStudioWorkbenchSlot
+                activeStep={visibleStep}
+                selection={liveSelection}
+                workbenchKey={hasSelection ? workbenchKey : "recent-batches-home"}
+              />
+            </div>
           ) : null}
           {visibleStep === "select" ? (
-            <SheinProductPickerModal
-              initialKeyword={liveKeyword}
-              initialPage={livePage}
-              initialShipmentArea={liveShipmentArea}
-              selection={liveSelection}
-            />
+            <div id="shein-studio-product-picker">
+              <SheinProductPickerModal
+                initialKeyword={liveKeyword}
+                initialPage={livePage}
+                initialShipmentArea={liveShipmentArea}
+                selection={liveSelection}
+              />
+            </div>
           ) : null}
         </div>
       </div>

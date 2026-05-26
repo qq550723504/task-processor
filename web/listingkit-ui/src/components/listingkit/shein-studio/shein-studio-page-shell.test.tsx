@@ -31,6 +31,9 @@ describe("SheinStudioPageShell", () => {
       screen.getByText("完成选品后，系统会带着模板和变体信息进入图片生成。"),
     ).toBeInTheDocument();
     expect(screen.getByText("workbench slot")).toBeInTheDocument();
+    expect(screen.getByText("先继续最近批次，或新建一个批次再开始选品。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "继续最近批次" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建批次后选品" })).toBeInTheDocument();
     expect(screen.getByText("picker modal")).toBeInTheDocument();
   });
 
