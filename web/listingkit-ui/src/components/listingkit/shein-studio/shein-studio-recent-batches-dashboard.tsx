@@ -17,6 +17,7 @@ export function SheinStudioRecentBatchesDashboard({
   onCreateBatch,
   onDeleteSummary,
   onDuplicateSummary,
+  onOpenBatchQueue,
   onRenameSummary,
   onSelectSummary,
 }: {
@@ -26,6 +27,10 @@ export function SheinStudioRecentBatchesDashboard({
   onCreateBatch: () => void;
   onDeleteSummary?: (summary: SheinStudioRecentBatchSummary) => void;
   onDuplicateSummary?: (summary: SheinStudioRecentBatchSummary) => void;
+  onOpenBatchQueue?: (input: {
+    batchIds: string[];
+    mode: "generate" | "create_tasks";
+  }) => void;
   onRenameSummary?: (summary: SheinStudioRecentBatchSummary, name: string) => void;
   onSelectSummary: (summary: SheinStudioRecentBatchSummary) => void;
 }) {
@@ -41,6 +46,19 @@ export function SheinStudioRecentBatchesDashboard({
         summaries.map((summary) => [`${summary.source}:${summary.id}`, summary]),
       ),
     [summaries],
+  );
+  const selectedPersistedBatchIds = useMemo(
+    () =>
+      selectedSummaryIds
+        .map((key) => summaryById.get(key))
+        .filter(
+          (
+            summary,
+          ): summary is SheinStudioRecentBatchSummary & { source: "batch" } =>
+            summary != null && summary.source === "batch",
+        )
+        .map((summary) => summary.id),
+    [selectedSummaryIds, summaryById],
   );
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
@@ -152,6 +170,34 @@ export function SheinStudioRecentBatchesDashboard({
             >
               应用到已选批次
             </Button>
+            {selectedPersistedBatchIds.length > 0 && onOpenBatchQueue ? (
+              <>
+                <Button
+                  onClick={() =>
+                    onOpenBatchQueue({
+                      batchIds: selectedPersistedBatchIds,
+                      mode: "generate",
+                    })
+                  }
+                  type="button"
+                  variant="secondary"
+                >
+                  批量继续生成
+                </Button>
+                <Button
+                  onClick={() =>
+                    onOpenBatchQueue({
+                      batchIds: selectedPersistedBatchIds,
+                      mode: "create_tasks",
+                    })
+                  }
+                  type="button"
+                  variant="secondary"
+                >
+                  批量创建任务
+                </Button>
+              </>
+            ) : null}
           </div>
         </div>
       ) : null}

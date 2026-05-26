@@ -22,10 +22,14 @@ describe("buildInitialSheinStudioWorkbenchState", () => {
     expect(buildInitialSheinStudioWorkbenchState()).toMatchObject({
       artworkModel: DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
       activeGroupId: "",
+      batchQueueMode: null,
       imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
       groups: [],
       groupedImageMode: DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
       productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+      queueMessage: "",
+      queuedBatchIds: [],
+      queuedBatchIndex: 0,
       variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
       groupedSelections: [],
       prompt: "",
@@ -60,6 +64,31 @@ describe("sheinStudioWorkbenchReducer", () => {
     );
 
     expect(next.selectedIds).toEqual(["design-1"]);
+  });
+
+  it("stores batch queue metadata in workbench state", () => {
+    const state = buildInitialSheinStudioWorkbenchState();
+    const next = sheinStudioWorkbenchReducer(
+      state,
+      setSheinStudioWorkbenchField("batchQueueMode", "generate"),
+    );
+
+    expect(next.batchQueueMode).toBe("generate");
+  });
+
+  it("tracks queued batch ids and current index", () => {
+    const state = buildInitialSheinStudioWorkbenchState();
+    const withIds = sheinStudioWorkbenchReducer(
+      state,
+      setSheinStudioWorkbenchField("queuedBatchIds", ["batch-1", "batch-2"]),
+    );
+    const next = sheinStudioWorkbenchReducer(
+      withIds,
+      setSheinStudioWorkbenchField("queuedBatchIndex", 1),
+    );
+
+    expect(next.queuedBatchIds).toEqual(["batch-1", "batch-2"]);
+    expect(next.queuedBatchIndex).toBe(1);
   });
 
   it("applies a loaded draft as a single reducer action", () => {

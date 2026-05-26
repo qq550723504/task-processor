@@ -28,6 +28,7 @@ export type SheinStudioImageStrategy =
 export type SheinStudioArtworkModel = string;
 export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 export type SheinStudioGroupedImageMode = "shared_by_size" | "per_product";
+export type SheinStudioBatchQueueMode = "generate" | "create_tasks";
 
 export type SheinStudioProductImagePrompt = {
   role: string;

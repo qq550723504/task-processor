@@ -11,6 +11,7 @@ import { pickActiveSheinStudioGroup, projectGroupToWorkbench } from "@/component
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedWorkspace,
@@ -57,6 +58,10 @@ export type SheinStudioWorkbenchState = {
   createdTasks: SheinStudioCreatedTask[];
   galleryRatioCheck: SDSRatioMatch | null;
   savedBatches: SheinStudioSavedBatch[];
+  batchQueueMode: SheinStudioBatchQueueMode | null;
+  queuedBatchIds: string[];
+  queuedBatchIndex: number;
+  queueMessage: string;
   isLoadingWorkspace: boolean;
   saveMessage: string;
   draftWarning: string;
@@ -154,6 +159,10 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     createdTasks: [],
     galleryRatioCheck: null,
     savedBatches: [],
+    batchQueueMode: null,
+    queuedBatchIds: [],
+    queuedBatchIndex: 0,
+    queueMessage: "",
     isLoadingWorkspace: true,
     saveMessage: "",
     draftWarning: "",

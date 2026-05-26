@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { SheinStudioBatchQueueBanner } from "@/components/listingkit/shein-studio/shein-studio-batch-queue-banner";
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
@@ -64,7 +65,10 @@ import {
   type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioBatchQueueMode,
+  SheinStudioSavedBatch,
+} from "@/lib/types/shein-studio";
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -148,11 +152,23 @@ export function SheinStudioWorkbench({
       setProductImagePrompts: (
         value: SheinStudioWorkbenchStateUpdater<"productImagePrompts">,
       ) => setWorkbenchField("productImagePrompts", value),
+      setBatchQueueMode: (
+        value: SheinStudioWorkbenchStateUpdater<"batchQueueMode">,
+      ) => setWorkbenchField("batchQueueMode", value),
       setGroupedSelections: (
         value: SheinStudioWorkbenchStateUpdater<"groupedSelections">,
       ) => setWorkbenchField("groupedSelections", value),
       setPrompt: (value: SheinStudioWorkbenchStateUpdater<"prompt">) =>
         setWorkbenchField("prompt", value),
+      setQueueMessage: (
+        value: SheinStudioWorkbenchStateUpdater<"queueMessage">,
+      ) => setWorkbenchField("queueMessage", value),
+      setQueuedBatchIds: (
+        value: SheinStudioWorkbenchStateUpdater<"queuedBatchIds">,
+      ) => setWorkbenchField("queuedBatchIds", value),
+      setQueuedBatchIndex: (
+        value: SheinStudioWorkbenchStateUpdater<"queuedBatchIndex">,
+      ) => setWorkbenchField("queuedBatchIndex", value),
       setRegeneratingId: (
         value: SheinStudioWorkbenchStateUpdater<"regeneratingId">,
       ) => setWorkbenchField("regeneratingId", value),
@@ -203,9 +219,13 @@ export function SheinStudioWorkbench({
     productImagePrompt,
     productImagePrompts,
     prompt,
+    queueMessage,
     regeneratingId,
     renderSizeImagesWithSds,
     groupedSelections,
+    batchQueueMode,
+    queuedBatchIds,
+    queuedBatchIndex,
     savedBatches,
     saveMessage,
     selectedIds,
@@ -217,6 +237,7 @@ export function SheinStudioWorkbench({
   } = workbenchState;
   const {
     setArtworkModel,
+    setBatchQueueMode,
     setDesigns,
     setDraftWarning,
     setGroupedImageMode,
@@ -226,6 +247,9 @@ export function SheinStudioWorkbench({
     setProductImagePrompt,
     setProductImagePrompts,
     setPrompt,
+    setQueueMessage,
+    setQueuedBatchIds,
+    setQueuedBatchIndex,
     setRenderSizeImagesWithSds,
     setSelectedIds,
     setSelectedSdsImages,
@@ -351,6 +375,13 @@ export function SheinStudioWorkbench({
         draft: localDraftSnapshot,
       }),
     [localDraftSnapshot, savedBatches],
+  );
+  const currentQueuedBatchId = batchQueueMode
+    ? queuedBatchIds[queuedBatchIndex] ?? ""
+    : "";
+  const currentQueuedBatch = useMemo(
+    () => savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null,
+    [currentQueuedBatchId, savedBatches],
   );
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
@@ -781,6 +812,89 @@ export function SheinStudioWorkbench({
     [buildSaveInputFromBatch, refreshSavedBatches, savedBatches],
   );
 
+  const clearBatchQueue = useCallback(() => {
+    setBatchQueueMode(null);
+    setQueuedBatchIds([]);
+    setQueuedBatchIndex(0);
+  }, [setBatchQueueMode, setQueuedBatchIds, setQueuedBatchIndex]);
+
+  const stepForQueuedBatch = useCallback(
+    (batch: SheinStudioSavedBatch, mode: SheinStudioBatchQueueMode) => {
+      if (mode === "generate") {
+        return "generate" as const;
+      }
+      if (batch.createdTasks.length > 0) {
+        return "tasks" as const;
+      }
+      if (batch.designs.length > 0) {
+        return "review" as const;
+      }
+      return "generate" as const;
+    },
+    [],
+  );
+
+  const loadQueuedBatch = useCallback(
+    (batchIds: string[], index: number, mode: SheinStudioBatchQueueMode) => {
+      for (let nextIndex = index; nextIndex < batchIds.length; nextIndex += 1) {
+        const batch = savedBatches.find((item) => item.id === batchIds[nextIndex]);
+        if (!batch) {
+          continue;
+        }
+        handleLoadBatch(batch);
+        setQueuedBatchIndex(nextIndex);
+        setEffectiveStep(stepForQueuedBatch(batch, mode));
+        setQueueMessage("");
+        return true;
+      }
+      clearBatchQueue();
+      setQueueMessage("已完成这批批次的顺序处理。");
+      return false;
+    },
+    [
+      clearBatchQueue,
+      handleLoadBatch,
+      savedBatches,
+      setEffectiveStep,
+      setQueueMessage,
+      setQueuedBatchIndex,
+      stepForQueuedBatch,
+    ],
+  );
+
+  const handleOpenBatchQueue = useCallback(
+    (input: { batchIds: string[]; mode: SheinStudioBatchQueueMode }) => {
+      const validBatchIds = input.batchIds.filter((batchId) =>
+        savedBatches.some((item) => item.id === batchId),
+      );
+      if (validBatchIds.length === 0) {
+        clearBatchQueue();
+        setQueueMessage("没有可继续处理的已保存批次。");
+        return;
+      }
+      setBatchQueueMode(input.mode);
+      setQueuedBatchIds(validBatchIds);
+      setQueuedBatchIndex(0);
+      loadQueuedBatch(validBatchIds, 0, input.mode);
+    },
+    [
+      clearBatchQueue,
+      loadQueuedBatch,
+      savedBatches,
+      setBatchQueueMode,
+      setQueueMessage,
+      setQueuedBatchIds,
+      setQueuedBatchIndex,
+    ],
+  );
+
+  const handleAdvanceBatchQueue = useCallback(() => {
+    if (!batchQueueMode) {
+      return;
+    }
+    loadQueuedBatch(queuedBatchIds, queuedBatchIndex + 1, batchQueueMode);
+  }, [batchQueueMode, loadQueuedBatch, queuedBatchIds, queuedBatchIndex]);
+
   function toggleSelection(designId: string) {
     setSelectedIds((current) =>
       current.includes(designId)
@@ -819,11 +933,30 @@ export function SheinStudioWorkbench({
         }}
         onDeleteSummary={handleDeleteRecentBatchSummary}
         onDuplicateSummary={handleDuplicateRecentBatchSummary}
+        onOpenBatchQueue={handleOpenBatchQueue}
         onRenameSummary={handleRenameRecentBatchSummary}
         onSelectSummary={handleSelectRecentBatchSummary}
         storeOptions={recentBatchStoreOptions}
         summaries={recentBatchSummaries}
       />
+
+      {batchQueueMode && currentQueuedBatch ? (
+        <SheinStudioBatchQueueBanner
+          currentBatchName={currentQueuedBatch.name}
+          currentIndex={queuedBatchIndex}
+          mode={batchQueueMode}
+          onExit={clearBatchQueue}
+          onNext={handleAdvanceBatchQueue}
+          onSkip={handleAdvanceBatchQueue}
+          total={queuedBatchIds.length}
+        />
+      ) : null}
+
+      {queueMessage ? (
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+          {queueMessage}
+        </div>
+      ) : null}
 
       <SheinStudioSelectionOverview
         printableAreaLabel={printableAreaLabel}

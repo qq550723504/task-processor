@@ -179,4 +179,99 @@ describe("SheinStudioRecentBatchesDashboard", () => {
 
     expect(onBulkUpdateStore).toHaveBeenCalledWith(["batch-1", "batch-2"], "869");
   });
+
+  it("shows bulk queue actions when persisted batches are selected", () => {
+    const onOpenBatchQueue = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={onOpenBatchQueue}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Retro Cherries",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Second Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "second prompt",
+            storeSummary: "跟随当前店铺",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+
+    expect(screen.getByRole("button", { name: "批量继续生成" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量创建任务" })).toBeInTheDocument();
+  });
+
+  it("emits selected persisted batch ids for continue-generate mode", () => {
+    const onOpenBatchQueue = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={onOpenBatchQueue}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Retro Cherries",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            id: "draft-1",
+            source: "local_draft",
+            isRecoverableDraft: true,
+            title: "Local Draft",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "draft prompt",
+            storeSummary: "跟随当前店铺",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T11:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select draft-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-1"],
+      mode: "generate",
+    });
+  });
 });
