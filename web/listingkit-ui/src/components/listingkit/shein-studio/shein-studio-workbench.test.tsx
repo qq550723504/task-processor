@@ -70,7 +70,9 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     groupedImageMode?: string;
     generationError?: string;
     onGenerate: () => void;
+    onRestorePrompt?: (value: string) => void;
     prompt: string;
+    promptHistory?: Array<{ prompt: string; createdAt: string }>;
     subscriptionBlockedMessage?: string;
     setPrompt: (value: string) => void;
     selectedSdsImages?: Array<{
@@ -91,6 +93,15 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
         <button onClick={props.onGenerate} type="button">
           generate styles
         </button>
+        {(props.promptHistory ?? []).map((entry) => (
+          <button
+            key={entry.createdAt}
+            onClick={() => props.onRestorePrompt?.(entry.prompt)}
+            type="button"
+          >
+            restore-{entry.prompt}
+          </button>
+        ))}
         <div>
           selected SDS images:{" "}
           {Array.isArray(props.selectedSdsImages) ? props.selectedSdsImages.length : 0}
@@ -427,6 +438,135 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: /Group 1/ }));
     await waitFor(() =>
       expect(screen.getByDisplayValue("prompt a")).toBeInTheDocument(),
+    );
+  });
+
+  it("appends the active prompt to the selected group's history when generating", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "prompt old",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      groupedSelections: [],
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          primarySelection: selection,
+          groupedSelections: [],
+          styleCount: "1",
+          sheinStoreId: "1",
+          imageStrategy: "ai_generated",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          currentPrompt: "prompt old",
+          promptHistory: [],
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "nanobanana",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T00:00:00.000Z",
+        },
+      ],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+    generateSheinStudioDesigns.mockImplementation(
+      () =>
+        new Promise(() => {
+          return undefined;
+        }),
+    );
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() => expect(screen.getByDisplayValue("prompt old")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("prompt"), {
+      target: { value: "new prompt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "restore-new prompt" })).toBeInTheDocument(),
+    );
+  });
+
+  it("restores a historic group prompt into the current prompt field", async () => {
+    saveLocalSheinStudioDraftSnapshot({
+      prompt: "legacy top-level",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          primarySelection: selection,
+          groupedSelections: [],
+          styleCount: "1",
+          sheinStoreId: "1",
+          imageStrategy: "ai_generated",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          currentPrompt: "prompt a",
+          promptHistory: [
+            {
+              prompt: "prompt old",
+              groupedImageMode: "shared_by_size",
+              createdAt: "2026-05-26T00:00:00.000Z",
+            },
+          ],
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "nanobanana",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T01:00:00.000Z",
+        },
+      ],
+      updatedAt: "2026-05-26T01:00:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    expect(await screen.findByDisplayValue("prompt a")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "restore-prompt old" }));
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("prompt old")).toBeInTheDocument(),
     );
   });
 

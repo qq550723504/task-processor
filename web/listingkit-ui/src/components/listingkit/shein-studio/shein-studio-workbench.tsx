@@ -327,6 +327,10 @@ export function SheinStudioWorkbench({
     );
     return matched ? formatSheinStoreOptionLabel(matched) : "";
   }, [effectiveCurrentStoreId, enabledProfiles]);
+  const activeGroupPromptHistory = useMemo(
+    () => groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [],
+    [activeGroupId, groups],
+  );
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
     galleryRatioCheck,
@@ -548,9 +552,11 @@ export function SheinStudioWorkbench({
 
   const { handleCreateTasks, handleGenerate, handleRegenerate } =
     useSheinStudioDesignActions({
+      activeGroupId,
       activeSelection,
       artworkModel,
       designs,
+      groups,
       groupedImageMode,
       imageStrategy,
       navigateToStep,
@@ -787,11 +793,13 @@ export function SheinStudioWorkbench({
             onDeleteBatch={handleDeleteBatch}
             onGenerate={handleGenerate}
             onLoadBatch={handleLoadBatch}
+            onRestorePrompt={setPrompt}
             onSaveBatch={handleSaveBatch}
             productImageCount={productImageCount}
             productImagePrompt={productImagePrompt}
             productImagePrompts={productImagePrompts}
             prompt={prompt}
+            promptHistory={activeGroupPromptHistory}
             promptInputRef={promptInputRef}
             renderSizeImagesWithSds={renderSizeImagesWithSds}
             saveMessage={saveMessage}

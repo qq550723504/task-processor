@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import type {
+  SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGroupedImageMode,
@@ -46,6 +47,7 @@ export function SheinStudioGenerationPanel({
   renderSizeImagesWithSds,
   transparentBackground,
   prompt,
+  promptHistory,
   promptInputRef,
   savedBatches,
   saveMessage,
@@ -63,6 +65,7 @@ export function SheinStudioGenerationPanel({
   setProductImagePrompt,
   setProductImagePrompts,
   setPrompt,
+  onRestorePrompt,
   setRenderSizeImagesWithSds,
   setSheinStoreId,
   setStyleCount,
@@ -92,6 +95,7 @@ export function SheinStudioGenerationPanel({
   renderSizeImagesWithSds: boolean;
   transparentBackground: boolean;
   prompt: string;
+  promptHistory: SDSGroupedPromptHistoryEntry[];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   savedBatches: SheinStudioSavedBatch[];
   saveMessage: string;
@@ -109,6 +113,7 @@ export function SheinStudioGenerationPanel({
   setProductImagePrompt: (value: string) => void;
   setProductImagePrompts: (value: SheinStudioProductImagePrompt[]) => void;
   setPrompt: (value: string) => void;
+  onRestorePrompt: (value: string) => void;
   setRenderSizeImagesWithSds: (value: boolean) => void;
   setSheinStoreId: (value: string) => void;
   setStyleCount: (value: string) => void;
@@ -149,7 +154,9 @@ export function SheinStudioGenerationPanel({
           disabled={isGenerating}
           groupedImageMode={groupedImageMode}
           prompt={prompt}
+          promptHistory={promptHistory}
           promptInputRef={promptInputRef}
+          restorePrompt={onRestorePrompt}
           setArtworkModel={setArtworkModel}
           setGroupedImageMode={setGroupedImageMode}
           setPrompt={setPrompt}

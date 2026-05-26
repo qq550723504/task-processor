@@ -27,6 +27,7 @@ import { saveSheinStudioDraftWithOptions } from "@/lib/utils/shein-studio-batche
 
 type DraftOverrides = Partial<{
   designs: SheinStudioGeneratedDesign[];
+  groups: SheinStudioGroupedWorkspace[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
 }>;
@@ -228,7 +229,7 @@ export function useSheinStudioDraftPersistence(state: WorkbenchDraftState) {
         selectedSdsImages: state.selectedSdsImages,
         renderSizeImagesWithSds: state.renderSizeImagesWithSds,
         selection: state.activeSelection,
-        groups: state.groups,
+        groups: overrides?.groups ?? state.groups,
         groupedSelections: state.groupedSelections,
         designs: overrides?.designs ?? state.designs,
         selectedIds: overrides?.selectedIds ?? state.selectedIds,

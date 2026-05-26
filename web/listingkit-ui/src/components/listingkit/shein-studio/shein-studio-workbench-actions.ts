@@ -22,10 +22,12 @@ import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-refere
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
+  SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
+  SheinStudioGroupedWorkspace,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -35,6 +37,7 @@ import type {
 type PersistDraft = (
   overrides?: Partial<{
     designs: SheinStudioGeneratedDesign[];
+    groups: SheinStudioGroupedWorkspace[];
     selectedIds: string[];
     createdTasks: SheinStudioCreatedTask[];
   }>,
@@ -46,9 +49,11 @@ type PersistDraft = (
 ) => Promise<unknown>;
 
 type UseSheinStudioDesignActionsParams = {
+  activeGroupId: string;
   activeSelection?: SDSProductVariantSelection;
   artworkModel: SheinStudioArtworkModel;
   designs: SheinStudioGeneratedDesign[];
+  groups: SheinStudioGroupedWorkspace[];
   groupedImageMode: SheinStudioGroupedImageMode;
   imageStrategy: SheinStudioImageStrategy;
   navigateToStep: (step: SheinStudioStepKey) => void;
@@ -73,9 +78,11 @@ type UseSheinStudioDesignActionsParams = {
 };
 
 export function useSheinStudioDesignActions({
+  activeGroupId,
   activeSelection,
   artworkModel,
   designs,
+  groups,
   groupedImageMode,
   imageStrategy,
   navigateToStep,
@@ -125,6 +132,35 @@ export function useSheinStudioDesignActions({
     hasLocalWorkflowStateRef,
   });
 
+  function buildNextPromptHistoryGroups() {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt || !activeGroupId) {
+      return groups;
+    }
+    const historyEntry: SDSGroupedPromptHistoryEntry = {
+      prompt: trimmedPrompt,
+      groupedImageMode,
+      createdAt: new Date().toISOString(),
+    };
+    return groups.map((group) => {
+      if (group.id !== activeGroupId) {
+        return group;
+      }
+      const newest = group.promptHistory[0];
+      const promptHistory =
+        newest?.prompt === historyEntry.prompt &&
+        newest?.groupedImageMode === historyEntry.groupedImageMode
+          ? group.promptHistory
+          : [historyEntry, ...group.promptHistory].slice(0, 5);
+      return {
+        ...group,
+        currentPrompt: trimmedPrompt,
+        promptHistory,
+        updatedAt: historyEntry.createdAt,
+      };
+    });
+  }
+
   async function handleGenerate() {
     if (!activeSelection?.variantId) {
       workbench.setField("generationError", "请先选择 SDS 变体。");
@@ -147,6 +183,10 @@ export function useSheinStudioDesignActions({
     workbench.setField("createdTasks", []);
     workbench.setField("draftWarning", "");
     workbench.setField("isGenerating", true);
+    const nextGroups = buildNextPromptHistoryGroups();
+    if (nextGroups !== groups) {
+      workbench.setField("groups", nextGroups);
+    }
 
     const sessionSyncPromise = (async () => {
       try {
@@ -171,6 +211,7 @@ export function useSheinStudioDesignActions({
             imageStrategy,
             groupedImageMode,
             selectedSdsImages,
+            groups: nextGroups,
             transparentBackground,
             renderSizeImagesWithSds,
             sheinStoreId,
@@ -268,6 +309,7 @@ export function useSheinStudioDesignActions({
       void persistDraft(
         {
           designs: allImages,
+          groups: nextGroups,
           selectedIds: nextSelectedIds,
           createdTasks: [],
         },
@@ -321,6 +363,10 @@ export function useSheinStudioDesignActions({
 
     workbench.setField("generationError", "");
     workbench.setField("regeneratingId", designId);
+    const nextGroups = buildNextPromptHistoryGroups();
+    if (nextGroups !== groups) {
+      workbench.setField("groups", nextGroups);
+    }
 
     try {
       const targets = buildGroupedGenerationTargets({
@@ -386,6 +432,7 @@ export function useSheinStudioDesignActions({
       void persistDraft(
         {
           designs: nextDesigns,
+          groups: nextGroups,
           selectedIds: nextSelectedIds,
         },
         {

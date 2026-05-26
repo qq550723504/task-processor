@@ -15,6 +15,7 @@ import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import type {
+  SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -28,7 +29,9 @@ export function ArtworkGenerationSettings({
   disabled,
   groupedImageMode,
   prompt,
+  promptHistory,
   promptInputRef,
+  restorePrompt,
   setArtworkModel,
   setGroupedImageMode,
   setPrompt,
@@ -44,7 +47,9 @@ export function ArtworkGenerationSettings({
   disabled?: boolean;
   groupedImageMode: SheinStudioGroupedImageMode;
   prompt: string;
+  promptHistory: SDSGroupedPromptHistoryEntry[];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
+  restorePrompt: (value: string) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setPrompt: (value: string) => void;
@@ -78,6 +83,25 @@ export function ArtworkGenerationSettings({
         <p className="text-xs leading-6 text-zinc-600">
           系统会优先生成适合 POD 印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
         </p>
+        {promptHistory.length > 0 ? (
+          <div className="rounded-2xl border border-emerald-200/80 bg-white/70 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-900/70">
+              最近使用过的提示词
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {promptHistory.map((entry) => (
+                <button
+                  className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-left text-xs text-emerald-950 transition hover:border-emerald-400 hover:bg-emerald-100"
+                  key={entry.createdAt}
+                  onClick={() => restorePrompt(entry.prompt)}
+                  type="button"
+                >
+                  {entry.prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Label>
       <NumberInput
         disabled={disabled}

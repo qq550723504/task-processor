@@ -1,9 +1,10 @@
 import type { ImgHTMLAttributes } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
+import type { SDSGroupedPromptHistoryEntry } from "@/lib/types/shein-studio";
 
 vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
   SheinCreatedTasksList: () => <div>created tasks</div>,
@@ -37,6 +38,7 @@ vi.mock("next/image", () => ({
 function renderPanel(options?: {
   imageStrategy?: "ai_generated" | "sds_official" | "hybrid";
   availableSdsImages?: SheinStudioSelectableSDSImage[];
+  promptHistory?: SDSGroupedPromptHistoryEntry[];
   styleCount?: string;
   subscriptionBlockedMessage?: string;
 }) {
@@ -56,11 +58,13 @@ function renderPanel(options?: {
       onDeleteBatch={() => undefined}
       onGenerate={() => undefined}
       onLoadBatch={() => undefined}
+      onRestorePrompt={() => undefined}
       onSaveBatch={() => undefined}
       productImageCount="5"
       productImagePrompt=""
       productImagePrompts={[]}
       prompt=""
+      promptHistory={options?.promptHistory ?? []}
       promptInputRef={{ current: null }}
       renderSizeImagesWithSds={true}
       saveMessage=""
@@ -141,11 +145,13 @@ describe("SheinStudioGenerationPanel", () => {
         onDeleteBatch={() => undefined}
         onGenerate={() => undefined}
         onLoadBatch={() => undefined}
+        onRestorePrompt={() => undefined}
         onSaveBatch={() => undefined}
         productImageCount="5"
         productImagePrompt=""
         productImagePrompts={[]}
         prompt=""
+        promptHistory={[]}
         promptInputRef={{ current: null }}
         renderSizeImagesWithSds={true}
         saveMessage=""
@@ -193,6 +199,70 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.getByText("变化强度")).toBeInTheDocument();
   });
 
+  it("renders prompt history entries and restores one back into the editor", () => {
+    const restorePrompt = vi.fn();
+
+    render(
+      <SheinStudioGenerationPanel
+        availableSdsImages={[]}
+        artworkModel="nanobanana"
+        createdTasks={[]}
+        creatingError=""
+        creatingMessage=""
+        generationError=""
+        groupedImageMode="shared_by_size"
+        imageStrategy="ai_generated"
+        isCreatingTasks={false}
+        isGenerating={false}
+        onCreateTasks={() => undefined}
+        onDeleteBatch={() => undefined}
+        onGenerate={() => undefined}
+        onLoadBatch={() => undefined}
+        onRestorePrompt={restorePrompt}
+        onSaveBatch={() => undefined}
+        productImageCount="5"
+        productImagePrompt=""
+        productImagePrompts={[]}
+        prompt="current prompt"
+        promptHistory={[
+          {
+            prompt: "prompt old",
+            groupedImageMode: "shared_by_size",
+            createdAt: "2026-05-26T01:00:00.000Z",
+          },
+        ]}
+        promptInputRef={{ current: null }}
+        renderSizeImagesWithSds={true}
+        saveMessage=""
+        savedBatches={[]}
+        selectedSdsImages={[]}
+        selectedStyleCount={0}
+        selectionReady={true}
+        subscriptionBlockedMessage=""
+        variationIntensity="medium"
+        setArtworkModel={() => undefined}
+        setGroupedImageMode={() => undefined}
+        setImageStrategy={() => undefined}
+        setProductImageCount={() => undefined}
+        setProductImagePrompt={() => undefined}
+        setProductImagePrompts={() => undefined}
+        setPrompt={() => undefined}
+        setRenderSizeImagesWithSds={() => undefined}
+        setSelectedSdsImages={() => undefined}
+        setSheinStoreId={() => undefined}
+        setStyleCount={() => undefined}
+        setVariationIntensity={() => undefined}
+        setTransparentBackground={() => undefined}
+        sheinStoreId="869"
+        styleCount="1"
+        transparentBackground={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "prompt old" }));
+    expect(restorePrompt).toHaveBeenCalledWith("prompt old");
+  });
+
   it("blocks generation and task creation when the current tenant has no Studio entitlement", () => {
     renderPanel({
       subscriptionBlockedMessage:
@@ -225,11 +295,13 @@ describe("SheinStudioGenerationPanel", () => {
         onDeleteBatch={() => undefined}
         onGenerate={() => undefined}
         onLoadBatch={() => undefined}
+        onRestorePrompt={() => undefined}
         onSaveBatch={() => undefined}
         productImageCount="5"
         productImagePrompt="暖色背景"
         productImagePrompts={[]}
         prompt="美国国旗主题"
+        promptHistory={[]}
         promptInputRef={{ current: null }}
         renderSizeImagesWithSds={true}
         saveMessage=""
