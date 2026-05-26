@@ -3,11 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinStudioWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench";
 import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handoff";
+import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 
 const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
 const resumeSheinStudioDesignGeneration = vi.fn();
 const createSheinReviewTasks = vi.fn();
+const getSDSBaselineReadiness = vi.fn();
+const warmSDSBaselineForSelection = vi.fn();
 const ensureSheinStudioSession = vi.fn();
 const hydrateSDSVariantSelection = vi.fn();
 const listSheinStudioBatches = vi.fn();
@@ -16,6 +19,7 @@ const saveSheinStudioBatch = vi.fn();
 const saveSheinStudioDraftWithOptions = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
+const useSDSGroupedCandidates = vi.fn();
 let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
 vi.mock("next/navigation", () => ({
@@ -75,7 +79,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
   }) => {
     lastGenerationPanelProps = props as Record<string, unknown>;
     return (
-      <div>
+      <div id="shein-studio-generator">
         <label htmlFor="prompt">prompt</label>
         <input
           id="prompt"
@@ -123,6 +127,11 @@ vi.mock("@/lib/shein-studio/hydrate-sds-selection", () => ({
   hydrateSDSVariantSelection: (...args: unknown[]) => hydrateSDSVariantSelection(...args),
 }));
 
+vi.mock("@/lib/api/sds-baseline", () => ({
+  getSDSBaselineReadiness: (...args: unknown[]) => getSDSBaselineReadiness(...args),
+  warmSDSBaselineForSelection: (...args: unknown[]) => warmSDSBaselineForSelection(...args),
+}));
+
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
   deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
   listSheinStudioBatches: (...args: unknown[]) => listSheinStudioBatches(...args),
@@ -139,6 +148,10 @@ vi.mock("@/lib/query/use-shein-store-selector", () => ({
     routing: { isError: false },
     recommendedStoreId: "",
   }),
+}));
+
+vi.mock("@/lib/query/use-sds-grouped-candidates", () => ({
+  useSDSGroupedCandidates: () => useSDSGroupedCandidates(),
 }));
 
 const selection = {
@@ -162,14 +175,26 @@ describe("SheinStudioWorkbench", () => {
     generateSheinStudioDesigns.mockReset();
     resumeSheinStudioDesignGeneration.mockReset();
     createSheinReviewTasks.mockReset();
+    getSDSBaselineReadiness.mockReset();
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
+    getSDSBaselineReadiness.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "ready",
+      reason: "",
+    });
     hydrateSDSVariantSelection.mockResolvedValue(selection);
     listSheinStudioBatches.mockResolvedValue([]);
     loadSheinStudioDraft.mockResolvedValue(null);
+    warmSDSBaselineForSelection.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "ready",
+      reason: "",
+    });
     saveSheinStudioBatch.mockResolvedValue(null);
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
+    useSDSGroupedCandidates.mockReturnValue([]);
   });
 
   it("defaults to one SDS main image plus size references in hybrid and SDS modes", async () => {
@@ -536,6 +561,122 @@ describe("SheinStudioWorkbench", () => {
     );
     expect(lastGenerationPanelProps?.subscriptionBlockedMessage).toBe(
       "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
+    );
+  });
+
+  it("restores grouped selections from a saved draft even when they are not in recent variants", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "sds_official",
+      selectedSdsImages: [],
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "9",
+          eligible: true,
+        },
+      ],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/已加入\s*1\s*款/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText("hoodie")).toBeInTheDocument();
+  });
+
+  it("shows candidate-pool items even when there are no recent variants", async () => {
+    useSDSGroupedCandidates.mockReturnValue([
+      {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 101,
+        prototypeGroupId: 200,
+        layerId: "layer-2",
+        productName: "hoodie",
+        variantLabel: "L / white",
+        printableWidth: 1000,
+        printableHeight: 1000,
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("批量候选池")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("hoodie")).toBeInTheDocument();
+  });
+
+  it("shows grouped-candidate recovery guidance after returning from candidate pool", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    saveSDSGroupedCandidateHandoff({
+      action: "focus_generate",
+      actionLabel: "去生成并预热",
+      message:
+        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+        ),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "去生成并预热" }));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  });
+
+  it("warms baseline directly from grouped-candidate guidance", async () => {
+    saveSDSGroupedCandidateHandoff({
+      action: "warm_baseline",
+      actionLabel: "一键预热 baseline",
+      message:
+        "这款候选商品还没有 baseline 缓存。先预热 baseline，再回来加入 grouped 批量上品。",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "一键预热 baseline" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "一键预热 baseline" }));
+
+    await waitFor(() => expect(warmSDSBaselineForSelection).toHaveBeenCalledWith(selection));
+    await waitFor(() =>
+      expect(
+        screen.getByText("这款 SDS 商品的 baseline 已预热完成，现在可以继续加入 grouped 批量上品。"),
+      ).toBeInTheDocument(),
     );
   });
 });

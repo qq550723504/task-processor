@@ -78,6 +78,24 @@ describe("shein studio storage api", () => {
         productName: "tee",
         variantLabel: "M / black",
       },
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
       designs: [
         {
           id: "design-1",
@@ -130,6 +148,24 @@ describe("shein studio storage api", () => {
         productName: "tee",
         variantLabel: "M / black",
       },
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
       designs: [
         {
           id: "design-1",
@@ -141,6 +177,16 @@ describe("shein studio storage api", () => {
     });
 
     expect(saved?.prompt).toBe("retro cherries");
+    expect(upsertSheinStudioSessionBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupedSelections: [
+          expect.objectContaining({
+            selectionId: "1:200:101:layer-2:101",
+            sheinStoreId: "store-9",
+          }),
+        ],
+      }),
+    );
 
     const batches = await listSheinStudioBatches();
     expect(batches).toHaveLength(1);
@@ -166,11 +212,43 @@ describe("shein studio storage api", () => {
         productName: "tee",
         variantLabel: "M / black",
       },
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
       designs: [],
       selectedIds: [],
       createdTasks: [],
     });
 
     expect(saved?.prompt).toBe("retro cherries");
+    expect(updateSheinStudioSession).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        groupedSelections: [
+          expect.objectContaining({
+            selectionId: "1:200:101:layer-2:101",
+            sheinStoreId: "store-9",
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        signal: undefined,
+      }),
+    );
   });
 });

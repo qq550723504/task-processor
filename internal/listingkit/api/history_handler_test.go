@@ -40,6 +40,10 @@ func (s *stubHistoryService) GetTaskResult(ctx context.Context, taskID string) (
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubHistoryService) GetSDSBaselineReadiness(ctx context.Context, query *listingkit.SDSBaselineReadinessQuery) (*listingkit.SDSBaselineReadiness, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubHistoryService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }

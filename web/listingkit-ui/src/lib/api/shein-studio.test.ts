@@ -5,6 +5,8 @@ import {
   getSheinStudioSession,
   mapStudioSessionDetailToDraft,
   replaceSheinStudioSessionDesigns,
+  upsertSheinStudioSessionBatch,
+  updateSheinStudioSession,
 } from "@/lib/api/shein-studio-sessions";
 import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 
@@ -152,6 +154,24 @@ describe("shein studio design metadata", () => {
       session: {
         id: "session-1",
         prompt: "fallback session prompt",
+        grouped_selections: [
+          {
+            selection_id: "1:200:101:layer-2:101",
+            selection: {
+              product_id: 1,
+              parent_product_id: 1,
+              variant_id: 101,
+              prototype_group_id: 200,
+              layer_id: "layer-2",
+              product_name: "hoodie",
+              variant_label: "L / white",
+            },
+            baseline_status: "ready",
+            baseline_reason: "",
+            shein_store_id: "store-9",
+            eligible: true,
+          },
+        ],
       },
       designs: [
         {
@@ -171,6 +191,117 @@ describe("shein studio design metadata", () => {
       transparentBackground: true,
       variationIntensity: "light",
     });
+    expect(draft?.groupedSelections).toEqual([
+      expect.objectContaining({
+        selectionId: "1:200:101:layer-2:101",
+        sheinStoreId: "store-9",
+        baselineStatus: "ready",
+        selection: expect.objectContaining({
+          variantId: 101,
+          productName: "hoodie",
+        }),
+      }),
+    ]);
+  });
+
+  it("sends grouped selections when updating a studio session", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "session-1" },
+      designs: [],
+    });
+
+    await updateSheinStudioSession("session-1", {
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/sessions/session-1",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          grouped_selections: [
+            expect.objectContaining({
+              selection_id: "1:200:101:layer-2:101",
+              baseline_status: "ready",
+              shein_store_id: "store-9",
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("sends grouped selections when saving a studio batch", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "batch-1" },
+      designs: [],
+    });
+
+    await upsertSheinStudioSessionBatch({
+      prompt: "retro botanical clock",
+      styleCount: "2",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
+      approvedDesignIds: [],
+      createdTasks: [],
+      designs: [],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          grouped_selections: [
+            expect.objectContaining({
+              selection_id: "1:200:101:layer-2:101",
+              baseline_status: "ready",
+              shein_store_id: "store-9",
+            }),
+          ],
+        }),
+      }),
+    );
   });
 
   it("rejects studio session responses without a string session id", async () => {

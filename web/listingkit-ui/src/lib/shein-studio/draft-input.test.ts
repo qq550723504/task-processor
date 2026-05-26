@@ -42,6 +42,24 @@ describe("buildSheinStudioDraftInput", () => {
         productName: "tee",
         variantLabel: "M / black",
       },
+      groupedSelections: [
+        {
+          selectionId: "1:3:5:layer-2:5",
+          selection: {
+            productId: 4,
+            parentProductId: 1,
+            variantId: 5,
+            prototypeGroupId: 3,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "9",
+          eligible: true,
+        },
+      ],
       designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
       selectedIds: ["design-1"],
       createdTasks: [],
@@ -78,5 +96,16 @@ describe("buildSheinStudioDraftInput", () => {
     ]);
     expect(payload.selection?.variants?.[0]).not.toHaveProperty("mockupImageUrls");
     expect(payload.selection?.variants?.[0]).not.toHaveProperty("templateImageUrl");
+    expect(payload.groupedSelections).toEqual([
+      expect.objectContaining({
+        selectionId: "1:3:5:layer-2:5",
+        sheinStoreId: "9",
+        baselineStatus: "ready",
+        selection: expect.objectContaining({
+          variantId: 5,
+          productName: "hoodie",
+        }),
+      }),
+    ]);
   });
 });

@@ -22,6 +22,7 @@ describe("buildInitialSheinStudioWorkbenchState", () => {
       imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
       productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
       variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+      groupedSelections: [],
       prompt: "",
       styleCount: "1",
       transparentBackground: false,
@@ -72,6 +73,24 @@ describe("sheinStudioWorkbenchReducer", () => {
         sheinStoreId: "42",
         imageStrategy: "hybrid",
         selectedSdsImages: [],
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "88",
+            eligible: true,
+          },
+        ],
         renderSizeImagesWithSds: false,
         designs: [{ id: "design-1", imageUrl: "https://example.com/1.png" }],
         selectedIds: ["design-1"],
@@ -82,6 +101,7 @@ describe("sheinStudioWorkbenchReducer", () => {
 
     expect(next.prompt).toBe("draft prompt");
     expect(next.designs).toHaveLength(1);
+    expect(next.groupedSelections).toHaveLength(1);
     expect(next.renderSizeImagesWithSds).toBe(false);
   });
 
@@ -95,6 +115,24 @@ describe("sheinStudioWorkbenchReducer", () => {
         prompt: "batch prompt",
         styleCount: "4",
         sheinStoreId: "",
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "88",
+            eligible: true,
+          },
+        ],
         designs: [],
         selectedIds: [],
         createdTasks: [],
@@ -105,5 +143,6 @@ describe("sheinStudioWorkbenchReducer", () => {
     expect(next.prompt).toBe("batch prompt");
     expect(next.sheinStoreId).toBe(DEFAULT_SHEIN_STORE_ID);
     expect(next.imageStrategy).toBe(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
+    expect(next.groupedSelections).toHaveLength(1);
   });
 });

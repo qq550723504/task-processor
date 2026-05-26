@@ -17,6 +17,7 @@ import {
 import type { SDSProductSummary, SDSProductVariant } from "@/lib/types/sds";
 
 export function SDSVariantPicker({
+  onAddSelectedVariantsToGroupedCandidates,
   open,
   product,
   variants,
@@ -26,6 +27,10 @@ export function SDSVariantPicker({
   onClose,
   onSelectVariants,
 }: {
+  onAddSelectedVariantsToGroupedCandidates?: (
+    primary: SDSProductVariant,
+    variants: SDSProductVariant[],
+  ) => void;
   open: boolean;
   product?: SDSProductSummary;
   variants: SDSProductVariant[];
@@ -100,15 +105,27 @@ export function SDSVariantPicker({
   }
 
   function useSelectedVariants() {
-    const selected =
-      selectedVariants.length > 0 ? selectedVariants : variants.slice(0, 1);
-    const primary =
-      selected.find((variant) => variant.id === selectedVariantId) ??
-      selected[0];
+    const { primary, selected } = resolveSelectedVariants({
+      selectedVariantId,
+      selectedVariants,
+      variants,
+    });
     if (!primary) {
       return;
     }
     onSelectVariants(primary, selected);
+  }
+
+  function addSelectedVariantsToGroupedCandidates() {
+    const { primary, selected } = resolveSelectedVariants({
+      selectedVariantId,
+      selectedVariants,
+      variants,
+    });
+    if (!primary) {
+      return;
+    }
+    onAddSelectedVariantsToGroupedCandidates?.(primary, selected);
   }
 
   function selectAsPrimary(variant: SDSProductVariant) {
@@ -153,6 +170,9 @@ export function SDSVariantPicker({
                 sizeOptions={sizeOptions}
               />
               <SDSVariantSelectionSummary
+                addSelectedVariantsToGroupedCandidates={
+                  addSelectedVariantsToGroupedCandidates
+                }
                 clearFilteredVariants={clearFilteredVariants}
                 selectFilteredVariants={selectFilteredVariants}
                 selectedColorCount={selectedColors.length}
@@ -173,4 +193,20 @@ export function SDSVariantPicker({
       </div>
     </div>
   );
+}
+
+function resolveSelectedVariants({
+  selectedVariantId,
+  selectedVariants,
+  variants,
+}: {
+  selectedVariantId?: number;
+  selectedVariants: SDSProductVariant[];
+  variants: SDSProductVariant[];
+}) {
+  const selected =
+    selectedVariants.length > 0 ? selectedVariants : variants.slice(0, 1);
+  const primary =
+    selected.find((variant) => variant.id === selectedVariantId) ?? selected[0];
+  return { primary, selected };
 }

@@ -123,6 +123,7 @@ export function SDSVariantFilters({
 }
 
 export function SDSVariantSelectionSummary({
+  addSelectedVariantsToGroupedCandidates,
   clearFilteredVariants,
   selectFilteredVariants,
   selectedColorCount,
@@ -130,6 +131,7 @@ export function SDSVariantSelectionSummary({
   selectedVariantCount,
   useSelectedVariants,
 }: {
+  addSelectedVariantsToGroupedCandidates: () => void;
   clearFilteredVariants: () => void;
   selectFilteredVariants: () => void;
   selectedColorCount: number;
@@ -149,6 +151,14 @@ export function SDSVariantSelectionSummary({
         </Button>
         <Button onClick={clearFilteredVariants} variant="ghost" type="button">
           清除当前筛选
+        </Button>
+        <Button
+          disabled={selectedVariantCount === 0}
+          onClick={addSelectedVariantsToGroupedCandidates}
+          type="button"
+          variant="ghost"
+        >
+          加入批量候选池
         </Button>
         <Button
           disabled={selectedVariantCount === 0}

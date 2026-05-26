@@ -28,6 +28,14 @@ func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskLis
 	return s.taskLifecycleOrDefault().ListTasks(ctx, query)
 }
 
+func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
+	return s.taskLifecycleOrDefault().GetSDSBaselineReadiness(ctx, query)
+}
+
+func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {
+	return s.warmSDSBaseline(ctx, req)
+}
+
 func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 	if s.taskLifecycle != nil {
 		return s.taskLifecycle

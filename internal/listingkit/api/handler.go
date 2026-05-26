@@ -15,6 +15,7 @@ import (
 
 type handler struct {
 	taskLifecycleService       listingkit.TaskLifecycleService
+	sdsBaselineWarmService     sdsBaselineWarmService
 	generationTaskService      listingkit.GenerationTaskService
 	childTaskRetryService      childTaskRetryService
 	studioMediaService         listingkit.StudioMediaService
@@ -70,6 +71,10 @@ type childTaskRetryService interface {
 
 type uploadedImageDeleteService interface {
 	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
+}
+
+type sdsBaselineWarmService interface {
+	WarmSDSBaseline(ctx context.Context, req *listingkit.WarmSDSBaselineRequest) (*listingkit.SDSBaselineReadiness, error)
 }
 
 type studioSessionAsyncJobService interface {
@@ -172,6 +177,9 @@ func (h *handler) attachOptionalServices(service HandlerService) {
 	}
 	if sessionService, ok := service.(studioSessionAsyncJobService); ok {
 		h.studioSessionService = sessionService
+	}
+	if warmService, ok := service.(sdsBaselineWarmService); ok {
+		h.sdsBaselineWarmService = warmService
 	}
 	if deleteService, ok := service.(uploadedImageDeleteService); ok {
 		h.uploadedImageDeleteService = deleteService

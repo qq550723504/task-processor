@@ -20,6 +20,7 @@ type UpdateStudioSessionRequest struct {
 	ArtworkModel            *string                         `json:"artwork_model,omitempty"`
 	ImageStrategy           *string                         `json:"image_strategy,omitempty"`
 	SelectedSDSImages       []SheinStudioSelectedSDSImage   `json:"selected_sds_images,omitempty"`
+	GroupedSelections       []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`
 	TransparentBackground   *bool                           `json:"transparent_background,omitempty"`
 	RenderSizeImagesWithSDS *bool                           `json:"render_size_images_with_sds,omitempty"`
 	SheinStoreID            *string                         `json:"shein_store_id,omitempty"`

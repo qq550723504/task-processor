@@ -15,6 +15,7 @@ import {
 import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import { consumeSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 import {
   deleteSheinStudioBatch,
   listSheinStudioBatches,
@@ -65,6 +66,7 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
         let resumableGenerationJobId = "";
+        const groupedCandidateHandoff = consumeSDSGroupedCandidateHandoff();
 
         if (draft || !hasLocalWorkflowStateRef.current) {
           const galleryHandoff = activeSelectionRef.current
@@ -93,6 +95,7 @@ export function useSheinStudioWorkspaceLoader({
             sheinStoreId: draftState.sheinStoreId,
             imageStrategy: draftState.imageStrategy,
             selectedSdsImages: draftState.selectedSdsImages,
+            groupedSelections: draftState.groupedSelections,
             renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
             designs: draftState.designs,
             selectedIds: draftState.selectedIds,
@@ -126,7 +129,19 @@ export function useSheinStudioWorkspaceLoader({
           );
         }
         workbench.setField("generationError", "");
-        workbench.setField("generationWarning", "");
+        workbench.setField(
+          "generationWarning",
+          groupedCandidateHandoff?.message ?? "",
+        );
+        workbench.setField(
+          "generationWarningAction",
+          groupedCandidateHandoff?.action && groupedCandidateHandoff.actionLabel
+            ? {
+                intent: groupedCandidateHandoff.action,
+                label: groupedCandidateHandoff.actionLabel,
+              }
+            : null,
+        );
         workbench.setField("creatingError", "");
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");
@@ -139,6 +154,7 @@ export function useSheinStudioWorkspaceLoader({
             "generationWarning",
             "已恢复之前发起的生成任务，正在继续等待结果。",
           );
+          workbench.setField("generationWarningAction", null);
           try {
             const response =
               await resumeSheinStudioDesignGeneration(resumableGenerationJobId);
@@ -168,6 +184,7 @@ export function useSheinStudioWorkspaceLoader({
                 ? `已恢复之前的生成任务。${response.warnings.join(" ")}`
                 : "",
             );
+            workbench.setField("generationWarningAction", null);
             setEffectiveStep("review");
           } catch (error) {
             if (cancelled) {
@@ -178,6 +195,7 @@ export function useSheinStudioWorkspaceLoader({
               error instanceof Error ? error.message : String(error),
             );
             workbench.setField("generationWarning", "");
+            workbench.setField("generationWarningAction", null);
           } finally {
             if (!cancelled) {
               workbench.setField("isGenerating", false);

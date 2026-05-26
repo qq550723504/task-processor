@@ -34,6 +34,10 @@ func (s *stubRevisionValidateService) GetUploadedImage(ctx context.Context, key 
 func (s *stubRevisionValidateService) GetTaskResult(ctx context.Context, taskID string) (*listingkit.TaskResult, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (s *stubRevisionValidateService) GetSDSBaselineReadiness(ctx context.Context, query *listingkit.SDSBaselineReadinessQuery) (*listingkit.SDSBaselineReadiness, error) {
+	return nil, errors.New("not implemented")
+}
 func (s *stubRevisionValidateService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }

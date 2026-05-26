@@ -119,7 +119,7 @@ describe("shein studio workbench model", () => {
         variationIntensity: "strong",
       }),
     ).toEqual({
-      prompt: "retro cherries",
+      prompt: "retro cherries\n\nSDS printable size: 1000x1200px.",
       count: 2,
       variationIntensity: "strong",
       printableWidth: 1000,
@@ -147,6 +147,29 @@ describe("shein studio workbench model", () => {
       printableHeight: undefined,
       productReferenceImageUrls: undefined,
       imageModel: undefined,
+      transparentBackground: false,
+    });
+  });
+
+  it("does not append the SDS size twice when the prompt already contains it", () => {
+    expect(
+      buildSheinStudioGenerateRequest({
+        artworkModel: "nanobanana",
+        prompt: "retro cherries SDS printable size: 1000x1200px.",
+        printableWidth: 1000,
+        printableHeight: 1200,
+        styleCount: 1,
+        transparentBackground: false,
+        variationIntensity: "medium",
+      }),
+    ).toEqual({
+      prompt: "retro cherries SDS printable size: 1000x1200px.",
+      count: 1,
+      variationIntensity: "medium",
+      printableWidth: 1000,
+      printableHeight: 1200,
+      productReferenceImageUrls: undefined,
+      imageModel: "nanobanana",
       transparentBackground: false,
     });
   });

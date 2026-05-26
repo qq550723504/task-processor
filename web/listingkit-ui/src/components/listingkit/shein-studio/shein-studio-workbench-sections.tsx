@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/shein-studio-progress-strip";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
@@ -10,17 +11,38 @@ import type {
 export function SheinStudioWorkbenchAlerts({
   draftWarning,
   generationWarning,
+  generationWarningAction,
   galleryRatioCheck,
 }: {
   draftWarning: string;
   generationWarning: string;
+  generationWarningAction:
+    | {
+        intent: "focus_generate" | "warm_baseline";
+        label: string;
+        onClick: () => void;
+      }
+    | null;
   galleryRatioCheck: SDSRatioMatch | null;
 }) {
   return (
     <>
       {generationWarning ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          {generationWarning}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{generationWarning}</span>
+            {generationWarningAction ? (
+              <Button
+                className="shrink-0"
+                onClick={generationWarningAction.onClick}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                {generationWarningAction.label}
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

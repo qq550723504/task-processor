@@ -7,6 +7,7 @@ import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -47,6 +48,7 @@ type WorkbenchDraftState = {
   prompt: string;
   regeneratingId: string;
   renderSizeImagesWithSds: boolean;
+  groupedSelections: GroupedSDSSelectionEligibility[];
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   setDraftWarning: (value: string | ((current: string) => string)) => void;
@@ -168,6 +170,7 @@ export function useSheinStudioDraftPersistence(state: WorkbenchDraftState) {
         selectedSdsImages: state.selectedSdsImages,
         renderSizeImagesWithSds: state.renderSizeImagesWithSds,
         selection: state.activeSelection,
+        groupedSelections: state.groupedSelections,
         designs: overrides?.designs ?? state.designs,
         selectedIds: overrides?.selectedIds ?? state.selectedIds,
         createdTasks: overrides?.createdTasks ?? state.createdTasks,

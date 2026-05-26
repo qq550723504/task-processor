@@ -1,4 +1,5 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 
 export type SheinStudioGeneratedDesign = {
   id: string;
@@ -87,6 +88,7 @@ export type SheinStudioSavedBatch = {
   renderSizeImagesWithSds?: boolean;
   selectionVariantId?: number;
   selection?: SDSProductVariantSelection;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];

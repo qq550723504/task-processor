@@ -129,6 +129,9 @@ func (s *service) UpdateStudioSession(ctx context.Context, sessionID string, req
 			}
 			session.SelectedSDSImages = selected
 		}
+		if req.GroupedSelections != nil {
+			session.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), req.GroupedSelections...)
+		}
 		if req.TransparentBackground != nil {
 			session.TransparentBackground = *req.TransparentBackground
 		}
@@ -316,6 +319,7 @@ func (s *service) UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchR
 	session.ArtworkModel = req.ArtworkModel
 	session.ImageStrategy = req.ImageStrategy
 	session.SelectedSDSImages = toStudioSelectedSDSImageList(req.SelectedSDSImages)
+	session.GroupedSelections = toStudioGroupedSelectionList(req.GroupedSelections)
 	session.TransparentBackground = req.TransparentBackground
 	session.RenderSizeImagesWithSDS = req.RenderSizeImagesWithSDS
 	session.SheinStoreID = req.SheinStoreID
@@ -429,6 +433,7 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		RenderSizeImagesWithSDS: session.RenderSizeImagesWithSDS,
 		SheinStoreID:            session.SheinStoreID,
 		Selection:               &selection,
+		GroupedSelections:       []SheinStudioGroupedSelection(session.GroupedSelections),
 		ApprovedDesignIDs:       []string(session.ApprovedDesignIDs),
 		CreatedTasks:            []SheinStudioCreatedTask(session.CreatedTasks),
 		DesignCount:             designCount,
@@ -457,6 +462,10 @@ func toStudioSelectedSDSImageList(items []SheinStudioSelectedSDSImage) SheinStud
 
 func toStudioCreatedTaskList(items []SheinStudioCreatedTask) SheinStudioCreatedTaskList {
 	return append(SheinStudioCreatedTaskList(nil), items...)
+}
+
+func toStudioGroupedSelectionList(items []SheinStudioGroupedSelection) SheinStudioGroupedSelectionList {
+	return append(SheinStudioGroupedSelectionList(nil), items...)
 }
 
 func buildCreatedTaskIDs(items []SheinStudioCreatedTask) SheinStudioStringList {

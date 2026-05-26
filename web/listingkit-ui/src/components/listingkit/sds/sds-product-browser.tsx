@@ -1,26 +1,42 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { SDSGroupedCandidatesPanel } from "@/components/listingkit/sds/sds-grouped-candidates-panel";
 import { SDSPagination } from "@/components/listingkit/sds/sds-pagination";
 import { SDSProductCard } from "@/components/listingkit/sds/sds-product-card";
 import { SDSProductBrowserFilters } from "@/components/listingkit/sds/sds-product-browser-filters";
 import { SDSRecentVariants } from "@/components/listingkit/sds/sds-recent-variants";
 import { SDSSelectionSummary } from "@/components/listingkit/sds/sds-selection-summary";
 import { SDSVariantPicker } from "@/components/listingkit/sds/sds-variant-picker";
+import {
+  getSDSBaselineReadiness,
+  warmSDSBaselineForSelection,
+} from "@/lib/api/sds-baseline";
 import { useSDSCategories } from "@/lib/query/use-sds-categories";
+import { useSDSGroupedCandidates } from "@/lib/query/use-sds-grouped-candidates";
 import { useSDSProductDetail } from "@/lib/query/use-sds-product-detail";
 import { useSDSProducts } from "@/lib/query/use-sds-products";
 import { useSDSRecentVariants } from "@/lib/query/use-sds-recent-variants";
 import { useSDSShipmentAreas } from "@/lib/query/use-sds-shipment-areas";
 import { buildSDSVariantSelection } from "@/lib/sds/variant-selection";
 import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  buildGroupedSDSSelectionID,
+  type SDSBaselineStatus,
+} from "@/lib/types/sds-baseline";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
+import {
+  hasSDSGroupedCandidate,
+  removeSDSGroupedCandidate,
+  saveSDSGroupedCandidate,
+} from "@/lib/utils/sds-grouped-candidates";
+import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
 export function SDSProductBrowser({
@@ -35,7 +51,16 @@ export function SDSProductBrowser({
   const pathname = usePathname();
   const searchParams = useLiveSearchParams();
   const recentVariants = useSDSRecentVariants();
+  const groupedCandidates = useSDSGroupedCandidates();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
+  const [isWarmingGroupedCandidates, setIsWarmingGroupedCandidates] = useState(false);
+  const [recentlyWarmedSelectionIds, setRecentlyWarmedSelectionIds] = useState<string[]>([]);
+  const [warmSummary, setWarmSummary] = useState<{
+    failedCount: number;
+    successCount: number;
+  } | null>(null);
+  const [groupedCandidateBaselineStatuses, setGroupedCandidateBaselineStatuses] =
+    useState<Record<string, { reason: string; status: SDSBaselineStatus | "loading" }>>({});
 
   const queryKeyword = searchParams.get("keyword") ?? initialKeyword;
   const currentPage = Number(searchParams.get("page") ?? initialPage) || 1;
@@ -91,6 +116,100 @@ export function SDSProductBrowser({
     () => recentVariants.find((item) => item.variantId === selectedVariantId),
     [recentVariants, selectedVariantId],
   );
+  const groupedCandidateCountsByProduct = useMemo(() => {
+    const counts = new Map<number, number>();
+    groupedCandidates.forEach((item) => {
+      counts.set(item.productId, (counts.get(item.productId) ?? 0) + 1);
+    });
+    return counts;
+  }, [groupedCandidates]);
+
+  useEffect(() => {
+    if (groupedCandidates.length === 0) {
+      setGroupedCandidateBaselineStatuses({});
+      setRecentlyWarmedSelectionIds([]);
+      setWarmSummary(null);
+      return;
+    }
+
+    setGroupedCandidateBaselineStatuses((current) => {
+      const next: Record<string, { reason: string; status: SDSBaselineStatus | "loading" }> = {};
+      groupedCandidates.forEach((item) => {
+        const selectionId = buildGroupedSDSSelectionID(item);
+        next[selectionId] = current[selectionId] ?? {
+          status: "loading",
+          reason: "正在检查 baseline 状态...",
+        };
+      });
+      return next;
+    });
+
+    let cancelled = false;
+    void Promise.all(
+      groupedCandidates.map(async (item) => {
+        const selectionId = buildGroupedSDSSelectionID(item);
+        try {
+          const readiness = await getSDSBaselineReadiness({
+            parentProductId: item.parentProductId,
+            prototypeGroupId: item.prototypeGroupId,
+            variantId: item.variantId,
+            selectedVariantIds: item.selectedVariantIds,
+          });
+          return [
+            selectionId,
+            {
+              status: readiness.status,
+              reason: readiness.reason ?? "",
+            },
+          ] as const;
+        } catch (error) {
+          return [
+            selectionId,
+            {
+              status: "failed" as const,
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : "读取 SDS baseline 状态失败。",
+            },
+          ] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+      setGroupedCandidateBaselineStatuses(Object.fromEntries(entries));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groupedCandidates]);
+
+  useEffect(() => {
+    if (recentlyWarmedSelectionIds.length === 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setRecentlyWarmedSelectionIds([]);
+    }, 6000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [recentlyWarmedSelectionIds]);
+
+  useEffect(() => {
+    if (!warmSummary) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setWarmSummary(null);
+    }, 6000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [warmSummary]);
 
   function updateQuery(next: Record<string, string | undefined>) {
     const params = sanitizedNavigationSearchParams(searchParams);
@@ -140,6 +259,15 @@ export function SDSProductBrowser({
     applySelection(buildSDSVariantSelection(detail.data, primary, selectedVariants));
   }
 
+  function addVariantsToGroupedCandidates(
+    primary: SDSProductVariant,
+    selectedVariants: SDSProductVariant[],
+  ) {
+    const selection = buildSDSVariantSelection(detail.data, primary, selectedVariants);
+    saveSDSGroupedCandidate(selection);
+    saveRecentSDSVariant(selection);
+  }
+
   function openVariantPicker(productId: number) {
     setPickerProductId(productId);
   }
@@ -163,6 +291,78 @@ export function SDSProductBrowser({
       variantLabel: undefined,
       step: "select",
     });
+  }
+
+  function toggleGroupedCandidate(selection: SDSProductVariantSelection) {
+    if (hasSDSGroupedCandidate(selection)) {
+      removeSDSGroupedCandidate(selection);
+      return;
+    }
+    saveSDSGroupedCandidate(selection);
+  }
+
+  async function handleWarmGroupedCandidates(items: SDSProductVariantSelection[]) {
+    if (items.length === 0) {
+      return;
+    }
+    setIsWarmingGroupedCandidates(true);
+    setGroupedCandidateBaselineStatuses((current) => {
+      const next = { ...current };
+      items.forEach((item) => {
+        next[buildGroupedSDSSelectionID(item)] = {
+          status: "loading",
+          reason: "正在批量预热 baseline...",
+        };
+      });
+      return next;
+    });
+    try {
+      const entries = await Promise.all(
+        items.map(async (item) => {
+          const selectionId = buildGroupedSDSSelectionID(item);
+          try {
+            const readiness = await warmSDSBaselineForSelection(item);
+            return [
+              selectionId,
+              {
+                status: readiness.status,
+                reason:
+                  readiness.reason ??
+                  (readiness.status === "ready"
+                    ? "baseline 预热完成。"
+                    : ""),
+              },
+            ] as const;
+          } catch (error) {
+            return [
+              selectionId,
+              {
+                status: "failed" as const,
+                reason:
+                  error instanceof Error ? error.message : "baseline 批量预热失败。",
+              },
+            ] as const;
+          }
+        }),
+      );
+      setGroupedCandidateBaselineStatuses((current) => ({
+        ...current,
+        ...Object.fromEntries(entries),
+      }));
+      const successCount = entries.filter(([, value]) => value.status === "ready").length;
+      const failedCount = entries.length - successCount;
+      setRecentlyWarmedSelectionIds(
+        entries
+          .filter(([, value]) => value.status === "ready")
+          .map(([selectionId]) => selectionId),
+      );
+      setWarmSummary({
+        failedCount,
+        successCount,
+      });
+    } finally {
+      setIsWarmingGroupedCandidates(false);
+    }
   }
 
   const pickerOpen = Boolean(pickerProductId);
@@ -216,13 +416,38 @@ export function SDSProductBrowser({
           items={recentVariants}
           onSelect={applySelection}
         />
+        <SDSGroupedCandidatesPanel
+          activeSelection={currentSelection}
+          baselineStatuses={groupedCandidateBaselineStatuses}
+          isWarmingAll={isWarmingGroupedCandidates}
+          items={groupedCandidates}
+          recentlyWarmedSelectionIds={recentlyWarmedSelectionIds}
+          warmSummary={warmSummary}
+          onRemove={removeSDSGroupedCandidate}
+          onSelect={(selection, baseline) => {
+            const handoff = buildGroupedCandidateHandoff(baseline);
+            if (handoff) {
+              saveSDSGroupedCandidateHandoff(handoff);
+            }
+            applySelection(selection);
+          }}
+          onWarmAll={(items) => {
+            void handleWarmGroupedCandidates(items);
+          }}
+        />
         <SDSSelectionSummary
+          isGroupedCandidate={currentSelection ? hasSDSGroupedCandidate(currentSelection) : false}
           onChange={() => {
             if (selectedProductId > 0) {
               openVariantPicker(selectedProductId);
             }
           }}
           onClear={clearSelection}
+          onToggleGroupedCandidate={() => {
+            if (currentSelection) {
+              toggleGroupedCandidate(currentSelection);
+            }
+          }}
           selection={
             currentSelection
               ? {
@@ -268,6 +493,8 @@ export function SDSProductBrowser({
                     selectedProductId === product.id || pickerProductId === product.id;
                   return (
                     <SDSProductCard
+                      groupedCandidateCount={groupedCandidateCountsByProduct.get(product.id) ?? 0}
+                      hasGroupedCandidate={groupedCandidateCountsByProduct.has(product.id)}
                       isSelected={isSelected}
                       isVariantSelected={selectedProductId === product.id && selectedVariantId > 0}
                       key={product.id}
@@ -290,6 +517,7 @@ export function SDSProductBrowser({
         <SDSVariantPicker
           hasError={Boolean(detail.error)}
           isLoading={detail.isLoading}
+          onAddSelectedVariantsToGroupedCandidates={addVariantsToGroupedCandidates}
           onClose={() => setPickerProductId(undefined)}
           onSelectVariants={applyVariants}
           open={pickerOpen}
@@ -303,4 +531,38 @@ export function SDSProductBrowser({
       ) : null}
     </Card>
   );
+}
+
+function buildGroupedCandidateHandoff(baseline: {
+  reason: string;
+  status: SDSBaselineStatus | "loading";
+}) {
+  if (baseline.status === "missing") {
+    return {
+      action: "warm_baseline" as const,
+      actionLabel: "一键预热 baseline",
+      message:
+        baseline.reason ||
+        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+    };
+  }
+  if (baseline.status === "failed") {
+    return {
+      action: "warm_baseline" as const,
+      actionLabel: "重试 baseline 预热",
+      message:
+        baseline.reason ||
+        "这款候选商品的 baseline 检查失败。请先重新生成或排查 SDS 转标准商品链路，再尝试 grouped 批量上品。",
+    };
+  }
+  if (baseline.status === "loading") {
+    return {
+      action: "focus_generate" as const,
+      actionLabel: "去生成区查看",
+      message:
+        baseline.reason ||
+        "这款候选商品的 baseline 状态还在检查中。稍等片刻，确认就绪后再加入 grouped 批量上品。",
+    };
+  }
+  return null;
 }

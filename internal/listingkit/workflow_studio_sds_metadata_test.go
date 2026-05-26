@@ -1,9 +1,17 @@
 package listingkit
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
+	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/productenrich"
+	"task-processor/internal/productimage"
+	sdsadapter "task-processor/internal/sds/adapter"
+	sdsdesign "task-processor/internal/sds/design"
+	sdsworkflow "task-processor/internal/sds/workflow"
 )
 
 func TestStudioAttributesAndSpecificationsIncludeRichSDSFields(t *testing.T) {
@@ -214,4 +222,420 @@ func TestApplySDSSyncMetadataToCanonicalPromotesRenderedMockupsToCanonicalImages
 	if got := product.FieldTraces["images"]; got.Sources[0].Detail != "SDS rendered mockup images" {
 		t.Fatalf("images trace = %+v", got)
 	}
+}
+
+func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	baselineRepo, ok := repo.(SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("mem task repository does not expose SDS baseline cache repository")
+	}
+
+	task := &Task{
+		ID: "task-baseline-hit",
+		Request: &GenerateRequest{
+			Text:      "baseline task",
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+					VariantID:        101,
+					ProductName:      "Runtime Overlay Title",
+				},
+			},
+		},
+	}
+
+	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+		Title:  "Baseline Title",
+		Images: []canonical.Image{{URL: "https://example.com/baseline.jpg", Role: "primary"}},
+	})
+	if err != nil {
+		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+	}
+	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
+		TenantID:             "",
+		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
+		Status:               "ready",
+		Version:              1,
+		CanonicalProductBase: payload,
+	}); err != nil {
+		t.Fatalf("SaveSDSBaselineCache: %v", err)
+	}
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "unexpected-product-task"},
+		product: &productenrich.ProductJSON{
+			Title: "Unexpected Product",
+		},
+	}
+	svc := &service{
+		repo:                repo,
+		productSvc:          productSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if productSvc.lastReq != nil {
+		t.Fatalf("product enrich request = %+v, want skipped when baseline is ready", productSvc.lastReq)
+	}
+	if state.result.CanonicalProduct == nil {
+		t.Fatal("expected canonical product from baseline")
+	}
+	if state.result.CanonicalProduct.Title != "Runtime Overlay Title" {
+		t.Fatalf("canonical title = %q, want runtime overlay title", state.result.CanonicalProduct.Title)
+	}
+	if len(state.result.CanonicalProduct.Images) != 1 || state.result.CanonicalProduct.Images[0].URL != "https://example.com/baseline.jpg" {
+		t.Fatalf("canonical images = %+v, want baseline images preserved", state.result.CanonicalProduct.Images)
+	}
+}
+
+func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	baselineRepo, ok := repo.(SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("mem task repository does not expose SDS baseline cache repository")
+	}
+
+	task := &Task{
+		ID:       "task-baseline-tenant-fallback",
+		TenantID: "tenant-a",
+		Request: &GenerateRequest{
+			Text:      "baseline tenant fallback",
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+					VariantID:        101,
+					ProductName:      "Runtime Overlay Title",
+				},
+			},
+		},
+	}
+
+	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+		Title: "Baseline Title",
+	})
+	if err != nil {
+		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+	}
+	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
+		TenantID:             "tenant-a",
+		BaselineKey:          sdsBaselineKey("tenant-a", task.Request.Options.SDS),
+		Status:               "ready",
+		Version:              1,
+		CanonicalProductBase: payload,
+	}); err != nil {
+		t.Fatalf("SaveSDSBaselineCache: %v", err)
+	}
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "unexpected-product-task"},
+		product: &productenrich.ProductJSON{
+			Title: "Unexpected Product",
+		},
+	}
+	svc := &service{
+		repo:                repo,
+		productSvc:          productSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if productSvc.lastReq != nil {
+		t.Fatalf("product enrich request = %+v, want skipped when task tenant id can resolve baseline", productSvc.lastReq)
+	}
+	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "Runtime Overlay Title" {
+		t.Fatalf("canonical product = %+v, want baseline with runtime overlay", state.result.CanonicalProduct)
+	}
+}
+
+func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMissing(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "unexpected-product-task"},
+		product: &productenrich.ProductJSON{
+			Title:      "Enriched Title",
+			Category:   []string{"Home"},
+			Images:     []string{"https://example.com/enriched.jpg"},
+			Attributes: map[string]string{"brand": "DemoBrand"},
+		},
+	}
+	svc := &service{
+		repo:                NewInMemoryRepositoryForTest(),
+		productSvc:          productSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+	task := &Task{
+		ID: "task-baseline-miss",
+		Request: &GenerateRequest{
+			Text:      "fallback task",
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+					VariantID:        101,
+				},
+			},
+		},
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if productSvc.lastReq != nil {
+		t.Fatalf("product enrich request = %+v, want existing studio fallback path to remain", productSvc.lastReq)
+	}
+	if state.result.CanonicalProduct == nil {
+		t.Fatal("expected fallback canonical product when baseline is missing")
+	}
+	if state.result.CanonicalProduct.Title != "fallback task" {
+		t.Fatalf("canonical title = %q, want studio fallback title", state.result.CanonicalProduct.Title)
+	}
+}
+
+func TestRunStandardProductWorkflowReappliesSDSMetadataWithoutDroppingProcessedAssets(t *testing.T) {
+	t.Parallel()
+
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-sds-assets"},
+		result: &productimage.ImageProcessResult{
+			MainImage:     &productimage.ImageAsset{URL: "https://cdn.example.com/main.jpg", SourceURL: "https://example.com/source.jpg"},
+			WhiteBgImage:  &productimage.ImageAsset{URL: "https://cdn.example.com/white.jpg"},
+			GalleryImages: []productimage.ImageAsset{{URL: "https://cdn.example.com/gallery.jpg"}},
+		},
+	}
+	sdsSvc := &stubWorkflowSDSSyncService{
+		result: &sdsadapter.SyncResult{
+			DesignSync: &sdsworkflow.SyncResult{
+				DesignResult: &sdsdesign.PrepareSyncDesignResult{
+					Page: &sdsdesign.DesignProductPage{
+						Product: sdsdesign.DesignProduct{
+							ID:        101,
+							Name:      "Rendered Product",
+							SKU:       "SKU-101",
+							ParentSKU: "SPU-101",
+							ColorName: "Black",
+						},
+					},
+					Request: &sdsdesign.SyncDesignRequest{
+						PrototypeGroupID: 7001,
+						Prototypes: []sdsdesign.SyncDesignPrototype{{
+							Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-1"}},
+						}},
+					},
+					RenderedImageURLs: []string{
+						"https://cdn.sdspod.com/out/main-render.jpg",
+						"https://cdn.sdspod.com/out/side-render.jpg",
+					},
+				},
+			},
+		},
+	}
+	svc := &service{
+		repo:                NewInMemoryRepositoryForTest(),
+		imageSvc:            imageSvc,
+		sdsSyncSvc:          sdsSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+	task := &Task{
+		ID: "task-sds-assets",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source.jpg"},
+			Text:      "fallback task",
+			Platforms: []string{"amazon"},
+			Country:   "US",
+			Language:  "en_US",
+			Options: &GenerateOptions{
+				ProcessImages: true,
+				SDS: &SDSSyncOptions{
+					VariantID:        101,
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+				},
+			},
+		},
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if state.result.AssetBundle == nil {
+		t.Fatal("expected asset bundle")
+	}
+	if !bundleHasAssetKind(state.result.AssetBundle, asset.KindMainImage) {
+		t.Fatalf("asset bundle = %+v, want processed main image retained", state.result.AssetBundle)
+	}
+	if !bundleHasAssetKind(state.result.AssetBundle, asset.KindWhiteBgImage) {
+		t.Fatalf("asset bundle = %+v, want processed white background image retained", state.result.AssetBundle)
+	}
+	if !bundleHasAssetKind(state.result.AssetBundle, asset.KindGalleryImage) {
+		t.Fatalf("asset bundle = %+v, want processed gallery image retained", state.result.AssetBundle)
+	}
+	if state.result.AssetBundle.Selection == nil || state.result.AssetBundle.Selection.MainAssetID == "" {
+		t.Fatalf("asset bundle selection = %+v, want processed selection to remain", state.result.AssetBundle.Selection)
+	}
+	if state.result.CanonicalProduct == nil || len(state.result.CanonicalProduct.Images) != 2 {
+		t.Fatalf("canonical images = %+v, want SDS rendered images applied", state.result.CanonicalProduct)
+	}
+	if state.result.CanonicalProduct.Images[0].URL != "https://cdn.sdspod.com/out/main-render.jpg" {
+		t.Fatalf("canonical images = %+v, want rendered SDS mockup first", state.result.CanonicalProduct.Images)
+	}
+}
+
+func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{
+		repo: &stubInlineTaskRepo{
+			tasks:             map[string]*Task{},
+			sdsBaselineGetErr: fmt.Errorf("baseline repo unavailable"),
+		},
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+	task := &Task{
+		ID: "task-baseline-error",
+		Request: &GenerateRequest{
+			Text:      "fallback on error",
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					VariantID:        101,
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+				},
+			},
+		},
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v, want baseline lookup errors to degrade gracefully", err)
+	}
+	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "fallback on error" {
+		t.Fatalf("canonical product = %+v, want studio fallback canonical product after baseline error", state.result.CanonicalProduct)
+	}
+}
+
+func TestRunStandardProductWorkflowIgnoresNonReadyOrMalformedSDSBaselineEntries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		entry *SDSBaselineCacheEntry
+	}{
+		{
+			name: "non-ready baseline",
+			entry: &SDSBaselineCacheEntry{
+				BaselineKey: "placeholder",
+				Status:      "pending",
+				Version:     1,
+				CanonicalProductBase: func() *CanonicalProductCachePayload {
+					payload, _ := newCanonicalProductCachePayload(&canonical.Product{Title: "Pending Baseline"})
+					return payload
+				}(),
+			},
+		},
+		{
+			name: "ready baseline missing payload",
+			entry: &SDSBaselineCacheEntry{
+				BaselineKey: "placeholder",
+				Status:      "ready",
+				Version:     1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := NewInMemoryRepositoryForTest()
+			baselineRepo, ok := repo.(SDSBaselineCacheRepository)
+			if !ok {
+				t.Fatal("mem task repository does not expose SDS baseline cache repository")
+			}
+			task := &Task{
+				ID: "task-baseline-fallback-" + tt.name,
+				Request: &GenerateRequest{
+					Text:      "baseline fallback",
+					Platforms: []string{"amazon"},
+					Options: &GenerateOptions{
+						ProcessImages: false,
+						SDS: &SDSSyncOptions{
+							VariantID:        101,
+							ParentProductID:  9001,
+							PrototypeGroupID: 7001,
+						},
+					},
+				},
+			}
+			entry := *tt.entry
+			entry.BaselineKey = sdsBaselineKey("", task.Request.Options.SDS)
+			if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &entry); err != nil {
+				t.Fatalf("SaveSDSBaselineCache: %v", err)
+			}
+
+			svc := &service{
+				repo:                repo,
+				assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+				assetRecipeResolver: newDefaultAssetRecipeResolver(),
+				assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+				assetGenerator:      newDefaultAssetGenerationService(),
+			}
+
+			state, err := svc.runStandardProductWorkflow(context.Background(), task)
+			if err != nil {
+				t.Fatalf("runStandardProductWorkflow() error = %v", err)
+			}
+			if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "baseline fallback" {
+				t.Fatalf("canonical product = %+v, want workflow fallback canonical product", state.result.CanonicalProduct)
+			}
+		})
+	}
+}
+
+func bundleHasAssetKind(bundle *asset.Bundle, kind asset.Kind) bool {
+	if bundle == nil {
+		return false
+	}
+	for _, item := range bundle.Assets {
+		if item.Kind == kind {
+			return true
+		}
+	}
+	return false
 }

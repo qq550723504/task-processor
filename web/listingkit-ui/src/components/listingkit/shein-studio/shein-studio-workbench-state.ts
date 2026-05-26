@@ -6,6 +6,7 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -29,11 +30,18 @@ export type SheinStudioWorkbenchState = {
   sheinStoreId: string;
   imageStrategy: SheinStudioImageStrategy;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
+  groupedSelections: GroupedSDSSelectionEligibility[];
   renderSizeImagesWithSds: boolean;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   generationError: string;
   generationWarning: string;
+  generationWarningAction:
+    | {
+        intent: "focus_generate" | "warm_baseline";
+        label: string;
+      }
+    | null;
   creatingError: string;
   creatingMessage: string;
   isGenerating: boolean;
@@ -66,6 +74,7 @@ export type SheinStudioWorkbenchDraftPatch = Pick<
   | "sheinStoreId"
   | "imageStrategy"
   | "selectedSdsImages"
+  | "groupedSelections"
   | "renderSizeImagesWithSds"
   | "designs"
   | "selectedIds"
@@ -112,11 +121,13 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     sheinStoreId: DEFAULT_SHEIN_STORE_ID,
     imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     selectedSdsImages: [],
+    groupedSelections: [],
     renderSizeImagesWithSds: true,
     designs: [],
     selectedIds: [],
     generationError: "",
     generationWarning: "",
+    generationWarningAction: null,
     creatingError: "",
     creatingMessage: "",
     isGenerating: false,
@@ -206,6 +217,7 @@ export function sheinStudioWorkbenchReducer(
         imageStrategy:
           action.batch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
         selectedSdsImages: action.batch.selectedSdsImages ?? [],
+        groupedSelections: action.batch.groupedSelections ?? [],
         renderSizeImagesWithSds: action.batch.renderSizeImagesWithSds ?? true,
         designs: action.batch.designs,
         selectedIds: action.batch.selectedIds,
