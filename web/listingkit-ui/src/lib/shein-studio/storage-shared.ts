@@ -271,6 +271,8 @@ function normalizeGroupedWorkspace(
     name: candidate.name.trim(),
     primarySelection,
     groupedSelections: normalizeGroupedSelections(candidate.groupedSelections),
+    styleCount:
+      typeof candidate.styleCount === "string" ? candidate.styleCount : "1",
     sheinStoreId:
       typeof candidate.sheinStoreId === "string" ? candidate.sheinStoreId : "",
     imageStrategy: normalizeImageStrategy(candidate.imageStrategy),
@@ -337,6 +339,7 @@ function buildLegacyGroupedWorkspace(
       name: primarySelection.productName || "未命名分组",
       primarySelection,
       groupedSelections,
+      styleCount: typeof raw.styleCount === "string" ? raw.styleCount : "1",
       sheinStoreId: typeof raw.sheinStoreId === "string" ? raw.sheinStoreId : "",
       imageStrategy: normalizeImageStrategy(raw.imageStrategy),
       groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),

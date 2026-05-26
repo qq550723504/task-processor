@@ -59,10 +59,11 @@ export function buildSheinStudioDraftInput(
       if (!primarySelection) {
         return null;
       }
-      return {
-        ...group,
-        primarySelection,
-        groupedSelections: group.groupedSelections
+        return {
+          ...group,
+          primarySelection,
+          styleCount: group.styleCount,
+          groupedSelections: group.groupedSelections
           .map((item) => {
             const selection = buildSelectionSummary(item.selection);
             if (!selection) {

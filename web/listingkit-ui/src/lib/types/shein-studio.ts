@@ -64,6 +64,7 @@ export type SheinStudioGroupedWorkspace = {
   name: string;
   primarySelection: SDSProductVariantSelection;
   groupedSelections: GroupedSDSSelectionEligibility[];
+  styleCount?: string;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;

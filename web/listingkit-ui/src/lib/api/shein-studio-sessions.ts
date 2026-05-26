@@ -650,6 +650,7 @@ function groupToPayload(group: SheinStudioGroupedWorkspace) {
     prompt_history: group.promptHistory.map(promptHistoryEntryToPayload),
     primary_selection: selectionToPayload(group.primarySelection),
     grouped_selections: group.groupedSelections.map(groupedSelectionToPayload),
+    style_count: group.styleCount,
     shein_store_id: group.sheinStoreId,
     image_strategy: group.imageStrategy,
     grouped_image_mode: group.groupedImageMode,
@@ -906,6 +907,12 @@ function normalizeGroupsResponse(
         groupedSelections: normalizeGroupedSelectionsResponse(
           (group.grouped_selections ?? group.groupedSelections) as Array<Record<string, unknown>> | undefined,
         ),
+        styleCount:
+          typeof group.style_count === "string"
+            ? group.style_count
+            : typeof group.styleCount === "string"
+              ? group.styleCount
+              : "1",
         sheinStoreId:
           typeof group.shein_store_id === "string"
             ? group.shein_store_id

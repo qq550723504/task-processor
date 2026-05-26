@@ -12,6 +12,7 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import type {
+  SheinStudioGroupedWorkspace,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
   SheinStudioGenerateRequest,
@@ -20,6 +21,47 @@ import type {
 } from "@/lib/types/shein-studio";
 
 export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
+
+export function pickActiveSheinStudioGroup(
+  groups: SheinStudioGroupedWorkspace[],
+  activeGroupId?: string,
+) {
+  if (groups.length === 0) {
+    return null;
+  }
+  const explicit =
+    activeGroupId &&
+    groups.find((group) => group.id === activeGroupId);
+  if (explicit) {
+    return explicit;
+  }
+  return [...groups].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+}
+
+export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
+  return {
+    prompt: group.currentPrompt,
+    styleCount: group.styleCount ?? "1",
+    variationIntensity:
+      group.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+    productImageCount:
+      group.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+    productImagePrompt: group.productImagePrompt ?? "",
+    productImagePrompts: group.productImagePrompts ?? [],
+    artworkModel: group.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+    transparentBackground: group.transparentBackground ?? false,
+    sheinStoreId: group.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    imageStrategy: group.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+    groupedImageMode:
+      group.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
+    selectedSdsImages: group.selectedSdsImages ?? [],
+    groupedSelections: group.groupedSelections,
+    renderSizeImagesWithSds: group.renderSizeImagesWithSds ?? true,
+    designs: group.designs,
+    selectedIds: group.selectedIds,
+    createdTasks: group.createdTasks,
+  };
+}
 
 export function evaluateImportedGalleryDesigns(
   designs: SheinStudioGeneratedDesign[],
@@ -163,6 +205,7 @@ export function mergeSheinStudioDraftState({
     groupedImageMode:
       draft?.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
     selectedSdsImages: draft?.selectedSdsImages ?? [],
+    groups: draft?.groups ?? [],
     groupedSelections: draft?.groupedSelections ?? [],
     renderSizeImagesWithSds: draft?.renderSizeImagesWithSds ?? true,
     designs,

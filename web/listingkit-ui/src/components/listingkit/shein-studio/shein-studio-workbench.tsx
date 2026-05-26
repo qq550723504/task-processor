@@ -34,6 +34,7 @@ import {
   applySheinStudioWorkbenchBatch,
   applySheinStudioWorkbenchDraft,
   buildInitialSheinStudioWorkbenchState,
+  selectSheinStudioWorkbenchGroup,
   setSheinStudioWorkbenchField,
   sheinStudioWorkbenchReducer,
   type SheinStudioWorkbenchState,
@@ -83,6 +84,8 @@ export function SheinStudioWorkbench({
         dispatchWorkbenchState(applySheinStudioWorkbenchBatch(batch)),
       applyDraft: (draft: Parameters<typeof applySheinStudioWorkbenchDraft>[0]) =>
         dispatchWorkbenchState(applySheinStudioWorkbenchDraft(draft)),
+      selectGroup: (groupId: string) =>
+        dispatchWorkbenchState(selectSheinStudioWorkbenchGroup(groupId)),
       setField: setWorkbenchField,
     }),
     [setWorkbenchField],

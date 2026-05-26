@@ -5,6 +5,8 @@ import {
   buildSheinStudioSelectedVariants,
   getSheinStudioCreateActionDisabledReason,
   mergeSheinStudioDraftState,
+  pickActiveSheinStudioGroup,
+  projectGroupToWorkbench,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -61,6 +63,7 @@ describe("shein studio workbench model", () => {
         transparentBackground: false,
         sheinStoreId: "869",
         imageStrategy: "hybrid",
+        groups: [],
         selectedSdsImages: [{ imageUrl: "https://example.com/sds.jpg" }],
         renderSizeImagesWithSds: true,
         designs: [{ id: "design-1", imageUrl: "https://example.com/a.png" }],
@@ -80,6 +83,114 @@ describe("shein studio workbench model", () => {
     expect(state.selectedIds).toEqual(["design-1", "gallery-1"]);
     expect(state.hasCustomizedSdsSelection).toBe(true);
     expect(state.importedGalleryDesign).toBe(true);
+  });
+
+  it("picks the most recently updated group when no explicit active group is provided", () => {
+    const group = pickActiveSheinStudioGroup([
+      {
+        id: "group-1",
+        name: "Group 1",
+        currentPrompt: "prompt a",
+        promptHistory: [],
+        primarySelection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 100,
+          prototypeGroupId: 200,
+          layerId: "layer-1",
+          productName: "tee",
+          variantLabel: "M / black",
+        },
+        groupedSelections: [],
+        sheinStoreId: "42",
+        imageStrategy: "hybrid",
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [],
+        renderSizeImagesWithSds: true,
+        productImageCount: "5",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        artworkModel: "",
+        transparentBackground: false,
+        variationIntensity: "medium",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T00:00:00Z",
+      },
+      {
+        id: "group-2",
+        name: "Group 2",
+        currentPrompt: "prompt b",
+        promptHistory: [],
+        primarySelection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 101,
+          prototypeGroupId: 200,
+          layerId: "layer-2",
+          productName: "hoodie",
+          variantLabel: "L / white",
+        },
+        groupedSelections: [],
+        sheinStoreId: "88",
+        imageStrategy: "sds_official",
+        groupedImageMode: "per_product",
+        selectedSdsImages: [],
+        renderSizeImagesWithSds: false,
+        productImageCount: "3",
+        productImagePrompt: "product prompt",
+        productImagePrompts: [],
+        artworkModel: "",
+        transparentBackground: true,
+        variationIntensity: "strong",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T01:00:00Z",
+      },
+    ]);
+
+    expect(group?.id).toBe("group-2");
+  });
+
+  it("projects a group into workbench editor fields", () => {
+    const projection = projectGroupToWorkbench({
+      id: "group-2",
+      name: "Group 2",
+      currentPrompt: "prompt b",
+      promptHistory: [],
+      primarySelection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 101,
+        prototypeGroupId: 200,
+        layerId: "layer-2",
+        productName: "hoodie",
+        variantLabel: "L / white",
+      },
+      groupedSelections: [],
+      sheinStoreId: "88",
+      imageStrategy: "sds_official",
+      groupedImageMode: "per_product",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: false,
+      productImageCount: "3",
+      productImagePrompt: "product prompt",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: true,
+      variationIntensity: "strong",
+      designs: [{ id: "design-2", imageUrl: "https://example.com/2.png" }],
+      selectedIds: ["design-2"],
+      createdTasks: [],
+      updatedAt: "2026-05-26T01:00:00Z",
+    });
+
+    expect(projection.prompt).toBe("prompt b");
+    expect(projection.groupedImageMode).toBe("per_product");
+    expect(projection.productImageCount).toBe("3");
+    expect(projection.selectedIds).toEqual(["design-2"]);
   });
 
   it("returns the create-task disabled reason from the first blocking condition", () => {
