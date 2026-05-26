@@ -108,6 +108,70 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     );
   });
 
+  it("filters recent batches by status buckets", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Generate",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Review",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Has Tasks",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 2,
+            updatedAt: "2026-05-26T22:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "全部 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "待生成 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "待创建任务 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已有任务 1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "待创建任务 1" }));
+    expect(screen.getByText("Need Review")).toBeInTheDocument();
+    expect(screen.queryByText("Need Generate")).not.toBeInTheDocument();
+    expect(screen.queryByText("Has Tasks")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "已有任务 1" }));
+    expect(screen.getByText("Has Tasks")).toBeInTheDocument();
+    expect(screen.queryByText("Need Review")).not.toBeInTheDocument();
+  });
+
   it("shows the empty state when no recent batches exist", () => {
     render(
       <SheinStudioRecentBatchesDashboard

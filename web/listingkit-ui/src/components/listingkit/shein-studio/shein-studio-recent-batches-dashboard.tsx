@@ -11,6 +11,7 @@ type StoreOption = {
 };
 
 type RecentBatchCardAction = "generate" | "review" | "tasks";
+type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks";
 
 function formatRecentBatchTimestamp(value: string) {
   const date = new Date(value);
@@ -65,6 +66,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [draftName, setDraftName] = useState("");
   const [bulkStoreId, setBulkStoreId] = useState("");
   const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
+  const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
   const selectedSummaryIds =
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
@@ -224,6 +226,40 @@ export function SheinStudioRecentBatchesDashboard({
     };
   }
 
+  const filteredSummaries = useMemo(
+    () =>
+      summaries.filter((summary) => {
+        const action = primaryActionForSummary(summary).action;
+        return statusFilter === "all" ? true : action === statusFilter;
+      }),
+    [statusFilter, summaries],
+  );
+  const filterCounts = useMemo(
+    () => ({
+      all: summaries.length,
+      generate: summaries.filter(
+        (summary) => primaryActionForSummary(summary).action === "generate",
+      ).length,
+      review: summaries.filter(
+        (summary) => primaryActionForSummary(summary).action === "review",
+      ).length,
+      tasks: summaries.filter(
+        (summary) => primaryActionForSummary(summary).action === "tasks",
+      ).length,
+    }),
+    [summaries],
+  );
+  const filterOptions: Array<{
+    value: RecentBatchStatusFilter;
+    label: string;
+    count: number;
+  }> = [
+    { value: "all", label: "全部", count: filterCounts.all },
+    { value: "generate", label: "待生成", count: filterCounts.generate },
+    { value: "review", label: "待创建任务", count: filterCounts.review },
+    { value: "tasks", label: "已有任务", count: filterCounts.tasks },
+  ];
+
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -361,13 +397,43 @@ export function SheinStudioRecentBatchesDashboard({
         </div>
       ) : null}
 
+      {summaries.length > 0 ? (
+        <div className="space-y-3 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 px-4 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-zinc-900">按状态筛选</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                当前显示 {filteredSummaries.length} / {summaries.length} 个批次
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {filterOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  onClick={() => setStatusFilter(option.value)}
+                  size="sm"
+                  type="button"
+                  variant={statusFilter === option.value ? "default" : "secondary"}
+                >
+                  {option.label} {option.count}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {summaries.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-8 text-sm text-zinc-600">
           还没有可继续的批次。先在选品区选择 SDS 商品，创建第一批内容。
         </div>
+      ) : filteredSummaries.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-8 text-sm text-zinc-600">
+          当前筛选下还没有匹配的批次。可以切回其他状态继续查看。
+        </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-          {summaries.map((summary) => {
+          {filteredSummaries.map((summary) => {
             const summaryKey = `${summary.source}:${summary.id}`;
             const isSelected = selectedSummaryIds.includes(summaryKey);
             const isEditing = editingSummaryId === summaryKey;
