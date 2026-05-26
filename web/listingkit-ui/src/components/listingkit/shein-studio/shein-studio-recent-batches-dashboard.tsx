@@ -104,6 +104,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [bulkStoreId, setBulkStoreId] = useState("");
   const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
   const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
+  const [activeRiskLabel, setActiveRiskLabel] = useState("");
   const selectedSummaryIds =
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
@@ -267,12 +268,17 @@ export function SheinStudioRecentBatchesDashboard({
     () =>
       summaries.filter((summary) => {
         if (statusFilter === "risk") {
-          return isRiskySummary(summary);
+          if (!isRiskySummary(summary)) {
+            return false;
+          }
+          return activeRiskLabel
+            ? summary.alerts?.some((alert) => alert.label === activeRiskLabel)
+            : true;
         }
         const action = primaryActionForSummary(summary).action;
         return statusFilter === "all" ? true : action === statusFilter;
       }),
-    [statusFilter, summaries],
+    [activeRiskLabel, statusFilter, summaries],
   );
   const filterCounts = useMemo(
     () => ({
@@ -301,6 +307,17 @@ export function SheinStudioRecentBatchesDashboard({
     { value: "tasks", label: "已有任务", count: filterCounts.tasks },
     { value: "risk", label: "有风险", count: filterCounts.risk },
   ];
+  const riskCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const summary of summaries) {
+      for (const alert of summary.alerts ?? []) {
+        counts.set(alert.label, (counts.get(alert.label) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  }, [summaries]);
 
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
@@ -452,7 +469,12 @@ export function SheinStudioRecentBatchesDashboard({
               {filterOptions.map((option) => (
                 <Button
                   key={option.value}
-                  onClick={() => setStatusFilter(option.value)}
+                  onClick={() => {
+                    setStatusFilter(option.value);
+                    if (option.value !== "risk") {
+                      setActiveRiskLabel("");
+                    }
+                  }}
                   size="sm"
                   type="button"
                   variant={statusFilter === option.value ? "default" : "secondary"}
@@ -462,6 +484,33 @@ export function SheinStudioRecentBatchesDashboard({
               ))}
             </div>
           </div>
+          {riskCounts.length > 0 ? (
+            <div className="flex flex-wrap gap-2 border-t border-zinc-200/80 pt-3">
+              {riskCounts.map((item) => (
+                <Button
+                  key={item.label}
+                  onClick={() => {
+                    setStatusFilter("risk");
+                    setActiveRiskLabel(item.label);
+                  }}
+                  size="sm"
+                  type="button"
+                  variant={
+                    statusFilter === "risk" && activeRiskLabel === item.label
+                      ? "default"
+                      : "secondary"
+                  }
+                >
+                  {item.label} {item.count}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {statusFilter === "risk" && activeRiskLabel ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
+              当前只显示包含“{activeRiskLabel}”的风险批次。
+            </div>
+          ) : null}
         </div>
       ) : null}
 

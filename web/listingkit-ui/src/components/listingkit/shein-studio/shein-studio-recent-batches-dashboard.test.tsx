@@ -222,6 +222,84 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
   });
 
+  it("shows risk summary counts and filters by the chosen risk label", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Baseline Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "Baseline 未就绪",
+              },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Review Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [
+              {
+                tone: "warning",
+                label: "待确认款式",
+              },
+            ],
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Failed Batch",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T22:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "生成失败",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Baseline 未就绪 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "待确认款式 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成失败 1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Baseline 未就绪 1" }));
+    expect(screen.getByText("Baseline Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Review Batch")).not.toBeInTheDocument();
+    expect(screen.queryByText("Failed Batch")).not.toBeInTheDocument();
+    expect(screen.getByText("当前只显示包含“Baseline 未就绪”的风险批次。")).toBeInTheDocument();
+  });
+
   it("shows the empty state when no recent batches exist", () => {
     render(
       <SheinStudioRecentBatchesDashboard
