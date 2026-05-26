@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  dispatchSheinStudioRecentBatchesRecommendation,
+  SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
+  SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
+  type SheinStudioRecentBatchesFocusDetail,
+  type SheinStudioRecentBatchesRecommendationDetail,
+} from "@/lib/shein-studio/recent-batches-focus";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
 
 type StoreOption = {
@@ -116,6 +123,17 @@ function resultFilterDescription(filter: RecentBatchResultFilter) {
   return "";
 }
 
+function applyRiskFocus(
+  label: string,
+  setStatusFilter: (value: RecentBatchStatusFilter) => void,
+  setActiveRiskLabel: (value: string) => void,
+  setFocusedRiskLabel: (value: string) => void,
+) {
+  setStatusFilter("risk");
+  setActiveRiskLabel(label);
+  setFocusedRiskLabel(label);
+}
+
 function restoredResultFilterDescription(filter: RecentBatchResultFilter) {
   if (filter === "success") {
     return "已恢复上次的最近处理成功视图。";
@@ -171,6 +189,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [resultFilter, setResultFilter] = useState<RecentBatchResultFilter>("all");
   const [restoredResultFilterNote, setRestoredResultFilterNote] = useState("");
   const [activeRiskLabel, setActiveRiskLabel] = useState("");
+  const [focusedRiskLabel, setFocusedRiskLabel] = useState("");
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
     string[] | null
   >(null);
@@ -625,6 +644,45 @@ export function SheinStudioRecentBatchesDashboard({
       statusFilter,
     ]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleFocus = (event: Event) => {
+      const detail = (event as CustomEvent<SheinStudioRecentBatchesFocusDetail>)
+        .detail;
+      if (!detail?.preferRisk) {
+        return;
+      }
+      if (riskCounts.length === 0) {
+        return;
+      }
+      setStatusFilter("risk");
+      setActiveRiskLabel("");
+      setFocusedRiskLabel(riskCounts[0]?.label ?? "");
+      setRestoredResultFilterNote("");
+    };
+    window.addEventListener(
+      SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
+      handleFocus as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
+        handleFocus as EventListener,
+      );
+    };
+  }, [riskCounts]);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    dispatchSheinStudioRecentBatchesRecommendation({
+      hasRecoverableBatches: summaries.length > 0,
+      recommendedRiskLabel: riskCounts[0]?.label ?? "",
+    });
+  }, [riskCounts, summaries.length]);
+
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -650,7 +708,7 @@ export function SheinStudioRecentBatchesDashboard({
             </Button>
           ) : null}
           <Button onClick={onCreateBatch} type="button">
-            新建批次
+            {summaries.length === 0 ? "开始新建批次并选品" : "新建批次"}
           </Button>
         </div>
       </div>
@@ -918,6 +976,7 @@ export function SheinStudioRecentBatchesDashboard({
                     setStatusFilter(option.value);
                     if (option.value !== "risk") {
                       setActiveRiskLabel("");
+                      setFocusedRiskLabel("");
                     }
                   }}
                   size="sm"
@@ -935,9 +994,20 @@ export function SheinStudioRecentBatchesDashboard({
                 <Button
                   key={item.label}
                   onClick={() => {
-                    setStatusFilter("risk");
-                    setActiveRiskLabel(item.label);
+                    applyRiskFocus(
+                      item.label,
+                      setStatusFilter,
+                      setActiveRiskLabel,
+                      setFocusedRiskLabel,
+                    );
                   }}
+                  className={
+                    statusFilter === "risk" &&
+                    !activeRiskLabel &&
+                    focusedRiskLabel === item.label
+                      ? "ring-2 ring-amber-300 ring-offset-1"
+                      : undefined
+                  }
                   size="sm"
                   type="button"
                   variant={
@@ -972,6 +1042,28 @@ export function SheinStudioRecentBatchesDashboard({
               当前只显示包含“{activeRiskLabel}”的风险批次。
             </div>
           ) : null}
+          {statusFilter === "risk" && !activeRiskLabel && focusedRiskLabel ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
+              <span>
+                已优先切到风险视图，建议先处理“{focusedRiskLabel}”相关批次。
+              </span>
+              <Button
+                onClick={() =>
+                  applyRiskFocus(
+                    focusedRiskLabel,
+                    setStatusFilter,
+                    setActiveRiskLabel,
+                    setFocusedRiskLabel,
+                  )
+                }
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                只看这一类风险
+              </Button>
+            </div>
+          ) : null}
           {resultFilter !== "all" ? (
             <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm text-sky-900">
               {resultFilterDescription(resultFilter)}
@@ -987,7 +1079,12 @@ export function SheinStudioRecentBatchesDashboard({
 
       {summaries.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-8 text-sm text-zinc-600">
-          还没有可继续的批次。先在选品区选择 SDS 商品，创建第一批内容。
+          <p>还没有可继续的最近批次，建议先新建一个批次再开始选品。</p>
+          <div className="mt-4">
+            <Button onClick={onCreateBatch} type="button">
+              开始新建批次并选品
+            </Button>
+          </div>
         </div>
       ) : filteredSummaries.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-8 text-sm text-zinc-600">

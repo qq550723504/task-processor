@@ -1,7 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SheinStudioPageShell } from "@/components/listingkit/shein-studio/shein-studio-page-shell";
+import { dispatchSheinStudioRecentBatchesRecommendation } from "@/lib/shein-studio/recent-batches-focus";
+import { SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT } from "@/lib/shein-studio/recent-batches-focus";
+import { dispatchSheinStudioSectionFocus, SHEIN_STUDIO_SECTION_FOCUS_EVENT } from "@/lib/shein-studio/section-highlight";
 
 vi.mock("@/lib/utils/live-search-params", () => ({
   useLiveSearchParams: () => new URLSearchParams(""),
@@ -55,5 +58,105 @@ describe("SheinStudioPageShell", () => {
     expect(screen.queryByText("当前步骤")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看款式图库" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看 SHEIN 任务" })).not.toBeInTheDocument();
+  });
+
+  it("surfaces the recent batch risk recommendation in the homepage guidance", () => {
+    render(<SheinStudioPageShell />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT, {
+          detail: { recommendedRiskLabel: "Baseline 未就绪" },
+        }),
+      );
+    });
+
+    expect(
+      screen.getByText(
+        "如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“Baseline 未就绪”。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "继续最近批次（优先处理 Baseline 未就绪）",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("promotes creating a batch when no recent batches can be resumed", () => {
+    render(<SheinStudioPageShell />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT, {
+          detail: { hasRecoverableBatches: false },
+        }),
+      );
+    });
+
+    expect(
+      screen.getByText("还没有可继续的最近批次，建议先新建一个批次再开始选品。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "开始新建批次并选品",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "继续最近批次",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("highlights the product picker after starting a new batch from the homepage guidance", () => {
+    render(<SheinStudioPageShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: "新建批次后选品" }));
+
+    expect(screen.getByTestId("shein-studio-product-picker")).toHaveClass(
+      "ring-2",
+    );
+  });
+
+  it("highlights recent batches after continuing from the homepage guidance", () => {
+    render(<SheinStudioPageShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: "继续最近批次" }));
+
+    expect(screen.getByTestId("shein-studio-recent-batches")).toHaveClass(
+      "ring-2",
+    );
+  });
+
+  it("responds to a shared section focus event for the product picker", () => {
+    render(<SheinStudioPageShell />);
+
+    act(() => {
+      dispatchSheinStudioSectionFocus({ action: "product-picker" });
+    });
+
+    expect(screen.getByTestId("shein-studio-product-picker")).toHaveClass(
+      "ring-2",
+    );
+  });
+
+  it("follows the shared homepage flow from recommendation to focused product picker", () => {
+    render(<SheinStudioPageShell />);
+
+    act(() => {
+      dispatchSheinStudioRecentBatchesRecommendation({
+        hasRecoverableBatches: false,
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "开始新建批次并选品" }));
+
+    expect(
+      screen.getByText("还没有可继续的最近批次，建议先新建一个批次再开始选品。"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("shein-studio-product-picker")).toHaveClass(
+      "ring-2",
+    );
   });
 });

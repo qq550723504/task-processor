@@ -1,8 +1,10 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
+import { dispatchSheinStudioRecentBatchesFocus } from "@/lib/shein-studio/recent-batches-focus";
+import { SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT } from "@/lib/shein-studio/recent-batches-focus";
 
 describe("SheinStudioRecentBatchesDashboard", () => {
   beforeEach(() => {
@@ -292,6 +294,166 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
   });
 
+  it("switches to the risk view when the homepage requests recent risky batches", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Risky Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "Baseline 未就绪",
+              },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Healthy Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent(
+      window,
+      new CustomEvent(SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT, {
+        detail: { preferRisk: true },
+      }),
+    );
+
+    expect(screen.getByText("Risky Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("已优先切到风险视图，建议先处理“Baseline 未就绪”相关批次。"),
+    ).toBeInTheDocument();
+  });
+
+  it("lets the homepage risk guidance jump into the focused risk label", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Baseline Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [{ tone: "danger", label: "Baseline 未就绪" }],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Other Risk Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [{ tone: "warning", label: "待确认款式" }],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent(
+      window,
+      new CustomEvent(SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT, {
+        detail: { preferRisk: true },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "只看这一类风险" }));
+
+    expect(
+      screen.getByText("当前只显示包含“Baseline 未就绪”的风险批次。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Baseline Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Other Risk Batch")).not.toBeInTheDocument();
+  });
+
+  it("follows the shared homepage risk flow into a focused risk label view", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Baseline Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [{ tone: "danger", label: "Baseline 未就绪" }],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Other Risk Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [{ tone: "warning", label: "待确认款式" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      dispatchSheinStudioRecentBatchesFocus({ preferRisk: true });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "只看这一类风险" }));
+
+    expect(
+      screen.getByText("当前只显示包含“Baseline 未就绪”的风险批次。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Baseline Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Other Risk Batch")).not.toBeInTheDocument();
+  });
+
   it("shows risk summary counts and filters by the chosen risk label", () => {
     render(
       <SheinStudioRecentBatchesDashboard
@@ -371,17 +533,21 @@ describe("SheinStudioRecentBatchesDashboard", () => {
   });
 
   it("shows the empty state when no recent batches exist", () => {
+    const onCreateBatch = vi.fn();
+
     render(
       <SheinStudioRecentBatchesDashboard
-        onCreateBatch={() => undefined}
+        onCreateBatch={onCreateBatch}
         onSelectSummary={() => undefined}
         summaries={[]}
       />,
     );
 
     expect(
-      screen.getByText("还没有可继续的批次。先在选品区选择 SDS 商品，创建第一批内容。"),
+      screen.getByText("还没有可继续的最近批次，建议先新建一个批次再开始选品。"),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "开始新建批次并选品" })[0]);
+    expect(onCreateBatch).toHaveBeenCalled();
   });
 
   it("renames a batch from the homepage", () => {

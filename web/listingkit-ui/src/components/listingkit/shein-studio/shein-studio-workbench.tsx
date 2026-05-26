@@ -50,6 +50,7 @@ import {
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
+import { dispatchSheinStudioSectionFocus } from "@/lib/shein-studio/section-highlight";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
@@ -1094,7 +1095,8 @@ export function SheinStudioWorkbench({
       <SheinStudioRecentBatchesDashboard
         onBulkUpdateStore={handleBulkUpdateRecentBatchStore}
         onCreateBatch={() => {
-          setEffectiveStep("generate");
+          setEffectiveStep("select");
+          dispatchSheinStudioSectionFocus({ action: "product-picker" });
         }}
         onDeleteSummary={handleDeleteRecentBatchSummary}
         onDuplicateSummary={handleDuplicateRecentBatchSummary}

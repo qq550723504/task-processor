@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { SheinProductPickerModal } from "@/components/listingkit/shein-studio/shein-product-picker-modal";
@@ -14,6 +14,19 @@ import {
   parseSelectionFromSearchParams,
   parseSheinStudioStep,
 } from "@/lib/shein-studio/url-state";
+import {
+  dispatchSheinStudioSectionFocus,
+  resolveSheinStudioSectionFocusAction,
+  SHEIN_STUDIO_SECTION_FOCUS_EVENT,
+  type SheinStudioSectionFocusDetail,
+  useHighlightedSectionScroller,
+} from "@/lib/shein-studio/section-highlight";
+import {
+  dispatchSheinStudioRecentBatchesFocus,
+  SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
+  SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
+  type SheinStudioRecentBatchesRecommendationDetail,
+} from "@/lib/shein-studio/recent-batches-focus";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
@@ -58,6 +71,10 @@ export function SheinStudioPageShell({
     "";
   const workbenchKey = `${liveSelection?.variantId ?? 0}:${liveSelection?.prototypeGroupId ?? 0}:${liveSelection?.layerId ?? ""}:${selectedVariantKey}`;
   const compact = layout === "compact";
+  const [hasRecoverableBatches, setHasRecoverableBatches] = useState(true);
+  const [recommendedRiskLabel, setRecommendedRiskLabel] = useState("");
+  const { highlightedSectionId, scrollToSectionWithHighlight } =
+    useHighlightedSectionScroller();
   const stepCopy = {
     select: {
       title: "先选择要处理的 SDS 商品",
@@ -80,12 +97,59 @@ export function SheinStudioPageShell({
         "这一步会把已确认的资料带入正式任务，继续保存草稿或提交发布。",
     },
   }[visibleStep];
-  const scrollToSection = useCallback((id: string) => {
-    document.getElementById(id)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+  const focusRecentBatches = useCallback(() => {
+    dispatchSheinStudioRecentBatchesFocus({ preferRisk: true });
+    scrollToSectionWithHighlight("shein-studio-recent-batches");
+  }, [scrollToSectionWithHighlight]);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleRecommendation = (event: Event) => {
+      const detail = (
+        event as CustomEvent<SheinStudioRecentBatchesRecommendationDetail>
+      ).detail;
+      if (typeof detail?.hasRecoverableBatches === "boolean") {
+        setHasRecoverableBatches(detail.hasRecoverableBatches);
+      }
+      setRecommendedRiskLabel(detail?.recommendedRiskLabel?.trim() ?? "");
+    };
+    window.addEventListener(
+      SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
+      handleRecommendation as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
+        handleRecommendation as EventListener,
+      );
+    };
   }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleSectionFocus = (event: Event) => {
+      const detail = (event as CustomEvent<SheinStudioSectionFocusDetail>).detail;
+      const sectionId = detail
+        ? resolveSheinStudioSectionFocusAction(detail)
+        : "";
+      if (!sectionId) {
+        return;
+      }
+      scrollToSectionWithHighlight(sectionId);
+    };
+    window.addEventListener(
+      SHEIN_STUDIO_SECTION_FOCUS_EVENT,
+      handleSectionFocus as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        SHEIN_STUDIO_SECTION_FOCUS_EVENT,
+        handleSectionFocus as EventListener,
+      );
+    };
+  }, [scrollToSectionWithHighlight]);
 
   return (
     <div
@@ -223,29 +287,49 @@ export function SheinStudioPageShell({
                     先继续最近批次，或新建一个批次再开始选品。
                   </p>
                   <p className="text-sm text-zinc-600">
-                    如果只是接着处理上一轮内容，优先从最近批次进入会更快。
+                    {!hasRecoverableBatches
+                      ? "还没有可继续的最近批次，建议先新建一个批次再开始选品。"
+                      : recommendedRiskLabel
+                      ? `如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“${recommendedRiskLabel}”。`
+                      : "如果只是接着处理上一轮内容，优先从最近批次进入会更快。"}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {hasRecoverableBatches ? (
+                    <Button
+                      onClick={focusRecentBatches}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {recommendedRiskLabel
+                        ? `继续最近批次（优先处理 ${recommendedRiskLabel}）`
+                        : "继续最近批次"}
+                    </Button>
+                  ) : null}
                   <Button
-                    onClick={() => scrollToSection("shein-studio-recent-batches")}
-                    type="button"
-                    variant="secondary"
-                  >
-                    继续最近批次
-                  </Button>
-                  <Button
-                    onClick={() => scrollToSection("shein-studio-product-picker")}
+                    onClick={() =>
+                      dispatchSheinStudioSectionFocus({
+                        action: "product-picker",
+                      })
+                    }
                     type="button"
                   >
-                    新建批次后选品
+                    {hasRecoverableBatches ? "新建批次后选品" : "开始新建批次并选品"}
                   </Button>
                 </div>
               </div>
             </section>
           ) : null}
           {visibleStep === "select" || hasSelection ? (
-            <div id="shein-studio-recent-batches">
+            <div
+              className={
+                highlightedSectionId === "shein-studio-recent-batches"
+                  ? "rounded-[1.75rem] ring-2 ring-amber-300 ring-offset-2 transition"
+                  : "transition"
+              }
+              data-testid="shein-studio-recent-batches"
+              id="shein-studio-recent-batches"
+            >
               <SheinStudioWorkbenchSlot
                 activeStep={visibleStep}
                 selection={liveSelection}
@@ -254,7 +338,15 @@ export function SheinStudioPageShell({
             </div>
           ) : null}
           {visibleStep === "select" ? (
-            <div id="shein-studio-product-picker">
+            <div
+              className={
+                highlightedSectionId === "shein-studio-product-picker"
+                  ? "rounded-[1.75rem] ring-2 ring-emerald-300 ring-offset-2 transition"
+                  : "transition"
+              }
+              data-testid="shein-studio-product-picker"
+              id="shein-studio-product-picker"
+            >
               <SheinProductPickerModal
                 initialKeyword={liveKeyword}
                 initialPage={livePage}
