@@ -36,7 +36,22 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	})
 
 	var canonicalProduct *canonical.Product
-	if shouldUseStudioCatalogCanonical(task) {
+	if baseline, ok, baselineErr := s.sdsBaselineOrDefault().GetReadyBaseline(ctx, task); baselineErr != nil {
+		log.WithError(baselineErr).Warn("sds baseline lookup failed; continuing")
+	} else if ok {
+		canonicalProduct = baseline
+		log.WithFields(logrus.Fields{
+			"title": func() string {
+				if canonicalProduct == nil {
+					return ""
+				}
+				return canonicalProduct.Title
+			}(),
+		}).Info("reused SDS baseline canonical product for listing kit workflow")
+	}
+	if canonicalProduct != nil {
+		// Baseline hydration restores the stable SDS skeleton; later runtime SDS overlay still applies.
+	} else if shouldUseStudioCatalogCanonical(task) {
 		stage := recorder.Start("sds_catalog_product", "")
 		canonicalProduct = buildStudioFallbackCanonicalProduct(task)
 		if canonicalProduct == nil {
@@ -113,7 +128,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 
 	result.CanonicalProduct = canonicalProduct
 	result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-	result.AssetBundle = asset.BuildBundle(canonicalProduct, nil)
+	result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 	result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
 	log.WithFields(logrus.Fields{
 		"has_canonical": canonicalProduct != nil,
@@ -181,7 +196,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	}
 	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSSync, sdsOptions) {
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-		result.AssetBundle = asset.BuildBundle(canonicalProduct, nil)
+		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 		result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
 		log.Info("applied SDS sync metadata to canonical product")
 	}

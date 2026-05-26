@@ -712,7 +712,9 @@ func NewInMemoryRepositoryForTest() Repository {
 }
 
 type stubInlineTaskRepo struct {
-	tasks map[string]*Task
+	tasks             map[string]*Task
+	sdsBaselineCache  map[string]*SDSBaselineCacheEntry
+	sdsBaselineGetErr error
 }
 
 func (r *stubInlineTaskRepo) CreateTask(_ context.Context, task *Task) error {
@@ -781,6 +783,47 @@ func (r *stubInlineTaskRepo) GetCanonicalProductCache(context.Context, string) (
 }
 
 func (r *stubInlineTaskRepo) SaveCanonicalProductCache(context.Context, string, *canonical.Product, string) error {
+	return nil
+}
+
+func (r *stubInlineTaskRepo) GetSDSBaselineCache(ctx context.Context, tenantID, baselineKey string) (*SDSBaselineCacheEntry, error) {
+	if r.sdsBaselineGetErr != nil {
+		return nil, r.sdsBaselineGetErr
+	}
+	resolvedTenantID, logicalKey, storageKey, err := ResolveSDSBaselineCacheScope(ctx, tenantID, baselineKey)
+	if err != nil {
+		return nil, err
+	}
+	if storageKey == "" || r.sdsBaselineCache == nil {
+		return nil, nil
+	}
+	entry, err := r.sdsBaselineCache[storageKey].Clone()
+	if err != nil || entry == nil {
+		return entry, err
+	}
+	entry.TenantID = resolvedTenantID
+	entry.BaselineKey = logicalKey
+	return entry, nil
+}
+
+func (r *stubInlineTaskRepo) SaveSDSBaselineCache(ctx context.Context, entry *SDSBaselineCacheEntry) error {
+	if entry == nil {
+		return nil
+	}
+	resolvedTenantID, logicalKey, storageKey, err := ResolveSDSBaselineCacheScope(ctx, entry.TenantID, entry.BaselineKey)
+	if err != nil {
+		return err
+	}
+	cloned, err := entry.Clone()
+	if err != nil {
+		return err
+	}
+	cloned.TenantID = resolvedTenantID
+	cloned.BaselineKey = logicalKey
+	if r.sdsBaselineCache == nil {
+		r.sdsBaselineCache = map[string]*SDSBaselineCacheEntry{}
+	}
+	r.sdsBaselineCache[storageKey] = cloned
 	return nil
 }
 
