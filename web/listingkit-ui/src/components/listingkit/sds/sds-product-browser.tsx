@@ -99,6 +99,13 @@ export function SDSProductBrowser({
     () => recentVariants.find((item) => item.variantId === selectedVariantId),
     [recentVariants, selectedVariantId],
   );
+  const groupedCandidateCountsByProduct = useMemo(() => {
+    const counts = new Map<number, number>();
+    groupedCandidates.forEach((item) => {
+      counts.set(item.productId, (counts.get(item.productId) ?? 0) + 1);
+    });
+    return counts;
+  }, [groupedCandidates]);
 
   function updateQuery(next: Record<string, string | undefined>) {
     const params = sanitizedNavigationSearchParams(searchParams);
@@ -296,6 +303,8 @@ export function SDSProductBrowser({
                     selectedProductId === product.id || pickerProductId === product.id;
                   return (
                     <SDSProductCard
+                      groupedCandidateCount={groupedCandidateCountsByProduct.get(product.id) ?? 0}
+                      hasGroupedCandidate={groupedCandidateCountsByProduct.has(product.id)}
                       isSelected={isSelected}
                       isVariantSelected={selectedProductId === product.id && selectedVariantId > 0}
                       key={product.id}
