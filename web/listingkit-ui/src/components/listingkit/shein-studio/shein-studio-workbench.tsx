@@ -383,6 +383,18 @@ export function SheinStudioWorkbench({
     () => savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null,
     [currentQueuedBatchId, savedBatches],
   );
+  const batchQueueGuidance = useMemo(() => {
+    if (batchQueueMode === "generate") {
+      return "已定位到生成区，可直接修改提示词或继续生成。";
+    }
+    if (effectiveStep === "tasks") {
+      return "已定位到任务区，可继续查看已创建的任务。";
+    }
+    if (effectiveStep === "review") {
+      return "已定位到审核区，可直接创建任务或调整款式。";
+    }
+    return "当前批次还没有可用设计，已回到生成区继续处理。";
+  }, [batchQueueMode, effectiveStep]);
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
     galleryRatioCheck,
@@ -895,6 +907,38 @@ export function SheinStudioWorkbench({
     loadQueuedBatch(queuedBatchIds, queuedBatchIndex + 1, batchQueueMode);
   }, [batchQueueMode, loadQueuedBatch, queuedBatchIds, queuedBatchIndex]);
 
+  useEffect(() => {
+    if (!batchQueueMode || !currentQueuedBatchId) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (batchQueueMode === "generate" || effectiveStep === "generate") {
+        document
+          .getElementById("shein-studio-generator")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const promptInput =
+          promptInputRef.current ??
+          (document.getElementById("prompt") as HTMLInputElement | HTMLTextAreaElement | null);
+        promptInput?.focus();
+        return;
+      }
+      if (effectiveStep === "review") {
+        document
+          .getElementById("shein-style-review")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (effectiveStep === "tasks") {
+        document
+          .getElementById("shein-created-tasks")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [batchQueueMode, currentQueuedBatchId, effectiveStep]);
+
   function toggleSelection(designId: string) {
     setSelectedIds((current) =>
       current.includes(designId)
@@ -944,6 +988,7 @@ export function SheinStudioWorkbench({
         <SheinStudioBatchQueueBanner
           currentBatchName={currentQueuedBatch.name}
           currentIndex={queuedBatchIndex}
+          guidance={batchQueueGuidance}
           mode={batchQueueMode}
           onExit={clearBatchQueue}
           onNext={handleAdvanceBatchQueue}

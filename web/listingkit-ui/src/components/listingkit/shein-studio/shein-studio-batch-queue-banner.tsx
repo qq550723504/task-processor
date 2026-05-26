@@ -6,6 +6,7 @@ import type { SheinStudioBatchQueueMode } from "@/lib/types/shein-studio";
 export function SheinStudioBatchQueueBanner({
   currentBatchName,
   currentIndex,
+  guidance,
   mode,
   total,
   onExit,
@@ -14,6 +15,7 @@ export function SheinStudioBatchQueueBanner({
 }: {
   currentBatchName: string;
   currentIndex: number;
+  guidance: string;
   mode: SheinStudioBatchQueueMode;
   total: number;
   onExit: () => void;
@@ -34,6 +36,7 @@ export function SheinStudioBatchQueueBanner({
             {`第 ${currentIndex + 1} / ${total} 个批次`}
           </div>
           <div className="text-sm text-emerald-800">{currentBatchName}</div>
+          <div className="text-sm text-emerald-700">{guidance}</div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={onNext} size="sm" type="button" variant="secondary">

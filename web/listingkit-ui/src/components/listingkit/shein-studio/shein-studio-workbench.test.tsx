@@ -441,6 +441,8 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("starts queue mode from homepage selection and loads the first batch", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -476,6 +478,13 @@ describe("SheinStudioWorkbench", () => {
 
     expect(await screen.findByText("第 1 / 2 个批次")).toBeInTheDocument();
     expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument();
+    expect(
+      screen.getByText("已定位到生成区，可直接修改提示词或继续生成。"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText("prompt")),
+    );
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it("moves to the next batch when clicking next", async () => {
@@ -520,6 +529,8 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("starts create-task queue mode at the review step for batches with designs", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -544,6 +555,10 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
     expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
+    expect(
+      screen.getByText("已定位到审核区，可直接创建任务或调整款式。"),
+    ).toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it("skips missing batch ids and continues to the next available batch", async () => {
