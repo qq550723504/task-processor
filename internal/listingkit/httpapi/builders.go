@@ -220,13 +220,11 @@ func BuildImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit
 }
 
 func ConfigureLegacyTenantResolver(cfg *config.Config, logger *logrus.Logger) (func() error, error) {
-	if cfg == nil || cfg.Database == nil || strings.TrimSpace(cfg.Database.Host) == "" {
+	if shouldDisableLegacyTenantResolver(cfg) {
 		tenantbridge.ConfigureLegacyTenantResolver(nil)
 		return nil, nil
 	}
-	for _, databaseName := range []string{"zitadel_auth", "zitadel"} {
-		zitadelCfg := *cfg.Database
-		zitadelCfg.Database = databaseName
+	for _, zitadelCfg := range legacyTenantResolverDatabaseConfigs(cfg) {
 		db, err := database.NewSharedDatabaseFromConfig(&zitadelCfg)
 		if err != nil {
 			continue
@@ -242,6 +240,24 @@ func ConfigureLegacyTenantResolver(cfg *config.Config, logger *logrus.Logger) (f
 	tenantbridge.ConfigureLegacyTenantResolver(nil)
 	logger.Warn("listingkit legacy tenant resolver metadata table not found; legacy tenant bridge disabled")
 	return nil, nil
+}
+
+func shouldDisableLegacyTenantResolver(cfg *config.Config) bool {
+	return cfg == nil || cfg.Database == nil || strings.TrimSpace(cfg.Database.Host) == ""
+}
+
+func legacyTenantResolverDatabaseConfigs(cfg *config.Config) []config.DatabaseConfig {
+	if shouldDisableLegacyTenantResolver(cfg) {
+		return nil
+	}
+	candidates := []string{"zitadel_auth", "zitadel"}
+	configs := make([]config.DatabaseConfig, 0, len(candidates))
+	for _, databaseName := range candidates {
+		zitadelCfg := *cfg.Database
+		zitadelCfg.Database = databaseName
+		configs = append(configs, zitadelCfg)
+	}
+	return configs
 }
 
 func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.Repository, func() error, error) {

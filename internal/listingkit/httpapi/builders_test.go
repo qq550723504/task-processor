@@ -67,3 +67,43 @@ func TestBuildListingAdminImportTaskRepositoryDisablesWithoutDatabase(t *testing
 		t.Fatalf("closers = %d, want 0", len(closers))
 	}
 }
+
+func TestShouldDisableLegacyTenantResolverRequiresConfiguredDatabaseHost(t *testing.T) {
+	t.Parallel()
+
+	if !shouldDisableLegacyTenantResolver(nil) {
+		t.Fatal("expected nil config to disable legacy tenant resolver")
+	}
+	if !shouldDisableLegacyTenantResolver(&config.Config{}) {
+		t.Fatal("expected missing database config to disable legacy tenant resolver")
+	}
+	if !shouldDisableLegacyTenantResolver(&config.Config{Database: &config.DatabaseConfig{}}) {
+		t.Fatal("expected blank database host to disable legacy tenant resolver")
+	}
+	if shouldDisableLegacyTenantResolver(&config.Config{Database: &config.DatabaseConfig{Host: "127.0.0.1"}}) {
+		t.Fatal("expected configured database host to enable legacy tenant resolver probing")
+	}
+}
+
+func TestLegacyTenantResolverDatabaseConfigsEnumeratesCandidateDatabases(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Database: &config.DatabaseConfig{
+			Host:     "127.0.0.1",
+			Port:     5432,
+			Database: "app",
+		},
+	}
+
+	candidates := legacyTenantResolverDatabaseConfigs(cfg)
+	if len(candidates) != 2 {
+		t.Fatalf("candidate count = %d, want 2", len(candidates))
+	}
+	if candidates[0].Database != "zitadel_auth" || candidates[1].Database != "zitadel" {
+		t.Fatalf("candidate databases = [%s %s], want [zitadel_auth zitadel]", candidates[0].Database, candidates[1].Database)
+	}
+	if candidates[0].Host != cfg.Database.Host || candidates[1].Port != cfg.Database.Port {
+		t.Fatal("expected candidate configs to preserve base connection settings")
+	}
+}
