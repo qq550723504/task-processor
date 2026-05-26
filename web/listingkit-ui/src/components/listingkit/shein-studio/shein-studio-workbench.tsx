@@ -173,6 +173,7 @@ export function SheinStudioWorkbench({
     [setWorkbenchField],
   );
   const {
+    activeGroupId,
     artworkModel,
     createdTasks,
     creatingError,
@@ -183,6 +184,7 @@ export function SheinStudioWorkbench({
     generationError,
     generationWarning,
     generationWarningAction,
+    groups,
     groupedImageMode,
     imageStrategy,
     isCreatingTasks,
@@ -226,7 +228,11 @@ export function SheinStudioWorkbench({
   const hasLocalWorkflowStateRef = useRef(false);
   const hasCustomizedSdsSelectionRef = useRef(false);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
-  const activeSelection = useHydratedSDSVariantSelection(selection);
+  const directSelection = useHydratedSDSVariantSelection(selection);
+  const activeGroupSelection = useHydratedSDSVariantSelection(
+    groups.find((group) => group.id === activeGroupId)?.primarySelection,
+  );
+  const activeSelection = directSelection ?? activeGroupSelection;
   const groupedCandidateSelections = useSDSGroupedCandidates();
   const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
   const [baselineStatuses, setBaselineStatuses] = useReducer(
@@ -253,6 +259,10 @@ export function SheinStudioWorkbench({
     navigateToStep,
     setEffectiveStep,
   } = useSheinStudioStepNavigation(activeStep);
+  const recentGroups = useMemo(
+    () => [...groups].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [groups],
+  );
   const activeSelectionKey = buildSheinStudioSelectionKey(activeSelection);
   const {
     printableAreaLabel,
@@ -327,6 +337,7 @@ export function SheinStudioWorkbench({
     artworkModel,
     createdTasks,
     designs,
+    groups,
     groupedImageMode,
     imageStrategy,
     isCreatingTasks,
@@ -499,6 +510,7 @@ export function SheinStudioWorkbench({
     activeSelection,
     activeSelectionKey,
     activeStepRef,
+    hasExplicitSelection: Boolean(selection?.variantId),
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
     setEffectiveStep,
@@ -602,6 +614,71 @@ export function SheinStudioWorkbench({
   return (
     <section className="relative space-y-6">
       {busyMessage ? <SheinStudioBusyOverlay message={busyMessage} /> : null}
+
+      {recentGroups.length > 0 ? (
+        <div className="rounded-3xl border border-black/10 bg-white/80 p-4 shadow-sm backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-black/45">
+                Recent Groups
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-neutral-900">
+                最近保存的分组
+              </h2>
+            </div>
+            <p className="text-xs text-black/55">
+              进入页面后会优先恢复最近编辑过的分组，不用重新选回主商品。
+            </p>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {recentGroups.map((group) => {
+              const isActive = group.id === activeGroupId;
+              return (
+                <button
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    isActive
+                      ? "border-neutral-900 bg-neutral-900 text-white shadow-lg shadow-black/10"
+                      : "border-black/10 bg-white text-neutral-900 hover:border-neutral-400 hover:bg-neutral-50"
+                  }`}
+                  key={group.id}
+                  onClick={() => workbenchController.selectGroup(group.id)}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">{group.name}</span>
+                    {isActive ? (
+                      <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium">
+                        当前分组
+                      </span>
+                    ) : null}
+                  </div>
+                  <p
+                    className={`mt-2 text-sm ${
+                      isActive ? "text-white/80" : "text-black/65"
+                    }`}
+                  >
+                    主商品：{group.primarySelection.productName || "未命名 SDS 商品"}
+                  </p>
+                  <p
+                    className={`mt-1 line-clamp-2 text-xs ${
+                      isActive ? "text-white/70" : "text-black/55"
+                    }`}
+                  >
+                    当前提示词：{group.currentPrompt || "暂未填写"}
+                  </p>
+                  <p
+                    className={`mt-2 text-[11px] ${
+                      isActive ? "text-white/60" : "text-black/45"
+                    }`}
+                  >
+                    最近更新：{group.updatedAt.replace("T", " ").slice(0, 16)}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <SheinStudioSelectionOverview
         printableAreaLabel={printableAreaLabel}

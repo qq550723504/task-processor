@@ -6,6 +6,7 @@ import {
   evaluateImportedGalleryDesigns,
   mergeSheinStudioDraftState,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import { loadLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import { resumeSheinStudioDesignGeneration } from "@/lib/api/shein-studio";
 import {
@@ -24,10 +25,17 @@ import {
   type SheinStudioSaveInput,
 } from "@/lib/utils/shein-studio-batches";
 
+function pickRecentGroupedBatch(batches: SheinStudioSavedBatch[]) {
+  return [...batches]
+    .filter((batch) => (batch.groups?.length ?? 0) > 0)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+}
+
 export function useSheinStudioWorkspaceLoader({
   activeSelection,
   activeSelectionKey,
   activeStepRef,
+  hasExplicitSelection,
   hasCustomizedSdsSelectionRef,
   hasLocalWorkflowStateRef,
   setEffectiveStep,
@@ -36,6 +44,7 @@ export function useSheinStudioWorkspaceLoader({
   activeSelection?: SDSProductVariantSelection;
   activeSelectionKey: string;
   activeStepRef: MutableRefObject<SheinStudioStepKey>;
+  hasExplicitSelection: boolean;
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   setEffectiveStep: (step: SheinStudioStepKey) => void;
@@ -53,8 +62,13 @@ export function useSheinStudioWorkspaceLoader({
     async function loadWorkspaceState() {
       workbench.setField("isLoadingWorkspace", true);
       try {
+        const localDraft = !hasExplicitSelection
+          ? loadLocalSheinStudioDraftSnapshot()
+          : null;
         const [draft, batches] = await Promise.all([
-          loadSheinStudioDraft(activeSelectionRef.current),
+          hasExplicitSelection
+            ? loadSheinStudioDraft(activeSelectionRef.current)
+            : Promise.resolve(null),
           listSheinStudioBatches(),
         ]);
 
@@ -66,9 +80,13 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
         let resumableGenerationJobId = "";
+        const effectiveDraft =
+          localDraft ??
+          draft ??
+          (!activeSelectionRef.current ? pickRecentGroupedBatch(batches) : null);
         const groupedCandidateHandoff = consumeSDSGroupedCandidateHandoff();
 
-        if (draft || !hasLocalWorkflowStateRef.current) {
+        if (effectiveDraft || !hasLocalWorkflowStateRef.current) {
           const galleryHandoff = activeSelectionRef.current
             ? consumeSheinStudioGalleryHandoff()
             : null;
@@ -76,7 +94,7 @@ export function useSheinStudioWorkspaceLoader({
             ? galleryHandoffToDesign(galleryHandoff)
             : null;
           const draftState = mergeSheinStudioDraftState({
-            draft,
+            draft: effectiveDraft,
             galleryDesign,
             galleryPrompt: galleryHandoff?.prompt || galleryHandoff?.title,
           });
@@ -96,6 +114,7 @@ export function useSheinStudioWorkspaceLoader({
             imageStrategy: draftState.imageStrategy,
             groupedImageMode: draftState.groupedImageMode,
             selectedSdsImages: draftState.selectedSdsImages,
+            groups: draftState.groups,
             groupedSelections: draftState.groupedSelections,
             renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
             designs: draftState.designs,
@@ -120,7 +139,7 @@ export function useSheinStudioWorkspaceLoader({
           }
         }
         workbench.setField("savedBatches", batches);
-        if (draft || importedGalleryDesign) {
+        if (effectiveDraft || importedGalleryDesign) {
           setEffectiveStep(
             resolveSheinStudioEffectiveStep({
               activeStep: activeStepRef.current,
@@ -218,6 +237,7 @@ export function useSheinStudioWorkspaceLoader({
   }, [
     activeSelectionKey,
     activeStepRef,
+    hasExplicitSelection,
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
     setEffectiveStep,
