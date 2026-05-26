@@ -208,15 +208,26 @@ func BuildImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit
 	if cfg == nil {
 		return nil
 	}
-	if strings.EqualFold(strings.TrimSpace(cfg.ProductImage.Publisher.Provider), "s3") {
+	if shouldUseS3ImageUploadStore(cfg) {
 		return buildS3ImageUploadStore(cfg, logger)
 	}
-	rootDir := filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+	rootDir := localImageUploadRootDir(cfg)
 	store, err := listingkit.NewLocalImageUploadStore(rootDir)
 	if err != nil {
 		return nil
 	}
 	return store
+}
+
+func shouldUseS3ImageUploadStore(cfg *config.Config) bool {
+	return cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.ProductImage.Publisher.Provider), "s3")
+}
+
+func localImageUploadRootDir(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
 }
 
 func ConfigureLegacyTenantResolver(cfg *config.Config, logger *logrus.Logger) (func() error, error) {

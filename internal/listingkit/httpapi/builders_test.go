@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"path/filepath"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -105,5 +106,37 @@ func TestLegacyTenantResolverDatabaseConfigsEnumeratesCandidateDatabases(t *test
 	}
 	if candidates[0].Host != cfg.Database.Host || candidates[1].Port != cfg.Database.Port {
 		t.Fatal("expected candidate configs to preserve base connection settings")
+	}
+}
+
+func TestShouldUseS3ImageUploadStoreMatchesConfiguredProvider(t *testing.T) {
+	t.Parallel()
+
+	if shouldUseS3ImageUploadStore(nil) {
+		t.Fatal("expected nil config to skip s3 image upload store")
+	}
+	if shouldUseS3ImageUploadStore(&config.Config{}) {
+		t.Fatal("expected blank provider to skip s3 image upload store")
+	}
+	if !shouldUseS3ImageUploadStore(&config.Config{ProductImage: config.ProductImageConfig{Publisher: config.ProductImagePublisherConfig{Provider: " S3 "}}}) {
+		t.Fatal("expected s3 provider to enable s3 image upload store")
+	}
+}
+
+func TestLocalImageUploadRootDirUsesPublisherOutputDir(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		ProductImage: config.ProductImageConfig{
+			Publisher: config.ProductImagePublisherConfig{
+				OutputDir: filepath.Join("tmp", "publisher"),
+			},
+		},
+	}
+
+	got := localImageUploadRootDir(cfg)
+	want := filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+	if got != want {
+		t.Fatalf("root dir = %q, want %q", got, want)
 	}
 }
