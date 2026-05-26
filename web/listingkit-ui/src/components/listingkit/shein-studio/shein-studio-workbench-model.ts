@@ -192,8 +192,13 @@ export function buildSheinStudioGenerateRequest({
   variationIntensity: SheinStudioVariationIntensity;
 }): SheinStudioGenerateRequest {
   const trimmedModel = artworkModel.trim();
+  const normalizedPrompt = normalizeSheinStudioPromptWithSDSSize({
+    prompt,
+    printableWidth,
+    printableHeight,
+  });
   return {
-    prompt: prompt.trim(),
+    prompt: normalizedPrompt,
     count: styleCount,
     variationIntensity,
     printableWidth,
@@ -202,6 +207,39 @@ export function buildSheinStudioGenerateRequest({
     imageModel: transparentBackground ? "gpt-image-2" : trimmedModel || undefined,
     transparentBackground,
   };
+}
+
+function normalizeSheinStudioPromptWithSDSSize({
+  prompt,
+  printableWidth,
+  printableHeight,
+}: {
+  prompt: string;
+  printableWidth?: number;
+  printableHeight?: number;
+}) {
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    return trimmedPrompt;
+  }
+  if (!printableWidth || !printableHeight) {
+    return trimmedPrompt;
+  }
+  const sizeSuffix = `SDS printable size: ${printableWidth}x${printableHeight}px.`;
+  const normalizedPrompt = trimmedPrompt.replace(/\s+/g, " ");
+  const lowerPrompt = normalizedPrompt.toLowerCase();
+  const lowerSuffix = sizeSuffix.toLowerCase();
+  const compactSizeToken = `${printableWidth}x${printableHeight}px`.toLowerCase();
+  const spacedSizeToken = `${printableWidth} × ${printableHeight}px`.toLowerCase();
+
+  if (
+    lowerPrompt.includes(lowerSuffix) ||
+    lowerPrompt.includes(compactSizeToken) ||
+    lowerPrompt.includes(spacedSizeToken)
+  ) {
+    return normalizedPrompt;
+  }
+  return `${normalizedPrompt}\n\n${sizeSuffix}`;
 }
 
 export function sheinStudioBusyMessage({
