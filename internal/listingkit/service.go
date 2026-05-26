@@ -22,6 +22,7 @@ import (
 type service struct {
 	repo                           Repository
 	taskLifecycle                  *taskLifecycleService
+	taskRevision                   *taskRevisionService
 	taskSubmission                 *taskSubmissionService
 	taskSubmissionRecovery         *taskSubmissionRecoveryService
 	taskSubmissionExecution        *taskSubmissionExecutionService
@@ -202,6 +203,7 @@ func (s *service) initializeTaskCollaborators() {
 		return
 	}
 	s.taskLifecycle = s.taskLifecycleOrDefault()
+	s.taskRevision = s.taskRevisionOrDefault()
 }
 
 func (s *service) initializeSubmitCollaborators() {

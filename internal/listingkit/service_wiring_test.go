@@ -17,6 +17,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskLifecycle == nil {
 		t.Fatal("expected taskLifecycle to be initialized")
 	}
+	if impl.taskRevision == nil {
+		t.Fatal("expected taskRevision to be initialized")
+	}
 	if impl.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
@@ -45,6 +48,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	svc.initializeTaskCollaborators()
 	if svc.taskLifecycle == nil {
 		t.Fatal("expected taskLifecycle to be initialized")
+	}
+	if svc.taskRevision == nil {
+		t.Fatal("expected taskRevision to be initialized")
 	}
 
 	svc.initializeSubmitCollaborators()
