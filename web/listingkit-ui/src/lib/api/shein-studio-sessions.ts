@@ -2,6 +2,10 @@ import { apiRequest } from "@/lib/api/client";
 import { parseStudioSessionDetailResponse } from "@/lib/api/shein-studio-session-schema";
 import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  buildGroupedSDSSelectionID,
+  type GroupedSDSSelectionEligibility,
+} from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioSavedBatch,
@@ -38,6 +42,7 @@ export type StudioSessionDetailResponse = {
     artwork_model?: SheinStudioArtworkModel;
     image_strategy?: SheinStudioImageStrategy;
     selected_sds_images?: SheinStudioSelectedSDSImage[];
+    grouped_selections?: Array<Record<string, unknown>>;
     transparent_background?: boolean;
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
@@ -80,6 +85,7 @@ type StudioBatchListResponse = {
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
     selection?: Record<string, unknown>;
+    grouped_selections?: Array<Record<string, unknown>>;
     approved_design_ids?: string[];
     created_tasks?: SheinStudioCreatedTask[];
     design_count?: number;
@@ -155,6 +161,7 @@ export async function updateSheinStudioSession(
     artworkModel?: string;
     imageStrategy?: string;
     selectedSdsImages?: SheinStudioSelectedSDSImage[];
+    groupedSelections?: GroupedSDSSelectionEligibility[];
     transparentBackground?: boolean;
     renderSizeImagesWithSds?: boolean;
     sheinStoreId?: string;
@@ -179,6 +186,7 @@ export async function updateSheinStudioSession(
         artwork_model: patch.artworkModel,
         image_strategy: patch.imageStrategy,
         selected_sds_images: patch.selectedSdsImages,
+        grouped_selections: patch.groupedSelections?.map(groupedSelectionToPayload),
         transparent_background: patch.transparentBackground,
         render_size_images_with_sds: patch.renderSizeImagesWithSds,
         shein_store_id: patch.sheinStoreId,
@@ -266,6 +274,7 @@ export async function upsertSheinStudioSessionBatch(
     renderSizeImagesWithSds?: boolean;
     sheinStoreId?: string;
     selection?: SDSProductVariantSelection;
+    groupedSelections?: GroupedSDSSelectionEligibility[];
     approvedDesignIds: string[];
     createdTasks: SheinStudioCreatedTask[];
     designs: SheinStudioGeneratedDesign[];
@@ -291,6 +300,7 @@ export async function upsertSheinStudioSessionBatch(
         render_size_images_with_sds: input.renderSizeImagesWithSds,
         shein_store_id: input.sheinStoreId,
         selection: input.selection ? selectionToPayload(input.selection) : undefined,
+        grouped_selections: input.groupedSelections?.map(groupedSelectionToPayload),
         approved_design_ids: input.approvedDesignIds,
         created_tasks: input.createdTasks,
         designs: input.designs.map((design) => ({
@@ -354,6 +364,9 @@ export function mapStudioSessionDetailToDraft(
     renderSizeImagesWithSds: detail.session.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(detail.session.selection)?.variantId,
     selection: normalizeSelectionResponse(detail.session.selection),
+    groupedSelections: normalizeGroupedSelectionsResponse(
+      detail.session.grouped_selections,
+    ),
     designs:
       detail.designs?.map((design) => ({
         id: design.id,
@@ -498,6 +511,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     renderSizeImagesWithSds: item.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(item.selection)?.variantId,
     selection: normalizeSelectionResponse(item.selection),
+    groupedSelections: normalizeGroupedSelectionsResponse(item.grouped_selections),
     designs: [],
     selectedIds: item.approved_design_ids ?? [],
     createdTasks: item.created_tasks ?? [],
@@ -578,4 +592,73 @@ function selectionToPayload(selection: SDSProductVariantSelection) {
       size_reference_image_urls: variant.sizeReferenceImageUrls,
     })),
   };
+}
+
+function groupedSelectionToPayload(selection: GroupedSDSSelectionEligibility) {
+  return {
+    selection_id: selection.selectionId,
+    selection: selectionToPayload(selection.selection),
+    baseline_key: selection.baselineKey,
+    baseline_status: selection.baselineStatus,
+    baseline_reason: selection.baselineReason,
+    shein_store_id: selection.sheinStoreId,
+    eligible: selection.eligible,
+    eligibility_reason: selection.eligibilityReason,
+  };
+}
+
+function normalizeGroupedSelectionsResponse(
+  items: Array<Record<string, unknown>> | undefined,
+): GroupedSDSSelectionEligibility[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map<GroupedSDSSelectionEligibility | null>((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const entry = item as unknown as {
+        selectionId?: string;
+        selection_id?: string;
+        selection?: Record<string, unknown>;
+        baselineKey?: string;
+        baseline_key?: string;
+        baselineStatus?: string;
+        baseline_status?: string;
+        baselineReason?: string;
+        baseline_reason?: string;
+        sheinStoreId?: string;
+        shein_store_id?: string;
+        eligible?: boolean;
+        eligibilityReason?: string;
+        eligibility_reason?: string;
+      };
+      const selection = normalizeSelectionResponse(entry.selection);
+      if (!selection) {
+        return null;
+      }
+      const selectionId =
+        entry.selectionId ?? entry.selection_id ?? buildGroupedSDSSelectionID(selection);
+      return {
+        selectionId,
+        selection,
+        baselineKey: entry.baselineKey ?? entry.baseline_key,
+        baselineStatus:
+          entry.baselineStatus === "ready" ||
+          entry.baselineStatus === "failed" ||
+          entry.baselineStatus === "missing"
+            ? entry.baselineStatus
+            : entry.baseline_status === "ready" ||
+                entry.baseline_status === "failed" ||
+                entry.baseline_status === "missing"
+              ? entry.baseline_status
+              : "missing",
+        baselineReason: entry.baselineReason ?? entry.baseline_reason ?? "",
+        sheinStoreId: entry.sheinStoreId ?? entry.shein_store_id ?? "",
+        eligible: entry.eligible !== false,
+        eligibilityReason: entry.eligibilityReason ?? entry.eligibility_reason,
+      };
+    })
+    .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item));
 }

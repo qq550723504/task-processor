@@ -160,6 +160,7 @@ export function mergeSheinStudioDraftState({
     sheinStoreId: draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
     imageStrategy: draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     selectedSdsImages: draft?.selectedSdsImages ?? [],
+    groupedSelections: draft?.groupedSelections ?? [],
     renderSizeImagesWithSds: draft?.renderSizeImagesWithSds ?? true,
     designs,
     selectedIds,

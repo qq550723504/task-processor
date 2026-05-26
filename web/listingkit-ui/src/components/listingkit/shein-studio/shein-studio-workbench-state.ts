@@ -68,6 +68,7 @@ export type SheinStudioWorkbenchDraftPatch = Pick<
   | "sheinStoreId"
   | "imageStrategy"
   | "selectedSdsImages"
+  | "groupedSelections"
   | "renderSizeImagesWithSds"
   | "designs"
   | "selectedIds"
@@ -209,6 +210,7 @@ export function sheinStudioWorkbenchReducer(
         imageStrategy:
           action.batch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
         selectedSdsImages: action.batch.selectedSdsImages ?? [],
+        groupedSelections: action.batch.groupedSelections ?? [],
         renderSizeImagesWithSds: action.batch.renderSizeImagesWithSds ?? true,
         designs: action.batch.designs,
         selectedIds: action.batch.selectedIds,

@@ -27,6 +27,25 @@ const selectedSdsImageSchema = z
   })
   .passthrough();
 
+const groupedSelectionSchema = z
+  .object({
+    selection_id: z.string().optional(),
+    selectionId: z.string().optional(),
+    selection: z.record(z.string(), z.unknown()),
+    baseline_key: z.string().optional(),
+    baselineKey: z.string().optional(),
+    baseline_status: z.string().optional(),
+    baselineStatus: z.string().optional(),
+    baseline_reason: z.string().optional(),
+    baselineReason: z.string().optional(),
+    shein_store_id: z.string().optional(),
+    sheinStoreId: z.string().optional(),
+    eligible: z.boolean().optional(),
+    eligibility_reason: z.string().optional(),
+    eligibilityReason: z.string().optional(),
+  })
+  .passthrough();
+
 const studioSessionSchema = z
   .object({
     id: z.string(),
@@ -42,6 +61,7 @@ const studioSessionSchema = z
     artwork_model: z.string().optional(),
     image_strategy: z.string().optional(),
     selected_sds_images: z.array(selectedSdsImageSchema).optional(),
+    grouped_selections: z.array(groupedSelectionSchema).optional(),
     transparent_background: z.boolean().optional(),
     render_size_images_with_sds: z.boolean().optional(),
     shein_store_id: z.string().optional(),

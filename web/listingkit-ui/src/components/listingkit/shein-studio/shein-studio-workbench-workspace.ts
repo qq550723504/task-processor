@@ -93,6 +93,7 @@ export function useSheinStudioWorkspaceLoader({
             sheinStoreId: draftState.sheinStoreId,
             imageStrategy: draftState.imageStrategy,
             selectedSdsImages: draftState.selectedSdsImages,
+            groupedSelections: draftState.groupedSelections,
             renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
             designs: draftState.designs,
             selectedIds: draftState.selectedIds,

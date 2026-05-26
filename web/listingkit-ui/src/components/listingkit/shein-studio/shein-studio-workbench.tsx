@@ -315,6 +315,7 @@ export function SheinStudioWorkbench({
     prompt,
     regeneratingId,
     renderSizeImagesWithSds,
+    groupedSelections,
     selectedIds,
     selectedSdsImages,
     setDraftWarning,
@@ -385,26 +386,30 @@ export function SheinStudioWorkbench({
 
   useEffect(() => {
     setGroupedSelections((current) =>
-      current.reduce<GroupedSDSSelectionEligibility[]>((next, item) => {
-        const candidate = groupedCandidates.find(
-          (candidateItem) => candidateItem.selectionId === item.selectionId,
+      current.map((item) => {
+        const baseline = baselineStatuses[item.selectionId] ?? {
+          status: item.baselineStatus,
+          reason: item.baselineReason,
+          baselineKey: item.baselineKey,
+        };
+        const compatibility = evaluateGroupedSelectionCompatibility(
+          activeSelection,
+          item.selection,
         );
-        if (!candidate) {
-          return next;
-        }
-        next.push({
+        return {
           ...item,
-          selection: candidate.selection,
-          baselineKey: candidate.baselineKey,
-          baselineStatus: candidate.baselineStatus,
-          baselineReason: candidate.baselineReason,
-          eligible: candidate.eligible,
-          eligibilityReason: candidate.eligibilityReason,
-        });
-        return next;
-      }, []),
+          baselineKey: baseline.baselineKey,
+          baselineStatus: baseline.status,
+          baselineReason: baseline.reason,
+          eligible: baseline.status === "ready" && compatibility.compatible,
+          eligibilityReason:
+            baseline.status !== "ready"
+              ? baseline.reason || "只有 baseline ready 的 SDS 商品才能加入分组。"
+              : compatibility.reason,
+        };
+      }),
     );
-  }, [groupedCandidates, setGroupedSelections]);
+  }, [activeSelection, baselineStatuses, setGroupedSelections]);
 
   useEffect(() => {
     if ((sheinStoreId ?? "").trim()) {

@@ -1,4 +1,8 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  normalizeGroupedSDSSelectionEligibility,
+  type GroupedSDSSelectionEligibility,
+} from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
@@ -153,6 +157,26 @@ function normalizeSelectedImages(input: unknown): SheinStudioSelectedSDSImage[] 
   return normalizeSelectedSDSImages(input);
 }
 
+function normalizeGroupedSelections(input: unknown): GroupedSDSSelectionEligibility[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const candidate = item as Partial<GroupedSDSSelectionEligibility> & {
+        selection?: unknown;
+      };
+      return normalizeGroupedSDSSelectionEligibility({
+        ...candidate,
+        selection: normalizeSelection(candidate.selection),
+      });
+    })
+    .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item));
+}
+
 function isSelection(item: unknown): item is SDSProductVariantSelection {
   return (
     !!item &&
@@ -190,6 +214,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
+    groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
     designs: Array.isArray(raw.designs) ? raw.designs.filter(isGeneratedDesign) : [],
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
@@ -223,6 +248,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
+    groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
     designs: Array.isArray(raw.designs) ? raw.designs.filter(isGeneratedDesign) : [],
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")

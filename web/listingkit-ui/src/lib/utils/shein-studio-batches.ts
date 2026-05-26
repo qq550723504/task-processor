@@ -13,6 +13,7 @@ import {
   normalizeBatch,
 } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
@@ -38,6 +39,7 @@ export type SheinStudioSaveInput = {
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
   renderSizeImagesWithSds?: boolean;
   selection?: SDSProductVariantSelection;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
@@ -115,6 +117,7 @@ export async function saveSheinStudioDraftWithOptions(
       sheinStoreId: input.sheinStoreId,
       approvedDesignIds: input.selectedIds,
       createdTasks: input.createdTasks,
+      groupedSelections: input.groupedSelections,
     }, {
       signal: options?.signal,
     });
@@ -181,6 +184,7 @@ export async function saveSheinStudioBatch(input: SheinStudioSaveInput) {
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,
       sheinStoreId: input.sheinStoreId,
       selection: input.selection,
+      groupedSelections: input.groupedSelections,
       approvedDesignIds: input.selectedIds,
       createdTasks: input.createdTasks,
       designs: input.designs,

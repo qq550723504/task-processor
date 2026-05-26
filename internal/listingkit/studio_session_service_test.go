@@ -120,6 +120,7 @@ func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 	cloned.ApprovedDesignIDs = append(SheinStudioStringList(nil), session.ApprovedDesignIDs...)
 	cloned.CreatedTaskIDs = append(SheinStudioStringList(nil), session.CreatedTaskIDs...)
 	cloned.CreatedTasks = append(SheinStudioCreatedTaskList(nil), session.CreatedTasks...)
+	cloned.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...)
 	cloned.Selection = session.Selection
 	return &cloned
 }
@@ -255,6 +256,53 @@ func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 	}
 }
 
+func TestStudioSessionServicePersistsGroupedSelections(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	grouped := []SheinStudioGroupedSelection{
+		{
+			SelectionID: "124110:18203:124200:layer-2:124200",
+			Selection: SheinStudioSelection{
+				ProductID:        124110,
+				ParentProductID:  124110,
+				VariantID:        124200,
+				PrototypeGroupID: 18203,
+				LayerID:          "layer-2",
+				ProductName:      "Canvas tote",
+				VariantLabel:     "Large / white",
+			},
+			BaselineStatus: "ready",
+			BaselineReason: "",
+			SheinStoreID:   "store-9",
+			Eligible:       true,
+		},
+	}
+	if _, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		GroupedSelections: grouped,
+	}); err != nil {
+		t.Fatalf("update grouped selections: %v", err)
+	}
+
+	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if len(loaded.Session.GroupedSelections) != 1 {
+		t.Fatalf("grouped selection count = %d, want 1", len(loaded.Session.GroupedSelections))
+	}
+	if loaded.Session.GroupedSelections[0].Selection.ProductName != "Canvas tote" {
+		t.Fatalf("grouped selection = %#v, want Canvas tote", loaded.Session.GroupedSelections[0])
+	}
+}
+
 func TestStudioSessionServiceUsesContextUserIDWhenRequestOmitted(t *testing.T) {
 	svc := newStudioSessionTestService()
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "tenant-a", UserID: "user-42"})
@@ -284,6 +332,23 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 		},
 		ApprovedDesignIDs: []string{"design-1"},
 		BatchName:         "retro cherries",
+		GroupedSelections: []SheinStudioGroupedSelection{
+			{
+				SelectionID: "124110:18203:124200:layer-2:124200",
+				Selection: SheinStudioSelection{
+					ProductID:        124110,
+					ParentProductID:  124110,
+					VariantID:        124200,
+					PrototypeGroupID: 18203,
+					LayerID:          "layer-2",
+					ProductName:      "Canvas tote",
+					VariantLabel:     "Large / white",
+				},
+				BaselineStatus: "ready",
+				SheinStoreID:   "store-9",
+				Eligible:       true,
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("upsert batch: %v", err)
@@ -293,6 +358,9 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	}
 	if detail.Session.BatchName != "retro cherries" {
 		t.Fatalf("batch name = %q, want retro cherries", detail.Session.BatchName)
+	}
+	if len(detail.Session.GroupedSelections) != 1 {
+		t.Fatalf("grouped selections = %#v, want 1 item", detail.Session.GroupedSelections)
 	}
 
 	list, err := svc.ListStudioBatches(ctx, 10)
@@ -315,6 +383,9 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	}
 	if len(loaded.Designs) != 1 || loaded.Designs[0].ID != "design-1" {
 		t.Fatalf("loaded designs = %#v, want design-1", loaded.Designs)
+	}
+	if len(loaded.Session.GroupedSelections) != 1 || loaded.Session.GroupedSelections[0].SheinStoreID != "store-9" {
+		t.Fatalf("loaded grouped selections = %#v, want store-9", loaded.Session.GroupedSelections)
 	}
 }
 

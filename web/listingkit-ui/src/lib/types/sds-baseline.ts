@@ -51,3 +51,42 @@ export function buildGroupedSDSSelectionID(
     selectedVariantIDs.join(","),
   ].join(":");
 }
+
+export function normalizeSDSBaselineStatus(value: unknown): SDSBaselineStatus {
+  return value === "ready" || value === "failed" || value === "missing"
+    ? value
+    : "missing";
+}
+
+export function normalizeGroupedSDSSelectionEligibility(
+  item: Partial<GroupedSDSSelectionEligibility> | null | undefined,
+): GroupedSDSSelectionEligibility | null {
+  if (!item?.selection) {
+    return null;
+  }
+  const selectionId =
+    typeof item.selectionId === "string" && item.selectionId.trim()
+      ? item.selectionId
+      : buildGroupedSDSSelectionID(item.selection);
+  if (!selectionId) {
+    return null;
+  }
+  return {
+    selectionId,
+    selection: item.selection,
+    baselineKey:
+      typeof item.baselineKey === "string" && item.baselineKey.trim()
+        ? item.baselineKey
+        : undefined,
+    baselineStatus: normalizeSDSBaselineStatus(item.baselineStatus),
+    baselineReason:
+      typeof item.baselineReason === "string" ? item.baselineReason : "",
+    sheinStoreId:
+      typeof item.sheinStoreId === "string" ? item.sheinStoreId : "",
+    eligible: item.eligible !== false,
+    eligibilityReason:
+      typeof item.eligibilityReason === "string"
+        ? item.eligibilityReason
+        : undefined,
+  };
+}

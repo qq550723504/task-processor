@@ -549,4 +549,51 @@ describe("SheinStudioWorkbench", () => {
       "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
     );
   });
+
+  it("restores grouped selections from a saved draft even when they are not in recent variants", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "sds_official",
+      selectedSdsImages: [],
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "9",
+          eligible: true,
+        },
+      ],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/已加入\s*1\s*款/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText("hoodie")).toBeInTheDocument();
+  });
 });
