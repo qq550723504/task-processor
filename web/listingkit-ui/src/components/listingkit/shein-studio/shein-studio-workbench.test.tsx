@@ -356,88 +356,84 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByDisplayValue("prompt b")).toBeInTheDocument();
   });
 
-  it("switches between recent groups and projects the selected prompt", async () => {
-    saveLocalSheinStudioDraftSnapshot({
-      prompt: "legacy top-level",
-      styleCount: "1",
-      productImageCount: "5",
-      productImagePrompt: "",
-      productImagePrompts: [],
-      artworkModel: "nanobanana",
-      transparentBackground: false,
-      sheinStoreId: "1",
-      imageStrategy: "ai_generated",
-      groupedImageMode: "shared_by_size",
-      selectedSdsImages: [],
-      renderSizeImagesWithSds: true,
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-      groups: [
-        {
-          id: "group-1",
-          name: "Group 1",
-          primarySelection: selection,
-          groupedSelections: [],
-          styleCount: "1",
-          sheinStoreId: "1",
-          imageStrategy: "ai_generated",
-          groupedImageMode: "shared_by_size",
-          selectedSdsImages: [],
-          renderSizeImagesWithSds: true,
-          currentPrompt: "prompt a",
-          promptHistory: [],
-          productImageCount: "5",
-          productImagePrompt: "",
-          productImagePrompts: [],
-          artworkModel: "nanobanana",
-          transparentBackground: false,
-          variationIntensity: "medium",
-          designs: [],
-          selectedIds: [],
-          createdTasks: [],
-          updatedAt: "2026-05-26T00:00:00.000Z",
-        },
-        {
-          id: "group-2",
-          name: "Group 2",
-          primarySelection: {
-            ...selection,
-            layerId: "layer-3",
-            productName: "hoodie",
-            variantId: 102,
-            variantLabel: "L / white",
+  it("shows recent batch cards before any explicit product reselection", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        groupedSelections: [
+          {
+            selectionId: "sel-1",
+            selection: groupedSelection.selection,
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "869",
+            eligible: true,
           },
-          groupedSelections: [],
-          styleCount: "2",
-          sheinStoreId: "9",
-          imageStrategy: "sds_official",
-          groupedImageMode: "per_product",
-          selectedSdsImages: [],
-          renderSizeImagesWithSds: true,
-          currentPrompt: "prompt b",
-          promptHistory: [],
-          productImageCount: "5",
-          productImagePrompt: "",
-          productImagePrompts: [],
-          artworkModel: "nanobanana",
-          transparentBackground: false,
-          variationIntensity: "medium",
-          designs: [],
-          selectedIds: [],
-          createdTasks: [],
-          updatedAt: "2026-05-26T01:00:00.000Z",
-        },
-      ],
-      updatedAt: "2026-05-26T01:00:00.000Z",
-    });
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      {
+        id: "batch-2",
+        name: "Second Batch",
+        prompt: "second prompt",
+        styleCount: "1",
+        sheinStoreId: "",
+        selection: groupedSelection.selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T09:00:00.000Z",
+      },
+    ]);
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    expect(await screen.findByDisplayValue("prompt b")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Group 1/ }));
+    expect(await screen.findByText("最近批次")).toBeInTheDocument();
+    expect(screen.getByText("Retro Cherries")).toBeInTheDocument();
+    expect(screen.getByText("2 款商品")).toBeInTheDocument();
+  });
+
+  it("loads the selected batch into the editor when clicking a recent batch card", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      {
+        id: "batch-2",
+        name: "Second Batch",
+        prompt: "second prompt",
+        styleCount: "1",
+        sheinStoreId: "",
+        selection: groupedSelection.selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T09:00:00.000Z",
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
     await waitFor(() =>
-      expect(screen.getByDisplayValue("prompt a")).toBeInTheDocument(),
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
   });
 

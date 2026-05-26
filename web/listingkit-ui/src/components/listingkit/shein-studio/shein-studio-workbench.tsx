@@ -6,11 +6,13 @@ import { useQuery } from "@tanstack/react-query";
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
+import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-studio/shein-studio-selection-overview";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   useHydratedSDSVariantSelection,
+  loadLocalSheinStudioDraftSnapshot,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
   useSheinStudioStepNavigation,
@@ -27,6 +29,7 @@ import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/sh
 import {
   buildSheinStudioSelectionKey,
   getSheinStudioCreateActionDisabledReason,
+  mergeSheinStudioDraftState,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -44,6 +47,7 @@ import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
+import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
@@ -259,10 +263,6 @@ export function SheinStudioWorkbench({
     navigateToStep,
     setEffectiveStep,
   } = useSheinStudioStepNavigation(activeStep);
-  const recentGroups = useMemo(
-    () => [...groups].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
-    [groups],
-  );
   const activeSelectionKey = buildSheinStudioSelectionKey(activeSelection);
   const {
     printableAreaLabel,
@@ -330,6 +330,14 @@ export function SheinStudioWorkbench({
   const activeGroupPromptHistory = useMemo(
     () => groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [],
     [activeGroupId, groups],
+  );
+  const localDraftSnapshot = useMemo(() => loadLocalSheinStudioDraftSnapshot(), []);
+  const recentBatchSummaries = useMemo(
+    () =>
+      buildRecentBatchSummaries(savedBatches, {
+        draft: localDraftSnapshot,
+      }),
+    [localDraftSnapshot, savedBatches],
   );
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
@@ -590,6 +598,52 @@ export function SheinStudioWorkbench({
       workbench: workbenchController,
     });
 
+  const handleSelectRecentBatchSummary = useCallback(
+    (summary: (typeof recentBatchSummaries)[number]) => {
+      if (summary.source === "local_draft" && localDraftSnapshot) {
+        const draftState = mergeSheinStudioDraftState({
+          draft: localDraftSnapshot,
+        });
+        hasLocalWorkflowStateRef.current = true;
+        hasCustomizedSdsSelectionRef.current =
+          draftState.hasCustomizedSdsSelection;
+        workbenchController.applyDraft({
+          prompt: draftState.prompt,
+          styleCount: draftState.styleCount,
+          variationIntensity: draftState.variationIntensity,
+          productImageCount: draftState.productImageCount,
+          productImagePrompt: draftState.productImagePrompt,
+          productImagePrompts: draftState.productImagePrompts,
+          artworkModel: draftState.artworkModel,
+          transparentBackground: draftState.transparentBackground,
+          sheinStoreId: draftState.sheinStoreId,
+          imageStrategy: draftState.imageStrategy,
+          groupedImageMode: draftState.groupedImageMode,
+          selectedSdsImages: draftState.selectedSdsImages,
+          groups: draftState.groups,
+          groupedSelections: draftState.groupedSelections,
+          renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
+          designs: draftState.designs,
+          selectedIds: draftState.selectedIds,
+          createdTasks: draftState.createdTasks,
+        });
+        setEffectiveStep("generate");
+        return;
+      }
+      const batch = savedBatches.find((item) => item.id === summary.id);
+      if (batch) {
+        handleLoadBatch(batch);
+      }
+    },
+    [
+      handleLoadBatch,
+      localDraftSnapshot,
+      savedBatches,
+      setEffectiveStep,
+      workbenchController,
+    ],
+  );
+
   function toggleSelection(designId: string) {
     setSelectedIds((current) =>
       current.includes(designId)
@@ -621,70 +675,13 @@ export function SheinStudioWorkbench({
     <section className="relative space-y-6">
       {busyMessage ? <SheinStudioBusyOverlay message={busyMessage} /> : null}
 
-      {recentGroups.length > 0 ? (
-        <div className="rounded-3xl border border-black/10 bg-white/80 p-4 shadow-sm backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-black/45">
-                Recent Groups
-              </p>
-              <h2 className="mt-1 text-lg font-semibold text-neutral-900">
-                最近保存的分组
-              </h2>
-            </div>
-            <p className="text-xs text-black/55">
-              进入页面后会优先恢复最近编辑过的分组，不用重新选回主商品。
-            </p>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {recentGroups.map((group) => {
-              const isActive = group.id === activeGroupId;
-              return (
-                <button
-                  className={`rounded-2xl border px-4 py-3 text-left transition ${
-                    isActive
-                      ? "border-neutral-900 bg-neutral-900 text-white shadow-lg shadow-black/10"
-                      : "border-black/10 bg-white text-neutral-900 hover:border-neutral-400 hover:bg-neutral-50"
-                  }`}
-                  key={group.id}
-                  onClick={() => workbenchController.selectGroup(group.id)}
-                  type="button"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold">{group.name}</span>
-                    {isActive ? (
-                      <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium">
-                        当前分组
-                      </span>
-                    ) : null}
-                  </div>
-                  <p
-                    className={`mt-2 text-sm ${
-                      isActive ? "text-white/80" : "text-black/65"
-                    }`}
-                  >
-                    主商品：{group.primarySelection.productName || "未命名 SDS 商品"}
-                  </p>
-                  <p
-                    className={`mt-1 line-clamp-2 text-xs ${
-                      isActive ? "text-white/70" : "text-black/55"
-                    }`}
-                  >
-                    当前提示词：{group.currentPrompt || "暂未填写"}
-                  </p>
-                  <p
-                    className={`mt-2 text-[11px] ${
-                      isActive ? "text-white/60" : "text-black/45"
-                    }`}
-                  >
-                    最近更新：{group.updatedAt.replace("T", " ").slice(0, 16)}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => {
+          setEffectiveStep("generate");
+        }}
+        onSelectSummary={handleSelectRecentBatchSummary}
+        summaries={recentBatchSummaries}
+      />
 
       <SheinStudioSelectionOverview
         printableAreaLabel={printableAreaLabel}
