@@ -54,6 +54,7 @@ export function SDSProductBrowser({
   const groupedCandidates = useSDSGroupedCandidates();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
   const [isWarmingGroupedCandidates, setIsWarmingGroupedCandidates] = useState(false);
+  const [recentlyWarmedSelectionIds, setRecentlyWarmedSelectionIds] = useState<string[]>([]);
   const [groupedCandidateBaselineStatuses, setGroupedCandidateBaselineStatuses] =
     useState<Record<string, { reason: string; status: SDSBaselineStatus | "loading" }>>({});
 
@@ -122,6 +123,7 @@ export function SDSProductBrowser({
   useEffect(() => {
     if (groupedCandidates.length === 0) {
       setGroupedCandidateBaselineStatuses({});
+      setRecentlyWarmedSelectionIds([]);
       return;
     }
 
@@ -179,6 +181,18 @@ export function SDSProductBrowser({
       cancelled = true;
     };
   }, [groupedCandidates]);
+
+  useEffect(() => {
+    if (recentlyWarmedSelectionIds.length === 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setRecentlyWarmedSelectionIds([]);
+    }, 6000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [recentlyWarmedSelectionIds]);
 
   function updateQuery(next: Record<string, string | undefined>) {
     const params = sanitizedNavigationSearchParams(searchParams);
@@ -318,6 +332,11 @@ export function SDSProductBrowser({
         ...current,
         ...Object.fromEntries(entries),
       }));
+      setRecentlyWarmedSelectionIds(
+        entries
+          .filter(([, value]) => value.status === "ready")
+          .map(([selectionId]) => selectionId),
+      );
     } finally {
       setIsWarmingGroupedCandidates(false);
     }
@@ -379,6 +398,7 @@ export function SDSProductBrowser({
           baselineStatuses={groupedCandidateBaselineStatuses}
           isWarmingAll={isWarmingGroupedCandidates}
           items={groupedCandidates}
+          recentlyWarmedSelectionIds={recentlyWarmedSelectionIds}
           onRemove={removeSDSGroupedCandidate}
           onSelect={(selection, baseline) => {
             const handoff = buildGroupedCandidateHandoff(baseline);

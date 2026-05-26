@@ -175,4 +175,36 @@ describe("SDSGroupedCandidatesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "批量预热 2 款" }));
     expect(onWarmAll).toHaveBeenCalledWith(items);
   });
+
+  it("highlights candidates that were just warmed successfully", () => {
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "",
+            status: "ready",
+          },
+        }}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+        recentlyWarmedSelectionIds={["1:21:11:layer-a:11"]}
+      />,
+    );
+
+    expect(
+      screen.getByText("baseline 刚预热完成，现在可以直接加入 grouped 批量上品。"),
+    ).toBeInTheDocument();
+  });
 });

@@ -18,6 +18,7 @@ export function SDSGroupedCandidatesPanel({
   activeSelection,
   baselineStatuses,
   isWarmingAll = false,
+  recentlyWarmedSelectionIds = [],
   onRemove,
   onSelect,
   onWarmAll,
@@ -26,6 +27,7 @@ export function SDSGroupedCandidatesPanel({
   activeSelection?: SDSProductVariantSelection;
   baselineStatuses: Record<string, GroupedCandidateBaselineState>;
   isWarmingAll?: boolean;
+  recentlyWarmedSelectionIds?: string[];
   onRemove: (selection: SDSProductVariantSelection) => void;
   onSelect: (
     selection: SDSProductVariantSelection,
@@ -38,6 +40,7 @@ export function SDSGroupedCandidatesPanel({
   }
 
   const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
+  const recentlyWarmedSet = new Set(recentlyWarmedSelectionIds);
   const warmableItems = items.filter((item) => {
     const selectionId = buildGroupedSDSSelectionID(item);
     const status = baselineStatuses[selectionId]?.status ?? "loading";
@@ -78,6 +81,7 @@ export function SDSGroupedCandidatesPanel({
         {items.map((item) => {
           const selectionId = buildGroupedSDSSelectionID(item);
           const active = selectionId === activeSelectionId;
+          const recentlyWarmed = recentlyWarmedSet.has(selectionId);
           const baseline = baselineStatuses[selectionId] ?? {
             status: "loading" as const,
             reason: "正在检查 baseline 状态...",
@@ -87,6 +91,8 @@ export function SDSGroupedCandidatesPanel({
               className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${
                 active
                   ? "border-emerald-800 bg-[linear-gradient(135deg,_#052e2b,_#115e59)] text-white"
+                  : recentlyWarmed && baseline.status === "ready"
+                    ? "border-emerald-300 bg-emerald-50/80 ring-2 ring-emerald-200"
                   : "border-zinc-200 bg-white"
               }`}
               key={buildGroupedSDSSelectionID(item)}
@@ -97,6 +103,7 @@ export function SDSGroupedCandidatesPanel({
                     {item.productName}
                   </div>
                   <BaselineStatusBadge
+                    highlight={recentlyWarmed && baseline.status === "ready"}
                     reason={baseline.reason}
                     status={baseline.status}
                   />
@@ -110,6 +117,17 @@ export function SDSGroupedCandidatesPanel({
                 {item.printableWidth && item.printableHeight ? (
                   <div className={active ? "text-emerald-100" : "text-zinc-500"}>
                     印刷区域 {item.printableWidth} × {item.printableHeight}
+                  </div>
+                ) : null}
+                {baseline.status === "ready" && recentlyWarmed ? (
+                  <div
+                    className={
+                      active
+                        ? "rounded-xl bg-white/10 px-3 py-2 text-xs leading-5 text-emerald-50"
+                        : "rounded-xl bg-emerald-100 px-3 py-2 text-xs leading-5 text-emerald-800"
+                    }
+                  >
+                    baseline 刚预热完成，现在可以直接加入 grouped 批量上品。
                   </div>
                 ) : null}
                 {baseline.status !== "ready" ? (
@@ -156,9 +174,11 @@ export function SDSGroupedCandidatesPanel({
 }
 
 function BaselineStatusBadge({
+  highlight = false,
   status,
   reason,
 }: {
+  highlight?: boolean;
   status: SDSBaselineStatus | "loading";
   reason?: string;
 }) {
@@ -180,7 +200,7 @@ function BaselineStatusBadge({
           : "neutral";
   return (
     <Badge
-      className="shrink-0"
+      className={highlight ? "shrink-0 ring-2 ring-emerald-200" : "shrink-0"}
       title={reason || label}
       variant={variant as "success" | "danger" | "warning" | "neutral"}
     >
