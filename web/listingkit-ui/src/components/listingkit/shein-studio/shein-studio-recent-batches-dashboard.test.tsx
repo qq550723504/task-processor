@@ -16,6 +16,8 @@ describe("SheinStudioRecentBatchesDashboard", () => {
         statusFilter: "risk",
         activeRiskLabel: "生成失败",
         selectedSummaryIds: ["batch:batch-2"],
+        lastBulkActionSummary:
+          "上次已为 2 个待生成批次启动处理队列，另外还有 1 个待确认款式风险批次待处理。",
       }),
     );
 
@@ -61,6 +63,11 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("已选择 1 个批次")).toBeInTheDocument();
     expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "上次已为 2 个待生成批次启动处理队列，另外还有 1 个待确认款式风险批次待处理。",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("renders recent batch cards and forwards selection", () => {
@@ -842,6 +849,15 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       batchIds: ["batch-1"],
       mode: "generate",
     });
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(
+          "listingkit:shein-studio:recent-batches-dashboard",
+        ) || "{}",
+      ).lastBulkActionSummary,
+    ).toBe(
+      "已为 1 个待生成批次启动处理队列。另外还有 1 个待创建任务批次，另外还有 1 个已有任务批次可继续处理。",
+    );
   });
 
   it("warns when selected batches include risks and can queue only healthy batches", () => {

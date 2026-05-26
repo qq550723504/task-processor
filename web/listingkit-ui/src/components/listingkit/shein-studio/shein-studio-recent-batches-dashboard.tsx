@@ -25,6 +25,7 @@ type RecentBatchesDashboardPreferences = {
   statusFilter?: RecentBatchStatusFilter;
   activeRiskLabel?: string;
   selectedSummaryIds?: string[];
+  lastBulkActionSummary?: string;
 };
 
 function recentBatchAlertToneClass(tone: "warning" | "danger") {
@@ -125,6 +126,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [draftName, setDraftName] = useState("");
   const [bulkStoreId, setBulkStoreId] = useState("");
   const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
+  const [lastBulkActionSummary, setLastBulkActionSummary] = useState("");
   const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
   const [activeRiskLabel, setActiveRiskLabel] = useState("");
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
@@ -346,11 +348,12 @@ export function SheinStudioRecentBatchesDashboard({
         ? `另外还有 ${selectedBatchesWithTasks.length} 个已有任务批次`
         : "",
     ].filter(Boolean);
-    setBulkQueueFeedback(
+    const summary =
       leftovers.length > 0
         ? `已为 ${batchIds.length} 个${label}启动处理队列。${leftovers.join("，")}可继续处理。`
-        : `已为 ${batchIds.length} 个${label}启动处理队列。`,
-    );
+        : `已为 ${batchIds.length} 个${label}启动处理队列。`;
+    setBulkQueueFeedback(summary);
+    setLastBulkActionSummary(summary);
     onOpenBatchQueue({
       batchIds,
       mode,
@@ -374,11 +377,12 @@ export function SheinStudioRecentBatchesDashboard({
         ? `另外还有 ${selectedRiskyBatchesForGenerate.length} 个生成处理风险批次可继续处理。`
         : "",
     ].filter(Boolean);
-    setBulkQueueFeedback(
+    const summary =
       leftovers.length > 0
         ? `已为 ${batchIds.length} 个风险批次启动${actionLabel}队列。${leftovers.join("")}`
-        : `已为 ${batchIds.length} 个风险批次启动${actionLabel}队列。`,
-    );
+        : `已为 ${batchIds.length} 个风险批次启动${actionLabel}队列。`;
+    setBulkQueueFeedback(summary);
+    setLastBulkActionSummary(summary);
     onOpenBatchQueue({
       batchIds,
       mode,
@@ -495,27 +499,37 @@ export function SheinStudioRecentBatchesDashboard({
           setSelectedSummaryIds(validIds);
         }
       }
+      if (parsed.lastBulkActionSummary?.trim()) {
+        setLastBulkActionSummary(parsed.lastBulkActionSummary.trim());
+      }
     } catch {
       // Ignore malformed local state and continue with defaults.
     } finally {
       setPreferencesHydrated(true);
     }
-  }, []);
+    }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !preferencesHydrated) {
       return;
     }
-    const payload: RecentBatchesDashboardPreferences = {
-      statusFilter,
+      const payload: RecentBatchesDashboardPreferences = {
+        statusFilter,
+        activeRiskLabel,
+        selectedSummaryIds,
+        lastBulkActionSummary,
+      };
+      window.localStorage.setItem(
+        DASHBOARD_PREFERENCES_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+    }, [
       activeRiskLabel,
+      lastBulkActionSummary,
+      preferencesHydrated,
       selectedSummaryIds,
-    };
-    window.localStorage.setItem(
-      DASHBOARD_PREFERENCES_STORAGE_KEY,
-      JSON.stringify(payload),
-    );
-  }, [activeRiskLabel, preferencesHydrated, selectedSummaryIds, statusFilter]);
+      statusFilter,
+    ]);
 
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
@@ -546,6 +560,12 @@ export function SheinStudioRecentBatchesDashboard({
           </Button>
         </div>
       </div>
+
+      {lastBulkActionSummary && lastBulkActionSummary !== bulkQueueFeedback ? (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-900">
+          {lastBulkActionSummary}
+        </div>
+      ) : null}
 
       {selectedCount > 0 ? (
         <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-4">
