@@ -4,10 +4,12 @@ import {
   type GroupedSDSSelectionEligibility,
 } from "@/lib/types/sds-baseline";
 import type {
+  SDSGroupedPromptHistoryEntry,
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
@@ -200,6 +202,32 @@ function normalizeGroupedSelections(input: unknown): GroupedSDSSelectionEligibil
     .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item));
 }
 
+function normalizePromptHistory(input: unknown): SDSGroupedPromptHistoryEntry[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const candidate = item as Partial<SDSGroupedPromptHistoryEntry>;
+      if (
+        typeof candidate.prompt !== "string" ||
+        typeof candidate.createdAt !== "string"
+      ) {
+        return null;
+      }
+      return {
+        prompt: candidate.prompt,
+        groupedImageMode: normalizeGroupedImageMode(candidate.groupedImageMode),
+        createdAt: candidate.createdAt,
+      } satisfies SDSGroupedPromptHistoryEntry;
+    })
+    .filter((item): item is SDSGroupedPromptHistoryEntry => Boolean(item))
+    .slice(0, 5);
+}
+
 function isSelection(item: unknown): item is SDSProductVariantSelection {
   return (
     !!item &&
@@ -217,10 +245,131 @@ export function normalizeSelection(selection: unknown) {
   return isSelection(selection) ? selection : undefined;
 }
 
+function normalizeGroupedWorkspace(
+  input: unknown,
+): SheinStudioGroupedWorkspace | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input as Partial<SheinStudioGroupedWorkspace> & {
+    primarySelection?: unknown;
+  };
+  const primarySelection = normalizeSelection(candidate.primarySelection);
+  if (
+    typeof candidate.id !== "string" ||
+    !candidate.id.trim() ||
+    typeof candidate.name !== "string" ||
+    !candidate.name.trim() ||
+    !primarySelection ||
+    typeof candidate.currentPrompt !== "string" ||
+    typeof candidate.updatedAt !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: candidate.id.trim(),
+    name: candidate.name.trim(),
+    primarySelection,
+    groupedSelections: normalizeGroupedSelections(candidate.groupedSelections),
+    sheinStoreId:
+      typeof candidate.sheinStoreId === "string" ? candidate.sheinStoreId : "",
+    imageStrategy: normalizeImageStrategy(candidate.imageStrategy),
+    groupedImageMode: normalizeGroupedImageMode(candidate.groupedImageMode),
+    selectedSdsImages: normalizeSelectedImages(candidate.selectedSdsImages),
+    renderSizeImagesWithSds: candidate.renderSizeImagesWithSds ?? true,
+    currentPrompt: candidate.currentPrompt,
+    promptHistory: normalizePromptHistory(candidate.promptHistory),
+    productImageCount:
+      typeof candidate.productImageCount === "string"
+        ? candidate.productImageCount
+        : DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+    productImagePrompt:
+      typeof candidate.productImagePrompt === "string"
+        ? candidate.productImagePrompt
+        : "",
+    productImagePrompts: normalizeProductImagePrompts(candidate.productImagePrompts),
+    artworkModel: normalizeArtworkModel(candidate.artworkModel),
+    transparentBackground: candidate.transparentBackground ?? false,
+    variationIntensity: normalizeVariationIntensity(candidate.variationIntensity),
+    designs: Array.isArray(candidate.designs)
+      ? candidate.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+      : [],
+    selectedIds: Array.isArray(candidate.selectedIds)
+      ? candidate.selectedIds.filter((item): item is string => typeof item === "string")
+      : [],
+    createdTasks: Array.isArray(candidate.createdTasks)
+      ? candidate.createdTasks.filter(isCreatedTask)
+      : [],
+    updatedAt: candidate.updatedAt,
+  } satisfies SheinStudioGroupedWorkspace;
+}
+
+function normalizeGroupedWorkspaces(input: unknown): SheinStudioGroupedWorkspace[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map((item) => normalizeGroupedWorkspace(item))
+    .filter((item): item is SheinStudioGroupedWorkspace => Boolean(item));
+}
+
+function buildLegacyGroupedWorkspace(
+  raw: Partial<SheinStudioDraft> | Partial<SheinStudioSavedBatch>,
+): SheinStudioGroupedWorkspace[] {
+  const primarySelection = normalizeSelection(raw.selection);
+  const prompt = typeof raw.prompt === "string" ? raw.prompt : "";
+  if (!primarySelection || !prompt) {
+    return [];
+  }
+  const groupedSelections = normalizeGroupedSelections(raw.groupedSelections);
+  const designs = Array.isArray(raw.designs)
+    ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+    : [];
+  const selectedIds = Array.isArray(raw.selectedIds)
+    ? raw.selectedIds.filter((item): item is string => typeof item === "string")
+    : [];
+  const createdTasks = Array.isArray(raw.createdTasks)
+    ? raw.createdTasks.filter(isCreatedTask)
+    : [];
+  return [
+    {
+      id: `legacy-${primarySelection.parentProductId}-${primarySelection.variantId}`,
+      name: primarySelection.productName || "未命名分组",
+      primarySelection,
+      groupedSelections,
+      sheinStoreId: typeof raw.sheinStoreId === "string" ? raw.sheinStoreId : "",
+      imageStrategy: normalizeImageStrategy(raw.imageStrategy),
+      groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),
+      selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
+      renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
+      currentPrompt: prompt,
+      promptHistory: [],
+      productImageCount:
+        typeof raw.productImageCount === "string"
+          ? raw.productImageCount
+          : DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+      productImagePrompt:
+        typeof raw.productImagePrompt === "string" ? raw.productImagePrompt : "",
+      productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
+      artworkModel: normalizeArtworkModel(raw.artworkModel),
+      transparentBackground: raw.transparentBackground ?? false,
+      variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
+      designs,
+      selectedIds,
+      createdTasks,
+      updatedAt: raw.updatedAt ?? new Date().toISOString(),
+    },
+  ];
+}
+
 export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined) {
   if (!raw?.prompt) {
     return null;
   }
+
+  const groups = normalizeGroupedWorkspaces(raw.groups);
+  const normalizedGroups =
+    groups.length > 0 ? groups : buildLegacyGroupedWorkspace(raw);
 
   return {
     prompt: raw.prompt,
@@ -239,6 +388,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
     groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
+    groups: normalizedGroups,
     designs: Array.isArray(raw.designs)
       ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
       : [],
@@ -256,6 +406,10 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
   if (!raw?.id || !raw.name || !raw.prompt) {
     return null;
   }
+
+  const groups = normalizeGroupedWorkspaces(raw.groups);
+  const normalizedGroups =
+    groups.length > 0 ? groups : buildLegacyGroupedWorkspace(raw);
 
   return {
     id: raw.id,
@@ -276,6 +430,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
     groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
+    groups: normalizedGroups,
     designs: Array.isArray(raw.designs)
       ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
       : [],

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSelectionSummary } from "@/lib/shein-studio/storage-shared";
+import {
+  buildSelectionSummary,
+  normalizeDraft,
+} from "@/lib/shein-studio/storage-shared";
 
 describe("buildSelectionSummary", () => {
   it("drops heavy per-variant image arrays from saved draft payload", () => {
@@ -55,5 +58,105 @@ describe("buildSelectionSummary", () => {
     ]);
     expect(summary?.variants?.[0]).not.toHaveProperty("mockupImageUrls");
     expect(summary?.variants?.[0]).not.toHaveProperty("templateImageUrl");
+  });
+});
+
+describe("normalizeDraft", () => {
+  it("normalizes explicit multi-group drafts", () => {
+    const draft = normalizeDraft({
+      prompt: "legacy top-level prompt",
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          currentPrompt: "prompt a",
+          promptHistory: [
+            {
+              prompt: "prompt old",
+              groupedImageMode: "shared_by_size",
+              createdAt: "2026-05-26T00:00:00Z",
+            },
+          ],
+          primarySelection: {
+            variantId: 100,
+            parentProductId: 1,
+            productId: 1,
+            prototypeGroupId: 200,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / black",
+          },
+          groupedSelections: [],
+          sheinStoreId: "869",
+          imageStrategy: "sds_official",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T00:00:00Z",
+        },
+      ],
+      updatedAt: "2026-05-26T00:00:00Z",
+    });
+
+    expect(draft?.groups).toHaveLength(1);
+    expect(draft?.groups?.[0].currentPrompt).toBe("prompt a");
+    expect(draft?.groups?.[0].promptHistory).toEqual([
+      {
+        prompt: "prompt old",
+        groupedImageMode: "shared_by_size",
+        createdAt: "2026-05-26T00:00:00Z",
+      },
+    ]);
+  });
+
+  it("synthesizes one group from legacy groupedSelections drafts", () => {
+    const draft = normalizeDraft({
+      prompt: "legacy prompt",
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            variantId: 101,
+            parentProductId: 1,
+            productId: 1,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          sheinStoreId: "869",
+          baselineStatus: "ready",
+          baselineReason: "",
+          eligible: true,
+        },
+      ],
+      selection: {
+        variantId: 100,
+        parentProductId: 1,
+        productId: 1,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      selectedIds: ["design-1"],
+      designs: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T00:00:00Z",
+    });
+
+    expect(draft?.groups).toHaveLength(1);
+    expect(draft?.groups?.[0].currentPrompt).toBe("legacy prompt");
+    expect(draft?.groups?.[0].groupedSelections).toHaveLength(1);
+    expect(draft?.groups?.[0].primarySelection.variantId).toBe(100);
   });
 });

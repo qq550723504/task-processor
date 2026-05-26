@@ -53,6 +53,36 @@ export type SheinStudioCreatedTask = {
   designId: string;
 };
 
+export type SDSGroupedPromptHistoryEntry = {
+  prompt: string;
+  groupedImageMode: SheinStudioGroupedImageMode;
+  createdAt: string;
+};
+
+export type SheinStudioGroupedWorkspace = {
+  id: string;
+  name: string;
+  primarySelection: SDSProductVariantSelection;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  renderSizeImagesWithSds?: boolean;
+  currentPrompt: string;
+  promptHistory: SDSGroupedPromptHistoryEntry[];
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
+  variationIntensity?: SheinStudioVariationIntensity;
+  designs: SheinStudioGeneratedDesign[];
+  selectedIds: string[];
+  createdTasks: SheinStudioCreatedTask[];
+  updatedAt: string;
+};
+
 export type SheinStudioGenerateRequest = {
   prompt: string;
   count: number;
@@ -93,6 +123,7 @@ export type SheinStudioSavedBatch = {
   selectionVariantId?: number;
   selection?: SDSProductVariantSelection;
   groupedSelections?: GroupedSDSSelectionEligibility[];
+  groups?: SheinStudioGroupedWorkspace[];
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
