@@ -914,6 +914,9 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-3" }));
 
     expect(
+      screen.getByText("风险拆分：Baseline 未就绪 1 个 / 生成失败 1 个 / 待确认款式 1 个"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("button", { name: "批量去生成区处理 2 个" }),
     ).toBeInTheDocument();
     expect(
@@ -925,6 +928,9 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       batchIds: ["batch-1", "batch-2"],
       mode: "generate",
     });
+    expect(
+      screen.getByText("已为 2 个风险批次启动生成处理队列。另外还有 1 个待确认款式风险批次可继续处理。"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "批量去确认设计 1 个" }));
     expect(onOpenBatchQueue).toHaveBeenCalledWith({

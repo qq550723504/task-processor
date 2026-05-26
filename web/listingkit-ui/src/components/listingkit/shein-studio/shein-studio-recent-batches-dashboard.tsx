@@ -50,6 +50,19 @@ function isRiskySummary(summary: SheinStudioRecentBatchSummary) {
   return Boolean(summary.alerts?.length);
 }
 
+function riskLabelPriority(label: string) {
+  switch (label) {
+    case "Baseline 未就绪":
+      return 0;
+    case "生成失败":
+      return 1;
+    case "待确认款式":
+      return 2;
+    default:
+      return 10;
+  }
+}
+
 function formatRecentBatchTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -221,6 +234,22 @@ export function SheinStudioRecentBatchesDashboard({
         .map((summary) => summary.id),
     [selectedRiskyBatches],
   );
+  const selectedRiskCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const summary of selectedRiskyBatches) {
+      for (const alert of summary.alerts ?? []) {
+        counts.set(alert.label, (counts.get(alert.label) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort(
+        (left, right) =>
+          riskLabelPriority(left.label) - riskLabelPriority(right.label) ||
+          right.count - left.count ||
+          left.label.localeCompare(right.label),
+      );
+  }, [selectedRiskyBatches]);
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
@@ -289,6 +318,34 @@ export function SheinStudioRecentBatchesDashboard({
       leftovers.length > 0
         ? `已为 ${batchIds.length} 个${label}启动处理队列。${leftovers.join("，")}可继续处理。`
         : `已为 ${batchIds.length} 个${label}启动处理队列。`,
+    );
+    onOpenBatchQueue({
+      batchIds,
+      mode,
+    });
+  }
+
+  function launchRiskRepairQueue(
+    batchIds: string[],
+    mode: "generate" | "create_tasks",
+    actionLabel: string,
+    leftoverLabel: string,
+  ) {
+    if (!onOpenBatchQueue || batchIds.length === 0) {
+      return;
+    }
+    const leftovers = [
+      leftoverLabel === "待确认款式" && selectedRiskyBatchesForReview.length > 0
+        ? `另外还有 ${selectedRiskyBatchesForReview.length} 个待确认款式风险批次可继续处理。`
+        : "",
+      leftoverLabel === "生成处理" && selectedRiskyBatchesForGenerate.length > 0
+        ? `另外还有 ${selectedRiskyBatchesForGenerate.length} 个生成处理风险批次可继续处理。`
+        : "",
+    ].filter(Boolean);
+    setBulkQueueFeedback(
+      leftovers.length > 0
+        ? `已为 ${batchIds.length} 个风险批次启动${actionLabel}队列。${leftovers.join("")}`
+        : `已为 ${batchIds.length} 个风险批次启动${actionLabel}队列。`,
     );
     onOpenBatchQueue({
       batchIds,
@@ -370,7 +427,12 @@ export function SheinStudioRecentBatchesDashboard({
     }
     return Array.from(counts.entries())
       .map(([label, count]) => ({ label, count }))
-      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+      .sort(
+        (left, right) =>
+          riskLabelPriority(left.label) - riskLabelPriority(right.label) ||
+          right.count - left.count ||
+          left.label.localeCompare(right.label),
+      );
   }, [summaries]);
 
   return (
@@ -431,6 +493,14 @@ export function SheinStudioRecentBatchesDashboard({
           {selectedRiskyBatchCount > 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
               本次选择里有 {selectedRiskyBatchCount} 个风险批次，建议先处理后再进入队列。
+              {selectedRiskCounts.length > 0 ? (
+                <div className="mt-2 text-xs text-amber-800">
+                  风险拆分：
+                  {selectedRiskCounts
+                    .map((item) => `${item.label} ${item.count} 个`)
+                    .join(" / ")}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-end gap-3">
@@ -509,10 +579,11 @@ export function SheinStudioRecentBatchesDashboard({
                     {selectedRiskyBatchesForGenerate.length > 0 ? (
                       <Button
                         onClick={() =>
-                          launchBulkQueue(
+                          launchRiskRepairQueue(
                             selectedRiskyBatchesForGenerate,
                             "generate",
-                            "风险批次",
+                            "生成处理",
+                            "待确认款式",
                           )
                         }
                         type="button"
@@ -524,10 +595,11 @@ export function SheinStudioRecentBatchesDashboard({
                     {selectedRiskyBatchesForReview.length > 0 ? (
                       <Button
                         onClick={() =>
-                          launchBulkQueue(
+                          launchRiskRepairQueue(
                             selectedRiskyBatchesForReview,
                             "create_tasks",
-                            "风险批次",
+                            "确认设计",
+                            "生成处理",
                           )
                         }
                         type="button"
