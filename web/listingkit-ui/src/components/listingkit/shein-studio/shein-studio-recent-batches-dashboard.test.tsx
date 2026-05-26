@@ -32,6 +32,10 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("最近批次")).toBeInTheDocument();
     expect(screen.getByText("Retro Cherries")).toBeInTheDocument();
     expect(screen.getByText("2 款商品")).toBeInTheDocument();
+    expect(screen.getByText("已有 1 张设计")).toBeInTheDocument();
+    expect(screen.getByText("待创建任务")).toBeInTheDocument();
+    expect(screen.getByText("最近提示词")).toBeInTheDocument();
+    expect(screen.getByText(/更新于/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Retro Cherries/ }));
     expect(onSelectSummary).toHaveBeenCalledWith(
@@ -224,6 +228,33 @@ describe("SheinStudioRecentBatchesDashboard", () => {
 
     expect(screen.getByRole("button", { name: "批量继续生成" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量创建任务" })).toBeInTheDocument();
+  });
+
+  it("shows ready-to-work status badges for generated designs and created tasks", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Ready Batch",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 3,
+            createdTaskCount: 2,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("已有 3 张设计")).toBeInTheDocument();
+    expect(screen.getByText("已建 2 个任务")).toBeInTheDocument();
   });
 
   it("emits selected persisted batch ids for continue-generate mode", () => {

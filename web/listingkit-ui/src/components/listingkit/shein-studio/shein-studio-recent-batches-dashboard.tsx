@@ -10,6 +10,19 @@ type StoreOption = {
   label: string;
 };
 
+function formatRecentBatchTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function SheinStudioRecentBatchesDashboard({
   summaries,
   selectedSummaryIds: controlledSelectedSummaryIds,
@@ -222,6 +235,8 @@ export function SheinStudioRecentBatchesDashboard({
             const summaryKey = `${summary.source}:${summary.id}`;
             const isSelected = selectedSummaryIds.includes(summaryKey);
             const isEditing = editingSummaryId === summaryKey;
+            const hasDesigns = summary.designCount > 0;
+            const hasTasks = summary.createdTaskCount > 0;
             return (
               <div
                 className={`rounded-3xl border px-4 py-4 transition ${
@@ -323,6 +338,33 @@ export function SheinStudioRecentBatchesDashboard({
                         {summary.productCount} 款商品
                       </span>
                     </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium">
+                      <span
+                        className={`rounded-full px-2.5 py-1 ${
+                          hasDesigns
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {hasDesigns
+                          ? `已有 ${summary.designCount} 张设计`
+                          : "待生成设计"}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 ${
+                          hasTasks
+                            ? "bg-sky-100 text-sky-700"
+                            : "bg-zinc-200 text-zinc-700"
+                        }`}
+                      >
+                        {hasTasks
+                          ? `已建 ${summary.createdTaskCount} 个任务`
+                          : "待创建任务"}
+                      </span>
+                      <span className="rounded-full bg-zinc-200 px-2.5 py-1 text-zinc-700">
+                        更新于 {formatRecentBatchTimestamp(summary.updatedAt)}
+                      </span>
+                    </div>
                     <dl className="mt-4 space-y-2 text-sm text-zinc-700">
                       <div className="flex items-start justify-between gap-3">
                         <dt className="text-zinc-500">主商品</dt>
@@ -339,9 +381,14 @@ export function SheinStudioRecentBatchesDashboard({
                         </dd>
                       </div>
                     </dl>
-                    <p className="mt-4 line-clamp-2 text-sm text-zinc-600">
-                      {summary.promptPreview}
-                    </p>
+                    <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/70 px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                        最近提示词
+                      </p>
+                      <p className="mt-2 line-clamp-2 text-sm text-zinc-600">
+                        {summary.promptPreview}
+                      </p>
+                    </div>
                   </button>
                 )}
               </div>
