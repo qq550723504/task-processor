@@ -424,6 +424,65 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("待确认款式")).toBeInTheDocument();
   });
 
+  it("routes risk alert actions to the matching workbench step", () => {
+    const onSelectSummaryAction = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        onSelectSummaryAction={onSelectSummaryAction}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Blocked Batch",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "Baseline 未就绪",
+              },
+              {
+                tone: "danger",
+                label: "生成失败",
+              },
+              {
+                tone: "warning",
+                label: "待确认款式",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "去生成区处理" }));
+    expect(onSelectSummaryAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "batch-1" }),
+      "generate",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "回到生成区重试" }));
+    expect(onSelectSummaryAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "batch-1" }),
+      "generate",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "去确认设计" }));
+    expect(onSelectSummaryAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "batch-1" }),
+      "review",
+    );
+  });
+
   it("emits selected persisted batch ids for continue-generate mode", () => {
     const onOpenBatchQueue = vi.fn();
 

@@ -13,10 +13,37 @@ type StoreOption = {
 type RecentBatchCardAction = "generate" | "review" | "tasks";
 type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks";
 
+type RecentBatchAlertAction = {
+  action: RecentBatchCardAction;
+  label: string;
+};
+
 function recentBatchAlertToneClass(tone: "warning" | "danger") {
   return tone === "danger"
     ? "border-rose-200 bg-rose-50 text-rose-700"
     : "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function actionForRiskAlert(label: string): RecentBatchAlertAction | null {
+  if (label === "Baseline 未就绪") {
+    return {
+      action: "generate",
+      label: "去生成区处理",
+    };
+  }
+  if (label === "生成失败") {
+    return {
+      action: "generate",
+      label: "回到生成区重试",
+    };
+  }
+  if (label === "待确认款式") {
+    return {
+      action: "review",
+      label: "去确认设计",
+    };
+  }
+  return null;
 }
 
 function formatRecentBatchTimestamp(value: string) {
@@ -446,6 +473,10 @@ export function SheinStudioRecentBatchesDashboard({
             const hasDesigns = summary.designCount > 0;
             const hasTasks = summary.createdTaskCount > 0;
             const primaryAction = primaryActionForSummary(summary);
+            const riskActions =
+              summary.alerts
+                ?.map((alert) => actionForRiskAlert(alert.label))
+                .filter((value): value is RecentBatchAlertAction => value != null) ?? [];
             return (
               <div
                 className={`rounded-3xl border px-4 py-4 transition ${
@@ -585,6 +616,24 @@ export function SheinStudioRecentBatchesDashboard({
                           >
                             {alert.label}
                           </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {riskActions.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {riskActions.map((riskAction, index) => (
+                          <Button
+                            key={`${summaryKey}:risk:${riskAction.label}:${index}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onSelectSummaryAction?.(summary, riskAction.action);
+                            }}
+                            size="sm"
+                            type="button"
+                            variant="secondary"
+                          >
+                            {riskAction.label}
+                          </Button>
                         ))}
                       </div>
                     ) : null}
