@@ -12,6 +12,7 @@ type StoreOption = {
 
 type RecentBatchCardAction = "generate" | "review" | "tasks";
 type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks" | "risk";
+type RecentBatchResultFilter = "all" | "success" | "failure";
 
 type RecentBatchAlertAction = {
   action: RecentBatchCardAction;
@@ -23,6 +24,7 @@ const DASHBOARD_PREFERENCES_STORAGE_KEY =
 
 type RecentBatchesDashboardPreferences = {
   statusFilter?: RecentBatchStatusFilter;
+  resultFilter?: RecentBatchResultFilter;
   activeRiskLabel?: string;
   selectedSummaryIds?: string[];
   lastBulkActionSummary?: string;
@@ -69,6 +71,13 @@ function actionForRiskAlert(label: string): RecentBatchAlertAction | null {
 
 function isRiskySummary(summary: SheinStudioRecentBatchSummary) {
   return Boolean(summary.alerts?.length);
+}
+
+function summaryHasRecentResultTone(
+  summary: SheinStudioRecentBatchSummary,
+  tone: "success" | "danger",
+) {
+  return Boolean(summary.recentResults?.some((result) => result.tone === tone));
 }
 
 function riskLabelPriority(label: string) {
@@ -139,6 +148,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
   const [lastBulkActionSummary, setLastBulkActionSummary] = useState("");
   const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
+  const [resultFilter, setResultFilter] = useState<RecentBatchResultFilter>("all");
   const [activeRiskLabel, setActiveRiskLabel] = useState("");
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
     string[] | null
@@ -434,9 +444,18 @@ export function SheinStudioRecentBatchesDashboard({
             : true;
         }
         const action = primaryActionForSummary(summary).action;
-        return statusFilter === "all" ? true : action === statusFilter;
+        if (statusFilter !== "all" && action !== statusFilter) {
+          return false;
+        }
+        if (resultFilter === "success") {
+          return summaryHasRecentResultTone(summary, "success");
+        }
+        if (resultFilter === "failure") {
+          return summaryHasRecentResultTone(summary, "danger");
+        }
+        return true;
       }),
-    [activeRiskLabel, statusFilter, summaries],
+    [activeRiskLabel, resultFilter, statusFilter, summaries],
   );
   const filterCounts = useMemo(
     () => ({
@@ -464,6 +483,27 @@ export function SheinStudioRecentBatchesDashboard({
     { value: "review", label: "待创建任务", count: filterCounts.review },
     { value: "tasks", label: "已有任务", count: filterCounts.tasks },
     { value: "risk", label: "有风险", count: filterCounts.risk },
+  ];
+  const resultFilterCounts = useMemo(
+    () => ({
+      all: summaries.length,
+      success: summaries.filter((summary) =>
+        summaryHasRecentResultTone(summary, "success"),
+      ).length,
+      failure: summaries.filter((summary) =>
+        summaryHasRecentResultTone(summary, "danger"),
+      ).length,
+    }),
+    [summaries],
+  );
+  const resultFilterOptions: Array<{
+    value: RecentBatchResultFilter;
+    label: string;
+    count: number;
+  }> = [
+    { value: "all", label: "全部结果", count: resultFilterCounts.all },
+    { value: "success", label: "最近成功", count: resultFilterCounts.success },
+    { value: "failure", label: "最近失败", count: resultFilterCounts.failure },
   ];
   const riskCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -496,6 +536,9 @@ export function SheinStudioRecentBatchesDashboard({
       if (parsed.statusFilter) {
         setStatusFilter(parsed.statusFilter);
       }
+      if (parsed.resultFilter) {
+        setResultFilter(parsed.resultFilter);
+      }
       if (parsed.activeRiskLabel) {
         setActiveRiskLabel(parsed.activeRiskLabel);
       }
@@ -526,6 +569,7 @@ export function SheinStudioRecentBatchesDashboard({
     }
       const payload: RecentBatchesDashboardPreferences = {
         statusFilter,
+        resultFilter,
         activeRiskLabel,
         selectedSummaryIds,
         lastBulkActionSummary,
@@ -538,6 +582,7 @@ export function SheinStudioRecentBatchesDashboard({
       activeRiskLabel,
       lastBulkActionSummary,
       preferencesHydrated,
+      resultFilter,
       selectedSummaryIds,
       statusFilter,
     ]);
@@ -863,6 +908,19 @@ export function SheinStudioRecentBatchesDashboard({
               ))}
             </div>
           ) : null}
+          <div className="flex flex-wrap gap-2 border-t border-zinc-200/80 pt-3">
+            {resultFilterOptions.map((option) => (
+              <Button
+                key={option.value}
+                onClick={() => setResultFilter(option.value)}
+                size="sm"
+                type="button"
+                variant={resultFilter === option.value ? "default" : "secondary"}
+              >
+                {option.label} {option.count}
+              </Button>
+            ))}
+          </div>
           {statusFilter === "risk" && activeRiskLabel ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
               当前只显示包含“{activeRiskLabel}”的风险批次。

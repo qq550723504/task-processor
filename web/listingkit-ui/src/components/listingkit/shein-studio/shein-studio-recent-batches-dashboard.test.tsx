@@ -662,6 +662,90 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("已创建 1 个 SHEIN 资料任务。")).toBeInTheDocument();
   });
 
+  it("filters recent batches by recent processing result buckets", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Success Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            recentResults: [
+              {
+                tone: "success",
+                label: "最近生成成功",
+                detail: "已生成 2 张设计。",
+              },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Failed Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+            recentResults: [
+              {
+                tone: "danger",
+                label: "最近生成失败",
+                detail: "image generation timeout",
+              },
+            ],
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Pending Batch",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T08:00:00.000Z",
+            recentResults: [
+              {
+                tone: "warning",
+                label: "待创建任务",
+                detail: "已确认 1 个款式，尚未创建任务。",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "全部结果 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "最近成功 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "最近失败 1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "最近失败 1" }));
+    expect(screen.getByText("Failed Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Success Batch")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pending Batch")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "最近成功 1" }));
+    expect(screen.getByText("Success Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Failed Batch")).not.toBeInTheDocument();
+  });
+
   it("routes risk alert actions to the matching workbench step", () => {
     const onSelectSummaryAction = vi.fn();
 
