@@ -62,29 +62,17 @@ func BuildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger)
 }
 
 func BuildListingKitStoreProfileRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitStoreProfileRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit store profile repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory listingkit store profile repository")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStoreProfileRepository, func(logger *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit store profile repository")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingKitStoreRoutingSettingsRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitStoreRoutingSettingsRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit store routing repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory listingkit store routing repository")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStoreRoutingSettingsRepository, func(logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit store routing repository")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminStoreStatisticsRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
@@ -95,198 +83,108 @@ func BuildListingAdminStoreStatisticsRepository(cfg *config.Config, logger *logr
 }
 
 func BuildListingAdminImportTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminImportTaskRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin import task repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit import task admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminImportTaskRepository, func(logger *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit import task admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminFilterRuleRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminFilterRuleRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin filter rule repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit filter rule admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminFilterRuleRepository, func(logger *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit filter rule admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminProfitRuleRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminProfitRuleRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin profit rule repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit profit rule admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminProfitRuleRepository, func(logger *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit profit rule admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminPricingRuleRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminPricingRuleRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin pricing rule repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit pricing rule admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminPricingRuleRepository, func(logger *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit pricing rule admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminOperationStrategyRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminOperationStrategyRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin operation strategy repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit operation strategy admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminOperationStrategyRepository, func(logger *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit operation strategy admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminSensitiveWordRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminSensitiveWordRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin sensitive word repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit sensitive word admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminSensitiveWordRepository, func(logger *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit sensitive word admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminProductImportMappingRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminProductImportMappingRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin product import mapping repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit product import mapping admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminProductImportMappingRepository, func(logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit product import mapping admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminCategoryRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminCategoryRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin category repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit category admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminCategoryRepository, func(logger *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit category admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminProductDataRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminProductDataRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin product data repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit product data admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminProductDataRepository, func(logger *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit product data admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingSubscriptionRepository(cfg *config.Config, logger *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingSubscriptionRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing subscription repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory ListingKit subscription repository")
-	return listingsubscription.NewMemRepository(), nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingSubscriptionRepository, func(logger *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory ListingKit subscription repository")
+		return listingsubscription.NewMemRepository(), nil, nil
+	})
 }
 
 func BuildAssetRepository(cfg *config.Config, logger *logrus.Logger) (assetrepo.Repository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBAssetRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create asset repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory asset repository")
-	return assetrepo.NewMemRepository(), nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBAssetRepository, func(logger *logrus.Logger) (assetrepo.Repository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory asset repository")
+		return assetrepo.NewMemRepository(), nil, nil
+	})
 }
 
 func BuildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) (reviewstore.Repository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitReviewRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit review repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory listingkit review repository")
-	return reviewstore.NewMemRepository(), nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitReviewRepository, func(logger *logrus.Logger) (reviewstore.Repository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit review repository")
+		return reviewstore.NewMemRepository(), nil, nil
+	})
 }
 
 func BuildListingKitStudioSessionRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitStudioSessionRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit studio session repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, SHEIN studio session repository disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStudioSessionRepository, func(logger *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error) {
+		logger.Warn("database not configured, SHEIN studio session repository disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingKitUploadedImageRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitUploadedImageRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit uploaded image repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory listingkit uploaded image repository")
-	return listingkit.NewMemUploadedImageRepository(), nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitUploadedImageRepository, func(logger *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit uploaded image repository")
+		return listingkit.NewMemUploadedImageRepository(), nil, nil
+	})
 }
 
 func BuildSheinResolutionCacheStore(cfg *config.Config, logger *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		store, closer, err := newDBSheinResolutionCacheStore(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create shein resolution cache store: %w", err)
-		}
-		return store, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory SHEIN resolution cache fallback")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBSheinResolutionCacheStore, func(logger *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {
+		logger.Warn("database not configured, using in-memory SHEIN resolution cache fallback")
+		return nil, nil, nil
+	})
 }
 
 func BuildSheinPricingPolicy(cfg *config.Config) sheinpub.PricingPolicy {
