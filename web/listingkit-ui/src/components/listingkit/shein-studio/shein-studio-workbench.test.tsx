@@ -17,6 +17,7 @@ const saveSheinStudioBatch = vi.fn();
 const saveSheinStudioDraftWithOptions = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
+const useSDSGroupedCandidates = vi.fn();
 let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
 vi.mock("next/navigation", () => ({
@@ -146,6 +147,10 @@ vi.mock("@/lib/query/use-shein-store-selector", () => ({
   }),
 }));
 
+vi.mock("@/lib/query/use-sds-grouped-candidates", () => ({
+  useSDSGroupedCandidates: () => useSDSGroupedCandidates(),
+}));
+
 const selection = {
   layerId: "layer-1",
   parentProductId: 1,
@@ -181,6 +186,7 @@ describe("SheinStudioWorkbench", () => {
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
+    useSDSGroupedCandidates.mockReturnValue([]);
   });
 
   it("defaults to one SDS main image plus size references in hybrid and SDS modes", async () => {
@@ -593,6 +599,29 @@ describe("SheinStudioWorkbench", () => {
 
     await waitFor(() =>
       expect(screen.getByText(/已加入\s*1\s*款/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText("hoodie")).toBeInTheDocument();
+  });
+
+  it("shows candidate-pool items even when there are no recent variants", async () => {
+    useSDSGroupedCandidates.mockReturnValue([
+      {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 101,
+        prototypeGroupId: 200,
+        layerId: "layer-2",
+        productName: "hoodie",
+        variantLabel: "L / white",
+        printableWidth: 1000,
+        printableHeight: 1000,
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("批量候选池")).toBeInTheDocument(),
     );
     expect(screen.getByText("hoodie")).toBeInTheDocument();
   });

@@ -12,6 +12,7 @@ import { SDSRecentVariants } from "@/components/listingkit/sds/sds-recent-varian
 import { SDSSelectionSummary } from "@/components/listingkit/sds/sds-selection-summary";
 import { SDSVariantPicker } from "@/components/listingkit/sds/sds-variant-picker";
 import { useSDSCategories } from "@/lib/query/use-sds-categories";
+import { useSDSGroupedCandidates } from "@/lib/query/use-sds-grouped-candidates";
 import { useSDSProductDetail } from "@/lib/query/use-sds-product-detail";
 import { useSDSProducts } from "@/lib/query/use-sds-products";
 import { useSDSRecentVariants } from "@/lib/query/use-sds-recent-variants";
@@ -21,6 +22,11 @@ import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
+import {
+  hasSDSGroupedCandidate,
+  removeSDSGroupedCandidate,
+  saveSDSGroupedCandidate,
+} from "@/lib/utils/sds-grouped-candidates";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
 export function SDSProductBrowser({
@@ -35,6 +41,7 @@ export function SDSProductBrowser({
   const pathname = usePathname();
   const searchParams = useLiveSearchParams();
   const recentVariants = useSDSRecentVariants();
+  useSDSGroupedCandidates();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
 
   const queryKeyword = searchParams.get("keyword") ?? initialKeyword;
@@ -165,6 +172,14 @@ export function SDSProductBrowser({
     });
   }
 
+  function toggleGroupedCandidate(selection: SDSProductVariantSelection) {
+    if (hasSDSGroupedCandidate(selection)) {
+      removeSDSGroupedCandidate(selection);
+      return;
+    }
+    saveSDSGroupedCandidate(selection);
+  }
+
   const pickerOpen = Boolean(pickerProductId);
 
   return (
@@ -217,12 +232,18 @@ export function SDSProductBrowser({
           onSelect={applySelection}
         />
         <SDSSelectionSummary
+          isGroupedCandidate={currentSelection ? hasSDSGroupedCandidate(currentSelection) : false}
           onChange={() => {
             if (selectedProductId > 0) {
               openVariantPicker(selectedProductId);
             }
           }}
           onClear={clearSelection}
+          onToggleGroupedCandidate={() => {
+            if (currentSelection) {
+              toggleGroupedCandidate(currentSelection);
+            }
+          }}
           selection={
             currentSelection
               ? {

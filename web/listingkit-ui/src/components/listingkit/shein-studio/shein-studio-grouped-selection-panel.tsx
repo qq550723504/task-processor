@@ -63,7 +63,7 @@ export function SheinStudioGroupedSelectionPanel({
             把其他已缓存的 SDS 商品加入当前批次
           </h3>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-600">
-            当前版本只允许加入 baseline 已准备好、且印刷区域与当前商品兼容的 SDS 变体。
+            先在 SDS 选品区把商品加入批量候选池，这里只展示 baseline 已准备好、且印刷区域与当前商品兼容的候选商品。
           </p>
         </div>
         <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
@@ -148,11 +148,11 @@ export function SheinStudioGroupedSelectionPanel({
 
       <div className="mt-4 space-y-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
-          最近使用的 SDS 变体
+          批量候选池
         </div>
         {candidates.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-500">
-            暂时没有可加入分组的最近变体。先去选过其他 SDS 商品，再回来这里批量创建。
+            暂时没有可加入分组的候选商品。先回到 SDS 选品区，把想批量处理的商品加入批量候选池。
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">

@@ -45,7 +45,7 @@ import {
 } from "@/lib/shein-studio/sds-selectable-images";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { getCurrentSubscription } from "@/lib/api/subscription";
-import { useSDSRecentVariants } from "@/lib/query/use-sds-recent-variants";
+import { useSDSGroupedCandidates } from "@/lib/query/use-sds-grouped-candidates";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import {
   buildGroupedSDSSelectionID,
@@ -213,7 +213,7 @@ export function SheinStudioWorkbench({
   const hasCustomizedSdsSelectionRef = useRef(false);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const activeSelection = useHydratedSDSVariantSelection(selection);
-  const recentVariants = useSDSRecentVariants();
+  const groupedCandidateSelections = useSDSGroupedCandidates();
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -247,14 +247,14 @@ export function SheinStudioWorkbench({
   } = summarizeSheinStudioSelection(activeSelection);
   const availableSdsImages = buildSelectableSDSImages(activeSelection);
   const activeGroupedSelectionID = buildGroupedSDSSelectionID(activeSelection);
-  const recentGroupedCandidates = useMemo(
+  const groupedSelectionCandidates = useMemo(
     () =>
-      recentVariants.filter(
+      groupedCandidateSelections.filter(
         (item) =>
           item.variantId !== activeSelection?.variantId &&
           Boolean(buildGroupedSDSSelectionID(item)),
       ),
-    [activeSelection?.variantId, recentVariants],
+    [activeSelection?.variantId, groupedCandidateSelections],
   );
   const activeSelectionBaseline = baselineStatuses[activeGroupedSelectionID] ?? {
     status: "missing" as SDSBaselineStatus,
@@ -262,7 +262,7 @@ export function SheinStudioWorkbench({
   };
   const groupedCandidates = useMemo(
     () =>
-      recentGroupedCandidates.map((item) => {
+      groupedSelectionCandidates.map((item) => {
         const selectionId = buildGroupedSDSSelectionID(item);
         const baseline = baselineStatuses[selectionId] ?? {
           status: "missing" as SDSBaselineStatus,
@@ -285,7 +285,7 @@ export function SheinStudioWorkbench({
               : compatibility.reason,
         };
       }),
-    [activeSelection, baselineStatuses, recentGroupedCandidates],
+    [activeSelection, baselineStatuses, groupedSelectionCandidates],
   );
   const studioAccessAllowed =
     subscriptionQuery.data?.entitlements?.find(
@@ -333,7 +333,7 @@ export function SheinStudioWorkbench({
   useEffect(() => {
     const selections = [
       ...(activeSelection?.variantId ? [activeSelection] : []),
-      ...recentGroupedCandidates,
+      ...groupedSelectionCandidates,
     ];
     if (selections.length === 0) {
       setBaselineStatuses({});
@@ -382,7 +382,7 @@ export function SheinStudioWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activeSelection, recentGroupedCandidates]);
+  }, [activeSelection, groupedSelectionCandidates]);
 
   useEffect(() => {
     setGroupedSelections((current) =>
