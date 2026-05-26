@@ -225,7 +225,7 @@ function normalizeSheinStudioPromptWithSDSSize({
   if (!printableWidth || !printableHeight) {
     return trimmedPrompt;
   }
-  const sizeSuffix = `SDS printable size: ${printableWidth}x${printableHeight}px.`;
+  const sizeSuffix = `printable size: ${printableWidth}x${printableHeight}px.`;
   const normalizedPrompt = trimmedPrompt.replace(/\s+/g, " ");
   const lowerPrompt = normalizedPrompt.toLowerCase();
   const lowerSuffix = sizeSuffix.toLowerCase();
