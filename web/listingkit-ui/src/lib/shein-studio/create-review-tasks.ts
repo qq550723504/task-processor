@@ -11,6 +11,7 @@ import {
   loadSDSListingKitMetadata,
 } from "@/lib/sds/product-metadata";
 import type { SDSProductVariantSelection, SDSSelectedProductVariant } from "@/lib/types/sds";
+import type { GroupedSDSSelectionInput } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
@@ -23,6 +24,26 @@ import type {
 export const DEFAULT_SHEIN_STORE_ID = "";
 const DEFAULT_AI_PRODUCT_IMAGE_COUNT = 5;
 const MAX_AI_PRODUCT_IMAGE_COUNT = 9;
+
+type CreateSheinReviewTasksInput = Parameters<typeof createSheinReviewTasks>[0];
+
+type CreateGroupedSheinReviewTasksInput = {
+  prompt: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
+  renderSizeImagesWithSds?: boolean;
+  onProgress?: (message: string) => void;
+  groups: Array<{
+    sheinStoreId: string;
+    selections: GroupedSDSSelectionInput[];
+    designs: SheinStudioGeneratedDesign[];
+    selectedIds: string[];
+  }>;
+  createReviewTasks?: (input: CreateSheinReviewTasksInput) => Promise<SheinStudioCreatedTask[]>;
+};
 
 export function parsePositiveInt(input: string) {
   const parsed = Number.parseInt(input.trim(), 10);
@@ -381,5 +402,42 @@ export async function createSheinReviewTasks(input: {
     throw new Error("No SHEIN data tasks were created.");
   }
   onProgress?.(`Created ${created.length} SHEIN data task${created.length === 1 ? "" : "s"}.`);
+  return created;
+}
+
+export async function createGroupedSheinReviewTasks(
+  input: CreateGroupedSheinReviewTasksInput,
+) {
+  const createReviewTasks = input.createReviewTasks ?? createSheinReviewTasks;
+  const created: SheinStudioCreatedTask[] = [];
+
+  for (const group of input.groups) {
+    for (const item of group.selections) {
+      if (item.baselineStatus !== "ready") {
+        throw new Error(
+          item.baselineReason?.trim()
+            ? `Only baseline ready SDS products can be created in grouped mode. ${item.baselineReason.trim()}`
+            : "Only baseline ready SDS products can be created in grouped mode.",
+        );
+      }
+
+      const tasks = await createReviewTasks({
+        prompt: input.prompt,
+        sheinStoreId: group.sheinStoreId,
+        imageStrategy: input.imageStrategy,
+        selectedSdsImages: input.selectedSdsImages,
+        productImageCount: input.productImageCount,
+        productImagePrompt: input.productImagePrompt,
+        productImagePrompts: input.productImagePrompts,
+        renderSizeImagesWithSds: input.renderSizeImagesWithSds,
+        selection: item.selection,
+        designs: group.designs,
+        selectedIds: group.selectedIds,
+        onProgress: input.onProgress,
+      });
+      created.push(...tasks);
+    }
+  }
+
   return created;
 }

@@ -67,6 +67,16 @@ func (s *taskLifecycleService) GetTaskResult(ctx context.Context, taskID string)
 	return buildTaskResult(task, resultPayload), nil
 }
 
+func (s *taskLifecycleService) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
+	if query == nil {
+		return nil, fmt.Errorf("query cannot be nil")
+	}
+	if query.TenantID != "" {
+		ctx = WithTenantID(ctx, query.TenantID)
+	}
+	return (&sdsBaselineService{repo: s.repo}).GetReadiness(ctx, query)
+}
+
 func (s *taskLifecycleService) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {
 	normalized := normalizeTaskListQuery(query)
 	if normalized.TenantID != "" {

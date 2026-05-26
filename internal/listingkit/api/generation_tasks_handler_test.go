@@ -32,6 +32,7 @@ type stubGenerationTaskService struct {
 	storeProfiles           []listingkit.ListingKitStoreProfile
 	upsertedStoreProfile    *listingkit.ListingKitStoreProfile
 	storeRoutingSettings    *listingkit.ListingKitStoreRoutingSettings
+	baselineReadiness       *listingkit.SDSBaselineReadiness
 	err                     error
 	lastTask                string
 	uploadedImageKey        string
@@ -51,6 +52,7 @@ type stubGenerationTaskService struct {
 	aiSettingsReq           *listingkit.AIClientSettings
 	upsertStoreProfileReq   *listingkit.ListingKitStoreProfile
 	updateStoreRoutingReq   *listingkit.ListingKitStoreRoutingSettings
+	baselineReadinessQuery  *listingkit.SDSBaselineReadinessQuery
 	updatedStudioSessionID  string
 	updatedStudioSessionReq *listingkit.UpdateStudioSessionRequest
 }
@@ -64,6 +66,11 @@ func (s *stubGenerationTaskService) ListTasks(ctx context.Context, query *listin
 
 func (s *stubGenerationTaskService) GetTaskResult(ctx context.Context, taskID string) (*listingkit.TaskResult, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (s *stubGenerationTaskService) GetSDSBaselineReadiness(ctx context.Context, query *listingkit.SDSBaselineReadinessQuery) (*listingkit.SDSBaselineReadiness, error) {
+	s.baselineReadinessQuery = query
+	return s.baselineReadiness, s.err
 }
 
 func (s *stubGenerationTaskService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitPreview, error) {

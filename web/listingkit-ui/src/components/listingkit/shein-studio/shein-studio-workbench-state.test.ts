@@ -22,6 +22,7 @@ describe("buildInitialSheinStudioWorkbenchState", () => {
       imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
       productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
       variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+      groupedSelections: [],
       prompt: "",
       styleCount: "1",
       transparentBackground: false,

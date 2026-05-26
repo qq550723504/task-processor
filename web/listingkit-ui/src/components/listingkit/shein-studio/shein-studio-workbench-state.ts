@@ -6,6 +6,7 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -29,6 +30,7 @@ export type SheinStudioWorkbenchState = {
   sheinStoreId: string;
   imageStrategy: SheinStudioImageStrategy;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
+  groupedSelections: GroupedSDSSelectionEligibility[];
   renderSizeImagesWithSds: boolean;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
@@ -112,6 +114,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     sheinStoreId: DEFAULT_SHEIN_STORE_ID,
     imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     selectedSdsImages: [],
+    groupedSelections: [],
     renderSizeImagesWithSds: true,
     designs: [],
     selectedIds: [],

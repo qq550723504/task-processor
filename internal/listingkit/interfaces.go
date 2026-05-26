@@ -71,6 +71,7 @@ type AmazonDraftBuilder interface {
 type TaskLifecycleService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
 	ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error)
+	GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
 	GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error)
