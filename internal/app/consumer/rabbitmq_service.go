@@ -70,6 +70,11 @@ type serviceStopState struct {
 	provider     StoreAssignmentProvider
 }
 
+type serviceStartState struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 type serviceStatsState struct {
 	started        bool
 	useStoreQueues bool
@@ -176,14 +181,10 @@ func (s *RabbitMQService) SetQueueConfigs(configs []config.QueueConfig) {
 
 // Start 启动RabbitMQ服务
 func (s *RabbitMQService) Start(ctx context.Context) error {
-	s.mutex.Lock()
-	if s.started {
-		s.mutex.Unlock()
-		return fmt.Errorf("RabbitMQ服务已启动")
-	}
 	s.logger.Info("启动RabbitMQ服务...")
-	s.ctx, s.cancel = context.WithCancel(ctx)
-	s.mutex.Unlock()
+	if _, err := s.prepareStartState(ctx); err != nil {
+		return err
+	}
 
 	if err := s.startInfrastructure(); err != nil {
 		return err
@@ -195,10 +196,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		return err
 	}
 
-	s.mutex.Lock()
-	s.started = true
-	s.consumerActive = true
-	s.mutex.Unlock()
+	s.markStarted()
 	s.startConsumerGuard()
 	s.startStoreAssignmentSync()
 	s.logger.Info("RabbitMQ服务启动完成")
@@ -491,6 +489,28 @@ func (s *RabbitMQService) markStopped() {
 	defer s.mutex.Unlock()
 	s.started = false
 	s.consumerActive = false
+}
+
+func (s *RabbitMQService) prepareStartState(ctx context.Context) (serviceStartState, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.started {
+		return serviceStartState{}, fmt.Errorf("RabbitMQ服务已启动")
+	}
+	serviceCtx, cancel := context.WithCancel(ctx)
+	s.ctx = serviceCtx
+	s.cancel = cancel
+	return serviceStartState{
+		ctx:    serviceCtx,
+		cancel: cancel,
+	}, nil
+}
+
+func (s *RabbitMQService) markStarted() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.started = true
+	s.consumerActive = true
 }
 
 func (s *RabbitMQService) statsStateSnapshot() serviceStatsState {

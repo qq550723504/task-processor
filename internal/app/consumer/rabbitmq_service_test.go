@@ -633,6 +633,32 @@ func TestRabbitMQServiceConsumerLifecycleStateSnapshotReflectsFlagsAndContext(t 
 	}
 }
 
+func TestRabbitMQServicePrepareStartStateAssignsServiceContext(t *testing.T) {
+	parentCtx, parentCancel := context.WithCancel(context.Background())
+	defer parentCancel()
+
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+
+	state, err := svc.prepareStartState(parentCtx)
+	if err != nil {
+		t.Fatalf("prepareStartState() error = %v", err)
+	}
+	if state.ctx == nil || state.cancel == nil {
+		t.Fatal("expected prepared start state to include ctx and cancel")
+	}
+	if svc.ctx != state.ctx || fmt.Sprintf("%p", svc.cancel) != fmt.Sprintf("%p", state.cancel) {
+		t.Fatal("expected prepareStartState to persist service start context")
+	}
+	if svc.started {
+		t.Fatal("expected prepareStartState to not mark service started")
+	}
+}
+
 func TestRabbitMQServiceStopStateSnapshotCapturesStopDependencies(t *testing.T) {
 	serviceCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
