@@ -75,6 +75,12 @@ type serviceStartState struct {
 	cancel context.CancelFunc
 }
 
+type serviceRoutingState struct {
+	ownedStores    []int64
+	ownedBuckets   []int
+	useStoreQueues bool
+}
+
 type serviceStatsState struct {
 	started        bool
 	useStoreQueues bool
@@ -154,7 +160,11 @@ func (s *RabbitMQService) SetStoreAssignmentProvider(provider StoreAssignmentPro
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.storeAssignmentProvider = provider
-	s.useStoreQueues = s.config.Node.UseStoreQueues || provider != nil
+	s.applyRoutingState(serviceRoutingState{
+		ownedStores:    s.ownedStores,
+		ownedBuckets:   s.ownedBuckets,
+		useStoreQueues: s.config.Node.UseStoreQueues || provider != nil,
+	})
 	s.syncProcessorRegistryComponents()
 }
 
@@ -366,7 +376,7 @@ func (s *RabbitMQService) sharedBucketsForPlatform(platform string) []int {
 }
 
 func (s *RabbitMQService) usesDedicatedStoreQueues() bool {
-	return s.useStoreQueues || s.storeAssignmentProvider != nil
+	return s.routingStateSnapshot().useStoreQueues || s.storeAssignmentProvider != nil
 }
 
 func normalizeOwnedBuckets(buckets []int) []int {
@@ -514,14 +524,39 @@ func (s *RabbitMQService) markStarted() {
 }
 
 func (s *RabbitMQService) statsStateSnapshot() serviceStatsState {
+	routingState := s.routingStateSnapshot()
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return serviceStatsState{
 		started:        s.started,
-		useStoreQueues: s.useStoreQueues,
+		useStoreQueues: routingState.useStoreQueues,
+		ownedStores:    routingState.ownedStores,
+		ownedBuckets:   routingState.ownedBuckets,
+	}
+}
+
+func (s *RabbitMQService) routingStateSnapshot() serviceRoutingState {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.routingStateSnapshotLocked()
+}
+
+func (s *RabbitMQService) routingStateSnapshotLocked() serviceRoutingState {
+	return serviceRoutingState{
 		ownedStores:    append([]int64(nil), s.ownedStores...),
 		ownedBuckets:   append([]int(nil), s.ownedBuckets...),
+		useStoreQueues: s.useStoreQueues,
 	}
+}
+
+func (s *RabbitMQService) applyRoutingState(state serviceRoutingState) {
+	if state.ownedStores != nil {
+		s.ownedStores = append([]int64(nil), state.ownedStores...)
+	}
+	if state.ownedBuckets != nil {
+		s.ownedBuckets = append([]int(nil), state.ownedBuckets...)
+	}
+	s.useStoreQueues = state.useStoreQueues
 }
 
 func (s *RabbitMQService) pauseConsumers(ctx context.Context, reason string) error {

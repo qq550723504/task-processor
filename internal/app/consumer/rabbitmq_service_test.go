@@ -575,6 +575,35 @@ func TestSetStoreAssignmentProviderForcesStoreQueueMode(t *testing.T) {
 	}
 }
 
+func TestRabbitMQServiceRoutingStateSnapshotCopiesRoutingSlices(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:         config.NodeRoleTask,
+			OwnedBuckets: []int{2, 4},
+		},
+	}, logrus.New())
+	svc.ownedStores = []int64{7, 9}
+	svc.useStoreQueues = true
+
+	state := svc.routingStateSnapshot()
+	if !state.useStoreQueues {
+		t.Fatal("expected routing state to preserve useStoreQueues")
+	}
+	if len(state.ownedStores) != 2 || state.ownedStores[0] != 7 || state.ownedStores[1] != 9 {
+		t.Fatalf("owned stores = %v, want [7 9]", state.ownedStores)
+	}
+	if len(state.ownedBuckets) != 2 || state.ownedBuckets[0] != 2 || state.ownedBuckets[1] != 4 {
+		t.Fatalf("owned buckets = %v, want [2 4]", state.ownedBuckets)
+	}
+
+	svc.ownedStores[0] = 99
+	svc.ownedBuckets[0] = 8
+	if state.ownedStores[0] != 7 || state.ownedBuckets[0] != 2 {
+		t.Fatal("expected routing state snapshot to copy routing slices")
+	}
+}
+
 func TestRabbitMQServiceStopWaitsForBackgroundWorkers(t *testing.T) {
 	svc := NewRabbitMQService(&config.RabbitMQConfig{
 		URL: "amqp://guest:guest@localhost:5672/",
