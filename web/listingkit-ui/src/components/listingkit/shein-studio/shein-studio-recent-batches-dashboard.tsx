@@ -116,6 +116,16 @@ function resultFilterDescription(filter: RecentBatchResultFilter) {
   return "";
 }
 
+function restoredResultFilterDescription(filter: RecentBatchResultFilter) {
+  if (filter === "success") {
+    return "已恢复上次的最近处理成功视图。";
+  }
+  if (filter === "failure") {
+    return "已恢复上次的最近处理失败视图。";
+  }
+  return "";
+}
+
 export function SheinStudioRecentBatchesDashboard({
   summaries,
   selectedSummaryIds: controlledSelectedSummaryIds,
@@ -159,6 +169,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [lastBulkActionSummary, setLastBulkActionSummary] = useState("");
   const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
   const [resultFilter, setResultFilter] = useState<RecentBatchResultFilter>("all");
+  const [restoredResultFilterNote, setRestoredResultFilterNote] = useState("");
   const [activeRiskLabel, setActiveRiskLabel] = useState("");
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
     string[] | null
@@ -548,6 +559,10 @@ export function SheinStudioRecentBatchesDashboard({
       }
       if (parsed.resultFilter) {
         setResultFilter(parsed.resultFilter);
+        const note = restoredResultFilterDescription(parsed.resultFilter);
+        if (note) {
+          setRestoredResultFilterNote(note);
+        }
       }
       if (parsed.activeRiskLabel) {
         setActiveRiskLabel(parsed.activeRiskLabel);
@@ -922,7 +937,10 @@ export function SheinStudioRecentBatchesDashboard({
             {resultFilterOptions.map((option) => (
               <Button
                 key={option.value}
-                onClick={() => setResultFilter(option.value)}
+                onClick={() => {
+                  setResultFilter(option.value);
+                  setRestoredResultFilterNote("");
+                }}
                 size="sm"
                 type="button"
                 variant={resultFilter === option.value ? "default" : "secondary"}
@@ -939,6 +957,11 @@ export function SheinStudioRecentBatchesDashboard({
           {resultFilter !== "all" ? (
             <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm text-sky-900">
               {resultFilterDescription(resultFilter)}
+            </div>
+          ) : null}
+          {restoredResultFilterNote ? (
+            <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-700">
+              {restoredResultFilterNote}
             </div>
           ) : null}
         </div>

@@ -14,6 +14,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       "listingkit:shein-studio:recent-batches-dashboard",
       JSON.stringify({
         statusFilter: "risk",
+        resultFilter: "failure",
         activeRiskLabel: "生成失败",
         selectedSummaryIds: ["batch:batch-2"],
         lastBulkActionSummary:
@@ -60,6 +61,9 @@ describe("SheinStudioRecentBatchesDashboard", () => {
 
     expect(
       await screen.findByText("当前只显示包含“生成失败”的风险批次。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("已恢复上次的最近处理失败视图。"),
     ).toBeInTheDocument();
     expect(screen.getByText("已选择 1 个批次")).toBeInTheDocument();
     expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
