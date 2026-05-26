@@ -64,6 +64,7 @@ export function SheinStudioRecentBatchesDashboard({
   const [editingSummaryId, setEditingSummaryId] = useState("");
   const [draftName, setDraftName] = useState("");
   const [bulkStoreId, setBulkStoreId] = useState("");
+  const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
   const selectedSummaryIds =
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
@@ -129,6 +130,7 @@ export function SheinStudioRecentBatchesDashboard({
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
+    setBulkQueueFeedback("");
     setSelectedSummaryIds((current) =>
       current.includes(key)
         ? current.filter((item) => item !== key)
@@ -160,11 +162,44 @@ export function SheinStudioRecentBatchesDashboard({
     if (!onBulkUpdateStore || selectedSummaryIds.length === 0) {
       return;
     }
+    setBulkQueueFeedback("");
     const ids = selectedSummaryIds
       .map((key) => summaryById.get(key))
       .filter((summary): summary is SheinStudioRecentBatchSummary => Boolean(summary))
       .map((summary) => summary.id);
     onBulkUpdateStore(ids, bulkStoreId);
+  }
+
+  function launchBulkQueue(
+    batchIds: string[],
+    mode: "generate" | "create_tasks",
+    label: string,
+  ) {
+    if (!onOpenBatchQueue || batchIds.length === 0) {
+      return;
+    }
+    const leftovers = [
+      selectedBatchesPendingGeneration.length > 0 &&
+      batchIds !== selectedBatchesPendingGeneration
+        ? `另外还有 ${selectedBatchesPendingGeneration.length} 个待生成批次`
+        : "",
+      selectedBatchesPendingTaskCreation.length > 0 &&
+      batchIds !== selectedBatchesPendingTaskCreation
+        ? `另外还有 ${selectedBatchesPendingTaskCreation.length} 个待创建任务批次`
+        : "",
+      selectedBatchesWithTasks.length > 0 && batchIds !== selectedBatchesWithTasks
+        ? `另外还有 ${selectedBatchesWithTasks.length} 个已有任务批次`
+        : "",
+    ].filter(Boolean);
+    setBulkQueueFeedback(
+      leftovers.length > 0
+        ? `已为 ${batchIds.length} 个${label}启动处理队列。${leftovers.join("，")}可继续处理。`
+        : `已为 ${batchIds.length} 个${label}启动处理队列。`,
+    );
+    onOpenBatchQueue({
+      batchIds,
+      mode,
+    });
   }
 
   function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
@@ -233,7 +268,10 @@ export function SheinStudioRecentBatchesDashboard({
               </div>
             </div>
             <Button
-              onClick={() => setSelectedSummaryIds([])}
+              onClick={() => {
+                setSelectedSummaryIds([]);
+                setBulkQueueFeedback("");
+              }}
               size="sm"
               type="button"
               variant="ghost"
@@ -270,10 +308,11 @@ export function SheinStudioRecentBatchesDashboard({
                 {selectedBatchesPendingGeneration.length > 0 ? (
                   <Button
                     onClick={() =>
-                      onOpenBatchQueue({
-                        batchIds: selectedBatchesPendingGeneration,
-                        mode: "generate",
-                      })
+                      launchBulkQueue(
+                        selectedBatchesPendingGeneration,
+                        "generate",
+                        "待生成批次",
+                      )
                     }
                     type="button"
                     variant="secondary"
@@ -284,10 +323,11 @@ export function SheinStudioRecentBatchesDashboard({
                 {selectedBatchesPendingTaskCreation.length > 0 ? (
                   <Button
                     onClick={() =>
-                      onOpenBatchQueue({
-                        batchIds: selectedBatchesPendingTaskCreation,
-                        mode: "create_tasks",
-                      })
+                      launchBulkQueue(
+                        selectedBatchesPendingTaskCreation,
+                        "create_tasks",
+                        "待创建任务批次",
+                      )
                     }
                     type="button"
                     variant="secondary"
@@ -298,10 +338,11 @@ export function SheinStudioRecentBatchesDashboard({
                 {selectedBatchesWithTasks.length > 0 ? (
                   <Button
                     onClick={() =>
-                      onOpenBatchQueue({
-                        batchIds: selectedBatchesWithTasks,
-                        mode: "create_tasks",
-                      })
+                      launchBulkQueue(
+                        selectedBatchesWithTasks,
+                        "create_tasks",
+                        "已有任务批次",
+                      )
                     }
                     type="button"
                     variant="secondary"
@@ -312,6 +353,11 @@ export function SheinStudioRecentBatchesDashboard({
               </>
             ) : null}
           </div>
+          {bulkQueueFeedback ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-sm text-emerald-900">
+              {bulkQueueFeedback}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

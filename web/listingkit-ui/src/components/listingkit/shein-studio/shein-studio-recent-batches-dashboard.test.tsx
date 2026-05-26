@@ -424,4 +424,72 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       mode: "create_tasks",
     });
   });
+
+  it("shows bulk queue feedback and remaining bucket guidance after launching a state-aware bulk action", () => {
+    const onOpenBatchQueue = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={onOpenBatchQueue}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Generate",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Review",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "second prompt",
+            storeSummary: "跟随当前店铺",
+            designCount: 2,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Tasks",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "third prompt",
+            storeSummary: "跟随当前店铺",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T08:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-3" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
+
+    expect(
+      screen.getByText(
+        "已为 1 个待生成批次启动处理队列。另外还有 1 个待创建任务批次，另外还有 1 个已有任务批次可继续处理。",
+      ),
+    ).toBeInTheDocument();
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-1"],
+      mode: "generate",
+    });
+  });
 });
