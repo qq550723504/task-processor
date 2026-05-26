@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	assetrepo "task-processor/internal/asset/repository"
 )
 
 func TestTaskGenerationServiceGetTaskGenerationTasksAppliesFilters(t *testing.T) {
@@ -51,5 +53,57 @@ func TestTaskGenerationServiceGetTaskGenerationTasksAppliesFilters(t *testing.T)
 	}
 	if page.Summary == nil || page.Summary.FallbackTasks != 1 {
 		t.Fatalf("summary = %+v, want fallback summary", page.Summary)
+	}
+}
+
+func TestTaskGenerationServiceRetryTaskGenerationTasksReturnsEmptyPageWithoutSelection(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	task := &Task{
+		ID:        "task-generation-retry-service-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-retry-service-1"},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := assetRepository.SaveInventory(context.Background(), &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+	}); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+
+	generator := &stubWorkflowAssetGenerator{
+		dispatchResult: &assetgeneration.Result{},
+		dispatchErrAt: map[int]error{
+			1: context.Canceled,
+		},
+	}
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:           repo,
+		assetRepo:      assetRepository,
+		assetGenerator: generator,
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return []assetgeneration.Task{}, nil
+		},
+		buildRetryGenerationTaskSelection: func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+	})
+
+	page, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{})
+	if err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if generator.dispatchCalls != 0 {
+		t.Fatalf("dispatch calls = %d, want 0", generator.dispatchCalls)
+	}
+	if page == nil || page.Total != 0 || page.MatchedQueue == nil || page.ExecutedQueue == nil {
+		t.Fatalf("page = %+v, want empty retry page with queue placeholders", page)
 	}
 }

@@ -15,14 +15,20 @@ func (s *service) taskGenerationOrDefault() *taskGenerationService {
 		return s.taskGeneration
 	}
 	s.taskGeneration = newTaskGenerationService(taskGenerationServiceConfig{
-		repo:                     s.repo,
-		listAssetGenerationTasks: s.listAssetGenerationTasks,
-		listGenerationReviews:    s.listGenerationReviews,
-		getCurrentListingKitResult: func(ctx context.Context, taskID string) (*ListingKitResult, error) {
-			return s.getCurrentListingKitResult(ctx, taskID)
+		repo:                              s.repo,
+		assetRepo:                         s.assetRepo,
+		assetRecipeResolver:               s.assetRecipeResolver,
+		assetBundleBuilder:                s.assetBundleBuilder,
+		assetGenerator:                    s.assetGenerator,
+		listAssetGenerationTasks:          s.listAssetGenerationTasks,
+		listGenerationReviews:             s.listGenerationReviews,
+		buildRetryGenerationTaskSelection: s.buildRetryGenerationTaskSelection,
+		persistGenerationReviewDecision:   s.persistGenerationReviewDecision,
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return s.standardProductWorkflowClient, s.standardProductWorkflowEnabled
 		},
-		getCurrentAssetGenerationQueue: func(ctx context.Context, taskID string) (*GenerationWorkQueue, error) {
-			return s.getCurrentAssetGenerationQueue(ctx, taskID)
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return s.platformAdaptWorkflowClient, s.platformAdaptWorkflowEnabled
 		},
 	})
 	return s.taskGeneration
