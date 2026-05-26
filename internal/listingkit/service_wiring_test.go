@@ -32,6 +32,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.settingsAdmin == nil {
 		t.Fatal("expected settingsAdmin to be initialized")
 	}
+	if impl.sheinAdmin == nil {
+		t.Fatal("expected sheinAdmin to be initialized")
+	}
 	if impl.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
@@ -77,6 +80,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	svc.initializeAdminCollaborators()
 	if svc.settingsAdmin == nil {
 		t.Fatal("expected settingsAdmin to be initialized")
+	}
+	if svc.sheinAdmin == nil {
+		t.Fatal("expected sheinAdmin to be initialized")
 	}
 
 	svc.initializeSubmitCollaborators()

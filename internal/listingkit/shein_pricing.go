@@ -12,47 +12,7 @@ import (
 )
 
 func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return nil, ErrTaskResultUnavailable
-	}
-	rule := s.currentSheinPricingRule()
-	overrides := map[string]float64{}
-	if task.Result.Shein.FinalDraft != nil {
-		for sku, price := range task.Result.Shein.FinalDraft.ManualPriceOverrides {
-			overrides[sku] = price
-		}
-	}
-	applyToTask := false
-	if req != nil {
-		if req.Rule != nil {
-			rule = normalizeSheinPricingRule(*req.Rule, rule)
-		}
-		for sku, price := range req.ManualOverrides {
-			if strings.TrimSpace(sku) != "" && price > 0 {
-				overrides[sku] = price
-			}
-		}
-		applyToTask = req.ApplyToTask
-	}
-	review := buildSheinPricingReview(task.Result.Shein, rule, overrides)
-	if applyToTask {
-		task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-			if task.Result == nil || task.Result.Shein == nil {
-				return ErrTaskResultUnavailable
-			}
-			applySheinPricingReview(task.Result.Shein, review)
-			task.Result.UpdatedAt = time.Now()
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-	return review, nil
+	return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)
 }
 
 func (s *service) currentSheinPricingRule() sheinpub.PricingRule {

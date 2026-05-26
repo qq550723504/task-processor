@@ -9,17 +9,7 @@ import (
 )
 
 func (s *service) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return nil, ErrTaskResultUnavailable
-	}
-	return &SheinSubmissionEventPage{
-		TaskID: taskID,
-		Items:  sheinSubmissionEventsWithStoreResolution(task.Result.Shein.SubmissionEvents, task),
-	}, nil
+	return s.sheinAdminOrDefault().GetSubmissionEvents(ctx, taskID)
 }
 
 func sheinSubmissionEventsWithStoreResolution(events []sheinpub.SubmissionEvent, task *Task) []sheinpub.SubmissionEvent {

@@ -27,6 +27,7 @@ type service struct {
 	taskStudioSession              *taskStudioSessionService
 	taskStudioMedia                *taskStudioMediaService
 	settingsAdmin                  *settingsAdminService
+	sheinAdmin                     *sheinAdminService
 	taskSubmission                 *taskSubmissionService
 	taskSubmissionRecovery         *taskSubmissionRecoveryService
 	taskSubmissionExecution        *taskSubmissionExecutionService
@@ -230,6 +231,7 @@ func (s *service) initializeAdminCollaborators() {
 		return
 	}
 	s.settingsAdmin = s.settingsAdminOrDefault()
+	s.sheinAdmin = s.sheinAdminOrDefault()
 }
 
 func (s *service) initializeTemporalCollaborators() {
