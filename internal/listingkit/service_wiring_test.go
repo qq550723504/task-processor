@@ -26,6 +26,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
 	}
+	if impl.taskStudioMedia == nil {
+		t.Fatal("expected taskStudioMedia to be initialized")
+	}
 	if impl.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
@@ -63,6 +66,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 	if svc.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
+	}
+	if svc.taskStudioMedia == nil {
+		t.Fatal("expected taskStudioMedia to be initialized")
 	}
 
 	svc.initializeSubmitCollaborators()

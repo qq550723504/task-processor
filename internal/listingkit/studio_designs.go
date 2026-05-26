@@ -4,15 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
-
-	"github.com/google/uuid"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
@@ -28,166 +23,36 @@ const (
 )
 
 func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
-	if req == nil {
-		return nil, fmt.Errorf("invalid request: request is required")
-	}
-	theme := strings.TrimSpace(req.Prompt)
-	if theme == "" {
-		return nil, fmt.Errorf("invalid request: prompt is required")
-	}
-	if s.studioImageGenerator == nil {
-		return nil, fmt.Errorf("studio image generator is not configured")
-	}
-
-	count := req.Count
-	if count <= 0 {
-		count = 1
-	}
-	if count > maxStudioDesignCount {
-		count = maxStudioDesignCount
-	}
-	model := resolveStudioDesignImageModel(req, s.studioImageGenerator.GetDefaultModel())
-	themes, diversifyErr := s.generateStudioDesignSiblingThemes(ctx, req, count)
-	if len(themes) != count {
-		themes = buildFallbackStudioDesignThemes(req.Prompt, count)
-	}
-	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
-	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
-
-	response := &StudioDesignResponse{
-		Prompt:                theme,
-		PrintableWidth:        req.PrintableWidth,
-		PrintableHeight:       req.PrintableHeight,
-		ImageModel:            model,
-		TransparentBackground: req.TransparentBackground && model == studioDesignTransparentModel,
-		Images:                make([]StudioGeneratedImage, 0, count),
-	}
-	images := make([]StudioGeneratedImage, count)
-	errs := make([]error, count)
-	generateOne := func(idx int) {
-		promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
-		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
-		if err != nil {
-			errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
-			return
-		}
-		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
-		if err != nil {
-			errs[idx] = fmt.Errorf("persist studio design %d: %w", idx+1, err)
-			return
-		}
-		errs[idx] = nil
-		images[idx] = StudioGeneratedImage{
-			ID:                    uuid.NewString(),
-			ImageURL:              imageURL,
-			Prompt:                theme,
-			RevisedPrompt:         revisedPrompt,
-			ImageModel:            model,
-			TransparentBackground: response.TransparentBackground,
-			VariationIntensity:    req.VariationIntensity,
-		}
-	}
-	var wg sync.WaitGroup
-	for idx := 0; idx < count; idx++ {
-		idx := idx
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			generateOne(idx)
-		}()
-	}
-	wg.Wait()
-	failedIndexes := failedStudioImageIndexes(images)
-	if len(failedIndexes) > 0 && len(failedIndexes) < count {
-		for _, idx := range failedIndexes {
-			generateOne(idx)
-		}
-	}
-	for _, image := range images {
-		if strings.TrimSpace(image.ImageURL) != "" {
-			response.Images = append(response.Images, image)
-		}
-	}
-	if diversifyErr != nil {
-		response.Warnings = append(response.Warnings, "款式变体提示词生成失败，已回退为基础提示词重复生成。")
-	}
-	if len(response.Images) > 0 && len(response.Images) < count {
-		failureCount := count - len(response.Images)
-		warning := fmt.Sprintf("请求生成 %d 款，实际仅成功 %d 款，另外 %d 款生成失败。", count, len(response.Images), failureCount)
-		if firstErr := firstNonNilError(errs); firstErr != nil {
-			warning = fmt.Sprintf("%s 首个失败原因：%s", warning, compactStudioGenerationError(firstErr))
-		}
-		response.Warnings = append(response.Warnings, warning)
-	}
-	if len(response.Images) == 0 {
-		errList := nonNilErrors(errs)
-		if diversifyErr != nil {
-			errList = append(errList, diversifyErr)
-		}
-		return nil, errors.Join(errList...)
-	}
-	return response, nil
+	return s.taskStudioMediaOrDefault().GenerateStudioDesigns(ctx, req)
 }
 
 func (s *service) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
-	baseTheme := strings.TrimSpace(req.Prompt)
-	if count <= 1 || baseTheme == "" {
-		return buildFallbackStudioDesignThemes(baseTheme, count), nil
-	}
-	if s.studioPromptDiversifier == nil {
-		return buildFallbackStudioDesignThemes(baseTheme, count), nil
-	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-
-	response, err := s.studioPromptDiversifier.Generate(timeoutCtx, buildStudioDesignSiblingPromptRequest(req, count))
-	if err != nil {
-		return buildFallbackStudioDesignThemes(baseTheme, count), fmt.Errorf("diversify studio prompts: %w", err)
-	}
-	themes, parseErr := parseStudioDesignSiblingThemes(response, count)
-	if parseErr != nil {
-		return buildFallbackStudioDesignThemes(baseTheme, count), parseErr
-	}
-	return themes, nil
+	return s.taskStudioMediaOrDefault().generateStudioDesignSiblingThemes(ctx, req, count)
 }
 
 func (s *service) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
-	if len(referenceURLs) == 0 {
-		return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
-	}
-	response, err := s.editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs)
-	if err == nil {
-		return response, nil
-	}
-	if len(referenceURLs) > 1 {
-		response, singleErr := s.editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs[:1])
-		if singleErr == nil {
-			return response, nil
-		}
-	}
-	return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
+	return s.taskStudioMediaOrDefault().generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
 }
 
 func (s *service) editStudioDesignImageWithReferences(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
-	return s.studioImageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
-		Model:          model,
-		Prompt:         promptText,
-		ImageURL:       referenceURLs[0],
-		ImageURLs:      referenceURLs,
-		Size:           size,
-		ResponseFormat: "b64_json",
-		N:              1,
-	})
+	return s.taskStudioMediaOrDefault().editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs)
 }
 
 func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context, model string, promptText string, size string) (*openaiclient.ImageResponse, error) {
-	return s.studioImageGenerator.GenerateImage(ctx, &openaiclient.ImageGenerateRequest{
-		Model:          model,
-		Prompt:         promptText,
-		Size:           size,
-		ResponseFormat: "b64_json",
-		N:              1,
+	return s.taskStudioMediaOrDefault().generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
+}
+
+func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {
+	if s.taskStudioMedia != nil {
+		return s.taskStudioMedia
+	}
+	s.taskStudioMedia = newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator:        s.studioImageGenerator,
+		promptDiversifier:     s.studioPromptDiversifier,
+		uploadStoreConfigured: s.uploadStore != nil,
+		uploadImages:          s.UploadImages,
 	})
+	return s.taskStudioMedia
 }
 
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
@@ -384,26 +249,7 @@ func compactStudioGenerationError(err error) string {
 }
 
 func (s *service) persistGeneratedStudioImage(ctx context.Context, response *openaiclient.ImageResponse, filename string) (string, string, error) {
-	if response == nil || len(response.Data) == 0 {
-		return "", "", fmt.Errorf("studio image generation returned no image data")
-	}
-	first := response.Data[0]
-	data, contentType, err := decodeGeneratedImageData(ctx, first)
-	if err != nil {
-		return "", "", err
-	}
-	upload, err := s.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{
-		Filename:    filename,
-		ContentType: contentType,
-		Data:        data,
-	}}})
-	if err != nil {
-		return "", "", err
-	}
-	if len(upload.ImageURLs) == 0 {
-		return "", "", fmt.Errorf("uploaded generated image but no url returned")
-	}
-	return upload.ImageURLs[0], first.RevisedPrompt, nil
+	return s.taskStudioMediaOrDefault().persistGeneratedStudioImage(ctx, response, filename)
 }
 
 func decodeGeneratedImageData(ctx context.Context, image openaiclient.ImageData) ([]byte, string, error) {

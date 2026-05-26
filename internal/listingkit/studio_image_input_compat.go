@@ -19,35 +19,7 @@ import (
 )
 
 func (s *service) sanitizeStudioImageInputURLs(ctx context.Context, inputURLs []string) ([]string, error) {
-	if s == nil || s.uploadStore == nil {
-		return nil, fmt.Errorf("image upload store is not configured")
-	}
-	sanitized := make([]string, 0, len(inputURLs))
-	files := make([]ImageUploadInput, 0, len(inputURLs))
-	for idx, rawURL := range inputURLs {
-		imageURL := strings.TrimSpace(rawURL)
-		if imageURL == "" {
-			continue
-		}
-		data, filename, err := downloadAndConvertStudioInputImage(ctx, imageURL, idx)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, ImageUploadInput{
-			Filename:    filename,
-			ContentType: "image/jpeg",
-			Data:        data,
-		})
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no image inputs available to sanitize")
-	}
-	uploaded, err := s.UploadImages(ctx, &UploadImagesRequest{Files: files})
-	if err != nil {
-		return nil, fmt.Errorf("upload sanitized studio inputs: %w", err)
-	}
-	sanitized = append(sanitized, uploaded.ImageURLs...)
-	return sanitized, nil
+	return s.taskStudioMediaOrDefault().sanitizeStudioImageInputURLs(ctx, inputURLs)
 }
 
 func downloadAndConvertStudioInputImage(ctx context.Context, imageURL string, index int) ([]byte, string, error) {

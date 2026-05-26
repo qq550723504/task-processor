@@ -25,6 +25,7 @@ type service struct {
 	taskGeneration                 *taskGenerationService
 	taskRevision                   *taskRevisionService
 	taskStudioSession              *taskStudioSessionService
+	taskStudioMedia                *taskStudioMediaService
 	taskSubmission                 *taskSubmissionService
 	taskSubmissionRecovery         *taskSubmissionRecoveryService
 	taskSubmissionExecution        *taskSubmissionExecutionService
@@ -208,6 +209,7 @@ func (s *service) initializeTaskCollaborators() {
 	s.taskGeneration = s.taskGenerationOrDefault()
 	s.taskRevision = s.taskRevisionOrDefault()
 	s.taskStudioSession = s.taskStudioSessionOrDefault()
+	s.taskStudioMedia = s.taskStudioMediaOrDefault()
 }
 
 func (s *service) initializeSubmitCollaborators() {
