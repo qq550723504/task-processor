@@ -160,10 +160,17 @@ export type SheinStudioRecentBatchSummary = {
   createdTaskCount: number;
   updatedAt: string;
   alerts?: SheinStudioRecentBatchAlert[];
+  recentResults?: SheinStudioRecentBatchResult[];
 };
 
 export type SheinStudioRecentBatchAlert = {
   tone: "warning" | "danger";
+  label: string;
+  detail?: string;
+};
+
+export type SheinStudioRecentBatchResult = {
+  tone: "success" | "warning" | "danger";
   label: string;
   detail?: string;
 };

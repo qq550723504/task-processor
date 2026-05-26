@@ -267,4 +267,70 @@ describe("buildRecentBatchSummaries", () => {
       ]),
     );
   });
+
+  it("derives recent processing results for generation and task creation", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-1",
+        name: "Ready Batch",
+        prompt: "ready prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [{ id: "design-1" }, { id: "design-2" }],
+        selectedIds: ["design-1"],
+        createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0].recentResults).toEqual([
+      expect.objectContaining({
+        label: "最近生成成功",
+        detail: "已生成 2 张设计。",
+      }),
+      expect.objectContaining({
+        label: "最近任务已创建",
+        detail: "已创建 1 个 SHEIN 资料任务。",
+      }),
+    ]);
+  });
+
+  it("derives in-progress and failed recent processing results from drafts", () => {
+    const summaries = buildRecentBatchSummaries([], {
+      draft: {
+        prompt: "draft prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        generationError: "image generation timeout",
+        sessionStatus: "generating",
+        groups: [
+          {
+            id: "group-1",
+            name: "Group 1",
+            primarySelection: selection,
+            groupedSelections: [],
+            sheinStoreId: "869",
+            currentPrompt: "prompt a",
+            promptHistory: [],
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-05-26T11:00:00.000Z",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T11:00:00.000Z",
+      },
+    });
+
+    expect(summaries[0].recentResults).toEqual([
+      expect.objectContaining({
+        label: "最近生成中",
+        detail: "当前仍在生成设计。",
+      }),
+    ]);
+  });
 });

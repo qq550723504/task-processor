@@ -34,6 +34,17 @@ function recentBatchAlertToneClass(tone: "warning" | "danger") {
     : "border-amber-200 bg-amber-50 text-amber-700";
 }
 
+function recentBatchResultToneClass(tone: "success" | "warning" | "danger") {
+  switch (tone) {
+    case "success":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "danger":
+      return "border-rose-200 bg-rose-50 text-rose-700";
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+}
+
 function actionForRiskAlert(label: string): RecentBatchAlertAction | null {
   if (label === "Baseline 未就绪") {
     return {
@@ -1085,6 +1096,26 @@ export function SheinStudioRecentBatchesDashboard({
                         {summary.promptPreview}
                       </p>
                     </div>
+                    {summary.recentResults?.length ? (
+                      <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/70 px-3 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                          最近处理结果
+                        </p>
+                        <div className="mt-2 space-y-2">
+                          {summary.recentResults.map((result, index) => (
+                            <div
+                              className={`rounded-2xl border px-3 py-2 ${recentBatchResultToneClass(result.tone)}`}
+                              key={`${summaryKey}:result:${result.label}:${index}`}
+                            >
+                              <p className="text-sm font-medium">{result.label}</p>
+                              {result.detail?.trim() ? (
+                                <p className="mt-1 text-xs">{result.detail.trim()}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button

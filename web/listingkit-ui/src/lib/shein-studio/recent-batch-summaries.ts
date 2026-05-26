@@ -3,6 +3,7 @@ import type {
   SheinStudioDraft,
   SheinStudioGroupedWorkspace,
   SheinStudioRecentBatchAlert,
+  SheinStudioRecentBatchResult,
   SheinStudioRecentBatchSummary,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
@@ -73,6 +74,70 @@ function buildSelectionReviewAlert(input: {
   return null;
 }
 
+function buildRecentGenerationResult(input: {
+  designCount: number;
+  generationError?: string;
+  sessionStatus?: string;
+}): SheinStudioRecentBatchResult | null {
+  if (input.sessionStatus === "generating") {
+    return {
+      tone: "warning",
+      label: "最近生成中",
+      detail: "当前仍在生成设计。",
+    } satisfies SheinStudioRecentBatchResult;
+  }
+  if (input.generationError?.trim()) {
+    return {
+      tone: "danger",
+      label: "最近生成失败",
+      detail: input.generationError.trim(),
+    } satisfies SheinStudioRecentBatchResult;
+  }
+  if (input.designCount > 0) {
+    return {
+      tone: "success",
+      label: "最近生成成功",
+      detail: `已生成 ${input.designCount} 张设计。`,
+    } satisfies SheinStudioRecentBatchResult;
+  }
+  return null;
+}
+
+function buildRecentTaskResult(input: {
+  designCount: number;
+  selectedIds: string[];
+  createdTaskCount: number;
+}): SheinStudioRecentBatchResult | null {
+  if (input.createdTaskCount > 0) {
+    return {
+      tone: "success",
+      label: "最近任务已创建",
+      detail: `已创建 ${input.createdTaskCount} 个 SHEIN 资料任务。`,
+    } satisfies SheinStudioRecentBatchResult;
+  }
+  if (input.designCount > 0 && input.selectedIds.length > 0) {
+    return {
+      tone: "warning",
+      label: "待创建任务",
+      detail: `已确认 ${input.selectedIds.length} 个款式，尚未创建任务。`,
+    } satisfies SheinStudioRecentBatchResult;
+  }
+  return null;
+}
+
+function buildRecentResults(input: {
+  designCount: number;
+  generationError?: string;
+  sessionStatus?: string;
+  selectedIds: string[];
+  createdTaskCount: number;
+}) {
+  return [
+    buildRecentGenerationResult(input),
+    buildRecentTaskResult(input),
+  ].filter((item): item is SheinStudioRecentBatchResult => item != null);
+}
+
 function buildPersistedBatchAlerts(batch: SheinStudioSavedBatch) {
   const group = pickSummaryGroup(batch.groups);
   const groupedSelections = group?.groupedSelections ?? batch.groupedSelections ?? [];
@@ -135,6 +200,9 @@ function buildPersistedBatchSummary(
         batch.sheinStoreId,
         ...(batch.groupedSelections ?? []).map((item) => item.sheinStoreId),
       ];
+  const designCount = group?.designs.length ?? batch.designs.length;
+  const selectedIds = group?.selectedIds ?? batch.selectedIds;
+  const createdTaskCount = group?.createdTasks.length ?? batch.createdTasks.length;
 
   return {
     id: batch.id,
@@ -145,10 +213,15 @@ function buildPersistedBatchSummary(
     productCount,
     promptPreview,
     storeSummary: buildStoreSummaryFromAssignments(storeAssignments),
-    designCount: group?.designs.length ?? batch.designs.length,
-    createdTaskCount: group?.createdTasks.length ?? batch.createdTasks.length,
+    designCount,
+    createdTaskCount,
     updatedAt: group?.updatedAt ?? batch.updatedAt,
     alerts: buildPersistedBatchAlerts(batch),
+    recentResults: buildRecentResults({
+      designCount,
+      selectedIds,
+      createdTaskCount,
+    }),
   };
 }
 
@@ -175,6 +248,13 @@ function buildRecoverableDraftSummary(
     createdTaskCount: group.createdTasks.length,
     updatedAt: group.updatedAt || draft.updatedAt,
     alerts: buildRecoverableDraftAlerts(draft, group),
+    recentResults: buildRecentResults({
+      designCount: group.designs.length,
+      generationError: draft.generationError,
+      sessionStatus: draft.sessionStatus,
+      selectedIds: group.selectedIds,
+      createdTaskCount: group.createdTasks.length,
+    }),
   };
 }
 

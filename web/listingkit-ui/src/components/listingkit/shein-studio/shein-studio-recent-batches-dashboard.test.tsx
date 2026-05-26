@@ -620,6 +620,48 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("待确认款式：需要确认设计")).toBeInTheDocument();
   });
 
+  it("renders recent processing results on batch cards", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Processed Batch",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            recentResults: [
+              {
+                tone: "success",
+                label: "最近生成成功",
+                detail: "已生成 2 张设计。",
+              },
+              {
+                tone: "success",
+                label: "最近任务已创建",
+                detail: "已创建 1 个 SHEIN 资料任务。",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("最近处理结果")).toBeInTheDocument();
+    expect(screen.getByText("最近生成成功")).toBeInTheDocument();
+    expect(screen.getByText("已生成 2 张设计。")).toBeInTheDocument();
+    expect(screen.getByText("最近任务已创建")).toBeInTheDocument();
+    expect(screen.getByText("已创建 1 个 SHEIN 资料任务。")).toBeInTheDocument();
+  });
+
   it("routes risk alert actions to the matching workbench step", () => {
     const onSelectSummaryAction = vi.fn();
 
