@@ -21,6 +21,7 @@ export function SheinDesignPreviewGrid({
   onBackToGenerate,
   regeneratingId,
   selection,
+  selectionByTargetGroupKey,
   readOnly = false,
   canRegenerate = true,
   onNoteChange,
@@ -39,6 +40,7 @@ export function SheinDesignPreviewGrid({
   onBackToGenerate?: () => void;
   regeneratingId?: string;
   selection?: SDSProductVariantSelection;
+  selectionByTargetGroupKey?: Map<string, SDSProductVariantSelection>;
   readOnly?: boolean;
   canRegenerate?: boolean;
   onNoteChange?: (designId: string, note: string) => void;
@@ -60,6 +62,10 @@ export function SheinDesignPreviewGrid({
   }
 
   const activeDesign = designs.find((item) => item.id === activePreviewId) ?? null;
+  const activeSelectionForPreview =
+    (activeDesign?.targetGroupKey
+      ? selectionByTargetGroupKey?.get(activeDesign.targetGroupKey)
+      : undefined) ?? selection;
 
   return (
     <>
@@ -93,8 +99,15 @@ export function SheinDesignPreviewGrid({
               >
                 <div className="space-y-3 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-zinc-900">
-                      款式 {index + 1}
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-zinc-900">
+                        款式 {index + 1}
+                      </div>
+                      {design.targetGroupLabel ? (
+                        <div className="mt-1 text-xs font-medium text-zinc-500">
+                          {design.targetGroupLabel}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <div
@@ -242,10 +255,10 @@ export function SheinDesignPreviewGrid({
       <SheinDesignLightbox
         activeView={activePreviewView}
         design={activeDesign}
-        key={`${activeDesign?.id ?? "none"}:${selection?.variantId ?? 0}`}
+        key={`${activeDesign?.id ?? "none"}:${activeSelectionForPreview?.variantId ?? 0}`}
         onClose={() => setActivePreviewId("")}
         onViewChange={setActivePreviewView}
-        selection={selection}
+        selection={activeSelectionForPreview}
       />
     </>
   );

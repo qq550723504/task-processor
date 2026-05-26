@@ -48,6 +48,7 @@ function renderPanel(options?: {
       creatingError=""
       creatingMessage=""
       generationError=""
+      groupedImageMode="shared_by_size"
       imageStrategy={options?.imageStrategy ?? "ai_generated"}
       isCreatingTasks={false}
       isGenerating={false}
@@ -70,6 +71,7 @@ function renderPanel(options?: {
       subscriptionBlockedMessage={options?.subscriptionBlockedMessage ?? ""}
       variationIntensity="medium"
       setArtworkModel={() => undefined}
+      setGroupedImageMode={() => undefined}
       setImageStrategy={() => undefined}
       setProductImageCount={() => undefined}
       setProductImagePrompt={() => undefined}
@@ -131,6 +133,7 @@ describe("SheinStudioGenerationPanel", () => {
         creatingError=""
         creatingMessage=""
         generationError=""
+        groupedImageMode="shared_by_size"
         imageStrategy="ai_generated"
         isCreatingTasks={false}
         isGenerating={false}
@@ -153,6 +156,7 @@ describe("SheinStudioGenerationPanel", () => {
         subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
+        setGroupedImageMode={() => undefined}
         setImageStrategy={() => undefined}
         setProductImageCount={() => undefined}
         setProductImagePrompt={() => undefined}
@@ -213,6 +217,7 @@ describe("SheinStudioGenerationPanel", () => {
         creatingError=""
         creatingMessage=""
         generationError=""
+        groupedImageMode="shared_by_size"
         imageStrategy="ai_generated"
         isCreatingTasks={false}
         isGenerating={true}
@@ -235,6 +240,7 @@ describe("SheinStudioGenerationPanel", () => {
         subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
+        setGroupedImageMode={() => undefined}
         setImageStrategy={() => undefined}
         setProductImageCount={() => undefined}
         setProductImagePrompt={() => undefined}

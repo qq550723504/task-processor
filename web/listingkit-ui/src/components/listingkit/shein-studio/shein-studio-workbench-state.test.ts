@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+  DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
@@ -20,6 +21,7 @@ describe("buildInitialSheinStudioWorkbenchState", () => {
     expect(buildInitialSheinStudioWorkbenchState()).toMatchObject({
       artworkModel: DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
       imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+      groupedImageMode: DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
       productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
       variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
       groupedSelections: [],
@@ -72,6 +74,7 @@ describe("sheinStudioWorkbenchReducer", () => {
         transparentBackground: true,
         sheinStoreId: "42",
         imageStrategy: "hybrid",
+        groupedImageMode: "per_product",
         selectedSdsImages: [],
         groupedSelections: [
           {
@@ -102,6 +105,7 @@ describe("sheinStudioWorkbenchReducer", () => {
     expect(next.prompt).toBe("draft prompt");
     expect(next.designs).toHaveLength(1);
     expect(next.groupedSelections).toHaveLength(1);
+    expect(next.groupedImageMode).toBe("per_product");
     expect(next.renderSizeImagesWithSds).toBe(false);
   });
 
@@ -143,6 +147,7 @@ describe("sheinStudioWorkbenchReducer", () => {
     expect(next.prompt).toBe("batch prompt");
     expect(next.sheinStoreId).toBe(DEFAULT_SHEIN_STORE_ID);
     expect(next.imageStrategy).toBe(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
+    expect(next.groupedImageMode).toBe(DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE);
     expect(next.groupedSelections).toHaveLength(1);
   });
 });

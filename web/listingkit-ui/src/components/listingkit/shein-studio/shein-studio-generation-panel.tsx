@@ -16,6 +16,7 @@ import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selec
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -29,6 +30,7 @@ export function SheinStudioGenerationPanel({
   creatingError,
   creatingMessage,
   generationError,
+  groupedImageMode,
   artworkModel,
   imageStrategy,
   isCreatingTasks,
@@ -54,6 +56,7 @@ export function SheinStudioGenerationPanel({
   subscriptionBlockedMessage,
   variationIntensity,
   setImageStrategy,
+  setGroupedImageMode,
   setSelectedSdsImages,
   setArtworkModel,
   setProductImageCount,
@@ -73,6 +76,7 @@ export function SheinStudioGenerationPanel({
   creatingError: string;
   creatingMessage: string;
   generationError: string;
+  groupedImageMode: SheinStudioGroupedImageMode;
   artworkModel: SheinStudioArtworkModel;
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
@@ -98,6 +102,7 @@ export function SheinStudioGenerationPanel({
   subscriptionBlockedMessage: string;
   variationIntensity: SheinStudioVariationIntensity;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
+  setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setProductImageCount: (value: string) => void;
@@ -142,9 +147,11 @@ export function SheinStudioGenerationPanel({
         <ArtworkGenerationSettings
           artworkModel={artworkModel}
           disabled={isGenerating}
+          groupedImageMode={groupedImageMode}
           prompt={prompt}
           promptInputRef={promptInputRef}
           setArtworkModel={setArtworkModel}
+          setGroupedImageMode={setGroupedImageMode}
           setPrompt={setPrompt}
           setStyleCount={setStyleCount}
           setTransparentBackground={setTransparentBackground}

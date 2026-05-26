@@ -1,5 +1,6 @@
 import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+  DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
@@ -11,6 +12,7 @@ import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
@@ -29,6 +31,7 @@ export type SheinStudioWorkbenchState = {
   transparentBackground: boolean;
   sheinStoreId: string;
   imageStrategy: SheinStudioImageStrategy;
+  groupedImageMode: SheinStudioGroupedImageMode;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   groupedSelections: GroupedSDSSelectionEligibility[];
   renderSizeImagesWithSds: boolean;
@@ -73,6 +76,7 @@ export type SheinStudioWorkbenchDraftPatch = Pick<
   | "transparentBackground"
   | "sheinStoreId"
   | "imageStrategy"
+  | "groupedImageMode"
   | "selectedSdsImages"
   | "groupedSelections"
   | "renderSizeImagesWithSds"
@@ -120,6 +124,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     transparentBackground: false,
     sheinStoreId: DEFAULT_SHEIN_STORE_ID,
     imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+    groupedImageMode: DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
     selectedSdsImages: [],
     groupedSelections: [],
     renderSizeImagesWithSds: true,
@@ -216,6 +221,8 @@ export function sheinStudioWorkbenchReducer(
         sheinStoreId: action.batch.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
         imageStrategy:
           action.batch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+        groupedImageMode:
+          action.batch.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
         selectedSdsImages: action.batch.selectedSdsImages ?? [],
         groupedSelections: action.batch.groupedSelections ?? [],
         renderSizeImagesWithSds: action.batch.renderSizeImagesWithSds ?? true,

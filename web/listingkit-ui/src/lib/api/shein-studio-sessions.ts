@@ -12,6 +12,7 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -41,6 +42,7 @@ export type StudioSessionDetailResponse = {
     product_image_prompts?: SheinStudioProductImagePrompt[];
     artwork_model?: SheinStudioArtworkModel;
     image_strategy?: SheinStudioImageStrategy;
+    grouped_image_mode?: SheinStudioGroupedImageMode;
     selected_sds_images?: SheinStudioSelectedSDSImage[];
     grouped_selections?: Array<Record<string, unknown>>;
     transparent_background?: boolean;
@@ -64,6 +66,8 @@ export type StudioSessionDetailResponse = {
     review_note?: string;
     role?: string;
     role_label?: string;
+    target_group_key?: string;
+    target_group_label?: string;
     product_image_urls?: string[];
     approved?: boolean;
   }>;
@@ -81,6 +85,7 @@ type StudioBatchListResponse = {
     product_image_prompts?: SheinStudioProductImagePrompt[];
     artwork_model?: SheinStudioArtworkModel;
     image_strategy?: SheinStudioImageStrategy;
+    grouped_image_mode?: SheinStudioGroupedImageMode;
     transparent_background?: boolean;
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
@@ -160,6 +165,7 @@ export async function updateSheinStudioSession(
     productImagePrompts?: SheinStudioProductImagePrompt[];
     artworkModel?: string;
     imageStrategy?: string;
+    groupedImageMode?: SheinStudioGroupedImageMode;
     selectedSdsImages?: SheinStudioSelectedSDSImage[];
     groupedSelections?: GroupedSDSSelectionEligibility[];
     transparentBackground?: boolean;
@@ -185,6 +191,7 @@ export async function updateSheinStudioSession(
         product_image_prompts: patch.productImagePrompts,
         artwork_model: patch.artworkModel,
         image_strategy: patch.imageStrategy,
+        grouped_image_mode: patch.groupedImageMode,
         selected_sds_images: patch.selectedSdsImages,
         grouped_selections: patch.groupedSelections?.map(groupedSelectionToPayload),
         transparent_background: patch.transparentBackground,
@@ -227,6 +234,8 @@ export async function replaceSheinStudioSessionDesigns(
           review_note: design.reviewNote,
           role: design.role,
           role_label: design.roleLabel,
+          target_group_key: design.targetGroupKey,
+          target_group_label: design.targetGroupLabel,
           product_image_urls: design.productImageUrls,
         })),
       },
@@ -269,6 +278,7 @@ export async function upsertSheinStudioSessionBatch(
     productImagePrompts?: SheinStudioProductImagePrompt[];
     artworkModel?: string;
     imageStrategy?: string;
+    groupedImageMode?: SheinStudioGroupedImageMode;
     selectedSdsImages?: SheinStudioSelectedSDSImage[];
     transparentBackground?: boolean;
     renderSizeImagesWithSds?: boolean;
@@ -295,6 +305,7 @@ export async function upsertSheinStudioSessionBatch(
         product_image_prompts: input.productImagePrompts,
         artwork_model: input.artworkModel,
         image_strategy: input.imageStrategy,
+        grouped_image_mode: input.groupedImageMode,
         selected_sds_images: input.selectedSdsImages,
         transparent_background: input.transparentBackground,
         render_size_images_with_sds: input.renderSizeImagesWithSds,
@@ -314,6 +325,8 @@ export async function upsertSheinStudioSessionBatch(
           review_note: design.reviewNote,
           role: design.role,
           role_label: design.roleLabel,
+          target_group_key: design.targetGroupKey,
+          target_group_label: design.targetGroupLabel,
           product_image_urls: design.productImageUrls,
         })),
       },
@@ -360,6 +373,7 @@ export function mapStudioSessionDetailToDraft(
     transparentBackground: detail.session.transparent_background ?? false,
     sheinStoreId: detail.session.shein_store_id ?? "",
     imageStrategy: detail.session.image_strategy,
+    groupedImageMode: detail.session.grouped_image_mode,
     selectedSdsImages: normalizeSelectedSDSImages(detail.session.selected_sds_images),
     renderSizeImagesWithSds: detail.session.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(detail.session.selection)?.variantId,
@@ -381,6 +395,8 @@ export function mapStudioSessionDetailToDraft(
         reviewNote: design.review_note,
         role: design.role,
         roleLabel: design.role_label,
+        targetGroupKey: design.target_group_key,
+        targetGroupLabel: design.target_group_label,
         productImageUrls: design.product_image_urls,
       })) ?? [],
     selectedIds,
@@ -507,6 +523,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     transparentBackground: item.transparent_background ?? false,
     sheinStoreId: item.shein_store_id ?? "",
     imageStrategy: item.image_strategy,
+    groupedImageMode: item.grouped_image_mode,
     selectedSdsImages: normalizeSelectedSDSImages(undefined),
     renderSizeImagesWithSds: item.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(item.selection)?.variantId,

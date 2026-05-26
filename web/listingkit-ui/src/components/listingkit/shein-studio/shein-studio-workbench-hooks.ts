@@ -12,6 +12,7 @@ import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -39,6 +40,7 @@ type WorkbenchDraftState = {
   createdTasks: SheinStudioCreatedTask[];
   designs: SheinStudioGeneratedDesign[];
   imageStrategy: SheinStudioImageStrategy;
+  groupedImageMode: SheinStudioGroupedImageMode;
   isCreatingTasks: boolean;
   isGenerating: boolean;
   isLoadingWorkspace: boolean;
@@ -167,6 +169,7 @@ export function useSheinStudioDraftPersistence(state: WorkbenchDraftState) {
         transparentBackground: state.transparentBackground,
         sheinStoreId: state.sheinStoreId,
         imageStrategy: state.imageStrategy,
+        groupedImageMode: state.groupedImageMode,
         selectedSdsImages: state.selectedSdsImages,
         renderSizeImagesWithSds: state.renderSizeImagesWithSds,
         selection: state.activeSelection,

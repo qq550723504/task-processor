@@ -128,6 +128,8 @@ describe("shein studio design metadata", () => {
           imageModel: "gpt-image-2",
           transparentBackground: true,
           variationIntensity: "light",
+          targetGroupKey: "size:1200x1200",
+          targetGroupLabel: "1200 x 1200",
         },
       ],
     });
@@ -142,6 +144,8 @@ describe("shein studio design metadata", () => {
               image_model: "gpt-image-2",
               transparent_background: true,
               variation_intensity: "light",
+              target_group_key: "size:1200x1200",
+              target_group_label: "1200 x 1200",
             }),
           ],
         }),
@@ -181,6 +185,8 @@ describe("shein studio design metadata", () => {
           image_model: "gpt-image-2",
           transparent_background: true,
           variation_intensity: "light",
+          target_group_key: "size:1200x1200",
+          target_group_label: "1200 x 1200",
         },
       ],
     });
@@ -190,6 +196,8 @@ describe("shein studio design metadata", () => {
       imageModel: "gpt-image-2",
       transparentBackground: true,
       variationIntensity: "light",
+      targetGroupKey: "size:1200x1200",
+      targetGroupLabel: "1200 x 1200",
     });
     expect(draft?.groupedSelections).toEqual([
       expect.objectContaining({
@@ -211,6 +219,7 @@ describe("shein studio design metadata", () => {
     });
 
     await updateSheinStudioSession("session-1", {
+      groupedImageMode: "per_product",
       groupedSelections: [
         {
           selectionId: "1:200:101:layer-2:101",
@@ -235,6 +244,7 @@ describe("shein studio design metadata", () => {
       "/studio/sessions/session-1",
       expect.objectContaining({
         body: expect.objectContaining({
+          grouped_image_mode: "per_product",
           grouped_selections: [
             expect.objectContaining({
               selection_id: "1:200:101:layer-2:101",
@@ -256,6 +266,7 @@ describe("shein studio design metadata", () => {
     await upsertSheinStudioSessionBatch({
       prompt: "retro botanical clock",
       styleCount: "2",
+      groupedImageMode: "shared_by_size",
       selection: {
         productId: 1,
         parentProductId: 1,
@@ -292,6 +303,7 @@ describe("shein studio design metadata", () => {
       "/studio/batches",
       expect.objectContaining({
         body: expect.objectContaining({
+          grouped_image_mode: "shared_by_size",
           grouped_selections: [
             expect.objectContaining({
               selection_id: "1:200:101:layer-2:101",

@@ -66,6 +66,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-design-preview-grid", () => 
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", () => ({
   SheinStudioGenerationPanel: (props: {
+    groupedImageMode?: string;
     generationError?: string;
     onGenerate: () => void;
     prompt: string;
@@ -632,6 +633,58 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByText("批量候选池")).toBeInTheDocument(),
     );
     expect(screen.getByText("hoodie")).toBeInTheDocument();
+  });
+
+  it("passes the grouped image mode into the generation panel", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "sds_official",
+      groupedImageMode: "per_product",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() => expect(loadSheinStudioDraft).toHaveBeenCalled());
+    expect(lastGenerationPanelProps?.groupedImageMode).toBe("per_product");
+  });
+
+  it("allows a ready candidate with a different printable size to join grouped creation", async () => {
+    useSDSGroupedCandidates.mockReturnValue([
+      {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 101,
+        prototypeGroupId: 200,
+        layerId: "layer-2",
+        productName: "hoodie",
+        variantLabel: "L / white",
+        printableWidth: 1400,
+        printableHeight: 1000,
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    const addButton = await screen.findByRole("button", { name: "加入分组" });
+    expect(addButton).toBeEnabled();
+    expect(
+      screen.queryByText("印刷宽度与当前主商品不一致，先不要混在同一批创建。"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows grouped-candidate recovery guidance after returning from candidate pool", async () => {

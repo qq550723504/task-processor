@@ -1,10 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/shein-studio-progress-strip";
+import { buildGroupedGenerationTargets } from "@/lib/shein-studio/grouped-image-mode";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
 } from "@/lib/types/shein-studio";
 
@@ -71,6 +74,8 @@ export function SheinStudioReviewStep({
   createdTaskCount,
   createActionDisabledReason,
   designs,
+  groupedImageMode,
+  groupedSelections,
   imageStrategy,
   isCreatingTasks,
   onBackToGenerate,
@@ -87,6 +92,8 @@ export function SheinStudioReviewStep({
   createdTaskCount: number;
   createActionDisabledReason?: string;
   designs: SheinStudioGeneratedDesign[];
+  groupedImageMode: SheinStudioGroupedImageMode;
+  groupedSelections: GroupedSDSSelectionEligibility[];
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   onBackToGenerate: () => void;
@@ -100,6 +107,14 @@ export function SheinStudioReviewStep({
   selectedIds: string[];
   selection?: SDSProductVariantSelection;
 }) {
+  const selectionByTargetGroupKey = new Map(
+    buildGroupedGenerationTargets({
+      activeSelection: selection,
+      groupedSelections: groupedSelections.map((item) => item.selection),
+      groupedImageMode,
+    }).map((target) => [target.key, target.selection] as const),
+  );
+
   return (
     <div id="shein-style-review" className="scroll-mt-6">
       <SheinStudioProgressStrip
@@ -122,6 +137,7 @@ export function SheinStudioReviewStep({
         renderSizeImagesWithSds={renderSizeImagesWithSds}
         selectedIds={selectedIds}
         selection={selection}
+        selectionByTargetGroupKey={selectionByTargetGroupKey}
       />
     </div>
   );

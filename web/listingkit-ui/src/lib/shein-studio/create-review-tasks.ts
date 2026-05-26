@@ -7,14 +7,22 @@ import {
   buildSDSVariantReferenceImageUrls,
 } from "@/lib/shein-studio/sds-reference-images";
 import {
+  buildSharedBySizeGroupKey,
+  resolveDesignTargetKey,
+} from "@/lib/shein-studio/grouped-image-mode";
+import {
   type SDSListingKitVariantMetadata,
   loadSDSListingKitMetadata,
 } from "@/lib/sds/product-metadata";
 import type { SDSProductVariantSelection, SDSSelectedProductVariant } from "@/lib/types/sds";
-import type { GroupedSDSSelectionInput } from "@/lib/types/sds-baseline";
+import {
+  buildGroupedSDSSelectionID,
+  type GroupedSDSSelectionInput,
+} from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -30,6 +38,7 @@ type CreateSheinReviewTasksInput = Parameters<typeof createSheinReviewTasks>[0];
 type CreateGroupedSheinReviewTasksInput = {
   prompt: string;
   imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
   productImageCount?: string;
   productImagePrompt?: string;
@@ -421,6 +430,13 @@ export async function createGroupedSheinReviewTasks(
         );
       }
 
+      const selectionDesigns = selectDesignsForGroupedSelection({
+        groupedImageMode: input.groupedImageMode ?? "shared_by_size",
+        designs: group.designs,
+        selectedIds: group.selectedIds,
+        selection: item.selection,
+      });
+
       const tasks = await createReviewTasks({
         prompt: input.prompt,
         sheinStoreId: group.sheinStoreId,
@@ -431,8 +447,8 @@ export async function createGroupedSheinReviewTasks(
         productImagePrompts: input.productImagePrompts,
         renderSizeImagesWithSds: input.renderSizeImagesWithSds,
         selection: item.selection,
-        designs: group.designs,
-        selectedIds: group.selectedIds,
+        designs: selectionDesigns.designs,
+        selectedIds: selectionDesigns.selectedIds,
         onProgress: input.onProgress,
       });
       created.push(...tasks);
@@ -440,4 +456,37 @@ export async function createGroupedSheinReviewTasks(
   }
 
   return created;
+}
+
+function selectDesignsForGroupedSelection({
+  groupedImageMode,
+  designs,
+  selectedIds,
+  selection,
+}: {
+  groupedImageMode: SheinStudioGroupedImageMode;
+  designs: SheinStudioGeneratedDesign[];
+  selectedIds: string[];
+  selection: SDSProductVariantSelection;
+}) {
+  const selectedDesigns = designs.filter((design) => selectedIds.includes(design.id));
+  const targetKey =
+    groupedImageMode === "per_product"
+      ? buildGroupedSDSSelectionID(selection)
+      : buildSharedBySizeGroupKey(selection);
+  const matchedDesigns = selectedDesigns.filter(
+    (design) => resolveDesignTargetKey(design, selection, groupedImageMode) === targetKey,
+  );
+
+  if (matchedDesigns.length === 0) {
+    return {
+      designs,
+      selectedIds,
+    };
+  }
+
+  return {
+    designs: matchedDesigns,
+    selectedIds: matchedDesigns.map((design) => design.id),
+  };
 }

@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
+import { buildGroupedGenerationTargets } from "@/lib/shein-studio/grouped-image-mode";
 import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 import {
@@ -169,9 +170,11 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         next.transparentBackground ?? currentBatch.transparentBackground,
       sheinStoreId: next.sheinStoreId ?? currentBatch.sheinStoreId,
       imageStrategy: next.imageStrategy ?? currentBatch.imageStrategy,
+      groupedImageMode: next.groupedImageMode ?? currentBatch.groupedImageMode,
       renderSizeImagesWithSds:
         next.renderSizeImagesWithSds ?? currentBatch.renderSizeImagesWithSds,
       selection: next.selection ?? currentBatch.selection,
+      groupedSelections: next.groupedSelections ?? currentBatch.groupedSelections,
       designs: next.designs ?? currentBatch.designs,
       selectedIds: next.selectedIds ?? currentBatch.selectedIds,
       createdTasks: next.createdTasks ?? currentBatch.createdTasks,
@@ -203,6 +206,16 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       ),
     });
   }
+
+  const selectionByTargetGroupKey = new Map(
+    buildGroupedGenerationTargets({
+      activeSelection: currentBatch.selection,
+      groupedSelections: (currentBatch.groupedSelections ?? []).map(
+        (item) => item.selection,
+      ),
+      groupedImageMode: currentBatch.groupedImageMode ?? "shared_by_size",
+    }).map((target) => [target.key, target.selection] as const),
+  );
 
   async function handleCreateTasks() {
     setActionError("");
@@ -332,6 +345,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         renderSizeImagesWithSds={currentBatch.renderSizeImagesWithSds ?? true}
         selectedIds={currentBatch.selectedIds}
         selection={currentBatch.selection}
+        selectionByTargetGroupKey={selectionByTargetGroupKey}
       />
     </div>
   );

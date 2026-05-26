@@ -15,6 +15,7 @@ describe("buildSheinStudioDraftInput", () => {
       transparentBackground: false,
       sheinStoreId: "7",
       imageStrategy: "ai_generated",
+      groupedImageMode: "shared_by_size",
       selectedSdsImages: [
         {
           imageUrl: "https://example.com/sds-main.jpg",

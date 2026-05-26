@@ -16,6 +16,8 @@ export type SheinStudioGeneratedDesign = {
   role?: string;
   roleLabel?: string;
   reviewNote?: string;
+  targetGroupKey?: string;
+  targetGroupLabel?: string;
 };
 
 export type SheinStudioImageStrategy =
@@ -25,6 +27,7 @@ export type SheinStudioImageStrategy =
 
 export type SheinStudioArtworkModel = string;
 export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
+export type SheinStudioGroupedImageMode = "shared_by_size" | "per_product";
 
 export type SheinStudioProductImagePrompt = {
   role: string;
@@ -84,6 +87,7 @@ export type SheinStudioSavedBatch = {
   transparentBackground?: boolean;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
   renderSizeImagesWithSds?: boolean;
   selectionVariantId?: number;

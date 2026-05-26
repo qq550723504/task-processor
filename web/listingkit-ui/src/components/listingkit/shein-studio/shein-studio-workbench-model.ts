@@ -5,6 +5,7 @@ import {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+  DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
@@ -159,6 +160,8 @@ export function mergeSheinStudioDraftState({
     transparentBackground: draft?.transparentBackground ?? false,
     sheinStoreId: draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
     imageStrategy: draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+    groupedImageMode:
+      draft?.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
     selectedSdsImages: draft?.selectedSdsImages ?? [],
     groupedSelections: draft?.groupedSelections ?? [],
     renderSizeImagesWithSds: draft?.renderSizeImagesWithSds ?? true,

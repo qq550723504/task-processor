@@ -18,6 +18,7 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -36,6 +37,7 @@ export type SheinStudioSaveInput = {
   transparentBackground?: boolean;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
   renderSizeImagesWithSds?: boolean;
   selection?: SDSProductVariantSelection;
@@ -111,6 +113,7 @@ export async function saveSheinStudioDraftWithOptions(
       productImagePrompts: input.productImagePrompts,
       artworkModel: input.artworkModel,
       imageStrategy: input.imageStrategy,
+      groupedImageMode: input.groupedImageMode,
       selectedSdsImages: input.selectedSdsImages,
       transparentBackground: input.transparentBackground,
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,
@@ -179,6 +182,7 @@ export async function saveSheinStudioBatch(input: SheinStudioSaveInput) {
       productImagePrompts: input.productImagePrompts,
       artworkModel: input.artworkModel,
       imageStrategy: input.imageStrategy,
+      groupedImageMode: input.groupedImageMode,
       selectedSdsImages: input.selectedSdsImages,
       transparentBackground: input.transparentBackground,
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,

@@ -94,6 +94,7 @@ export function useSheinStudioWorkspaceLoader({
             transparentBackground: draftState.transparentBackground,
             sheinStoreId: draftState.sheinStoreId,
             imageStrategy: draftState.imageStrategy,
+            groupedImageMode: draftState.groupedImageMode,
             selectedSdsImages: draftState.selectedSdsImages,
             groupedSelections: draftState.groupedSelections,
             renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,

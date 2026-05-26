@@ -8,6 +8,7 @@ import type {
   SheinStudioArtworkModel,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -23,6 +24,8 @@ export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
 export const DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT = "5";
 export const DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL: SheinStudioArtworkModel =
   "";
+export const DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE: SheinStudioGroupedImageMode =
+  "shared_by_size";
 export const DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY: SheinStudioVariationIntensity =
   "medium";
 export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
@@ -103,6 +106,14 @@ export function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {
     : DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL;
 }
 
+export function normalizeGroupedImageMode(
+  value: unknown,
+): SheinStudioGroupedImageMode {
+  return value === "per_product" || value === "shared_by_size"
+    ? value
+    : DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE;
+}
+
 export function normalizeVariationIntensity(
   value: unknown,
 ): SheinStudioVariationIntensity {
@@ -119,6 +130,18 @@ export function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDe
     (typeof (item as SheinStudioGeneratedDesign).dataUrl === "string" ||
       typeof (item as SheinStudioGeneratedDesign).imageUrl === "string")
   );
+}
+
+function normalizeGeneratedDesign(item: SheinStudioGeneratedDesign) {
+  return {
+    ...item,
+    targetGroupKey:
+      typeof item.targetGroupKey === "string" ? item.targetGroupKey.trim() : undefined,
+    targetGroupLabel:
+      typeof item.targetGroupLabel === "string"
+        ? item.targetGroupLabel.trim()
+        : undefined,
+  } satisfies SheinStudioGeneratedDesign;
 }
 
 export function isCreatedTask(item: unknown): item is SheinStudioCreatedTask {
@@ -210,12 +233,15 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     transparentBackground: raw.transparentBackground ?? false,
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
+    groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),
     selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
     groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
-    designs: Array.isArray(raw.designs) ? raw.designs.filter(isGeneratedDesign) : [],
+    designs: Array.isArray(raw.designs)
+      ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+      : [],
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : [],
@@ -244,12 +270,15 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     transparentBackground: raw.transparentBackground ?? false,
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
+    groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),
     selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
     groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
-    designs: Array.isArray(raw.designs) ? raw.designs.filter(isGeneratedDesign) : [],
+    designs: Array.isArray(raw.designs)
+      ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+      : [],
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : [],

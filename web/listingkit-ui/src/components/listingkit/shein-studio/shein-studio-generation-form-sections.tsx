@@ -13,8 +13,10 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-generation-sections";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
+import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -24,9 +26,11 @@ import type {
 export function ArtworkGenerationSettings({
   artworkModel,
   disabled,
+  groupedImageMode,
   prompt,
   promptInputRef,
   setArtworkModel,
+  setGroupedImageMode,
   setPrompt,
   setStyleCount,
   setTransparentBackground,
@@ -38,9 +42,11 @@ export function ArtworkGenerationSettings({
 }: {
   artworkModel: SheinStudioArtworkModel;
   disabled?: boolean;
+  groupedImageMode: SheinStudioGroupedImageMode;
   prompt: string;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
+  setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setPrompt: (value: string) => void;
   setStyleCount: (value: string) => void;
   setTransparentBackground: (value: boolean) => void;
@@ -81,6 +87,25 @@ export function ArtworkGenerationSettings({
         setValue={setStyleCount}
         value={styleCount}
       />
+      <Label className="space-y-2">
+        <span className="text-sm font-medium text-zinc-700">分组出图策略</span>
+        <Select
+          className="rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+          disabled={disabled}
+          onChange={(event) =>
+            setGroupedImageMode(
+              event.target.value as SheinStudioGroupedImageMode,
+            )
+          }
+          value={groupedImageMode}
+        >
+          <option value="shared_by_size">同尺寸共图（推荐）</option>
+          <option value="per_product">每商品独立出图</option>
+        </Select>
+        <p className="text-xs leading-6 text-zinc-600">
+          同尺寸共图会按 printable size 自动复用款式图；每商品独立出图会为每个 SDS 商品分别生成。
+        </p>
+      </Label>
       {showVariationIntensity ? (
         <Label className="space-y-2">
           <span className="text-sm font-medium text-zinc-700">变化强度</span>
@@ -223,7 +248,7 @@ export function ProductImageGenerationSettings({
             </option>
             {enabledProfiles.map((item) => (
               <option key={item.id ?? item.store_id} value={String(item.store_id)}>
-                {formatStoreProfileOption(item)}
+                {formatSheinStoreOptionLabel(item)}
               </option>
             ))}
           </Select>
@@ -302,15 +327,4 @@ export function ProductImageGenerationSettings({
       />
     </div>
   );
-}
-
-function formatStoreProfileOption(item: {
-  store_id: number;
-  store?: { name?: string; store_id?: string; region?: string };
-  site?: string;
-}) {
-  const primary =
-    item.store?.name?.trim() || item.store?.store_id?.trim() || `店铺 ${item.store_id}`;
-  const meta = [item.store?.region?.trim(), item.site?.trim()].filter(Boolean).join(" / ");
-  return meta ? `${primary} (${meta})` : primary;
 }

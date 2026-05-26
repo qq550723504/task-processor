@@ -43,6 +43,7 @@ import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
+import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { getCurrentSubscription } from "@/lib/api/subscription";
@@ -113,6 +114,9 @@ export function SheinStudioWorkbench({
       setGenerationWarningAction: (
         value: SheinStudioWorkbenchStateUpdater<"generationWarningAction">,
       ) => setWorkbenchField("generationWarningAction", value),
+      setGroupedImageMode: (
+        value: SheinStudioWorkbenchStateUpdater<"groupedImageMode">,
+      ) => setWorkbenchField("groupedImageMode", value),
       setImageStrategy: (value: SheinStudioWorkbenchStateUpdater<"imageStrategy">) =>
         setWorkbenchField("imageStrategy", value),
       setIsCreatingTasks: (
@@ -176,6 +180,7 @@ export function SheinStudioWorkbench({
     generationError,
     generationWarning,
     generationWarningAction,
+    groupedImageMode,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
@@ -200,6 +205,7 @@ export function SheinStudioWorkbench({
     setArtworkModel,
     setDesigns,
     setDraftWarning,
+    setGroupedImageMode,
     setImageStrategy,
     setGroupedSelections,
     setProductImageCount,
@@ -301,6 +307,13 @@ export function SheinStudioWorkbench({
     subscriptionQuery.data && !studioAccessAllowed
       ? "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。"
       : "";
+  const effectiveCurrentStoreId = (sheinStoreId ?? "").trim() || recommendedStoreId;
+  const currentStoreLabel = useMemo(() => {
+    const matched = enabledProfiles.find(
+      (item) => String(item.store_id) === effectiveCurrentStoreId,
+    );
+    return matched ? formatSheinStoreOptionLabel(matched) : "";
+  }, [effectiveCurrentStoreId, enabledProfiles]);
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
     galleryRatioCheck,
@@ -311,6 +324,7 @@ export function SheinStudioWorkbench({
     artworkModel,
     createdTasks,
     designs,
+    groupedImageMode,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
@@ -522,6 +536,7 @@ export function SheinStudioWorkbench({
       activeSelection,
       artworkModel,
       designs,
+      groupedImageMode,
       imageStrategy,
       navigateToStep,
       persistDraft,
@@ -624,6 +639,8 @@ export function SheinStudioWorkbench({
             activeSelectionBaselineReason={activeSelectionBaseline.reason}
             activeSelectionBaselineStatus={activeSelectionBaseline.status}
             candidates={groupedCandidates}
+            currentStoreId={effectiveCurrentStoreId}
+            currentStoreLabel={currentStoreLabel}
             groupedSelections={groupedSelections}
             onAddSelection={(candidate) =>
               setGroupedSelections((current) => {
@@ -644,6 +661,15 @@ export function SheinStudioWorkbench({
                   },
                 ];
               })
+            }
+            onBulkUpdateSelectionStore={(selectionIds, storeId) =>
+              setGroupedSelections((current) =>
+                current.map((item) =>
+                  selectionIds.includes(item.selectionId)
+                    ? { ...item, sheinStoreId: storeId }
+                    : item,
+                ),
+              )
             }
             onRemoveSelection={(selectionId) =>
               setGroupedSelections((current) =>
@@ -673,6 +699,7 @@ export function SheinStudioWorkbench({
             creatingError={creatingError}
             creatingMessage={creatingMessage}
             generationError={generationError}
+            groupedImageMode={groupedImageMode}
             imageStrategy={imageStrategy}
             isCreatingTasks={isCreatingTasks}
             isGenerating={isGenerating}
@@ -694,6 +721,7 @@ export function SheinStudioWorkbench({
             selectionReady={Boolean(activeSelection?.variantId)}
             subscriptionBlockedMessage={subscriptionBlockedMessage}
             setArtworkModel={setArtworkModel}
+            setGroupedImageMode={setGroupedImageMode}
             setImageStrategy={setImageStrategy}
             setProductImageCount={setProductImageCount}
             setProductImagePrompt={setProductImagePrompt}
@@ -721,6 +749,8 @@ export function SheinStudioWorkbench({
           createdTaskCount={createdTasks.length}
           createActionDisabledReason={createActionDisabledReason}
           designs={designs}
+          groupedImageMode={groupedImageMode}
+          groupedSelections={groupedSelections}
           imageStrategy={imageStrategy}
           isCreatingTasks={isCreatingTasks}
           onBackToGenerate={() => navigateToStep("generate")}
@@ -752,26 +782,6 @@ function evaluateGroupedSelectionCompatibility(
   }
   if (activeSelection.variantId === candidate.variantId) {
     return { compatible: false, reason: "当前主商品已经在工作台中，无需重复加入。" };
-  }
-  if (
-    activeSelection.printableWidth &&
-    candidate.printableWidth &&
-    activeSelection.printableWidth !== candidate.printableWidth
-  ) {
-    return {
-      compatible: false,
-      reason: "印刷宽度与当前主商品不一致，先不要混在同一批创建。",
-    };
-  }
-  if (
-    activeSelection.printableHeight &&
-    candidate.printableHeight &&
-    activeSelection.printableHeight !== candidate.printableHeight
-  ) {
-    return {
-      compatible: false,
-      reason: "印刷高度与当前主商品不一致，先不要混在同一批创建。",
-    };
   }
   return { compatible: true, reason: "" };
 }

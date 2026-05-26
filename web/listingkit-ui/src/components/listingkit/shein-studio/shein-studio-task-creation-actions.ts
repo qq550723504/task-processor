@@ -12,6 +12,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
@@ -33,6 +34,7 @@ type PersistDraft = (
 export function useSheinStudioTaskCreationAction({
   activeSelection,
   designs,
+  groupedImageMode,
   imageStrategy,
   navigateToStep,
   persistDraft,
@@ -56,6 +58,7 @@ export function useSheinStudioTaskCreationAction({
 }: {
   activeSelection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
+  groupedImageMode: SheinStudioGroupedImageMode;
   imageStrategy: SheinStudioImageStrategy;
   navigateToStep: (step: SheinStudioStepKey) => void;
   persistDraft: PersistDraft;
@@ -108,6 +111,7 @@ export function useSheinStudioTaskCreationAction({
         groupedSelections.length > 0
           ? await createGroupedSheinReviewTasks({
               prompt,
+              groupedImageMode,
               imageStrategy,
               selectedSdsImages,
               productImageCount,

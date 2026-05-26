@@ -60,6 +60,7 @@ const studioSessionSchema = z
     product_image_prompts: z.array(productImagePromptSchema).optional(),
     artwork_model: z.string().optional(),
     image_strategy: z.string().optional(),
+    grouped_image_mode: z.string().optional(),
     selected_sds_images: z.array(selectedSdsImageSchema).optional(),
     grouped_selections: z.array(groupedSelectionSchema).optional(),
     transparent_background: z.boolean().optional(),
@@ -86,6 +87,8 @@ const studioDesignSchema = z
     review_note: z.string().optional(),
     role: z.string().optional(),
     role_label: z.string().optional(),
+    target_group_key: z.string().optional(),
+    target_group_label: z.string().optional(),
     product_image_urls: z.array(z.string()).optional(),
     approved: z.boolean().optional(),
   })
