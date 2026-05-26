@@ -145,3 +145,17 @@ export type SheinStudioStorageData = {
   draft: SheinStudioDraft | null;
   batches: SheinStudioSavedBatch[];
 };
+
+export type SheinStudioRecentBatchSummary = {
+  id: string;
+  source: "batch" | "local_draft";
+  isRecoverableDraft: boolean;
+  title: string;
+  primaryProductName: string;
+  productCount: number;
+  promptPreview: string;
+  storeSummary: string;
+  designCount: number;
+  createdTaskCount: number;
+  updatedAt: string;
+};
