@@ -45,6 +45,69 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     );
   });
 
+  it("shows state-driven primary actions and emits the selected action", () => {
+    const onSelectSummaryAction = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        onSelectSummaryAction={onSelectSummaryAction}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Generate",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Tasks",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Has Tasks",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T08:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "继续生成" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "去创建任务" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看任务" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "去创建任务" }));
+    expect(onSelectSummaryAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "batch-2" }),
+      "review",
+    );
+  });
+
   it("shows the empty state when no recent batches exist", () => {
     render(
       <SheinStudioRecentBatchesDashboard

@@ -10,6 +10,8 @@ type StoreOption = {
   label: string;
 };
 
+type RecentBatchCardAction = "generate" | "review" | "tasks";
+
 function formatRecentBatchTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -34,6 +36,7 @@ export function SheinStudioRecentBatchesDashboard({
   onOpenBatchQueue,
   onRenameSummary,
   onSelectedSummaryIdsChange,
+  onSelectSummaryAction,
   onSelectSummary,
 }: {
   summaries: SheinStudioRecentBatchSummary[];
@@ -50,6 +53,10 @@ export function SheinStudioRecentBatchesDashboard({
   onRenameSummary?: (summary: SheinStudioRecentBatchSummary, name: string) => void;
   onSelectedSummaryIdsChange?: (
     value: string[] | ((current: string[]) => string[]),
+  ) => void;
+  onSelectSummaryAction?: (
+    summary: SheinStudioRecentBatchSummary,
+    action: RecentBatchCardAction,
   ) => void;
   onSelectSummary: (summary: SheinStudioRecentBatchSummary) => void;
 }) {
@@ -122,6 +129,28 @@ export function SheinStudioRecentBatchesDashboard({
       .filter((summary): summary is SheinStudioRecentBatchSummary => Boolean(summary))
       .map((summary) => summary.id);
     onBulkUpdateStore(ids, bulkStoreId);
+  }
+
+  function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
+    action: RecentBatchCardAction;
+    label: string;
+  } {
+    if (summary.createdTaskCount > 0) {
+      return {
+        action: "tasks",
+        label: "查看任务",
+      };
+    }
+    if (summary.designCount > 0) {
+      return {
+        action: "review",
+        label: "去创建任务",
+      };
+    }
+    return {
+      action: "generate",
+      label: "继续生成",
+    };
   }
 
   return (
@@ -237,6 +266,7 @@ export function SheinStudioRecentBatchesDashboard({
             const isEditing = editingSummaryId === summaryKey;
             const hasDesigns = summary.designCount > 0;
             const hasTasks = summary.createdTaskCount > 0;
+            const primaryAction = primaryActionForSummary(summary);
             return (
               <div
                 className={`rounded-3xl border px-4 py-4 transition ${
@@ -320,11 +350,12 @@ export function SheinStudioRecentBatchesDashboard({
                     </div>
                   </div>
                 ) : (
-                  <button
-                    className="mt-3 w-full text-left"
-                    onClick={() => onSelectSummary(summary)}
-                    type="button"
-                  >
+                  <div className="mt-3">
+                    <button
+                      className="w-full text-left"
+                      onClick={() => onSelectSummary(summary)}
+                      type="button"
+                    >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-zinc-950">
@@ -389,7 +420,29 @@ export function SheinStudioRecentBatchesDashboard({
                         {summary.promptPreview}
                       </p>
                     </div>
-                  </button>
+                    </button>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => {
+                          onSelectSummaryAction?.(summary, primaryAction.action);
+                        }}
+                        size="sm"
+                        type="button"
+                      >
+                        {primaryAction.label}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          onSelectSummary(summary);
+                        }}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        打开批次
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             );

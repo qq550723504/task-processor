@@ -440,6 +440,56 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
+  it("opens a recent batch directly at the review step from the homepage action", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        selectedIds: ["design-1"],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "去创建任务" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+  });
+
+  it("opens a recent batch directly at the tasks step from the homepage action", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        selectedIds: ["design-1"],
+        createdTasks: [{ id: "task-1", title: "Task 1" }],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看任务" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
+    );
+  });
+
   it("starts queue mode from homepage selection and loads the first batch", async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;

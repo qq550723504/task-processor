@@ -691,8 +691,25 @@ export function SheinStudioWorkbench({
       workbench: workbenchController,
     });
 
+  const stepForRecentBatchAction = useCallback(
+    (action?: "generate" | "review" | "tasks"): SheinStudioStepKey => {
+      if (action === "tasks") {
+        return "tasks";
+      }
+      if (action === "review") {
+        return "review";
+      }
+      return "generate";
+    },
+    [],
+  );
+
   const handleSelectRecentBatchSummary = useCallback(
-    (summary: (typeof recentBatchSummaries)[number]) => {
+    (
+      summary: (typeof recentBatchSummaries)[number],
+      action?: "generate" | "review" | "tasks",
+    ) => {
+      const targetStep = stepForRecentBatchAction(action);
       if (summary.source === "local_draft" && localDraftSnapshot) {
         const draftState = mergeSheinStudioDraftState({
           draft: localDraftSnapshot,
@@ -720,12 +737,13 @@ export function SheinStudioWorkbench({
           selectedIds: draftState.selectedIds,
           createdTasks: draftState.createdTasks,
         });
-        setEffectiveStep("generate");
+        setEffectiveStep(targetStep);
         return;
       }
       const batch = savedBatches.find((item) => item.id === summary.id);
       if (batch) {
         handleLoadBatch(batch);
+        setEffectiveStep(targetStep);
       }
     },
     [
@@ -733,6 +751,7 @@ export function SheinStudioWorkbench({
       localDraftSnapshot,
       savedBatches,
       setEffectiveStep,
+      stepForRecentBatchAction,
       workbenchController,
     ],
   );
@@ -1081,6 +1100,7 @@ export function SheinStudioWorkbench({
         onOpenBatchQueue={handleOpenBatchQueue}
         onRenameSummary={handleRenameRecentBatchSummary}
         onSelectedSummaryIdsChange={setSelectedRecentBatchSummaryIds}
+        onSelectSummaryAction={handleSelectRecentBatchSummary}
         onSelectSummary={handleSelectRecentBatchSummary}
         selectedSummaryIds={selectedRecentBatchSummaryIds}
         storeOptions={recentBatchStoreOptions}
