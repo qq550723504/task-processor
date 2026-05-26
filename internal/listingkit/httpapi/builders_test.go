@@ -4,6 +4,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
+
 	"task-processor/internal/core/config"
 
 	"github.com/sirupsen/logrus"
@@ -138,5 +142,22 @@ func TestLocalImageUploadRootDirUsesPublisherOutputDir(t *testing.T) {
 	want := filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
 	if got != want {
 		t.Fatalf("root dir = %q, want %q", got, want)
+	}
+}
+
+func TestAutoMigrateListingKitTaskRepositoryCreatesSDSBaselineCacheTable(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	if err := autoMigrateListingKitTaskRepository(db); err != nil {
+		t.Fatalf("autoMigrateListingKitTaskRepository() error = %v", err)
+	}
+
+	if !db.Migrator().HasTable("listing_kit_sds_baseline_cache") {
+		t.Fatal("expected listing_kit_sds_baseline_cache table to be created")
 	}
 }

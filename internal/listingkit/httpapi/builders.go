@@ -280,12 +280,20 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.CanonicalProductCacheEntry{}); err != nil {
+	if err := autoMigrateListingKitTaskRepository(db); err != nil {
 		return nil, nil, fmt.Errorf("listingkit auto-migrate failed: %w", err)
 	}
 	repo := listingkitstore.NewTaskRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
+}
+
+func autoMigrateListingKitTaskRepository(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&listingkit.Task{},
+		&listingkit.CanonicalProductCacheEntry{},
+		&listingkit.SDSBaselineCacheEntry{},
+	)
 }
 
 func newDBListingKitStudioAsyncJobRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StudioAsyncJobRepository, func() error, error) {
