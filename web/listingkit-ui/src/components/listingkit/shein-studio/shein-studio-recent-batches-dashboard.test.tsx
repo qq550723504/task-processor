@@ -740,10 +740,12 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("Failed Batch")).toBeInTheDocument();
     expect(screen.queryByText("Success Batch")).not.toBeInTheDocument();
     expect(screen.queryByText("Pending Batch")).not.toBeInTheDocument();
+    expect(screen.getByText("当前只显示最近处理失败的批次。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "最近成功 1" }));
     expect(screen.getByText("Success Batch")).toBeInTheDocument();
     expect(screen.queryByText("Failed Batch")).not.toBeInTheDocument();
+    expect(screen.getByText("当前只显示最近处理成功的批次。")).toBeInTheDocument();
   });
 
   it("routes risk alert actions to the matching workbench step", () => {

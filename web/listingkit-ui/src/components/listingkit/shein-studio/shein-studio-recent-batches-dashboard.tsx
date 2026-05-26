@@ -106,6 +106,16 @@ function formatRecentBatchTimestamp(value: string) {
   }).format(date);
 }
 
+function resultFilterDescription(filter: RecentBatchResultFilter) {
+  if (filter === "success") {
+    return "当前只显示最近处理成功的批次。";
+  }
+  if (filter === "failure") {
+    return "当前只显示最近处理失败的批次。";
+  }
+  return "";
+}
+
 export function SheinStudioRecentBatchesDashboard({
   summaries,
   selectedSummaryIds: controlledSelectedSummaryIds,
@@ -924,6 +934,11 @@ export function SheinStudioRecentBatchesDashboard({
           {statusFilter === "risk" && activeRiskLabel ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
               当前只显示包含“{activeRiskLabel}”的风险批次。
+            </div>
+          ) : null}
+          {resultFilter !== "all" ? (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm text-sky-900">
+              {resultFilterDescription(resultFilter)}
             </div>
           ) : null}
         </div>
