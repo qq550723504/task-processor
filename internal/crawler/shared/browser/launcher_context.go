@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,8 +77,8 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 			Height: cl.config.ViewportHeight,
 		}
 		options.UserAgent = playwright.String(userAgent)
-		options.Locale = playwright.String(GetLocaleForRegion(cl.config.ProxyServer))
-		options.TimezoneId = GetTimezoneForRegion(cl.config.ProxyServer)
+		options.Locale = playwright.String(contextLocale(cl.config))
+		options.TimezoneId = contextTimezone(cl.config)
 	} else {
 		options.Viewport = &playwright.Size{
 			Width:  cl.config.ViewportWidth,
@@ -113,7 +114,7 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 		return nil, fmt.Errorf("启动持久化上下文失败: %w", err)
 	}
 	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
-		if err := applyContextStealth(context); err != nil {
+		if err := applyContextFingerprint(context, cl.config, cl.fingerprint); err != nil {
 			context.Close()
 			return nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
 		}
@@ -150,7 +151,7 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 		return nil, nil, fmt.Errorf("创建浏览器上下文失败: %w", err)
 	}
 	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
-		if err := applyContextStealth(context); err != nil {
+		if err := applyContextFingerprint(context, cl.config, cl.fingerprint); err != nil {
 			context.Close()
 			browser.Close()
 			return nil, nil, fmt.Errorf("注入浏览器反检测脚本失败: %w", err)
@@ -160,52 +161,166 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 	return browser, context, nil
 }
 
-func applyContextStealth(context playwright.BrowserContext) error {
+func applyContextFingerprint(context playwright.BrowserContext, cfg *BrowserConfig, fingerprint *FingerprintConfig) error {
 	if context == nil {
 		return nil
 	}
-	script := `
-(() => {
-  const patchGetter = (target, key, getter) => {
-    try {
-      Object.defineProperty(target, key, {
-        get: getter,
-        configurable: true,
-      });
-    } catch (_) {}
-  };
-
-  patchGetter(Navigator.prototype, 'webdriver', () => undefined);
-  patchGetter(Navigator.prototype, 'languages', () => ['zh-CN', 'zh', 'en-US', 'en']);
-  patchGetter(Navigator.prototype, 'language', () => 'zh-CN');
-  patchGetter(Navigator.prototype, 'plugins', () => [
-    { name: 'Chrome PDF Plugin' },
-    { name: 'Chrome PDF Viewer' },
-    { name: 'Native Client' },
-  ]);
-
-  if (!window.chrome) {
-    Object.defineProperty(window, 'chrome', {
-      value: { runtime: {}, app: {} },
-      configurable: true,
-    });
-  } else if (!window.chrome.runtime) {
-    window.chrome.runtime = {};
-  }
-
-  const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
-  if (originalQuery) {
-    window.navigator.permissions.query = (parameters) => (
-      parameters && parameters.name === 'notifications'
-        ? Promise.resolve({ state: Notification.permission })
-        : originalQuery.call(window.navigator.permissions, parameters)
-    );
-  }
-})();
-`
+	headers := map[string]string{
+		"Accept-Language": contextAcceptLanguage(cfg, fingerprint),
+		"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+	}
+	if err := context.SetExtraHTTPHeaders(headers); err != nil {
+		return err
+	}
+	script, err := buildContextFingerprintScript(cfg, fingerprint)
+	if err != nil {
+		return err
+	}
 	return context.AddInitScript(playwright.Script{
 		Content: playwright.String(script),
 	})
+}
+
+func buildContextFingerprintScript(cfg *BrowserConfig, fingerprint *FingerprintConfig) (string, error) {
+	payload := map[string]any{
+		"languages": map[string]any{
+			"http": contextAcceptLanguage(cfg, fingerprint),
+			"js":   contextJSLanguages(cfg, fingerprint),
+		},
+		"platform": platformForScript(cfg),
+		"screen": map[string]int{
+			"width":  cfg.ViewportWidth,
+			"height": cfg.ViewportHeight,
+		},
+		"viewport": map[string]int{
+			"width":  cfg.ViewportWidth,
+			"height": cfg.ViewportHeight,
+		},
+		"gpu": map[string]string{
+			"vendor":   contextGPUVendor(cfg, fingerprint),
+			"renderer": contextGPURenderer(cfg),
+		},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	script := fmt.Sprintf(`
+(() => {
+  const fp = %s;
+  const langList = (fp.languages && fp.languages.js) || ['en-US', 'en'];
+  const platformName = fp.platform || 'Win32';
+  const screenInfo = fp.screen || fp.viewport || { width: 1440, height: 900 };
+  const gpu = fp.gpu || {};
+  const overrideGetter = (obj, key, value) => {
+    try {
+      Object.defineProperty(obj, key, { get: () => value, configurable: true });
+    } catch (_) {}
+  };
+
+  overrideGetter(Navigator.prototype, 'webdriver', false);
+  overrideGetter(Navigator.prototype, 'language', langList[0] || 'en-US');
+  overrideGetter(Navigator.prototype, 'languages', langList);
+  overrideGetter(Navigator.prototype, 'platform', platformName);
+  overrideGetter(Screen.prototype, 'width', screenInfo.width || 1440);
+  overrideGetter(Screen.prototype, 'height', screenInfo.height || 900);
+  overrideGetter(Screen.prototype, 'availWidth', screenInfo.width || 1440);
+  overrideGetter(Screen.prototype, 'availHeight', screenInfo.height || 900);
+
+  const patchWebgl = (proto) => {
+    if (!proto) return;
+    const originalGetParameter = proto.getParameter;
+    proto.getParameter = function(param) {
+      if (param === 37445 && gpu.vendor) return gpu.vendor;
+      if (param === 37446 && gpu.renderer) return gpu.renderer;
+      return originalGetParameter.apply(this, [param]);
+    };
+  };
+
+  patchWebgl(window.WebGLRenderingContext && WebGLRenderingContext.prototype);
+  patchWebgl(window.WebGL2RenderingContext && WebGL2RenderingContext.prototype);
+})();
+`, string(data))
+	return script, nil
+}
+
+func contextLocale(cfg *BrowserConfig) string {
+	if cfg != nil && strings.TrimSpace(cfg.Language) != "" {
+		return strings.TrimSpace(cfg.Language)
+	}
+	return "en-US"
+}
+
+func contextTimezone(cfg *BrowserConfig) *string {
+	value := ""
+	if cfg != nil && strings.TrimSpace(cfg.Timezone) != "" {
+		value = strings.TrimSpace(cfg.Timezone)
+	} else if cfg != nil {
+		if inferred := GetTimezoneForRegion(cfg.ProxyServer); inferred != nil {
+			value = strings.TrimSpace(*inferred)
+		}
+	}
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
+}
+
+func contextAcceptLanguage(cfg *BrowserConfig, fingerprint *FingerprintConfig) string {
+	if cfg != nil && strings.TrimSpace(cfg.AcceptLanguage) != "" {
+		return strings.TrimSpace(cfg.AcceptLanguage)
+	}
+	if fingerprint != nil && strings.TrimSpace(fingerprint.Languages.HTTP) != "" {
+		return strings.TrimSpace(fingerprint.Languages.HTTP)
+	}
+	return "en-US,en;q=0.9"
+}
+
+func contextJSLanguages(cfg *BrowserConfig, fingerprint *FingerprintConfig) []string {
+	if cfg != nil && strings.TrimSpace(cfg.Language) != "" {
+		primary := strings.TrimSpace(cfg.Language)
+		if strings.EqualFold(primary, "en-US") {
+			return []string{"en-US", "en"}
+		}
+		return []string{primary, "en-US", "en"}
+	}
+	if fingerprint != nil && strings.TrimSpace(fingerprint.Languages.JS) != "" {
+		primary := strings.TrimSpace(fingerprint.Languages.JS)
+		if strings.EqualFold(primary, "en-US") {
+			return []string{"en-US", "en"}
+		}
+		return []string{primary, "en-US", "en"}
+	}
+	return []string{"en-US", "en"}
+}
+
+func platformForScript(cfg *BrowserConfig) string {
+	if cfg != nil {
+		switch strings.ToLower(strings.TrimSpace(cfg.FingerprintPlatform)) {
+		case "linux":
+			return "Linux x86_64"
+		case "mac", "macos":
+			return "MacIntel"
+		}
+	}
+	return "Win32"
+}
+
+func contextGPUVendor(cfg *BrowserConfig, fingerprint *FingerprintConfig) string {
+	if cfg != nil && strings.TrimSpace(cfg.FingerprintGPUVendor) != "" {
+		return strings.TrimSpace(cfg.FingerprintGPUVendor)
+	}
+	if fingerprint != nil && strings.TrimSpace(fingerprint.GPU["description"]) != "" {
+		return strings.TrimSpace(fingerprint.GPU["description"])
+	}
+	return ""
+}
+
+func contextGPURenderer(cfg *BrowserConfig) string {
+	if cfg != nil {
+		return strings.TrimSpace(cfg.FingerprintGPURenderer)
+	}
+	return ""
 }
 
 func resolveUserDataDir(dir string) (string, error) {

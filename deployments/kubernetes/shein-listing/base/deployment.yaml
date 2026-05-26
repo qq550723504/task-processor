@@ -5,6 +5,7 @@ metadata:
   namespace: task-processor
   labels:
     app: shein-listing
+    shein-listing-role: service
 spec:
   replicas: 2
   revisionHistoryLimit: 3
@@ -15,6 +16,7 @@ spec:
     metadata:
       labels:
         app: shein-listing
+        shein-listing-role: service
     spec:
       containers:
         - name: shein-listing

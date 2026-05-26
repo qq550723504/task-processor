@@ -2,6 +2,109 @@ package sheinlogin
 
 import "testing"
 
+func TestBuildAutomationBrowserConfigEnablesCloakBrowserMode(t *testing.T) {
+	account := Account{
+		StoreID: 869,
+		Proxy:   "http://10.42.0.1:31069",
+	}
+	cfg := AutomationConfig{
+		Headless:          true,
+		BrowserPath:       "/app/.cloakbrowser/chrome",
+		ChromeVersion:     "144",
+		ChromeDownloadDir: "/app/chrome",
+		ViewportWidth:     1920,
+		ViewportHeight:    1080,
+	}
+
+	managerCfg := buildAutomationBrowserConfig(account, cfg)
+
+	if got := managerCfg.StealthProvider; got != "cloakbrowser" {
+		t.Fatalf("StealthProvider = %q, want %q", got, "cloakbrowser")
+	}
+	if got := managerCfg.FingerprintSeed; got != int32(account.StoreID) {
+		t.Fatalf("FingerprintSeed = %d, want %d", got, account.StoreID)
+	}
+}
+
+func TestBuildAutomationBrowserConfigKeepsDefaultModeForNonCloakBrowser(t *testing.T) {
+	account := Account{StoreID: 869}
+	cfg := AutomationConfig{
+		BrowserPath:    "/app/chromium/chrome",
+		ViewportWidth:  1600,
+		ViewportHeight: 900,
+	}
+
+	managerCfg := buildAutomationBrowserConfig(account, cfg)
+
+	if got := managerCfg.StealthProvider; got != "" {
+		t.Fatalf("StealthProvider = %q, want empty", got)
+	}
+	if got := managerCfg.Language; got != "zh-CN" {
+		t.Fatalf("Language = %q, want %q", got, "zh-CN")
+	}
+	if got := managerCfg.AcceptLanguage; got != "zh-CN,zh;q=0.9,en;q=0.8" {
+		t.Fatalf("AcceptLanguage = %q, want %q", got, "zh-CN,zh;q=0.9,en;q=0.8")
+	}
+	if got := managerCfg.FingerprintPlatform; got != "windows" {
+		t.Fatalf("FingerprintPlatform = %q, want %q", got, "windows")
+	}
+	if got := managerCfg.FingerprintBrand; got != "Chrome" {
+		t.Fatalf("FingerprintBrand = %q, want %q", got, "Chrome")
+	}
+	if got := managerCfg.Timezone; got != "Asia/Shanghai" {
+		t.Fatalf("Timezone = %q, want %q", got, "Asia/Shanghai")
+	}
+	if got := managerCfg.UserAgent; got != "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36" {
+		t.Fatalf("UserAgent = %q", got)
+	}
+	if !managerCfg.SkipDefaultLaunchArgs {
+		t.Fatal("SkipDefaultLaunchArgs should be enabled")
+	}
+	if !managerCfg.UseMinimalFingerprintArgs {
+		t.Fatal("UseMinimalFingerprintArgs should be enabled")
+	}
+	if len(managerCfg.ExtraLaunchArgs) != 1 || managerCfg.ExtraLaunchArgs[0] != "--enable-unsafe-swiftshader" {
+		t.Fatalf("ExtraLaunchArgs = %#v", managerCfg.ExtraLaunchArgs)
+	}
+}
+
+func TestBuildAutomationFingerprintAlignsWithBrowserConfig(t *testing.T) {
+	account := Account{StoreID: 869}
+	cfg := buildAutomationBrowserConfig(account, AutomationConfig{ChromeVersion: "144"})
+
+	fp := buildAutomationFingerprint(account, cfg)
+
+	if fp == nil || !fp.Enable {
+		t.Fatal("fingerprint should be enabled")
+	}
+	if got := fp.Languages.HTTP; got != "zh-CN,zh;q=0.9,en;q=0.8" {
+		t.Fatalf("HTTP language = %q", got)
+	}
+	if got := fp.Languages.JS; got != "zh-CN" {
+		t.Fatalf("JS language = %q", got)
+	}
+	if got := fp.GPU["renderer"]; got != "ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)" {
+		t.Fatalf("GPU renderer = %q", got)
+	}
+}
+
+func TestBuildResponseCaptureItemWithoutBodyPreview(t *testing.T) {
+	item := buildResponseCaptureItem("playwright_page_response", "https://sso.geiwohuo.com/sso/authenticate/login", 200, "")
+
+	if got := item["channel"]; got != "playwright_page_response" {
+		t.Fatalf("channel = %v", got)
+	}
+	if got := item["url"]; got != "https://sso.geiwohuo.com/sso/authenticate/login" {
+		t.Fatalf("url = %v", got)
+	}
+	if got := item["status"]; got != 200 {
+		t.Fatalf("status = %v", got)
+	}
+	if _, ok := item["bodyPreview"]; ok {
+		t.Fatal("bodyPreview should be omitted when body is empty")
+	}
+}
+
 func TestClassifyLoginError(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -134,5 +237,79 @@ func TestClassifyLoginFailureUsesCaptchaSignals(t *testing.T) {
 	}
 	if got := classifyLoginFailure(metadata); got != "LOGIN_FAILED" {
 		t.Fatalf("classifyLoginFailure() = %q, want %q", got, "LOGIN_FAILED")
+	}
+}
+
+func TestClassifyLoginFailureUsesLoginAPIResponse(t *testing.T) {
+	metadata := artifactMetadata{
+		PageState: "login_form",
+		NetworkPayloads: []map[string]any{
+			{
+				"url":         "https://sso.geiwohuo.com/sso/authenticate/login",
+				"status":      200,
+				"bodyPreview": `{"code":"022008","msg":"需验证码后登录","info":{"needValidCode":true}}`,
+			},
+		},
+	}
+
+	if got := classifyLoginFailure(metadata); got != "VERIFY_CODE_REQUIRED" {
+		t.Fatalf("classifyLoginFailure() = %q, want %q", got, "VERIFY_CODE_REQUIRED")
+	}
+}
+
+func TestClassifyLoginFailureFromNetworkPayloadsUsesLoginAPIResponse(t *testing.T) {
+	payloads := []map[string]any{
+		{
+			"url":         "https://sso.geiwohuo.com/sso/authenticate/login",
+			"status":      200,
+			"bodyPreview": `{"code":"022008","msg":"需验证码后登录","info":{"needValidCode":true}}`,
+		},
+	}
+
+	if got := classifyLoginFailureFromNetworkPayloads(payloads); got != "VERIFY_CODE_REQUIRED" {
+		t.Fatalf("classifyLoginFailureFromNetworkPayloads() = %q, want %q", got, "VERIFY_CODE_REQUIRED")
+	}
+}
+
+func TestClassifyLoginFailureFromLoginResponseBodyUsesNeedValidCode(t *testing.T) {
+	body := `{"code":"022008","msg":"需验证码后登录","info":{"needValidCode":true}}`
+	if got := classifyLoginFailureFromLoginResponseBody(body); got != "VERIFY_CODE_REQUIRED" {
+		t.Fatalf("classifyLoginFailureFromLoginResponseBody() = %q, want %q", got, "VERIFY_CODE_REQUIRED")
+	}
+}
+
+func TestNetworkPayloadsRequireVerifyCode(t *testing.T) {
+	payloads := []map[string]any{
+		{
+			"url":         "https://sso.geiwohuo.com/sso/authenticate/login",
+			"status":      200,
+			"bodyPreview": `{"code":"022008","msg":"需验证码后登录","info":{"needValidCode":true}}`,
+		},
+	}
+
+	if got := networkPayloadsRequireVerifyCode(payloads); !got {
+		t.Fatal("networkPayloadsRequireVerifyCode() = false, want true")
+	}
+}
+
+func TestIsDeviceContextReadySnapshot(t *testing.T) {
+	ready := map[string]any{
+		"blackboxLength":           26,
+		"antiInResolvedLength":     64,
+		"armorTokenResolvedLength": 48,
+		"smDeviceIdResolvedLength": 36,
+	}
+	if !isDeviceContextReadySnapshot(ready) {
+		t.Fatal("expected ready snapshot to be treated as ready")
+	}
+
+	notReady := map[string]any{
+		"blackboxLength":           26,
+		"antiInResolvedLength":     0,
+		"armorTokenResolvedLength": 48,
+		"smDeviceIdResolvedLength": 36,
+	}
+	if isDeviceContextReadySnapshot(notReady) {
+		t.Fatal("expected incomplete snapshot to be treated as not ready")
 	}
 }

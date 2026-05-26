@@ -5,6 +5,7 @@ metadata:
   namespace: task-processor
   labels:
     app: shein-listing-shard
+    shein-listing-role: service
 spec:
   serviceName: shein-listing-shard-headless
   replicas: 32
@@ -21,6 +22,7 @@ spec:
     metadata:
       labels:
         app: shein-listing-shard
+        shein-listing-role: service
         shard-mode: auto
     spec:
       affinity:

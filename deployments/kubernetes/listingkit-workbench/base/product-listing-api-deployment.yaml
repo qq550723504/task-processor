@@ -20,6 +20,9 @@ spec:
         - name: product-listing-api
           image: xuwei190/task-processor-product-listing-api:latest
           imagePullPolicy: IfNotPresent
+          env:
+            - name: TASK_PROCESSOR_BROWSER_PATH
+              value: /opt/fingerprint-chrome/chrome-144/chrome
           ports:
             - name: http
               containerPort: 8085

@@ -43,6 +43,13 @@ rules:
     resources: ["deployments"]
     resourceNames: ["login", "postgresql"]
     verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    resourceNames: ["postgresql-v18"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list"]
@@ -79,7 +86,7 @@ data:
     LOGIN_CONFIG_SECRET="${LOGIN_CONFIG_SECRET:-login-config}"
     DATABASE_SECRET="${DATABASE_SECRET:-shein-listing-secret}"
     POSTGRES_NAMESPACE="${POSTGRES_NAMESPACE:-yudao-cloud}"
-    POSTGRES_TARGET="${POSTGRES_TARGET:-deploy/postgresql}"
+    POSTGRES_TARGET="${POSTGRES_TARGET:-statefulset/postgresql-v18}"
     LISTEN_IP="${LISTEN_IP:-10.42.0.1}"
     START="${START:-4}"
     END="${END:-254}"
@@ -116,14 +123,44 @@ data:
     declare -A used_proxy
     declare -A proxy_owner
     duplicate_keys=()
+    found_shop_proxy_map=0
+    in_platforms=0
+    in_shein=0
     in_map=0
     while IFS= read -r line; do
-      if [[ "$line" =~ ^[[:space:]]*shop_proxy_map: ]]; then
-        in_map=1
+      if [[ "$line" =~ ^platforms: ]]; then
+        in_platforms=1
+        in_shein=0
+        in_map=0
         continue
       fi
+      if (( in_platforms )); then
+        if [[ "$line" =~ ^[[:space:]]{2}shein: ]]; then
+          in_shein=1
+          in_map=0
+          continue
+        fi
+        if [[ ! "$line" =~ ^[[:space:]] && -n "${line//[[:space:]]/}" ]]; then
+          in_platforms=0
+          in_shein=0
+          in_map=0
+          continue
+        fi
+      fi
+      if (( in_shein )); then
+        if [[ "$line" =~ ^[[:space:]]{4}shop_proxy_map: ]]; then
+          found_shop_proxy_map=1
+          in_map=1
+          continue
+        fi
+        if [[ "$line" =~ ^[[:space:]]{2}[A-Za-z0-9_-]+: && ! "$line" =~ ^[[:space:]]{4} ]]; then
+          in_shein=0
+          in_map=0
+          continue
+        fi
+      fi
       if (( in_map )); then
-        if [[ "$line" =~ ^[[:space:]]+([0-9]+:[0-9]+):[[:space:]]*(http://[^[:space:]]+) ]]; then
+        if [[ "$line" =~ ^[[:space:]]{6}([0-9]+:[0-9]+):[[:space:]]*(http://[^[:space:]]+) ]]; then
           key="${BASH_REMATCH[1]}"
           proxy="${BASH_REMATCH[2]}"
           shop_map["$key"]="$proxy"
@@ -135,16 +172,11 @@ data:
           fi
           continue
         fi
-        if [[ ! "$line" =~ ^[[:space:]]+ && -n "${line//[[:space:]]/}" ]]; then
+        if [[ ! "$line" =~ ^[[:space:]]{6} && -n "${line//[[:space:]]/}" ]]; then
           in_map=0
         fi
       fi
     done < "$config_path"
-
-    if (( ${#shop_map[@]} == 0 )); then
-      echo "failed to parse existing SHEIN shop_proxy_map; refusing to allocate from an empty map" >&2
-      exit 1
-    fi
 
     store_query="
     select tenant_id, id, coalesce(name, ''), coalesce(proxy, '')
@@ -180,7 +212,7 @@ data:
     }
 
     for key in "${duplicate_keys[@]}"; do
-      old_proxy="${shop_map[$key]}"
+      old_proxy="${shop_map[$key]:-}"
       proxy="$(next_proxy)" || {
         echo "proxy pool exhausted" >&2
         exit 1
@@ -223,7 +255,7 @@ data:
     fi
 
     if (( assigned_count > 0 )); then
-      awk -v add_file="$assigned_lines_path" -v update_file="$updated_lines_path" '
+      awk -v add_file="$assigned_lines_path" -v update_file="$updated_lines_path" -v has_map="$found_shop_proxy_map" '
         BEGIN {
           while ((getline line < add_file) > 0) {
             adds[++add_count] = line
@@ -235,6 +267,7 @@ data:
         }
         function insert_adds() {
           if (!inserted) {
+            if (!has_map) print "    shop_proxy_map:"
             for (i = 1; i <= add_count; i++) print adds[i]
             inserted = 1
           }
@@ -249,6 +282,10 @@ data:
             next
           }
           print
+          if (!has_map && $0 ~ /^  shein:/) {
+            insert_adds()
+            next
+          }
           if ($0 ~ /^    shop_proxy_map:/) {
             in_map = 1
           }

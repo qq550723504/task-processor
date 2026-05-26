@@ -12,7 +12,7 @@ spec:
       - task-processor
   selector:
     matchLabels:
-      app: shein-listing
+      shein-listing-role: service
   podMetricsEndpoints:
     - port: metrics
       path: /metrics

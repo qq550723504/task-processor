@@ -4,7 +4,7 @@ param(
     [string]$LoginConfigSecret = "login-config",
     [string]$DatabaseSecret = "shein-listing-secret",
     [string]$PostgresNamespace = "yudao-cloud",
-    [string]$PostgresTarget = "deploy/postgresql",
+    [string]$PostgresTarget = "statefulset/postgresql-v18",
     [string]$ListenIp = "10.42.0.1",
     [int]$Start = 4,
     [int]$End = 254,

@@ -11,27 +11,30 @@ import (
 
 // BrowserConfig 浏览器配置
 type BrowserConfig struct {
-	Headless                       bool   `json:"headless"`
-	BrowserPath                    string `json:"browserPath,omitempty"`
-	ChromeVersion                  string `json:"chromeVersion,omitempty"`     // fingerprint-chromium 版本（如 "144"）
-	ChromeDownloadDir              string `json:"chromeDownloadDir,omitempty"` // Chrome 下载目录
-	ProxyServer                    string `json:"proxyServer,omitempty"`
-	ViewportWidth                  int    `json:"viewportWidth"`
-	ViewportHeight                 int    `json:"viewportHeight"`
-	UserAgent                      string `json:"userAgent,omitempty"`
-	FingerprintSeed                int32  `json:"fingerprintSeed"`                // 指纹种子
-	FingerprintPlatform            string `json:"fingerprintPlatform"`            // 操作系统类型
-	FingerprintPlatformVersion     string `json:"fingerprintPlatformVersion"`     // 操作系统版本
-	FingerprintBrand               string `json:"fingerprintBrand"`               // 浏览器品牌
-	FingerprintBrandVersion        string `json:"fingerprintBrandVersion"`        // 浏览器版本
-	FingerprintHardwareConcurrency int    `json:"fingerprintHardwareConcurrency"` // CPU核心数
-	FingerprintGPUVendor           string `json:"fingerprintGPUVendor"`           // GPU厂商
-	FingerprintGPURenderer         string `json:"fingerprintGPURenderer"`         // GPU渲染器
-	Language                       string `json:"language"`                       // 浏览器语言
-	AcceptLanguage                 string `json:"acceptLanguage"`                 // 接受的语言
-	Timezone                       string `json:"timezone"`                       // 时区
-	DisableGPUFingerprint          bool   `json:"disableGPUFingerprint"`          // 禁用GPU指纹
-	StealthProvider                string `json:"stealthProvider,omitempty"`      // stealth provider, e.g. default/cloakbrowser
+	Headless                       bool     `json:"headless"`
+	BrowserPath                    string   `json:"browserPath,omitempty"`
+	ChromeVersion                  string   `json:"chromeVersion,omitempty"`     // fingerprint-chromium 版本（如 "144"）
+	ChromeDownloadDir              string   `json:"chromeDownloadDir,omitempty"` // Chrome 下载目录
+	ProxyServer                    string   `json:"proxyServer,omitempty"`
+	ViewportWidth                  int      `json:"viewportWidth"`
+	ViewportHeight                 int      `json:"viewportHeight"`
+	UserAgent                      string   `json:"userAgent,omitempty"`
+	FingerprintSeed                int32    `json:"fingerprintSeed"`                // 指纹种子
+	FingerprintPlatform            string   `json:"fingerprintPlatform"`            // 操作系统类型
+	FingerprintPlatformVersion     string   `json:"fingerprintPlatformVersion"`     // 操作系统版本
+	FingerprintBrand               string   `json:"fingerprintBrand"`               // 浏览器品牌
+	FingerprintBrandVersion        string   `json:"fingerprintBrandVersion"`        // 浏览器版本
+	FingerprintHardwareConcurrency int      `json:"fingerprintHardwareConcurrency"` // CPU核心数
+	FingerprintGPUVendor           string   `json:"fingerprintGPUVendor"`           // GPU厂商
+	FingerprintGPURenderer         string   `json:"fingerprintGPURenderer"`         // GPU渲染器
+	Language                       string   `json:"language"`                       // 浏览器语言
+	AcceptLanguage                 string   `json:"acceptLanguage"`                 // 接受的语言
+	Timezone                       string   `json:"timezone"`                       // 时区
+	DisableGPUFingerprint          bool     `json:"disableGPUFingerprint"`          // 禁用GPU指纹
+	StealthProvider                string   `json:"stealthProvider,omitempty"`      // stealth provider, e.g. default/cloakbrowser
+	SkipDefaultLaunchArgs          bool     `json:"skipDefaultLaunchArgs,omitempty"`
+	UseMinimalFingerprintArgs      bool     `json:"useMinimalFingerprintArgs,omitempty"`
+	ExtraLaunchArgs                []string `json:"extraLaunchArgs,omitempty"`
 }
 
 const (
@@ -55,10 +58,17 @@ func GetBrowserLaunchArgs(cfg *BrowserConfig) []string {
 			"--fingerprint-platform=windows",
 		}
 	}
-	return []string{
+	if cfg != nil && cfg.SkipDefaultLaunchArgs {
+		return append([]string(nil), cfg.ExtraLaunchArgs...)
+	}
+	args := []string{
 		"--start-maximized", // 最大化启动
 		"--disable-gpu",     // 禁用GPU加速（避免检测）
 	}
+	if cfg != nil && len(cfg.ExtraLaunchArgs) > 0 {
+		args = append(args, cfg.ExtraLaunchArgs...)
+	}
+	return args
 }
 
 // GetIgnoreDefaultArgs 获取需要排除的默认参数（关键！）
@@ -110,6 +120,22 @@ func AddFingerprintArgs(args []string, cfg *BrowserConfig, fingerprint *Fingerpr
 	// 浏览器版本
 	if cfg.FingerprintBrandVersion != "" {
 		args = append(args, fmt.Sprintf("--fingerprint-brand-version=%s", cfg.FingerprintBrandVersion))
+	}
+	if cfg != nil && cfg.UseMinimalFingerprintArgs {
+		// 对齐 Python 成功版：只保留 fingerprint-chromium 最核心的启动参数，
+		// 语言/时区/UA/屏幕等交给 context options 和 init script 处理。
+		if cfg.FingerprintGPUVendor != "" {
+			args = append(args, fmt.Sprintf("--fingerprint-gpu-vendor=%s", cfg.FingerprintGPUVendor))
+		} else if gpu, ok := fingerprint.GPU["vendor"]; ok && gpu != "" {
+			args = append(args, fmt.Sprintf("--fingerprint-gpu-vendor=%s", gpu))
+		}
+
+		if cfg.FingerprintGPURenderer != "" {
+			args = append(args, fmt.Sprintf("--fingerprint-gpu-renderer=%s", cfg.FingerprintGPURenderer))
+		} else if gpu, ok := fingerprint.GPU["renderer"]; ok && gpu != "" {
+			args = append(args, fmt.Sprintf("--fingerprint-gpu-renderer=%s", gpu))
+		}
+		return args
 	}
 
 	// CPU核心数
@@ -213,8 +239,8 @@ func CreateContextOptions(cfg *BrowserConfig, userAgent string) playwright.Brows
 			Height: cfg.ViewportHeight,
 		},
 		UserAgent:         playwright.String(userAgent),
-		Locale:            playwright.String("en-US"),
-		TimezoneId:        GetTimezoneForRegion(cfg.ProxyServer),
+		Locale:            playwright.String(contextLocale(cfg)),
+		TimezoneId:        contextTimezone(cfg),
 		IgnoreHttpsErrors: playwright.Bool(true),
 	}
 }

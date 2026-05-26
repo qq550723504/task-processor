@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
@@ -36,32 +37,36 @@ type AutomationResult struct {
 }
 
 type artifactMetadata struct {
-	TenantID               int64           `json:"tenant_id"`
-	StoreID                int64           `json:"store_id"`
-	Username               string          `json:"username"`
-	Stage                  string          `json:"stage"`
-	Error                  string          `json:"error"`
-	ErrorCode              string          `json:"error_code"`
-	PageState              string          `json:"page_state,omitempty"`
-	ActionKey              string          `json:"action_key,omitempty"`
-	ActionMessage          string          `json:"action_message,omitempty"`
-	CapturedAt             string          `json:"captured_at"`
-	URL                    string          `json:"url,omitempty"`
-	Title                  string          `json:"title,omitempty"`
-	LoggedIn               *bool           `json:"logged_in,omitempty"`
-	VerifyCodeVisible      *bool           `json:"verify_code_visible,omitempty"`
-	OnLoginPage            *bool           `json:"on_login_page,omitempty"`
-	RequestFailureModal    *bool           `json:"request_failure_modal,omitempty"`
-	LoginFormVisible       *bool           `json:"login_form_visible,omitempty"`
-	SellerHubVisible       *bool           `json:"seller_hub_visible,omitempty"`
-	VerificationVisible    *bool           `json:"verification_visible,omitempty"`
-	PermissionVisible      *bool           `json:"permission_visible,omitempty"`
-	AgreementVisible       *bool           `json:"agreement_visible,omitempty"`
-	CredentialErrorVisible *bool           `json:"credential_error_visible,omitempty"`
-	LoginError             string          `json:"login_error,omitempty"`
-	BodyText               string          `json:"body_text,omitempty"`
-	SelectorStates         map[string]bool `json:"selector_states,omitempty"`
+	TenantID               int64            `json:"tenant_id"`
+	StoreID                int64            `json:"store_id"`
+	Username               string           `json:"username"`
+	Stage                  string           `json:"stage"`
+	Error                  string           `json:"error"`
+	ErrorCode              string           `json:"error_code"`
+	PageState              string           `json:"page_state,omitempty"`
+	ActionKey              string           `json:"action_key,omitempty"`
+	ActionMessage          string           `json:"action_message,omitempty"`
+	CapturedAt             string           `json:"captured_at"`
+	URL                    string           `json:"url,omitempty"`
+	Title                  string           `json:"title,omitempty"`
+	LoggedIn               *bool            `json:"logged_in,omitempty"`
+	VerifyCodeVisible      *bool            `json:"verify_code_visible,omitempty"`
+	OnLoginPage            *bool            `json:"on_login_page,omitempty"`
+	RequestFailureModal    *bool            `json:"request_failure_modal,omitempty"`
+	LoginFormVisible       *bool            `json:"login_form_visible,omitempty"`
+	SellerHubVisible       *bool            `json:"seller_hub_visible,omitempty"`
+	VerificationVisible    *bool            `json:"verification_visible,omitempty"`
+	PermissionVisible      *bool            `json:"permission_visible,omitempty"`
+	AgreementVisible       *bool            `json:"agreement_visible,omitempty"`
+	CredentialErrorVisible *bool            `json:"credential_error_visible,omitempty"`
+	LoginError             string           `json:"login_error,omitempty"`
+	BodyText               string           `json:"body_text,omitempty"`
+	SelectorStates         map[string]bool  `json:"selector_states,omitempty"`
 	NetworkPayloads        []map[string]any `json:"network_payloads,omitempty"`
+	PageEvents             []map[string]any `json:"page_events,omitempty"`
+	ResourceRequests       []map[string]any `json:"resource_requests,omitempty"`
+	DeviceSnapshot         map[string]any   `json:"device_snapshot,omitempty"`
+	FormSnapshot           map[string]any   `json:"form_snapshot,omitempty"`
 }
 
 type Automation interface {
@@ -77,6 +82,21 @@ type VerifySession interface {
 type PlaywrightAutomation struct{}
 
 func NewPlaywrightAutomation() *PlaywrightAutomation { return &PlaywrightAutomation{} }
+
+type pageNetworkCapture struct {
+	mu        sync.Mutex
+	items     []map[string]any
+	installed bool
+}
+
+type pageEventCapture struct {
+	mu        sync.Mutex
+	items     []map[string]any
+	installed bool
+}
+
+var pageNetworkCaptures sync.Map
+var pageEventCaptures sync.Map
 
 var sheinLoginErrorSelectors = []string{
 	".soui-dialog",
@@ -125,21 +145,10 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	if err := os.MkdirAll(profileDir, 0o755); err != nil {
 		return nil, nil, err
 	}
-	managerCfg := &sharedbrowser.BrowserConfig{
-		Headless:          cfg.Headless,
-		BrowserPath:       strings.TrimSpace(cfg.BrowserPath),
-		ChromeVersion:     strings.TrimSpace(cfg.ChromeVersion),
-		ChromeDownloadDir: strings.TrimSpace(cfg.ChromeDownloadDir),
-		ProxyServer:       strings.TrimSpace(account.Proxy),
-		ViewportWidth:     defaultViewport(cfg.ViewportWidth, 1440),
-		ViewportHeight:    defaultViewport(cfg.ViewportHeight, 960),
-		FingerprintSeed:   int32(account.StoreID),
-		Language:          "en-US",
-		AcceptLanguage:    "en-US,en;q=0.9",
-	}
+	managerCfg := buildAutomationBrowserConfig(account, cfg)
 	manager := sharedbrowser.NewManager(managerCfg)
 	manager.SetUserDataDir(profileDir)
-	manager.SetFingerprint(manager.GenerateStableFingerprint(strconv.FormatInt(account.StoreID, 10)))
+	manager.SetFingerprint(buildAutomationFingerprint(account, managerCfg))
 	if err := manager.Install(); err != nil {
 		return nil, nil, err
 	}
@@ -172,6 +181,7 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
+	waitForDeviceContextReady(ctx, page, 12*time.Second)
 	if err := submitLogin(page); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "submit_login", err)
 		closeManagerProfile(manager, profileDir)
@@ -231,20 +241,190 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	return &AutomationResult{BrowserState: state}, nil, nil
 }
 
+func buildAutomationBrowserConfig(account Account, cfg AutomationConfig) *sharedbrowser.BrowserConfig {
+	chromeVersion := strings.TrimSpace(cfg.ChromeVersion)
+	if chromeVersion == "" {
+		chromeVersion = "144"
+	}
+	chromeBrandVersion := chromeVersion
+	if !strings.Contains(chromeBrandVersion, ".") {
+		chromeBrandVersion += ".0.0.0"
+	}
+	managerCfg := &sharedbrowser.BrowserConfig{
+		Headless:                       cfg.Headless,
+		BrowserPath:                    strings.TrimSpace(cfg.BrowserPath),
+		ChromeVersion:                  chromeVersion,
+		ChromeDownloadDir:              strings.TrimSpace(cfg.ChromeDownloadDir),
+		ProxyServer:                    strings.TrimSpace(account.Proxy),
+		ViewportWidth:                  defaultViewport(cfg.ViewportWidth, 1440),
+		ViewportHeight:                 defaultViewport(cfg.ViewportHeight, 900),
+		UserAgent:                      fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36", chromeBrandVersion),
+		FingerprintSeed:                int32(account.StoreID),
+		FingerprintPlatform:            "windows",
+		FingerprintPlatformVersion:     "10.0",
+		FingerprintBrand:               "Chrome",
+		FingerprintBrandVersion:        chromeBrandVersion,
+		FingerprintHardwareConcurrency: 8,
+		FingerprintGPUVendor:           "NVIDIA Corporation",
+		FingerprintGPURenderer:         "ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+		Language:                       "zh-CN",
+		AcceptLanguage:                 "zh-CN,zh;q=0.9,en;q=0.8",
+		Timezone:                       "Asia/Shanghai",
+		SkipDefaultLaunchArgs:          true,
+		UseMinimalFingerprintArgs:      true,
+		ExtraLaunchArgs:                []string{"--enable-unsafe-swiftshader"},
+	}
+	if isCloakBrowserPath(managerCfg.BrowserPath) {
+		managerCfg.StealthProvider = sharedbrowser.StealthProviderCloakBrowser
+	}
+	return managerCfg
+}
+
+func buildAutomationFingerprint(account Account, cfg *sharedbrowser.BrowserConfig) *sharedbrowser.FingerprintConfig {
+	_ = account
+	if cfg == nil {
+		return nil
+	}
+	return &sharedbrowser.FingerprintConfig{
+		Enable: true,
+		GPU: map[string]string{
+			"vendor":      cfg.FingerprintGPUVendor,
+			"renderer":    cfg.FingerprintGPURenderer,
+			"description": cfg.FingerprintGPURenderer,
+		},
+		Languages: sharedbrowser.LanguageConfig{
+			HTTP: cfg.AcceptLanguage,
+			JS:   cfg.Language,
+		},
+	}
+}
+
+func isCloakBrowserPath(path string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(path))
+	return strings.Contains(normalized, "cloakbrowser")
+}
+
+func buildResponseCaptureItem(channel, url string, status int, body string) map[string]any {
+	item := map[string]any{
+		"channel": channel,
+		"url":     url,
+		"status":  status,
+	}
+	if preview := summarizeNetworkPayloadBody(body); preview != "" {
+		item["bodyPreview"] = preview
+	}
+	return item
+}
+
 func installPageNetworkCapture(page playwright.Page) error {
 	if page == nil {
 		return nil
 	}
-	script := `
+	debugEnabled := sheinLoginDebugEnabled()
+	capture := getOrCreatePageNetworkCapture(page)
+	if capture.markInstalled() {
+		recordResponse := func(channel string, response playwright.Response) {
+			if response == nil {
+				return
+			}
+			url := strings.TrimSpace(response.URL())
+			if !shouldCaptureAuthPayloadURL(url) {
+				return
+			}
+			capture.add(buildResponseCaptureItem(channel, url, response.Status(), ""))
+		}
+		page.OnResponse(func(response playwright.Response) {
+			recordResponse("playwright_page_response", response)
+		})
+		page.Context().OnResponse(func(response playwright.Response) {
+			recordResponse("playwright_context_response", response)
+		})
+	}
+	if debugEnabled {
+		eventCapture := getOrCreatePageEventCapture(page)
+		if eventCapture.markInstalled() {
+			if cdpSession, err := page.Context().NewCDPSession(page); err == nil && cdpSession != nil {
+				_, _ = cdpSession.Send("Runtime.enable", nil)
+				_, _ = cdpSession.Send("Log.enable", nil)
+				cdpSession.On("Runtime.exceptionThrown", func(params map[string]interface{}) {
+					eventCapture.add(summarizeCDPRuntimeException(params))
+				})
+				cdpSession.On("Log.entryAdded", func(params map[string]interface{}) {
+					eventCapture.add(summarizeCDPLogEntry(params))
+				})
+			}
+			page.OnConsole(func(message playwright.ConsoleMessage) {
+				if message == nil {
+					return
+				}
+				eventCapture.add(map[string]any{
+					"channel": "console_" + strings.TrimSpace(message.Type()),
+					"text":    summarizeBodyText(message.Text(), 500),
+				})
+			})
+			page.OnPageError(func(err error) {
+				if err == nil {
+					return
+				}
+				eventCapture.add(map[string]any{
+					"channel": "page_error",
+					"message": summarizeBodyText(err.Error(), 500),
+				})
+			})
+			page.OnRequestFailed(func(request playwright.Request) {
+				if request == nil {
+					return
+				}
+				url := strings.TrimSpace(request.URL())
+				if !shouldCaptureAuthPayloadURL(url) {
+					return
+				}
+				eventCapture.add(map[string]any{
+					"channel": "request_failed",
+					"url":     url,
+					"method":  strings.TrimSpace(request.Method()),
+				})
+			})
+		}
+	}
+	script := fmt.Sprintf(`
 (() => {
   if (window.__codexAuthPayloadCaptureInstalled) return;
   window.__codexAuthPayloadCaptureInstalled = true;
+  const debugEnabled = %t;
   window.__codexAuthPayloads = [];
+  if (debugEnabled) {
+    window.__codexPageEvents = [];
+  }
   const shouldCapture = (url) => {
     const lowered = String(url || '').toLowerCase();
     return lowered.includes('/sso/authenticate/login')
       || lowered.includes('/sso/geetest/ajax.php')
       || lowered.includes('/sso/geetest/reset.php');
+  };
+  const summarizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const describeElement = (el) => {
+    if (!el || !el.tagName) return {};
+    return {
+      tag: String(el.tagName || ''),
+      type: el.getAttribute ? el.getAttribute('type') : null,
+      id: el.id || null,
+      name: el.getAttribute ? el.getAttribute('name') : null,
+      classes: el.className ? String(el.className).slice(0, 200) : null,
+      text: summarizeText(el.innerText || el.textContent || ''),
+    };
+  };
+  const pushPageEvent = (item) => {
+    if (!debugEnabled) return;
+    try {
+      window.__codexPageEvents.push({
+        ...item,
+        capturedAt: Date.now(),
+      });
+      if (window.__codexPageEvents.length > 80) {
+        window.__codexPageEvents = window.__codexPageEvents.slice(-80);
+      }
+    } catch (e) {}
   };
   const pushPayload = (item) => {
     try {
@@ -260,6 +440,17 @@ func installPageNetworkCapture(page playwright.Page) error {
   const origFetch = window.fetch;
   if (origFetch) {
     window.fetch = async function(...args) {
+      let requestUrl = '';
+      try {
+        requestUrl = String((args[0] && args[0].url) || args[0] || '');
+        if (shouldCapture(requestUrl)) {
+          pushPageEvent({
+            channel: 'fetch_start',
+            url: requestUrl,
+            method: args[1] && args[1].method ? String(args[1].method) : null,
+          });
+        }
+      } catch (e) {}
       const response = await origFetch.apply(this, args);
       try {
         const url = response && response.url ? response.url : (args[0] && args[0].url) || args[0];
@@ -272,6 +463,11 @@ func installPageNetworkCapture(page playwright.Page) error {
             url: String(url || ''),
             status: response.status,
             bodyPreview: String(body || '').replace(/\s+/g, ' ').slice(0, 1000),
+          });
+          pushPageEvent({
+            channel: 'fetch_end',
+            url: String(url || ''),
+            status: response.status,
           });
         }
       } catch (e) {}
@@ -289,6 +485,13 @@ func installPageNetworkCapture(page playwright.Page) error {
   };
   XMLHttpRequest.prototype.send = function(...args) {
     try {
+      if (shouldCapture(this.__codexCaptureUrl)) {
+        pushPageEvent({
+          channel: 'xhr_start',
+          url: String(this.__codexCaptureUrl || ''),
+          method: this.__codexCaptureMethod ? String(this.__codexCaptureMethod) : null,
+        });
+      }
       this.addEventListener('loadend', function() {
         try {
           const url = this.__codexCaptureUrl || this.responseURL;
@@ -300,13 +503,108 @@ func installPageNetworkCapture(page playwright.Page) error {
             status: this.status,
             bodyPreview: String(body || '').replace(/\s+/g, ' ').slice(0, 1000),
           });
+          pushPageEvent({
+            channel: 'xhr_end',
+            url: String(url || ''),
+            status: this.status,
+          });
         } catch (e) {}
       });
     } catch (e) {}
     return origSend.apply(this, args);
   };
+  document.addEventListener('click', function(event) {
+    try {
+      const target = event.target && event.target.closest ? event.target.closest('button, a, input[type="submit"], [role="button"]') : null;
+      if (!target) return;
+      pushPageEvent({
+        channel: 'dom_click',
+        ...describeElement(target),
+      });
+    } catch (e) {}
+  }, true);
+  const recordSubmitEvent = (channel, event) => {
+    try {
+      const form = event.target;
+      pushPageEvent({
+        channel,
+        action: form && form.getAttribute ? form.getAttribute('action') : null,
+        method: form && form.getAttribute ? form.getAttribute('method') : null,
+        defaultPrevented: !!event.defaultPrevented,
+      });
+    } catch (e) {}
+  };
+  document.addEventListener('submit', function(event) {
+    recordSubmitEvent('form_submit_capture', event);
+    queueMicrotask(() => recordSubmitEvent('form_submit_post_capture', event));
+  }, true);
+  document.addEventListener('submit', function(event) {
+    recordSubmitEvent('form_submit_bubble', event);
+    queueMicrotask(() => recordSubmitEvent('form_submit_post_bubble', event));
+  }, false);
+  document.addEventListener('invalid', function(event) {
+    try {
+      pushPageEvent({
+        channel: 'form_invalid',
+        validationMessage: event.target && typeof event.target.validationMessage === 'string' ? event.target.validationMessage : null,
+        target: describeElement(event.target),
+      });
+    } catch (e) {}
+  }, true);
+  window.addEventListener('error', function(event) {
+    try {
+      const target = event && event.target && event.target !== window ? event.target : null;
+      pushPageEvent({
+        channel: 'window_error',
+        message: event && event.message ? String(event.message) : null,
+        filename: event && event.filename ? String(event.filename) : null,
+        lineno: event && typeof event.lineno === 'number' ? event.lineno : null,
+        colno: event && typeof event.colno === 'number' ? event.colno : null,
+        stack: event && event.error && event.error.stack ? summarizeText(event.error.stack) : null,
+        targetTag: target && target.tagName ? String(target.tagName) : null,
+        targetSrc: target && target.src ? String(target.src) : null,
+        targetHref: target && target.href ? String(target.href) : null,
+      });
+    } catch (e) {}
+  }, true);
+  window.addEventListener('unhandledrejection', function(event) {
+    try {
+      const reason = event && event.reason;
+      pushPageEvent({
+        channel: 'unhandled_rejection',
+        reason: typeof reason === 'string' ? reason : summarizeText(reason && reason.message ? reason.message : JSON.stringify(reason)),
+      });
+    } catch (e) {}
+  });
+  const origRequestSubmit = HTMLFormElement.prototype.requestSubmit;
+  if (origRequestSubmit) {
+    HTMLFormElement.prototype.requestSubmit = function(...args) {
+      try {
+        pushPageEvent({
+          channel: 'request_submit',
+          action: this && this.getAttribute ? this.getAttribute('action') : null,
+          method: this && this.getAttribute ? this.getAttribute('method') : null,
+          submitter: describeElement(args[0]),
+        });
+      } catch (e) {}
+      return origRequestSubmit.apply(this, args);
+    };
+  }
+  const origSubmit = HTMLFormElement.prototype.submit;
+  if (origSubmit) {
+    HTMLFormElement.prototype.submit = function(...args) {
+      try {
+        pushPageEvent({
+          channel: 'direct_submit',
+          action: this && this.getAttribute ? this.getAttribute('action') : null,
+          method: this && this.getAttribute ? this.getAttribute('method') : null,
+        });
+      } catch (e) {}
+      return origSubmit.apply(this, args);
+    };
+  }
 })();
-`
+`, debugEnabled)
 	return page.Context().AddInitScript(playwright.Script{Content: playwright.String(script)})
 }
 
@@ -314,7 +612,37 @@ func getCapturedNetworkPayloads(page playwright.Page) []map[string]any {
 	if page == nil {
 		return nil
 	}
-	value, err := page.Evaluate(`() => Array.isArray(window.__codexAuthPayloads) ? window.__codexAuthPayloads.slice(-20) : []`, nil)
+	if capture := getPageNetworkCapture(page); capture != nil {
+		if payloads := capture.snapshot(); len(payloads) > 0 {
+			return payloads
+		}
+	}
+	return getInjectedNetworkPayloads(page)
+}
+
+func getInjectedNetworkPayloads(page playwright.Page) []map[string]any {
+	return getInjectedMapItems(page, `() => Array.isArray(window.__codexAuthPayloads) ? window.__codexAuthPayloads.slice(-20) : []`)
+}
+
+func getInjectedPageEvents(page playwright.Page) []map[string]any {
+	return getInjectedMapItems(page, `() => Array.isArray(window.__codexPageEvents) ? window.__codexPageEvents.slice(-40) : []`)
+}
+
+func getCapturedPageEvents(page playwright.Page) []map[string]any {
+	var events []map[string]any
+	if capture := getPageEventCapture(page); capture != nil {
+		events = append(events, capture.snapshot()...)
+	}
+	events = append(events, getInjectedPageEvents(page)...)
+	sortEventItems(events)
+	return events
+}
+
+func getInjectedMapItems(page playwright.Page, expr string) []map[string]any {
+	if page == nil {
+		return nil
+	}
+	value, err := page.Evaluate(expr, nil)
 	if err != nil || value == nil {
 		return nil
 	}
@@ -333,6 +661,309 @@ func getCapturedNetworkPayloads(page playwright.Page) []map[string]any {
 		}
 	}
 	return results
+}
+
+func getOrCreatePageNetworkCapture(page playwright.Page) *pageNetworkCapture {
+	if existing := getPageNetworkCapture(page); existing != nil {
+		return existing
+	}
+	capture := &pageNetworkCapture{}
+	actual, _ := pageNetworkCaptures.LoadOrStore(page, capture)
+	stored, _ := actual.(*pageNetworkCapture)
+	return stored
+}
+
+func getPageNetworkCapture(page playwright.Page) *pageNetworkCapture {
+	if page == nil {
+		return nil
+	}
+	actual, ok := pageNetworkCaptures.Load(page)
+	if !ok {
+		return nil
+	}
+	capture, _ := actual.(*pageNetworkCapture)
+	return capture
+}
+
+func getOrCreatePageEventCapture(page playwright.Page) *pageEventCapture {
+	if existing := getPageEventCapture(page); existing != nil {
+		return existing
+	}
+	capture := &pageEventCapture{}
+	actual, _ := pageEventCaptures.LoadOrStore(page, capture)
+	stored, _ := actual.(*pageEventCapture)
+	return stored
+}
+
+func getPageEventCapture(page playwright.Page) *pageEventCapture {
+	if page == nil {
+		return nil
+	}
+	actual, ok := pageEventCaptures.Load(page)
+	if !ok {
+		return nil
+	}
+	capture, _ := actual.(*pageEventCapture)
+	return capture
+}
+
+func (c *pageNetworkCapture) markInstalled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.installed {
+		return false
+	}
+	c.installed = true
+	return true
+}
+
+func (c *pageEventCapture) markInstalled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.installed {
+		return false
+	}
+	c.installed = true
+	return true
+}
+
+func (c *pageNetworkCapture) add(item map[string]any) {
+	if c == nil {
+		return
+	}
+	normalized := make(map[string]any, len(item)+1)
+	for k, v := range item {
+		normalized[k] = v
+	}
+	normalized["capturedAt"] = time.Now().UnixMilli()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = append(c.items, normalized)
+	if len(c.items) > 30 {
+		c.items = append([]map[string]any(nil), c.items[len(c.items)-30:]...)
+	}
+}
+
+func (c *pageEventCapture) add(item map[string]any) {
+	if c == nil {
+		return
+	}
+	normalized := make(map[string]any, len(item)+1)
+	for k, v := range item {
+		normalized[k] = v
+	}
+	normalized["capturedAt"] = time.Now().UnixMilli()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = append(c.items, normalized)
+	if len(c.items) > 80 {
+		c.items = append([]map[string]any(nil), c.items[len(c.items)-80:]...)
+	}
+}
+
+func (c *pageNetworkCapture) snapshot() []map[string]any {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.items) == 0 {
+		return nil
+	}
+	results := make([]map[string]any, 0, len(c.items))
+	for _, item := range c.items {
+		copied := make(map[string]any, len(item))
+		for k, v := range item {
+			copied[k] = v
+		}
+		results = append(results, copied)
+	}
+	return results
+}
+
+func (c *pageEventCapture) snapshot() []map[string]any {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.items) == 0 {
+		return nil
+	}
+	results := make([]map[string]any, 0, len(c.items))
+	for _, item := range c.items {
+		copied := make(map[string]any, len(item))
+		for k, v := range item {
+			copied[k] = v
+		}
+		results = append(results, copied)
+	}
+	return results
+}
+
+func sortEventItems(items []map[string]any) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return eventCapturedAt(items[i]) < eventCapturedAt(items[j])
+	})
+}
+
+func eventCapturedAt(item map[string]any) int64 {
+	switch value := item["capturedAt"].(type) {
+	case int64:
+		return value
+	case int:
+		return int64(value)
+	case float64:
+		return int64(value)
+	case float32:
+		return int64(value)
+	case json.Number:
+		n, _ := value.Int64()
+		return n
+	default:
+		return 0
+	}
+}
+
+func summarizeCDPRuntimeException(params map[string]interface{}) map[string]any {
+	item := map[string]any{
+		"channel": "cdp_runtime_exception",
+	}
+	details, _ := params["exceptionDetails"].(map[string]interface{})
+	if len(details) == 0 {
+		return item
+	}
+	if text := strings.TrimSpace(anyString(details["text"])); text != "" {
+		item["text"] = summarizeBodyText(text, 500)
+	}
+	if url := strings.TrimSpace(anyString(details["url"])); url != "" {
+		item["url"] = url
+	}
+	if line, ok := anyInt64(details["lineNumber"]); ok {
+		item["lineNumber"] = line
+	}
+	if col, ok := anyInt64(details["columnNumber"]); ok {
+		item["columnNumber"] = col
+	}
+	if exception, _ := details["exception"].(map[string]interface{}); len(exception) > 0 {
+		if description := strings.TrimSpace(anyString(exception["description"])); description != "" {
+			item["description"] = summarizeBodyText(description, 1000)
+		}
+		if value := strings.TrimSpace(anyString(exception["value"])); value != "" {
+			item["value"] = summarizeBodyText(value, 500)
+		}
+	}
+	if stack, _ := details["stackTrace"].(map[string]interface{}); len(stack) > 0 {
+		if frames, ok := stack["callFrames"].([]interface{}); ok && len(frames) > 0 {
+			summarized := make([]map[string]any, 0, minInt(len(frames), 5))
+			for _, raw := range frames {
+				frame, _ := raw.(map[string]interface{})
+				if len(frame) == 0 {
+					continue
+				}
+				summarized = append(summarized, map[string]any{
+					"functionName": strings.TrimSpace(anyString(frame["functionName"])),
+					"url":          strings.TrimSpace(anyString(frame["url"])),
+					"lineNumber":   anyInt64Default(frame["lineNumber"]),
+					"columnNumber": anyInt64Default(frame["columnNumber"]),
+				})
+				if len(summarized) >= 5 {
+					break
+				}
+			}
+			if len(summarized) > 0 {
+				item["stack"] = summarized
+			}
+		}
+	}
+	return item
+}
+
+func summarizeCDPLogEntry(params map[string]interface{}) map[string]any {
+	item := map[string]any{
+		"channel": "cdp_log_entry",
+	}
+	entry, _ := params["entry"].(map[string]interface{})
+	if len(entry) == 0 {
+		return item
+	}
+	if source := strings.TrimSpace(anyString(entry["source"])); source != "" {
+		item["source"] = source
+	}
+	if level := strings.TrimSpace(anyString(entry["level"])); level != "" {
+		item["level"] = level
+	}
+	if text := strings.TrimSpace(anyString(entry["text"])); text != "" {
+		item["text"] = summarizeBodyText(text, 1000)
+	}
+	if url := strings.TrimSpace(anyString(entry["url"])); url != "" {
+		item["url"] = url
+	}
+	if line, ok := anyInt64(entry["lineNumber"]); ok {
+		item["lineNumber"] = line
+	}
+	return item
+}
+
+func anyString(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case fmt.Stringer:
+		return typed.String()
+	default:
+		return fmt.Sprintf("%v", value)
+	}
+}
+
+func anyInt64(value interface{}) (int64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case float32:
+		return int64(typed), true
+	case float64:
+		return int64(typed), true
+	case json.Number:
+		n, err := typed.Int64()
+		return n, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func anyInt64Default(value interface{}) int64 {
+	if n, ok := anyInt64(value); ok {
+		return n
+	}
+	return 0
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func shouldCaptureAuthPayloadURL(url string) bool {
+	lowered := strings.ToLower(strings.TrimSpace(url))
+	if lowered == "" {
+		return false
+	}
+	return strings.Contains(lowered, "/sso/authenticate/login") ||
+		strings.Contains(lowered, "/sso/geetest/ajax.php") ||
+		strings.Contains(lowered, "/sso/geetest/reset.php")
+}
+
+func summarizeNetworkPayloadBody(body string) string {
+	return summarizeBodyText(body, 1000)
 }
 
 func loginURLForAccount(account Account) string {
@@ -400,31 +1031,18 @@ func fillLogin(page playwright.Page, account Account) error {
 	if err := username.Click(); err != nil {
 		return err
 	}
-	if err := username.Press("Control+A"); err != nil {
-		return err
-	}
-	if err := username.Press("Backspace"); err != nil {
-		return err
-	}
-	if err := username.Type(account.Username, playwright.LocatorTypeOptions{Delay: playwright.Float(60)}); err != nil {
-		return err
-	}
-	if err := username.Press("Tab"); err != nil {
+	time.Sleep(300 * time.Millisecond)
+	if err := username.Fill(account.Username); err != nil {
 		return err
 	}
 	if err := password.Click(); err != nil {
 		return err
 	}
-	if err := password.Press("Control+A"); err != nil {
+	time.Sleep(300 * time.Millisecond)
+	if err := password.Fill(account.Password); err != nil {
 		return err
 	}
-	if err := password.Press("Backspace"); err != nil {
-		return err
-	}
-	if err := password.Type(account.Password, playwright.LocatorTypeOptions{Delay: playwright.Float(60)}); err != nil {
-		return err
-	}
-	_ = password.Press("Tab")
+	time.Sleep(500 * time.Millisecond)
 	return nil
 }
 
@@ -442,18 +1060,35 @@ func submitLogin(page playwright.Page) error {
 		`input[type="password"]`,
 	}); pwErr == nil {
 		_ = password.Click()
+		time.Sleep(300 * time.Millisecond)
 		if err := password.Press("Enter"); err == nil {
+			time.Sleep(1 * time.Second)
 			if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
 				return nil
 			}
 		}
 	}
-	if err := clickWithFallback(page, button); err == nil {
+	if err := button.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000)}); err == nil {
 		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
 			return nil
 		}
 	}
 	if dismissed, dismissErr := dismissRequestFailure(page); dismissErr == nil && dismissed {
+		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			return nil
+		}
+	}
+	if err := button.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000), Force: playwright.Bool(true)}); err == nil {
+		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			return nil
+		}
+	}
+	if dismissed, dismissErr := dismissRequestFailure(page); dismissErr == nil && dismissed {
+		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			return nil
+		}
+	}
+	if _, evalErr := button.Evaluate(`(el) => el.click()`, nil); evalErr == nil {
 		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
 			return nil
 		}
@@ -492,6 +1127,9 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
 			return true, nil
 		}
+		if networkPayloadsRequireVerifyCode(getCapturedNetworkPayloads(page)) {
+			return true, nil
+		}
 		if loginError, err := extractLoginError(page); err == nil && loginError != "" {
 			return false, fmt.Errorf("%s", loginError)
 		}
@@ -502,6 +1140,9 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 	}
 	if loginError, err := extractLoginError(page); err == nil && loginError != "" {
 		return false, fmt.Errorf("%s", loginError)
+	}
+	if networkPayloadsRequireVerifyCode(getCapturedNetworkPayloads(page)) {
+		return true, nil
 	}
 	if shouldWaitForCaptcha(page) {
 		return true, nil
@@ -516,6 +1157,9 @@ func loginOutcomeAdvanced(page playwright.Page, wait time.Duration) (bool, error
 			return true, nil
 		}
 		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
+			return true, nil
+		}
+		if networkPayloadsRequireVerifyCode(getCapturedNetworkPayloads(page)) {
 			return true, nil
 		}
 		if loginError, err := extractLoginError(page); err == nil && loginError != "" {
@@ -856,12 +1500,70 @@ func classifyLoginFailure(metadata artifactMetadata) string {
 		return "REQUEST_FAILED"
 	}
 
+	if code := classifyLoginFailureFromNetworkPayloads(metadata.NetworkPayloads); code != "LOGIN_FAILED" {
+		return code
+	}
+
 	for _, candidate := range []string{metadata.LoginError, metadata.Error, metadata.BodyText, metadata.Title, metadata.URL} {
 		if code := classifyLoginErrorText(candidate); code != "LOGIN_FAILED" {
 			return code
 		}
 	}
 	return "LOGIN_FAILED"
+}
+
+func classifyLoginFailureFromNetworkPayloads(payloads []map[string]any) string {
+	for i := len(payloads) - 1; i >= 0; i-- {
+		payload := payloads[i]
+		url := strings.ToLower(strings.TrimSpace(fmt.Sprint(payload["url"])))
+		if !strings.Contains(url, "/sso/authenticate/login") {
+			continue
+		}
+
+		bodyPreview := strings.TrimSpace(fmt.Sprint(payload["bodyPreview"]))
+		if bodyPreview == "" {
+			bodyPreview = strings.TrimSpace(fmt.Sprint(payload["body_preview"]))
+		}
+		if bodyPreview == "" {
+			continue
+		}
+
+		if code := classifyLoginFailureFromLoginResponseBody(bodyPreview); code != "LOGIN_FAILED" {
+			return code
+		}
+	}
+	return "LOGIN_FAILED"
+}
+
+func classifyLoginFailureFromLoginResponseBody(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "LOGIN_FAILED"
+	}
+
+	var payload struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Info struct {
+			NeedValidCode bool `json:"needValidCode"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err == nil {
+		switch {
+		case payload.Info.NeedValidCode:
+			return "VERIFY_CODE_REQUIRED"
+		case strings.TrimSpace(payload.Code) == "022008":
+			return "VERIFY_CODE_REQUIRED"
+		case classifyLoginErrorText(payload.Msg) != "LOGIN_FAILED":
+			return classifyLoginErrorText(payload.Msg)
+		}
+	}
+
+	return classifyLoginErrorText(body)
+}
+
+func networkPayloadsRequireVerifyCode(payloads []map[string]any) bool {
+	return classifyLoginFailureFromNetworkPayloads(payloads) == "VERIFY_CODE_REQUIRED"
 }
 
 func derivePageState(metadata artifactMetadata) string {
@@ -971,6 +1673,7 @@ func artifactResult(page playwright.Page, root string, account Account, stage st
 }
 
 func collectArtifactMetadata(page playwright.Page, account Account, stage string, cause error) artifactMetadata {
+	debugEnabled := sheinLoginDebugEnabled()
 	metadata := artifactMetadata{
 		TenantID:   account.TenantID,
 		StoreID:    account.StoreID,
@@ -1010,6 +1713,20 @@ func collectArtifactMetadata(page playwright.Page, account Account, stage string
 	if payloads := getCapturedNetworkPayloads(page); len(payloads) > 0 {
 		metadata.NetworkPayloads = payloads
 	}
+	if debugEnabled {
+		if events := getCapturedPageEvents(page); len(events) > 0 {
+			metadata.PageEvents = events
+		}
+		if requests := collectResourceRequests(page); len(requests) > 0 {
+			metadata.ResourceRequests = requests
+		}
+		if snapshot := collectDeviceSnapshot(page); len(snapshot) > 0 {
+			metadata.DeviceSnapshot = snapshot
+		}
+		if snapshot := collectFormSnapshot(page); len(snapshot) > 0 {
+			metadata.FormSnapshot = snapshot
+		}
+	}
 	metadata.SelectorStates = collectSelectorStates(page)
 	loginFormVisible, sellerHubVisible, verificationVisible, permissionVisible, agreementVisible, credentialErrorVisible := deriveBusinessVisibility(metadata.SelectorStates)
 	metadata.LoginFormVisible = &loginFormVisible
@@ -1033,6 +1750,274 @@ func summarizeBodyText(value string, maxChars int) string {
 		return normalized
 	}
 	return normalized[:maxChars]
+}
+
+func sheinLoginDebugEnabled() bool {
+	return strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SHEIN_LOGIN_DEBUG")) == "1"
+}
+
+func collectFormSnapshot(page playwright.Page) map[string]any {
+	if page == nil {
+		return nil
+	}
+	value, err := page.Evaluate(`() => {
+		const readValue = (selector) => {
+			const el = document.querySelector(selector);
+			if (!el) return null;
+			return typeof el.value === 'string' ? el.value : null;
+		};
+		const readDisabled = (selector) => {
+			const el = document.querySelector(selector);
+			if (!el) return null;
+			return !!el.disabled;
+		};
+		const active = document.activeElement;
+		return {
+			usernameValue: readValue('input.soui-input-input:not([type="password"]), input[type="text"].soui-input-input, input[type="text"]'),
+			passwordLength: (() => {
+				const value = readValue('input[type="password"].soui-input-input, input[type="password"]');
+				return typeof value === 'string' ? value.length : null;
+			})(),
+			loginButtonDisabled: readDisabled('button.soui-button-primary, button[type="submit"], button'),
+			activeTag: active ? active.tagName : null,
+			activeType: active && active.getAttribute ? active.getAttribute('type') : null,
+		};
+	}`, nil)
+	if err != nil || value == nil {
+		return nil
+	}
+	snapshot, ok := value.(map[string]interface{})
+	if !ok || len(snapshot) == 0 {
+		return nil
+	}
+	result := make(map[string]any, len(snapshot))
+	for k, v := range snapshot {
+		result[k] = v
+	}
+	return result
+}
+
+func collectResourceRequests(page playwright.Page) []map[string]any {
+	if page == nil {
+		return nil
+	}
+	requests, err := page.Requests()
+	if err != nil || len(requests) == 0 {
+		return nil
+	}
+	results := make([]map[string]any, 0, len(requests))
+	for _, request := range requests {
+		if request == nil {
+			continue
+		}
+		resourceType := strings.TrimSpace(request.ResourceType())
+		if resourceType != "document" && resourceType != "script" && resourceType != "xhr" && resourceType != "fetch" {
+			continue
+		}
+		url := strings.TrimSpace(request.URL())
+		if url == "" {
+			continue
+		}
+		item := map[string]any{
+			"resourceType": resourceType,
+			"method":       strings.TrimSpace(request.Method()),
+			"url":          url,
+		}
+		if failure := request.Failure(); failure != nil {
+			item["failure"] = summarizeBodyText(failure.Error(), 300)
+		}
+		if response, respErr := request.Response(); respErr == nil && response != nil {
+			item["status"] = response.Status()
+		}
+		if strings.Contains(strings.ToLower(url), "geetest") ||
+			strings.Contains(strings.ToLower(url), "zpnv") ||
+			strings.Contains(strings.ToLower(url), "us-fp") ||
+			strings.Contains(strings.ToLower(url), "us-behavior") ||
+			strings.Contains(strings.ToLower(url), "antiin") ||
+			strings.Contains(strings.ToLower(url), "infp") ||
+			strings.Contains(strings.ToLower(url), "fpv2") ||
+			strings.Contains(strings.ToLower(url), "fm.") ||
+			strings.Contains(strings.ToLower(url), "gt.js") {
+			item["important"] = true
+		}
+		results = append(results, item)
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		leftPriority := resourceRequestPriority(results[i])
+		rightPriority := resourceRequestPriority(results[j])
+		if leftPriority != rightPriority {
+			return leftPriority < rightPriority
+		}
+		return anyString(results[i]["url"]) < anyString(results[j]["url"])
+	})
+	if len(results) > 40 {
+		results = results[:40]
+	}
+	return results
+}
+
+func collectDeviceSnapshot(page playwright.Page) map[string]any {
+	if page == nil {
+		return nil
+	}
+	value, err := page.Evaluate(`async () => {
+		const safeLength = (value) => typeof value === 'string' ? value.length : null;
+		const safeKeys = (value) => value && typeof value === 'object' ? Object.keys(value).slice(0, 12) : [];
+		const safeAwait = async (getter) => {
+			try {
+				return await getter();
+			} catch (e) {
+				return null;
+			}
+		};
+		const antiInResolved = await safeAwait(async () => {
+			if (!(window.AntiIn && typeof window.AntiIn.getAllEncrypted === 'function')) return null;
+			return await window.AntiIn.getAllEncrypted();
+		});
+		const armorTokenResolved = await safeAwait(async () => {
+			if (!(window.AntiDevices && typeof window.AntiDevices.getArmorToken === 'function')) return null;
+			return await window.AntiDevices.getArmorToken();
+		});
+		const smDeviceIdResolved = await safeAwait(async () => {
+			if (!(window.SMSdk && typeof window.SMSdk.getDeviceId === 'function')) return null;
+			return await window.SMSdk.getDeviceId();
+		});
+		const fmInfoResolved = await safeAwait(async () => {
+			if (!(window._fmOpt && typeof window._fmOpt.getinfo === 'function')) return null;
+			return await window._fmOpt.getinfo();
+		});
+		return {
+			blackboxLength: safeLength(window.blackbox),
+			antiInLength: safeLength(window._AntiInVal),
+			armorTokenLength: safeLength(window._armorToken),
+			smDeviceIdLength: safeLength(window._fpvSmDeviceId),
+			antiInResolvedLength: safeLength(antiInResolved),
+			armorTokenResolvedLength: safeLength(armorTokenResolved),
+			smDeviceIdResolvedLength: safeLength(smDeviceIdResolved),
+			fmInfoResolvedLength: safeLength(fmInfoResolved),
+			fmOptHasGetInfo: !!(window._fmOpt && typeof window._fmOpt.getinfo === 'function'),
+			fmOptKeys: safeKeys(window._fmOpt),
+			antiInHasGetAllEncrypted: !!(window.AntiIn && typeof window.AntiIn.getAllEncrypted === 'function'),
+			antiInKeys: safeKeys(window.AntiIn),
+			smSdkHasGetDeviceId: !!(window.SMSdk && typeof window.SMSdk.getDeviceId === 'function'),
+			smSdkKeys: safeKeys(window.SMSdk),
+			antiDevicesHasGetArmorToken: !!(window.AntiDevices && typeof window.AntiDevices.getArmorToken === 'function'),
+			antiDevicesKeys: safeKeys(window.AntiDevices),
+			inconfApiHost: window._INCONF && window._INCONF.apiHost ? window._INCONF.apiHost : null,
+			smConfApiHost: window._smConf && window._smConf.apiHost ? window._smConf.apiHost : null,
+		};
+	}`, nil)
+	if err != nil || value == nil {
+		return nil
+	}
+	snapshot, ok := value.(map[string]interface{})
+	if !ok || len(snapshot) == 0 {
+		return nil
+	}
+	result := make(map[string]any, len(snapshot))
+	for k, v := range snapshot {
+		result[k] = v
+	}
+	return result
+}
+
+func waitForDeviceContextReady(ctx context.Context, page playwright.Page, timeout time.Duration) bool {
+	if page == nil || timeout <= 0 {
+		return false
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
+		primeDeviceContext(page)
+		snapshot := collectDeviceSnapshot(page)
+		if isDeviceContextReadySnapshot(snapshot) {
+			return true
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return false
+}
+
+func isDeviceContextReadySnapshot(snapshot map[string]any) bool {
+	if len(snapshot) == 0 {
+		return false
+	}
+	return anyInt64Default(snapshot["blackboxLength"]) > 0 &&
+		anyInt64Default(snapshot["antiInResolvedLength"]) > 0 &&
+		anyInt64Default(snapshot["armorTokenResolvedLength"]) > 0 &&
+		anyInt64Default(snapshot["smDeviceIdResolvedLength"]) > 0
+}
+
+func primeDeviceContext(page playwright.Page) {
+	if page == nil {
+		return
+	}
+	_, _ = page.Evaluate(`async () => {
+		const results = {};
+		const safe = async (key, runner) => {
+			try {
+				const value = await runner();
+				if (typeof value === 'string' && value) {
+					results[key] = value.length;
+				}
+				return value;
+			} catch (e) {
+				return '';
+			}
+		};
+
+		if (!window.blackbox && window._fmOpt && typeof window._fmOpt.getinfo === 'function') {
+			const blackbox = await safe('blackbox', async () => window._fmOpt.getinfo());
+			if (typeof blackbox === 'string' && blackbox) {
+				window.blackbox = blackbox;
+			}
+		}
+
+		if ((!window._AntiInVal || !String(window._AntiInVal).trim()) && window.AntiIn && typeof window.AntiIn.getAllEncrypted === 'function') {
+			const channel = (window.AntiIn && window.AntiIn.Channel) || {};
+			const antiInValue = await safe('antiIn', async () => window.AntiIn.getAllEncrypted(channel.PC || channel.M));
+			if (typeof antiInValue === 'string' && antiInValue) {
+				window._AntiInVal = antiInValue;
+			}
+		}
+
+		if ((!window._fpvSmDeviceId || !String(window._fpvSmDeviceId).trim()) && window.SMSdk && typeof window.SMSdk.getDeviceId === 'function') {
+			const smDeviceId = await safe('smDeviceId', async () => window.SMSdk.getDeviceId());
+			if (typeof smDeviceId === 'string' && smDeviceId) {
+				window._fpvSmDeviceId = smDeviceId;
+			}
+		}
+
+		if ((!window._armorToken || !String(window._armorToken).trim()) && window.AntiDevices && typeof window.AntiDevices.getArmorToken === 'function') {
+			const armorToken = await safe('armorToken', async () => window.AntiDevices.getArmorToken());
+			if (typeof armorToken === 'string' && armorToken) {
+				window._armorToken = armorToken;
+			}
+		}
+
+		return results;
+	}`, nil)
+}
+
+func resourceRequestPriority(item map[string]any) int {
+	if important, ok := item["important"].(bool); ok && important {
+		return 0
+	}
+	resourceType := anyString(item["resourceType"])
+	switch resourceType {
+	case "xhr", "fetch":
+		return 1
+	case "document":
+		return 2
+	case "script":
+		return 3
+	default:
+		return 4
+	}
 }
 
 func isOnLoginPage(page playwright.Page) (bool, error) {
