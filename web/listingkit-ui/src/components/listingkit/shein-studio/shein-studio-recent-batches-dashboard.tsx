@@ -199,6 +199,7 @@ export function SheinStudioRecentBatchesDashboard({
         .map((summary) => summary.id),
     [selectedHealthyBatches],
   );
+  const selectedRiskyBatchCount = selectedRiskyBatches.length;
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
@@ -406,9 +407,9 @@ export function SheinStudioRecentBatchesDashboard({
               清除选择
             </Button>
           </div>
-          {selectedRiskyBatches.length > 0 ? (
+          {selectedRiskyBatchCount > 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
-              本次选择里有 {selectedRiskyBatches.length} 个风险批次，建议先处理后再进入队列。
+              本次选择里有 {selectedRiskyBatchCount} 个风险批次，建议先处理后再进入队列。
             </div>
           ) : null}
           <div className="flex flex-wrap items-end gap-3">
@@ -482,7 +483,7 @@ export function SheinStudioRecentBatchesDashboard({
                     批量查看任务 {selectedBatchesWithTasks.length} 个
                   </Button>
                 ) : null}
-                {selectedRiskyBatches.length > 0 ? (
+                {selectedRiskyBatchCount > 0 ? (
                   <>
                     {selectedHealthyBatchesPendingGeneration.length > 0 ? (
                       <Button
@@ -758,17 +759,30 @@ export function SheinStudioRecentBatchesDashboard({
                       </span>
                     </div>
                     {summary.alerts?.length ? (
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium">
-                        {summary.alerts.map((alert, index) => (
-                          <span
-                            className={`rounded-full border px-2.5 py-1 ${recentBatchAlertToneClass(alert.tone)}`}
-                            key={`${summaryKey}:alert:${index}`}
-                            title={alert.detail}
-                          >
-                            {alert.label}
-                          </span>
-                        ))}
-                      </div>
+                      <>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium">
+                          {summary.alerts.map((alert, index) => (
+                            <span
+                              className={`rounded-full border px-2.5 py-1 ${recentBatchAlertToneClass(alert.tone)}`}
+                              key={`${summaryKey}:alert:${index}`}
+                              title={alert.detail}
+                            >
+                              {alert.label}
+                            </span>
+                          ))}
+                        </div>
+                        {summary.alerts.some((alert) => alert.detail?.trim()) ? (
+                          <div className="mt-3 space-y-1 text-xs text-zinc-600">
+                            {summary.alerts.map((alert, index) =>
+                              alert.detail?.trim() ? (
+                                <p key={`${summaryKey}:alert-detail:${index}`}>
+                                  {alert.label}：{alert.detail.trim()}
+                                </p>
+                              ) : null,
+                            )}
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
                     {riskActions.length > 0 ? (
                       <div className="mt-3 flex flex-wrap gap-2">

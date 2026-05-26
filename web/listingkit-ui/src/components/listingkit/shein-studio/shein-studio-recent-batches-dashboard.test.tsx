@@ -550,6 +550,8 @@ describe("SheinStudioRecentBatchesDashboard", () => {
 
     expect(screen.getByText("Baseline 未就绪")).toBeInTheDocument();
     expect(screen.getByText("待确认款式")).toBeInTheDocument();
+    expect(screen.getByText("Baseline 未就绪：尚未预热")).toBeInTheDocument();
+    expect(screen.getByText("待确认款式：需要确认设计")).toBeInTheDocument();
   });
 
   it("routes risk alert actions to the matching workbench step", () => {
