@@ -847,4 +847,89 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       mode: "generate",
     });
   });
+
+  it("offers bulk risk repair actions for selected risky batches", () => {
+    const onOpenBatchQueue = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={onOpenBatchQueue}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Baseline Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [
+              { tone: "danger", label: "Baseline 未就绪" },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Failed Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [
+              { tone: "danger", label: "生成失败" },
+            ],
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Review Batch",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T22:00:00.000Z",
+            alerts: [
+              { tone: "warning", label: "待确认款式" },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-3" }));
+
+    expect(
+      screen.getByRole("button", { name: "批量去生成区处理 2 个" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "批量去确认设计 1 个" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "批量去生成区处理 2 个" }));
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-1", "batch-2"],
+      mode: "generate",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "批量去确认设计 1 个" }));
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-3"],
+      mode: "create_tasks",
+    });
+  });
 });

@@ -200,6 +200,27 @@ export function SheinStudioRecentBatchesDashboard({
     [selectedHealthyBatches],
   );
   const selectedRiskyBatchCount = selectedRiskyBatches.length;
+  const selectedRiskyBatchesForGenerate = useMemo(
+    () =>
+      selectedRiskyBatches
+        .filter((summary) =>
+          summary.alerts?.some(
+            (alert) =>
+              alert.label === "Baseline 未就绪" || alert.label === "生成失败",
+          ),
+        )
+        .map((summary) => summary.id),
+    [selectedRiskyBatches],
+  );
+  const selectedRiskyBatchesForReview = useMemo(
+    () =>
+      selectedRiskyBatches
+        .filter((summary) =>
+          summary.alerts?.some((alert) => alert.label === "待确认款式"),
+        )
+        .map((summary) => summary.id),
+    [selectedRiskyBatches],
+  );
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
@@ -485,6 +506,36 @@ export function SheinStudioRecentBatchesDashboard({
                 ) : null}
                 {selectedRiskyBatchCount > 0 ? (
                   <>
+                    {selectedRiskyBatchesForGenerate.length > 0 ? (
+                      <Button
+                        onClick={() =>
+                          launchBulkQueue(
+                            selectedRiskyBatchesForGenerate,
+                            "generate",
+                            "风险批次",
+                          )
+                        }
+                        type="button"
+                        variant="secondary"
+                      >
+                        批量去生成区处理 {selectedRiskyBatchesForGenerate.length} 个
+                      </Button>
+                    ) : null}
+                    {selectedRiskyBatchesForReview.length > 0 ? (
+                      <Button
+                        onClick={() =>
+                          launchBulkQueue(
+                            selectedRiskyBatchesForReview,
+                            "create_tasks",
+                            "风险批次",
+                          )
+                        }
+                        type="button"
+                        variant="secondary"
+                      >
+                        批量去确认设计 {selectedRiskyBatchesForReview.length} 个
+                      </Button>
+                    ) : null}
                     {selectedHealthyBatchesPendingGeneration.length > 0 ? (
                       <Button
                         onClick={() =>
