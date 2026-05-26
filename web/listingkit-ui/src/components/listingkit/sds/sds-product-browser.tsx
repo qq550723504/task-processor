@@ -323,9 +323,9 @@ export function SDSProductBrowser({
           items={groupedCandidates}
           onRemove={removeSDSGroupedCandidate}
           onSelect={(selection, baseline) => {
-            const handoffMessage = buildGroupedCandidateHandoffMessage(baseline);
-            if (handoffMessage) {
-              saveSDSGroupedCandidateHandoff(handoffMessage);
+            const handoff = buildGroupedCandidateHandoff(baseline);
+            if (handoff) {
+              saveSDSGroupedCandidateHandoff(handoff);
             }
             applySelection(selection);
           }}
@@ -428,27 +428,36 @@ export function SDSProductBrowser({
   );
 }
 
-function buildGroupedCandidateHandoffMessage(baseline: {
+function buildGroupedCandidateHandoff(baseline: {
   reason: string;
   status: SDSBaselineStatus | "loading";
 }) {
   if (baseline.status === "missing") {
-    return (
-      baseline.reason ||
-      "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。"
-    );
+    return {
+      action: "focus_generate" as const,
+      actionLabel: "去生成并预热",
+      message:
+        baseline.reason ||
+        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+    };
   }
   if (baseline.status === "failed") {
-    return (
-      baseline.reason ||
-      "这款候选商品的 baseline 检查失败。请先重新生成或排查 SDS 转标准商品链路，再尝试 grouped 批量上品。"
-    );
+    return {
+      action: "focus_generate" as const,
+      actionLabel: "去重新生成",
+      message:
+        baseline.reason ||
+        "这款候选商品的 baseline 检查失败。请先重新生成或排查 SDS 转标准商品链路，再尝试 grouped 批量上品。",
+    };
   }
   if (baseline.status === "loading") {
-    return (
-      baseline.reason ||
-      "这款候选商品的 baseline 状态还在检查中。稍等片刻，确认就绪后再加入 grouped 批量上品。"
-    );
+    return {
+      action: "focus_generate" as const,
+      actionLabel: "去生成区查看",
+      message:
+        baseline.reason ||
+        "这款候选商品的 baseline 状态还在检查中。稍等片刻，确认就绪后再加入 grouped 批量上品。",
+    };
   }
-  return "";
+  return null;
 }

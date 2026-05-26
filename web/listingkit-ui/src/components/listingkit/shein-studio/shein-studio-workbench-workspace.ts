@@ -133,6 +133,15 @@ export function useSheinStudioWorkspaceLoader({
           "generationWarning",
           groupedCandidateHandoff?.message ?? "",
         );
+        workbench.setField(
+          "generationWarningAction",
+          groupedCandidateHandoff?.action && groupedCandidateHandoff.actionLabel
+            ? {
+                intent: groupedCandidateHandoff.action,
+                label: groupedCandidateHandoff.actionLabel,
+              }
+            : null,
+        );
         workbench.setField("creatingError", "");
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");
@@ -145,6 +154,7 @@ export function useSheinStudioWorkspaceLoader({
             "generationWarning",
             "已恢复之前发起的生成任务，正在继续等待结果。",
           );
+          workbench.setField("generationWarningAction", null);
           try {
             const response =
               await resumeSheinStudioDesignGeneration(resumableGenerationJobId);
@@ -174,6 +184,7 @@ export function useSheinStudioWorkspaceLoader({
                 ? `已恢复之前的生成任务。${response.warnings.join(" ")}`
                 : "",
             );
+            workbench.setField("generationWarningAction", null);
             setEffectiveStep("review");
           } catch (error) {
             if (cancelled) {
@@ -184,6 +195,7 @@ export function useSheinStudioWorkspaceLoader({
               error instanceof Error ? error.message : String(error),
             );
             workbench.setField("generationWarning", "");
+            workbench.setField("generationWarningAction", null);
           } finally {
             if (!cancelled) {
               workbench.setField("isGenerating", false);

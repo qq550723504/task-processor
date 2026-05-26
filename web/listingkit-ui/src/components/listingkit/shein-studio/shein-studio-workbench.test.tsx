@@ -78,7 +78,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
   }) => {
     lastGenerationPanelProps = props as Record<string, unknown>;
     return (
-      <div>
+      <div id="shein-studio-generator">
         <label htmlFor="prompt">prompt</label>
         <input
           id="prompt"
@@ -628,9 +628,14 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("shows grouped-candidate recovery guidance after returning from candidate pool", async () => {
-    saveSDSGroupedCandidateHandoff(
-      "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
-    );
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    saveSDSGroupedCandidateHandoff({
+      action: "focus_generate",
+      actionLabel: "去生成并预热",
+      message:
+        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+    });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
@@ -641,5 +646,7 @@ describe("SheinStudioWorkbench", () => {
         ),
       ).toBeInTheDocument(),
     );
+    fireEvent.click(screen.getByRole("button", { name: "去生成并预热" }));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 });

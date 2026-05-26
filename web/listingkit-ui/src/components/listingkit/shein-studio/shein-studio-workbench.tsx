@@ -109,6 +109,9 @@ export function SheinStudioWorkbench({
       setGenerationWarning: (
         value: SheinStudioWorkbenchStateUpdater<"generationWarning">,
       ) => setWorkbenchField("generationWarning", value),
+      setGenerationWarningAction: (
+        value: SheinStudioWorkbenchStateUpdater<"generationWarningAction">,
+      ) => setWorkbenchField("generationWarningAction", value),
       setImageStrategy: (value: SheinStudioWorkbenchStateUpdater<"imageStrategy">) =>
         setWorkbenchField("imageStrategy", value),
       setIsCreatingTasks: (
@@ -171,6 +174,7 @@ export function SheinStudioWorkbench({
     galleryRatioCheck,
     generationError,
     generationWarning,
+    generationWarningAction,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
@@ -329,6 +333,18 @@ export function SheinStudioWorkbench({
     hasLocalWorkflowStateRef.current = false;
     hasCustomizedSdsSelectionRef.current = false;
   }, [selection?.variantId]);
+
+  const handleGenerationWarningAction = useCallback(() => {
+    if (generationWarningAction?.intent !== "focus_generate") {
+      return;
+    }
+    navigateToStep("generate");
+    window.setTimeout(() => {
+      const generator = document.getElementById("shein-studio-generator");
+      generator?.scrollIntoView({ behavior: "smooth", block: "start" });
+      promptInputRef.current?.focus();
+    }, 0);
+  }, [generationWarningAction?.intent, navigateToStep]);
 
   useEffect(() => {
     const selections = [
@@ -539,6 +555,14 @@ export function SheinStudioWorkbench({
       <SheinStudioWorkbenchAlerts
         draftWarning={draftWarning}
         generationWarning={generationWarning}
+        generationWarningAction={
+          generationWarningAction
+            ? {
+                ...generationWarningAction,
+                onClick: handleGenerationWarningAction,
+              }
+            : null
+        }
         galleryRatioCheck={galleryRatioCheck}
       />
 

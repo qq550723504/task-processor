@@ -36,6 +36,12 @@ export type SheinStudioWorkbenchState = {
   selectedIds: string[];
   generationError: string;
   generationWarning: string;
+  generationWarningAction:
+    | {
+        intent: "focus_generate";
+        label: string;
+      }
+    | null;
   creatingError: string;
   creatingMessage: string;
   isGenerating: boolean;
@@ -121,6 +127,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     selectedIds: [],
     generationError: "",
     generationWarning: "",
+    generationWarningAction: null,
     creatingError: "",
     creatingMessage: "",
     isGenerating: false,
