@@ -404,6 +404,30 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("2 款商品")).toBeInTheDocument();
   });
 
+  it("shows the recent batch homepage before a selection is chosen", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="select" />);
+
+    expect(await screen.findByText("最近批次")).toBeInTheDocument();
+    expect(screen.getByText("Retro Cherries")).toBeInTheDocument();
+    expect(screen.queryByText("selection overview")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "generate styles" })).not.toBeInTheDocument();
+  });
+
   it("loads the selected batch into the editor when clicking a recent batch card", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {

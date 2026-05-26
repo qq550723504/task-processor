@@ -30,6 +30,8 @@ describe("SheinStudioPageShell", () => {
     expect(
       screen.getByText("完成选品后，系统会带着模板和变体信息进入图片生成。"),
     ).toBeInTheDocument();
+    expect(screen.getByText("workbench slot")).toBeInTheDocument();
+    expect(screen.getByText("picker modal")).toBeInTheDocument();
   });
 
   it("allows the POD route to use POD-facing header copy", () => {

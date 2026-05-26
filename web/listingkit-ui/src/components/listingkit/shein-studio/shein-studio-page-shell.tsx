@@ -208,19 +208,19 @@ export function SheinStudioPageShell({
         )}
 
         <div className="space-y-6">
+          {visibleStep === "select" || hasSelection ? (
+            <SheinStudioWorkbenchSlot
+              activeStep={visibleStep}
+              selection={liveSelection}
+              workbenchKey={hasSelection ? workbenchKey : "recent-batches-home"}
+            />
+          ) : null}
           {visibleStep === "select" ? (
             <SheinProductPickerModal
               initialKeyword={liveKeyword}
               initialPage={livePage}
               initialShipmentArea={liveShipmentArea}
               selection={liveSelection}
-            />
-          ) : null}
-          {hasSelection ? (
-            <SheinStudioWorkbenchSlot
-              activeStep={visibleStep}
-              selection={liveSelection}
-              workbenchKey={workbenchKey}
             />
           ) : null}
         </div>

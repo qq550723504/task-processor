@@ -397,6 +397,7 @@ export function SheinStudioWorkbench({
   const currentQueuedBatchId = batchQueueMode
     ? queuedBatchIds[queuedBatchIndex] ?? ""
     : "";
+  const isRecentBatchesHomepage = effectiveStep === "select";
   const currentQueuedBatch = useMemo(
     () => savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null,
     [currentQueuedBatchId, savedBatches],
@@ -1150,177 +1151,181 @@ export function SheinStudioWorkbench({
         </div>
       ) : null}
 
-      <SheinStudioSelectionOverview
-        printableAreaLabel={printableAreaLabel}
-        selectedColorCount={selectedColorCount}
-        selectedSizeCount={selectedSizeCount}
-        selectedVariantCount={selectedVariants.length}
-        selection={activeSelection}
-      />
+      {isRecentBatchesHomepage ? null : (
+        <>
+          <SheinStudioSelectionOverview
+            printableAreaLabel={printableAreaLabel}
+            selectedColorCount={selectedColorCount}
+            selectedSizeCount={selectedSizeCount}
+            selectedVariantCount={selectedVariants.length}
+            selection={activeSelection}
+          />
 
-      <SheinStudioWorkbenchAlerts
-        draftWarning={draftWarning}
-        generationWarning={generationWarning}
-        generationWarningAction={
-          generationWarningAction
-            ? {
-                ...generationWarningAction,
-                label:
-                  isExecutingWarningAction &&
-                  generationWarningAction.intent === "warm_baseline"
-                    ? "预热中..."
-                    : generationWarningAction.label,
-                onClick:
-                  generationWarningAction.intent === "warm_baseline"
-                    ? () => {
-                        void handleWarmBaselineAction();
-                      }
-                    : handleGenerationWarningAction,
-              }
-            : null
-        }
-        galleryRatioCheck={galleryRatioCheck}
-      />
+          <SheinStudioWorkbenchAlerts
+            draftWarning={draftWarning}
+            generationWarning={generationWarning}
+            generationWarningAction={
+              generationWarningAction
+                ? {
+                    ...generationWarningAction,
+                    label:
+                      isExecutingWarningAction &&
+                      generationWarningAction.intent === "warm_baseline"
+                        ? "预热中..."
+                        : generationWarningAction.label,
+                    onClick:
+                      generationWarningAction.intent === "warm_baseline"
+                        ? () => {
+                            void handleWarmBaselineAction();
+                          }
+                        : handleGenerationWarningAction,
+                  }
+                : null
+            }
+            galleryRatioCheck={galleryRatioCheck}
+          />
 
-      {effectiveStep === "generate" ? (
-        <div className="space-y-4">
-          <SheinStudioGroupedSelectionPanel
-            activeSelection={activeSelection}
-            activeSelectionBaselineReason={activeSelectionBaseline.reason}
-            activeSelectionBaselineStatus={activeSelectionBaseline.status}
-            candidates={groupedCandidates}
-            currentStoreId={effectiveCurrentStoreId}
-            currentStoreLabel={currentStoreLabel}
-            groupedSelections={groupedSelections}
-            onAddSelection={(candidate) =>
-              setGroupedSelections((current) => {
-                if (current.some((item) => item.selectionId === candidate.selectionId)) {
-                  return current;
+          {effectiveStep === "generate" ? (
+            <div className="space-y-4">
+              <SheinStudioGroupedSelectionPanel
+                activeSelection={activeSelection}
+                activeSelectionBaselineReason={activeSelectionBaseline.reason}
+                activeSelectionBaselineStatus={activeSelectionBaseline.status}
+                candidates={groupedCandidates}
+                currentStoreId={effectiveCurrentStoreId}
+                currentStoreLabel={currentStoreLabel}
+                groupedSelections={groupedSelections}
+                onAddSelection={(candidate) =>
+                  setGroupedSelections((current) => {
+                    if (current.some((item) => item.selectionId === candidate.selectionId)) {
+                      return current;
+                    }
+                    return [
+                      ...current,
+                      {
+                        selectionId: candidate.selectionId,
+                        selection: candidate.selection,
+                        baselineKey: candidate.baselineKey,
+                        baselineStatus: candidate.baselineStatus,
+                        baselineReason: candidate.baselineReason,
+                        sheinStoreId: sheinStoreId.trim(),
+                        eligible: candidate.eligible,
+                        eligibilityReason: candidate.eligibilityReason,
+                      },
+                    ];
+                  })
                 }
-                return [
-                  ...current,
-                  {
-                    selectionId: candidate.selectionId,
-                    selection: candidate.selection,
-                    baselineKey: candidate.baselineKey,
-                    baselineStatus: candidate.baselineStatus,
-                    baselineReason: candidate.baselineReason,
-                    sheinStoreId: sheinStoreId.trim(),
-                    eligible: candidate.eligible,
-                    eligibilityReason: candidate.eligibilityReason,
-                  },
-                ];
-              })
-            }
-            onBulkUpdateSelectionStore={(selectionIds, storeId) =>
-              setGroupedSelections((current) =>
-                current.map((item) =>
-                  selectionIds.includes(item.selectionId)
-                    ? { ...item, sheinStoreId: storeId }
-                    : item,
-                ),
-              )
-            }
-            onRemoveSelection={(selectionId) =>
-              setGroupedSelections((current) =>
-                current.filter((item) => item.selectionId !== selectionId),
-              )
-            }
-            onUpdateSelectionStore={(selectionId, storeId) =>
-              setGroupedSelections((current) =>
-                current.map((item) =>
-                  item.selectionId === selectionId
-                    ? { ...item, sheinStoreId: storeId }
-                    : item,
-                ),
-              )
-            }
-            storeOptions={enabledProfiles}
-          />
-          <SheinStudioGenerationPanel
-            artworkModel={artworkModel}
-            availableSdsImages={availableSdsImages}
-            createTaskButtonLabel={
-              groupedSelections.length > 0
-                ? `为 ${groupedSelections.length + 1} 款商品生成 SHEIN 资料`
-                : "生成 SHEIN 资料"
-            }
-            createdTasks={createdTasks}
-            creatingError={creatingError}
-            creatingMessage={creatingMessage}
-            generationError={generationError}
-            groupedImageMode={groupedImageMode}
-            imageStrategy={imageStrategy}
-            isCreatingTasks={isCreatingTasks}
-            isGenerating={isGenerating}
-            onCreateTasks={handleCreateTasks}
-            onDeleteBatch={handleDeleteBatch}
-            onGenerate={handleGenerate}
-            onLoadBatch={handleLoadBatch}
-            onRestorePrompt={setPrompt}
-            onSaveBatch={handleSaveBatch}
-            productImageCount={productImageCount}
-            productImagePrompt={productImagePrompt}
-            productImagePrompts={productImagePrompts}
-            prompt={prompt}
-            promptHistory={activeGroupPromptHistory}
-            promptInputRef={promptInputRef}
-            renderSizeImagesWithSds={renderSizeImagesWithSds}
-            saveMessage={saveMessage}
-            savedBatches={savedBatches}
-            selectedSdsImages={selectedSdsImages}
-            selectedStyleCount={selectedIds.length}
-            selectionReady={Boolean(activeSelection?.variantId)}
-            subscriptionBlockedMessage={subscriptionBlockedMessage}
-            setArtworkModel={setArtworkModel}
-            setGroupedImageMode={setGroupedImageMode}
-            setImageStrategy={setImageStrategy}
-            setProductImageCount={setProductImageCount}
-            setProductImagePrompt={setProductImagePrompt}
-            setProductImagePrompts={setProductImagePrompts}
-            setPrompt={setPrompt}
-            setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
-            setSelectedSdsImages={(value) => {
-              hasCustomizedSdsSelectionRef.current = true;
-              setSelectedSdsImages(value);
-            }}
-            setSheinStoreId={setSheinStoreId}
-            setStyleCount={setStyleCount}
-            setVariationIntensity={setVariationIntensity}
-            setTransparentBackground={setTransparentBackground}
-            sheinStoreId={sheinStoreId}
-            styleCount={styleCount}
-            variationIntensity={variationIntensity}
-            transparentBackground={transparentBackground}
-          />
-        </div>
-      ) : null}
+                onBulkUpdateSelectionStore={(selectionIds, storeId) =>
+                  setGroupedSelections((current) =>
+                    current.map((item) =>
+                      selectionIds.includes(item.selectionId)
+                        ? { ...item, sheinStoreId: storeId }
+                        : item,
+                    ),
+                  )
+                }
+                onRemoveSelection={(selectionId) =>
+                  setGroupedSelections((current) =>
+                    current.filter((item) => item.selectionId !== selectionId),
+                  )
+                }
+                onUpdateSelectionStore={(selectionId, storeId) =>
+                  setGroupedSelections((current) =>
+                    current.map((item) =>
+                      item.selectionId === selectionId
+                        ? { ...item, sheinStoreId: storeId }
+                        : item,
+                    ),
+                  )
+                }
+                storeOptions={enabledProfiles}
+              />
+              <SheinStudioGenerationPanel
+                artworkModel={artworkModel}
+                availableSdsImages={availableSdsImages}
+                createTaskButtonLabel={
+                  groupedSelections.length > 0
+                    ? `为 ${groupedSelections.length + 1} 款商品生成 SHEIN 资料`
+                    : "生成 SHEIN 资料"
+                }
+                createdTasks={createdTasks}
+                creatingError={creatingError}
+                creatingMessage={creatingMessage}
+                generationError={generationError}
+                groupedImageMode={groupedImageMode}
+                imageStrategy={imageStrategy}
+                isCreatingTasks={isCreatingTasks}
+                isGenerating={isGenerating}
+                onCreateTasks={handleCreateTasks}
+                onDeleteBatch={handleDeleteBatch}
+                onGenerate={handleGenerate}
+                onLoadBatch={handleLoadBatch}
+                onRestorePrompt={setPrompt}
+                onSaveBatch={handleSaveBatch}
+                productImageCount={productImageCount}
+                productImagePrompt={productImagePrompt}
+                productImagePrompts={productImagePrompts}
+                prompt={prompt}
+                promptHistory={activeGroupPromptHistory}
+                promptInputRef={promptInputRef}
+                renderSizeImagesWithSds={renderSizeImagesWithSds}
+                saveMessage={saveMessage}
+                savedBatches={savedBatches}
+                selectedSdsImages={selectedSdsImages}
+                selectedStyleCount={selectedIds.length}
+                selectionReady={Boolean(activeSelection?.variantId)}
+                subscriptionBlockedMessage={subscriptionBlockedMessage}
+                setArtworkModel={setArtworkModel}
+                setGroupedImageMode={setGroupedImageMode}
+                setImageStrategy={setImageStrategy}
+                setProductImageCount={setProductImageCount}
+                setProductImagePrompt={setProductImagePrompt}
+                setProductImagePrompts={setProductImagePrompts}
+                setPrompt={setPrompt}
+                setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
+                setSelectedSdsImages={(value) => {
+                  hasCustomizedSdsSelectionRef.current = true;
+                  setSelectedSdsImages(value);
+                }}
+                setSheinStoreId={setSheinStoreId}
+                setStyleCount={setStyleCount}
+                setVariationIntensity={setVariationIntensity}
+                setTransparentBackground={setTransparentBackground}
+                sheinStoreId={sheinStoreId}
+                styleCount={styleCount}
+                variationIntensity={variationIntensity}
+                transparentBackground={transparentBackground}
+              />
+            </div>
+          ) : null}
 
-      {effectiveStep === "review" ? (
-        <SheinStudioReviewStep
-          createdTaskCount={createdTasks.length}
-          createActionDisabledReason={createActionDisabledReason}
-          designs={designs}
-          groupedImageMode={groupedImageMode}
-          groupedSelections={groupedSelections}
-          imageStrategy={imageStrategy}
-          isCreatingTasks={isCreatingTasks}
-          onBackToGenerate={() => navigateToStep("generate")}
-          onCreateReviewTasks={handleCreateTasks}
-          onNoteChange={handleNoteChange}
-          onRegenerate={handleRegenerate}
-          onToggle={toggleSelection}
-          productImageCount={productImageCount}
-          regeneratingId={regeneratingId || undefined}
-          renderSizeImagesWithSds={renderSizeImagesWithSds}
-          selectedIds={selectedIds}
-          selection={activeSelection}
-        />
-      ) : null}
+          {effectiveStep === "review" ? (
+            <SheinStudioReviewStep
+              createdTaskCount={createdTasks.length}
+              createActionDisabledReason={createActionDisabledReason}
+              designs={designs}
+              groupedImageMode={groupedImageMode}
+              groupedSelections={groupedSelections}
+              imageStrategy={imageStrategy}
+              isCreatingTasks={isCreatingTasks}
+              onBackToGenerate={() => navigateToStep("generate")}
+              onCreateReviewTasks={handleCreateTasks}
+              onNoteChange={handleNoteChange}
+              onRegenerate={handleRegenerate}
+              onToggle={toggleSelection}
+              productImageCount={productImageCount}
+              regeneratingId={regeneratingId || undefined}
+              renderSizeImagesWithSds={renderSizeImagesWithSds}
+              selectedIds={selectedIds}
+              selection={activeSelection}
+            />
+          ) : null}
 
-      {effectiveStep === "tasks" ? (
-        <SheinStudioTasksStep createdTasks={createdTasks} />
-      ) : null}
+          {effectiveStep === "tasks" ? (
+            <SheinStudioTasksStep createdTasks={createdTasks} />
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
