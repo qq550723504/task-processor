@@ -107,7 +107,9 @@ export function SDSGroupedCandidatesPanel({
                     type="button"
                     variant={active ? "secondary" : "primary"}
                   >
-                    {active ? "当前已选" : "回选这个变体"}
+                    {active
+                      ? "当前已选"
+                      : buildBaselineActionLabel(baseline)}
                   </Button>
                   <Button
                     onClick={() => onRemove(item)}
@@ -171,4 +173,17 @@ function buildBaselineHelperText(baseline: GroupedCandidateBaselineState) {
     return baseline.reason || "这款商品还没有 baseline 缓存，暂时不能加入 grouped 批量上品。";
   }
   return "";
+}
+
+function buildBaselineActionLabel(baseline: GroupedCandidateBaselineState) {
+  if (baseline.status === "missing") {
+    return "回选并预热";
+  }
+  if (baseline.status === "failed") {
+    return "回选并重试";
+  }
+  if (baseline.status === "loading") {
+    return "回选并等待";
+  }
+  return "回选这个变体";
 }

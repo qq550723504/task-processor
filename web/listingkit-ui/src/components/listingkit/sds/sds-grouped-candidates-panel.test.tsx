@@ -72,6 +72,7 @@ describe("SDSGroupedCandidatesPanel", () => {
     expect(
       screen.getByText("正在检查 baseline 状态..."),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回选并等待" })).toBeInTheDocument();
 
     rerender(
       <SDSGroupedCandidatesPanel
@@ -89,6 +90,7 @@ describe("SDSGroupedCandidatesPanel", () => {
 
     expect(screen.getByText("Baseline 缺失")).toBeInTheDocument();
     expect(screen.getByText("baseline missing")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回选并预热" })).toBeInTheDocument();
   });
 
   it("shows failed baseline reasons inline", () => {
@@ -119,5 +121,6 @@ describe("SDSGroupedCandidatesPanel", () => {
 
     expect(screen.getByText("Baseline 异常")).toBeInTheDocument();
     expect(screen.getByText("sync failed upstream")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回选并重试" })).toBeInTheDocument();
   });
 });
