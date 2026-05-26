@@ -556,6 +556,78 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("待生成 1 个 / 待创建任务 1 个 / 已有任务 0 个")).toBeInTheDocument();
   });
 
+  it("shows recent result summary counts for selected batches", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Success Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            recentResults: [
+              {
+                tone: "success",
+                label: "最近生成成功",
+                detail: "已生成 2 张设计。",
+              },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Failed Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+            recentResults: [
+              {
+                tone: "danger",
+                label: "最近生成失败",
+                detail: "image generation timeout",
+              },
+            ],
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Neutral Batch",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T08:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-3" }));
+
+    expect(
+      screen.getByText("最近成功 1 个 / 最近失败 1 个 / 其他 1 个"),
+    ).toBeInTheDocument();
+  });
+
   it("shows ready-to-work status badges for generated designs and created tasks", () => {
     render(
       <SheinStudioRecentBatchesDashboard

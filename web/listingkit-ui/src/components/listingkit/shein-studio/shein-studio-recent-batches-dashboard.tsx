@@ -307,6 +307,19 @@ export function SheinStudioRecentBatchesDashboard({
           left.label.localeCompare(right.label),
       );
   }, [selectedRiskyBatches]);
+  const selectedRecentResultCounts = useMemo(() => {
+    const success = selectedPersistedBatches.filter((summary) =>
+      summaryHasRecentResultTone(summary, "success"),
+    ).length;
+    const failure = selectedPersistedBatches.filter((summary) =>
+      summaryHasRecentResultTone(summary, "danger"),
+    ).length;
+    const other = Math.max(
+      0,
+      selectedPersistedBatches.length - success - failure,
+    );
+    return { success, failure, other };
+  }, [selectedPersistedBatches]);
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
@@ -659,6 +672,11 @@ export function SheinStudioRecentBatchesDashboard({
                 待生成 {selectedBatchesPendingGeneration.length} 个 / 待创建任务{" "}
                 {selectedBatchesPendingTaskCreation.length} 个 / 已有任务{" "}
                 {selectedBatchesWithTasks.length} 个
+              </div>
+              <div className="text-xs text-zinc-500">
+                最近成功 {selectedRecentResultCounts.success} 个 / 最近失败{" "}
+                {selectedRecentResultCounts.failure} 个 / 其他{" "}
+                {selectedRecentResultCounts.other} 个
               </div>
             </div>
             <Button
