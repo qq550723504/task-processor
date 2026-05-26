@@ -267,6 +267,14 @@ func (s *stubListingKitHandler) GenerateStudioProductImages(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"images": []any{}})
 }
 
+func (s *stubListingKitHandler) GetSDSBaselineReadiness(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+}
+
+func (s *stubListingKitHandler) WarmSDSBaseline(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+}
+
 func (s *stubListingKitHandler) StartStudioAsyncJob(c *gin.Context) {
 	s.startStudioAsyncJobCalled = true
 	c.JSON(http.StatusAccepted, gin.H{"job_id": "studio-job-1", "status": "running"})
