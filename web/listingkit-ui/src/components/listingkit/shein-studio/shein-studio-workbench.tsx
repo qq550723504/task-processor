@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { Button } from "@/components/ui/button";
 import { SheinStudioBatchQueueBanner } from "@/components/listingkit/shein-studio/shein-studio-batch-queue-banner";
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
@@ -271,6 +272,12 @@ export function SheinStudioWorkbench({
   const [selectedRecentBatchSummaryIds, setSelectedRecentBatchSummaryIds] = useState<
     string[]
   >([]);
+  const [queueResumeState, setQueueResumeState] = useState<{
+    batchIds: string[];
+    mode: SheinStudioBatchQueueMode;
+    startIndex: number;
+    total: number;
+  } | null>(null);
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -415,6 +422,15 @@ export function SheinStudioWorkbench({
         : `当前没有可继续的已保存批次。首页勾选已保留，可重新检查后再发起批量处理。`;
     },
     [],
+  );
+  const resumableQueueBatchIds = useMemo(
+    () =>
+      queueResumeState
+        ? queueResumeState.batchIds.filter((batchId) =>
+            savedBatches.some((item) => item.id === batchId),
+          )
+        : [],
+    [queueResumeState, savedBatches],
   );
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
@@ -868,7 +884,12 @@ export function SheinStudioWorkbench({
   );
 
   const loadQueuedBatch = useCallback(
-    (batchIds: string[], index: number, mode: SheinStudioBatchQueueMode) => {
+    (
+      batchIds: string[],
+      index: number,
+      mode: SheinStudioBatchQueueMode,
+      options?: { keepResumeState?: boolean },
+    ) => {
       for (let nextIndex = index; nextIndex < batchIds.length; nextIndex += 1) {
         const batch = savedBatches.find((item) => item.id === batchIds[nextIndex]);
         if (!batch) {
@@ -881,6 +902,9 @@ export function SheinStudioWorkbench({
         return true;
       }
       clearBatchQueue();
+      if (!options?.keepResumeState) {
+        setQueueResumeState(null);
+      }
       setQueueMessage(queueCompletionMessage(mode, batchIds.length));
       return false;
     },
@@ -892,24 +916,35 @@ export function SheinStudioWorkbench({
       setEffectiveStep,
       setQueueMessage,
       setQueuedBatchIndex,
+      setQueueResumeState,
       stepForQueuedBatch,
     ],
   );
 
-  const handleOpenBatchQueue = useCallback(
-    (input: { batchIds: string[]; mode: SheinStudioBatchQueueMode }) => {
+  const startBatchQueue = useCallback(
+    (input: {
+      batchIds: string[];
+      mode: SheinStudioBatchQueueMode;
+      startIndex?: number;
+    }) => {
       const validBatchIds = input.batchIds.filter((batchId) =>
         savedBatches.some((item) => item.id === batchId),
       );
       if (validBatchIds.length === 0) {
         clearBatchQueue();
+        setQueueResumeState(null);
         setQueueMessage(queueCompletionMessage(input.mode, 0));
         return;
       }
+      const startIndex = Math.max(
+        0,
+        Math.min(input.startIndex ?? 0, validBatchIds.length - 1),
+      );
       setBatchQueueMode(input.mode);
       setQueuedBatchIds(validBatchIds);
-      setQueuedBatchIndex(0);
-      loadQueuedBatch(validBatchIds, 0, input.mode);
+      setQueuedBatchIndex(startIndex);
+      setQueueResumeState(null);
+      loadQueuedBatch(validBatchIds, startIndex, input.mode);
     },
     [
       clearBatchQueue,
@@ -920,8 +955,51 @@ export function SheinStudioWorkbench({
       setQueueMessage,
       setQueuedBatchIds,
       setQueuedBatchIndex,
+      setQueueResumeState,
     ],
   );
+  const handleOpenBatchQueue = useCallback(
+    (input: { batchIds: string[]; mode: SheinStudioBatchQueueMode }) => {
+      startBatchQueue(input);
+    },
+    [startBatchQueue],
+  );
+
+  const handleExitBatchQueue = useCallback(() => {
+    if (batchQueueMode && queuedBatchIds.length > 0) {
+      setQueueResumeState({
+        batchIds: queuedBatchIds,
+        mode: batchQueueMode,
+        startIndex: queuedBatchIndex,
+        total: queuedBatchIds.length,
+      });
+      setQueueMessage("");
+    }
+    clearBatchQueue();
+  }, [
+    batchQueueMode,
+    clearBatchQueue,
+    queuedBatchIds,
+    queuedBatchIndex,
+    setQueueMessage,
+  ]);
+
+  const handleResumeBatchQueue = useCallback(() => {
+    if (!queueResumeState) {
+      return;
+    }
+    startBatchQueue({
+      batchIds: queueResumeState.batchIds,
+      mode: queueResumeState.mode,
+      startIndex: queueResumeState.startIndex,
+    });
+  }, [queueResumeState, startBatchQueue]);
+
+  const clearQueuedSelectionContext = useCallback(() => {
+    setQueueResumeState(null);
+    setSelectedRecentBatchSummaryIds([]);
+    setQueueMessage("");
+  }, [setQueueMessage]);
 
   const handleAdvanceBatchQueue = useCallback(() => {
     if (!batchQueueMode) {
@@ -1015,11 +1093,35 @@ export function SheinStudioWorkbench({
           currentIndex={queuedBatchIndex}
           guidance={batchQueueGuidance}
           mode={batchQueueMode}
-          onExit={clearBatchQueue}
+          onExit={handleExitBatchQueue}
           onNext={handleAdvanceBatchQueue}
           onSkip={handleAdvanceBatchQueue}
           total={queuedBatchIds.length}
         />
+      ) : null}
+
+      {!batchQueueMode && queueResumeState && resumableQueueBatchIds.length > 0 ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-4 text-sm text-emerald-900">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="font-medium">
+                已停在第 {queueResumeState.startIndex + 1} / {queueResumeState.total} 个批次；
+                当前还保留 {resumableQueueBatchIds.length} 个已勾选批次。
+              </p>
+              <p className="text-emerald-800/90">
+                可继续本轮{queueResumeState.mode === "create_tasks" ? "创建任务" : "继续生成"}处理，或清除这轮选择后重新开始。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleResumeBatchQueue} type="button" variant="secondary">
+                继续本轮处理
+              </Button>
+              <Button onClick={clearQueuedSelectionContext} type="button" variant="ghost">
+                清除这轮选择
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {queueMessage ? (
