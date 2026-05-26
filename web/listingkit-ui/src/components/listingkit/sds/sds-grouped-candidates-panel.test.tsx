@@ -126,4 +126,53 @@ describe("SDSGroupedCandidatesPanel", () => {
     expect(screen.getByText("sync failed upstream")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "回选并重试" })).toBeInTheDocument();
   });
+
+  it("surfaces a bulk warm action for missing and failed candidates", () => {
+    const onWarmAll = vi.fn();
+    const items = [
+      {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 11,
+        prototypeGroupId: 21,
+        layerId: "layer-a",
+        productName: "Product A",
+        variantLabel: "M · black",
+        selectedVariantIds: [11],
+      },
+      {
+        productId: 2,
+        parentProductId: 2,
+        variantId: 22,
+        prototypeGroupId: 32,
+        layerId: "layer-b",
+        productName: "Product B",
+        variantLabel: "L · white",
+        selectedVariantIds: [22],
+      },
+    ];
+
+    render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "missing baseline",
+            status: "missing",
+          },
+          "2:32:22:layer-b:22": {
+            reason: "sync failed upstream",
+            status: "failed",
+          },
+        }}
+        isWarmingAll={false}
+        items={items}
+        onRemove={() => {}}
+        onSelect={() => {}}
+        onWarmAll={onWarmAll}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "批量预热 2 款" }));
+    expect(onWarmAll).toHaveBeenCalledWith(items);
+  });
 });

@@ -17,23 +17,32 @@ export function SDSGroupedCandidatesPanel({
   items,
   activeSelection,
   baselineStatuses,
+  isWarmingAll = false,
   onRemove,
   onSelect,
+  onWarmAll,
 }: {
   items: SDSProductVariantSelection[];
   activeSelection?: SDSProductVariantSelection;
   baselineStatuses: Record<string, GroupedCandidateBaselineState>;
+  isWarmingAll?: boolean;
   onRemove: (selection: SDSProductVariantSelection) => void;
   onSelect: (
     selection: SDSProductVariantSelection,
     baseline: GroupedCandidateBaselineState,
   ) => void;
+  onWarmAll?: (items: SDSProductVariantSelection[]) => void;
 }) {
   if (items.length === 0) {
     return null;
   }
 
   const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
+  const warmableItems = items.filter((item) => {
+    const selectionId = buildGroupedSDSSelectionID(item);
+    const status = baselineStatuses[selectionId]?.status ?? "loading";
+    return status === "missing" || status === "failed";
+  });
 
   return (
     <div className="space-y-3">
@@ -46,9 +55,24 @@ export function SDSGroupedCandidatesPanel({
             这里存放准备进入 grouped SDS 批量上品的候选商品，可以随时回选或移除。
           </p>
         </div>
-        <Badge className="rounded-md px-3 py-2 text-sm" variant="neutral">
-          {items.length} 款候选
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="rounded-md px-3 py-2 text-sm" variant="neutral">
+            {items.length} 款候选
+          </Badge>
+          {warmableItems.length > 0 && onWarmAll ? (
+            <Button
+              disabled={isWarmingAll}
+              onClick={() => onWarmAll(warmableItems)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              {isWarmingAll
+                ? `正在预热 ${warmableItems.length} 款...`
+                : `批量预热 ${warmableItems.length} 款`}
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
