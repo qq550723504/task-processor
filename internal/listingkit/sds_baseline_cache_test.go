@@ -50,7 +50,8 @@ func TestSDSBaselineKeyFromOptionsStableAcrossImageAndCopyChanges(t *testing.T) 
 func TestMemTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 	t.Parallel()
 
-	repo, ok := store.NewMemTaskRepository().(listingkit.SDSBaselineCacheRepository)
+	memRepo := store.NewMemTaskRepository()
+	repo, ok := interface{}(memRepo).(listingkit.SDSBaselineCacheRepository)
 	if !ok {
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
@@ -93,7 +94,7 @@ func TestTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 		t.Fatalf("auto migrate: %v", err)
 	}
 
-	repo, ok := store.NewTaskRepository(db).(listingkit.SDSBaselineCacheRepository)
+	repo, ok := interface{}(store.NewTaskRepository(db)).(listingkit.SDSBaselineCacheRepository)
 	if !ok {
 		t.Fatal("task repository does not expose SDS baseline cache repository")
 	}
@@ -195,7 +196,7 @@ func TestSDSBaselineCacheRepositoryRejectsTenantArgumentContextMismatch(t *testi
 func TestMemTaskRepositorySDSBaselineCacheIsMutationSafe(t *testing.T) {
 	t.Parallel()
 
-	repo, ok := store.NewMemTaskRepository().(listingkit.SDSBaselineCacheRepository)
+	repo, ok := interface{}(store.NewMemTaskRepository()).(listingkit.SDSBaselineCacheRepository)
 	if !ok {
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
@@ -252,7 +253,7 @@ func TestMemTaskRepositorySDSBaselineCacheIsMutationSafe(t *testing.T) {
 
 func newMemSDSBaselineCacheRepository(t *testing.T) listingkit.SDSBaselineCacheRepository {
 	t.Helper()
-	repo, ok := store.NewMemTaskRepository().(listingkit.SDSBaselineCacheRepository)
+	repo, ok := interface{}(store.NewMemTaskRepository()).(listingkit.SDSBaselineCacheRepository)
 	if !ok {
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
@@ -268,7 +269,7 @@ func newDBSDSBaselineCacheRepository(t *testing.T) listingkit.SDSBaselineCacheRe
 	if err := db.AutoMigrate(&listingkit.SDSBaselineCacheEntry{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	repo, ok := store.NewTaskRepository(db).(listingkit.SDSBaselineCacheRepository)
+	repo, ok := interface{}(store.NewTaskRepository(db)).(listingkit.SDSBaselineCacheRepository)
 	if !ok {
 		t.Fatal("task repository does not expose SDS baseline cache repository")
 	}
