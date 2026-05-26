@@ -23,43 +23,42 @@ import (
 	"task-processor/internal/tenantbridge"
 )
 
-func BuildListingKitTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.Repository, []func() error, error) {
+func buildRepositoryWithFallback[T any](
+	cfg *config.Config,
+	logger *logrus.Logger,
+	buildDB func(*config.DatabaseConfig, *logrus.Logger) (T, func() error, error),
+	buildFallback func(*logrus.Logger) (T, []func() error, error),
+) (T, []func() error, error) {
 	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitTaskRepository(cfg.Database, logger)
+		repo, closer, err := buildDB(cfg.Database, logger)
 		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit task repository: %w", err)
+			var zero T
+			return zero, nil, err
 		}
 		return repo, []func() error{closer}, nil
 	}
+	return buildFallback(logger)
+}
 
-	logger.Warn("database not configured, using in-memory listingkit repository")
-	return listingkitstore.NewMemTaskRepository(), nil, nil
+func BuildListingKitTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.Repository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitTaskRepository, func(logger *logrus.Logger) (listingkit.Repository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit repository")
+		return listingkitstore.NewMemTaskRepository(), nil, nil
+	})
 }
 
 func BuildListingKitStudioAsyncJobRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingKitStudioAsyncJobRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing kit studio async job repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, using in-memory listingkit studio async job repository")
-	return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStudioAsyncJobRepository, func(logger *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit studio async job repository")
+		return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	})
 }
 
 func BuildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminStoreRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin store repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit store admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminStoreRepository, func(logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit store admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingKitStoreProfileRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error) {
@@ -89,16 +88,10 @@ func BuildListingKitStoreRoutingSettingsRepository(cfg *config.Config, logger *l
 }
 
 func BuildListingAdminStoreStatisticsRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBListingAdminStoreStatisticsRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("create listing admin store statistics repository: %w", err)
-		}
-		return repo, []func() error{closer}, nil
-	}
-
-	logger.Warn("database not configured, ListingKit store statistics admin API disabled")
-	return nil, nil, nil
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminStoreStatisticsRepository, func(logger *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit store statistics admin API disabled")
+		return nil, nil, nil
+	})
 }
 
 func BuildListingAdminImportTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
