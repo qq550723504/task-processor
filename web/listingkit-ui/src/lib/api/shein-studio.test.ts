@@ -158,6 +158,62 @@ describe("shein studio design metadata", () => {
       session: {
         id: "session-1",
         prompt: "fallback session prompt",
+        groups: [
+          {
+            id: "group-1",
+            name: "Group 1",
+            current_prompt: "prompt a",
+            prompt_history: [
+              {
+                prompt: "prompt old",
+                grouped_image_mode: "shared_by_size",
+                created_at: "2026-05-26T00:00:00Z",
+              },
+            ],
+            primary_selection: {
+              product_id: 1,
+              parent_product_id: 1,
+              variant_id: 100,
+              prototype_group_id: 200,
+              layer_id: "layer-1",
+              product_name: "tee",
+              variant_label: "M / black",
+            },
+            grouped_selections: [
+              {
+                selection_id: "1:200:101:layer-2:101",
+                selection: {
+                  product_id: 1,
+                  parent_product_id: 1,
+                  variant_id: 101,
+                  prototype_group_id: 200,
+                  layer_id: "layer-2",
+                  product_name: "hoodie",
+                  variant_label: "L / white",
+                },
+                baseline_status: "ready",
+                baseline_reason: "",
+                shein_store_id: "store-9",
+                eligible: true,
+              },
+            ],
+            shein_store_id: "store-9",
+            image_strategy: "sds_official",
+            grouped_image_mode: "shared_by_size",
+            selected_sds_images: [],
+            render_size_images_with_sds: true,
+            product_image_count: "5",
+            product_image_prompt: "",
+            product_image_prompts: [],
+            artwork_model: "",
+            transparent_background: false,
+            variation_intensity: "medium",
+            approved_design_ids: [],
+            created_tasks: [],
+            designs: [],
+            updated_at: "2026-05-26T00:00:00Z",
+          },
+        ],
         grouped_selections: [
           {
             selection_id: "1:200:101:layer-2:101",
@@ -210,6 +266,19 @@ describe("shein studio design metadata", () => {
         }),
       }),
     ]);
+    expect(draft?.groups).toEqual([
+      expect.objectContaining({
+        id: "group-1",
+        currentPrompt: "prompt a",
+        promptHistory: [
+          {
+            prompt: "prompt old",
+            groupedImageMode: "shared_by_size",
+            createdAt: "2026-05-26T00:00:00Z",
+          },
+        ],
+      }),
+    ]);
   });
 
   it("sends grouped selections when updating a studio session", async () => {
@@ -250,6 +319,70 @@ describe("shein studio design metadata", () => {
               selection_id: "1:200:101:layer-2:101",
               baseline_status: "ready",
               shein_store_id: "store-9",
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("sends grouped workspaces when updating a studio session", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "session-1" },
+      designs: [],
+    });
+
+    await updateSheinStudioSession("session-1", {
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          currentPrompt: "prompt a",
+          promptHistory: [
+            {
+              prompt: "prompt old",
+              groupedImageMode: "shared_by_size",
+              createdAt: "2026-05-26T00:00:00Z",
+            },
+          ],
+          primarySelection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 100,
+            prototypeGroupId: 200,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / black",
+          },
+          groupedSelections: [],
+          sheinStoreId: "store-9",
+          imageStrategy: "sds_official",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/sessions/session-1",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          grouped_selections: undefined,
+          groups: [
+            expect.objectContaining({
+              id: "group-1",
+              current_prompt: "prompt a",
             }),
           ],
         }),
@@ -309,6 +442,84 @@ describe("shein studio design metadata", () => {
               selection_id: "1:200:101:layer-2:101",
               baseline_status: "ready",
               shein_store_id: "store-9",
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("sends grouped workspaces when saving a studio batch", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "batch-1" },
+      designs: [],
+    });
+
+    await upsertSheinStudioSessionBatch({
+      prompt: "retro botanical clock",
+      styleCount: "2",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          currentPrompt: "prompt a",
+          promptHistory: [
+            {
+              prompt: "prompt old",
+              groupedImageMode: "shared_by_size",
+              createdAt: "2026-05-26T00:00:00Z",
+            },
+          ],
+          primarySelection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 100,
+            prototypeGroupId: 200,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / black",
+          },
+          groupedSelections: [],
+          sheinStoreId: "store-9",
+          imageStrategy: "sds_official",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T00:00:00Z",
+        },
+      ],
+      approvedDesignIds: [],
+      createdTasks: [],
+      designs: [],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          grouped_selections: undefined,
+          groups: [
+            expect.objectContaining({
+              id: "group-1",
+              current_prompt: "prompt a",
             }),
           ],
         }),

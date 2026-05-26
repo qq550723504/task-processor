@@ -108,5 +108,115 @@ describe("buildSheinStudioDraftInput", () => {
         }),
       }),
     ]);
+    expect(payload.groups).toEqual(undefined);
+  });
+
+  it("builds grouped workspace payloads", () => {
+    const payload = buildSheinStudioDraftInput({
+      prompt: "top-level prompt",
+      styleCount: "2",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: false,
+      sheinStoreId: "7",
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 3,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      groupedSelections: [],
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          primarySelection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 100,
+            prototypeGroupId: 3,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / black",
+          },
+          groupedSelections: [
+            {
+              selectionId: "1:3:5:layer-2:5",
+              selection: {
+                productId: 4,
+                parentProductId: 1,
+                variantId: 5,
+                prototypeGroupId: 3,
+                layerId: "layer-2",
+                productName: "hoodie",
+                variantLabel: "L / white",
+              },
+              baselineStatus: "ready",
+              baselineReason: "",
+              sheinStoreId: "9",
+              eligible: true,
+            },
+          ],
+          sheinStoreId: "9",
+          imageStrategy: "sds_official",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          currentPrompt: "prompt a",
+          promptHistory: [
+            {
+              prompt: "prompt old",
+              groupedImageMode: "shared_by_size",
+              createdAt: "2026-05-26T00:00:00Z",
+            },
+          ],
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T00:00:00Z",
+        },
+      ],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+
+    expect(payload.groups).toEqual([
+      expect.objectContaining({
+        id: "group-1",
+        currentPrompt: "prompt a",
+        promptHistory: [
+          {
+            prompt: "prompt old",
+            groupedImageMode: "shared_by_size",
+            createdAt: "2026-05-26T00:00:00Z",
+          },
+        ],
+        primarySelection: expect.objectContaining({
+          variantId: 100,
+        }),
+        groupedSelections: [
+          expect.objectContaining({
+            selectionId: "1:3:5:layer-2:5",
+          }),
+        ],
+      }),
+    ]);
   });
 });

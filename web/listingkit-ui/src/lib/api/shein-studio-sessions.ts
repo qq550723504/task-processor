@@ -7,11 +7,13 @@ import {
   type GroupedSDSSelectionEligibility,
 } from "@/lib/types/sds-baseline";
 import type {
+  SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioSavedBatch,
   SheinStudioCreatedTask,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
+  SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
@@ -44,6 +46,7 @@ export type StudioSessionDetailResponse = {
     image_strategy?: SheinStudioImageStrategy;
     grouped_image_mode?: SheinStudioGroupedImageMode;
     selected_sds_images?: SheinStudioSelectedSDSImage[];
+    groups?: Array<Record<string, unknown>>;
     grouped_selections?: Array<Record<string, unknown>>;
     transparent_background?: boolean;
     render_size_images_with_sds?: boolean;
@@ -90,6 +93,7 @@ type StudioBatchListResponse = {
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
     selection?: Record<string, unknown>;
+    groups?: Array<Record<string, unknown>>;
     grouped_selections?: Array<Record<string, unknown>>;
     approved_design_ids?: string[];
     created_tasks?: SheinStudioCreatedTask[];
@@ -167,6 +171,7 @@ export async function updateSheinStudioSession(
     imageStrategy?: string;
     groupedImageMode?: SheinStudioGroupedImageMode;
     selectedSdsImages?: SheinStudioSelectedSDSImage[];
+    groups?: SheinStudioGroupedWorkspace[];
     groupedSelections?: GroupedSDSSelectionEligibility[];
     transparentBackground?: boolean;
     renderSizeImagesWithSds?: boolean;
@@ -193,7 +198,8 @@ export async function updateSheinStudioSession(
         image_strategy: patch.imageStrategy,
         grouped_image_mode: patch.groupedImageMode,
         selected_sds_images: patch.selectedSdsImages,
-        grouped_selections: patch.groupedSelections?.map(groupedSelectionToPayload),
+        groups: patch.groups?.map(groupToPayload),
+        grouped_selections: patch.groups ? undefined : patch.groupedSelections?.map(groupedSelectionToPayload),
         transparent_background: patch.transparentBackground,
         render_size_images_with_sds: patch.renderSizeImagesWithSds,
         shein_store_id: patch.sheinStoreId,
@@ -284,6 +290,7 @@ export async function upsertSheinStudioSessionBatch(
     renderSizeImagesWithSds?: boolean;
     sheinStoreId?: string;
     selection?: SDSProductVariantSelection;
+    groups?: SheinStudioGroupedWorkspace[];
     groupedSelections?: GroupedSDSSelectionEligibility[];
     approvedDesignIds: string[];
     createdTasks: SheinStudioCreatedTask[];
@@ -311,7 +318,8 @@ export async function upsertSheinStudioSessionBatch(
         render_size_images_with_sds: input.renderSizeImagesWithSds,
         shein_store_id: input.sheinStoreId,
         selection: input.selection ? selectionToPayload(input.selection) : undefined,
-        grouped_selections: input.groupedSelections?.map(groupedSelectionToPayload),
+        groups: input.groups?.map(groupToPayload),
+        grouped_selections: input.groups ? undefined : input.groupedSelections?.map(groupedSelectionToPayload),
         approved_design_ids: input.approvedDesignIds,
         created_tasks: input.createdTasks,
         designs: input.designs.map((design) => ({
@@ -378,6 +386,7 @@ export function mapStudioSessionDetailToDraft(
     renderSizeImagesWithSds: detail.session.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(detail.session.selection)?.variantId,
     selection: normalizeSelectionResponse(detail.session.selection),
+    groups: normalizeGroupsResponse(detail.session.groups),
     groupedSelections: normalizeGroupedSelectionsResponse(
       detail.session.grouped_selections,
     ),
@@ -528,6 +537,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     renderSizeImagesWithSds: item.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(item.selection)?.variantId,
     selection: normalizeSelectionResponse(item.selection),
+    groups: normalizeGroupsResponse(item.groups),
     groupedSelections: normalizeGroupedSelectionsResponse(item.grouped_selections),
     designs: [],
     selectedIds: item.approved_design_ids ?? [],
@@ -624,6 +634,54 @@ function groupedSelectionToPayload(selection: GroupedSDSSelectionEligibility) {
   };
 }
 
+function promptHistoryEntryToPayload(entry: SDSGroupedPromptHistoryEntry) {
+  return {
+    prompt: entry.prompt,
+    grouped_image_mode: entry.groupedImageMode,
+    created_at: entry.createdAt,
+  };
+}
+
+function groupToPayload(group: SheinStudioGroupedWorkspace) {
+  return {
+    id: group.id,
+    name: group.name,
+    current_prompt: group.currentPrompt,
+    prompt_history: group.promptHistory.map(promptHistoryEntryToPayload),
+    primary_selection: selectionToPayload(group.primarySelection),
+    grouped_selections: group.groupedSelections.map(groupedSelectionToPayload),
+    shein_store_id: group.sheinStoreId,
+    image_strategy: group.imageStrategy,
+    grouped_image_mode: group.groupedImageMode,
+    selected_sds_images: group.selectedSdsImages,
+    render_size_images_with_sds: group.renderSizeImagesWithSds,
+    product_image_count: group.productImageCount,
+    product_image_prompt: group.productImagePrompt,
+    product_image_prompts: group.productImagePrompts,
+    artwork_model: group.artworkModel,
+    transparent_background: group.transparentBackground,
+    variation_intensity: group.variationIntensity,
+    approved_design_ids: group.selectedIds,
+    created_tasks: group.createdTasks,
+    updated_at: group.updatedAt,
+    designs: group.designs.map((design) => ({
+      id: design.id,
+      image_url: design.imageUrl ?? design.dataUrl,
+      prompt: design.prompt,
+      revised_prompt: design.revisedPrompt,
+      image_model: design.imageModel,
+      transparent_background: design.transparentBackground,
+      variation_intensity: design.variationIntensity,
+      review_note: design.reviewNote,
+      role: design.role,
+      role_label: design.roleLabel,
+      target_group_key: design.targetGroupKey,
+      target_group_label: design.targetGroupLabel,
+      product_image_urls: design.productImageUrls,
+    })),
+  };
+}
+
 function normalizeGroupedSelectionsResponse(
   items: Array<Record<string, unknown>> | undefined,
 ): GroupedSDSSelectionEligibility[] {
@@ -678,4 +736,284 @@ function normalizeGroupedSelectionsResponse(
       };
     })
     .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item));
+}
+
+function normalizePromptHistoryResponse(
+  items: Array<Record<string, unknown>> | undefined,
+): SDSGroupedPromptHistoryEntry[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map<SDSGroupedPromptHistoryEntry | null>((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const entry = item as {
+        prompt?: unknown;
+        groupedImageMode?: unknown;
+        grouped_image_mode?: unknown;
+        createdAt?: unknown;
+        created_at?: unknown;
+      };
+      if (typeof entry.prompt !== "string") {
+        return null;
+      }
+      const createdAt =
+        typeof entry.createdAt === "string"
+          ? entry.createdAt
+          : typeof entry.created_at === "string"
+            ? entry.created_at
+            : null;
+      if (!createdAt) {
+        return null;
+      }
+      return {
+        prompt: entry.prompt,
+        groupedImageMode:
+          entry.groupedImageMode === "per_product" || entry.groupedImageMode === "shared_by_size"
+            ? entry.groupedImageMode
+            : entry.grouped_image_mode === "per_product" || entry.grouped_image_mode === "shared_by_size"
+              ? entry.grouped_image_mode
+              : "shared_by_size",
+        createdAt,
+      };
+    })
+    .filter((item): item is SDSGroupedPromptHistoryEntry => Boolean(item));
+}
+
+function normalizeDesignResponse(
+  design: Record<string, unknown>,
+): SheinStudioGeneratedDesign | null {
+  if (!design || typeof design !== "object" || typeof design.id !== "string") {
+    return null;
+  }
+  return {
+    id: design.id,
+    imageUrl:
+      typeof design.image_url === "string"
+        ? design.image_url
+        : typeof design.imageUrl === "string"
+          ? design.imageUrl
+          : undefined,
+    prompt: typeof design.prompt === "string" ? design.prompt : undefined,
+    revisedPrompt:
+      typeof design.revised_prompt === "string"
+        ? design.revised_prompt
+        : typeof design.revisedPrompt === "string"
+          ? design.revisedPrompt
+          : undefined,
+    imageModel:
+      typeof design.image_model === "string"
+        ? design.image_model
+        : typeof design.imageModel === "string"
+          ? design.imageModel
+          : undefined,
+    transparentBackground:
+      typeof design.transparent_background === "boolean"
+        ? design.transparent_background
+        : typeof design.transparentBackground === "boolean"
+          ? design.transparentBackground
+          : undefined,
+    variationIntensity:
+      design.variation_intensity === "light" ||
+      design.variation_intensity === "medium" ||
+      design.variation_intensity === "strong"
+        ? design.variation_intensity
+        : design.variationIntensity === "light" ||
+            design.variationIntensity === "medium" ||
+            design.variationIntensity === "strong"
+          ? design.variationIntensity
+          : undefined,
+    reviewNote:
+      typeof design.review_note === "string"
+        ? design.review_note
+        : typeof design.reviewNote === "string"
+          ? design.reviewNote
+          : undefined,
+    role: typeof design.role === "string" ? design.role : undefined,
+    roleLabel:
+      typeof design.role_label === "string"
+        ? design.role_label
+        : typeof design.roleLabel === "string"
+          ? design.roleLabel
+          : undefined,
+    targetGroupKey:
+      typeof design.target_group_key === "string"
+        ? design.target_group_key
+        : typeof design.targetGroupKey === "string"
+          ? design.targetGroupKey
+          : undefined,
+    targetGroupLabel:
+      typeof design.target_group_label === "string"
+        ? design.target_group_label
+        : typeof design.targetGroupLabel === "string"
+          ? design.targetGroupLabel
+          : undefined,
+    productImageUrls: Array.isArray(design.product_image_urls)
+      ? (design.product_image_urls as string[])
+      : Array.isArray(design.productImageUrls)
+        ? (design.productImageUrls as string[])
+        : undefined,
+  } satisfies SheinStudioGeneratedDesign;
+}
+
+function normalizeGroupsResponse(
+  items: Array<Record<string, unknown>> | undefined,
+): SheinStudioGroupedWorkspace[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map<SheinStudioGroupedWorkspace | null>((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const group = item as Record<string, unknown>;
+      const primarySelection = normalizeSelectionResponse(
+        (group.primary_selection ?? group.primarySelection) as Record<string, unknown> | undefined,
+      );
+      if (!primarySelection) {
+        return null;
+      }
+      const id =
+        typeof group.id === "string" && group.id.trim().length > 0 ? group.id : null;
+      const name =
+        typeof group.name === "string" && group.name.trim().length > 0 ? group.name : null;
+      const currentPrompt =
+        typeof group.current_prompt === "string"
+          ? group.current_prompt
+          : typeof group.currentPrompt === "string"
+            ? group.currentPrompt
+            : "";
+      const updatedAt =
+        typeof group.updated_at === "string"
+          ? group.updated_at
+          : typeof group.updatedAt === "string"
+            ? group.updatedAt
+            : new Date().toISOString();
+      if (!id || !name) {
+        return null;
+      }
+      return {
+        id,
+        name,
+        currentPrompt,
+        promptHistory: normalizePromptHistoryResponse(
+          (group.prompt_history ?? group.promptHistory) as Array<Record<string, unknown>> | undefined,
+        ),
+        primarySelection,
+        groupedSelections: normalizeGroupedSelectionsResponse(
+          (group.grouped_selections ?? group.groupedSelections) as Array<Record<string, unknown>> | undefined,
+        ),
+        sheinStoreId:
+          typeof group.shein_store_id === "string"
+            ? group.shein_store_id
+            : typeof group.sheinStoreId === "string"
+              ? group.sheinStoreId
+              : "",
+        imageStrategy:
+          group.image_strategy === "ai_generated" ||
+          group.image_strategy === "sds_official" ||
+          group.image_strategy === "hybrid"
+            ? group.image_strategy
+            : group.imageStrategy === "ai_generated" ||
+                group.imageStrategy === "sds_official" ||
+                group.imageStrategy === "hybrid"
+              ? group.imageStrategy
+              : "sds_official",
+        groupedImageMode:
+          group.grouped_image_mode === "per_product" ||
+          group.grouped_image_mode === "shared_by_size"
+            ? group.grouped_image_mode
+            : group.groupedImageMode === "per_product" ||
+                group.groupedImageMode === "shared_by_size"
+              ? group.groupedImageMode
+              : "shared_by_size",
+        selectedSdsImages: normalizeSelectedSDSImages(
+          group.selected_sds_images ?? group.selectedSdsImages,
+        ),
+        renderSizeImagesWithSds:
+          typeof group.render_size_images_with_sds === "boolean"
+            ? group.render_size_images_with_sds
+            : typeof group.renderSizeImagesWithSds === "boolean"
+              ? group.renderSizeImagesWithSds
+              : true,
+        productImageCount:
+          typeof group.product_image_count === "string"
+            ? group.product_image_count
+            : typeof group.productImageCount === "string"
+              ? group.productImageCount
+              : "5",
+        productImagePrompt:
+          typeof group.product_image_prompt === "string"
+            ? group.product_image_prompt
+            : typeof group.productImagePrompt === "string"
+              ? group.productImagePrompt
+              : "",
+        productImagePrompts:
+          Array.isArray(group.product_image_prompts)
+            ? (group.product_image_prompts as SheinStudioProductImagePrompt[])
+            : Array.isArray(group.productImagePrompts)
+              ? (group.productImagePrompts as SheinStudioProductImagePrompt[])
+              : [],
+        artworkModel:
+          typeof group.artwork_model === "string"
+            ? group.artwork_model
+            : typeof group.artworkModel === "string"
+              ? group.artworkModel
+              : "",
+        transparentBackground:
+          typeof group.transparent_background === "boolean"
+            ? group.transparent_background
+            : typeof group.transparentBackground === "boolean"
+              ? group.transparentBackground
+              : false,
+        variationIntensity:
+          group.variation_intensity === "light" ||
+          group.variation_intensity === "medium" ||
+          group.variation_intensity === "strong"
+            ? group.variation_intensity
+            : group.variationIntensity === "light" ||
+                group.variationIntensity === "medium" ||
+                group.variationIntensity === "strong"
+              ? group.variationIntensity
+              : "medium",
+        designs: Array.isArray(group.designs)
+          ? (group.designs as Array<Record<string, unknown>>)
+              .map((design) => normalizeDesignResponse(design))
+              .filter((design): design is NonNullable<typeof design> => Boolean(design))
+          : [],
+        selectedIds: Array.isArray(group.approved_design_ids)
+          ? (group.approved_design_ids as unknown[]).filter(
+              (item): item is string => typeof item === "string",
+            )
+          : Array.isArray(group.selectedIds)
+            ? (group.selectedIds as unknown[]).filter(
+                (item): item is string => typeof item === "string",
+              )
+            : [],
+        createdTasks: Array.isArray(group.created_tasks)
+          ? (group.created_tasks as unknown[]).filter(
+              (item): item is SheinStudioCreatedTask =>
+                !!item &&
+                typeof item === "object" &&
+                typeof (item as SheinStudioCreatedTask).id === "string" &&
+                typeof (item as SheinStudioCreatedTask).title === "string" &&
+                typeof (item as SheinStudioCreatedTask).designId === "string",
+            )
+          : Array.isArray(group.createdTasks)
+            ? (group.createdTasks as unknown[]).filter(
+                (item): item is SheinStudioCreatedTask =>
+                  !!item &&
+                  typeof item === "object" &&
+                  typeof (item as SheinStudioCreatedTask).id === "string" &&
+                  typeof (item as SheinStudioCreatedTask).title === "string" &&
+                  typeof (item as SheinStudioCreatedTask).designId === "string",
+              )
+            : [],
+        updatedAt,
+      } satisfies SheinStudioGroupedWorkspace;
+    })
+    .filter((item): item is SheinStudioGroupedWorkspace => Boolean(item));
 }

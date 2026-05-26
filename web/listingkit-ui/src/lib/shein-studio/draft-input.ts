@@ -2,6 +2,7 @@ import { buildSelectionSummary } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
+  SheinStudioGroupedWorkspace,
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
@@ -29,6 +30,7 @@ type BuildSheinStudioDraftInputArgs = {
   renderSizeImagesWithSds: boolean;
   selection?: SDSProductVariantSelection;
   groupedSelections: GroupedSDSSelectionEligibility[];
+  groups?: SheinStudioGroupedWorkspace[];
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
@@ -52,6 +54,28 @@ export function buildSheinStudioDraftInput(
     selectedSdsImages: args.selectedSdsImages,
     renderSizeImagesWithSds: args.renderSizeImagesWithSds,
     selection: buildSelectionSummary(args.selection),
+    groups: args.groups?.map((group) => {
+      const primarySelection = buildSelectionSummary(group.primarySelection);
+      if (!primarySelection) {
+        return null;
+      }
+      return {
+        ...group,
+        primarySelection,
+        groupedSelections: group.groupedSelections
+          .map((item) => {
+            const selection = buildSelectionSummary(item.selection);
+            if (!selection) {
+              return null;
+            }
+            return {
+              ...item,
+              selection,
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+      };
+    }).filter((group): group is NonNullable<typeof group> => Boolean(group)),
     groupedSelections: args.groupedSelections
       .map((item) => {
         const selection = buildSelectionSummary(item.selection);
