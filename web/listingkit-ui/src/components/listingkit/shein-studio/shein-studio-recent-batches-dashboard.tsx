@@ -167,6 +167,38 @@ export function SheinStudioRecentBatchesDashboard({
         .map((summary) => summary.id),
     [selectedPersistedBatches],
   );
+  const selectedRiskyBatches = useMemo(
+    () => selectedPersistedBatches.filter((summary) => isRiskySummary(summary)),
+    [selectedPersistedBatches],
+  );
+  const selectedHealthyBatches = useMemo(
+    () => selectedPersistedBatches.filter((summary) => !isRiskySummary(summary)),
+    [selectedPersistedBatches],
+  );
+  const selectedHealthyBatchesPendingGeneration = useMemo(
+    () =>
+      selectedHealthyBatches
+        .filter((summary) => summary.designCount === 0)
+        .map((summary) => summary.id),
+    [selectedHealthyBatches],
+  );
+  const selectedHealthyBatchesPendingTaskCreation = useMemo(
+    () =>
+      selectedHealthyBatches
+        .filter(
+          (summary) =>
+            summary.designCount > 0 && summary.createdTaskCount === 0,
+        )
+        .map((summary) => summary.id),
+    [selectedHealthyBatches],
+  );
+  const selectedHealthyBatchesWithTasks = useMemo(
+    () =>
+      selectedHealthyBatches
+        .filter((summary) => summary.createdTaskCount > 0)
+        .map((summary) => summary.id),
+    [selectedHealthyBatches],
+  );
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
@@ -374,6 +406,11 @@ export function SheinStudioRecentBatchesDashboard({
               清除选择
             </Button>
           </div>
+          {selectedRiskyBatches.length > 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
+              本次选择里有 {selectedRiskyBatches.length} 个风险批次，建议先处理后再进入队列。
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-[220px] text-sm text-zinc-600">
               <span className="mb-1 block">目标店铺</span>
@@ -444,6 +481,55 @@ export function SheinStudioRecentBatchesDashboard({
                   >
                     批量查看任务 {selectedBatchesWithTasks.length} 个
                   </Button>
+                ) : null}
+                {selectedRiskyBatches.length > 0 ? (
+                  <>
+                    {selectedHealthyBatchesPendingGeneration.length > 0 ? (
+                      <Button
+                        onClick={() =>
+                          launchBulkQueue(
+                            selectedHealthyBatchesPendingGeneration,
+                            "generate",
+                            "可继续批次",
+                          )
+                        }
+                        type="button"
+                        variant="secondary"
+                      >
+                        仅处理可继续批次 {selectedHealthyBatchesPendingGeneration.length} 个
+                      </Button>
+                    ) : null}
+                    {selectedHealthyBatchesPendingTaskCreation.length > 0 ? (
+                      <Button
+                        onClick={() =>
+                          launchBulkQueue(
+                            selectedHealthyBatchesPendingTaskCreation,
+                            "create_tasks",
+                            "可继续批次",
+                          )
+                        }
+                        type="button"
+                        variant="secondary"
+                      >
+                        仅处理可继续批次 {selectedHealthyBatchesPendingTaskCreation.length} 个
+                      </Button>
+                    ) : null}
+                    {selectedHealthyBatchesWithTasks.length > 0 ? (
+                      <Button
+                        onClick={() =>
+                          launchBulkQueue(
+                            selectedHealthyBatchesWithTasks,
+                            "create_tasks",
+                            "可继续批次",
+                          )
+                        }
+                        type="button"
+                        variant="secondary"
+                      >
+                        仅处理可继续批次 {selectedHealthyBatchesWithTasks.length} 个
+                      </Button>
+                    ) : null}
+                  </>
                 ) : null}
               </>
             ) : null}

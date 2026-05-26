@@ -782,4 +782,67 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       mode: "generate",
     });
   });
+
+  it("warns when selected batches include risks and can queue only healthy batches", () => {
+    const onOpenBatchQueue = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={onOpenBatchQueue}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Healthy Generate Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Risky Generate Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "生成失败",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+
+    expect(
+      screen.getByText("本次选择里有 1 个风险批次，建议先处理后再进入队列。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "仅处理可继续批次 1 个" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅处理可继续批次 1 个" }));
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-1"],
+      mode: "generate",
+    });
+  });
 });
