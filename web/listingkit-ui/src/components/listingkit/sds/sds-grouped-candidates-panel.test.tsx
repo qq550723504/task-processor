@@ -43,7 +43,10 @@ describe("SDSGroupedCandidatesPanel", () => {
     expect(onRemove).toHaveBeenCalledWith(item);
 
     fireEvent.click(screen.getByRole("button", { name: "当前已选" }));
-    expect(onSelect).toHaveBeenCalledWith(item);
+    expect(onSelect).toHaveBeenCalledWith(item, {
+      reason: "",
+      status: "ready",
+    });
     expect(screen.getByText("Baseline 已就绪")).toBeInTheDocument();
   });
 

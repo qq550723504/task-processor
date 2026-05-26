@@ -33,6 +33,7 @@ import {
   removeSDSGroupedCandidate,
   saveSDSGroupedCandidate,
 } from "@/lib/utils/sds-grouped-candidates";
+import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
 export function SDSProductBrowser({
@@ -321,7 +322,13 @@ export function SDSProductBrowser({
           baselineStatuses={groupedCandidateBaselineStatuses}
           items={groupedCandidates}
           onRemove={removeSDSGroupedCandidate}
-          onSelect={applySelection}
+          onSelect={(selection, baseline) => {
+            const handoffMessage = buildGroupedCandidateHandoffMessage(baseline);
+            if (handoffMessage) {
+              saveSDSGroupedCandidateHandoff(handoffMessage);
+            }
+            applySelection(selection);
+          }}
         />
         <SDSSelectionSummary
           isGroupedCandidate={currentSelection ? hasSDSGroupedCandidate(currentSelection) : false}
@@ -419,4 +426,29 @@ export function SDSProductBrowser({
       ) : null}
     </Card>
   );
+}
+
+function buildGroupedCandidateHandoffMessage(baseline: {
+  reason: string;
+  status: SDSBaselineStatus | "loading";
+}) {
+  if (baseline.status === "missing") {
+    return (
+      baseline.reason ||
+      "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。"
+    );
+  }
+  if (baseline.status === "failed") {
+    return (
+      baseline.reason ||
+      "这款候选商品的 baseline 检查失败。请先重新生成或排查 SDS 转标准商品链路，再尝试 grouped 批量上品。"
+    );
+  }
+  if (baseline.status === "loading") {
+    return (
+      baseline.reason ||
+      "这款候选商品的 baseline 状态还在检查中。稍等片刻，确认就绪后再加入 grouped 批量上品。"
+    );
+  }
+  return "";
 }

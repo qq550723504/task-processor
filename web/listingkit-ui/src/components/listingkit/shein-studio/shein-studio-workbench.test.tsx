@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinStudioWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench";
 import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handoff";
+import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 
 const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
@@ -624,5 +625,21 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByText("批量候选池")).toBeInTheDocument(),
     );
     expect(screen.getByText("hoodie")).toBeInTheDocument();
+  });
+
+  it("shows grouped-candidate recovery guidance after returning from candidate pool", async () => {
+    saveSDSGroupedCandidateHandoff(
+      "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+    );
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+        ),
+      ).toBeInTheDocument(),
+    );
   });
 });

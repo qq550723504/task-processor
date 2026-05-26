@@ -24,7 +24,10 @@ export function SDSGroupedCandidatesPanel({
   activeSelection?: SDSProductVariantSelection;
   baselineStatuses: Record<string, GroupedCandidateBaselineState>;
   onRemove: (selection: SDSProductVariantSelection) => void;
-  onSelect: (selection: SDSProductVariantSelection) => void;
+  onSelect: (
+    selection: SDSProductVariantSelection,
+    baseline: GroupedCandidateBaselineState,
+  ) => void;
 }) {
   if (items.length === 0) {
     return null;
@@ -103,7 +106,7 @@ export function SDSGroupedCandidatesPanel({
                 <div className="flex gap-2 pt-1">
                   <Button
                     className="flex-1"
-                    onClick={() => onSelect(item)}
+                    onClick={() => onSelect(item, baseline)}
                     type="button"
                     variant={active ? "secondary" : "primary"}
                   >

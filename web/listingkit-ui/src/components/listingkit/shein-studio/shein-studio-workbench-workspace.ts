@@ -15,6 +15,7 @@ import {
 import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import { consumeSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 import {
   deleteSheinStudioBatch,
   listSheinStudioBatches,
@@ -65,6 +66,7 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
         let resumableGenerationJobId = "";
+        const groupedCandidateHandoff = consumeSDSGroupedCandidateHandoff();
 
         if (draft || !hasLocalWorkflowStateRef.current) {
           const galleryHandoff = activeSelectionRef.current
@@ -127,7 +129,10 @@ export function useSheinStudioWorkspaceLoader({
           );
         }
         workbench.setField("generationError", "");
-        workbench.setField("generationWarning", "");
+        workbench.setField(
+          "generationWarning",
+          groupedCandidateHandoff?.message ?? "",
+        );
         workbench.setField("creatingError", "");
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");
