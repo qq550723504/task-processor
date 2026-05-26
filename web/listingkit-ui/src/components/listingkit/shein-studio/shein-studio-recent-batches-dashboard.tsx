@@ -11,7 +11,7 @@ type StoreOption = {
 };
 
 type RecentBatchCardAction = "generate" | "review" | "tasks";
-type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks";
+type RecentBatchStatusFilter = "all" | "generate" | "review" | "tasks" | "risk";
 
 type RecentBatchAlertAction = {
   action: RecentBatchCardAction;
@@ -44,6 +44,10 @@ function actionForRiskAlert(label: string): RecentBatchAlertAction | null {
     };
   }
   return null;
+}
+
+function isRiskySummary(summary: SheinStudioRecentBatchSummary) {
+  return Boolean(summary.alerts?.length);
 }
 
 function formatRecentBatchTimestamp(value: string) {
@@ -262,6 +266,9 @@ export function SheinStudioRecentBatchesDashboard({
   const filteredSummaries = useMemo(
     () =>
       summaries.filter((summary) => {
+        if (statusFilter === "risk") {
+          return isRiskySummary(summary);
+        }
         const action = primaryActionForSummary(summary).action;
         return statusFilter === "all" ? true : action === statusFilter;
       }),
@@ -279,6 +286,7 @@ export function SheinStudioRecentBatchesDashboard({
       tasks: summaries.filter(
         (summary) => primaryActionForSummary(summary).action === "tasks",
       ).length,
+      risk: summaries.filter((summary) => isRiskySummary(summary)).length,
     }),
     [summaries],
   );
@@ -291,6 +299,7 @@ export function SheinStudioRecentBatchesDashboard({
     { value: "generate", label: "待生成", count: filterCounts.generate },
     { value: "review", label: "待创建任务", count: filterCounts.review },
     { value: "tasks", label: "已有任务", count: filterCounts.tasks },
+    { value: "risk", label: "有风险", count: filterCounts.risk },
   ];
 
   return (
@@ -561,10 +570,17 @@ export function SheinStudioRecentBatchesDashboard({
                   </div>
                 ) : (
                   <div className="mt-3">
-                    <button
-                      className="w-full text-left"
+                    <div
+                      className="w-full cursor-pointer text-left"
                       onClick={() => onSelectSummary(summary)}
-                      type="button"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onSelectSummary(summary);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
                     >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -661,7 +677,7 @@ export function SheinStudioRecentBatchesDashboard({
                         {summary.promptPreview}
                       </p>
                     </div>
-                    </button>
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button
                         onClick={() => {

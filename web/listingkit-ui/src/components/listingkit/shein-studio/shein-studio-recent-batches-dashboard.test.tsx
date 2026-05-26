@@ -172,6 +172,56 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.queryByText("Need Review")).not.toBeInTheDocument();
   });
 
+  it("filters recent batches to only risky batches", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Risky Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [
+              {
+                tone: "warning",
+                label: "待确认款式",
+              },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Healthy Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "有风险 1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "有风险 1" }));
+    expect(screen.getByText("Risky Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
+  });
+
   it("shows the empty state when no recent batches exist", () => {
     render(
       <SheinStudioRecentBatchesDashboard
