@@ -145,6 +145,9 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 			return len(canonicalProduct.Variants)
 		}(),
 	}).Info("canonical product prepared for listing kit workflow")
+	if persistErr := s.persistSDSBaselineIfEligible(ctx, task); persistErr != nil {
+		log.WithError(persistErr).Warn("sds baseline persistence failed")
+	}
 
 	var imageResult *productimage.ImageProcessResult
 	if shouldProcessImages(task.Request) && s.imageSvc != nil {

@@ -23,6 +23,8 @@ type taskOnlyRouteHandler struct{}
 
 func (taskOnlyRouteHandler) GenerateListingKit(c *gin.Context)                {}
 func (taskOnlyRouteHandler) ListTasks(c *gin.Context)                         {}
+func (taskOnlyRouteHandler) GetSDSBaselineReadiness(c *gin.Context)           {}
+func (taskOnlyRouteHandler) WarmSDSBaseline(c *gin.Context)                   {}
 func (taskOnlyRouteHandler) UploadListingKitImages(c *gin.Context)            {}
 func (taskOnlyRouteHandler) GetUploadedListingKitImage(c *gin.Context)        {}
 func (taskOnlyRouteHandler) DeleteUploadedListingKitImage(c *gin.Context)     {}

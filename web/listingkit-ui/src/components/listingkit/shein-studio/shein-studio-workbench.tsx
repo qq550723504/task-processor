@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
@@ -44,6 +44,7 @@ import {
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
+import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { getCurrentSubscription } from "@/lib/api/subscription";
 import { useSDSGroupedCandidates } from "@/lib/query/use-sds-grouped-candidates";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
@@ -218,6 +219,7 @@ export function SheinStudioWorkbench({
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const activeSelection = useHydratedSDSVariantSelection(selection);
   const groupedCandidateSelections = useSDSGroupedCandidates();
+  const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -345,6 +347,45 @@ export function SheinStudioWorkbench({
       promptInputRef.current?.focus();
     }, 0);
   }, [generationWarningAction?.intent, navigateToStep]);
+
+  const handleWarmBaselineAction = useCallback(async () => {
+    if (generationWarningAction?.intent !== "warm_baseline" || !activeSelection?.variantId) {
+      return;
+    }
+    const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
+    setIsExecutingWarningAction(true);
+    setWorkbenchField("generationError", "");
+    try {
+      const readiness = await warmSDSBaselineForSelection(activeSelection);
+      setBaselineStatuses({
+        ...baselineStatuses,
+        [activeSelectionId]: {
+          status: readiness.status,
+          reason: readiness.reason ?? "",
+          baselineKey: readiness.baselineKey,
+        },
+      });
+      setWorkbenchField(
+        "generationWarning",
+        readiness.status === "ready"
+          ? "这款 SDS 商品的 baseline 已预热完成，现在可以继续加入 grouped 批量上品。"
+          : readiness.reason || "baseline 预热已发起，请稍后再试。",
+      );
+      setWorkbenchField("generationWarningAction", null);
+    } catch (error) {
+      setWorkbenchField(
+        "generationWarning",
+        error instanceof Error ? error.message : "baseline 预热失败。",
+      );
+    } finally {
+      setIsExecutingWarningAction(false);
+    }
+  }, [
+    activeSelection,
+    baselineStatuses,
+    generationWarningAction?.intent,
+    setWorkbenchField,
+  ]);
 
   useEffect(() => {
     const selections = [
@@ -559,7 +600,17 @@ export function SheinStudioWorkbench({
           generationWarningAction
             ? {
                 ...generationWarningAction,
-                onClick: handleGenerationWarningAction,
+                label:
+                  isExecutingWarningAction &&
+                  generationWarningAction.intent === "warm_baseline"
+                    ? "预热中..."
+                    : generationWarningAction.label,
+                onClick:
+                  generationWarningAction.intent === "warm_baseline"
+                    ? () => {
+                        void handleWarmBaselineAction();
+                      }
+                    : handleGenerationWarningAction,
               }
             : null
         }

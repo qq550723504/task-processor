@@ -38,7 +38,7 @@ export type SheinStudioWorkbenchState = {
   generationWarning: string;
   generationWarningAction:
     | {
-        intent: "focus_generate";
+        intent: "focus_generate" | "warm_baseline";
         label: string;
       }
     | null;

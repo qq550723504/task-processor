@@ -32,6 +32,10 @@ func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselin
 	return s.taskLifecycleOrDefault().GetSDSBaselineReadiness(ctx, query)
 }
 
+func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {
+	return s.warmSDSBaseline(ctx, req)
+}
+
 func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 	if s.taskLifecycle != nil {
 		return s.taskLifecycle

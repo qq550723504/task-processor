@@ -17,6 +17,12 @@ type sdsBaselineReadinessRequest struct {
 	VariantID        int64  `form:"variant_id"`
 }
 
+type warmSDSBaselineRequest struct {
+	TenantID  string                     `json:"tenant_id"`
+	ImageURLs []string                   `json:"image_urls"`
+	SDS       *listingkit.SDSSyncOptions `json:"sds"`
+}
+
 func (h *handler) GetSDSBaselineReadiness(c *gin.Context) {
 	var req sdsBaselineReadinessRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -69,4 +75,34 @@ func parseSDSBaselineSelectedVariantIDs(raw string) ([]int64, error) {
 		result = append(result, value)
 	}
 	return result, nil
+}
+
+func (h *handler) WarmSDSBaseline(c *gin.Context) {
+	if h.sdsBaselineWarmService == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "sds_baseline_warmup_unavailable"})
+		return
+	}
+	var req warmSDSBaselineRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	req.TenantID = requestTenantID(c, req.TenantID)
+	readiness, warmErr := h.sdsBaselineWarmService.WarmSDSBaseline(
+		requestContext(c, req.TenantID),
+		&listingkit.WarmSDSBaselineRequest{
+			TenantID:  req.TenantID,
+			ImageURLs: req.ImageURLs,
+			SDS:       req.SDS,
+		},
+	)
+	if warmErr != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(warmErr.Error(), "must be positive") || strings.Contains(warmErr.Error(), "cannot be nil") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": "sds_baseline_warmup_failed", "message": warmErr.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, readiness)
 }

@@ -434,8 +434,8 @@ function buildGroupedCandidateHandoff(baseline: {
 }) {
   if (baseline.status === "missing") {
     return {
-      action: "focus_generate" as const,
-      actionLabel: "去生成并预热",
+      action: "warm_baseline" as const,
+      actionLabel: "一键预热 baseline",
       message:
         baseline.reason ||
         "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
@@ -443,8 +443,8 @@ function buildGroupedCandidateHandoff(baseline: {
   }
   if (baseline.status === "failed") {
     return {
-      action: "focus_generate" as const,
-      actionLabel: "去重新生成",
+      action: "warm_baseline" as const,
+      actionLabel: "重试 baseline 预热",
       message:
         baseline.reason ||
         "这款候选商品的 baseline 检查失败。请先重新生成或排查 SDS 转标准商品链路，再尝试 grouped 批量上品。",

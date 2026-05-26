@@ -16,6 +16,12 @@ export type SDSBaselineReadinessRequest = {
   selectedVariantIds?: number[];
 };
 
+export type SDSBaselineWarmRequest = {
+  tenantId?: string;
+  imageUrls?: string[];
+  sds: Record<string, unknown>;
+};
+
 export type GroupedSDSSelectionEligibility = {
   selectionId: string;
   selection: SDSProductVariantSelection;

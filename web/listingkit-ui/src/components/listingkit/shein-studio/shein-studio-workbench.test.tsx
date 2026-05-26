@@ -10,6 +10,7 @@ const generateSheinStudioDesigns = vi.fn();
 const resumeSheinStudioDesignGeneration = vi.fn();
 const createSheinReviewTasks = vi.fn();
 const getSDSBaselineReadiness = vi.fn();
+const warmSDSBaselineForSelection = vi.fn();
 const ensureSheinStudioSession = vi.fn();
 const hydrateSDSVariantSelection = vi.fn();
 const listSheinStudioBatches = vi.fn();
@@ -128,6 +129,7 @@ vi.mock("@/lib/shein-studio/hydrate-sds-selection", () => ({
 
 vi.mock("@/lib/api/sds-baseline", () => ({
   getSDSBaselineReadiness: (...args: unknown[]) => getSDSBaselineReadiness(...args),
+  warmSDSBaselineForSelection: (...args: unknown[]) => warmSDSBaselineForSelection(...args),
 }));
 
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
@@ -183,6 +185,11 @@ describe("SheinStudioWorkbench", () => {
     hydrateSDSVariantSelection.mockResolvedValue(selection);
     listSheinStudioBatches.mockResolvedValue([]);
     loadSheinStudioDraft.mockResolvedValue(null);
+    warmSDSBaselineForSelection.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "ready",
+      reason: "",
+    });
     saveSheinStudioBatch.mockResolvedValue(null);
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
@@ -648,5 +655,28 @@ describe("SheinStudioWorkbench", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "去生成并预热" }));
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  });
+
+  it("warms baseline directly from grouped-candidate guidance", async () => {
+    saveSDSGroupedCandidateHandoff({
+      action: "warm_baseline",
+      actionLabel: "一键预热 baseline",
+      message:
+        "这款候选商品还没有 baseline 缓存。先预热 baseline，再回来加入 grouped 批量上品。",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "一键预热 baseline" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "一键预热 baseline" }));
+
+    await waitFor(() => expect(warmSDSBaselineForSelection).toHaveBeenCalledWith(selection));
+    await waitFor(() =>
+      expect(
+        screen.getByText("这款 SDS 商品的 baseline 已预热完成，现在可以继续加入 grouped 批量上品。"),
+      ).toBeInTheDocument(),
+    );
   });
 });

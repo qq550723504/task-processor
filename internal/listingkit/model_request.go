@@ -22,6 +22,12 @@ type GenerateRequest struct {
 	Options            *GenerateOptions `json:"options,omitempty"`
 }
 
+type WarmSDSBaselineRequest struct {
+	TenantID  string          `json:"tenant_id,omitempty"`
+	ImageURLs []string        `json:"image_urls,omitempty"`
+	SDS       *SDSSyncOptions `json:"sds,omitempty"`
+}
+
 type GenerateOptions struct {
 	ImageStrategy string                               `json:"image_strategy,omitempty"`
 	ProcessImages bool                                 `json:"process_images"`
