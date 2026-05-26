@@ -26,6 +26,7 @@ type service struct {
 	taskRevision                   *taskRevisionService
 	taskStudioSession              *taskStudioSessionService
 	taskStudioMedia                *taskStudioMediaService
+	settingsAdmin                  *settingsAdminService
 	taskSubmission                 *taskSubmissionService
 	taskSubmissionRecovery         *taskSubmissionRecoveryService
 	taskSubmissionExecution        *taskSubmissionExecutionService
@@ -197,6 +198,7 @@ func (s *service) initializeCollaborators() {
 		return
 	}
 	s.initializeTaskCollaborators()
+	s.initializeAdminCollaborators()
 	s.initializeSubmitCollaborators()
 	s.initializeTemporalCollaborators()
 }
@@ -221,6 +223,13 @@ func (s *service) initializeSubmitCollaborators() {
 	s.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
 	s.taskSubmissionState = s.taskSubmissionStateOrDefault()
 	s.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
+}
+
+func (s *service) initializeAdminCollaborators() {
+	if s == nil {
+		return
+	}
+	s.settingsAdmin = s.settingsAdminOrDefault()
 }
 
 func (s *service) initializeTemporalCollaborators() {

@@ -29,6 +29,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskStudioMedia == nil {
 		t.Fatal("expected taskStudioMedia to be initialized")
 	}
+	if impl.settingsAdmin == nil {
+		t.Fatal("expected settingsAdmin to be initialized")
+	}
 	if impl.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
@@ -69,6 +72,11 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 	if svc.taskStudioMedia == nil {
 		t.Fatal("expected taskStudioMedia to be initialized")
+	}
+
+	svc.initializeAdminCollaborators()
+	if svc.settingsAdmin == nil {
+		t.Fatal("expected settingsAdmin to be initialized")
 	}
 
 	svc.initializeSubmitCollaborators()
