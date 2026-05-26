@@ -18,9 +18,13 @@ export type SDSBaselineReadinessRequest = {
 
 export type GroupedSDSSelectionEligibility = {
   selectionId: string;
+  selection: SDSProductVariantSelection;
+  baselineKey?: string;
   baselineStatus: SDSBaselineStatus;
   baselineReason: string;
   sheinStoreId: string;
+  eligible: boolean;
+  eligibilityReason?: string;
 };
 
 export type GroupedSDSSelectionInput = {
@@ -28,3 +32,22 @@ export type GroupedSDSSelectionInput = {
   baselineStatus: SDSBaselineStatus;
   baselineReason?: string;
 };
+
+export function buildGroupedSDSSelectionID(
+  selection?: SDSProductVariantSelection,
+) {
+  if (!selection?.variantId) {
+    return "";
+  }
+  const selectedVariantIDs =
+    selection.selectedVariantIds?.length
+      ? selection.selectedVariantIds
+      : selection.variants?.map((item) => item.variantId) ?? [];
+  return [
+    selection.parentProductId || selection.productId || 0,
+    selection.prototypeGroupId || 0,
+    selection.variantId,
+    selection.layerId || "",
+    selectedVariantIDs.join(","),
+  ].join(":");
+}

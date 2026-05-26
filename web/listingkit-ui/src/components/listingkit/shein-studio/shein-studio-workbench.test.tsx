@@ -8,6 +8,7 @@ const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
 const resumeSheinStudioDesignGeneration = vi.fn();
 const createSheinReviewTasks = vi.fn();
+const getSDSBaselineReadiness = vi.fn();
 const ensureSheinStudioSession = vi.fn();
 const hydrateSDSVariantSelection = vi.fn();
 const listSheinStudioBatches = vi.fn();
@@ -123,6 +124,10 @@ vi.mock("@/lib/shein-studio/hydrate-sds-selection", () => ({
   hydrateSDSVariantSelection: (...args: unknown[]) => hydrateSDSVariantSelection(...args),
 }));
 
+vi.mock("@/lib/api/sds-baseline", () => ({
+  getSDSBaselineReadiness: (...args: unknown[]) => getSDSBaselineReadiness(...args),
+}));
+
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
   deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
   listSheinStudioBatches: (...args: unknown[]) => listSheinStudioBatches(...args),
@@ -162,7 +167,13 @@ describe("SheinStudioWorkbench", () => {
     generateSheinStudioDesigns.mockReset();
     resumeSheinStudioDesignGeneration.mockReset();
     createSheinReviewTasks.mockReset();
+    getSDSBaselineReadiness.mockReset();
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
+    getSDSBaselineReadiness.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "ready",
+      reason: "",
+    });
     hydrateSDSVariantSelection.mockResolvedValue(selection);
     listSheinStudioBatches.mockResolvedValue([]);
     loadSheinStudioDraft.mockResolvedValue(null);

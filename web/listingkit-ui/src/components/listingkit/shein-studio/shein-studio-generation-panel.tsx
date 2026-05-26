@@ -49,6 +49,7 @@ export function SheinStudioGenerationPanel({
   saveMessage,
   selectedSdsImages,
   selectedStyleCount,
+  createTaskButtonLabel = "生成 SHEIN 资料",
   selectionReady,
   subscriptionBlockedMessage,
   variationIntensity,
@@ -92,6 +93,7 @@ export function SheinStudioGenerationPanel({
   saveMessage: string;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   selectedStyleCount: number;
+  createTaskButtonLabel?: string;
   selectionReady: boolean;
   subscriptionBlockedMessage: string;
   variationIntensity: SheinStudioVariationIntensity;
@@ -204,7 +206,7 @@ export function SheinStudioGenerationPanel({
             onClick={onCreateTasks}
             variant="secondary"
           >
-            {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
+            {isCreatingTasks ? "正在生成 SHEIN 资料..." : createTaskButtonLabel}
           </Button>
         </div>
       ) : (

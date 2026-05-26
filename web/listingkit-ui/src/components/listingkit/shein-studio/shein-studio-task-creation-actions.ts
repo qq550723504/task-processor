@@ -3,7 +3,11 @@ import type { MutableRefObject } from "react";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { evaluateImportedGalleryDesigns } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
-import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
+import {
+  createGroupedSheinReviewTasks,
+  createSheinReviewTasks,
+} from "@/lib/shein-studio/create-review-tasks";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
@@ -39,6 +43,9 @@ export function useSheinStudioTaskCreationAction({
   renderSizeImagesWithSds,
   selectedIds,
   selectedSdsImages,
+  groupedSelections,
+  activeSelectionBaselineStatus,
+  activeSelectionBaselineReason,
   setCreatedTasks,
   setCreatingError,
   setCreatingMessage,
@@ -59,6 +66,9 @@ export function useSheinStudioTaskCreationAction({
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  activeSelectionBaselineStatus: "ready" | "missing" | "failed";
+  activeSelectionBaselineReason: string;
   setCreatedTasks: (value: SheinStudioCreatedTask[]) => void;
   setCreatingError: (value: string) => void;
   setCreatingMessage: (value: string) => void;
@@ -94,24 +104,62 @@ export function useSheinStudioTaskCreationAction({
     setIsCreatingTasks(true);
 
     try {
-      const created = await createSheinReviewTasks({
-        prompt,
-        sheinStoreId,
-        imageStrategy,
-        selectedSdsImages,
-        productImageCount,
-        productImagePrompt,
-        productImagePrompts,
-        renderSizeImagesWithSds,
-        selection: activeSelection,
-        designs: approved,
-        selectedIds: approved.map((design) => design.id),
-        onProgress: setCreatingMessage,
-      });
+      const created =
+        groupedSelections.length > 0
+          ? await createGroupedSheinReviewTasks({
+              prompt,
+              imageStrategy,
+              selectedSdsImages,
+              productImageCount,
+              productImagePrompt,
+              productImagePrompts,
+              renderSizeImagesWithSds,
+              onProgress: setCreatingMessage,
+              groups: [
+                {
+                  sheinStoreId,
+                  selections: [
+                    {
+                      selection: activeSelection,
+                      baselineStatus: activeSelectionBaselineStatus,
+                      baselineReason: activeSelectionBaselineReason,
+                    },
+                  ],
+                  designs: approved,
+                  selectedIds: approved.map((design) => design.id),
+                },
+                ...groupSelectionsByStore(groupedSelections).map((group) => ({
+                  sheinStoreId: group.sheinStoreId,
+                  selections: group.items.map((item) => ({
+                    selection: item.selection,
+                    baselineStatus: item.baselineStatus,
+                    baselineReason: item.baselineReason,
+                  })),
+                  designs: approved,
+                  selectedIds: approved.map((design) => design.id),
+                })),
+              ],
+            })
+          : await createSheinReviewTasks({
+              prompt,
+              sheinStoreId,
+              imageStrategy,
+              selectedSdsImages,
+              productImageCount,
+              productImagePrompt,
+              productImagePrompts,
+              renderSizeImagesWithSds,
+              selection: activeSelection,
+              designs: approved,
+              selectedIds: approved.map((design) => design.id),
+              onProgress: setCreatingMessage,
+            });
       hasLocalWorkflowStateRef.current = true;
       setCreatedTasks(created);
       setCreatingMessage(
-        `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
+        groupedSelections.length > 0
+          ? `已为 ${created.length} 个 SDS 商品生成 SHEIN 资料任务。请在下方打开并审核。`
+          : `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
       );
       navigateToStep("tasks");
       void persistDraft(
@@ -130,4 +178,21 @@ export function useSheinStudioTaskCreationAction({
   }
 
   return { handleCreateTasks };
+}
+
+function groupSelectionsByStore(items: GroupedSDSSelectionEligibility[]) {
+  const byStore = new Map<
+    string,
+    { sheinStoreId: string; items: GroupedSDSSelectionEligibility[] }
+  >();
+  for (const item of items) {
+    const key = item.sheinStoreId.trim();
+    const existing = byStore.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    byStore.set(key, { sheinStoreId: key, items: [item] });
+  }
+  return [...byStore.values()];
 }

@@ -15,6 +15,7 @@ import {
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { parsePositiveInt } from "@/lib/shein-studio/create-review-tasks";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
@@ -54,6 +55,9 @@ type UseSheinStudioDesignActionsParams = {
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  activeSelectionBaselineStatus: "ready" | "missing" | "failed";
+  activeSelectionBaselineReason: string;
   workbench: Pick<SheinStudioWorkbenchController, "setField">;
   sheinStoreId: string;
   styleCount: string;
@@ -77,6 +81,9 @@ export function useSheinStudioDesignActions({
   renderSizeImagesWithSds,
   selectedIds,
   selectedSdsImages,
+  groupedSelections,
+  activeSelectionBaselineStatus,
+  activeSelectionBaselineReason,
   workbench,
   sheinStoreId,
   styleCount,
@@ -97,6 +104,9 @@ export function useSheinStudioDesignActions({
     renderSizeImagesWithSds,
     selectedIds,
     selectedSdsImages,
+    groupedSelections,
+    activeSelectionBaselineStatus,
+    activeSelectionBaselineReason,
     setCreatedTasks: (value) => workbench.setField("createdTasks", value),
     setCreatingError: (value) => workbench.setField("creatingError", value),
     setCreatingMessage: (value) => workbench.setField("creatingMessage", value),
