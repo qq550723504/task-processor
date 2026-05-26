@@ -104,3 +104,44 @@ func TestTaskRevisionServiceApplyTaskRevisionInvokesSheinCollaborators(t *testin
 		t.Fatalf("applied changes = %+v, want populated diff preview", preview.AppliedChanges)
 	}
 }
+
+func TestTaskRevisionServiceGetTaskRevisionHistoryAttachesStoreResolution(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	repo := &stubApplyRevisionRepo{
+		task: &Task{
+			ID: "task-revision-history-service-1",
+			SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+				StoreID:          903,
+				Site:             "GB",
+				Strategy:         "country",
+				Reason:           "matched country route",
+				MatchedRuleKinds: []string{"country"},
+				MatchedProfileID: 17,
+				ResolvedAt:       now,
+			},
+			Result: &ListingKitResult{
+				TaskID:               "task-revision-history-service-1",
+				RevisionHistoryTotal: 1,
+				RevisionHistory: []ListingKitRevisionRecord{
+					{Platform: "shein", UpdatedAt: now.Add(-time.Minute)},
+				},
+			},
+		},
+	}
+	revision := newTaskRevisionService(taskRevisionServiceConfig{
+		repo: repo,
+	})
+
+	page, err := revision.GetTaskRevisionHistory(context.Background(), repo.task.ID, &RevisionHistoryQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("GetTaskRevisionHistory() error = %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %+v, want 1 history item", page.Items)
+	}
+	if page.Items[0].StoreResolution == nil || page.Items[0].StoreResolution.StoreID != 903 {
+		t.Fatalf("store resolution = %+v, want snapshot-backed item", page.Items[0].StoreResolution)
+	}
+}

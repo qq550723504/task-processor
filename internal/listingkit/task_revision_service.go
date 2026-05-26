@@ -1,6 +1,9 @@
 package listingkit
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 type taskRevisionServiceConfig struct {
 	repo                                    Repository
@@ -99,4 +102,66 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 	preview.RestoreResult = buildRevisionRestoreResult(req, task.Result, appliedChanges)
 	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
 	return preview, nil
+}
+
+func (s *taskRevisionService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error) {
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.Result == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	page, err := buildRevisionHistoryPage(task.Result, query)
+	if err != nil {
+		return nil, err
+	}
+	storeResolution := sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
+	if page != nil && storeResolution != nil {
+		for idx := range page.Items {
+			page.Items[idx].StoreResolution = storeResolution
+		}
+	}
+	return page, nil
+}
+
+func (s *taskRevisionService) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.Result == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	detail, err := buildRevisionHistoryDetail(task.Result, revisionID, query)
+	if err != nil {
+		return nil, err
+	}
+	if detail != nil && detail.Record != nil {
+		detail.Record.StoreResolution = sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
+	}
+	return detail, nil
+}
+
+func (s *taskRevisionService) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.Result == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	platform := ""
+	if req != nil {
+		platform = strings.ToLower(strings.TrimSpace(req.Platform))
+	}
+	effectiveReq, restorePreview, err := resolveRevisionValidationRequest(task.Result, req)
+	if err != nil {
+		return nil, err
+	}
+	if effectiveReq != nil {
+		platform = strings.ToLower(strings.TrimSpace(effectiveReq.Platform))
+	}
+	validationErr := validateApplyRevisionRequest(effectiveReq)
+	return buildRevisionValidationResult(taskID, platform, task.Result, validationErr, restorePreview), nil
 }
