@@ -268,6 +268,9 @@ export function SheinStudioWorkbench({
   const activeSelection = directSelection ?? activeGroupSelection;
   const groupedCandidateSelections = useSDSGroupedCandidates();
   const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
+  const [selectedRecentBatchSummaryIds, setSelectedRecentBatchSummaryIds] = useState<
+    string[]
+  >([]);
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -376,6 +379,14 @@ export function SheinStudioWorkbench({
       }),
     [localDraftSnapshot, savedBatches],
   );
+  useEffect(() => {
+    const validSummaryKeys = new Set(
+      recentBatchSummaries.map((summary) => `${summary.source}:${summary.id}`),
+    );
+    setSelectedRecentBatchSummaryIds((current) =>
+      current.filter((key) => validSummaryKeys.has(key)),
+    );
+  }, [recentBatchSummaries]);
   const currentQueuedBatchId = batchQueueMode
     ? queuedBatchIds[queuedBatchIndex] ?? ""
     : "";
@@ -395,6 +406,16 @@ export function SheinStudioWorkbench({
     }
     return "当前批次还没有可用设计，已回到生成区继续处理。";
   }, [batchQueueMode, effectiveStep]);
+  const queueCompletionMessage = useCallback(
+    (mode: SheinStudioBatchQueueMode, batchCount: number) => {
+      const actionLabel =
+        mode === "create_tasks" ? "创建任务处理" : "继续生成处理";
+      return batchCount > 0
+        ? `已完成这轮${actionLabel}，共处理 ${batchCount} 个已保存批次。首页勾选已保留，可继续调整或再次发起批量处理。`
+        : `当前没有可继续的已保存批次。首页勾选已保留，可重新检查后再发起批量处理。`;
+    },
+    [],
+  );
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
     galleryRatioCheck,
@@ -860,12 +881,13 @@ export function SheinStudioWorkbench({
         return true;
       }
       clearBatchQueue();
-      setQueueMessage("已完成这批批次的顺序处理。");
+      setQueueMessage(queueCompletionMessage(mode, batchIds.length));
       return false;
     },
     [
       clearBatchQueue,
       handleLoadBatch,
+      queueCompletionMessage,
       savedBatches,
       setEffectiveStep,
       setQueueMessage,
@@ -881,7 +903,7 @@ export function SheinStudioWorkbench({
       );
       if (validBatchIds.length === 0) {
         clearBatchQueue();
-        setQueueMessage("没有可继续处理的已保存批次。");
+        setQueueMessage(queueCompletionMessage(input.mode, 0));
         return;
       }
       setBatchQueueMode(input.mode);
@@ -892,6 +914,7 @@ export function SheinStudioWorkbench({
     [
       clearBatchQueue,
       loadQueuedBatch,
+      queueCompletionMessage,
       savedBatches,
       setBatchQueueMode,
       setQueueMessage,
@@ -979,7 +1002,9 @@ export function SheinStudioWorkbench({
         onDuplicateSummary={handleDuplicateRecentBatchSummary}
         onOpenBatchQueue={handleOpenBatchQueue}
         onRenameSummary={handleRenameRecentBatchSummary}
+        onSelectedSummaryIdsChange={setSelectedRecentBatchSummaryIds}
         onSelectSummary={handleSelectRecentBatchSummary}
+        selectedSummaryIds={selectedRecentBatchSummaryIds}
         storeOptions={recentBatchStoreOptions}
         summaries={recentBatchSummaries}
       />

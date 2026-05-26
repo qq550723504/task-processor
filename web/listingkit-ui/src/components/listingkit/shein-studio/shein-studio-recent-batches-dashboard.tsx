@@ -12,6 +12,7 @@ type StoreOption = {
 
 export function SheinStudioRecentBatchesDashboard({
   summaries,
+  selectedSummaryIds: controlledSelectedSummaryIds,
   storeOptions = [],
   onBulkUpdateStore,
   onCreateBatch,
@@ -19,9 +20,11 @@ export function SheinStudioRecentBatchesDashboard({
   onDuplicateSummary,
   onOpenBatchQueue,
   onRenameSummary,
+  onSelectedSummaryIdsChange,
   onSelectSummary,
 }: {
   summaries: SheinStudioRecentBatchSummary[];
+  selectedSummaryIds?: string[];
   storeOptions?: StoreOption[];
   onBulkUpdateStore?: (summaryIds: string[], storeId: string) => void;
   onCreateBatch: () => void;
@@ -32,12 +35,19 @@ export function SheinStudioRecentBatchesDashboard({
     mode: "generate" | "create_tasks";
   }) => void;
   onRenameSummary?: (summary: SheinStudioRecentBatchSummary, name: string) => void;
+  onSelectedSummaryIdsChange?: (
+    value: string[] | ((current: string[]) => string[]),
+  ) => void;
   onSelectSummary: (summary: SheinStudioRecentBatchSummary) => void;
 }) {
-  const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
+  const [localSelectedSummaryIds, setLocalSelectedSummaryIds] = useState<string[]>([]);
   const [editingSummaryId, setEditingSummaryId] = useState("");
   const [draftName, setDraftName] = useState("");
   const [bulkStoreId, setBulkStoreId] = useState("");
+  const selectedSummaryIds =
+    controlledSelectedSummaryIds ?? localSelectedSummaryIds;
+  const setSelectedSummaryIds =
+    onSelectedSummaryIdsChange ?? setLocalSelectedSummaryIds;
 
   const selectedCount = selectedSummaryIds.length;
   const summaryById = useMemo(

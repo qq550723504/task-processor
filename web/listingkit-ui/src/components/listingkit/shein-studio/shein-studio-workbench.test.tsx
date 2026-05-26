@@ -625,6 +625,56 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.queryByText("第 1 / 2 个批次")).not.toBeInTheDocument(),
     );
+    expect(screen.getByRole("checkbox", { name: "select batch-1" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "select batch-2" })).toBeChecked();
+  });
+
+  it("keeps homepage selection context and shows a completion message after finishing the queue", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      {
+        id: "batch-2",
+        name: "Second Batch",
+        prompt: "second prompt",
+        styleCount: "1",
+        sheinStoreId: "",
+        selection: groupedSelection.selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T09:00:00.000Z",
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
+    fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("第 2 / 2 个批次")).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(
+        "已完成这轮继续生成处理，共处理 2 个已保存批次。首页勾选已保留，可继续调整或再次发起批量处理。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "select batch-1" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "select batch-2" })).toBeChecked();
   });
 
   it("appends the active prompt to the selected group's history when generating", async () => {
