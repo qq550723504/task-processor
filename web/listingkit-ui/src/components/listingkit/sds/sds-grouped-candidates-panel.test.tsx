@@ -23,6 +23,12 @@ describe("SDSGroupedCandidatesPanel", () => {
     render(
       <SDSGroupedCandidatesPanel
         activeSelection={item}
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "",
+            status: "ready",
+          },
+        }}
         items={[item]}
         onRemove={onRemove}
         onSelect={onSelect}
@@ -38,5 +44,46 @@ describe("SDSGroupedCandidatesPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "当前已选" }));
     expect(onSelect).toHaveBeenCalledWith(item);
+    expect(screen.getByText("Baseline 已就绪")).toBeInTheDocument();
+  });
+
+  it("shows loading and missing baseline states", () => {
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    const { rerender } = render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{}}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Baseline 检查中")).toBeInTheDocument();
+
+    rerender(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "baseline missing",
+            status: "missing",
+          },
+        }}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Baseline 缺失")).toBeInTheDocument();
   });
 });

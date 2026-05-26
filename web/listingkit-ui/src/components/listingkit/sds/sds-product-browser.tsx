@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { SDSProductBrowserFilters } from "@/components/listingkit/sds/sds-produc
 import { SDSRecentVariants } from "@/components/listingkit/sds/sds-recent-variants";
 import { SDSSelectionSummary } from "@/components/listingkit/sds/sds-selection-summary";
 import { SDSVariantPicker } from "@/components/listingkit/sds/sds-variant-picker";
+import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { useSDSCategories } from "@/lib/query/use-sds-categories";
 import { useSDSGroupedCandidates } from "@/lib/query/use-sds-grouped-candidates";
 import { useSDSProductDetail } from "@/lib/query/use-sds-product-detail";
@@ -20,6 +21,10 @@ import { useSDSRecentVariants } from "@/lib/query/use-sds-recent-variants";
 import { useSDSShipmentAreas } from "@/lib/query/use-sds-shipment-areas";
 import { buildSDSVariantSelection } from "@/lib/sds/variant-selection";
 import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  buildGroupedSDSSelectionID,
+  type SDSBaselineStatus,
+} from "@/lib/types/sds-baseline";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
@@ -44,6 +49,8 @@ export function SDSProductBrowser({
   const recentVariants = useSDSRecentVariants();
   const groupedCandidates = useSDSGroupedCandidates();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
+  const [groupedCandidateBaselineStatuses, setGroupedCandidateBaselineStatuses] =
+    useState<Record<string, { reason: string; status: SDSBaselineStatus | "loading" }>>({});
 
   const queryKeyword = searchParams.get("keyword") ?? initialKeyword;
   const currentPage = Number(searchParams.get("page") ?? initialPage) || 1;
@@ -105,6 +112,67 @@ export function SDSProductBrowser({
       counts.set(item.productId, (counts.get(item.productId) ?? 0) + 1);
     });
     return counts;
+  }, [groupedCandidates]);
+
+  useEffect(() => {
+    if (groupedCandidates.length === 0) {
+      setGroupedCandidateBaselineStatuses({});
+      return;
+    }
+
+    setGroupedCandidateBaselineStatuses((current) => {
+      const next: Record<string, { reason: string; status: SDSBaselineStatus | "loading" }> = {};
+      groupedCandidates.forEach((item) => {
+        const selectionId = buildGroupedSDSSelectionID(item);
+        next[selectionId] = current[selectionId] ?? {
+          status: "loading",
+          reason: "正在检查 baseline 状态...",
+        };
+      });
+      return next;
+    });
+
+    let cancelled = false;
+    void Promise.all(
+      groupedCandidates.map(async (item) => {
+        const selectionId = buildGroupedSDSSelectionID(item);
+        try {
+          const readiness = await getSDSBaselineReadiness({
+            parentProductId: item.parentProductId,
+            prototypeGroupId: item.prototypeGroupId,
+            variantId: item.variantId,
+            selectedVariantIds: item.selectedVariantIds,
+          });
+          return [
+            selectionId,
+            {
+              status: readiness.status,
+              reason: readiness.reason ?? "",
+            },
+          ] as const;
+        } catch (error) {
+          return [
+            selectionId,
+            {
+              status: "failed" as const,
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : "读取 SDS baseline 状态失败。",
+            },
+          ] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+      setGroupedCandidateBaselineStatuses(Object.fromEntries(entries));
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [groupedCandidates]);
 
   function updateQuery(next: Record<string, string | undefined>) {
@@ -250,6 +318,7 @@ export function SDSProductBrowser({
         />
         <SDSGroupedCandidatesPanel
           activeSelection={currentSelection}
+          baselineStatuses={groupedCandidateBaselineStatuses}
           items={groupedCandidates}
           onRemove={removeSDSGroupedCandidate}
           onSelect={applySelection}
