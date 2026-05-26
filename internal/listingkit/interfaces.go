@@ -52,6 +52,14 @@ type CanonicalProductCacheRepository interface {
 	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error
 }
 
+type SDSBaselineCacheRepository interface {
+	// tenantID is optional. When empty, implementations resolve the tenant from ctx.
+	// If both tenantID and ctx resolve to a tenant, they must match or the call fails.
+	GetSDSBaselineCache(ctx context.Context, tenantID string, baselineKey string) (*SDSBaselineCacheEntry, error)
+	// entry.TenantID follows the same contract as GetSDSBaselineCache's tenantID argument.
+	SaveSDSBaselineCache(ctx context.Context, entry *SDSBaselineCacheEntry) error
+}
+
 type Assembler interface {
 	Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult
 }

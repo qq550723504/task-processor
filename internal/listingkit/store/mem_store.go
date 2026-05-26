@@ -15,12 +15,14 @@ type MemTaskRepository struct {
 	mu               sync.RWMutex
 	tasks            map[string]*listingkit.Task
 	canonicalProduct map[string]*listingkit.CanonicalProductCacheEntry
+	sdsBaselineCache map[string]*listingkit.SDSBaselineCacheEntry
 }
 
 func NewMemTaskRepository() listingkit.Repository {
 	return &MemTaskRepository{
 		tasks:            make(map[string]*listingkit.Task),
 		canonicalProduct: make(map[string]*listingkit.CanonicalProductCacheEntry),
+		sdsBaselineCache: make(map[string]*listingkit.SDSBaselineCacheEntry),
 	}
 }
 
@@ -244,6 +246,51 @@ func (r *MemTaskRepository) SaveCanonicalProductCache(ctx context.Context, finge
 	return nil
 }
 
+func (r *MemTaskRepository) GetSDSBaselineCache(ctx context.Context, tenantID, baselineKey string) (*listingkit.SDSBaselineCacheEntry, error) {
+	resolvedTenantID, logicalKey, storageKey, err := listingkit.ResolveSDSBaselineCacheScope(ctx, tenantID, baselineKey)
+	if err != nil {
+		return nil, err
+	}
+	if storageKey == "" {
+		return nil, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.sdsBaselineCache == nil {
+		return nil, nil
+	}
+	entry, err := cloneSDSBaselineCacheEntry(r.sdsBaselineCache[storageKey])
+	if err != nil || entry == nil {
+		return entry, err
+	}
+	entry.TenantID = resolvedTenantID
+	entry.BaselineKey = logicalKey
+	return entry, nil
+}
+
+func (r *MemTaskRepository) SaveSDSBaselineCache(ctx context.Context, entry *listingkit.SDSBaselineCacheEntry) error {
+	if entry == nil {
+		return nil
+	}
+	resolvedTenantID, logicalKey, storageKey, err := listingkit.ResolveSDSBaselineCacheScope(ctx, entry.TenantID, entry.BaselineKey)
+	if err != nil {
+		return err
+	}
+	cloned, err := cloneSDSBaselineCacheEntry(entry)
+	if err != nil {
+		return err
+	}
+	cloned.TenantID = resolvedTenantID
+	cloned.BaselineKey = logicalKey
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sdsBaselineCache == nil {
+		r.sdsBaselineCache = make(map[string]*listingkit.SDSBaselineCacheEntry)
+	}
+	r.sdsBaselineCache[storageKey] = cloned
+	return nil
+}
+
 func matchesTenantScope(ctx context.Context, recordTenantID string) bool {
 	tenantID, ok := tenantctx.TenantScopeFromContext(ctx)
 	if !ok {
@@ -254,6 +301,10 @@ func matchesTenantScope(ctx context.Context, recordTenantID string) bool {
 
 func canonicalCacheKey(ctx context.Context, fingerprint string) string {
 	return tenantctx.TenantIDFromContext(ctx) + ":" + fingerprint
+}
+
+func cloneSDSBaselineCacheEntry(entry *listingkit.SDSBaselineCacheEntry) (*listingkit.SDSBaselineCacheEntry, error) {
+	return entry.Clone()
 }
 
 func (r *MemTaskRepository) collectFilteredTasksLocked(ctx context.Context, query *listingkit.TaskListQuery) []listingkit.Task {
