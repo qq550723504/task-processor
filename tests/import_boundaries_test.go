@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,31 +44,19 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 		},
 	}
 
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		text := string(content)
-		cleanPath := filepath.Clean(path)
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
 		for bannedImport, allowedFiles := range allowedImports {
-			if !strings.Contains(text, bannedImport) {
+			if _, ok := facts.imports[bannedImport]; !ok {
 				continue
 			}
-			if _, ok := allowedFiles[cleanPath]; !ok {
+			if _, ok := allowedFiles[path]; !ok {
 				t.Errorf("%s imports %s; keep non-API SHEIN dependencies isolated to the current allowlisted adapter files", path, bannedImport)
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -84,27 +71,17 @@ func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "service.go")):        {},
 	}
 
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if !strings.Contains(string(content), `"task-processor/internal/amazonlisting"`) {
-			return nil
-		}
-		if _, ok := allowedFiles[filepath.Clean(path)]; !ok {
-			t.Errorf("%s imports task-processor/internal/amazonlisting; keep amazonlisting dependencies isolated to current facade/result bridge files", path)
-		}
-		return nil
-	})
+	index, err := loadGoFileIndex(root, "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/amazonlisting"`]; !ok {
+			continue
+		}
+		if _, ok := allowedFiles[path]; !ok {
+			t.Errorf("%s imports task-processor/internal/amazonlisting; keep amazonlisting dependencies isolated to current facade/result bridge files", path)
+		}
 	}
 }
 
@@ -148,31 +125,19 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 		},
 	}
 
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		text := string(content)
-		cleanPath := filepath.Clean(path)
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
 		for bannedImport, allowedFiles := range allowedImports {
-			if !strings.Contains(text, bannedImport) {
+			if _, ok := facts.imports[bannedImport]; !ok {
 				continue
 			}
-			if _, ok := allowedFiles[cleanPath]; !ok {
+			if _, ok := allowedFiles[path]; !ok {
 				t.Errorf("%s imports %s; keep publishing/shein direct dependencies on legacy shein implementation packages isolated to current allowlisted adapter files", path, bannedImport)
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -429,56 +394,37 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, allowed := allowedFiles[path]; allowed {
+			continue
 		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		if _, allowed := allowedFiles[filepath.Clean(path)]; allowed {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		text := string(content)
 		for _, banned := range bannedImports {
-			if strings.Contains(text, banned) {
+			if _, ok := facts.imports[banned]; ok {
 				t.Errorf("%s imports banned boundary package %s", path, banned)
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
 func assertNoBannedSelectorsOutside(t *testing.T, root, allowedRoot string, bannedSelectors map[string]struct{}) {
 	t.Helper()
 
-	root = filepath.Clean(root)
-	allowedRoot = filepath.Clean(allowedRoot)
+	index, err := loadGoFileIndex(root, allowedRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for path, facts := range index.files {
+		if !strings.Contains(string(facts.source), "productenrich.") {
+			continue
 		}
-		path = filepath.Clean(path)
-		if entry.IsDir() {
-			if path == allowedRoot {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		file, err := parser.ParseFile(fset, path, nil, 0)
+		file, err := parser.ParseFile(fset, path, facts.source, 0)
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			selector, ok := node.(*ast.SelectorExpr)
@@ -490,13 +436,9 @@ func assertNoBannedSelectorsOutside(t *testing.T, root, allowedRoot string, bann
 				return true
 			}
 			if _, banned := bannedSelectors[selector.Sel.Name]; banned {
-				t.Errorf("%s uses productenrich.%s compatibility alias; import internal/catalog/canonical directly", fset.Position(selector.Pos()), selector.Sel.Name)
+				t.Errorf("%s uses productenrich.%s compatibility alias; import internal/catalog/canonical directly", path, selector.Sel.Name)
 			}
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }

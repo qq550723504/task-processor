@@ -1,5 +1,5 @@
 # Makefile for Task Processor
-.PHONY: all build-all clean test help \
+.PHONY: all build-all clean test test-fast test-all test-coverage help \
 	build-1688-crawler-api build-amazon-crawler-api build-amazon-listing \
 	build-product-listing-api build-productenrich-api build-shein-address-copy \
 	build-shein build-temu
@@ -11,6 +11,11 @@ LDFLAGS := -X main.appVersion=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 
 # 输出目录
 BIN_DIR := bin
+
+# 常用测试包
+FAST_TEST_PACKAGES := ./cmd/product-listing-api ./internal/app/httpapi ./internal/crawler/alibaba1688 ./internal/listingkit ./internal/listingadmin ./internal/promptmgmt ./internal/listingsubscription
+BOUNDARY_TEST_PACKAGES := ./tests/...
+ALL_TEST_PACKAGES := ./cmd/... ./internal/... ./tests/... ./tools/... ./hack/debug/...
 
 # 帮助信息
 help:
@@ -26,7 +31,9 @@ help:
 	@echo "  make build-product-listing-api - 构建统一 ListingKit API"
 	@echo "  make build-productenrich-api - 构建兼容 productenrich API"
 	@echo "  make clean              - 清理构建文件"
-	@echo "  make test               - 运行测试"
+	@echo "  make test               - 运行常用快速测试"
+	@echo "  make test-fast          - 运行常用快速测试"
+	@echo "  make test-all           - 运行全部 Go 测试"
 	@echo ""
 
 # 构建所有服务
@@ -96,9 +103,18 @@ clean:
 	@echo "✅ 清理完成"
 
 # 运行测试
-test:
-	@echo "🧪 运行测试..."
-	go test -v ./...
+test: test-fast
+
+# 运行常用快速测试
+test-fast:
+	@echo "🧪 运行常用快速测试..."
+	go test -v $(FAST_TEST_PACKAGES)
+	go test -v $(BOUNDARY_TEST_PACKAGES)
+
+# 运行全部 Go 测试
+test-all:
+	@echo "🧪 运行全部 Go 测试..."
+	go test -v $(ALL_TEST_PACKAGES)
 
 # 运行测试（带覆盖率）
 test-coverage:

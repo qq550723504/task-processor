@@ -474,8 +474,14 @@ func (Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeC
 ### 运行测试
 
 ```bash
-# 运行所有测试
-go test ./...
+# Windows PowerShell 下运行常用快速测试
+pwsh -File ./scripts/test-fast.ps1
+
+# Windows PowerShell 下运行全部 Go 测试
+pwsh -File ./scripts/test-all.ps1
+
+# 直接运行仓库内全部 Go 测试根目录
+go test ./cmd/... ./internal/... ./tests/... ./tools/... ./hack/debug/...
 
 # 运行特定包的测试
 go test ./internal/app/scheduler/...
