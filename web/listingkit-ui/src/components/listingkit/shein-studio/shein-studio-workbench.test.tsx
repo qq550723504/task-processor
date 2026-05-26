@@ -524,7 +524,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
 
     expect(await screen.findByText("第 1 / 2 个批次")).toBeInTheDocument();
     expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument();
@@ -569,7 +569,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
     fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
 
     await waitFor(() =>
@@ -599,7 +599,7 @@ describe("SheinStudioWorkbench", () => {
     render(<SheinStudioWorkbench activeStep="generate" />);
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量创建任务" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量去创建任务 1 个" }));
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
@@ -607,6 +607,39 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
     expect(
       screen.getByText("已定位到审核区，可直接创建任务或调整款式。"),
+    ).toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("starts task-view queue mode from batches that already have created tasks", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        selectedIds: ["design-1"],
+        createdTasks: [{ id: "task-1", title: "Task 1" }],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量查看任务 1 个" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
+    expect(
+      screen.getByText("已定位到任务区，可继续查看已创建的任务。"),
     ).toBeInTheDocument();
     expect(scrollIntoView).toHaveBeenCalled();
   });
@@ -630,7 +663,7 @@ describe("SheinStudioWorkbench", () => {
     render(<SheinStudioWorkbench activeStep="generate" />);
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
 
     await waitFor(() =>
       expect(screen.getByDisplayValue("second prompt")).toBeInTheDocument(),
@@ -669,7 +702,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
     fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
 
     await waitFor(() =>
@@ -714,7 +747,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
     fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
     fireEvent.click(screen.getByRole("button", { name: "继续本轮处理" }));
 
@@ -754,7 +787,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
     fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
     fireEvent.click(screen.getByRole("button", { name: "清除这轮选择" }));
 
@@ -797,7 +830,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
     fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
     fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
 

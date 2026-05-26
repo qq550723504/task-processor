@@ -90,6 +90,42 @@ export function SheinStudioRecentBatchesDashboard({
         .map((summary) => summary.id),
     [selectedSummaryIds, summaryById],
   );
+  const selectedPersistedBatches = useMemo(
+    () =>
+      selectedSummaryIds
+        .map((key) => summaryById.get(key))
+        .filter(
+          (
+            summary,
+          ): summary is SheinStudioRecentBatchSummary & { source: "batch" } =>
+            summary != null && summary.source === "batch",
+        ),
+    [selectedSummaryIds, summaryById],
+  );
+  const selectedBatchesPendingGeneration = useMemo(
+    () =>
+      selectedPersistedBatches
+        .filter((summary) => summary.designCount === 0)
+        .map((summary) => summary.id),
+    [selectedPersistedBatches],
+  );
+  const selectedBatchesPendingTaskCreation = useMemo(
+    () =>
+      selectedPersistedBatches
+        .filter(
+          (summary) =>
+            summary.designCount > 0 && summary.createdTaskCount === 0,
+        )
+        .map((summary) => summary.id),
+    [selectedPersistedBatches],
+  );
+  const selectedBatchesWithTasks = useMemo(
+    () =>
+      selectedPersistedBatches
+        .filter((summary) => summary.createdTaskCount > 0)
+        .map((summary) => summary.id),
+    [selectedPersistedBatches],
+  );
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
     const key = `${summary.source}:${summary.id}`;
@@ -186,8 +222,15 @@ export function SheinStudioRecentBatchesDashboard({
       {selectedCount > 0 ? (
         <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-zinc-900">
-              已选择 {selectedCount} 个批次
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-zinc-900">
+                已选择 {selectedCount} 个批次
+              </div>
+              <div className="text-xs text-zinc-500">
+                待生成 {selectedBatchesPendingGeneration.length} 个 / 待创建任务{" "}
+                {selectedBatchesPendingTaskCreation.length} 个 / 已有任务{" "}
+                {selectedBatchesWithTasks.length} 个
+              </div>
             </div>
             <Button
               onClick={() => setSelectedSummaryIds([])}
@@ -224,30 +267,48 @@ export function SheinStudioRecentBatchesDashboard({
             </Button>
             {selectedPersistedBatchIds.length > 0 && onOpenBatchQueue ? (
               <>
-                <Button
-                  onClick={() =>
-                    onOpenBatchQueue({
-                      batchIds: selectedPersistedBatchIds,
-                      mode: "generate",
-                    })
-                  }
-                  type="button"
-                  variant="secondary"
-                >
-                  批量继续生成
-                </Button>
-                <Button
-                  onClick={() =>
-                    onOpenBatchQueue({
-                      batchIds: selectedPersistedBatchIds,
-                      mode: "create_tasks",
-                    })
-                  }
-                  type="button"
-                  variant="secondary"
-                >
-                  批量创建任务
-                </Button>
+                {selectedBatchesPendingGeneration.length > 0 ? (
+                  <Button
+                    onClick={() =>
+                      onOpenBatchQueue({
+                        batchIds: selectedBatchesPendingGeneration,
+                        mode: "generate",
+                      })
+                    }
+                    type="button"
+                    variant="secondary"
+                  >
+                    批量继续生成 {selectedBatchesPendingGeneration.length} 个
+                  </Button>
+                ) : null}
+                {selectedBatchesPendingTaskCreation.length > 0 ? (
+                  <Button
+                    onClick={() =>
+                      onOpenBatchQueue({
+                        batchIds: selectedBatchesPendingTaskCreation,
+                        mode: "create_tasks",
+                      })
+                    }
+                    type="button"
+                    variant="secondary"
+                  >
+                    批量去创建任务 {selectedBatchesPendingTaskCreation.length} 个
+                  </Button>
+                ) : null}
+                {selectedBatchesWithTasks.length > 0 ? (
+                  <Button
+                    onClick={() =>
+                      onOpenBatchQueue({
+                        batchIds: selectedBatchesWithTasks,
+                        mode: "create_tasks",
+                      })
+                    }
+                    type="button"
+                    variant="secondary"
+                  >
+                    批量查看任务 {selectedBatchesWithTasks.length} 个
+                  </Button>
+                ) : null}
               </>
             ) : null}
           </div>

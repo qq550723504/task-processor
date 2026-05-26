@@ -140,7 +140,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             productCount: 2,
             promptPreview: "retro cherries",
             storeSummary: "869",
-            designCount: 1,
+            designCount: 0,
             createdTaskCount: 0,
             updatedAt: "2026-05-26T10:00:00.000Z",
           },
@@ -289,8 +289,9 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
 
-    expect(screen.getByRole("button", { name: "批量继续生成" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "批量创建任务" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量去创建任务 1 个" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量继续生成 1 个" })).toBeInTheDocument();
+    expect(screen.getByText("待生成 1 个 / 待创建任务 1 个 / 已有任务 0 个")).toBeInTheDocument();
   });
 
   it("shows ready-to-work status badges for generated designs and created tasks", () => {
@@ -338,7 +339,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             productCount: 2,
             promptPreview: "retro cherries",
             storeSummary: "869",
-            designCount: 1,
+            designCount: 0,
             createdTaskCount: 0,
             updatedAt: "2026-05-26T10:00:00.000Z",
           },
@@ -361,11 +362,66 @@ describe("SheinStudioRecentBatchesDashboard", () => {
 
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select draft-1" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
 
     expect(onOpenBatchQueue).toHaveBeenCalledWith({
       batchIds: ["batch-1"],
       mode: "generate",
+    });
+  });
+
+  it("routes selected persisted batches into review and tasks bulk queues by status", () => {
+    const onOpenBatchQueue = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={onOpenBatchQueue}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Review",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 2,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Tasks",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "second prompt",
+            storeSummary: "跟随当前店铺",
+            designCount: 2,
+            createdTaskCount: 1,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "批量去创建任务 1 个" }));
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-1"],
+      mode: "create_tasks",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "批量查看任务 1 个" }));
+    expect(onOpenBatchQueue).toHaveBeenCalledWith({
+      batchIds: ["batch-2"],
+      mode: "create_tasks",
     });
   });
 });
