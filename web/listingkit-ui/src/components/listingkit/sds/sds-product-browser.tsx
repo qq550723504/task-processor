@@ -155,6 +155,15 @@ export function SDSProductBrowser({
     applySelection(buildSDSVariantSelection(detail.data, primary, selectedVariants));
   }
 
+  function addVariantsToGroupedCandidates(
+    primary: SDSProductVariant,
+    selectedVariants: SDSProductVariant[],
+  ) {
+    const selection = buildSDSVariantSelection(detail.data, primary, selectedVariants);
+    saveSDSGroupedCandidate(selection);
+    saveRecentSDSVariant(selection);
+  }
+
   function openVariantPicker(productId: number) {
     setPickerProductId(productId);
   }
@@ -327,6 +336,7 @@ export function SDSProductBrowser({
         <SDSVariantPicker
           hasError={Boolean(detail.error)}
           isLoading={detail.isLoading}
+          onAddSelectedVariantsToGroupedCandidates={addVariantsToGroupedCandidates}
           onClose={() => setPickerProductId(undefined)}
           onSelectVariants={applyVariants}
           open={pickerOpen}
