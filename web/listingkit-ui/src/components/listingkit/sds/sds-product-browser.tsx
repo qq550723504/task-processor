@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { SDSGroupedCandidatesPanel } from "@/components/listingkit/sds/sds-grouped-candidates-panel";
 import { SDSPagination } from "@/components/listingkit/sds/sds-pagination";
 import { SDSProductCard } from "@/components/listingkit/sds/sds-product-card";
 import { SDSProductBrowserFilters } from "@/components/listingkit/sds/sds-product-browser-filters";
@@ -41,7 +42,7 @@ export function SDSProductBrowser({
   const pathname = usePathname();
   const searchParams = useLiveSearchParams();
   const recentVariants = useSDSRecentVariants();
-  useSDSGroupedCandidates();
+  const groupedCandidates = useSDSGroupedCandidates();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
 
   const queryKeyword = searchParams.get("keyword") ?? initialKeyword;
@@ -229,6 +230,12 @@ export function SDSProductBrowser({
         <SDSRecentVariants
           activeVariantId={selectedVariantId > 0 ? selectedVariantId : undefined}
           items={recentVariants}
+          onSelect={applySelection}
+        />
+        <SDSGroupedCandidatesPanel
+          activeSelection={currentSelection}
+          items={groupedCandidates}
+          onRemove={removeSDSGroupedCandidate}
           onSelect={applySelection}
         />
         <SDSSelectionSummary
