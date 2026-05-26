@@ -293,6 +293,15 @@ export function SheinStudioRecentBatchesDashboard({
     onBulkUpdateStore(ids, bulkStoreId);
   }
 
+  function replaceSelectedSummaries(
+    summariesToKeep: SheinStudioRecentBatchSummary[],
+  ) {
+    setBulkQueueFeedback("");
+    setSelectedSummaryIds(
+      summariesToKeep.map((summary) => `${summary.source}:${summary.id}`),
+    );
+  }
+
   function launchBulkQueue(
     batchIds: string[],
     mode: "generate" | "create_tasks",
@@ -490,6 +499,30 @@ export function SheinStudioRecentBatchesDashboard({
               清除选择
             </Button>
           </div>
+          {(selectedRiskyBatchCount > 0 || selectedHealthyBatches.length > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {selectedRiskyBatchCount > 0 ? (
+                <Button
+                  onClick={() => replaceSelectedSummaries(selectedRiskyBatches)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  仅保留风险批次 {selectedRiskyBatchCount} 个
+                </Button>
+              ) : null}
+              {selectedHealthyBatches.length > 0 ? (
+                <Button
+                  onClick={() => replaceSelectedSummaries(selectedHealthyBatches)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  仅保留可继续批次 {selectedHealthyBatches.length} 个
+                </Button>
+              ) : null}
+            </div>
+          )}
           {selectedRiskyBatchCount > 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
               本次选择里有 {selectedRiskyBatchCount} 个风险批次，建议先处理后再进入队列。

@@ -938,4 +938,70 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       mode: "create_tasks",
     });
   });
+
+  it("can keep only risky or only healthy selected batches", () => {
+    const onSelectedSummaryIdsChange = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        onSelectedSummaryIdsChange={onSelectedSummaryIdsChange}
+        selectedSummaryIds={["batch:batch-1", "batch:batch-2", "batch:batch-3"]}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Healthy Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+            alerts: [],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Risky Batch A",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+            alerts: [{ tone: "danger", label: "生成失败" }],
+          },
+          {
+            id: "batch-3",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Risky Batch B",
+            primaryProductName: "mug",
+            productCount: 1,
+            promptPreview: "prompt three",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T22:00:00.000Z",
+            alerts: [{ tone: "warning", label: "待确认款式" }],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "仅保留风险批次 2 个" }));
+    expect(onSelectedSummaryIdsChange).toHaveBeenCalledWith([
+      "batch:batch-2",
+      "batch:batch-3",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "仅保留可继续批次 1 个" }));
+    expect(onSelectedSummaryIdsChange).toHaveBeenCalledWith(["batch:batch-1"]);
+  });
 });
