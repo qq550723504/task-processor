@@ -13,8 +13,6 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "ignoreDeprecations": "5.0",
     "resolveJsonModule": true,
     "types": [
       "node",
