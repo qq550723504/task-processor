@@ -10,6 +10,10 @@ on:
         description: "Optional image tag override. Defaults to the current commit SHA."
         required: false
         type: string
+      api_runtime_base_image:
+        description: "Optional API runtime base image override."
+        required: false
+        type: string
       publish_latest:
         description: "Also push the latest tag for both images."
         required: false
@@ -36,20 +40,22 @@ env:
   DOCKERHUB_NAMESPACE: xuwei190
   API_IMAGE_NAME: task-processor-product-listing-api
   UI_IMAGE_NAME: task-processor-listingkit-ui
+  API_RUNTIME_BASE_IMAGE: docker.io/xuwei190/task-processor-product-listing-api-runtime-base:20260527
   K8S_NAMESPACE: task-processor
   K8S_OVERLAY_PATH: deployments/kubernetes/listingkit-workbench/overlays/prod
 
 jobs:
-  deploy:
-    name: Build and Deploy ListingKit
+  prepare:
+    name: Prepare Release Metadata
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://pod.shuomiai.com
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      api_image: ${{ steps.meta.outputs.api_image }}
+      ui_image: ${{ steps.meta.outputs.ui_image }}
+      api_tags: ${{ steps.meta.outputs.api_tags }}
+      ui_tags: ${{ steps.meta.outputs.ui_tags }}
+      api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Resolve release tag
         id: meta
         shell: bash
@@ -60,6 +66,10 @@ jobs:
           else
             tag="${GITHUB_SHA::8}"
           fi
+          api_runtime_base_image="${{ env.API_RUNTIME_BASE_IMAGE }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.api_runtime_base_image }}" ]]; then
+            api_runtime_base_image="${{ inputs.api_runtime_base_image }}"
+          fi
           publish_latest="false"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish_latest }}" == "true" ]]; then
             publish_latest="true"
@@ -69,6 +79,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
           echo "ui_image=$ui_image" >> "$GITHUB_OUTPUT"
+          echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
           {
             echo "api_tags<<EOF"
             echo "$api_image"
@@ -86,6 +97,14 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+  build-api:
+    name: Build API Image
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -95,21 +114,6 @@ jobs:
       - name: Run backend tests
         run: |
           go test ./internal/app/httpapi ./internal/listingkit
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/listingkit-ui/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: web/listingkit-ui
-        run: npm ci
-
-      - name: Run frontend build
-        working-directory: web/listingkit-ui
-        run: npm run build
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -127,9 +131,29 @@ jobs:
           context: .
           file: deployments/docker/Dockerfile.product-listing-api
           push: true
-          tags: ${{ steps.meta.outputs.api_tags }}
+          tags: ${{ needs.prepare.outputs.api_tags }}
+          build-args: |
+            API_RUNTIME_BASE_IMAGE=${{ needs.prepare.outputs.api_runtime_base_image }}
           cache-from: type=gha,scope=listingkit-api
           cache-to: type=gha,mode=max,scope=listingkit-api
+
+  build-ui:
+    name: Build UI Image
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push UI image
         uses: docker/build-push-action@v6
@@ -137,9 +161,23 @@ jobs:
           context: .
           file: deployments/docker/Dockerfile.listingkit-ui
           push: true
-          tags: ${{ steps.meta.outputs.ui_tags }}
+          tags: ${{ needs.prepare.outputs.ui_tags }}
           cache-from: type=gha,scope=listingkit-ui
           cache-to: type=gha,mode=max,scope=listingkit-ui
+
+  deploy:
+    name: Deploy ListingKit
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build-api
+      - build-ui
+    environment:
+      name: production
+      url: https://pod.shuomiai.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -160,8 +198,8 @@ jobs:
 
       - name: Update deployment images
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ steps.meta.outputs.api_image }}
-          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/listingkit-ui listingkit-ui=${{ steps.meta.outputs.ui_image }}
+          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ needs.prepare.outputs.api_image }}
+          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/listingkit-ui listingkit-ui=${{ needs.prepare.outputs.ui_image }}
 
       - name: Wait for rollout
         run: |

@@ -24,21 +24,30 @@ import (
 type ChromeDownloader struct {
 	version     string // Chrome 版本，如 "144"
 	downloadDir string // 下载目录
+	downloadTimeout time.Duration
 	httpClient  *httpclient.Client
 }
 
 // NewChromeDownloader 创建 Chrome 下载器
 func NewChromeDownloader(version, downloadDir string) *ChromeDownloader {
+	return NewChromeDownloaderWithTimeout(version, downloadDir, timeout.DownloadTimeout)
+}
+
+// NewChromeDownloaderWithTimeout 创建带自定义下载超时的 Chrome 下载器
+func NewChromeDownloaderWithTimeout(version, downloadDir string, downloadTimeout time.Duration) *ChromeDownloader {
 	if version == "" {
 		version = "144" // 默认使用最新版本
 	}
 	if downloadDir == "" {
 		downloadDir = filepath.Join(".", "chrome")
 	}
+	if downloadTimeout <= 0 {
+		downloadTimeout = timeout.DownloadTimeout
+	}
 
 	// 创建 HTTP 客户端配置（下载大文件需要更长的超时时间）
 	httpConfig := httpclient.Config{
-		Timeout:       10 * time.Minute,
+		Timeout:       downloadTimeout,
 		MaxRetries:    3,
 		RetryDelay:    2 * time.Second,
 		EnableLogging: true,
@@ -46,9 +55,10 @@ func NewChromeDownloader(version, downloadDir string) *ChromeDownloader {
 	}
 
 	return &ChromeDownloader{
-		version:     version,
-		downloadDir: downloadDir,
-		httpClient:  httpclient.New(httpConfig, logger.GetGlobalLogManager().GetRawLogger()),
+		version:         version,
+		downloadDir:     downloadDir,
+		downloadTimeout: downloadTimeout,
+		httpClient:      httpclient.New(httpConfig, logger.GetGlobalLogManager().GetRawLogger()),
 	}
 }
 
@@ -171,7 +181,7 @@ func (cd *ChromeDownloader) downloadFile(url, filepath string) error {
 	}
 
 	// 使用项目的 HTTP 客户端发送请求（带重试机制）
-	ctx, cancel := timeout.WithDownloadTimeout(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), cd.downloadTimeout)
 	defer cancel()
 
 	resp, err := cd.httpClient.Do(ctx, req)

@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
+	timeoutpkg "task-processor/internal/pkg/timeout"
 )
 
 func main() {
@@ -18,7 +20,16 @@ func main() {
 		downloadDir = "/opt/fingerprint-chrome"
 	}
 
-	downloader := sharedbrowser.NewChromeDownloader(version, downloadDir)
+	downloadTimeout := timeoutpkg.DownloadLongTimeout
+	if raw := os.Getenv("FINGERPRINT_CHROME_DOWNLOAD_TIMEOUT"); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			log.Fatalf("invalid FINGERPRINT_CHROME_DOWNLOAD_TIMEOUT %q: %v", raw, err)
+		}
+		downloadTimeout = parsed
+	}
+
+	downloader := sharedbrowser.NewChromeDownloaderWithTimeout(version, downloadDir, downloadTimeout)
 	chromePath, err := downloader.CheckAndDownload("")
 	if err != nil {
 		log.Fatalf("install fingerprint browser failed: %v", err)

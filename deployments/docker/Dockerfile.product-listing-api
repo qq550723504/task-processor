@@ -1,3 +1,7 @@
+# syntax=docker/dockerfile:1
+
+ARG API_RUNTIME_BASE_IMAGE=docker.io/xuwei190/task-processor-product-listing-api-runtime-base:20260527
+
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
@@ -9,34 +13,16 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api ./cmd/product-listing-api/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/playwright-installer ./cmd/playwright-installer/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/fingerprint-browser-installer ./cmd/fingerprint-browser-installer/main.go
 
-FROM xuwei190/crawler-env:latest
+FROM ${API_RUNTIME_BASE_IMAGE}
 
 WORKDIR /app
 
-ENV TZ=Asia/Shanghai
-ENV FINGERPRINT_CHROME_VERSION=144
-ENV FINGERPRINT_CHROME_DIR=/opt/fingerprint-chrome
-
 COPY --from=builder /out/product-listing-api /app/product-listing-api
-COPY --from=builder /out/playwright-installer /usr/local/bin/playwright-installer
-COPY --from=builder /out/fingerprint-browser-installer /usr/local/bin/fingerprint-browser-installer
 COPY --from=builder /src/config /app/config
 COPY --from=builder /src/prompts /app/prompts
 
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        fontconfig \
-        fonts-noto-cjk && \
-    rm -rf /var/lib/apt/lists/* && \
-    chmod +x /usr/local/bin/playwright-installer && \
-    chmod +x /usr/local/bin/fingerprint-browser-installer && \
-    /usr/local/bin/playwright-installer && \
-    /usr/local/bin/fingerprint-browser-installer && \
-    fc-cache -f && \
-    mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome && \
+RUN mkdir -p /app/logs /app/tmp /app/chrome && \
     chmod +x /app/product-listing-api
 
 EXPOSE 8085
