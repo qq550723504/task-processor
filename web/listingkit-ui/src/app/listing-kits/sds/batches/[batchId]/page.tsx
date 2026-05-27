@@ -2,10 +2,12 @@ import { SheinStudioBatchPageShell } from "@/components/listingkit/shein-studio/
 
 export const dynamic = "force-static";
 
-export default function SdsBatchPage({
+export default async function SdsBatchPage({
   params,
 }: {
-  params: { batchId: string };
+  params: Promise<{ batchId: string }>;
 }) {
-  return <SheinStudioBatchPageShell batchId={params.batchId} />;
+  const { batchId } = await params;
+
+  return <SheinStudioBatchPageShell batchId={batchId} />;
 }

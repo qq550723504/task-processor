@@ -1,7 +1,12 @@
 import { SdsNewBatchShell } from "@/components/listingkit/sds/sds-new-batch-shell";
 
-export const dynamic = "force-static";
+export default async function SdsNewPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ entry?: string }>;
+} = {}) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const isQuickSingleEntry = resolvedSearchParams.entry === "single";
 
-export default function SdsNewPage() {
-  return <SdsNewBatchShell />;
+  return <SdsNewBatchShell isQuickSingleEntry={isQuickSingleEntry} />;
 }

@@ -18,8 +18,12 @@ vi.mock(
 );
 
 describe("/listing-kits/sds/batches/[batchId] page", () => {
-  it("renders the dedicated batch editor route", () => {
-    render(<SdsBatchPage params={{ batchId: "batch-1" }} />);
+  it("renders the dedicated batch editor route", async () => {
+    render(
+      await SdsBatchPage({
+        params: Promise.resolve({ batchId: "batch-1" }),
+      }),
+    );
 
     expect(
       screen.getByRole("link", { name: "返回最近批次首页" }),

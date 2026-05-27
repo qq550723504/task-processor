@@ -127,6 +127,9 @@ describe("/listing-kits/sds page", () => {
       screen.getByRole("button", { name: "新建批次并选品" }),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("button", { name: "快速单个生成" }),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole("heading", { name: "选择底版商品和子 SKU" }),
     ).not.toBeInTheDocument();
 
@@ -149,6 +152,14 @@ describe("/listing-kits/sds page", () => {
     fireEvent.click(screen.getByRole("button", { name: "新建批次并选品" }));
 
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/new");
+  });
+
+  it("navigates to the quick single-generation path", () => {
+    render(<ListingKitSDSPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "快速单个生成" }));
+
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new?entry=single");
   });
 
   it("routes continue recent to the latest persisted batch", async () => {

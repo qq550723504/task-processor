@@ -8,8 +8,8 @@ vi.mock("@/components/listingkit/sds/sds-product-browser", () => ({
 }));
 
 describe("/listing-kits/sds/new page", () => {
-  it("renders the dedicated new-batch selection route", () => {
-    render(<SdsNewPage />);
+  it("renders the dedicated new-batch selection route", async () => {
+    render(await SdsNewPage());
 
     expect(
       screen.getByRole("heading", { name: "选择底版商品和子 SKU" }),
@@ -25,5 +25,17 @@ describe("/listing-kits/sds/new page", () => {
     expect(
       screen.queryByRole("heading", { name: "最近批次" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the quick single-generation hint when opened from the shortcut", async () => {
+    render(
+      await SdsNewPage({
+        searchParams: Promise.resolve({ entry: "single" }),
+      }),
+    );
+
+    expect(
+      screen.getByText("当前是快速单个生成路径：选 1 个商品后就可以直接进入批次工作台开始生成。"),
+    ).toBeInTheDocument();
   });
 });

@@ -88,6 +88,10 @@ export function SdsHomepageEntry() {
     router.push("/listing-kits/sds/new");
   }
 
+  function handleQuickSingleGenerate() {
+    router.push("/listing-kits/sds/new?entry=single");
+  }
+
   function handleContinueRecent() {
     if (summaries.length === 0) {
       handleCreateNew();
@@ -153,6 +157,9 @@ export function SdsHomepageEntry() {
                   : "继续最近批次"}
               </Button>
             ) : null}
+            <Button onClick={handleQuickSingleGenerate} type="button" variant="outline">
+              快速单个生成
+            </Button>
             <Button onClick={handleCreateNew} type="button">
               新建批次并选品
             </Button>
