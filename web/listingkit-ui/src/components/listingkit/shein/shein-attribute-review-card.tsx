@@ -6,6 +6,7 @@ import {
   buildSelectedAttributes,
   pendingCandidatesSignature,
   presentAttributeReviewStatus,
+  type SelectedAttributeInput,
 } from "@/components/listingkit/shein/shein-attribute-review-card-model";
 import {
   AttributeRow,
@@ -84,7 +85,9 @@ function SheinAttributeReviewContent({
   recommendedCandidates: SheinPendingAttributeCandidate[];
   resolvedAttributes: SheinResolvedAttribute[];
 }) {
-  const [selectedValues, setSelectedValues] = useState<Record<string, string>>({});
+  const [selectedValues, setSelectedValues] = useState<
+    Record<string, SelectedAttributeInput>
+  >({});
   const requiredCandidates = pendingCandidates.filter((candidate) => candidate.required);
   const nonRequiredPendingCandidates = pendingCandidates.filter(
     (candidate) => !candidate.required,
@@ -166,7 +169,9 @@ function SheinAttributeReviewContent({
                 <PendingCandidateRow
                   candidate={candidate}
                   key={`${candidate.attribute_id}-${candidate.name}`}
-                  value={selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? ""}
+                  value={
+                    selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? {}
+                  }
                   onChange={(value) =>
                     setSelectedValues((currentValues) => ({
                       ...currentValues,
@@ -203,7 +208,9 @@ function SheinAttributeReviewContent({
                   candidate={candidate}
                   key={`${candidate.attribute_id}-${candidate.name}`}
                   tone="recommended"
-                  value={selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? ""}
+                  value={
+                    selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? {}
+                  }
                   onChange={(value) =>
                     setSelectedValues((currentValues) => ({
                       ...currentValues,
@@ -237,7 +244,9 @@ function SheinAttributeReviewContent({
                   candidate={candidate}
                   key={`${candidate.attribute_id}-${candidate.name}`}
                   tone="recommended"
-                  value={selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? ""}
+                  value={
+                    selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? {}
+                  }
                   onChange={(value) =>
                     setSelectedValues((currentValues) => ({
                       ...currentValues,

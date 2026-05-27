@@ -243,6 +243,7 @@ type PendingAttributeCandidate struct {
 	AttributeNameEn    string                    `json:"attribute_name_en,omitempty"`
 	AttributeType      int                       `json:"attribute_type,omitempty"`
 	AttributeMode      int                       `json:"attribute_mode,omitempty"`
+	AttributeInputNum  int                       `json:"attribute_input_num,omitempty"`
 	DataDimension      int                       `json:"data_dimension,omitempty"`
 	CascadeAttributeID int                       `json:"cascade_attribute_id,omitempty"`
 	Required           bool                      `json:"required,omitempty"`

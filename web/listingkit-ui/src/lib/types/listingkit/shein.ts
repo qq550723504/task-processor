@@ -238,6 +238,7 @@ export type SheinPendingAttributeCandidate = {
   attribute_name_en?: string;
   attribute_type?: number;
   attribute_mode?: number;
+  attribute_input_num?: number;
   data_dimension?: number;
   cascade_attribute_id?: number;
   required?: boolean;

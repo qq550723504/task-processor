@@ -67,7 +67,7 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 	if pkg != nil && len(pkg.ResolvedAttributes) > 0 {
 		result := make([]sheinproduct.ProductAttribute, 0, len(pkg.ResolvedAttributes))
 		compositionCount := countResolvedCompositionAttributes(pkg.ResolvedAttributes)
-		seenAttributeIDs := make(map[int]struct{}, len(pkg.ResolvedAttributes))
+		seenAttributeKeys := make(map[string]struct{}, len(pkg.ResolvedAttributes))
 		for _, item := range pkg.ResolvedAttributes {
 			if item.AttributeID <= 0 {
 				continue
@@ -79,14 +79,16 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 				// mismatches for attribute_type=2 templates.
 				continue
 			}
-			if _, exists := seenAttributeIDs[item.AttributeID]; exists {
+			extraValue := resolvedAttributeExtraValue(pkg, item, compositionCount)
+			dedupKey := resolvedAttributeDedupKey(item, extraValue)
+			if _, exists := seenAttributeKeys[dedupKey]; exists {
 				continue
 			}
-			seenAttributeIDs[item.AttributeID] = struct{}{}
+			seenAttributeKeys[dedupKey] = struct{}{}
 			result = append(result, sheinproduct.ProductAttribute{
 				AttributeID:         item.AttributeID,
 				AttributeValueID:    item.AttributeValueID,
-				AttributeExtraValue: resolvedAttributeExtraValue(pkg, item, compositionCount),
+				AttributeExtraValue: extraValue,
 			})
 		}
 		if len(result) > 0 {
@@ -97,6 +99,14 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 		return nil
 	}
 	return toProductAttributes(pkg.RequestDraft.ProductAttributeList)
+}
+
+func resolvedAttributeDedupKey(item ResolvedAttribute, extraValue string) string {
+	valueID := 0
+	if item.AttributeValueID != nil {
+		valueID = *item.AttributeValueID
+	}
+	return strconv.Itoa(item.AttributeID) + ":" + strconv.Itoa(valueID) + ":" + extraValue
 }
 
 func countResolvedCompositionAttributes(items []ResolvedAttribute) int {

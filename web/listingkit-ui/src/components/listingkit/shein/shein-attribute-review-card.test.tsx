@@ -189,6 +189,122 @@ describe("SheinAttributeReviewCard", () => {
     expect(screen.queryByText("必填未完成")).not.toBeInTheDocument();
   });
 
+  it("allows manual extra value input for option-based attributes", async () => {
+    const user = userEvent.setup();
+    const onConfirmAttributes = vi.fn();
+
+    render(
+      <SheinAttributeReviewCard
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              pending_attribute_candidates: [
+                {
+                  name: "Quantity",
+                  attribute_id: 1000411,
+                  attribute_type: 4,
+                  attribute_mode: 4,
+                  data_dimension: 2,
+                  required: true,
+                  important: true,
+                  attribute_value_list: [
+                    {
+                      attribute_value_id: 1002451,
+                      value: "件",
+                      value_en: "piece(s)",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onConfirmAttributes={onConfirmAttributes}
+      />,
+    );
+
+    await user.selectOptions(screen.getByRole("combobox"), "1002451");
+    await user.type(
+      screen.getByPlaceholderText("如模板要求手填补充值，可在这里输入数字或文本"),
+      "3",
+    );
+    await user.click(screen.getByRole("button", { name: "保存已选择属性" }));
+
+    expect(onConfirmAttributes).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: "Quantity",
+        value: "piece(s)",
+        attribute_id: 1000411,
+        attribute_value_id: 1002451,
+        attribute_extra_value: "3",
+        matched_by: "manual_attribute_review",
+      }),
+    ]);
+  });
+
+  it("allows selecting multiple values for multi-input attributes", async () => {
+    const user = userEvent.setup();
+    const onConfirmAttributes = vi.fn();
+
+    render(
+      <SheinAttributeReviewCard
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              pending_attribute_candidates: [
+                {
+                  name: "Applicable Space",
+                  attribute_id: 2000,
+                  attribute_type: 4,
+                  attribute_mode: 1,
+                  attribute_input_num: 2,
+                  required: true,
+                  important: true,
+                  attribute_value_list: [
+                    {
+                      attribute_value_id: 2001,
+                      value: "客厅",
+                      value_en: "Living Room",
+                    },
+                    {
+                      attribute_value_id: 2002,
+                      value: "卧室",
+                      value_en: "Bedroom",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onConfirmAttributes={onConfirmAttributes}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: /Living Room/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Bedroom/i }));
+    await user.click(screen.getByRole("button", { name: "保存已选择属性" }));
+
+    expect(onConfirmAttributes).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: "Applicable Space",
+        value: "Living Room",
+        attribute_id: 2000,
+        attribute_value_id: 2001,
+        matched_by: "manual_attribute_review",
+      }),
+      expect.objectContaining({
+        name: "Applicable Space",
+        value: "Bedroom",
+        attribute_id: 2000,
+        attribute_value_id: 2002,
+        matched_by: "manual_attribute_review",
+      }),
+    ]);
+  });
+
   it("allows manual text entry when a required template attribute has no options", async () => {
     const user = userEvent.setup();
     const onConfirmAttributes = vi.fn();

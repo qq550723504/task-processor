@@ -176,6 +176,7 @@ func buildPendingAttributeCandidate(attr sheinattribute.AttributeInfo) PendingAt
 		AttributeNameEn:    attr.AttributeNameEn,
 		AttributeType:      attr.AttributeType,
 		AttributeMode:      attr.AttributeMode,
+		AttributeInputNum:  attr.AttributeInputNum,
 		DataDimension:      attr.DataDimension,
 		CascadeAttributeID: attr.CascadeAttributeID,
 		Required:           isTemplateRequired(attr),

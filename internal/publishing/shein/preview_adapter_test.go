@@ -190,3 +190,40 @@ func TestToResolvedAttributesExtractsNumericExtraValueFromResolvedValue(t *testi
 		t.Fatalf("capacity attribute_extra_value = %q, want 500", got[0].AttributeExtraValue)
 	}
 }
+
+func TestToResolvedAttributesKeepsMultipleValuesForSameAttribute(t *testing.T) {
+	t.Parallel()
+
+	firstValueID := 2001
+	secondValueID := 2002
+	pkg := &Package{
+		ResolvedAttributes: []ResolvedAttribute{
+			{
+				Name:             "Applicable Space",
+				Value:            "Living Room",
+				AttributeID:      2000,
+				AttributeValueID: &firstValueID,
+				AttributeType:    4,
+			},
+			{
+				Name:             "Applicable Space",
+				Value:            "Bedroom",
+				AttributeID:      2000,
+				AttributeValueID: &secondValueID,
+				AttributeType:    4,
+			},
+		},
+		RequestDraft: &RequestDraft{},
+	}
+
+	got := toResolvedAttributes(pkg)
+	if len(got) != 2 {
+		t.Fatalf("product attributes = %#v, want 2 values for the same attribute", got)
+	}
+	if got[0].AttributeValueID == nil || *got[0].AttributeValueID != firstValueID {
+		t.Fatalf("first attribute value id = %#v, want %d", got[0].AttributeValueID, firstValueID)
+	}
+	if got[1].AttributeValueID == nil || *got[1].AttributeValueID != secondValueID {
+		t.Fatalf("second attribute value id = %#v, want %d", got[1].AttributeValueID, secondValueID)
+	}
+}
