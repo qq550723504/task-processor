@@ -14,7 +14,9 @@ import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   useHydratedSDSVariantSelection,
+  loadLocalSheinStudioDraftSnapshotDetail,
   loadLocalSheinStudioDraftSnapshot,
+  saveLocalSheinStudioDraftSnapshot,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
   useSheinStudioStepNavigation,
@@ -78,11 +80,20 @@ type SheinStudioWorkbenchProps = {
   selection?: SDSProductVariantSelection;
 };
 
+const dedicatedBatchPromptOverrides = new Map<string, string>();
+
+export function resetDedicatedBatchPromptOverrides() {
+  dedicatedBatchPromptOverrides.clear();
+}
+
 export function SheinStudioWorkbench({
   activeStep = "generate",
   initialBatchId,
   selection,
 }: SheinStudioWorkbenchProps) {
+  const [isDedicatedBatchLoaded, setIsDedicatedBatchLoaded] = useState(
+    () => !initialBatchId,
+  );
   const [workbenchState, dispatchWorkbenchState] = useReducer(
     sheinStudioWorkbenchReducer,
     undefined,
@@ -461,37 +472,105 @@ export function SheinStudioWorkbench({
     galleryRatioCheck,
     selectedIds,
   });
-  const { buildDraftInput, persistDraft } = useSheinStudioDraftPersistence({
-    activeSelection,
-    artworkModel,
-    createdTasks,
-    designs,
-    groups,
-    groupedImageMode,
-    imageStrategy,
-    isCreatingTasks,
-    isGenerating,
-    isLoadingWorkspace,
-    productImageCount,
-    productImagePrompt,
-    productImagePrompts,
-    prompt,
-    regeneratingId,
-    renderSizeImagesWithSds,
-    groupedSelections,
-    selectedIds,
-    selectedSdsImages,
-    setDraftWarning,
-    sheinStoreId,
-    styleCount,
-    transparentBackground,
-    variationIntensity,
-  });
+  const draftPersistenceState = useMemo(
+    () => ({
+      activeSelection,
+      artworkModel,
+      createdTasks,
+      designs,
+      groups,
+      groupedImageMode,
+      imageStrategy,
+      isCreatingTasks,
+      isGenerating,
+      isLoadingWorkspace,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      prompt,
+      regeneratingId,
+      renderSizeImagesWithSds,
+      groupedSelections,
+      selectedIds,
+      selectedSdsImages,
+      setDraftWarning,
+      sheinStoreId,
+      styleCount,
+      transparentBackground,
+      variationIntensity,
+    }),
+    [
+      activeSelection,
+      artworkModel,
+      createdTasks,
+      designs,
+      groups,
+      groupedImageMode,
+      imageStrategy,
+      isCreatingTasks,
+      isGenerating,
+      isLoadingWorkspace,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      prompt,
+      regeneratingId,
+      renderSizeImagesWithSds,
+      groupedSelections,
+      selectedIds,
+      selectedSdsImages,
+      setDraftWarning,
+      sheinStoreId,
+      styleCount,
+      transparentBackground,
+      variationIntensity,
+    ],
+  );
+  const { buildDraftInput, persistDraft } = useSheinStudioDraftPersistence(
+    draftPersistenceState,
+    {
+      activeBatchId: initialBatchId,
+      persistenceEnabled: !initialBatchId || isDedicatedBatchLoaded,
+    },
+  );
+  const saveDedicatedBatchDraftSnapshot = useCallback(
+    (overrides?: Partial<ReturnType<typeof buildDraftInput>>) => {
+      if (!initialBatchId) {
+        return;
+      }
+      if (typeof overrides?.prompt === "string") {
+        dedicatedBatchPromptOverrides.set(initialBatchId, overrides.prompt);
+      }
+      saveLocalSheinStudioDraftSnapshot(
+        {
+          ...buildDraftInput(),
+          ...overrides,
+        },
+        {
+          batchId: initialBatchId,
+        },
+      );
+    },
+    [buildDraftInput, initialBatchId, isDedicatedBatchLoaded],
+  );
+  const handlePromptChange = useCallback(
+    (value: string) => {
+      saveDedicatedBatchDraftSnapshot({
+        prompt: value,
+      });
+      setPrompt(value);
+    },
+    [saveDedicatedBatchDraftSnapshot, setPrompt],
+  );
 
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
     hasCustomizedSdsSelectionRef.current = false;
   }, [selection?.variantId]);
+
+  useEffect(() => {
+    setIsDedicatedBatchLoaded(!initialBatchId);
+  }, [initialBatchId]);
 
   const handleGenerationWarningAction = useCallback(() => {
     if (generationWarningAction?.intent !== "focus_generate") {
@@ -715,11 +794,20 @@ export function SheinStudioWorkbench({
       setEffectiveStep,
       workbench: workbenchController,
     });
+  const handleLoadBatchRef = useRef(handleLoadBatch);
+  const loadedInitialBatchIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    handleLoadBatchRef.current = handleLoadBatch;
+  }, [handleLoadBatch]);
   useEffect(() => {
     if (!initialBatchId) {
+      loadedInitialBatchIdRef.current = null;
       return;
     }
     const batchId = initialBatchId;
+    if (loadedInitialBatchIdRef.current === batchId) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -728,7 +816,42 @@ export function SheinStudioWorkbench({
       if (cancelled || !batch) {
         return;
       }
-      handleLoadBatch(batch);
+      const localSnapshot = loadLocalSheinStudioDraftSnapshotDetail();
+      const batchWithLocalSnapshot =
+        localSnapshot?.batchId === batchId
+          ? {
+              ...batch,
+              prompt:
+                dedicatedBatchPromptOverrides.get(batchId) ??
+                localSnapshot.draft.prompt,
+              styleCount: localSnapshot.draft.styleCount,
+              variationIntensity: localSnapshot.draft.variationIntensity,
+              productImageCount: localSnapshot.draft.productImageCount,
+              productImagePrompt: localSnapshot.draft.productImagePrompt,
+              productImagePrompts: localSnapshot.draft.productImagePrompts,
+              artworkModel: localSnapshot.draft.artworkModel,
+              transparentBackground: localSnapshot.draft.transparentBackground,
+              sheinStoreId: localSnapshot.draft.sheinStoreId,
+              imageStrategy: localSnapshot.draft.imageStrategy,
+              groupedImageMode: localSnapshot.draft.groupedImageMode,
+              selectedSdsImages: localSnapshot.draft.selectedSdsImages,
+              renderSizeImagesWithSds:
+                localSnapshot.draft.renderSizeImagesWithSds,
+              selection: localSnapshot.draft.selection ?? batch.selection,
+              groupedSelections: localSnapshot.draft.groupedSelections,
+              groups: localSnapshot.draft.groups,
+              designs: localSnapshot.draft.designs,
+              selectedIds: localSnapshot.draft.selectedIds,
+              createdTasks: localSnapshot.draft.createdTasks,
+            }
+          : {
+              ...batch,
+              prompt:
+                dedicatedBatchPromptOverrides.get(batchId) ?? batch.prompt,
+            };
+      loadedInitialBatchIdRef.current = batchId;
+      handleLoadBatchRef.current(batchWithLocalSnapshot);
+      setIsDedicatedBatchLoaded(true);
     }
 
     void loadInitialBatch();
@@ -736,7 +859,7 @@ export function SheinStudioWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [handleLoadBatch, initialBatchId]);
+  }, [initialBatchId]);
 
   const stepForRecentBatchAction = useCallback(
     (action?: "generate" | "review" | "tasks"): SheinStudioStepKey => {
@@ -1308,7 +1431,6 @@ export function SheinStudioWorkbench({
                 onDeleteBatch={handleDeleteBatch}
                 onGenerate={handleGenerate}
                 onLoadBatch={handleLoadBatch}
-                onRestorePrompt={setPrompt}
                 onSaveBatch={handleSaveBatch}
                 productImageCount={productImageCount}
                 productImagePrompt={productImagePrompt}
@@ -1330,7 +1452,8 @@ export function SheinStudioWorkbench({
                 setProductImageCount={setProductImageCount}
                 setProductImagePrompt={setProductImagePrompt}
                 setProductImagePrompts={setProductImagePrompts}
-                setPrompt={setPrompt}
+                onRestorePrompt={handlePromptChange}
+                setPrompt={handlePromptChange}
                 setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
                 setSelectedSdsImages={(value) => {
                   hasCustomizedSdsSelectionRef.current = true;

@@ -1,8 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SheinStudioWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench";
-import { saveLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import {
+  resetDedicatedBatchPromptOverrides,
+  SheinStudioWorkbench,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench";
+import {
+  loadLocalSheinStudioDraftSnapshotDetail,
+  saveLocalSheinStudioDraftSnapshot,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handoff";
 import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 
@@ -220,6 +226,7 @@ describe("SheinStudioWorkbench", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     window.localStorage.clear();
+    resetDedicatedBatchPromptOverrides();
     lastGenerationPanelProps = null;
     useQuery.mockReturnValue({ data: undefined, error: null });
     generateSheinStudioDesigns.mockReset();
@@ -448,6 +455,87 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("selection overview selection variant: 100")).toBeInTheDocument();
     expect(screen.getByText("saved batches visible: no")).toBeInTheDocument();
     expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
+  });
+
+  it("does not reload the dedicated batch when editing the prompt", async () => {
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "Retro Cherries",
+      prompt: "",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    const promptInput = await screen.findByLabelText("prompt");
+    const callCountBeforeEdit = getSheinStudioBatch.mock.calls.length;
+    fireEvent.change(promptInput, { target: { value: "vintage botanical clock" } });
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("vintage botanical clock")).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(loadLocalSheinStudioDraftSnapshotDetail()).toMatchObject({
+        batchId: "batch-1",
+        draft: expect.objectContaining({
+          prompt: "vintage botanical clock",
+        }),
+      }),
+    );
+    expect(getSheinStudioBatch).toHaveBeenCalledTimes(callCountBeforeEdit);
+  });
+
+  it("autosaves prompt edits back into the dedicated batch container", async () => {
+    saveSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "updated prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    const promptInput = await screen.findByLabelText("prompt");
+    fireEvent.change(promptInput, { target: { value: "updated prompt" } });
+
+    await waitFor(() =>
+      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "batch-1",
+          prompt: "updated prompt",
+        }),
+        { makeActive: false },
+      ),
+      { timeout: 3000 },
+    );
   });
 
   it("does not let a local draft override the dedicated batch selection", async () => {

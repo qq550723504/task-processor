@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
@@ -269,7 +269,7 @@ export function useSheinStudioBatchActions({
   setEffectiveStep: (step: SheinStudioStepKey) => void;
   workbench: SheinStudioWorkbenchController;
 }) {
-  async function handleSaveBatch() {
+  const handleSaveBatch = useCallback(async () => {
     const draftInput = buildDraftInput();
     if (!draftInput.prompt?.trim()) {
       workbench.setField("saveMessage", "保存批次前请先填写主题提示词。");
@@ -285,9 +285,9 @@ export function useSheinStudioBatchActions({
 
     workbench.setField("savedBatches", await listSheinStudioBatches());
     workbench.setField("saveMessage", `批次已保存：${saved.name}`);
-  }
+  }, [buildDraftInput, workbench]);
 
-  function handleLoadBatch(batch: SheinStudioSavedBatch) {
+  const handleLoadBatch = useCallback((batch: SheinStudioSavedBatch) => {
     hasLocalWorkflowStateRef.current = true;
     setActiveSheinStudioBatchId(batch.id);
     workbench.applyBatch(batch);
@@ -301,12 +301,18 @@ export function useSheinStudioBatchActions({
       }),
     );
     workbench.setField("saveMessage", `已载入批次：${batch.name}`);
-  }
+  }, [
+    activeStep,
+    hasCustomizedSdsSelectionRef,
+    hasLocalWorkflowStateRef,
+    setEffectiveStep,
+    workbench,
+  ]);
 
-  async function handleDeleteBatch(batchID: string) {
+  const handleDeleteBatch = useCallback(async (batchID: string) => {
     await deleteSheinStudioBatch(batchID);
     workbench.setField("savedBatches", await listSheinStudioBatches());
-  }
+  }, [workbench]);
 
   return {
     handleDeleteBatch,
