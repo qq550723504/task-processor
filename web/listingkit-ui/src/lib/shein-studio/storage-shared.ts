@@ -366,7 +366,7 @@ function buildLegacyGroupedWorkspace(
 }
 
 export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined) {
-  if (!raw?.prompt) {
+  if (!raw) {
     return null;
   }
 
@@ -375,7 +375,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     groups.length > 0 ? groups : buildLegacyGroupedWorkspace(raw);
 
   return {
-    prompt: raw.prompt,
+    prompt: typeof raw.prompt === "string" ? raw.prompt : "",
     styleCount: raw.styleCount ?? "4",
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
@@ -406,7 +406,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
 }
 
 export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | undefined) {
-  if (!raw?.id || !raw.name || !raw.prompt) {
+  if (!raw?.id || !raw.name) {
     return null;
   }
 
@@ -417,7 +417,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
   return {
     id: raw.id,
     name: raw.name,
-    prompt: raw.prompt,
+    prompt: raw.prompt ?? "",
     styleCount: raw.styleCount ?? "4",
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,

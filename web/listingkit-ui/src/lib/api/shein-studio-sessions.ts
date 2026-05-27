@@ -34,6 +34,7 @@ export type StudioSessionDetailResponse = {
   session?: {
     id: string;
     tenant_id?: string;
+    batch_name?: string;
     status?: StudioSessionStatus;
     selection?: Record<string, unknown>;
     prompt?: string;
@@ -427,7 +428,7 @@ export function mapStudioSessionDetailToBatch(
   }
   return {
     id: detail.session.id,
-    name: deriveBatchName(detail.session.prompt ?? draft.prompt),
+    name: detail.session.batch_name ?? deriveBatchName(detail.session.prompt ?? draft.prompt),
     ...draft,
   };
 }

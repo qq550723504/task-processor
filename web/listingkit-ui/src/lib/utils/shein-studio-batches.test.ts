@@ -397,6 +397,58 @@ describe("shein studio storage api", () => {
     );
   });
 
+  it("keeps a saved batch even when prompt is empty", async () => {
+    upsertSheinStudioSessionBatch.mockResolvedValue({
+      id: "batch-empty-prompt",
+      name: "批次12",
+      prompt: "",
+      styleCount: "1",
+      sheinStoreId: "",
+      selectionVariantId: 100,
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-24T00:00:00.000Z",
+    });
+
+    const saved = await saveSheinStudioBatch({
+      prompt: "",
+      styleCount: "1",
+      sheinStoreId: "",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+
+    expect(saved).toEqual(
+      expect.objectContaining({
+        id: "batch-empty-prompt",
+        name: "批次12",
+        prompt: "",
+      }),
+    );
+  });
+
   it("saves draft through server api", async () => {
     getCachedStudioSessionId.mockReturnValue(undefined);
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });

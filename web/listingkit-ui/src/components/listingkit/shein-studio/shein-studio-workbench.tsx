@@ -1322,6 +1322,7 @@ export function SheinStudioWorkbench({
                 selectedSdsImages={selectedSdsImages}
                 selectedStyleCount={selectedIds.length}
                 selectionReady={Boolean(activeSelection?.variantId)}
+                showSavedBatches={!initialBatchId}
                 subscriptionBlockedMessage={subscriptionBlockedMessage}
                 setArtworkModel={setArtworkModel}
                 setGroupedImageMode={setGroupedImageMode}

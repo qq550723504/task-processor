@@ -55,6 +55,7 @@ export function SheinStudioGenerationPanel({
   selectedStyleCount,
   createTaskButtonLabel = "生成 SHEIN 资料",
   selectionReady,
+  showSavedBatches = true,
   subscriptionBlockedMessage,
   variationIntensity,
   setImageStrategy,
@@ -103,6 +104,7 @@ export function SheinStudioGenerationPanel({
   selectedStyleCount: number;
   createTaskButtonLabel?: string;
   selectionReady: boolean;
+  showSavedBatches?: boolean;
   subscriptionBlockedMessage: string;
   variationIntensity: SheinStudioVariationIntensity;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
@@ -234,11 +236,13 @@ export function SheinStudioGenerationPanel({
       <div id="shein-created-tasks" className="scroll-mt-6">
         <SheinCreatedTasksList tasks={createdTasks} />
       </div>
-      <SheinSavedBatchesPanel
-        batches={savedBatches}
-        onDelete={onDeleteBatch}
-        onLoad={onLoadBatch}
-      />
+      {showSavedBatches ? (
+        <SheinSavedBatchesPanel
+          batches={savedBatches}
+          onDelete={onDeleteBatch}
+          onLoad={onLoadBatch}
+        />
+      ) : null}
     </div>
   );
 }

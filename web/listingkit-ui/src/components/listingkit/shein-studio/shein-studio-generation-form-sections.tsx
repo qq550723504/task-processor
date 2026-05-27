@@ -344,11 +344,13 @@ export function ProductImageGenerationSettings({
         </p>
       </Label>
 
-      <ProductImagePromptPlanner
-        count={productImageCount}
-        prompts={productImagePrompts}
-        setPrompts={setProductImagePrompts}
-      />
+      {imageStrategy === "ai_generated" ? (
+        <ProductImagePromptPlanner
+          count={productImageCount}
+          prompts={productImagePrompts}
+          setPrompts={setProductImagePrompts}
+        />
+      ) : null}
     </div>
   );
 }

@@ -86,6 +86,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     onRestorePrompt?: (value: string) => void;
     prompt: string;
     promptHistory?: Array<{ prompt: string; createdAt: string }>;
+    showSavedBatches?: boolean;
     subscriptionBlockedMessage?: string;
     setPrompt: (value: string) => void;
     selectedSdsImages?: Array<{
@@ -119,6 +120,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
           selected SDS images:{" "}
           {Array.isArray(props.selectedSdsImages) ? props.selectedSdsImages.length : 0}
         </div>
+        <div>saved batches visible: {props.showSavedBatches === false ? "no" : "yes"}</div>
         {props.subscriptionBlockedMessage ? (
           <div>{props.subscriptionBlockedMessage}</div>
         ) : null}
@@ -444,6 +446,7 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
     expect(screen.getByText("selection overview selection variant: 100")).toBeInTheDocument();
+    expect(screen.getByText("saved batches visible: no")).toBeInTheDocument();
     expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
   });
 

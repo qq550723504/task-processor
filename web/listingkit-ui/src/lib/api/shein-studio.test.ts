@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
   getSheinStudioSession,
+  mapStudioSessionDetailToBatch,
   mapStudioSessionDetailToDraft,
   replaceSheinStudioSessionDesigns,
   upsertSheinStudioSessionBatch,
@@ -525,6 +526,68 @@ describe("shein studio design metadata", () => {
         }),
       }),
     );
+  });
+
+  it("maps empty-prompt batch containers from session detail", () => {
+    const batch = mapStudioSessionDetailToBatch({
+      session: {
+        id: "batch-1",
+        batch_name: "批次12",
+        prompt: "",
+        status: "selecting",
+        selection: {
+          product_id: 212094,
+          parent_product_id: 212094,
+          variant_id: 212095,
+          prototype_group_id: 26098,
+          layer_id: "857829356162756609",
+          product_name: "带刻度方形挂钟25*25（包邮仅限美国直发）",
+          variant_label: "10×10inch(25×25cm) · White",
+          printable_width: 1500,
+          printable_height: 1500,
+          selected_variant_ids: [212095],
+        },
+        grouped_selections: [
+          {
+            selection_id: "212094:26098:212095:857829356162756609:212095",
+            selection: {
+              product_id: 212094,
+              parent_product_id: 212094,
+              variant_id: 212095,
+              prototype_group_id: 26098,
+              layer_id: "857829356162756609",
+              product_name: "带刻度方形挂钟25*25（包邮仅限美国直发）",
+              variant_label: "10×10inch(25×25cm) · White",
+              printable_width: 1500,
+              printable_height: 1500,
+              selected_variant_ids: [212095],
+            },
+            baseline_status: "ready",
+            baseline_reason: "",
+            shein_store_id: "",
+            eligible: true,
+          },
+        ],
+      },
+      designs: [],
+    });
+
+    expect(batch).toMatchObject({
+      id: "batch-1",
+      name: "批次12",
+      prompt: "",
+      selection: expect.objectContaining({
+        variantId: 212095,
+      }),
+      groupedSelections: [
+        expect.objectContaining({
+          baselineStatus: "ready",
+          selection: expect.objectContaining({
+            variantId: 212095,
+          }),
+        }),
+      ],
+    });
   });
 
   it("rejects studio session responses without a string session id", async () => {

@@ -119,6 +119,67 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.queryByText("尺寸图也使用 SDS 渲染")).not.toBeInTheDocument();
   });
 
+  it("shows per-image product prompts only in AI image mode", () => {
+    const { rerender } = renderPanel({
+      imageStrategy: "ai_generated",
+    });
+
+    expect(screen.getByText("每张商品图提示词")).toBeInTheDocument();
+
+    rerender(
+      <SheinStudioGenerationPanel
+        availableSdsImages={[]}
+        artworkModel="nanobanana"
+        createdTasks={[]}
+        creatingError=""
+        creatingMessage=""
+        generationError=""
+        groupedImageMode="shared_by_size"
+        imageStrategy="sds_official"
+        isCreatingTasks={false}
+        isGenerating={false}
+        onCreateTasks={() => undefined}
+        onDeleteBatch={() => undefined}
+        onGenerate={() => undefined}
+        onLoadBatch={() => undefined}
+        onRestorePrompt={() => undefined}
+        onSaveBatch={() => undefined}
+        productImageCount="5"
+        productImagePrompt=""
+        productImagePrompts={[]}
+        prompt=""
+        promptHistory={[]}
+        promptInputRef={{ current: null }}
+        renderSizeImagesWithSds={true}
+        saveMessage=""
+        savedBatches={[]}
+        selectedSdsImages={[]}
+        selectedStyleCount={0}
+        selectionReady={true}
+        subscriptionBlockedMessage=""
+        variationIntensity="medium"
+        setArtworkModel={() => undefined}
+        setGroupedImageMode={() => undefined}
+        setImageStrategy={() => undefined}
+        setProductImageCount={() => undefined}
+        setProductImagePrompt={() => undefined}
+        setProductImagePrompts={() => undefined}
+        setPrompt={() => undefined}
+        setRenderSizeImagesWithSds={() => undefined}
+        setSelectedSdsImages={() => undefined}
+        setSheinStoreId={() => undefined}
+        setStyleCount={() => undefined}
+        setVariationIntensity={() => undefined}
+        setTransparentBackground={() => undefined}
+        sheinStoreId="869"
+        styleCount="1"
+        transparentBackground={false}
+      />,
+    );
+
+    expect(screen.queryByText("每张商品图提示词")).not.toBeInTheDocument();
+  });
+
   it("hides the SDS size-image toggle when no SDS size references exist", () => {
     renderPanel({
       imageStrategy: "hybrid",
