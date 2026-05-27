@@ -10,16 +10,18 @@ import (
 )
 
 type runtimeSaleAttributeResolver struct {
-	fallback SaleAttributeResolver
-	factory  *runtimeAPIFactory
-	llm      openaiclient.ChatCompleter
+	fallback    SaleAttributeResolver
+	factory     *runtimeAPIFactory
+	llm         openaiclient.ChatCompleter
+	deniedStore ResolutionCacheStore
 }
 
-func NewRuntimeSaleAttributeResolver(factory RuntimeAPIClientFactory, llm openaiclient.ChatCompleter) SaleAttributeResolver {
+func NewRuntimeSaleAttributeResolver(factory RuntimeAPIClientFactory, llm openaiclient.ChatCompleter, stores ...ResolutionCacheStore) SaleAttributeResolver {
 	return &runtimeSaleAttributeResolver{
-		fallback: NewSaleAttributeResolver(nil, llm),
-		factory:  newRuntimeAPIFactory(factory),
-		llm:      llm,
+		fallback:    NewSaleAttributeResolverWithDeniedStore(nil, llm, firstResolutionCacheStore(stores)),
+		factory:     newRuntimeAPIFactory(factory),
+		llm:         llm,
+		deniedStore: firstResolutionCacheStore(stores),
 	}
 }
 
@@ -29,7 +31,7 @@ func (r *runtimeSaleAttributeResolver) Resolve(req *BuildRequest, canonical *can
 	}
 
 	api, note := r.buildAPI(req.Context, req.SheinStoreID)
-	resolver := NewSaleAttributeResolver(api, r.llm)
+	resolver := NewSaleAttributeResolverWithDeniedStore(api, r.llm, r.deniedStore)
 	resolution := resolver.Resolve(req, canonical, pkg)
 	if strings.TrimSpace(note) != "" {
 		resolution.ReviewNotes = append(resolution.ReviewNotes, note)

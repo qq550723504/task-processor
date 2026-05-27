@@ -1,12 +1,21 @@
 package shein
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
 )
+
+type customSaleAttributePermissionDeniedKey struct {
+	categoryID  int
+	attributeID int
+}
+
+var customSaleAttributePermissionDeniedCache sync.Map
 
 func resolveCustomSaleAttributeValues(
 	attr sheinattribute.AttributeInfo,
@@ -16,6 +25,8 @@ func resolveCustomSaleAttributeValues(
 	api AttributeAPI,
 	categoryID int,
 	spuName string,
+	storeID string,
+	store ResolutionCacheStore,
 ) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string) {
 	if api == nil || categoryID <= 0 || len(sourceValues) == 0 || attr.AttributeID <= 0 {
 		return nil, nil, nil
@@ -24,6 +35,14 @@ func resolveCustomSaleAttributeValues(
 	assignments := make(map[string]ResolvedSaleAttribute, len(sourceValues))
 	relations := make([]sheinattribute.CustomAttributeRelation, 0, len(sourceValues))
 	notes := make([]string, 0, len(sourceValues))
+	if isCustomSaleAttributePermissionDenied(store, storeID, categoryID, attr.AttributeID) {
+		notes = append(notes, fmt.Sprintf(
+			"SHEIN 自定义销售属性值已跳过自定义尝试: 模板属性 %q 在类目 %d 已确认没有自定义属性值权限",
+			firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+			categoryID,
+		))
+		return nil, nil, dedupeStrings(notes)
+	}
 
 	for _, sourceValue := range uniqueNormalizedValues(sourceValues) {
 		sanitizedValue := content.SanitizeForSheinAttribute(sourceValue)
@@ -38,6 +57,16 @@ func resolveCustomSaleAttributeValues(
 
 		validateResp, err := api.ValidateCustomAttributeValue(attr.AttributeID, sanitizedValue, categoryID, strings.TrimSpace(spuName))
 		if err != nil {
+			if isCustomSaleAttributePermissionDeniedError(err) {
+				rememberCustomSaleAttributePermissionDenied(store, storeID, categoryID, attr.AttributeID)
+				notes = append(notes, fmt.Sprintf(
+					"SHEIN 自定义销售属性值校验失败: 模板属性 %q 在类目 %d 没有自定义属性值权限，后续已跳过自定义尝试: %v",
+					firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+					categoryID,
+					err,
+				))
+				break
+			}
 			notes = append(notes, fmt.Sprintf(
 				"SHEIN 自定义销售属性值校验失败: 模板属性 %q 的值 %q 校验报错: %v",
 				firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
@@ -114,6 +143,67 @@ func resolveCustomSaleAttributeValues(
 		return nil, nil, nil
 	}
 	return assignments, dedupeCustomAttributeRelations(relations), dedupeStrings(notes)
+}
+
+func isCustomSaleAttributePermissionDenied(store ResolutionCacheStore, storeID string, categoryID, attributeID int) bool {
+	if categoryID <= 0 || attributeID <= 0 {
+		return false
+	}
+	key := customSaleAttributePermissionDeniedKey{
+		categoryID:  categoryID,
+		attributeID: attributeID,
+	}
+	if _, ok := customSaleAttributePermissionDeniedCache.Load(key); ok {
+		return true
+	}
+	if store == nil || strings.TrimSpace(storeID) == "" {
+		return false
+	}
+	entry, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindSaleAttributeCustomDenied, storeID, customSaleAttributePermissionDeniedCacheKey(categoryID, attributeID))
+	if err != nil || entry == nil {
+		return false
+	}
+	customSaleAttributePermissionDeniedCache.Store(key, struct{}{})
+	return true
+}
+
+func rememberCustomSaleAttributePermissionDenied(store ResolutionCacheStore, storeID string, categoryID, attributeID int) {
+	if categoryID <= 0 || attributeID <= 0 {
+		return
+	}
+	key := customSaleAttributePermissionDeniedKey{
+		categoryID:  categoryID,
+		attributeID: attributeID,
+	}
+	customSaleAttributePermissionDeniedCache.Store(key, struct{}{})
+	if store == nil || strings.TrimSpace(storeID) == "" {
+		return
+	}
+	_ = store.SaveResolutionCache(context.Background(), &SheinResolutionCacheEntry{
+		StoreID:        storeID,
+		CacheKind:      ResolutionCacheKindSaleAttributeCustomDenied,
+		CacheKey:       customSaleAttributePermissionDeniedCacheKey(categoryID, attributeID),
+		ShortKey:       shortResolutionCacheKey(customSaleAttributePermissionDeniedCacheKey(categoryID, attributeID)),
+		Source:         "runtime_permission_denied",
+		Manual:         false,
+		SourceIdentity: fmt.Sprintf("category=%d,attribute=%d", categoryID, attributeID),
+		ResolutionJSON: `{"status":"custom_denied"}`,
+	})
+}
+
+func isCustomSaleAttributePermissionDeniedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "没有自定义属性值权限")
+}
+
+func resetCustomSaleAttributePermissionDeniedCache() {
+	customSaleAttributePermissionDeniedCache = sync.Map{}
+}
+
+func customSaleAttributePermissionDeniedCacheKey(categoryID, attributeID int) string {
+	return fmt.Sprintf("category:%d:attribute:%d", categoryID, attributeID)
 }
 
 func buildCustomAttributeValueNameMultis(source []struct {

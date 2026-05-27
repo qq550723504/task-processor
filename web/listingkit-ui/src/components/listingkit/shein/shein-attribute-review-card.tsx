@@ -19,12 +19,14 @@ import type {
 } from "@/lib/types/listingkit";
 
 export function SheinAttributeReviewCard({
+  applyErrorMessage,
   editorContext,
   isApplying,
   onConfirmAttributes,
   onConfirmFallbackAttributes,
   onRegenerateAttributes,
 }: {
+  applyErrorMessage?: string | null;
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
@@ -52,7 +54,8 @@ export function SheinAttributeReviewCard({
   }
 
   return (
-    <SheinAttributeReviewContent
+      <SheinAttributeReviewContent
+      applyErrorMessage={applyErrorMessage}
       current={current}
       isApplying={isApplying}
       key={pendingCandidatesSignature([...pendingCandidates, ...recommendedCandidates])}
@@ -67,6 +70,7 @@ export function SheinAttributeReviewCard({
 }
 
 function SheinAttributeReviewContent({
+  applyErrorMessage,
   current,
   isApplying,
   onConfirmAttributes,
@@ -76,6 +80,7 @@ function SheinAttributeReviewContent({
   recommendedCandidates,
   resolvedAttributes,
 }: {
+  applyErrorMessage?: string | null;
   current: NonNullable<NonNullable<SheinEditorContext["attributes"]>["current"]>;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
@@ -118,6 +123,11 @@ function SheinAttributeReviewContent({
   return (
     <Card className="border-zinc-200 bg-white p-5">
       <div className="space-y-4">
+        {applyErrorMessage ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+            保存普通属性失败：{applyErrorMessage}
+          </div>
+        ) : null}
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
             SHEIN 普通属性确认

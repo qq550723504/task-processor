@@ -27,6 +27,22 @@ func buildValueAssignments(
 	spuName string,
 	llm openaiclient.ChatCompleter,
 ) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
+	return buildValueAssignmentsWithDeniedStore(values, sourceDimension, templateName, scope, index, api, categoryID, spuName, "", nil, llm)
+}
+
+func buildValueAssignmentsWithDeniedStore(
+	values []string,
+	sourceDimension string,
+	templateName string,
+	scope string,
+	index *templateIndex,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+	storeID string,
+	deniedStore ResolutionCacheStore,
+	llm openaiclient.ChatCompleter,
+) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
 	if len(values) == 0 || strings.TrimSpace(templateName) == "" || index == nil {
 		return nil, nil, nil, saleAttributeValueSummary{}
 	}
@@ -94,7 +110,7 @@ func buildValueAssignments(
 			effectiveKey := normalizeText(effective)
 			originalByEffective[effectiveKey] = append(originalByEffective[effectiveKey], normalizeText(value))
 		}
-		customAssignments, customRelations, customNotes := resolveCustomSaleAttributeValues(*attr, sourceDimension, stillUnresolved, scope, api, categoryID, spuName)
+		customAssignments, customRelations, customNotes := resolveCustomSaleAttributeValues(*attr, sourceDimension, stillUnresolved, scope, api, categoryID, spuName, storeID, deniedStore)
 		notes = append(notes, customNotes...)
 		relations = append(relations, customRelations...)
 		for key, resolved := range customAssignments {

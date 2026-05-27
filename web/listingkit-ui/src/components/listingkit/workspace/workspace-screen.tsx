@@ -19,6 +19,7 @@ import {
   buildSheinAdvancedReviewDetailsProps,
   buildSheinWorkspaceViewProps,
 } from "@/components/listingkit/workspace/shein-workspace-view-props";
+import { submitErrorMessage } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
 import { useWorkspaceData } from "@/components/listingkit/workspace/use-workspace-data";
 import { useWorkspaceNavigationActions } from "@/components/listingkit/workspace/use-workspace-navigation-actions";
@@ -117,6 +118,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     onRefreshSubmissionStatus: () => refreshSubmissionStatus.mutate(),
   });
   const sheinAdvancedReviewDetailsProps = buildSheinAdvancedReviewDetailsProps({
+    applyErrorMessage: submitErrorMessage(applyRevision.error),
     taskId,
     shein: preview.data?.shein,
     selectedPlatform,

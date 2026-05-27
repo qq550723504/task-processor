@@ -2,6 +2,7 @@ package shein
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,6 +15,42 @@ import (
 type stubSequentialSaleLLM struct {
 	responses []string
 	index     int
+}
+
+type memoryResolutionCacheStore struct {
+	entries map[string]*SheinResolutionCacheEntry
+}
+
+func (s *memoryResolutionCacheStore) GetResolutionCache(_ context.Context, kind string, storeID string, cacheKey string) (*SheinResolutionCacheEntry, error) {
+	if s == nil || s.entries == nil {
+		return nil, nil
+	}
+	entry := s.entries[kind+"|"+storeID+"|"+cacheKey]
+	if entry == nil {
+		return nil, nil
+	}
+	cloned := *entry
+	return &cloned, nil
+}
+
+func (s *memoryResolutionCacheStore) SaveResolutionCache(_ context.Context, entry *SheinResolutionCacheEntry) error {
+	if s == nil || entry == nil {
+		return nil
+	}
+	if s.entries == nil {
+		s.entries = make(map[string]*SheinResolutionCacheEntry)
+	}
+	cloned := *entry
+	s.entries[entry.CacheKind+"|"+entry.StoreID+"|"+entry.CacheKey] = &cloned
+	return nil
+}
+
+func (s *memoryResolutionCacheStore) DeleteResolutionCache(_ context.Context, kind string, storeID string, cacheKey string) error {
+	if s == nil || s.entries == nil {
+		return nil
+	}
+	delete(s.entries, kind+"|"+storeID+"|"+cacheKey)
+	return nil
 }
 
 func (s *stubSequentialSaleLLM) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
@@ -1713,6 +1750,83 @@ func TestSaleAttributeResolverAllowsGenericSecondaryCandidateWithZeroValueFitFor
 	}
 	if !foundSecondary {
 		t.Fatalf("selection summary = %v, want secondary size selection", resolution.SelectionSummary)
+	}
+}
+
+func TestSaleAttributeResolverSkipsRepeatedCustomValidationAfterPermissionDenied(t *testing.T) {
+	resetCustomSaleAttributePermissionDeniedCache()
+	t.Cleanup(resetCustomSaleAttributePermissionDeniedCache)
+
+	canonical := &canonical.Product{
+		VariantDimensions: []canonical.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"White"}},
+			{Name: "Size", Values: []string{"40x30cm", "50x40cm"}},
+		},
+		Variants: []canonical.Variant{
+			{SKU: "SKU-40", Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "40x30cm"}}},
+			{SKU: "SKU-50", Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "50x40cm"}}},
+		},
+	}
+	pkg := &Package{CategoryID: 8641, SpuName: "Placemat"}
+	store := &memoryResolutionCacheStore{}
+	req := &BuildRequest{SheinStoreID: 869}
+	validateCalls := 0
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeInfos: []sheinattribute.AttributeInfo{
+				{
+					AttributeID:       27,
+					AttributeName:     "颜色",
+					AttributeNameEn:   "Color",
+					AttributeType:     1,
+					SKCScope:          boolPointer(true),
+					AttributeInputNum: 1,
+					AttributeValueInfoList: []sheinattribute.AttributeValue{
+						{AttributeValueID: 739, AttributeValue: "白色", AttributeValueEn: "White"},
+					},
+				},
+				{
+					AttributeID:       87,
+					AttributeName:     "尺寸",
+					AttributeNameEn:   "Size",
+					AttributeType:     1,
+					AttributeInputNum: 1,
+					AttributeValueInfoList: []sheinattribute.AttributeValue{
+						{AttributeValueID: 1, AttributeValue: "One Size", AttributeValueEn: "One Size"},
+					},
+				},
+			},
+		}},
+	}
+	resolver := NewSaleAttributeResolverWithDeniedStore(stubAttributeAPI{
+		templates: templates,
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			validateCalls++
+			return nil, fmt.Errorf("API错误 [0]: 验证自定义属性值失败: 没有自定义属性值权限")
+		},
+	}, nil, store)
+
+	first := resolver.Resolve(req, canonical, pkg)
+	if validateCalls != 1 {
+		t.Fatalf("validate calls after first resolve = %d, want 1", validateCalls)
+	}
+	if !containsReviewNote(first.ReviewNotes, "没有自定义属性值权限") {
+		t.Fatalf("first review notes = %v, want permission denied note", first.ReviewNotes)
+	}
+
+	resetCustomSaleAttributePermissionDeniedCache()
+	second := NewSaleAttributeResolverWithDeniedStore(stubAttributeAPI{
+		templates: templates,
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			validateCalls++
+			return nil, fmt.Errorf("API错误 [0]: 验证自定义属性值失败: 没有自定义属性值权限")
+		},
+	}, nil, store).Resolve(req, canonical, pkg)
+	if validateCalls != 1 {
+		t.Fatalf("validate calls after second resolve = %d, want persistent cached short-circuit", validateCalls)
+	}
+	if !containsReviewNote(second.ReviewNotes, "已跳过自定义尝试") {
+		t.Fatalf("second review notes = %v, want cached skip note", second.ReviewNotes)
 	}
 }
 

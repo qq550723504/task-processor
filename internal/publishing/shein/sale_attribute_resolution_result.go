@@ -14,6 +14,8 @@ func applySelectedCandidate(
 	api AttributeAPI,
 	categoryID int,
 	spuName string,
+	storeID string,
+	deniedStore ResolutionCacheStore,
 	llm openaiclient.ChatCompleter,
 	resolution *SaleAttributeResolution,
 ) {
@@ -26,7 +28,7 @@ func applySelectedCandidate(
 		resolution.PrimaryAttributeID = resolved.AttributeID
 		resolution.PrimarySourceDimension = candidate.SourceName
 		resolution.SKCAttributes = append(resolution.SKCAttributes, resolved)
-		assignments, relations, notes, summary := buildValueAssignments(
+		assignments, relations, notes, summary := buildValueAssignmentsWithDeniedStore(
 			candidate.Values,
 			candidate.SourceName,
 			candidate.TemplateName,
@@ -35,6 +37,8 @@ func applySelectedCandidate(
 			api,
 			categoryID,
 			spuName,
+			storeID,
+			deniedStore,
 			llm,
 		)
 		resolution.skcValueAssignments = assignments
@@ -47,7 +51,7 @@ func applySelectedCandidate(
 		resolution.SecondaryAttributeID = resolved.AttributeID
 		resolution.SecondarySourceDimension = candidate.SourceName
 		resolution.SKUAttributes = append(resolution.SKUAttributes, resolved)
-		assignments, relations, notes, summary := buildValueAssignments(
+		assignments, relations, notes, summary := buildValueAssignmentsWithDeniedStore(
 			candidate.Values,
 			candidate.SourceName,
 			candidate.TemplateName,
@@ -56,6 +60,8 @@ func applySelectedCandidate(
 			api,
 			categoryID,
 			spuName,
+			storeID,
+			deniedStore,
 			llm,
 		)
 		resolution.skuValueAssignments = assignments

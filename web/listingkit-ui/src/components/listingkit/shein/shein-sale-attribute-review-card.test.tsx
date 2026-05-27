@@ -76,6 +76,46 @@ describe("SheinSaleAttributeReviewCard", () => {
     expect(screen.getByText("尺码模板候选仍待确认")).toBeInTheDocument();
   });
 
+  it("surfaces a clear hint when the current category denies custom sale attribute values", () => {
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "blocked",
+              secondary_attribute_id: 87,
+              sku_attributes: [
+                {
+                  scope: "sku",
+                  name: "Size",
+                  value: "40x30cm",
+                  attribute_id: 87,
+                },
+              ],
+              review_notes: [
+                "模板属性 \"Size\" 的值 \"40x30cm\" 校验报错: 验证自定义属性值失败: 没有自定义属性值权限",
+                "已确认没有自定义属性值权限，已跳过自定义尝试",
+              ],
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("当前类目不支持该销售属性自定义值"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/当前类目的「Size」不支持自定义值/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/建议切换类目后再重试/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/已确认没有自定义属性值权限，已跳过自定义尝试/),
+    ).toBeInTheDocument();
+  });
+
   it("allows confirming partial current sale attributes", async () => {
     const onConfirm = vi.fn();
     const user = userEvent.setup();

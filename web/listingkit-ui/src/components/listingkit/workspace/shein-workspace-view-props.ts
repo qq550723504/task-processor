@@ -163,6 +163,7 @@ export function buildSheinWorkspaceViewProps({
 }
 
 export function buildSheinAdvancedReviewDetailsProps({
+  applyErrorMessage,
   taskId,
   shein,
   selectedPlatform,
@@ -175,6 +176,7 @@ export function buildSheinAdvancedReviewDetailsProps({
   isApplying,
   sheinActions,
 }: {
+  applyErrorMessage?: string | null;
   taskId: string;
   shein?: SheinPreviewPayload | null;
   selectedPlatform?: string;
@@ -197,6 +199,7 @@ export function buildSheinAdvancedReviewDetailsProps({
     showAttributeReview,
     showSaleAttributeReview,
     categoryReviewProps: {
+      applyErrorMessage,
       taskId,
       editorContext: shein?.editor_context,
       isApplying,
@@ -205,6 +208,7 @@ export function buildSheinAdvancedReviewDetailsProps({
       onApplyManualCategory: sheinActions.handleApplyManualSheinCategory,
     },
     attributeReviewProps: {
+      applyErrorMessage,
       editorContext: shein?.editor_context,
       isApplying,
       onConfirmAttributes: sheinActions.handleConfirmSheinAttributes,
@@ -212,6 +216,7 @@ export function buildSheinAdvancedReviewDetailsProps({
       onRegenerateAttributes: sheinActions.handleRegenerateSheinAttributes,
     },
     saleAttributeReviewProps: {
+      applyErrorMessage,
       editorContext: shein?.editor_context,
       isApplying,
       onConfirmCurrentSaleAttributes:

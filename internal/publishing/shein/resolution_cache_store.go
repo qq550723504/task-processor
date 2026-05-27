@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	ResolutionCacheKindCategory      = "category"
-	ResolutionCacheKindAttribute     = "attribute"
-	ResolutionCacheKindSaleAttribute = "sale_attribute"
-	ResolutionCacheKindPricing       = "pricing"
+	ResolutionCacheKindCategory                  = "category"
+	ResolutionCacheKindAttribute                 = "attribute"
+	ResolutionCacheKindSaleAttribute             = "sale_attribute"
+	ResolutionCacheKindPricing                   = "pricing"
+	ResolutionCacheKindSaleAttributeCustomDenied = "sale_attribute_custom_denied"
 
 	ResolutionCacheHitSourceMemoryCache            = "memory_cache"
 	ResolutionCacheHitSourcePersistentManualCache  = "persistent_manual_cache"

@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types/listingkit";
 
 export function SheinCategoryReviewCard({
+  applyErrorMessage,
   taskId,
   editorContext,
   isApplying = false,
@@ -28,6 +29,7 @@ export function SheinCategoryReviewCard({
   onConfirmCurrentCategory,
   onApplyManualCategory,
 }: {
+  applyErrorMessage?: string | null;
   taskId: string;
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
@@ -96,6 +98,11 @@ export function SheinCategoryReviewCard({
       }
     >
       <div className="space-y-4">
+        {applyErrorMessage ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+            保存类目修改失败：{applyErrorMessage}
+          </div>
+        ) : null}
         <div>
           <p
             className={

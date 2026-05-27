@@ -10,8 +10,9 @@ import (
 )
 
 type saleAttributeResolver struct {
-	api AttributeAPI
-	llm openaiclient.ChatCompleter
+	api         AttributeAPI
+	llm         openaiclient.ChatCompleter
+	deniedStore ResolutionCacheStore
 }
 
 // saleAttributeTemplateContext is the normalized template bundle used after the
@@ -32,6 +33,10 @@ type saleAttributeCandidateState struct {
 
 func NewSaleAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) SaleAttributeResolver {
 	return &saleAttributeResolver{api: api, llm: llm}
+}
+
+func NewSaleAttributeResolverWithDeniedStore(api AttributeAPI, llm openaiclient.ChatCompleter, store ResolutionCacheStore) SaleAttributeResolver {
+	return &saleAttributeResolver{api: api, llm: llm, deniedStore: store}
 }
 
 // Resolve keeps the orchestration layer short:
@@ -56,7 +61,7 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.
 	}
 
 	state := r.resolveCandidateState(resolution, sourceDimensions, templateCtx)
-	r.applyResolvedCandidates(resolution, templateCtx.index, pkg, state.candidates, state.primaryCandidate, state.secondaryCandidate)
+	r.applyResolvedCandidates(req, resolution, templateCtx.index, pkg, state.candidates, state.primaryCandidate, state.secondaryCandidate)
 	if !resolution.RecommendCategoryReview {
 		if recommend, reason := buildCategoryFamilyConflictSummary(canonical, pkg); recommend {
 			resolution.RecommendCategoryReview = true
@@ -312,6 +317,7 @@ func (r *saleAttributeResolver) loadTemplateContext(log *logrus.Entry, resolutio
 // applyResolvedCandidates writes the chosen candidates back into the public
 // resolution payload and computes the final resolved/partial status.
 func (r *saleAttributeResolver) applyResolvedCandidates(
+	req *BuildRequest,
 	resolution *SaleAttributeResolution,
 	index *templateIndex,
 	pkg *Package,
@@ -332,8 +338,8 @@ func (r *saleAttributeResolver) applyResolvedCandidates(
 	if pkg != nil {
 		spuName = firstNonEmpty(pkg.SpuName, pkg.ProductNameEn)
 	}
-	applySelectedCandidate(index, primaryCandidate, "skc", r.api, resolution.CategoryID, spuName, r.llm, resolution)
-	applySelectedCandidate(index, secondaryCandidate, "sku", r.api, resolution.CategoryID, spuName, r.llm, resolution)
+	applySelectedCandidate(index, primaryCandidate, "skc", r.api, resolution.CategoryID, spuName, sheinStoreID(req), r.deniedStore, r.llm, resolution)
+	applySelectedCandidate(index, secondaryCandidate, "sku", r.api, resolution.CategoryID, spuName, sheinStoreID(req), r.deniedStore, r.llm, resolution)
 	resolution.SelectionSummary = append(resolution.SelectionSummary, buildSelectionSummary(primaryCandidate, secondaryCandidate)...)
 	if primaryCandidate != nil && resolution.Source != "llm_sale_attribute_mapping" {
 		resolution.Source = "sale_attribute_templates"

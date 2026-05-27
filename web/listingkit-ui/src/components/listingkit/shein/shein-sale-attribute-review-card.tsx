@@ -27,12 +27,14 @@ type ManualSaleAttributeSelection = {
 };
 
 export function SheinSaleAttributeReviewCard({
+  applyErrorMessage,
   editorContext,
   isApplying,
   onConfirmCurrentSaleAttributes,
   onRegenerateSaleAttributes,
   onApplyManualSaleAttributes,
 }: {
+  applyErrorMessage?: string | null;
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onConfirmCurrentSaleAttributes?: (() => void) | null;
@@ -64,7 +66,8 @@ export function SheinSaleAttributeReviewCard({
   }
 
   return (
-    <SheinSaleAttributeReviewContent
+      <SheinSaleAttributeReviewContent
+      applyErrorMessage={applyErrorMessage}
       current={current}
       isApplying={isApplying}
       key={`${current.status ?? ""}-${current.primary_attribute_id ?? 0}-${current.secondary_attribute_id ?? 0}-${current.template_options?.length ?? 0}-${current.skc_patches?.length ?? 0}`}
@@ -76,12 +79,14 @@ export function SheinSaleAttributeReviewCard({
 }
 
 function SheinSaleAttributeReviewContent({
+  applyErrorMessage,
   current,
   isApplying,
   onConfirmCurrentSaleAttributes,
   onRegenerateSaleAttributes,
   onApplyManualSaleAttributes,
 }: {
+  applyErrorMessage?: string | null;
   current: NonNullable<NonNullable<SheinEditorContext["sale_attributes"]>["current"]>;
   isApplying?: boolean;
   onConfirmCurrentSaleAttributes?: (() => void) | null;
@@ -245,10 +250,20 @@ function SheinSaleAttributeReviewContent({
       : canManualEdit
         ? "如果系统结果不准确，展开下面的手工修正规格，按 3 步逐项修改。"
         : "请先检查系统当前识别结果。";
+  const customValueDeniedNote = findCustomValueDeniedNote(current.review_notes);
+  const customValueDeniedAttributeName =
+    fallbackSecondaryAttributes[0]?.name ??
+    fallbackPrimaryAttributes[0]?.name ??
+    undefined;
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
       <div className="space-y-4">
+        {applyErrorMessage ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+            保存销售属性失败：{applyErrorMessage}
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-3 xl:grid xl:grid-cols-[minmax(0,1fr),auto] xl:items-start">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
@@ -352,6 +367,18 @@ function SheinSaleAttributeReviewContent({
           <p className="text-sm font-medium text-sky-950">推荐操作</p>
           <p className="mt-1 text-sm leading-6 text-sky-900">{recommendedActionText}</p>
         </div>
+
+        {customValueDeniedNote ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+            <p className="text-sm font-medium text-amber-950">当前类目不支持该销售属性自定义值</p>
+            <p className="mt-1 text-sm leading-6 text-amber-900">
+              当前类目的
+              {customValueDeniedAttributeName ? `「${customValueDeniedAttributeName}」` : "该销售属性"}
+              不支持自定义值。请优先改选模板已有值；如果模板值仍然不覆盖当前商品规格，建议切换类目后再重试。
+            </p>
+            <p className="mt-1 text-xs leading-5 text-amber-700">{customValueDeniedNote}</p>
+          </div>
+        ) : null}
 
         {hasMissingValueIDs ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
@@ -860,4 +887,13 @@ function formatResolvedAttributeMap(
   return `attribute_id ${attribute.attribute_id}${
     attribute.attribute_value_id ? ` · value_id ${attribute.attribute_value_id}` : ""
   }`;
+}
+
+function findCustomValueDeniedNote(notes?: string[] | null) {
+  return (notes ?? []).find(
+    (note) =>
+      note.includes("没有自定义属性值权限") ||
+      note.includes("不支持自定义值") ||
+      note.includes("已跳过自定义尝试"),
+  );
 }

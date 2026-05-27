@@ -189,6 +189,34 @@ describe("SheinAttributeReviewCard", () => {
     expect(screen.queryByText("必填未完成")).not.toBeInTheDocument();
   });
 
+  it("shows apply revision errors near the attribute form", () => {
+    render(
+      <SheinAttributeReviewCard
+        applyErrorMessage='resolve shein sku sale attribute "40x30cm" failed'
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              pending_attribute_candidates: [
+                {
+                  name: "Quantity",
+                  attribute_id: 1000411,
+                  required: true,
+                },
+              ],
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        '保存普通属性失败：resolve shein sku sale attribute "40x30cm" failed',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("allows manual extra value input for option-based attributes", async () => {
     const user = userEvent.setup();
     const onConfirmAttributes = vi.fn();
