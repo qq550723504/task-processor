@@ -442,6 +442,29 @@ func TestStudioSessionServiceDeleteBatchRemovesSession(t *testing.T) {
 	}
 }
 
+func TestStudioSessionServiceDeleteBatchIsIdempotent(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:       "retro cherries",
+		StyleCount:   "2",
+		SheinStoreID: "store-1",
+		Selection:    testStudioSelection(),
+		BatchName:    "retro cherries",
+	})
+	if err != nil {
+		t.Fatalf("upsert batch: %v", err)
+	}
+
+	if err := svc.DeleteStudioBatch(ctx, detail.Session.ID); err != nil {
+		t.Fatalf("first delete batch: %v", err)
+	}
+	if err := svc.DeleteStudioBatch(ctx, detail.Session.ID); err != nil {
+		t.Fatalf("second delete batch: %v", err)
+	}
+}
+
 func TestStudioSessionServiceAssignsTenantScopedSequentialBatchNames(t *testing.T) {
 	restoreOwnerScope := SetOwnerScopeRequiredForTesting(true)
 	defer restoreOwnerScope()

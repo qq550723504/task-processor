@@ -83,6 +83,10 @@ type SheinStudioWorkbenchProps = {
 
 const dedicatedBatchPromptOverrides = new Map<string, string>();
 
+function isMissingStudioBatchDeleteError(error: unknown) {
+  return error instanceof Error && /studio session not found/i.test(error.message);
+}
+
 export function resetDedicatedBatchPromptOverrides() {
   dedicatedBatchPromptOverrides.clear();
 }
@@ -1082,6 +1086,26 @@ export function SheinStudioWorkbench({
     [handleDeleteBatch, recentBatchSummaries],
   );
 
+  const handleBulkDeleteRecentBatchSummaries = useCallback(
+    async (summaryIds: string[]) => {
+      if (summaryIds.length === 0) {
+        return;
+      }
+      const results = await Promise.allSettled(
+        summaryIds.map((summaryId) => handleDeleteBatch(summaryId)),
+      );
+      const failed = results.find(
+        (result) =>
+          result.status === "rejected" &&
+          !isMissingStudioBatchDeleteError(result.reason),
+      );
+      if (failed?.status === "rejected") {
+        throw failed.reason;
+      }
+    },
+    [handleDeleteBatch],
+  );
+
   const handleBulkUpdateRecentBatchStore = useCallback(
     async (summaryIds: string[], storeId: string) => {
       const targets = savedBatches.filter((batch) => summaryIds.includes(batch.id));
@@ -1327,6 +1351,7 @@ export function SheinStudioWorkbench({
 
       {!initialBatchId ? (
         <SheinStudioRecentBatchesDashboard
+          onBulkDeleteSummaries={handleBulkDeleteRecentBatchSummaries}
           onBulkUpdateStore={handleBulkUpdateRecentBatchStore}
           onCreateBatch={() => {
             window.location.assign("/listing-kits/sds/new");

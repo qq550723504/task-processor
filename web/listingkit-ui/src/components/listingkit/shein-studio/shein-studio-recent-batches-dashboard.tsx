@@ -161,6 +161,7 @@ export function SheinStudioRecentBatchesDashboard({
   summaries,
   selectedSummaryIds: controlledSelectedSummaryIds,
   storeOptions = [],
+  onBulkDeleteSummaries,
   onBulkUpdateStore,
   onCreateBatch,
   onDeleteSummary,
@@ -174,6 +175,7 @@ export function SheinStudioRecentBatchesDashboard({
   summaries: SheinStudioRecentBatchSummary[];
   selectedSummaryIds?: string[];
   storeOptions?: StoreOption[];
+  onBulkDeleteSummaries?: (summaryIds: string[]) => void | Promise<void>;
   onBulkUpdateStore?: (summaryIds: string[], storeId: string) => void;
   onCreateBatch: () => void;
   onDeleteSummary?: (summary: SheinStudioRecentBatchSummary) => void;
@@ -224,6 +226,17 @@ export function SheinStudioRecentBatchesDashboard({
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
     onSelectedSummaryIdsChange ?? setLocalSelectedSummaryIds;
+
+  useEffect(() => {
+    const validKeys = new Set(
+      summaries.map((summary) => `${summary.source}:${summary.id}`),
+    );
+    setSelectedSummaryIds((current) =>
+      current.every((key) => validKeys.has(key))
+        ? current
+        : current.filter((key) => validKeys.has(key)),
+    );
+  }, [setSelectedSummaryIds, summaries]);
 
   const selectedCount = selectedSummaryIds.length;
   const summaryById = useMemo(
@@ -406,6 +419,22 @@ export function SheinStudioRecentBatchesDashboard({
       .filter((summary): summary is SheinStudioRecentBatchSummary => Boolean(summary))
       .map((summary) => summary.id);
     onBulkUpdateStore(ids, bulkStoreId);
+  }
+
+  async function applyBulkDelete() {
+    if (!onBulkDeleteSummaries || selectedPersistedBatchIds.length === 0) {
+      return;
+    }
+    setBulkQueueFeedback("");
+    await Promise.resolve(onBulkDeleteSummaries(selectedPersistedBatchIds));
+    setSelectedSummaryIds((current) =>
+      current.filter((key) => {
+        const summary = summaryById.get(key);
+        return !summary || summary.source !== "batch"
+          ? true
+          : !selectedPersistedBatchIds.includes(summary.id);
+      }),
+    );
   }
 
   function replaceSelectedSummaries(
@@ -807,6 +836,15 @@ export function SheinStudioRecentBatchesDashboard({
             >
               应用到已选批次
             </Button>
+            {selectedPersistedBatchIds.length > 0 && onBulkDeleteSummaries ? (
+              <Button
+                onClick={applyBulkDelete}
+                type="button"
+                variant="secondary"
+              >
+                批量删除 {selectedPersistedBatchIds.length} 个
+              </Button>
+            ) : null}
             {selectedPersistedBatchIds.length > 0 && onOpenBatchQueue ? (
               <>
                 {selectedBatchesPendingGeneration.length > 0 ? (

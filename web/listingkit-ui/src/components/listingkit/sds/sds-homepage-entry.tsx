@@ -35,6 +35,10 @@ function summarizeHomepageStatus(summary: SheinStudioRecentBatchSummary) {
   return "待生成";
 }
 
+function isMissingStudioBatchDeleteError(error: unknown) {
+  return error instanceof Error && /studio session not found/i.test(error.message);
+}
+
 export function SdsHomepageEntry() {
   const router = useRouter();
   const [summaries, setSummaries] = useState<SheinStudioRecentBatchSummary[]>([]);
@@ -196,6 +200,27 @@ export function SdsHomepageEntry() {
     [refreshSummaries],
   );
 
+  const handleBulkDeleteSummaries = useCallback(
+    async (summaryIds: string[]) => {
+      if (summaryIds.length === 0) {
+        return;
+      }
+      const results = await Promise.allSettled(
+        summaryIds.map((summaryId) => deleteSheinStudioBatch(summaryId)),
+      );
+      await refreshSummaries();
+      const failed = results.find(
+        (result) =>
+          result.status === "rejected" &&
+          !isMissingStudioBatchDeleteError(result.reason),
+      );
+      if (failed?.status === "rejected") {
+        throw failed.reason;
+      }
+    },
+    [refreshSummaries],
+  );
+
   return (
     <div className="flex-1 overflow-hidden bg-zinc-50">
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 lg:px-6">
@@ -334,6 +359,7 @@ export function SdsHomepageEntry() {
                 </p>
               </div>
               <SheinStudioRecentBatchesDashboard
+                onBulkDeleteSummaries={handleBulkDeleteSummaries}
                 onCreateBatch={handleCreateNew}
                 onDeleteSummary={handleDeleteSummary}
                 onDuplicateSummary={handleDuplicateSummary}

@@ -746,9 +746,60 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
 
-    expect(screen.getByRole("button", { name: "批量去创建任务 1 个" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "批量继续生成 1 个" })).toBeInTheDocument();
-    expect(screen.getByText("待生成 1 个 / 待创建任务 1 个 / 已有任务 0 个")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "批量去创建任务 1 个" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "批量继续生成 1 个" })).toBeInTheDocument();
+  expect(screen.getByText("待生成 1 个 / 待创建任务 1 个 / 已有任务 0 个")).toBeInTheDocument();
+});
+
+  it("supports bulk deleting selected persisted batches", async () => {
+    const onBulkDeleteSummaries = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onBulkDeleteSummaries={onBulkDeleteSummaries}
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Generate",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-27T00:00:00.000Z",
+          },
+          {
+            id: "draft-1",
+            source: "local_draft",
+            isRecoverableDraft: true,
+            title: "Draft Only",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T23:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "select draft-1" }));
+
+    expect(screen.getByRole("button", { name: "批量删除 1 个" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "批量删除 1 个" }));
+
+    expect(onBulkDeleteSummaries).toHaveBeenCalledWith(["batch-1"]);
+    await screen.findByText("已选择 1 个批次");
+    expect(screen.queryByRole("button", { name: "批量删除 1 个" })).not.toBeInTheDocument();
   });
 
   it("shows recent result summary counts for selected batches", () => {

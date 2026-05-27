@@ -41,11 +41,13 @@ vi.mock(
   "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard",
   () => ({
     SheinStudioRecentBatchesDashboard: ({
+      onBulkDeleteSummaries,
       onDeleteSummary,
       onDuplicateSummary,
       onRenameSummary,
       summaries,
     }: {
+      onBulkDeleteSummaries?: (summaryIds: string[]) => void;
       onDeleteSummary?: (summary: { id: string; title: string }) => void;
       onDuplicateSummary?: (summary: { id: string; title: string }) => void;
       onRenameSummary?: (summary: { id: string; title: string }, name: string) => void;
@@ -75,6 +77,11 @@ vi.mock(
             </li>
           ))}
         </ul>
+        {onBulkDeleteSummaries ? (
+          <button onClick={() => onBulkDeleteSummaries(["batch-4", "batch-3"])}>
+            批量删除-batch-4-batch-3
+          </button>
+        ) : null}
       </section>
     ),
   }),
@@ -285,6 +292,30 @@ describe("/listing-kits/sds page", () => {
     fireEvent.click(screen.getByRole("button", { name: "删除-batch-4" }));
     await waitFor(() => {
       expect(deleteSheinStudioBatch).toHaveBeenCalledWith("batch-4");
+    });
+  });
+
+  it("treats missing batches as benign during bulk delete and still refreshes", async () => {
+    deleteSheinStudioBatch
+      .mockRejectedValueOnce(new Error("studio session not found"))
+      .mockResolvedValueOnce(undefined);
+    listSheinStudioBatches.mockClear();
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Four")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部批次" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量删除-batch-4-batch-3" }));
+
+    await waitFor(() => {
+      expect(deleteSheinStudioBatch).toHaveBeenNthCalledWith(1, "batch-4");
+      expect(deleteSheinStudioBatch).toHaveBeenNthCalledWith(2, "batch-3");
+    });
+    await waitFor(() => {
+      expect(listSheinStudioBatches).toHaveBeenCalled();
     });
   });
 

@@ -390,7 +390,7 @@ func (s *taskStudioSessionService) DeleteStudioBatch(ctx context.Context, batchI
 		return err
 	}
 	if session == nil || !session.SavedAsBatch {
-		return ErrStudioSessionNotFound
+		return nil
 	}
 	return s.repo.DeleteSession(ctx, batchID)
 }
