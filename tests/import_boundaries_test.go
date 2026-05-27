@@ -35,6 +35,8 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			filepath.Clean(filepath.Join(root, "service_revision_test.go")):           {},
 			filepath.Clean(filepath.Join(root, "service_shein_store_client.go")):      {},
 			filepath.Clean(filepath.Join(root, "service_shein_store_client_test.go")): {},
+			filepath.Clean(filepath.Join(root, "shein_admin_service.go")):             {},
+			filepath.Clean(filepath.Join(root, "httpapi", "bootstrap_test.go")):       {},
 		},
 		`"task-processor/internal/shein/store"`: {
 			filepath.Clean(filepath.Join(root, "shein_submit_payload.go")): {},
@@ -175,6 +177,7 @@ func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowed := map[string]struct{}{
 		"shein_build_validation.go":             {},
+		"shein_admin_service.go":                {},
 		"shein_color_block_image.go":            {},
 		"shein_final_draft.go":                  {},
 		"shein_image_regeneration.go":           {},
