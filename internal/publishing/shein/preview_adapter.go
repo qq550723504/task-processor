@@ -1,11 +1,18 @@
 package shein
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinproduct "task-processor/internal/shein/api/product"
+)
+
+var (
+	quantityPrefixPattern = regexp.MustCompile(`(?i)\b(\d+)\s*[- ]?\s*(piece|pieces|piece\(s\)|pc|pcs|pack|packs|set|sets|pair|pairs)\b`)
+	quantityOfPattern     = regexp.MustCompile(`(?i)\b(pack|set|bundle|collection)\s+of\s+(\d+)\b`)
 )
 
 func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
@@ -79,7 +86,7 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 			result = append(result, sheinproduct.ProductAttribute{
 				AttributeID:         item.AttributeID,
 				AttributeValueID:    item.AttributeValueID,
-				AttributeExtraValue: resolvedAttributeExtraValue(item, compositionCount),
+				AttributeExtraValue: resolvedAttributeExtraValue(pkg, item, compositionCount),
 			})
 		}
 		if len(result) > 0 {
@@ -102,10 +109,16 @@ func countResolvedCompositionAttributes(items []ResolvedAttribute) int {
 	return count
 }
 
-func resolvedAttributeExtraValue(item ResolvedAttribute, compositionCount int) string {
+func resolvedAttributeExtraValue(pkg *Package, item ResolvedAttribute, compositionCount int) string {
 	extraValue := strings.TrimSpace(item.AttributeExtraValue)
-	if item.AttributeType != 3 || extraValue != "" {
+	if extraValue != "" {
 		return extraValue
+	}
+	if inferred := inferSupplementalAttributeExtraValue(pkg, item); inferred != "" {
+		return inferred
+	}
+	if item.AttributeType != 3 {
+		return ""
 	}
 	if len(parseCompositionItems(item.Value)) > 0 {
 		if parsed := parseResolvedCompositionPercent(item.Value); parsed != "" {
@@ -114,6 +127,112 @@ func resolvedAttributeExtraValue(item ResolvedAttribute, compositionCount int) s
 	}
 	if item.AttributeValueID != nil && compositionCount == 1 {
 		return "100"
+	}
+	return ""
+}
+
+func inferSupplementalAttributeExtraValue(pkg *Package, item ResolvedAttribute) string {
+	if numeric := firstNumericToken(item.Value); numeric != "" {
+		return numeric
+	}
+	if !attributeNeedsSupplementalExtraValue(item) {
+		return ""
+	}
+	if inferred := inferQuantityAttributeExtraValue(pkg, item); inferred != "" {
+		return inferred
+	}
+	return ""
+}
+
+func attributeNeedsSupplementalExtraValue(item ResolvedAttribute) bool {
+	if item.AttributeValueID == nil {
+		return false
+	}
+	if strings.TrimSpace(item.AttributeExtraValue) != "" {
+		return false
+	}
+	if item.AttributeID == 1000411 {
+		return true
+	}
+	name := normalizeText(item.Name)
+	value := normalizeText(item.Value)
+	return strings.Contains(name, "quantity") ||
+		strings.Contains(name, "count") ||
+		strings.Contains(value, "piece") ||
+		strings.Contains(value, "pack") ||
+		strings.Contains(value, "set")
+}
+
+func inferQuantityAttributeExtraValue(pkg *Package, item ResolvedAttribute) string {
+	if item.AttributeID != 1000411 && !strings.Contains(normalizeText(item.Name), "quantity") {
+		return ""
+	}
+	for _, candidate := range collectSupplementalAttributeTextCandidates(pkg, item) {
+		if value := inferQuantityFromText(candidate); value != "" {
+			return value
+		}
+	}
+	return "1"
+}
+
+func collectSupplementalAttributeTextCandidates(pkg *Package, item ResolvedAttribute) []string {
+	candidates := make([]string, 0, 16)
+	appendCandidate := func(value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	appendCandidate(item.Value)
+	if pkg == nil {
+		return candidates
+	}
+	appendCandidate(pkg.ProductNameEn)
+	appendCandidate(pkg.ProductNameMulti)
+	appendCandidate(pkg.SpuName)
+	appendCandidate(pkg.Description)
+	for _, attr := range pkg.ProductAttributes {
+		appendCandidate(attr.Name)
+		appendCandidate(attr.Value)
+	}
+	for _, value := range pkg.Attributes {
+		appendCandidate(value)
+	}
+	if pkg.RequestDraft != nil {
+		appendCandidate(pkg.RequestDraft.SpuName)
+		for _, text := range pkg.RequestDraft.MultiLanguageNameList {
+			appendCandidate(text.Name)
+		}
+		for _, text := range pkg.RequestDraft.MultiLanguageDescList {
+			appendCandidate(text.Name)
+		}
+		for _, attr := range pkg.RequestDraft.ProductAttributeList {
+			appendCandidate(attr.Name)
+			appendCandidate(attr.Value)
+		}
+	}
+	return candidates
+}
+
+func inferQuantityFromText(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if matches := quantityPrefixPattern.FindStringSubmatch(value); len(matches) > 1 {
+		return matches[1]
+	}
+	if matches := quantityOfPattern.FindStringSubmatch(value); len(matches) > 2 {
+		return matches[2]
+	}
+	return ""
+}
+
+func firstNumericToken(value string) string {
+	if match := numericTokenPattern.FindString(strings.TrimSpace(value)); match != "" {
+		if parsed, err := strconv.ParseFloat(match, 64); err == nil && parsed > 0 {
+			return common.FormatFloat(parsed)
+		}
 	}
 	return ""
 }
