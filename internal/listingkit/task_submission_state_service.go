@@ -89,12 +89,13 @@ func (s *taskSubmissionStateService) recordSheinSubmissionFailureForState(ctx co
 	if phase == "" {
 		phase = sheinpub.SubmissionPhaseValidate
 	}
-	if pkg != nil && pkg.Submission != nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg != nil && pkg.SubmissionState != nil {
 		if requestID == "" {
-			requestID = pkg.Submission.CurrentRequestID
+			requestID = pkg.SubmissionState.CurrentRequestID
 		}
-		if phase == sheinpub.SubmissionPhaseValidate && pkg.Submission.CurrentPhase != "" {
-			phase = pkg.Submission.CurrentPhase
+		if phase == sheinpub.SubmissionPhaseValidate && pkg.SubmissionState.CurrentPhase != "" {
+			phase = pkg.SubmissionState.CurrentPhase
 		}
 	}
 	record := failSheinSubmitAttempt(pkg, action, requestID, phase, submitErr, time.Now())

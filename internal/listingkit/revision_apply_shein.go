@@ -9,6 +9,7 @@ import (
 )
 
 func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || req == nil {
 		return
 	}
@@ -66,7 +67,7 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	}
 	if req.RequestDraft != nil {
 		draftCopy := *req.RequestDraft
-		pkg.RequestDraft = &draftCopy
+		pkg.DraftPayload = &draftCopy
 	}
 	ensureSheinRequestDraft(pkg)
 	if req.SaleAttributeResolution != nil {
@@ -81,7 +82,8 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	normalizeSheinSaleAttributeState(pkg)
 
 	syncSheinDraftFromPackage(pkg)
-	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	preview := sheinpub.BuildPreviewProduct(pkg)
+	sheinpub.SetPreviewPayload(pkg, preview)
 	refreshSheinReviewState(pkg)
 }
 
@@ -89,7 +91,8 @@ func normalizeSheinSaleAttributeState(pkg *sheinpub.Package) {
 	if pkg == nil || pkg.SaleAttributeResolution == nil {
 		return
 	}
-	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg.DraftPayload == nil || len(pkg.DraftPayload.SKCList) == 0 {
 		return
 	}
 	if sheinSaleAttributesReadyForSubmit((*SheinPackage)(pkg)) {
@@ -181,8 +184,8 @@ func applySheinAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinAttri
 		resolved := append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
 		pkg.AttributeResolution.ResolvedAttributes = resolved
 		pkg.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
-		if pkg.RequestDraft != nil {
-			pkg.RequestDraft.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
+		if pkg.DraftPayload != nil {
+			pkg.DraftPayload.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
 		}
 	}
 	if patch.PendingAttributes != nil {
@@ -258,14 +261,15 @@ func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinS
 }
 
 func applySheinSKCRevisionPatches(pkg *sheinpub.Package, patches []SheinSKCRevisionPatch) {
-	if pkg == nil || pkg.RequestDraft == nil || len(patches) == 0 {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil || len(patches) == 0 {
 		return
 	}
 	for _, patch := range patches {
 		if strings.TrimSpace(patch.SupplierCode) == "" {
 			continue
 		}
-		draft := findSheinRequestSKC(pkg.RequestDraft.SKCList, patch.SupplierCode)
+		draft := findSheinRequestSKC(pkg.DraftPayload.SKCList, patch.SupplierCode)
 		pkgSKC := findSheinPackageSKC(pkg.SkcList, patch.SupplierCode)
 		if draft == nil {
 			continue

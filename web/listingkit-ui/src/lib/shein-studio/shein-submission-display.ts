@@ -1,32 +1,32 @@
 import type { SheinSubmissionReport } from "@/lib/types/listingkit";
 
 function submissionActionSucceeded(
-  submission?: SheinSubmissionReport | null,
+  submissionState?: SheinSubmissionReport | null,
   action?: string | null,
 ) {
-  if (!submission || submission.last_action !== action) {
+  if (!submissionState || submissionState.last_action !== action) {
     return false;
   }
-  const status = submission.last_status;
-  const result = submission.last_result;
+  const status = submissionState.last_status;
+  const result = submissionState.last_result;
   return status === "success" || (status === "unknown" && result?.success === true);
 }
 
 export function sheinPublishSucceeded(
-  submission?: SheinSubmissionReport | null,
+  submissionState?: SheinSubmissionReport | null,
 ) {
-  if (!submissionActionSucceeded(submission, "publish")) {
+  if (!submissionActionSucceeded(submissionState, "publish")) {
     return false;
   }
-  return Boolean(submission?.last_result?.spu_name?.trim());
+  return Boolean(submissionState?.last_result?.spu_name?.trim());
 }
 
 export function sheinPublishInFlight(
-  submission?: SheinSubmissionReport | null,
+  submissionState?: SheinSubmissionReport | null,
 ) {
   return (
-    submission?.current_action === "publish" &&
-    Boolean(submission?.current_phase)
+    submissionState?.current_action === "publish" &&
+    Boolean(submissionState?.current_phase)
   );
 }
 
@@ -109,29 +109,29 @@ export function sheinSubmitPhaseLabel(phase?: string | null) {
   }
 }
 
-function latestSubmissionRecord(submission?: SheinSubmissionReport | null) {
-  switch (submission?.last_action) {
+function latestSubmissionRecord(submissionState?: SheinSubmissionReport | null) {
+  switch (submissionState?.last_action) {
     case "save_draft":
-      return submission.save_draft;
+      return submissionState.save_draft;
     case "publish":
-      return submission.publish;
+      return submissionState.publish;
     default:
       return null;
   }
 }
 
 export function sheinLatestSubmissionTitle(
-  submission?: SheinSubmissionReport | null,
+  submissionState?: SheinSubmissionReport | null,
 ) {
-  const action = submission?.last_action;
-  const status = submission?.last_status;
+  const action = submissionState?.last_action;
+  const status = submissionState?.last_status;
   const success =
     status === "success" ||
-    (status === "unknown" && submission?.last_result?.success === true);
+    (status === "unknown" && submissionState?.last_result?.success === true);
   const failed =
     status === "failed" ||
-    submission?.last_result?.success === false ||
-    Boolean(submission?.last_error);
+    submissionState?.last_result?.success === false ||
+    Boolean(submissionState?.last_error);
 
   if (action === "save_draft") {
     if (success) return "已保存到 SHEIN 草稿箱";
@@ -154,26 +154,26 @@ export function sheinLatestSubmissionTitle(
 }
 
 export function sheinLatestSubmissionSummary(
-  submission?: SheinSubmissionReport | null,
+  submissionState?: SheinSubmissionReport | null,
 ) {
-  const title = sheinLatestSubmissionTitle(submission);
-  if (submission?.last_action === "save_draft" && title.includes("已保存")) {
+  const title = sheinLatestSubmissionTitle(submissionState);
+  if (submissionState?.last_action === "save_draft" && title.includes("已保存")) {
     return "商品资料已进入 SHEIN 草稿箱，不会直接上架。";
   }
-  if (submission?.last_action === "publish" && title.includes("已提交")) {
-    if (submission.remote_status === "confirmed") {
+  if (submissionState?.last_action === "publish" && title.includes("已提交")) {
+    if (submissionState.remote_status === "confirmed") {
       return "商品资料已提交到 SHEIN，远端记录已确认。";
     }
-    if (submission.remote_status === "pending") {
+    if (submissionState.remote_status === "pending") {
       return "商品资料已提交到 SHEIN，远端记录暂未查询到，请稍后以 SHEIN 后台状态为准。";
     }
-    if (submission.remote_status === "failed") {
+    if (submissionState.remote_status === "failed") {
       return "商品资料已提交到 SHEIN，但远端状态确认失败，请以 SHEIN 后台最终状态为准。";
     }
     return "商品资料已提交到 SHEIN 发布接口，请以 SHEIN 后台最终状态为准。";
   }
   if (title.includes("失败")) {
-    const record = latestSubmissionRecord(submission);
+    const record = latestSubmissionRecord(submissionState);
     const details = [
       record?.phase ? `失败阶段：${sheinSubmitPhaseLabel(record.phase)}` : null,
       record?.request_id ? `Request ID: ${record.request_id}` : null,
@@ -181,5 +181,5 @@ export function sheinLatestSubmissionSummary(
     const suffix = "请根据待处理问题修复后再次提交。";
     return details.length ? `${details.join("。")}。${suffix}` : suffix;
   }
-  return submission?.last_result?.message ?? "";
+  return submissionState?.last_result?.message ?? "";
 }

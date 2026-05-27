@@ -10,13 +10,13 @@ describe("collectSheinPreviewImages", () => {
       source_product: {
         image_urls: ["http://local/source.png"],
       },
-      request_draft: {
+      draft_payload: {
         image_info: {
           main_image: "https://cdn.sdspod.com/out/request-main.jpg",
           source: ["http://local/source.png"],
         },
       },
-      preview_product: {
+      preview_payload: {
         image_info: {
           image_info_list: [
             { image_url: "https://cdn.sdspod.com/out/final-main.jpg" },
@@ -46,7 +46,7 @@ describe("collectSheinPreviewImages", () => {
           { url: "https://cdn.sdspod.com/out/final-gallery.jpg", role: "gallery" },
         ],
       },
-      preview_product: {
+      preview_payload: {
         image_info: {
           image_info_list: [
             { image_url: "http://local/stale-ai-main.png" },
@@ -72,7 +72,7 @@ describe("collectSheinPreviewImages", () => {
 
   it("separates SHEIN product images from SDS mockup renderings", () => {
     const shein: SheinPreviewPayload = {
-      preview_product: {
+      preview_payload: {
         image_info: {
           image_info_list: [
             { image_url: "http://local/product-main.png" },
@@ -101,7 +101,7 @@ describe("collectSheinPreviewImages", () => {
 
   it("does not repeat SDS mockups in the reference group once they are final product images", () => {
     const shein: SheinPreviewPayload = {
-      preview_product: {
+      preview_payload: {
         image_info: {
           image_info_list: [
             { image_url: "https://cdn.sdspod.com/out/mockup-main.jpg" },

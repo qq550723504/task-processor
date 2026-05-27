@@ -11,6 +11,7 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *canonical.Produc
 	if pkg == nil {
 		return nil
 	}
+	sheinpub.NormalizePackageSemanticFields(pkg)
 	needsReview := len(pkg.ReviewNotes) > 0
 	summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))
 	readiness := buildSheinSubmitReadiness(pkg)
@@ -23,7 +24,7 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *canonical.Produc
 		needsReview = needsReview || pkg.Inspection.NeedsReview
 		summary = uniqueStrings(append(summary, pkg.Inspection.Summary...))
 	}
-	return &SheinPreviewPayload{
+	payload := &SheinPreviewPayload{
 		Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),
 		BrandName:         pkg.BrandName,
 		CategoryPath:      append([]string(nil), pkg.CategoryPath...),
@@ -44,12 +45,16 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *canonical.Produc
 		ImageBundle:       pkg.ImageBundle,
 		RenderPreviews:    renderPreviews,
 		ScenePresets:      buildPlatformScenePresetSummaries(pkg.ImageBundle, assetBundle),
-		RequestDraft:      pkg.RequestDraft,
-		PreviewProduct:    pkg.PreviewProduct,
-		Submission:        pkg.Submission,
+		RequestDraft:      pkg.DraftPayload,
+		DraftPayload:      pkg.DraftPayload,
+		PreviewProduct:    pkg.PreviewPayload,
+		PreviewPayload:    pkg.PreviewPayload,
+		Submission:        pkg.SubmissionState,
+		SubmissionState:   pkg.SubmissionState,
 		Pricing:           pkg.Pricing,
 		FinalReview:       buildSheinFinalReviewPayload(pkg, canonical, readiness),
 		SubmissionEvents:  append([]sheinpub.SubmissionEvent(nil), pkg.SubmissionEvents...),
 		InspectionData:    pkg.Inspection,
 	}
+	return normalizeSheinPreviewPayloadSemanticFields(payload)
 }

@@ -10,6 +10,7 @@ import (
 )
 
 func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Product, readiness *SheinSubmitReadiness) *SheinFinalReview {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
@@ -22,17 +23,17 @@ func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Pr
 		Attributes:    append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...),
 		BlockingItems: sheinworkspace.CloneReadinessItems(readiness.BlockingItems),
 	}
-	if pkg.FinalDraft != nil {
-		final.Confirmed = pkg.FinalDraft.Confirmed
-		final.SubmitMode = pkg.FinalDraft.SubmitMode
+	if pkg.FinalSubmissionDraft != nil {
+		final.Confirmed = pkg.FinalSubmissionDraft.Confirmed
+		final.SubmitMode = pkg.FinalSubmissionDraft.SubmitMode
 	}
 	if pkg.SaleAttributeResolution != nil {
 		final.SaleAttributes = append(final.SaleAttributes, pkg.SaleAttributeResolution.SKCAttributes...)
 		final.SaleAttributes = append(final.SaleAttributes, pkg.SaleAttributeResolution.SKUAttributes...)
 	}
-	if pkg.RequestDraft != nil {
-		final.SKUs = buildSheinFinalReviewSKUs(pkg.RequestDraft)
-		final.Images = buildSheinFinalReviewImages(pkg.RequestDraft, pkg.FinalDraft, pkg.PreviewProduct)
+	if pkg.DraftPayload != nil {
+		final.SKUs = buildSheinFinalReviewSKUs(pkg.DraftPayload)
+		final.Images = buildSheinFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)
 	}
 	return final
 }

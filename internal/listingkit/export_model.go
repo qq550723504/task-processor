@@ -66,9 +66,15 @@ type SheinExportPayload struct {
 	ImageBundle    *common.PublishImageBundle   `json:"image_bundle,omitempty"`
 	RenderPreviews *PlatformAssetRenderPreviews `json:"render_previews,omitempty"`
 	ScenePresets   []PlatformScenePresetSummary `json:"scene_presets,omitempty"`
-	RequestDraft   *sheinpub.RequestDraft       `json:"request_draft,omitempty"`
-	PreviewProduct *sheinproduct.Product        `json:"preview_product,omitempty"`
-	ReviewNotes    []string                     `json:"review_notes,omitempty"`
+	// Deprecated: kept only for export JSON compatibility. New business code should use DraftPayload.
+	RequestDraft *sheinpub.RequestDraft `json:"request_draft,omitempty"`
+	// DraftPayload is the canonical SHEIN draft payload exposed to internal export builders.
+	DraftPayload *sheinpub.RequestDraft `json:"draft_payload,omitempty"`
+	// Deprecated: kept only for export JSON compatibility. New business code should use PreviewPayload.
+	PreviewProduct *sheinproduct.Product `json:"preview_product,omitempty"`
+	// PreviewPayload is the canonical SHEIN preview payload exposed to internal export builders.
+	PreviewPayload *sheinproduct.Product `json:"preview_payload,omitempty"`
+	ReviewNotes    []string              `json:"review_notes,omitempty"`
 }
 
 type TemuExportPayload struct {

@@ -7,6 +7,7 @@ import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { getListingKitTaskResult } from "@/lib/api/task-result";
+import { getTaskSDSDesignResult } from "@/lib/listingkit/semantic-fields";
 import { listingKitKeys } from "@/lib/query/keys";
 import { shouldPollTaskResult } from "@/components/listingkit/tasks/task-status-query";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
@@ -102,7 +103,7 @@ export function SheinBatchTaskTracker({
       <div className="grid gap-3">
         {resolvedTasks.map(({ query, result, task }) => {
           const status = result?.status ?? (query.isLoading ? "loading" : "unknown");
-          const sdsStatus = result?.result?.sds_sync?.status;
+          const sdsStatus = getTaskSDSDesignResult(result?.result)?.status;
           return (
             <article
               className="flex flex-wrap items-center justify-between gap-4 rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4"

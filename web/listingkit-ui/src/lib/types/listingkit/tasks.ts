@@ -89,6 +89,7 @@ export type ListingKitTaskResultData = {
     warnings?: string[];
   };
   sds_sync?: SDSSyncSummary;
+  sds_design_result?: SDSSyncSummary;
   child_tasks?: ListingKitChildTask[];
   workflow_stages?: ListingKitWorkflowStage[];
   workflow_issues?: ListingKitWorkflowIssue[];

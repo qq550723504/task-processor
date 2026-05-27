@@ -143,10 +143,11 @@ curl "http://localhost:3000/api/v1/listing-kits/tasks/<task_id>/submission-event
 
 重点看：
 
-- `submission.current_phase`
-- `submission.current_request_id`
-- `submission.last_status`
-- `submission.last_error`
+- `submission_state.current_phase`
+- `submission_state.current_request_id`
+- `submission_state.last_status`
+- `submission_state.last_error`
+- 兼容字段 `submission.*` 仍会保留一段迁移窗口
 - `submission_events[*].phase`
 
 如果需要强制刷新远端确认结果，可以继续使用已有接口：

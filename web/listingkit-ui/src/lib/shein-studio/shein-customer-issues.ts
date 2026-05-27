@@ -4,6 +4,7 @@ import type {
   SheinSubmissionReport,
   SheinSubmitReadiness,
 } from "@/lib/types/listingkit";
+import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 
 export type CustomerIssueCategory =
   | "图片问题"
@@ -302,11 +303,11 @@ function appendSubmissionIssues(
 }
 
 export function buildSheinCustomerIssues(
-  shein?: Pick<SheinPreviewPayload, "submit_readiness" | "submission"> | null,
+  shein?: Pick<SheinPreviewPayload, "submit_readiness" | "submission" | "submission_state"> | null,
 ) {
   const issues: CustomerIssue[] = [];
   appendReadinessIssues(issues, shein?.submit_readiness);
-  appendSubmissionIssues(issues, shein?.submission);
+  appendSubmissionIssues(issues, getSheinSubmissionState(shein));
 
   const seen = new Set<string>();
   return issues.filter((issue) => {

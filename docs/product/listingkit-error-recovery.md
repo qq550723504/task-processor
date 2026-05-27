@@ -122,7 +122,8 @@
 ### 典型表现
 
 - SHEIN Studio 已选择 SDS 变体，但任务创建后 SDS 相关信息缺失。
-- `sds_sync.status=failed`。
+- `sds_design_result.status=failed`。
+- 兼容字段 `sds_sync.status` 会同步保留。
 - 设计图没有正确进入 SDS 设计页或目标图层。
 
 ### 用户可处理动作
@@ -202,6 +203,7 @@
 - 最终图缺失。
 - 图片比例和 SDS 可印刷区域不匹配。
 - readiness 出现 images、preview_product 或 final_images 阻断。
+- 其中 `preview_product` 仍是当前 readiness key，底层主字段已切到 `preview_payload`。
 
 ### 用户可处理动作
 

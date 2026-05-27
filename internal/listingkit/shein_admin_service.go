@@ -77,8 +77,9 @@ func (s *sheinAdminService) PreviewSheinPrice(ctx context.Context, taskID string
 	}
 	rule := s.currentPricingRule()
 	overrides := map[string]float64{}
-	if task.Result.Shein.FinalDraft != nil {
-		for sku, price := range task.Result.Shein.FinalDraft.ManualPriceOverrides {
+	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	if task.Result.Shein.FinalSubmissionDraft != nil {
+		for sku, price := range task.Result.Shein.FinalSubmissionDraft.ManualPriceOverrides {
 			overrides[sku] = price
 		}
 	}
@@ -175,49 +176,49 @@ func (s *sheinAdminService) UpdateSheinFinalDraft(ctx context.Context, taskID st
 		if task.Result == nil || task.Result.Shein == nil {
 			return ErrTaskResultUnavailable
 		}
-		pkg := task.Result.Shein
-		if pkg.FinalDraft == nil {
-			pkg.FinalDraft = &sheinpub.FinalDraft{}
+		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+		if pkg.FinalSubmissionDraft == nil {
+			pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
 		}
 		if req != nil {
 			if req.SubmitMode != "" {
 				mode := strings.ToLower(strings.TrimSpace(req.SubmitMode))
 				if mode == "publish" || mode == "save_draft" {
-					pkg.FinalDraft.SubmitMode = mode
+					pkg.FinalSubmissionDraft.SubmitMode = mode
 				}
 			}
 			if len(req.ManualPriceOverrides) > 0 {
-				pkg.FinalDraft.ManualPriceOverrides = clonePriceOverrides(req.ManualPriceOverrides)
+				pkg.FinalSubmissionDraft.ManualPriceOverrides = clonePriceOverrides(req.ManualPriceOverrides)
 			}
 			if req.FinalImageOrder != nil {
-				pkg.FinalDraft.FinalImageOrder = uniqueNonEmptyStrings(*req.FinalImageOrder)
+				pkg.FinalSubmissionDraft.FinalImageOrder = uniqueNonEmptyStrings(*req.FinalImageOrder)
 			}
 			if value := strings.TrimSpace(req.MainImageURL); value != "" {
-				pkg.FinalDraft.MainImageURL = value
+				pkg.FinalSubmissionDraft.MainImageURL = value
 			}
 			if req.DeletedImageURLs != nil {
-				pkg.FinalDraft.DeletedImageURLs = uniqueNonEmptyStrings(*req.DeletedImageURLs)
+				pkg.FinalSubmissionDraft.DeletedImageURLs = uniqueNonEmptyStrings(*req.DeletedImageURLs)
 			}
 			if len(req.ImageRoleOverrides) > 0 {
-				pkg.FinalDraft.ImageRoleOverrides = normalizeImageRoleOverrides(req.ImageRoleOverrides)
+				pkg.FinalSubmissionDraft.ImageRoleOverrides = normalizeImageRoleOverrides(req.ImageRoleOverrides)
 			}
 			if req.Confirmed != nil {
-				pkg.FinalDraft.Confirmed = *req.Confirmed
+				pkg.FinalSubmissionDraft.Confirmed = *req.Confirmed
 				if *req.Confirmed {
 					now := time.Now()
-					pkg.FinalDraft.ConfirmedAt = &now
+					pkg.FinalSubmissionDraft.ConfirmedAt = &now
 				} else {
-					pkg.FinalDraft.ConfirmedAt = nil
+					pkg.FinalSubmissionDraft.ConfirmedAt = nil
 				}
 			}
 		}
 		now := time.Now()
-		pkg.FinalDraft.UpdatedAt = &now
+		pkg.FinalSubmissionDraft.UpdatedAt = &now
 		rule := s.currentPricingRule()
 		if pkg.Pricing != nil && pkg.Pricing.RuleSnapshot != nil {
 			rule = *pkg.Pricing.RuleSnapshot
 		}
-		review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
+		review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalSubmissionDraft.ManualPriceOverrides)
 		applySheinPricingReview(pkg, review)
 		applySheinFinalImageDraft(pkg)
 		applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
@@ -251,7 +252,7 @@ func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskI
 	}
 
 	buildReq := buildSheinPublishRequest(task.Request)
-	pkg := task.Result.Shein
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	canonical := task.Result.CanonicalProduct
 	deletedKinds := make([]string, 0, 3)
 

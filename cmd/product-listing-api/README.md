@@ -458,9 +458,13 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
 
 判定是否成功，优先看这几个字段：
 - `status = completed`
-- `result.sds_sync.status = completed`
-- `result.sds_sync.material_id > 0`
+- `result.sds_design_result.status = completed`
+- `result.sds_design_result.material_id > 0`
 - `result.child_tasks` 里存在 `kind = sds_design_sync` 且 `status = completed`
+
+兼容说明：
+- 当前结果 JSON 会同时返回 `sds_design_result` 和 `sds_sync`
+- 新调用方应优先读取 `sds_design_result`
 
 如果只想看 SDS 结果，最小关注片段大致如下：
 
@@ -468,7 +472,7 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
 {
   "status": "completed",
   "result": {
-    "sds_sync": {
+    "sds_design_result": {
       "variant_id": 89764,
       "product_id": 89764,
       "prototype_group_id": 14555,
@@ -493,18 +497,20 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
   返回统一结果，核心字段包括：
   - `canonical_product`
   - `image_assets`
-  - `sds_sync`
+  - `sds_design_result`
   - `amazon`
   - `shein`
   - `temu`
   - `walmart`
   - `summary`
   - `child_tasks`
+  - 兼容字段：`sds_sync` 仍会保留一段迁移窗口
 - `GET /api/v1/listing-kits/tasks/:task_id/preview`
   返回前端专用预览视图，支持可选查询参数 `platform`
   - 例如：`/api/v1/listing-kits/tasks/:task_id/preview?platform=shein`
   - 当前会返回 `overview` 和各平台压缩后的预览 payload
-  - `shein` 预览会直接携带 `inspection`、`submit_readiness`、`submit_checklist`、`status_overview`、`editor_context`、`request_draft`、`preview_product`
+  - `shein` 预览会直接携带 `inspection`、`submit_readiness`、`submit_checklist`、`status_overview`、`editor_context`、`draft_payload`、`preview_payload`、`submission_state`
+  - 兼容字段 `request_draft`、`preview_product`、`submission` 会继续保留一段迁移窗口
 - `GET /api/v1/listing-kits/tasks/:task_id/revision-history`
   返回 revision 历史列表，适合客户端单独做“编辑轨迹”加载
   - 支持 `limit`，默认 `10`，最大 `20`
@@ -594,14 +600,14 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
 
 ### SDS 同步结果示例
 
-当 `options.sds` 生效时，`GET /api/v1/listing-kits/tasks/:task_id` 的 `result` 里会多出 `sds_sync`，同时 `child_tasks` 会出现 `kind=sds_design_sync`：
+当 `options.sds` 生效时，`GET /api/v1/listing-kits/tasks/:task_id` 的 `result` 里会多出 `sds_design_result`，同时 `child_tasks` 会出现 `kind=sds_design_sync`：
 
 ```json
 {
   "task_id": "6d4028d9-6a5a-4e1a-9db7-4a1aef7b43b0",
   "status": "completed",
   "result": {
-    "sds_sync": {
+    "sds_design_result": {
       "variant_id": 89764,
       "product_id": 89764,
       "prototype_group_id": 14555,
@@ -621,9 +627,10 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
 
 失败时的行为：
 - 不会打断 `listingkit` 主流程
-- `result.sds_sync.status` 会变成 `failed`
-- `result.sds_sync.error` 会带错误信息
+- `result.sds_design_result.status` 会变成 `failed`
+- `result.sds_design_result.error` 会带错误信息
 - `result.summary.warnings` 会追加一条 `sds design sync failed: ...`
+- 兼容字段 `result.sds_sync` 会镜像同一份状态
 
 ### 编辑稿请求示例
 
@@ -717,7 +724,8 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
 - `amazon`
   当前直接复用 Amazon draft 组装能力
 - `shein`
-  当前输出已贴近 `SPU / SKC / SKU` 结构，核心字段包括 `spu_name`、`product_name_en`、`brand_name`、`skc_list`、`request_draft`、`preview_product`、`category_resolution`、`attribute_resolution`、`sale_attribute_resolution`
+  当前输出已贴近 `SPU / SKC / SKU` 结构，核心字段包括 `spu_name`、`product_name_en`、`brand_name`、`skc_list`、`draft_payload`、`preview_payload`、`submission_state`、`category_resolution`、`attribute_resolution`、`sale_attribute_resolution`
+  兼容字段 `request_draft`、`preview_product`、`submission` 仍会保留一段迁移窗口
   其中 `sale_attribute_resolution` 现在会附带候选销售属性、主副属性评分和选择说明，便于客户端预览与人工确认
   同时会产出 `inspection` 视图，把类目、普通属性、销售属性和 review note 汇总成更适合前端直接展示的结构
   另外 `submit_readiness` 会单独给出提交前校验结果，区分 `blocking_items / warning_items / checks`，便于客户端直接展示“可提交 / 仍阻塞 / 带提醒”状态
@@ -762,7 +770,8 @@ curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a
 - `export`
   面向下载/归档场景，当前统一导出 JSON
   - `amazon` 导出 `draft`
-  - `shein` 导出 `inspection + request_draft + preview_product`
+  - `shein` 导出 `inspection + draft_payload + preview_payload`
+  - 兼容字段 `request_draft + preview_product` 仍会保留一段迁移窗口
   - `temu / walmart` 导出当前结构化资料包
 - `revision`
   记录最近一次客户端编辑稿保存信息，包括 `updated_at / updated_by / reason / platform`

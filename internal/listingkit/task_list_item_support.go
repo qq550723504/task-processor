@@ -64,8 +64,11 @@ func buildTaskListItem(task *Task) TaskListItem {
 	applyTaskListRequestFields(&item, task)
 	applyTaskListStoreSnapshot(&item, task)
 	item.ImageCount = taskListImageCount(task)
-	if task.Result != nil && task.Result.SDSSync != nil {
-		item.SDSSyncStatus = task.Result.SDSSync.Status
+	if task.Result != nil {
+		task.Result = normalizeListingKitResultSemanticFields(task.Result)
+	}
+	if task.Result != nil && task.Result.SDSDesignResult != nil {
+		item.SDSSyncStatus = task.Result.SDSDesignResult.Status
 	}
 	if taskHasPlatform(task, "shein") || (task.Result != nil && task.Result.Shein != nil) {
 		item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)

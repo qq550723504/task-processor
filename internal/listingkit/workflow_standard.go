@@ -180,16 +180,16 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
 		log.WithFields(logrus.Fields{
 			"sds_status": func() string {
-				if result.SDSSync == nil {
+				if result.SDSDesignResult == nil {
 					return ""
 				}
-				return result.SDSSync.Status
+				return result.SDSDesignResult.Status
 			}(),
 			"sds_error": func() string {
-				if result.SDSSync == nil {
+				if result.SDSDesignResult == nil {
 					return ""
 				}
-				return result.SDSSync.Error
+				return result.SDSDesignResult.Error
 			}(),
 		}).Info("finished remote SDS design sync for listing kit workflow")
 	}
@@ -197,7 +197,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	if task.Request.Options != nil {
 		sdsOptions = task.Request.Options.SDS
 	}
-	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSSync, sdsOptions) {
+	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
 		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 		result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)

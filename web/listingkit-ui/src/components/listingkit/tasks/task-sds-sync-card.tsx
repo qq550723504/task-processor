@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
+import { getTaskSDSDesignResult } from "@/lib/listingkit/semantic-fields";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function statusPresentation(status?: string) {
@@ -65,7 +66,7 @@ export function TaskSDSSyncCard({
 }: {
   task?: ListingKitTaskResult | null;
 }) {
-  const sync = task?.result?.sds_sync;
+  const sync = getTaskSDSDesignResult(task?.result);
   if (!sync?.variant_id) {
     return null;
   }

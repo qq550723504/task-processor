@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { getListingKitPreview } from "@/lib/api/preview";
 import { submitTask } from "@/lib/api/submit";
 import { getListingKitTaskResult } from "@/lib/api/task-result";
+import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 import { listingKitKeys } from "@/lib/query/keys";
 import type { ListingKitPreview, ListingKitTaskResult } from "@/lib/types/listingkit";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio";
@@ -26,7 +27,7 @@ type GateFilter = "all" | "draft" | "publish" | "blocked" | "submitted";
 function deriveGateState(item: GateStatus) {
   const taskStatus = item.result?.status;
   const readiness = item.preview?.shein?.submit_readiness?.status;
-  const submission = item.preview?.shein?.submission;
+  const submission = getSheinSubmissionState(item.preview?.shein);
   const canSaveDraft =
     taskStatus === "completed" &&
     (readiness === "ready" || readiness === "ready_with_warnings");

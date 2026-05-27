@@ -18,6 +18,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	if task.Result.CanonicalProduct == nil {
 		return
 	}
+	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	if task.Request != nil && task.Request.Options != nil {
 		applyStudioStyleDimension(task.Result.CanonicalProduct, task.Request.Options.SDS)
 	}
@@ -48,7 +49,8 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	normalizeSheinCategoryRefreshSaleAttributeState(task.Result.Shein)
 	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(task.Result.Shein)
-	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)
+	preview := sheinpub.BuildPreviewProduct(task.Result.Shein)
+	sheinpub.SetPreviewPayload(task.Result.Shein, preview)
 	if cookieNote != "" {
 		refreshSheinReviewState(task.Result.Shein, cookieNote)
 		return
@@ -61,9 +63,10 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 		return
 	}
 	pkg := task.Result.Shein
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	pkg.ProductAttributes = common.BuildAttributes(task.Result.CanonicalProduct.Attributes)
-	if pkg.RequestDraft == nil {
-		pkg.RequestDraft = &sheinpub.RequestDraft{}
+	if pkg.DraftPayload == nil {
+		pkg.DraftPayload = &sheinpub.RequestDraft{}
 	}
 	if s.sheinAttributeResolver != nil {
 		pkg.AttributeResolution = s.sheinAttributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
@@ -75,7 +78,8 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 	}
 	sheinpub.NormalizeListingCopy(pkg, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(pkg)
-	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	preview := sheinpub.BuildPreviewProduct(pkg)
+	sheinpub.SetPreviewPayload(pkg, preview)
 	if cookieNote != "" {
 		refreshSheinReviewState(pkg, cookieNote)
 		return

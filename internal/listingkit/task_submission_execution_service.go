@@ -47,6 +47,7 @@ func newTaskSubmissionExecutionService(config taskSubmissionExecutionServiceConf
 var defaultTaskSubmissionExecutionService = newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
 
 func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	normalizeSheinStudioSubmitSupplierSKUs(task, pkg, normalizedSubmitIdempotencyKey(req))
 	if pkg.Pricing == nil || !pkg.Pricing.Ready {
 		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), nil)
@@ -55,15 +56,15 @@ func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task,
 		applySheinPricingReview(pkg, pkg.Pricing)
 	}
 	if req != nil && req.ConfirmedFinal {
-		if pkg.FinalDraft == nil {
-			pkg.FinalDraft = &sheinpub.FinalDraft{}
+		if pkg.FinalSubmissionDraft == nil {
+			pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
 		}
 		now := time.Now()
-		pkg.FinalDraft.Confirmed = true
-		pkg.FinalDraft.ConfirmedAt = &now
-		pkg.FinalDraft.UpdatedAt = &now
-		if pkg.FinalDraft.SubmitMode == "" {
-			pkg.FinalDraft.SubmitMode = action
+		pkg.FinalSubmissionDraft.Confirmed = true
+		pkg.FinalSubmissionDraft.ConfirmedAt = &now
+		pkg.FinalSubmissionDraft.UpdatedAt = &now
+		if pkg.FinalSubmissionDraft.SubmitMode == "" {
+			pkg.FinalSubmissionDraft.SubmitMode = action
 		}
 	}
 	repairSheinSubmitSaleAttributes(pkg)
@@ -95,7 +96,8 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	submitProduct, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	submitProduct, err := cloneSheinProductForSubmit(pkg.PreviewPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -148,12 +150,13 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 		return err
 	}
 	if len(uploadCache) > 0 {
-		if pkg.FinalDraft == nil {
-			pkg.FinalDraft = &sheinpub.FinalDraft{}
+		pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+		if pkg.FinalSubmissionDraft == nil {
+			pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
 		}
-		pkg.FinalDraft.SheinImageUploadCache = uploadCache
+		pkg.FinalSubmissionDraft.SheinImageUploadCache = uploadCache
 		now := time.Now()
-		pkg.FinalDraft.UpdatedAt = &now
+		pkg.FinalSubmissionDraft.UpdatedAt = &now
 	}
 	return nil
 }

@@ -125,6 +125,7 @@ export function CurrentSubmitStatusCard({
     return null;
   }
 
+  const submissionState = submission;
   const active = Boolean(isSubmitting || hasBackendSubmitAttempt);
 
   return (
@@ -159,9 +160,9 @@ export function CurrentSubmitStatusCard({
             当前阶段：{backendSubmitPhase}
           </p>
         ) : null}
-        {submission?.current_request_id ? (
+        {submissionState?.current_request_id ? (
           <p className="break-words text-xs leading-5 text-zinc-600">
-            Request ID: {submission.current_request_id}
+            Request ID: {submissionState.current_request_id}
           </p>
         ) : null}
         {leaseExpiresAt ? (
@@ -169,7 +170,7 @@ export function CurrentSubmitStatusCard({
             Lease 到期：{leaseExpiresAt}
           </p>
         ) : null}
-        {submission?.current_phase === "confirm_remote" ? (
+        {submissionState?.current_phase === "confirm_remote" ? (
           <p className="text-sm leading-6 text-zinc-700">
             远端可能已收到，正在按供方货号确认。
           </p>
@@ -262,6 +263,7 @@ export function LatestSubmissionCard({
     return null;
   }
 
+  const submissionState = submission;
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
       <div className="space-y-3">
@@ -280,8 +282,8 @@ export function LatestSubmissionCard({
           {remoteStatus ? (
             <p className="text-xs leading-5 text-zinc-600">
               远端状态：{remoteStatus}
-              {submission?.remote_checked_at
-                ? ` · ${submission.remote_checked_at.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "")}`
+              {submissionState?.remote_checked_at
+                ? ` · ${submissionState.remote_checked_at.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "")}`
                 : ""}
             </p>
           ) : null}

@@ -119,10 +119,11 @@ func FailAttempt(pkg *sheinpub.Package, action, requestID, phase string, submitE
 }
 
 func FindRecordByRequestID(pkg *sheinpub.Package, action, requestID string) *sheinpub.SubmissionRecord {
-	if pkg == nil || pkg.Submission == nil || requestID == "" {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil || requestID == "" {
 		return nil
 	}
-	record := RecordForAction(pkg.Submission, action)
+	record := RecordForAction(pkg.SubmissionState, action)
 	if record == nil || record.RequestID != requestID || record.FinishedAt == nil {
 		return nil
 	}
@@ -130,10 +131,11 @@ func FindRecordByRequestID(pkg *sheinpub.Package, action, requestID string) *she
 }
 
 func FindActiveAttempt(pkg *sheinpub.Package, action string, now time.Time, ttl time.Duration) *sheinpub.SubmissionReport {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return nil
 	}
-	report := pkg.Submission
+	report := pkg.SubmissionState
 	if report.CurrentAction != action || report.CurrentRequestID == "" || report.CurrentPhase == "" || report.InFlightStartedAt == nil {
 		return nil
 	}
@@ -168,29 +170,31 @@ func NeedsRemoteRecovery(report *sheinpub.SubmissionReport, action string, now t
 }
 
 func EnsureReport(pkg *sheinpub.Package) *sheinpub.SubmissionReport {
-	if pkg.Submission == nil {
-		pkg.Submission = &sheinpub.SubmissionReport{}
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg.SubmissionState == nil {
+		pkg.SubmissionState = &sheinpub.SubmissionReport{}
 	}
-	return pkg.Submission
+	return pkg.SubmissionState
 }
 
 func ApplyRecord(pkg *sheinpub.Package, record *sheinpub.SubmissionRecord) {
 	if pkg == nil || record == nil {
 		return
 	}
-	if pkg.Submission == nil {
-		pkg.Submission = &sheinpub.SubmissionReport{}
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg.SubmissionState == nil {
+		pkg.SubmissionState = &sheinpub.SubmissionReport{}
 	}
-	pkg.Submission.LastAction = record.Action
-	pkg.Submission.LastStatus = record.Status
-	pkg.Submission.LastError = record.Error
-	pkg.Submission.SubmittedAt = &record.SubmittedAt
-	pkg.Submission.LastResult = record.Result
+	pkg.SubmissionState.LastAction = record.Action
+	pkg.SubmissionState.LastStatus = record.Status
+	pkg.SubmissionState.LastError = record.Error
+	pkg.SubmissionState.SubmittedAt = &record.SubmittedAt
+	pkg.SubmissionState.LastResult = record.Result
 	switch record.Action {
 	case "save_draft":
-		pkg.Submission.SaveDraft = record
+		pkg.SubmissionState.SaveDraft = record
 	case "publish":
-		pkg.Submission.Publish = record
+		pkg.SubmissionState.Publish = record
 	}
 }
 
@@ -223,10 +227,11 @@ func ClearInFlight(report *sheinpub.SubmissionReport, action, requestID string) 
 }
 
 func SetSupplierCode(pkg *sheinpub.Package, action, requestID, supplierCode string) {
-	if pkg == nil || pkg.Submission == nil || supplierCode == "" {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil || supplierCode == "" {
 		return
 	}
-	record := RecordForAction(pkg.Submission, action)
+	record := RecordForAction(pkg.SubmissionState, action)
 	if record == nil || record.RequestID != requestID {
 		return
 	}
@@ -234,10 +239,11 @@ func SetSupplierCode(pkg *sheinpub.Package, action, requestID, supplierCode stri
 }
 
 func SetRemoteResponse(pkg *sheinpub.Package, action, requestID, supplierCode string, response *sheinpub.SubmissionResponse) {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return
 	}
-	record := RecordForAction(pkg.Submission, action)
+	record := RecordForAction(pkg.SubmissionState, action)
 	if record == nil || record.RequestID != requestID {
 		return
 	}
@@ -245,14 +251,15 @@ func SetRemoteResponse(pkg *sheinpub.Package, action, requestID, supplierCode st
 		record.SupplierCode = supplierCode
 	}
 	record.Result = response
-	pkg.Submission.LastResult = response
+	pkg.SubmissionState.LastResult = response
 }
 
 func SetSubmitSnapshot(pkg *sheinpub.Package, action, requestID string, snapshot *sheinpub.SubmitSnapshot) {
-	if pkg == nil || pkg.Submission == nil || snapshot == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil || snapshot == nil {
 		return
 	}
-	record := RecordForAction(pkg.Submission, action)
+	record := RecordForAction(pkg.SubmissionState, action)
 	if record == nil || record.RequestID != requestID {
 		return
 	}

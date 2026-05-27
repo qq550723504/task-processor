@@ -77,6 +77,7 @@ func stableCanonicalSDSIdentifiers(canonical *canonical.Product) []string {
 }
 
 func stablePackageIdentifiers(pkg *Package) []string {
+	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
@@ -93,8 +94,8 @@ func stablePackageIdentifiers(pkg *Package) []string {
 	}
 
 	requestSKCCount := 0
-	if pkg.RequestDraft != nil {
-		requestSKCCount = len(pkg.RequestDraft.SKCList)
+	if pkg.DraftPayload != nil {
+		requestSKCCount = len(pkg.DraftPayload.SKCList)
 	}
 	secondary := make([]string, 0, len(pkg.SkcList)+requestSKCCount)
 	for _, skc := range pkg.SkcList {
@@ -102,8 +103,8 @@ func stablePackageIdentifiers(pkg *Package) []string {
 			secondary = append(secondary, sku.Attributes["source_sds_sku"])
 		}
 	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			for _, sku := range skc.SKUList {
 				secondary = append(secondary, sku.Attributes["source_sds_sku"])
 			}
@@ -125,8 +126,8 @@ func stablePackageIdentifiers(pkg *Package) []string {
 			fallback = append(fallback, normalizedSourceLikeSKU(sku.SKU))
 		}
 	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			fallback = append(fallback, normalizedSourceLikeSKU(skc.SupplierCode))
 			for _, sku := range skc.SKUList {
 				fallback = append(fallback, normalizedSourceLikeSKU(sku.SupplierSKU))

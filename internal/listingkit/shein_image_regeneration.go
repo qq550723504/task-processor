@@ -174,10 +174,11 @@ func replaceSheinDataImageURL(task *Task, oldURL string, newURL string) int {
 	}
 
 	if pkg := task.Result.Shein; pkg != nil {
+		pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 		count += replaceCommonImageSetURL(pkg.Images, oldURL, newURL)
 		count += replacePublishImageBundleURL(pkg.ImageBundle, oldURL, newURL)
-		if pkg.RequestDraft != nil {
-			count += replaceSheinImageDraftURL(pkg.RequestDraft.ImageInfo, oldURL, newURL)
+		if pkg.DraftPayload != nil {
+			count += replaceSheinImageDraftURL(pkg.DraftPayload.ImageInfo, oldURL, newURL)
 		}
 		for idx := range pkg.SkcList {
 			replaceString(&pkg.SkcList[idx].MainImageURL)
@@ -185,15 +186,15 @@ func replaceSheinDataImageURL(task *Task, oldURL string, newURL string) int {
 				replaceString(&pkg.SkcList[idx].SKUs[skuIdx].Image)
 			}
 		}
-		if pkg.RequestDraft != nil {
-			for idx := range pkg.RequestDraft.SKCList {
-				count += replaceSheinImageDraftURL(pkg.RequestDraft.SKCList[idx].ImageInfo, oldURL, newURL)
-				for skuIdx := range pkg.RequestDraft.SKCList[idx].SKUList {
-					replaceString(&pkg.RequestDraft.SKCList[idx].SKUList[skuIdx].MainImage)
+		if pkg.DraftPayload != nil {
+			for idx := range pkg.DraftPayload.SKCList {
+				count += replaceSheinImageDraftURL(pkg.DraftPayload.SKCList[idx].ImageInfo, oldURL, newURL)
+				for skuIdx := range pkg.DraftPayload.SKCList[idx].SKUList {
+					replaceString(&pkg.DraftPayload.SKCList[idx].SKUList[skuIdx].MainImage)
 				}
 			}
 		}
-		count += replacePreviewProductImageURL(pkg.PreviewProduct, oldURL, newURL)
+		count += replacePreviewProductImageURL(pkg.PreviewPayload, oldURL, newURL)
 	}
 	return count
 }

@@ -1,6 +1,9 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import (
+	sheinpub "task-processor/internal/publishing/shein"
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 type SheinReadinessReason struct {
 	Code     string `json:"code,omitempty"`
@@ -141,6 +144,7 @@ func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {
 }
 
 func sheinHasAnySKU(pkg *SheinPackage) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
@@ -149,8 +153,8 @@ func sheinHasAnySKU(pkg *SheinPackage) bool {
 			return true
 		}
 	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			if len(skc.SKUList) > 0 {
 				return true
 			}

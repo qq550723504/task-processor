@@ -46,21 +46,21 @@ func (s *taskSubmissionRecoveryService) beginSheinSubmitLease(ctx context.Contex
 		if task.Result == nil {
 			return ErrTaskResultUnavailable
 		}
-		pkg := task.Result.Shein
-		if pkg == nil || pkg.PreviewProduct == nil {
+		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+		if pkg == nil || pkg.PreviewPayload == nil {
 			return errSheinSubmitMissingPackage
 		}
 		if findSheinSubmissionRecordByRequestID(pkg, action, requestID) != nil {
 			return errSheinSubmitReplayExisting
 		}
-		sameRequestNeedsRecovery := pkg.Submission != nil &&
-			pkg.Submission.CurrentRequestID == requestID &&
-			(pkg.Submission.CurrentPhase != sheinpub.SubmissionPhaseSubmitRemote ||
+		sameRequestNeedsRecovery := pkg.SubmissionState != nil &&
+			pkg.SubmissionState.CurrentRequestID == requestID &&
+			(pkg.SubmissionState.CurrentPhase != sheinpub.SubmissionPhaseSubmitRemote ||
 				sheinSubmitRemoteResponsePersisted(pkg, action, requestID))
-		if pkg.Submission != nil && (sameRequestNeedsRecovery || sheinSubmitAttemptNeedsRemoteRecovery(pkg.Submission, action, startedAt)) {
-			record := sheinSubmissionRecordForAction(pkg.Submission, action)
+		if pkg.SubmissionState != nil && (sameRequestNeedsRecovery || sheinSubmitAttemptNeedsRemoteRecovery(pkg.SubmissionState, action, startedAt)) {
+			record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 			if record != nil && strings.TrimSpace(record.SupplierCode) != "" {
-				appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, pkg.Submission.CurrentPhase, sheinpub.SubmissionStatusRunning, requestID, startedAt, "远端可能已收到，正在刷新诊断状态", nil))
+				appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, pkg.SubmissionState.CurrentPhase, sheinpub.SubmissionStatusRunning, requestID, startedAt, "远端可能已收到，正在刷新诊断状态", nil))
 				return errSheinSubmitRecoverRemote
 			}
 		}
@@ -84,10 +84,11 @@ func (s *taskSubmissionRecoveryService) beginSheinSubmitLease(ctx context.Contex
 }
 
 func sheinSubmitRemoteResponsePersisted(pkg *SheinPackage, action, requestID string) bool {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return false
 	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 	if record == nil || record.RequestID != requestID {
 		return false
 	}
@@ -116,11 +117,14 @@ func (s *taskSubmissionRecoveryService) mutateTaskResult(ctx context.Context, ta
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
-	if task == nil || task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
+	if task == nil || task.Result == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	pkg := task.Result.Shein
-	report := pkg.Submission
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	if pkg == nil || pkg.SubmissionState == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	report := pkg.SubmissionState
 	record := sheinSubmissionRecordForAction(report, action)
 	requestID := report.CurrentRequestID
 	now := time.Now()
@@ -209,10 +213,14 @@ func ptrSheinSubmissionEvent(event sheinpub.SubmissionEvent) *sheinpub.Submissio
 
 func (s *taskSubmissionRecoveryService) clearSheinSubmitLease(ctx context.Context, taskID, action, requestID string) error {
 	_, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
+		if task.Result == nil {
 			return nil
 		}
-		clearSheinSubmitInFlight(task.Result.Shein.Submission, action, requestID)
+		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+		if pkg == nil || pkg.SubmissionState == nil {
+			return nil
+		}
+		clearSheinSubmitInFlight(pkg.SubmissionState, action, requestID)
 		task.Result.UpdatedAt = time.Now()
 		return nil
 	})
@@ -221,11 +229,14 @@ func (s *taskSubmissionRecoveryService) clearSheinSubmitLease(ctx context.Contex
 
 func (s *taskSubmissionRecoveryService) clearSheinSubmitLeaseAfterStartFailure(ctx context.Context, taskID, action, requestID string, startErr error) error {
 	_, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
+		if task.Result == nil {
 			return nil
 		}
-		pkg := task.Result.Shein
-		record := sheinSubmissionRecordForAction(pkg.Submission, action)
+		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+		if pkg == nil || pkg.SubmissionState == nil {
+			return nil
+		}
+		record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 		if record != nil && record.RequestID == requestID && record.Status == sheinpub.SubmissionStatusRunning {
 			finishedAt := time.Now()
 			record.Status = sheinpub.SubmissionStatusFailed
@@ -237,7 +248,7 @@ func (s *taskSubmissionRecoveryService) clearSheinSubmitLeaseAfterStartFailure(c
 			listingsubmission.ApplyRecord(pkg, record)
 			appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, nil, startErr, record.StartedAt))
 		}
-		clearSheinSubmitInFlight(pkg.Submission, action, requestID)
+		clearSheinSubmitInFlight(pkg.SubmissionState, action, requestID)
 		task.Result.UpdatedAt = time.Now()
 		return nil
 	})

@@ -27,6 +27,7 @@ import {
   buildSheinCustomerIssues,
   type CustomerIssue,
 } from "@/lib/shein-studio/shein-customer-issues";
+import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 import {
   sheinPublishInFlight,
   sheinPublishSucceeded,
@@ -76,6 +77,7 @@ export function SheinFinalReviewPanel({
     () => manualPriceOverridesFromStrings(priceOverrides),
     [priceOverrides],
   );
+  const sheinSubmission = getSheinSubmissionState(shein);
   const customerIssues = useMemo(() => buildSheinCustomerIssues(shein), [shein]);
   const model = useMemo(
     () =>
@@ -105,8 +107,8 @@ export function SheinFinalReviewPanel({
   } = model;
   const publishInFlight = Boolean(
     isSubmitting && submitAction === "publish",
-  ) || sheinPublishInFlight(shein?.submission);
-  const publishSucceeded = sheinPublishSucceeded(shein?.submission);
+  ) || sheinPublishInFlight(sheinSubmission);
+  const publishSucceeded = sheinPublishSucceeded(sheinSubmission);
   const canSelectIssue = (issue: CustomerIssue) =>
     Boolean(
       issue.actionKey &&

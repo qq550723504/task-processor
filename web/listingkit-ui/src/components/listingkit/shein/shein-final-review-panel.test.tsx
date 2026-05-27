@@ -314,7 +314,7 @@ describe("SheinFinalReviewPanel", () => {
       <SheinFinalReviewPanel
         shein={{
           submit_readiness: { ready: true },
-          submission: {
+          submission_state: {
             last_action: "publish",
             last_status: "success",
             last_result: {

@@ -68,7 +68,7 @@ func (s *service) acquireSheinSubmitTask(ctx context.Context, taskID, action, re
 		return nil, preview, previewErr
 	}
 	if errors.Is(err, errSheinSubmitMissingPackage) {
-		return nil, nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
+		return nil, nil, fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -175,27 +175,31 @@ func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req
 }
 
 func repairSheinSubmitSaleAttributes(pkg *SheinPackage) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if !sheinSubmitSaleAttributesNeedRepair(pkg) {
 		return
 	}
 	sheinpub.ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
-	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	preview := sheinpub.BuildPreviewProduct(pkg)
+	sheinpub.SetPreviewPayload(pkg, preview)
+	sheinpub.NormalizePackageSemanticFields(pkg)
 }
 
 func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
-	if pkg == nil || pkg.RequestDraft == nil || pkg.SaleAttributeResolution == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil || pkg.SaleAttributeResolution == nil {
 		return false
 	}
 	if strings.TrimSpace(pkg.SaleAttributeResolution.Status) != "resolved" {
 		return false
 	}
-	if len(pkg.RequestDraft.SKCList) == 0 {
+	if len(pkg.DraftPayload.SKCList) == 0 {
 		return false
 	}
 	if len(pkg.SaleAttributeResolution.SKCAttributes) == 0 && len(pkg.SaleAttributeResolution.SKUAttributes) == 0 {
 		return false
 	}
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range pkg.DraftPayload.SKCList {
 		if skc.SaleAttribute == nil || skc.SaleAttribute.AttributeID <= 0 || skc.SaleAttribute.AttributeValueID == nil || *skc.SaleAttribute.AttributeValueID <= 0 {
 			return true
 		}

@@ -20,12 +20,13 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	if s == nil || s.sheinResolutionCacheStore == nil || task == nil || task.Result == nil || task.Result.Shein == nil || strings.TrimSpace(action) != "publish" {
 		return
 	}
+	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	req := buildSheinPublishRequest(task.Request)
 	review := normalizePublishedSheinPricingReview(task.Result.Shein)
 	if review == nil {
 		review = buildSheinDraftBackedPricingReview(task.Result.Shein, s.currentSheinPricingRule(), nil)
 		review = normalizePublishedSheinPricingReview(&sheinpub.Package{
-			RequestDraft: task.Result.Shein.RequestDraft,
+			DraftPayload: task.Result.Shein.DraftPayload,
 			Pricing:      review,
 		})
 	}
@@ -51,6 +52,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 }
 
 func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Package) *sheinpub.PricingReview {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if s == nil || s.sheinResolutionCacheStore == nil || pkg == nil {
 		return nil
 	}
@@ -90,6 +92,7 @@ func (s *service) clearSheinPricingCache(req *sheinpub.BuildRequest, pkg *sheinp
 }
 
 func normalizePublishedSheinPricingReview(pkg *sheinpub.Package) *sheinpub.PricingReview {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
@@ -109,7 +112,8 @@ func normalizePublishedSheinPricingReview(pkg *sheinpub.Package) *sheinpub.Prici
 }
 
 func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.PricingReview) bool {
-	if pkg == nil || pkg.RequestDraft == nil || review == nil || !review.Ready || len(review.SKUPrices) == 0 {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil || review == nil || !review.Ready || len(review.SKUPrices) == 0 {
 		return false
 	}
 	current := sheinPricingSKUFacts(pkg)
@@ -127,7 +131,8 @@ func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.Pricin
 }
 
 func sheinPricingCacheKey(req *sheinpub.BuildRequest, pkg *sheinpub.Package) string {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return ""
 	}
 	payload := map[string]any{
@@ -192,11 +197,12 @@ type sheinPricingSKUFact struct {
 }
 
 func sheinPricingSKUFacts(pkg *sheinpub.Package) map[string]sheinPricingSKUFact {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return nil
 	}
 	result := map[string]sheinPricingSKUFact{}
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			alias := sheinPricingDraftSKUKey(&sku)
 			if alias == "" {

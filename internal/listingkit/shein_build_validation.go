@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
@@ -20,6 +21,7 @@ type sheinBuildValidation struct {
 }
 
 func ValidateSheinPackageAgainstTemplates(pkg *SheinPackage) sheinBuildValidation {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	result := sheinBuildValidation{
 		categoryReady:        pkg != nil && isSheinCategoryResolved(pkg) && pkg.CategoryID > 0 && pkg.ProductTypeID != nil && *pkg.ProductTypeID > 0,
 		categoryReviewReady:  !sheinCategoryReviewPending(pkg),
@@ -82,14 +84,15 @@ func sheinSaleAttributeStatusResolved(pkg *SheinPackage) bool {
 }
 
 func sheinSaleAttributesReadyForSubmit(pkg *SheinPackage) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if !sheinSaleAttributeStatusResolved(pkg) || sheinSaleAttributeReviewPending(pkg) {
 		return false
 	}
-	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	if pkg == nil || pkg.DraftPayload == nil || len(pkg.DraftPayload.SKCList) == 0 {
 		return false
 	}
 	requireSKUAttributes := len(pkg.SaleAttributeResolution.SKUAttributes) > 0
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range pkg.DraftPayload.SKCList {
 		if !sheinResolvedSaleAttributeReady(skc.SaleAttribute) {
 			return false
 		}
@@ -121,10 +124,11 @@ func sheinResolvedSaleAttributeValueReady(attr SheinResolvedSaleAttribute) bool 
 }
 
 func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {
-	if pkg == nil || pkg.PreviewProduct == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.PreviewPayload == nil {
 		return nil
 	}
-	product, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
+	product, err := cloneSheinProductForSubmit(pkg.PreviewPayload)
 	if err != nil {
 		return err
 	}

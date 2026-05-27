@@ -26,7 +26,7 @@ describe("buildSheinCustomerIssues", () => {
 
   it("maps square image validation note to image action", () => {
     const issues = buildSheinCustomerIssues({
-      submission: {
+      submission_state: {
         last_result: {
           validation_notes: ["方形图必须有一个"],
         },
@@ -42,7 +42,7 @@ describe("buildSheinCustomerIssues", () => {
 
   it("maps material required validation note to attributes action", () => {
     const issues = buildSheinCustomerIssues({
-      submission: {
+      submission_state: {
         last_result: {
           validation_notes: ["材质: 类型下模板属性为必填项"],
         },
@@ -57,7 +57,7 @@ describe("buildSheinCustomerIssues", () => {
 
   it("maps primary specification validation note to sale attributes action", () => {
     const issues = buildSheinCustomerIssues({
-      submission: {
+      submission_state: {
         last_result: {
           validation_notes: ["[颜色]不可以作为主规格，请重新选择"],
         },
@@ -93,7 +93,7 @@ describe("buildSheinCustomerIssues", () => {
 
   it("keeps unknown errors as raw other issues", () => {
     const issues = buildSheinCustomerIssues({
-      submission: {
+      submission_state: {
         last_error: "SHEIN returned an unexpected vendor error",
       },
     });
@@ -115,7 +115,7 @@ describe("buildSheinCustomerIssues", () => {
           },
         ],
       },
-      submission: {
+      submission_state: {
         last_result: {
           validation_notes: ["材质: 类型下模板属性为必填项"],
         },

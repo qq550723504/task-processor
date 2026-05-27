@@ -16,12 +16,13 @@ func taskListImageCount(task *Task) int {
 }
 
 func listingKitResultImageCount(result *ListingKitResult) int {
+	result = normalizeListingKitResultSemanticFields(result)
 	if result == nil {
 		return 0
 	}
 	count := 0
-	if result.SDSSync != nil {
-		count = max(count, sdsSyncImageCount(result.SDSSync))
+	if result.SDSDesignResult != nil {
+		count = max(count, sdsSyncImageCount(result.SDSDesignResult))
 	}
 	if result.Shein != nil {
 		count = max(count, sheinPackageImageCount(result.Shein))
@@ -44,13 +45,14 @@ func sdsSyncImageCount(summary *SDSSyncSummary) int {
 }
 
 func sheinPackageImageCount(pkg *SheinPackage) int {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return 0
 	}
 	urls := make([]string, 0)
-	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil {
-		urls = appendImageDraftURLs(urls, pkg.RequestDraft.ImageInfo)
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
+		urls = appendImageDraftURLs(urls, pkg.DraftPayload.ImageInfo)
+		for _, skc := range pkg.DraftPayload.SKCList {
 			urls = appendImageDraftURLs(urls, skc.ImageInfo)
 			for _, sku := range skc.SKUList {
 				urls = append(urls, sku.MainImage)

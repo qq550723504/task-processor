@@ -12,6 +12,7 @@ import (
 // workbench enters final confirmation. Submit-time preparation stays
 // deterministic and reuses the reviewed content produced here.
 func OptimizePackageReviewContent(ctx context.Context, pkg *Package, aiClient openaiclient.ChatCompleter) error {
+	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
@@ -78,11 +79,11 @@ func collectPackageReviewContentImageURLs(pkg *Package) []string {
 			return []string{imageURL}
 		}
 	}
-	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil {
-		if imageURL := strings.TrimSpace(pkg.RequestDraft.ImageInfo.MainImage); imageURL != "" {
+	if pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
+		if imageURL := strings.TrimSpace(pkg.DraftPayload.ImageInfo.MainImage); imageURL != "" {
 			return []string{imageURL}
 		}
-		for _, imageURL := range pkg.RequestDraft.ImageInfo.Gallery {
+		for _, imageURL := range pkg.DraftPayload.ImageInfo.Gallery {
 			if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
 				return []string{imageURL}
 			}
@@ -107,8 +108,8 @@ func buildPackageReviewContentFeatures(pkg *Package) string {
 			break
 		}
 	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			if saleName := strings.TrimSpace(firstNonEmpty(skc.SaleName, skc.SkcName, firstLocalizedText(skc.MultiLanguageNameList))); saleName != "" {
 				parts = append(parts, "Variant: "+saleName)
 			}
@@ -129,6 +130,7 @@ func buildPackageReviewContentFeatures(pkg *Package) string {
 }
 
 func applyPackageReviewContent(pkg *Package, title, description string) {
+	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return
 	}
@@ -147,17 +149,18 @@ func applyPackageReviewContent(pkg *Package, title, description string) {
 	}
 
 	language := packageDraftLanguage(pkg)
-	if pkg.RequestDraft != nil {
+	if pkg.DraftPayload != nil {
 		if title != "" {
-			pkg.RequestDraft.MultiLanguageNameList = localizedEnglishText(language, title)
+			pkg.DraftPayload.MultiLanguageNameList = localizedEnglishText(language, title)
 		}
 		if description != "" {
-			pkg.RequestDraft.MultiLanguageDescList = localizedEnglishText(language, description)
+			pkg.DraftPayload.MultiLanguageDescList = localizedEnglishText(language, description)
 		}
-		applyPackageReviewSKCContent(pkg.RequestDraft.SKCList, title)
+		applyPackageReviewSKCContent(pkg.DraftPayload.SKCList, title)
 	}
 	applyPackageReviewPackageSKCContent(pkg.SkcList, title)
-	pkg.PreviewProduct = BuildPreviewProduct(pkg)
+	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
+	NormalizePackageSemanticFields(pkg)
 }
 
 func applyPackageReviewSKCContent(items []SKCRequestDraft, title string) {
@@ -187,29 +190,32 @@ func firstLocalizedText(items []LocalizedText) string {
 }
 
 func packageFirstDraftTitle(pkg *Package) string {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return ""
 	}
-	return firstLocalizedText(pkg.RequestDraft.MultiLanguageNameList)
+	return firstLocalizedText(pkg.DraftPayload.MultiLanguageNameList)
 }
 
 func packageFirstDraftDescription(pkg *Package) string {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return ""
 	}
-	return firstLocalizedText(pkg.RequestDraft.MultiLanguageDescList)
+	return firstLocalizedText(pkg.DraftPayload.MultiLanguageDescList)
 }
 
 func packageDraftLanguage(pkg *Package) string {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return "en"
 	}
-	for _, item := range pkg.RequestDraft.MultiLanguageNameList {
+	for _, item := range pkg.DraftPayload.MultiLanguageNameList {
 		if language := strings.TrimSpace(item.Language); language != "" {
 			return language
 		}
 	}
-	for _, item := range pkg.RequestDraft.MultiLanguageDescList {
+	for _, item := range pkg.DraftPayload.MultiLanguageDescList {
 		if language := strings.TrimSpace(item.Language); language != "" {
 			return language
 		}

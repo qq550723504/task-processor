@@ -90,6 +90,7 @@ export function SheinSubmitReadinessPanel({
     return null;
   }
 
+  const submissionState = submission;
   const required = checklistLabel(checklist?.required);
   const recommended = checklistLabel(checklist?.recommended);
   const primaryActionKey = workspaceOverview?.primary_action_key;
@@ -98,33 +99,33 @@ export function SheinSubmitReadinessPanel({
     Boolean(primaryActionKey) &&
     (canRunPrimaryAction ? canRunPrimaryAction(primaryActionKey) : false);
   const submitReady = readiness?.ready === true || readiness?.status === "ready";
-  const latestValidationNotes = submission?.last_result?.validation_notes ?? [];
-  const latestSubmissionStatus = normalizedSubmissionStatus(submission);
+  const latestValidationNotes = submissionState?.last_result?.validation_notes ?? [];
+  const latestSubmissionStatus = normalizedSubmissionStatus(submissionState);
   const latestSubmissionMessage = compactSubmissionMessage(
-    submission?.last_error ??
-      (latestValidationNotes.length ? null : submission?.last_result?.message),
+    submissionState?.last_error ??
+      (latestValidationNotes.length ? null : submissionState?.last_result?.message),
   );
-  const latestSubmissionTitle = sheinLatestSubmissionTitle(submission);
-  const latestSubmissionSummary = sheinLatestSubmissionSummary(submission);
+  const latestSubmissionTitle = sheinLatestSubmissionTitle(submissionState);
+  const latestSubmissionSummary = sheinLatestSubmissionSummary(submissionState);
   const isSavingDraft = Boolean(isSubmitting && submitAction === "save_draft");
-  const publishInFlight = Boolean(isSubmitting && submitAction !== "save_draft") || sheinPublishInFlight(submission);
-  const publishSucceeded = sheinPublishSucceeded(submission);
+  const publishInFlight = Boolean(isSubmitting && submitAction !== "save_draft") || sheinPublishInFlight(submissionState);
+  const publishSucceeded = sheinPublishSucceeded(submissionState);
   const isPublishing = publishInFlight;
-  const backendSubmitPhase = sheinSubmitPhaseLabel(submission?.current_phase);
-  const backendSubmitAction = submission?.current_action as
+  const backendSubmitPhase = sheinSubmitPhaseLabel(submissionState?.current_phase);
+  const backendSubmitAction = submissionState?.current_action as
     | "publish"
     | "save_draft"
     | undefined;
-  const hasBackendSubmitAttempt = Boolean(submission?.current_phase);
-  const leaseExpiresAt = submission?.lease_expires_at
-    ? submission.lease_expires_at.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "")
+  const hasBackendSubmitAttempt = Boolean(submissionState?.current_phase);
+  const leaseExpiresAt = submissionState?.lease_expires_at
+    ? submissionState.lease_expires_at.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "")
     : null;
-  const remoteStatus = submission?.remote_status;
+  const remoteStatus = submissionState?.remote_status;
   const activeSubmitAction = submitAction ?? backendSubmitAction ?? null;
   const canRunSubmitActions = canSubmit === true && submitReady;
   const customerIssues = buildSheinCustomerIssues({
     submit_readiness: readiness ?? undefined,
-    submission: submission ?? undefined,
+    submission: submissionState ?? undefined,
   });
   const canSelectIssue = (issue: CustomerIssue) =>
     Boolean(
@@ -216,7 +217,7 @@ export function SheinSubmitReadinessPanel({
           hasBackendSubmitAttempt={hasBackendSubmitAttempt}
           isSubmitting={isSubmitting}
           leaseExpiresAt={leaseExpiresAt}
-          submission={submission}
+          submission={submissionState}
           submitErrorMessage={submitErrorMessage}
         />
 
@@ -237,7 +238,7 @@ export function SheinSubmitReadinessPanel({
           latestSubmissionTitle={latestSubmissionTitle}
           latestValidationNotes={latestValidationNotes}
           remoteStatus={remoteStatus}
-          submission={submission}
+          submission={submissionState}
         />
 
         {!compact && readiness?.summary?.length ? (

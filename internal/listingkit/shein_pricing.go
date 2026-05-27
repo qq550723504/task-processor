@@ -73,11 +73,12 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 	}
 	now := time.Now()
 	review.UpdatedAt = &now
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		review.Ready = false
 		return review
 	}
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
 			price := calculateSheinPrice(cost, rule)
@@ -113,11 +114,12 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 	}
 	now := time.Now()
 	review.UpdatedAt = &now
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		review.Ready = false
 		return review
 	}
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
 			price := existingSheinDraftPrice(sku)
@@ -149,6 +151,7 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 }
 
 func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingReview) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || review == nil {
 		return
 	}
@@ -162,10 +165,10 @@ func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingRevi
 		price.Currency = normalizeSheinReviewCurrency(price.Currency, rule)
 		priceBySKU[price.SupplierSKU] = price
 	}
-	if pkg.RequestDraft != nil {
-		for skcIndex := range pkg.RequestDraft.SKCList {
-			for skuIndex := range pkg.RequestDraft.SKCList[skcIndex].SKUList {
-				sku := &pkg.RequestDraft.SKCList[skcIndex].SKUList[skuIndex]
+	if pkg.DraftPayload != nil {
+		for skcIndex := range pkg.DraftPayload.SKCList {
+			for skuIndex := range pkg.DraftPayload.SKCList[skcIndex].SKUList {
+				sku := &pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex]
 				if price, ok := priceBySKU[sku.SupplierSKU]; ok && price.FinalPrice > 0 {
 					value := formatMoney(price.FinalPrice)
 					sku.Currency = price.Currency
@@ -181,8 +184,8 @@ func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingRevi
 			}
 		}
 	}
-	if pkg.PreviewProduct != nil {
-		applySheinPreviewProductPrices(pkg.PreviewProduct, priceBySKU, rule)
+	if pkg.PreviewPayload != nil {
+		applySheinPreviewProductPrices(pkg.PreviewPayload, priceBySKU, rule)
 	}
 }
 

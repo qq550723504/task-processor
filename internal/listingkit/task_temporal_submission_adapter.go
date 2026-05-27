@@ -76,7 +76,7 @@ func (s *taskTemporalSubmissionAdapter) BeginSheinPublishAttempt(ctx context.Con
 		return nil
 	}
 	if errors.Is(err, errSheinSubmitMissingPackage) {
-		return fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
+		return fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
 	}
 	return err
 }
@@ -86,7 +86,8 @@ func (s *taskTemporalSubmissionAdapter) ValidateSheinPublishReadiness(ctx contex
 	if err != nil {
 		return err
 	}
-	finalWasConfirmed := pkg.FinalDraft != nil && pkg.FinalDraft.Confirmed
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	finalWasConfirmed := pkg.FinalSubmissionDraft != nil && pkg.FinalSubmissionDraft.Confirmed
 	s.normalizeSheinSubmitPackage(task, pkg, sheinSubmitRequestFromActivity(in), in.Action)
 	if in.ConfirmedFinal && !finalWasConfirmed {
 		task.Result.UpdatedAt = time.Now()
@@ -297,7 +298,7 @@ func (s *taskTemporalSubmissionAdapter) RefreshSheinPublishRemoteStatus(ctx cont
 		appendSheinSubmissionEvent(pkg, *remoteEvent)
 	}
 
-	record := sheinSubmissionRecordForAction(pkg.Submission, in.Action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, in.Action)
 	response := submissionResponseForRecord(pkg, in.Action)
 	if remoteErr != nil {
 		record = failSheinSubmitAttempt(pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
@@ -320,8 +321,8 @@ func (s *taskTemporalSubmissionAdapter) RefreshSheinPublishRemoteStatus(ctx cont
 	}
 
 	remoteStatus := ""
-	if pkg.Submission != nil {
-		remoteStatus = pkg.Submission.RemoteStatus
+	if pkg.SubmissionState != nil {
+		remoteStatus = pkg.SubmissionState.RemoteStatus
 	}
 	return &SheinRefreshRemoteStatusResult{
 		TaskID:       in.TaskID,

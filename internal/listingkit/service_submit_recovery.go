@@ -243,17 +243,18 @@ func lookupSheinRemoteInventory(productAPI sheinproduct.ProductAPI, spuName stri
 }
 
 func sheinRemoteLookupSPUName(pkg *SheinPackage, action string) string {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return ""
 	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 	if record != nil && record.Result != nil {
 		if value := strings.TrimSpace(record.Result.SPUName); value != "" {
 			return value
 		}
 	}
-	if pkg.Submission.LastResult != nil {
-		if value := strings.TrimSpace(pkg.Submission.LastResult.SPUName); value != "" {
+	if pkg.SubmissionState.LastResult != nil {
+		if value := strings.TrimSpace(pkg.SubmissionState.LastResult.SPUName); value != "" {
 			return value
 		}
 	}
@@ -261,14 +262,15 @@ func sheinRemoteLookupSPUName(pkg *SheinPackage, action string) string {
 }
 
 func sheinRemotePublishAccepted(pkg *SheinPackage, action string) bool {
-	if action != "publish" || pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if action != "publish" || pkg == nil || pkg.SubmissionState == nil {
 		return false
 	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 	if sheinSubmissionResponseAcceptedWithSPU(recordResult(record)) {
 		return true
 	}
-	return sheinSubmissionResponseAcceptedWithSPU(pkg.Submission.LastResult)
+	return sheinSubmissionResponseAcceptedWithSPU(pkg.SubmissionState.LastResult)
 }
 
 func sheinSubmissionResponseAccepted(result *sheinpub.SubmissionResponse) bool {
@@ -296,6 +298,7 @@ func recordResult(record *sheinpub.SubmissionRecord) *sheinpub.SubmissionRespons
 }
 
 func collectSheinRemoteLookupCodes(pkg *SheinPackage, supplierCode string) []string {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	seen := make(map[string]struct{})
 	codes := make([]string, 0, 8)
 	appendCode := func(value string) {
@@ -311,11 +314,11 @@ func collectSheinRemoteLookupCodes(pkg *SheinPackage, supplierCode string) []str
 	}
 
 	appendCode(supplierCode)
-	if pkg == nil || pkg.PreviewProduct == nil {
+	if pkg == nil || pkg.PreviewPayload == nil {
 		return codes
 	}
-	appendCode(pkg.PreviewProduct.SupplierCode)
-	for _, skc := range pkg.PreviewProduct.SKCList {
+	appendCode(pkg.PreviewPayload.SupplierCode)
+	for _, skc := range pkg.PreviewPayload.SKCList {
 		if skc.SupplierCode != nil {
 			appendCode(*skc.SupplierCode)
 		}

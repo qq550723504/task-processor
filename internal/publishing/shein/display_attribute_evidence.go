@@ -20,6 +20,7 @@ type DisplayAttributeEvidencePool struct {
 }
 
 func buildDisplayAttributeEvidencePool(pkg *Package) *DisplayAttributeEvidencePool {
+	NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
@@ -41,8 +42,8 @@ func buildDisplayAttributeEvidencePool(pkg *Package) *DisplayAttributeEvidencePo
 		pool.add(name, value, "attributes", false)
 		pool.addStructuredSegments(name, value, "attributes")
 	}
-	if pkg.RequestDraft != nil && len(pkg.RequestDraft.SKCList) > 0 && len(pkg.RequestDraft.SKCList[0].SKUList) > 0 {
-		sku := pkg.RequestDraft.SKCList[0].SKUList[0]
+	if pkg.DraftPayload != nil && len(pkg.DraftPayload.SKCList) > 0 && len(pkg.DraftPayload.SKCList[0].SKUList) > 0 {
+		sku := pkg.DraftPayload.SKCList[0].SKUList[0]
 		pool.add("supplier_sku", sku.SupplierSKU, "request_draft", false)
 		pool.add("length_cm", sku.Length, "request_draft", true)
 		pool.add("width_cm", sku.Width, "request_draft", true)

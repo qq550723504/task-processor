@@ -106,11 +106,11 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	if task.Result == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	pkg := task.Result.Shein
-	if pkg == nil || pkg.Submission == nil {
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return nil, fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
 	}
-	report := pkg.Submission
+	report := pkg.SubmissionState
 	action := strings.TrimSpace(report.LastAction)
 	if action == "" {
 		if report.Publish != nil {
@@ -144,25 +144,29 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	}
 	confirmation, remoteErr := s.resolveSheinSubmitRemoteStatus(productAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
 	task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil || task.Result.Shein.Submission == nil {
+		if task.Result == nil {
 			return fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
 		}
-		currentAction := strings.TrimSpace(task.Result.Shein.Submission.LastAction)
+		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+		if pkg == nil || pkg.SubmissionState == nil {
+			return fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
+		}
+		currentAction := strings.TrimSpace(pkg.SubmissionState.LastAction)
 		if currentAction == "" {
 			currentAction = action
 		}
 		if currentAction != action {
 			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
 		}
-		currentRecord := sheinSubmissionRecordForAction(task.Result.Shein.Submission, action)
+		currentRecord := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 		if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
 			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
 		}
-		appendSheinSubmissionEvent(task.Result.Shein, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, startedAt, "刷新 SHEIN 远端提交状态", nil))
+		appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, startedAt, "刷新 SHEIN 远端提交状态", nil))
 		if confirmation.event != nil {
-			appendSheinSubmissionEvent(task.Result.Shein, *confirmation.event)
+			appendSheinSubmissionEvent(pkg, *confirmation.event)
 		}
-		setSheinSubmitRemoteRecord(task.Result.Shein, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
+		setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
 		task.Result.UpdatedAt = time.Now()
 		return nil
 	})

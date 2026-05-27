@@ -54,35 +54,39 @@ func findSheinPackageSKU(skc *sheinpub.SKCPackage, supplierSKU string) *common.V
 }
 
 func ensureSheinRequestDraft(pkg *sheinpub.Package) {
-	if pkg == nil || pkg.RequestDraft != nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload != nil {
 		return
 	}
-	pkg.RequestDraft = &sheinpub.RequestDraft{}
+	pkg.DraftPayload = &sheinpub.RequestDraft{}
+	sheinpub.NormalizePackageSemanticFields(pkg)
 }
 
 func syncSheinDraftFromPackage(pkg *sheinpub.Package) {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return
 	}
 	if strings.TrimSpace(pkg.SpuName) != "" {
-		pkg.RequestDraft.SpuName = pkg.SpuName
+		pkg.DraftPayload.SpuName = pkg.SpuName
 	}
 	if pkg.Images != nil {
-		pkg.RequestDraft.ImageInfo = sheinpub.BuildImageDraft(pkg.Images)
+		pkg.DraftPayload.ImageInfo = sheinpub.BuildImageDraft(pkg.Images)
 	}
 	if pkg.ProductAttributes != nil {
-		pkg.RequestDraft.ProductAttributeList = append([]common.Attribute(nil), pkg.ProductAttributes...)
+		pkg.DraftPayload.ProductAttributeList = append([]common.Attribute(nil), pkg.ProductAttributes...)
 	}
 	if pkg.ResolvedAttributes != nil {
-		pkg.RequestDraft.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...)
+		pkg.DraftPayload.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...)
 	}
 	if strings.TrimSpace(pkg.Description) != "" {
-		updateLocalizedTexts(&pkg.RequestDraft.MultiLanguageDescList, pkg.Description)
+		updateLocalizedTexts(&pkg.DraftPayload.MultiLanguageDescList, pkg.Description)
 	}
 	name := firstNonEmpty(pkg.ProductNameEn, pkg.SpuName)
 	if strings.TrimSpace(name) != "" {
-		updateLocalizedTexts(&pkg.RequestDraft.MultiLanguageNameList, name)
+		updateLocalizedTexts(&pkg.DraftPayload.MultiLanguageNameList, name)
 	}
+	sheinpub.NormalizePackageSemanticFields(pkg)
 }
 
 func updateLocalizedTexts(items *[]sheinpub.LocalizedText, value string) {

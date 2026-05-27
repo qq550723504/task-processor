@@ -9,7 +9,7 @@ describe("TaskSDSSyncCard", () => {
         task={{
           status: "failed",
           result: {
-            sds_sync: {
+            sds_design_result: {
               variant_id: 89764,
               status: "failed",
             },
@@ -35,7 +35,7 @@ describe("TaskSDSSyncCard", () => {
         task={{
           status: "completed",
           result: {
-            sds_sync: {
+            sds_design_result: {
               variant_id: 89764,
               product_id: 89764,
               status: "completed",
@@ -70,7 +70,7 @@ describe("TaskSDSSyncCard", () => {
         task={{
           status: "needs_review",
           result: {
-            sds_sync: {
+            sds_design_result: {
               variant_id: 89764,
               status: "failed",
               error: "sds POST /ps/design/add_and_design auth required with status 400: 用户未登录",

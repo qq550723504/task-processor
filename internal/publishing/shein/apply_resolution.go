@@ -1,6 +1,7 @@
 package shein
 
 func ApplyCategoryResolution(pkg *Package, resolution *CategoryResolution) {
+	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || resolution == nil {
 		return
 	}
@@ -18,27 +19,29 @@ func ApplyCategoryResolution(pkg *Package, resolution *CategoryResolution) {
 }
 
 func ApplyAttributeResolution(pkg *Package, resolution *AttributeResolution) {
+	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || resolution == nil {
 		return
 	}
 	pkg.ResolvedAttributes = append([]ResolvedAttribute(nil), resolution.ResolvedAttributes...)
-	if pkg.RequestDraft != nil {
-		pkg.RequestDraft.ResolvedAttributes = append([]ResolvedAttribute(nil), resolution.ResolvedAttributes...)
+	if pkg.DraftPayload != nil {
+		pkg.DraftPayload.ResolvedAttributes = append([]ResolvedAttribute(nil), resolution.ResolvedAttributes...)
 	}
 }
 
 func ApplySaleAttributeResolution(pkg *Package, resolution *SaleAttributeResolution) {
-	if pkg == nil || resolution == nil || pkg.RequestDraft == nil {
+	pkg = NormalizePackageSemanticFields(pkg)
+	if pkg == nil || resolution == nil || pkg.DraftPayload == nil {
 		return
 	}
 	pkg.CustomAttributeRelation = dedupeCustomAttributeRelations(append(pkg.CustomAttributeRelation, resolution.CustomAttributeRelation...))
-	pkg.RequestDraft.CustomAttributeRelation = dedupeCustomAttributeRelations(append(pkg.RequestDraft.CustomAttributeRelation, resolution.CustomAttributeRelation...))
-	if len(pkg.RequestDraft.SKCList) == 0 {
+	pkg.DraftPayload.CustomAttributeRelation = dedupeCustomAttributeRelations(append(pkg.DraftPayload.CustomAttributeRelation, resolution.CustomAttributeRelation...))
+	if len(pkg.DraftPayload.SKCList) == 0 {
 		return
 	}
 
-	for skcIndex := range pkg.RequestDraft.SKCList {
-		skc := &pkg.RequestDraft.SKCList[skcIndex]
+	for skcIndex := range pkg.DraftPayload.SKCList {
+		skc := &pkg.DraftPayload.SKCList[skcIndex]
 		var skcPackage *SKCPackage
 		if skcIndex < len(pkg.SkcList) {
 			skcPackage = &pkg.SkcList[skcIndex]

@@ -1,24 +1,27 @@
 package listingkit
 
 func buildStandardProductSnapshot(result *ListingKitResult) *StandardProductSnapshot {
+	result = normalizeListingKitResultSemanticFields(result)
 	if result == nil {
 		return nil
 	}
-	return &StandardProductSnapshot{
+	return normalizeStandardProductSnapshotSemanticFields(&StandardProductSnapshot{
 		CatalogProduct:        result.CatalogProduct,
 		CanonicalProduct:      result.CanonicalProduct,
 		AssetBundle:           result.AssetBundle,
 		AssetInventorySummary: result.AssetInventorySummary,
 		ImageAssets:           result.ImageAssets,
-		SDSSync:               result.SDSSync,
+		SDSDesignResult:       result.SDSDesignResult,
 		Summary:               cloneGenerationSummary(result.Summary),
 		ChildTasks:            append([]ChildTaskState(nil), result.ChildTasks...),
 		WorkflowStages:        append([]WorkflowStage(nil), result.WorkflowStages...),
 		WorkflowIssues:        append([]WorkflowIssue(nil), result.WorkflowIssues...),
-	}
+	})
 }
 
 func applyStandardProductSnapshot(result *ListingKitResult, snapshot *StandardProductSnapshot) {
+	result = normalizeListingKitResultSemanticFields(result)
+	snapshot = normalizeStandardProductSnapshotSemanticFields(snapshot)
 	if result == nil || snapshot == nil {
 		return
 	}
@@ -28,10 +31,11 @@ func applyStandardProductSnapshot(result *ListingKitResult, snapshot *StandardPr
 	result.AssetBundle = snapshot.AssetBundle
 	result.AssetInventorySummary = snapshot.AssetInventorySummary
 	result.ImageAssets = snapshot.ImageAssets
-	result.SDSSync = snapshot.SDSSync
+	result.SDSDesignResult = snapshot.SDSDesignResult
 	result.ChildTasks = append([]ChildTaskState(nil), snapshot.ChildTasks...)
 	result.WorkflowStages = append([]WorkflowStage(nil), snapshot.WorkflowStages...)
 	result.WorkflowIssues = append([]WorkflowIssue(nil), snapshot.WorkflowIssues...)
+	normalizeListingKitResultSemanticFields(result)
 }
 
 func cloneGenerationSummary(summary *GenerationSummary) *GenerationSummary {
@@ -52,7 +56,7 @@ func standardProductSnapshotEmpty(snapshot *StandardProductSnapshot) bool {
 		snapshot.AssetBundle == nil &&
 		snapshot.AssetInventorySummary == nil &&
 		snapshot.ImageAssets == nil &&
-		snapshot.SDSSync == nil &&
+		snapshot.SDSDesignResult == nil &&
 		snapshot.Summary == nil &&
 		len(snapshot.ChildTasks) == 0 &&
 		len(snapshot.WorkflowStages) == 0 &&

@@ -38,6 +38,7 @@ func buildSheinListingCopy(canonical *canonical.Product, fallbackTitle string, a
 }
 
 func NormalizeListingCopy(pkg *Package, canonical *canonical.Product, language string) bool {
+	NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
@@ -52,13 +53,13 @@ func NormalizeListingCopy(pkg *Package, canonical *canonical.Product, language s
 		pkg.Description = copy.Description
 		changed = true
 	}
-	if pkg.RequestDraft != nil {
-		if copy.Title != "" && localizedTextsContainCJK(pkg.RequestDraft.MultiLanguageNameList) {
-			pkg.RequestDraft.MultiLanguageNameList = localizedEnglishText(language, copy.Title)
+	if pkg.DraftPayload != nil {
+		if copy.Title != "" && localizedTextsContainCJK(pkg.DraftPayload.MultiLanguageNameList) {
+			pkg.DraftPayload.MultiLanguageNameList = localizedEnglishText(language, copy.Title)
 			changed = true
 		}
-		if copy.Description != "" && localizedTextsContainCJK(pkg.RequestDraft.MultiLanguageDescList) {
-			pkg.RequestDraft.MultiLanguageDescList = localizedEnglishText(language, copy.Description)
+		if copy.Description != "" && localizedTextsContainCJK(pkg.DraftPayload.MultiLanguageDescList) {
+			pkg.DraftPayload.MultiLanguageDescList = localizedEnglishText(language, copy.Description)
 			changed = true
 		}
 	}

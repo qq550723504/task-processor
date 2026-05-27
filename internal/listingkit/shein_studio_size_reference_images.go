@@ -9,29 +9,30 @@ import (
 
 func applySheinSizeReferenceImages(pkg *sheinpub.Package, imageURLs []string) {
 	refs := uniqueNonEmptyStrings(imageURLs)
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || len(refs) == 0 {
 		return
 	}
 	if pkg.Images != nil {
 		pkg.Images.Gallery = appendUniqueImageURLs(pkg.Images.Gallery, refs...)
 	}
-	if pkg.RequestDraft != nil {
-		if pkg.RequestDraft.ImageInfo != nil {
-			pkg.RequestDraft.ImageInfo.Gallery = appendUniqueImageURLs(pkg.RequestDraft.ImageInfo.Gallery, refs...)
+	if pkg.DraftPayload != nil {
+		if pkg.DraftPayload.ImageInfo != nil {
+			pkg.DraftPayload.ImageInfo.Gallery = appendUniqueImageURLs(pkg.DraftPayload.ImageInfo.Gallery, refs...)
 		}
-		for skcIndex := range pkg.RequestDraft.SKCList {
-			if pkg.RequestDraft.SKCList[skcIndex].ImageInfo != nil {
-				pkg.RequestDraft.SKCList[skcIndex].ImageInfo.Gallery = appendUniqueImageURLs(pkg.RequestDraft.SKCList[skcIndex].ImageInfo.Gallery, refs...)
+		for skcIndex := range pkg.DraftPayload.SKCList {
+			if pkg.DraftPayload.SKCList[skcIndex].ImageInfo != nil {
+				pkg.DraftPayload.SKCList[skcIndex].ImageInfo.Gallery = appendUniqueImageURLs(pkg.DraftPayload.SKCList[skcIndex].ImageInfo.Gallery, refs...)
 			}
 		}
 	}
-	if pkg.PreviewProduct == nil {
-		pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	if pkg.PreviewPayload == nil {
+		sheinpub.SetPreviewPayload(pkg, sheinpub.BuildPreviewProduct(pkg))
 	}
-	if pkg.PreviewProduct != nil {
-		ensureSheinSizeReferenceDetails(pkg.PreviewProduct.ImageInfo, refs)
-		for skcIndex := range pkg.PreviewProduct.SKCList {
-			ensureSheinSizeReferenceDetails(&pkg.PreviewProduct.SKCList[skcIndex].ImageInfo, refs)
+	if pkg.PreviewPayload != nil {
+		ensureSheinSizeReferenceDetails(pkg.PreviewPayload.ImageInfo, refs)
+		for skcIndex := range pkg.PreviewPayload.SKCList {
+			ensureSheinSizeReferenceDetails(&pkg.PreviewPayload.SKCList[skcIndex].ImageInfo, refs)
 		}
 	}
 }

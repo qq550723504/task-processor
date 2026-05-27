@@ -3,6 +3,10 @@ import type {
   SheinImageInfo,
   SheinPreviewPayload,
 } from "@/lib/types/listingkit";
+import {
+  getSheinDraftPayload,
+  getSheinPreviewPayload,
+} from "@/lib/listingkit/semantic-fields";
 
 export type SheinPreviewImage = {
   id: string;
@@ -85,8 +89,8 @@ export function collectSheinPreviewImageGroups(
   const productSeen = new Set<string>();
   const mockupImages: SheinPreviewImage[] = [];
   const mockupSeen = new Set<string>();
-  const requestDraft = shein?.request_draft;
-  const previewProduct = shein?.preview_product;
+  const requestDraft = getSheinDraftPayload(shein);
+  const previewProduct = getSheinPreviewPayload(shein);
   let hasFinalReviewImages = false;
 
   shein?.final_review?.images?.forEach((image, index) => {

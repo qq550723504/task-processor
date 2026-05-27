@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	listingsubmission "task-processor/internal/listingkit/submission"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
@@ -13,6 +14,7 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 }
 
 func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *SheinSubmitReadiness {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
@@ -96,7 +98,7 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		false,
 	)
 
-	requestDraftReady := pkg.RequestDraft != nil
+	requestDraftReady := pkg.DraftPayload != nil
 	addCheck(
 		"request_draft",
 		"请求草稿",
@@ -107,7 +109,7 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		false,
 	)
 
-	previewProductReady := pkg.PreviewProduct != nil
+	previewProductReady := pkg.PreviewPayload != nil
 	addCheck(
 		"preview_product",
 		"预览载荷",
@@ -152,8 +154,8 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 	)
 
 	skcCount := len(pkg.SkcList)
-	if skcCount == 0 && pkg.RequestDraft != nil {
-		skcCount = len(pkg.RequestDraft.SKCList)
+	if skcCount == 0 && pkg.DraftPayload != nil {
+		skcCount = len(pkg.DraftPayload.SKCList)
 	}
 	addCheck(
 		"variants",
@@ -176,7 +178,7 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		false,
 	)
 
-	finalDraftReady := pkg.FinalDraft == nil || pkg.FinalDraft.Confirmed
+	finalDraftReady := pkg.FinalSubmissionDraft == nil || pkg.FinalSubmissionDraft.Confirmed
 	if action == "save_draft" {
 		finalDraftReady = true
 	}
@@ -255,13 +257,14 @@ func sheinFinalImagesReady(pkg *SheinPackage) (bool, string) {
 }
 
 func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, string) {
-	if pkg == nil || pkg.FinalDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.FinalSubmissionDraft == nil {
 		return true, "旧任务未启用最终图片确认，按兼容路径处理"
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
-	main := strings.TrimSpace(pkg.FinalDraft.MainImageURL)
-	if main == "" && pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil {
-		main = strings.TrimSpace(pkg.RequestDraft.ImageInfo.MainImage)
+	main := strings.TrimSpace(pkg.FinalSubmissionDraft.MainImageURL)
+	if main == "" && pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
+		main = strings.TrimSpace(pkg.DraftPayload.ImageInfo.MainImage)
 	}
 	if main == "" {
 		return false, "最终确认页还没有设置主图"
@@ -282,25 +285,27 @@ func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, str
 }
 
 func sheinHasFinalGalleryImage(pkg *SheinPackage) bool {
-	if pkg == nil || pkg.RequestDraft == nil || pkg.RequestDraft.ImageInfo == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil || pkg.DraftPayload.ImageInfo == nil {
 		return false
 	}
-	return len(uniqueNonEmptyStrings(append([]string{pkg.RequestDraft.ImageInfo.MainImage}, pkg.RequestDraft.ImageInfo.Gallery...))) > 0
+	return len(uniqueNonEmptyStrings(append([]string{pkg.DraftPayload.ImageInfo.MainImage}, pkg.DraftPayload.ImageInfo.Gallery...))) > 0
 }
 
 func sheinHasSKCImage(pkg *SheinPackage) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			if sheinImageDraftHasImage(skc.ImageInfo) {
 				return true
 			}
 		}
 	}
-	if pkg.PreviewProduct != nil {
-		for _, skc := range pkg.PreviewProduct.SKCList {
+	if pkg.PreviewPayload != nil {
+		for _, skc := range pkg.PreviewPayload.SKCList {
 			if sheinProductImageInfoHasImage(&skc.ImageInfo) {
 				return true
 			}
@@ -313,10 +318,11 @@ func sheinHasSKCImage(pkg *SheinPackage) bool {
 }
 
 func sheinHasSwatchRole(pkg *SheinPackage) bool {
-	if pkg == nil || pkg.FinalDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.FinalSubmissionDraft == nil {
 		return true
 	}
-	for _, role := range pkg.FinalDraft.ImageRoleOverrides {
+	for _, role := range pkg.FinalSubmissionDraft.ImageRoleOverrides {
 		switch strings.ToLower(strings.TrimSpace(role)) {
 		case "swatch", "skc":
 			return true
@@ -329,28 +335,30 @@ func sheinHasSwatchRole(pkg *SheinPackage) bool {
 }
 
 func sheinHasSingleSKC(pkg *SheinPackage) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
 	count := 0
-	if pkg.RequestDraft != nil && len(pkg.RequestDraft.SKCList) > 0 {
-		count = len(pkg.RequestDraft.SKCList)
+	if pkg.DraftPayload != nil && len(pkg.DraftPayload.SKCList) > 0 {
+		count = len(pkg.DraftPayload.SKCList)
 	} else if len(pkg.SkcList) > 0 {
 		count = len(pkg.SkcList)
-	} else if pkg.PreviewProduct != nil && len(pkg.PreviewProduct.SKCList) > 0 {
-		count = len(pkg.PreviewProduct.SKCList)
+	} else if pkg.PreviewPayload != nil && len(pkg.PreviewPayload.SKCList) > 0 {
+		count = len(pkg.PreviewPayload.SKCList)
 	}
 	return count == 1
 }
 
 func sheinHasFinalMainImage(pkg *SheinPackage) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
-	if pkg.FinalDraft != nil && strings.TrimSpace(pkg.FinalDraft.MainImageURL) != "" {
+	if pkg.FinalSubmissionDraft != nil && strings.TrimSpace(pkg.FinalSubmissionDraft.MainImageURL) != "" {
 		return true
 	}
-	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil && strings.TrimSpace(pkg.RequestDraft.ImageInfo.MainImage) != "" {
+	if pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil && strings.TrimSpace(pkg.DraftPayload.ImageInfo.MainImage) != "" {
 		return true
 	}
 	if pkg.Images != nil && strings.TrimSpace(pkg.Images.MainImage) != "" {
@@ -360,11 +368,12 @@ func sheinHasFinalMainImage(pkg *SheinPackage) bool {
 }
 
 func sheinPricingReady(pkg *SheinPackage) bool {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
 	hasSKU := false
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			hasSKU = true
 			if parseMoney(sku.BasePrice) <= 0 {
@@ -384,17 +393,18 @@ func sheinPricingReady(pkg *SheinPackage) bool {
 }
 
 func sheinHasSubmitImage(pkg *SheinPackage) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
 	if pkg.Images != nil && firstNonEmpty(pkg.Images.MainImage, pkg.Images.WhiteBgImage) != "" {
 		return true
 	}
-	if pkg.RequestDraft != nil {
-		if sheinImageDraftHasImage(pkg.RequestDraft.ImageInfo) {
+	if pkg.DraftPayload != nil {
+		if sheinImageDraftHasImage(pkg.DraftPayload.ImageInfo) {
 			return true
 		}
-		for _, skc := range pkg.RequestDraft.SKCList {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			if sheinImageDraftHasImage(skc.ImageInfo) {
 				return true
 			}
@@ -405,11 +415,11 @@ func sheinHasSubmitImage(pkg *SheinPackage) bool {
 			}
 		}
 	}
-	if pkg.PreviewProduct != nil {
-		if sheinProductImageInfoHasImage(pkg.PreviewProduct.ImageInfo) {
+	if pkg.PreviewPayload != nil {
+		if sheinProductImageInfoHasImage(pkg.PreviewPayload.ImageInfo) {
 			return true
 		}
-		for _, skc := range pkg.PreviewProduct.SKCList {
+		for _, skc := range pkg.PreviewPayload.SKCList {
 			if sheinProductImageInfoHasImage(&skc.ImageInfo) {
 				return true
 			}

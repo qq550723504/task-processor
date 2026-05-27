@@ -390,7 +390,9 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
     image_urls?: string[];
   };
   request_draft?: SheinRequestDraftPreview;
+  draft_payload?: SheinRequestDraftPreview;
   preview_product?: SheinPreviewProductPayload;
+  preview_payload?: SheinPreviewProductPayload;
   editor_context?: SheinEditorContext;
   submit_readiness?: SheinSubmitReadiness;
   submit_checklist?: SheinSubmitChecklist;
@@ -399,6 +401,7 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   status_overview?: SheinStatusOverview;
   workspace_overview?: SheinWorkspaceOverview;
   submission?: SheinSubmissionReport;
+  submission_state?: SheinSubmissionReport;
   pricing?: SheinPricingReview;
   final_review?: SheinFinalReview;
   store_resolution?: SheinStoreResolutionSummary;

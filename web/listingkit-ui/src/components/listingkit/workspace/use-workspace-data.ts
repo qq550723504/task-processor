@@ -12,6 +12,7 @@ import {
 import {
   pickWorkspaceResolvedActionSummary,
 } from "@/components/listingkit/workspace/workspace-action-routing";
+import { getTaskSDSDesignResult } from "@/lib/listingkit/semantic-fields";
 import {
   formatWorkspaceDate,
   hasSheinAttributeReviewSignal,
@@ -143,9 +144,9 @@ export function useWorkspaceData({
     () =>
       collectSheinPreviewImageGroups(
         preview.data?.shein,
-        taskResult.data?.result?.sds_sync,
+        getTaskSDSDesignResult(taskResult.data?.result),
       ),
-    [preview.data?.shein, taskResult.data?.result?.sds_sync],
+    [preview.data?.shein, taskResult.data?.result],
   );
   const sheinImages = sheinImageGroups.productImages;
   const sheinMockupImages = sheinImageGroups.mockupImages;

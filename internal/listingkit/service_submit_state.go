@@ -23,10 +23,11 @@ func (s *service) persistSuccessfulSheinSubmission(ctx context.Context, taskID s
 }
 
 func sheinSubmissionSucceeded(action string, pkg *SheinPackage) bool {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return false
 	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 	return record != nil && record.Status == sheinpub.SubmissionStatusSuccess
 }
 

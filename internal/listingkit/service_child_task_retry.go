@@ -37,6 +37,7 @@ func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *Re
 	if err != nil {
 		return nil, err
 	}
+	result = normalizeListingKitResultSemanticFields(result)
 	kind := strings.TrimSpace(req.Kind)
 	if !childTaskRetrySupportedKind(kind) {
 		return nil, ErrChildTaskNotRetryable
@@ -89,7 +90,7 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 	if task.Request != nil && task.Request.Options != nil {
 		sdsOptions = task.Request.Options.SDS
 	}
-	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSSync, sdsOptions) {
+	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
 		if result.AssetBundle == nil {
 			result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
@@ -124,7 +125,7 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 		return ErrChildTaskNotRetryable
 	}
 	if result.CanonicalProduct != nil {
-		if applySDSSyncMetadataToCanonical(result.CanonicalProduct, result.SDSSync, sdsOptions) {
+		if applySDSSyncMetadataToCanonical(result.CanonicalProduct, result.SDSDesignResult, sdsOptions) {
 			result.CatalogProduct = catalog.BuildProduct(result.CanonicalProduct)
 			if result.AssetBundle == nil {
 				result.AssetBundle = asset.BuildBundle(result.CanonicalProduct, result.ImageAssets)

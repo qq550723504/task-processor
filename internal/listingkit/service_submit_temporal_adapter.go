@@ -83,8 +83,9 @@ func (s *service) loadSheinPublishTask(ctx context.Context, taskID string) (*Tas
 		return nil, nil, ErrTaskResultUnavailable
 	}
 	pkg := task.Result.Shein
-	if pkg == nil || pkg.PreviewProduct == nil {
-		return nil, nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.PreviewPayload == nil {
+		return nil, nil, fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
 	}
 	return task, pkg, nil
 }
@@ -116,28 +117,30 @@ func sheinRequestedAt(requestedAt time.Time) time.Time {
 }
 
 func sheinSubmitStartedAt(pkg *SheinPackage, action, requestID string, fallback time.Time) time.Time {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return fallback
 	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 	if record != nil && record.RequestID == requestID && !record.StartedAt.IsZero() {
 		return record.StartedAt
 	}
-	if pkg.Submission.InFlightStartedAt != nil {
-		return *pkg.Submission.InFlightStartedAt
+	if pkg.SubmissionState.InFlightStartedAt != nil {
+		return *pkg.SubmissionState.InFlightStartedAt
 	}
 	return fallback
 }
 
 func submissionResponseForRecord(pkg *SheinPackage, action string) *sheinpub.SubmissionResponse {
-	if pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
 		return nil
 	}
-	record := sheinSubmissionRecordForAction(pkg.Submission, action)
+	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 	if record != nil && record.Result != nil {
 		return record.Result
 	}
-	return pkg.Submission.LastResult
+	return pkg.SubmissionState.LastResult
 }
 
 func confirmedSubmissionResponse(response *sheinpub.SubmissionResponse, action string) *sheinpub.SubmissionResponse {

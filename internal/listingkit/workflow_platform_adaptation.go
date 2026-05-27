@@ -50,11 +50,11 @@ func (s *service) runPlatformAdaptation(
 	}
 	s.applyDefaultSheinPricing(task.Request, final.Shein)
 	if shouldUseSDSOfficialImages(task.Request) {
-		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSSync, sdsOptions)
-		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSSync))
+		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSDesignResult, sdsOptions)
+		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSDesignResult))
 	}
 	if shouldUseSheinStudioAIImages(task.Request) {
-		applySheinStudioAIImagesToShein(final.Shein, task.Request, final.SDSSync)
+		applySheinStudioAIImagesToShein(final.Shein, task.Request, final.SDSDesignResult)
 	}
 	if final.Summary == nil {
 		final.Summary = &GenerationSummary{}

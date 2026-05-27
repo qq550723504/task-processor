@@ -16,24 +16,25 @@ var (
 )
 
 func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
-	if pkg == nil || pkg.RequestDraft == nil {
+	NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return nil
 	}
 	productTypeID := pkg.ProductTypeID
 	return &sheinproduct.Product{
-		SPUName:                 pkg.RequestDraft.SpuName,
-		SupplierCode:            pkg.RequestDraft.SupplierCode,
+		SPUName:                 pkg.DraftPayload.SpuName,
+		SupplierCode:            pkg.DraftPayload.SupplierCode,
 		CategoryID:              pkg.CategoryID,
 		CategoryIDList:          append([]int(nil), pkg.CategoryIDList...),
 		ProductTypeID:           productTypeID,
 		TopCategoryID:           pkg.TopCategoryID,
 		SourceSystem:            "listingkit",
-		MultiLanguageNameList:   toLanguageContents(pkg.RequestDraft.MultiLanguageNameList),
-		MultiLanguageDescList:   toLanguageContents(pkg.RequestDraft.MultiLanguageDescList),
+		MultiLanguageNameList:   toLanguageContents(pkg.DraftPayload.MultiLanguageNameList),
+		MultiLanguageDescList:   toLanguageContents(pkg.DraftPayload.MultiLanguageDescList),
 		ProductAttributeList:    BuildProductAttributes(pkg),
-		ImageInfo:               toImageInfo(pkg.RequestDraft.ImageInfo),
-		SiteList:                toSiteInfo(pkg.RequestDraft.SiteList),
-		SKCList:                 toSKCs(pkg.RequestDraft.SKCList),
+		ImageInfo:               toImageInfo(pkg.DraftPayload.ImageInfo),
+		SiteList:                toSiteInfo(pkg.DraftPayload.SiteList),
+		SKCList:                 toSKCs(pkg.DraftPayload.SKCList),
 		CustomAttributeRelation: append([]sheinattribute.CustomAttributeRelation(nil), pkg.CustomAttributeRelation...),
 		Extra:                   sheinproduct.Extra{SwitchToSPUPic: true, UseCVTransformImage: true},
 		ProductCertificateList:  []int{},
@@ -42,6 +43,7 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 }
 
 func BuildProductAttributes(pkg *Package) []sheinproduct.ProductAttribute {
+	NormalizePackageSemanticFields(pkg)
 	return toResolvedAttributes(pkg)
 }
 
@@ -95,10 +97,11 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 			return result
 		}
 	}
-	if pkg == nil || pkg.RequestDraft == nil {
+	NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return nil
 	}
-	return toProductAttributes(pkg.RequestDraft.ProductAttributeList)
+	return toProductAttributes(pkg.DraftPayload.ProductAttributeList)
 }
 
 func resolvedAttributeDedupKey(item ResolvedAttribute, extraValue string) string {
@@ -208,15 +211,15 @@ func collectSupplementalAttributeTextCandidates(pkg *Package, item ResolvedAttri
 	for _, value := range pkg.Attributes {
 		appendCandidate(value)
 	}
-	if pkg.RequestDraft != nil {
-		appendCandidate(pkg.RequestDraft.SpuName)
-		for _, text := range pkg.RequestDraft.MultiLanguageNameList {
+	if pkg.DraftPayload != nil {
+		appendCandidate(pkg.DraftPayload.SpuName)
+		for _, text := range pkg.DraftPayload.MultiLanguageNameList {
 			appendCandidate(text.Name)
 		}
-		for _, text := range pkg.RequestDraft.MultiLanguageDescList {
+		for _, text := range pkg.DraftPayload.MultiLanguageDescList {
 			appendCandidate(text.Name)
 		}
-		for _, attr := range pkg.RequestDraft.ProductAttributeList {
+		for _, attr := range pkg.DraftPayload.ProductAttributeList {
 			appendCandidate(attr.Name)
 			appendCandidate(attr.Value)
 		}

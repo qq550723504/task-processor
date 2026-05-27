@@ -76,10 +76,10 @@ export function compactSubmissionMessage(message?: string | null) {
 }
 
 export function normalizedSubmissionStatus(
-  submission?: SheinSubmissionReport | null,
+  submissionState?: SheinSubmissionReport | null,
 ) {
-  const status = submission?.last_status;
-  const result = submission?.last_result;
+  const status = submissionState?.last_status;
+  const result = submissionState?.last_result;
   if (
     status === "unknown" &&
     (result?.success === false || result?.validation_notes?.length)

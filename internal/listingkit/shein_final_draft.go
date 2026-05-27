@@ -13,55 +13,57 @@ func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req 
 }
 
 func applySheinFinalImageDraft(pkg *sheinpub.Package) {
-	if pkg == nil || pkg.FinalDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.FinalSubmissionDraft == nil {
 		return
 	}
-	order := pkg.FinalDraft.FinalImageOrder
-	main := strings.TrimSpace(pkg.FinalDraft.MainImageURL)
-	deleted := make(map[string]struct{}, len(pkg.FinalDraft.DeletedImageURLs))
-	for _, image := range pkg.FinalDraft.DeletedImageURLs {
+	order := pkg.FinalSubmissionDraft.FinalImageOrder
+	main := strings.TrimSpace(pkg.FinalSubmissionDraft.MainImageURL)
+	deleted := make(map[string]struct{}, len(pkg.FinalSubmissionDraft.DeletedImageURLs))
+	for _, image := range pkg.FinalSubmissionDraft.DeletedImageURLs {
 		deleted[strings.TrimSpace(image)] = struct{}{}
 	}
-	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil {
-		images := orderSheinImages(pkg.RequestDraft.ImageInfo.Gallery, order, deleted)
+	if pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
+		images := orderSheinImages(pkg.DraftPayload.ImageInfo.Gallery, order, deleted)
 		if main == "" && len(images) > 0 {
 			main = images[0]
 		}
 		if main != "" {
-			pkg.RequestDraft.ImageInfo.MainImage = main
+			pkg.DraftPayload.ImageInfo.MainImage = main
 		}
-		pkg.RequestDraft.ImageInfo.Gallery = images
+		pkg.DraftPayload.ImageInfo.Gallery = images
 	}
 	ensureSheinFinalDraftSKCImages(pkg, main, order, deleted)
-	if pkg.RequestDraft != nil {
-		for i := range pkg.RequestDraft.SKCList {
-			if pkg.RequestDraft.SKCList[i].ImageInfo == nil {
+	if pkg.DraftPayload != nil {
+		for i := range pkg.DraftPayload.SKCList {
+			if pkg.DraftPayload.SKCList[i].ImageInfo == nil {
 				continue
 			}
-			pkg.RequestDraft.SKCList[i].ImageInfo.Gallery = orderSheinImages(pkg.RequestDraft.SKCList[i].ImageInfo.Gallery, order, deleted)
-			if _, removed := deleted[pkg.RequestDraft.SKCList[i].ImageInfo.MainImage]; removed {
-				pkg.RequestDraft.SKCList[i].ImageInfo.MainImage = firstNonEmpty(pkg.RequestDraft.SKCList[i].ImageInfo.Gallery...)
+			pkg.DraftPayload.SKCList[i].ImageInfo.Gallery = orderSheinImages(pkg.DraftPayload.SKCList[i].ImageInfo.Gallery, order, deleted)
+			if _, removed := deleted[pkg.DraftPayload.SKCList[i].ImageInfo.MainImage]; removed {
+				pkg.DraftPayload.SKCList[i].ImageInfo.MainImage = firstNonEmpty(pkg.DraftPayload.SKCList[i].ImageInfo.Gallery...)
 			}
 		}
 	}
-	if pkg.PreviewProduct != nil && pkg.PreviewProduct.ImageInfo != nil {
-		reorderSheinProductImages(pkg.PreviewProduct.ImageInfo, order, main, deleted, pkg.FinalDraft.ImageRoleOverrides)
+	if pkg.PreviewPayload != nil && pkg.PreviewPayload.ImageInfo != nil {
+		reorderSheinProductImages(pkg.PreviewPayload.ImageInfo, order, main, deleted, pkg.FinalSubmissionDraft.ImageRoleOverrides)
 	}
 	ensureSheinFinalPreviewSKCImages(pkg)
-	if pkg.PreviewProduct != nil {
-		for i := range pkg.PreviewProduct.SKCList {
-			reorderSheinProductImages(&pkg.PreviewProduct.SKCList[i].ImageInfo, order, main, deleted, pkg.FinalDraft.ImageRoleOverrides)
+	if pkg.PreviewPayload != nil {
+		for i := range pkg.PreviewPayload.SKCList {
+			reorderSheinProductImages(&pkg.PreviewPayload.SKCList[i].ImageInfo, order, main, deleted, pkg.FinalSubmissionDraft.ImageRoleOverrides)
 		}
 	}
 }
 
 func ensureSheinFinalDraftSKCImages(pkg *sheinpub.Package, main string, order []string, deleted map[string]struct{}) {
-	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil || len(pkg.DraftPayload.SKCList) == 0 {
 		return
 	}
 	fallback := sheinFinalDraftFallbackImages(pkg, main, deleted)
-	for index := range pkg.RequestDraft.SKCList {
-		skcDraft := &pkg.RequestDraft.SKCList[index]
+	for index := range pkg.DraftPayload.SKCList {
+		skcDraft := &pkg.DraftPayload.SKCList[index]
 		if sheinImageDraftHasImages(skcDraft.ImageInfo) {
 			continue
 		}
@@ -79,8 +81,8 @@ func ensureSheinFinalDraftSKCImages(pkg *sheinpub.Package, main string, order []
 		}
 		skcDraft.ImageInfo.MainImage = mainImage
 		skcDraft.ImageInfo.Gallery = sheinGalleryWithoutMain(orderSheinImages(nil, fallback, deleted), mainImage)
-		if pkg.RequestDraft.ImageInfo != nil && strings.TrimSpace(skcDraft.ImageInfo.WhiteBg) == "" {
-			skcDraft.ImageInfo.WhiteBg = strings.TrimSpace(pkg.RequestDraft.ImageInfo.WhiteBg)
+		if pkg.DraftPayload.ImageInfo != nil && strings.TrimSpace(skcDraft.ImageInfo.WhiteBg) == "" {
+			skcDraft.ImageInfo.WhiteBg = strings.TrimSpace(pkg.DraftPayload.ImageInfo.WhiteBg)
 		}
 		for skuIndex := range skcDraft.SKUList {
 			if strings.TrimSpace(skcDraft.SKUList[skuIndex].MainImage) == "" {
@@ -91,16 +93,17 @@ func ensureSheinFinalDraftSKCImages(pkg *sheinpub.Package, main string, order []
 }
 
 func ensureSheinFinalPreviewSKCImages(pkg *sheinpub.Package) {
-	if pkg == nil || pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) == 0 {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.PreviewPayload == nil || len(pkg.PreviewPayload.SKCList) == 0 {
 		return
 	}
 	roleOverrides := map[string]string(nil)
-	if pkg.FinalDraft != nil {
-		roleOverrides = pkg.FinalDraft.ImageRoleOverrides
+	if pkg.FinalSubmissionDraft != nil {
+		roleOverrides = pkg.FinalSubmissionDraft.ImageRoleOverrides
 	}
-	for index := range pkg.PreviewProduct.SKCList {
-		skc := &pkg.PreviewProduct.SKCList[index]
-		draft := sheinRequestDraftSKCByIndexOrCode(pkg.RequestDraft, index, sheinPreviewSKCSupplierCode(skc))
+	for index := range pkg.PreviewPayload.SKCList {
+		skc := &pkg.PreviewPayload.SKCList[index]
+		draft := sheinRequestDraftSKCByIndexOrCode(pkg.DraftPayload, index, sheinPreviewSKCSupplierCode(skc))
 		if draft == nil || !sheinImageDraftHasImages(draft.ImageInfo) {
 			continue
 		}
@@ -187,15 +190,15 @@ func sheinFinalDraftFallbackImages(pkg *sheinpub.Package, main string, deleted m
 	if pkg == nil {
 		return uniqueNonEmptyStrings(images)
 	}
-	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil {
-		add(pkg.RequestDraft.ImageInfo.MainImage)
-		for _, image := range pkg.RequestDraft.ImageInfo.Gallery {
+	if pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
+		add(pkg.DraftPayload.ImageInfo.MainImage)
+		for _, image := range pkg.DraftPayload.ImageInfo.Gallery {
 			add(image)
 		}
-		add(pkg.RequestDraft.ImageInfo.WhiteBg)
+		add(pkg.DraftPayload.ImageInfo.WhiteBg)
 	}
-	if pkg.PreviewProduct != nil && pkg.PreviewProduct.ImageInfo != nil {
-		for _, image := range pkg.PreviewProduct.ImageInfo.ImageInfoList {
+	if pkg.PreviewPayload != nil && pkg.PreviewPayload.ImageInfo != nil {
+		for _, image := range pkg.PreviewPayload.ImageInfo.ImageInfoList {
 			add(image.ImageURL)
 		}
 	}

@@ -37,21 +37,24 @@ type ListingKitResult struct {
 	ReviewRecords               []GenerationReviewRecord         `json:"review_records,omitempty"`
 	CanonicalProduct            *canonical.Product               `json:"canonical_product,omitempty"`
 	ImageAssets                 *productimage.ImageProcessResult `json:"image_assets,omitempty"`
-	SDSSync                     *SDSSyncSummary                  `json:"sds_sync,omitempty"`
-	Amazon                      *AmazonPackage                   `json:"amazon,omitempty"`
-	Shein                       *sheinpub.Package                `json:"shein,omitempty"`
-	SheinStoreResolution        *SheinStoreResolutionSummary     `json:"shein_store_resolution,omitempty"`
-	Temu                        *TemuPackage                     `json:"temu,omitempty"`
-	Walmart                     *WalmartPackage                  `json:"walmart,omitempty"`
-	Summary                     *GenerationSummary               `json:"summary,omitempty"`
-	Revision                    *ListingKitRevisionSummary       `json:"revision,omitempty"`
-	RevisionHistoryTotal        int                              `json:"revision_history_total,omitempty"`
-	RevisionHistory             []ListingKitRevisionRecord       `json:"revision_history,omitempty"`
-	ChildTasks                  []ChildTaskState                 `json:"child_tasks,omitempty"`
-	WorkflowStages              []WorkflowStage                  `json:"workflow_stages,omitempty"`
-	WorkflowIssues              []WorkflowIssue                  `json:"workflow_issues,omitempty"`
-	CreatedAt                   time.Time                        `json:"created_at"`
-	UpdatedAt                   time.Time                        `json:"updated_at"`
+	// Deprecated: kept only for JSON/history compatibility. New business code should use SDSDesignResult.
+	SDSSync *SDSSyncSummary `json:"sds_sync,omitempty"`
+	// SDSDesignResult is the canonical SDS design execution result used by current business logic.
+	SDSDesignResult      *SDSSyncSummary              `json:"sds_design_result,omitempty"`
+	Amazon               *AmazonPackage               `json:"amazon,omitempty"`
+	Shein                *sheinpub.Package            `json:"shein,omitempty"`
+	SheinStoreResolution *SheinStoreResolutionSummary `json:"shein_store_resolution,omitempty"`
+	Temu                 *TemuPackage                 `json:"temu,omitempty"`
+	Walmart              *WalmartPackage              `json:"walmart,omitempty"`
+	Summary              *GenerationSummary           `json:"summary,omitempty"`
+	Revision             *ListingKitRevisionSummary   `json:"revision,omitempty"`
+	RevisionHistoryTotal int                          `json:"revision_history_total,omitempty"`
+	RevisionHistory      []ListingKitRevisionRecord   `json:"revision_history,omitempty"`
+	ChildTasks           []ChildTaskState             `json:"child_tasks,omitempty"`
+	WorkflowStages       []WorkflowStage              `json:"workflow_stages,omitempty"`
+	WorkflowIssues       []WorkflowIssue              `json:"workflow_issues,omitempty"`
+	CreatedAt            time.Time                    `json:"created_at"`
+	UpdatedAt            time.Time                    `json:"updated_at"`
 }
 
 // StandardProductSnapshot captures the stable boundary between the standard
@@ -64,11 +67,14 @@ type StandardProductSnapshot struct {
 	AssetBundle           *asset.Bundle                    `json:"asset_bundle,omitempty"`
 	AssetInventorySummary *asset.InventorySummary          `json:"asset_inventory_summary,omitempty"`
 	ImageAssets           *productimage.ImageProcessResult `json:"image_assets,omitempty"`
-	SDSSync               *SDSSyncSummary                  `json:"sds_sync,omitempty"`
-	Summary               *GenerationSummary               `json:"summary,omitempty"`
-	ChildTasks            []ChildTaskState                 `json:"child_tasks,omitempty"`
-	WorkflowStages        []WorkflowStage                  `json:"workflow_stages,omitempty"`
-	WorkflowIssues        []WorkflowIssue                  `json:"workflow_issues,omitempty"`
+	// Deprecated: kept only for JSON/history compatibility. New business code should use SDSDesignResult.
+	SDSSync *SDSSyncSummary `json:"sds_sync,omitempty"`
+	// SDSDesignResult is the canonical SDS design execution result used by current business logic.
+	SDSDesignResult *SDSSyncSummary    `json:"sds_design_result,omitempty"`
+	Summary         *GenerationSummary `json:"summary,omitempty"`
+	ChildTasks      []ChildTaskState   `json:"child_tasks,omitempty"`
+	WorkflowStages  []WorkflowStage    `json:"workflow_stages,omitempty"`
+	WorkflowIssues  []WorkflowIssue    `json:"workflow_issues,omitempty"`
 }
 
 type GenerationSummary struct {

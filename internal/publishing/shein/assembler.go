@@ -70,7 +70,7 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 		ProductAttributes: productAttributes,
 		SiteList:          siteList,
 		Images:            images,
-		RequestDraft: &RequestDraft{
+		DraftPayload: &RequestDraft{
 			SpuName:               spuName,
 			MultiLanguageNameList: localizedEnglishText(req.Language, copy.Title),
 			MultiLanguageDescList: localizedEnglishText(req.Language, copy.Description),
@@ -85,6 +85,7 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 			"category_name":   categoryName,
 		},
 	}
+	NormalizePackageSemanticFields(pkg)
 	if copy.TitleDiagnostics != nil {
 		pkg.Metadata["title_source"] = copy.TitleDiagnostics.Source
 		if copy.TitleDiagnostics.PromptContaminated {
@@ -147,10 +148,11 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 	groups := buildVariantGroups(copy.SKCTitleBase, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)
-	pkg.RequestDraft.SupplierCode = supplierCode
-	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, product, a.pricingPolicy)
+	pkg.DraftPayload.SupplierCode = supplierCode
+	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, siteList, product, a.pricingPolicy)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
-	pkg.PreviewProduct = BuildPreviewProduct(pkg)
+	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
+	NormalizePackageSemanticFields(pkg)
 	log.WithFields(logrus.Fields{
 		"category_id": pkg.CategoryID,
 		"skc_count":   len(pkg.SkcList),

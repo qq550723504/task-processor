@@ -12,7 +12,8 @@ type sheinStudioSupplierSKURename struct {
 }
 
 func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, submitRequestID string) bool {
-	if task == nil || task.Request == nil || task.Request.Options == nil || pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if task == nil || task.Request == nil || task.Request.Options == nil || pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
 	sds := task.Request.Options.SDS
@@ -33,8 +34,8 @@ func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, s
 	changed := false
 	globalIndex := 0
 
-	for skcIndex := range pkg.RequestDraft.SKCList {
-		draftSKC := &pkg.RequestDraft.SKCList[skcIndex]
+	for skcIndex := range pkg.DraftPayload.SKCList {
+		draftSKC := &pkg.DraftPayload.SKCList[skcIndex]
 		for skuIndex := range draftSKC.SKUList {
 			draftSKU := &draftSKC.SKUList[skuIndex]
 			oldSKU := strings.TrimSpace(draftSKU.SupplierSKU)
@@ -56,8 +57,9 @@ func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, s
 			if skcIndex < len(pkg.SkcList) && skuIndex < len(pkg.SkcList[skcIndex].SKUs) {
 				pkg.SkcList[skcIndex].SKUs[skuIndex].SKU = newSKU
 			}
-			if pkg.PreviewProduct != nil && skcIndex < len(pkg.PreviewProduct.SKCList) && skuIndex < len(pkg.PreviewProduct.SKCList[skcIndex].SKUS) {
-				pkg.PreviewProduct.SKCList[skcIndex].SKUS[skuIndex].SupplierSKU = newSKU
+			if pkg.PreviewPayload != nil && skcIndex < len(pkg.PreviewPayload.SKCList) && skuIndex < len(pkg.PreviewPayload.SKCList[skcIndex].SKUS) {
+				pkg.PreviewPayload.SKCList[skcIndex].SKUS[skuIndex].SupplierSKU = newSKU
+				sheinpub.SetPreviewPayload(pkg, pkg.PreviewPayload)
 			}
 			globalIndex++
 		}
@@ -237,8 +239,8 @@ func applySheinStudioSupplierSKURenames(pkg *sheinpub.Package, renames []sheinSt
 		}
 	}
 
-	if pkg.FinalDraft != nil {
-		pkg.FinalDraft.ManualPriceOverrides = remapSheinPriceOverrides(pkg.FinalDraft.ManualPriceOverrides, renameMap)
+	if pkg.FinalSubmissionDraft != nil {
+		pkg.FinalSubmissionDraft.ManualPriceOverrides = remapSheinPriceOverrides(pkg.FinalSubmissionDraft.ManualPriceOverrides, renameMap)
 	}
 	if pkg.Pricing != nil {
 		pkg.Pricing.ManualOverrides = remapSheinPriceOverrides(pkg.Pricing.ManualOverrides, renameMap)
@@ -282,10 +284,11 @@ func remapSheinPriceOverrides(input map[string]float64, renameMap map[string][]s
 }
 
 func reconcileSheinStudioPricingReferences(pkg *sheinpub.Package) bool {
-	if pkg == nil || pkg.RequestDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
-	currentSKUs := collectSheinRequestDraftSupplierSKUs(pkg.RequestDraft)
+	currentSKUs := collectSheinRequestDraftSupplierSKUs(pkg.DraftPayload)
 	if len(currentSKUs) == 0 {
 		return false
 	}
@@ -310,10 +313,10 @@ func reconcileSheinStudioPricingReferences(pkg *sheinpub.Package) bool {
 	}
 
 	changed := false
-	if pkg.FinalDraft != nil {
-		remapped, updated := reconcileSheinPriceOverrideAliases(pkg.FinalDraft.ManualPriceOverrides, currentSKUSet, aliasMap)
+	if pkg.FinalSubmissionDraft != nil {
+		remapped, updated := reconcileSheinPriceOverrideAliases(pkg.FinalSubmissionDraft.ManualPriceOverrides, currentSKUSet, aliasMap)
 		if updated {
-			pkg.FinalDraft.ManualPriceOverrides = remapped
+			pkg.FinalSubmissionDraft.ManualPriceOverrides = remapped
 			changed = true
 		}
 	}

@@ -12,6 +12,7 @@ import {
 import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
 import { submitErrorMessage } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import type { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
+import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 import type {
   PreviewSlot,
   SheinPreviewPayload,
@@ -116,10 +117,11 @@ export function buildSheinWorkspaceViewProps({
     onSelectBlockingItem,
     onSubmit: sheinActions.handleSubmitShein,
   };
+  const sheinSubmission = getSheinSubmissionState(shein);
   const sharedReadinessProps = {
     readiness: shein?.submit_readiness,
     checklist: shein?.submit_checklist,
-    submission: shein?.submission,
+    submission: sheinSubmission,
     imageUpload: shein?.image_upload,
     resolutionCache: shein?.resolution_cache,
     workspaceOverview: shein?.workspace_overview,
@@ -146,7 +148,7 @@ export function buildSheinWorkspaceViewProps({
   };
   const timelineProps: SheinSubmissionTimelineProps = {
     events: shein?.submission_events,
-    canRefresh: Boolean(shein?.submission?.last_action),
+    canRefresh: Boolean(sheinSubmission?.last_action),
     isRefreshing: isRefreshingSubmissionStatus,
     onRefresh: onRefreshSubmissionStatus,
   };

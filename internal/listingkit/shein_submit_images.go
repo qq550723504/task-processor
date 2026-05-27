@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinimage "task-processor/internal/shein/api/image"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -120,14 +121,15 @@ func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage
 }
 
 func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {
-	if pkg == nil || pkg.PreviewProduct == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.PreviewPayload == nil {
 		return nil
 	}
-	urls := collectSheinProductImageURLs(pkg.PreviewProduct)
+	urls := collectSheinProductImageURLs(pkg.PreviewPayload)
 	if len(urls) == 0 {
 		return &SheinImageUploadPreflight{
 			ReadyForUpload: false,
-			Summary:        []string{"SHEIN preview_product has no image_info URLs to submit."},
+			Summary:        []string{"SHEIN preview payload has no image_info URLs to submit."},
 		}
 	}
 
@@ -426,10 +428,11 @@ func uploadSheinImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.Imag
 }
 
 func sheinImageUploadCache(pkg *SheinPackage) map[string]string {
-	if pkg == nil || pkg.FinalDraft == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.FinalSubmissionDraft == nil {
 		return nil
 	}
-	return pkg.FinalDraft.SheinImageUploadCache
+	return pkg.FinalSubmissionDraft.SheinImageUploadCache
 }
 
 func sheinImageUploadCacheHit(pkg *SheinPackage, sourceURL string) bool {

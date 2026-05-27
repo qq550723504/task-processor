@@ -21,6 +21,7 @@ func RefreshDerivedState(
 	saleAttributeResolver SaleAttributeResolver,
 	pricingPolicy PricingPolicy,
 ) {
+	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || canonical == nil {
 		return
 	}
@@ -37,10 +38,10 @@ func RefreshDerivedState(
 		pkg.SiteList = common.DefaultSites(countryOrDefault(req))
 	}
 	pkg.ProductAttributes = common.BuildAttributes(canonical.Attributes)
-	if pkg.RequestDraft == nil {
-		pkg.RequestDraft = &RequestDraft{}
+	if pkg.DraftPayload == nil {
+		pkg.DraftPayload = &RequestDraft{}
 	}
-	pkg.RequestDraft.SiteList = append([]common.Site(nil), pkg.SiteList...)
+	pkg.DraftPayload.SiteList = append([]common.Site(nil), pkg.SiteList...)
 
 	if attributeResolver != nil {
 		pkg.AttributeResolution = attributeResolver.Resolve(req, canonical, pkg)
@@ -56,10 +57,11 @@ func RefreshDerivedState(
 	variants := common.BuildVariants(canonical)
 	groups := buildVariantGroups(pkg.ProductNameEn, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
-	pkg.RequestDraft.SupplierCode = firstSupplierCode(pkg.SkcList)
-	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical, pricingPolicy)
+	pkg.DraftPayload.SupplierCode = firstSupplierCode(pkg.SkcList)
+	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical, pricingPolicy)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
-	pkg.PreviewProduct = BuildPreviewProduct(pkg)
+	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
+	NormalizePackageSemanticFields(pkg)
 }
 
 func countryOrDefault(req *BuildRequest) string {

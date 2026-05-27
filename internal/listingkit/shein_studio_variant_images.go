@@ -23,6 +23,7 @@ func normalizeSheinStudioVariantImageSets(input []SheinStudioVariantImageSet) []
 }
 
 func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []SheinStudioVariantImageSet, sourceImages []string) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || len(variantImages) == 0 {
 		return
 	}
@@ -36,9 +37,9 @@ func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []She
 			bySKU[key] = item
 		}
 	}
-	if pkg.RequestDraft != nil {
-		for skcIndex := range pkg.RequestDraft.SKCList {
-			skc := &pkg.RequestDraft.SKCList[skcIndex]
+	if pkg.DraftPayload != nil {
+		for skcIndex := range pkg.DraftPayload.SKCList {
+			skc := &pkg.DraftPayload.SKCList[skcIndex]
 			if item, ok := findVariantImageSetForSKC(*skc, byColor, bySKU); ok {
 				images := imageSetFromAIProductImages(item.ImageURLs, sourceImages)
 				if images == nil {
@@ -57,7 +58,8 @@ func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []She
 			skc.MainImageURL = item.ImageURLs[0]
 		}
 	}
-	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	preview := sheinpub.BuildPreviewProduct(pkg)
+	sheinpub.SetPreviewPayload(pkg, preview)
 }
 
 func findVariantImageSetForSKC(skc sheinpub.SKCRequestDraft, byColor map[string]SheinStudioVariantImageSet, bySKU map[string]SheinStudioVariantImageSet) (SheinStudioVariantImageSet, bool) {

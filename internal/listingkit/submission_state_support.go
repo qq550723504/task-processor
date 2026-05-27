@@ -3,6 +3,7 @@ package listingkit
 import sheinpub "task-processor/internal/publishing/shein"
 
 func applySheinSubmissionStatusFields(fields *SheinSubmissionStatusFields, pkg *SheinPackage) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if fields == nil || pkg == nil {
 		return
 	}
@@ -10,20 +11,21 @@ func applySheinSubmissionStatusFields(fields *SheinSubmissionStatusFields, pkg *
 	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
 		fields.SheinLatestSubmissionStatus = latest.Status
 		fields.SheinLatestSubmissionError = latest.ErrorMessage
-	} else if pkg.Submission != nil {
-		fields.SheinLatestSubmissionStatus = pkg.Submission.LastStatus
-		fields.SheinLatestSubmissionError = pkg.Submission.LastError
+	} else if pkg.SubmissionState != nil {
+		fields.SheinLatestSubmissionStatus = pkg.SubmissionState.LastStatus
+		fields.SheinLatestSubmissionError = pkg.SubmissionState.LastError
 	}
-	if pkg.Submission != nil {
-		fields.SheinSubmissionRemoteStatus = pkg.Submission.RemoteStatus
+	if pkg.SubmissionState != nil {
+		fields.SheinSubmissionRemoteStatus = pkg.SubmissionState.RemoteStatus
 	}
 }
 
 func applySheinSubmissionRemoteSummary(fields *SheinTaskListSubmissionFields, pkg *SheinPackage) {
-	if fields == nil || pkg == nil || pkg.Submission == nil {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if fields == nil || pkg == nil || pkg.SubmissionState == nil {
 		return
 	}
-	submission := pkg.Submission
+	submission := pkg.SubmissionState
 	fields.SheinSubmissionRemoteCheckedAt = submission.RemoteCheckedAt
 	record := sheinPrimarySubmissionRecord(submission)
 	if record == nil {
@@ -36,6 +38,7 @@ func applySheinSubmissionRemoteSummary(fields *SheinTaskListSubmissionFields, pk
 }
 
 func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return ""
 	}
@@ -50,14 +53,14 @@ func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
 			return SheinWorkflowStatusPublishFailed
 		}
 	}
-	if pkg.Submission != nil {
-		if pkg.Submission.Publish != nil && pkg.Submission.Publish.Status == "success" {
+	if pkg.SubmissionState != nil {
+		if pkg.SubmissionState.Publish != nil && pkg.SubmissionState.Publish.Status == "success" {
 			return SheinWorkflowStatusPublished
 		}
-		if pkg.Submission.SaveDraft != nil && pkg.Submission.SaveDraft.Status == "success" {
+		if pkg.SubmissionState.SaveDraft != nil && pkg.SubmissionState.SaveDraft.Status == "success" {
 			return SheinWorkflowStatusDraftSaved
 		}
-		if pkg.Submission.LastStatus == "failed" {
+		if pkg.SubmissionState.LastStatus == "failed" {
 			return SheinWorkflowStatusPublishFailed
 		}
 	}
