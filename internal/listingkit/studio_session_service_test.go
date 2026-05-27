@@ -483,6 +483,29 @@ func TestStudioSessionServiceAssignsTenantScopedSequentialBatchNames(t *testing.
 	}
 }
 
+func TestStudioSessionServiceAllowsCreatingBatchContainerWithoutPrompt(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:     "",
+		StyleCount: "1",
+		Selection:  testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("upsert batch without prompt: %v", err)
+	}
+	if detail.Session == nil || detail.Session.Prompt != "" {
+		t.Fatalf("session prompt = %#v, want empty prompt persisted", detail.Session)
+	}
+	if detail.Session.BatchName == "" {
+		t.Fatalf("batch name = %q, want generated batch name", detail.Session.BatchName)
+	}
+	if detail.Session.Status != SheinStudioSessionStatusSelecting {
+		t.Fatalf("status = %q, want selecting for a prompt-less batch container", detail.Session.Status)
+	}
+}
+
 func ptr[T any](value T) *T {
 	return &value
 }

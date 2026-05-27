@@ -276,9 +276,8 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	if req == nil || req.Selection == nil || req.Selection.VariantID <= 0 {
 		return nil, fmt.Errorf("selection is required")
 	}
-	if strings.TrimSpace(req.Prompt) == "" {
-		return nil, fmt.Errorf("prompt is required")
-	}
+	// A studio batch now acts as a working container first: users can create it
+	// immediately after selecting a product, then fill in prompt/design settings later.
 
 	var session *SheinStudioSession
 	var err error
