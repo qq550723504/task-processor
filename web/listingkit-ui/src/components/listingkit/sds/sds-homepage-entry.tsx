@@ -62,11 +62,27 @@ export function SdsHomepageEntry() {
       handleCreateNew();
       return;
     }
+    const latestPersistedBatch = summaries.find((summary) => summary.source === "batch");
+    if (latestPersistedBatch) {
+      router.push(`/listing-kits/sds/batches/${latestPersistedBatch.id}`);
+      return;
+    }
     setShowAllBatches(true);
-    document.getElementById("sds-recent-batches")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    const recentBatches = document.getElementById("sds-recent-batches");
+    if (recentBatches && typeof recentBatches.scrollIntoView === "function") {
+      recentBatches.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }
+
+  function handleOpenSummary(summary: SheinStudioRecentBatchSummary) {
+    if (summary.source === "batch") {
+      router.push(`/listing-kits/sds/batches/${summary.id}`);
+      return;
+    }
+    setShowAllBatches(true);
   }
 
   return (
@@ -111,12 +127,8 @@ export function SdsHomepageEntry() {
         <section className="space-y-3" id="sds-recent-batches">
           <SheinStudioRecentBatchesDashboard
             onCreateBatch={handleCreateNew}
-            onSelectSummary={() => {
-              setShowAllBatches(true);
-            }}
-            onSelectSummaryAction={() => {
-              setShowAllBatches(true);
-            }}
+            onSelectSummary={handleOpenSummary}
+            onSelectSummaryAction={handleOpenSummary}
             summaries={visibleSummaries}
           />
           {summaries.length > 3 ? (

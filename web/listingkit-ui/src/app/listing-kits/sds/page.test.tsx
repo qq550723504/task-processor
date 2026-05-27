@@ -60,10 +60,10 @@ describe("/listing-kits/sds page", () => {
     listSheinStudioBatches.mockResolvedValue([]);
     loadLocalSheinStudioDraftSnapshot.mockReturnValue(null);
     buildRecentBatchSummaries.mockReturnValue([
-      { id: "batch-4", title: "Batch Four" },
-      { id: "batch-3", title: "Batch Three" },
-      { id: "batch-2", title: "Batch Two" },
-      { id: "batch-1", title: "Batch One" },
+      { id: "batch-4", title: "Batch Four", source: "batch" },
+      { id: "batch-3", title: "Batch Three", source: "batch" },
+      { id: "batch-2", title: "Batch Two", source: "batch" },
+      { id: "batch-1", title: "Batch One", source: "batch" },
     ]);
   });
 
@@ -99,5 +99,17 @@ describe("/listing-kits/sds page", () => {
     fireEvent.click(screen.getByRole("button", { name: "新建批次并选品" }));
 
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/new");
+  });
+
+  it("routes continue recent to the latest persisted batch", async () => {
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Four")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "继续最近批次" }));
+
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-4");
   });
 });
