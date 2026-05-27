@@ -37,7 +37,16 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-selection-overview", () => ({
-  SheinStudioSelectionOverview: () => <div>selection overview</div>,
+  SheinStudioSelectionOverview: ({
+    selection,
+  }: {
+    selection?: { variantId?: number };
+  }) => (
+    <div>
+      selection overview
+      {selection?.variantId ? ` selection variant: ${selection.variantId}` : ""}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-progress-strip", () => ({
@@ -434,6 +443,54 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
+    expect(screen.getByText("selection overview selection variant: 100")).toBeInTheDocument();
+    expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
+  });
+
+  it("does not let a local draft override the dedicated batch selection", async () => {
+    saveLocalSheinStudioDraftSnapshot({
+      prompt: "legacy local draft",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "Retro Cherries",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText("selection overview selection variant: 100"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByDisplayValue("legacy local draft"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the recent batch homepage before a selection is chosen", async () => {

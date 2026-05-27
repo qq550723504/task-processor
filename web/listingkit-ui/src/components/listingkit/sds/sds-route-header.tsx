@@ -19,7 +19,7 @@ export function SdsRouteHeader({
   links: SdsRouteHeaderLink[];
 }) {
   return (
-    <div className="space-y-2 rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
+    <div className="w-full space-y-2 rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
       {links.length > 0 ? (
         <div className="flex flex-wrap gap-3 text-sm font-medium text-zinc-500">
           {links.map((link) => (

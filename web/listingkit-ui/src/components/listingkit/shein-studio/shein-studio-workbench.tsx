@@ -228,6 +228,7 @@ export function SheinStudioWorkbench({
     queueMessage,
     regeneratingId,
     renderSizeImagesWithSds,
+    selection: loadedSelection,
     groupedSelections,
     batchQueueMode,
     queuedBatchIds,
@@ -268,10 +269,12 @@ export function SheinStudioWorkbench({
   const hasCustomizedSdsSelectionRef = useRef(false);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const directSelection = useHydratedSDSVariantSelection(selection);
+  const loadedBatchSelection = useHydratedSDSVariantSelection(loadedSelection);
   const activeGroupSelection = useHydratedSDSVariantSelection(
     groups.find((group) => group.id === activeGroupId)?.primarySelection,
   );
-  const activeSelection = directSelection ?? activeGroupSelection;
+  const activeSelection =
+    directSelection ?? activeGroupSelection ?? loadedBatchSelection;
   const groupedCandidateSelections = useSDSGroupedCandidates();
   const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
   const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
@@ -636,6 +639,7 @@ export function SheinStudioWorkbench({
     activeSelection,
     activeSelectionKey,
     activeStepRef,
+    hasDedicatedBatchContext: Boolean(initialBatchId),
     hasExplicitSelection: Boolean(selection?.variantId),
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
@@ -1133,22 +1137,24 @@ export function SheinStudioWorkbench({
     <section className="relative space-y-6">
       {busyMessage ? <SheinStudioBusyOverlay message={busyMessage} /> : null}
 
-      <SheinStudioRecentBatchesDashboard
-        onBulkUpdateStore={handleBulkUpdateRecentBatchStore}
-        onCreateBatch={() => {
-          window.location.assign("/listing-kits/sds/new");
-        }}
-        onDeleteSummary={handleDeleteRecentBatchSummary}
-        onDuplicateSummary={handleDuplicateRecentBatchSummary}
-        onOpenBatchQueue={handleOpenBatchQueue}
-        onRenameSummary={handleRenameRecentBatchSummary}
-        onSelectedSummaryIdsChange={setSelectedRecentBatchSummaryIds}
-        onSelectSummaryAction={handleSelectRecentBatchSummary}
-        onSelectSummary={handleSelectRecentBatchSummary}
-        selectedSummaryIds={selectedRecentBatchSummaryIds}
-        storeOptions={recentBatchStoreOptions}
-        summaries={recentBatchSummaries}
-      />
+      {!initialBatchId ? (
+        <SheinStudioRecentBatchesDashboard
+          onBulkUpdateStore={handleBulkUpdateRecentBatchStore}
+          onCreateBatch={() => {
+            window.location.assign("/listing-kits/sds/new");
+          }}
+          onDeleteSummary={handleDeleteRecentBatchSummary}
+          onDuplicateSummary={handleDuplicateRecentBatchSummary}
+          onOpenBatchQueue={handleOpenBatchQueue}
+          onRenameSummary={handleRenameRecentBatchSummary}
+          onSelectedSummaryIdsChange={setSelectedRecentBatchSummaryIds}
+          onSelectSummaryAction={handleSelectRecentBatchSummary}
+          onSelectSummary={handleSelectRecentBatchSummary}
+          selectedSummaryIds={selectedRecentBatchSummaryIds}
+          storeOptions={recentBatchStoreOptions}
+          summaries={recentBatchSummaries}
+        />
+      ) : null}
 
       {batchQueueMode && currentQueuedBatch ? (
         <SheinStudioBatchQueueBanner

@@ -191,6 +191,7 @@ export function mergeSheinStudioDraftState({
 
   return {
     prompt: draft?.prompt || galleryPrompt || "",
+    selection: draft?.selection,
     styleCount: draft?.styleCount ?? "1",
     variationIntensity:
       draft?.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,

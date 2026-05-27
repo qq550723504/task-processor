@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -54,6 +54,7 @@ export function SDSProductBrowser({
   initialShipmentArea?: string;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useLiveSearchParams();
   const recentVariants = useSDSRecentVariants();
   const groupedCandidates = useSDSGroupedCandidates();
@@ -289,6 +290,11 @@ export function SDSProductBrowser({
   }
 
   function applySelection(selection: SDSProductVariantSelection) {
+    saveRecentSDSVariant(selection);
+    if (pathname === "/listing-kits/sds/new") {
+      void handleCreateBatchFromSelection(selection);
+      return;
+    }
     updateQuery({
       productId: String(selection.productId),
       variantId: String(selection.variantId),
@@ -310,7 +316,6 @@ export function SDSProductBrowser({
       variantLabel: undefined,
       step: "generate",
     });
-    saveRecentSDSVariant(selection);
     setPickerProductId(undefined);
     window.setTimeout(() => {
       document
@@ -485,8 +490,28 @@ export function SDSProductBrowser({
   async function handleCreateBatchFromCandidate(
     selection: SDSProductVariantSelection,
   ) {
+    const saved = await createBatchFromSelection(selection);
+    await refreshRecentBatches();
+    if (saved?.id) {
+      setActiveBatchId(saved.id);
+    }
+  }
+
+  async function handleCreateBatchFromSelection(
+    selection: SDSProductVariantSelection,
+  ) {
+    const saved = await createBatchFromSelection(selection);
+    await refreshRecentBatches();
+    setPickerProductId(undefined);
+    if (saved?.id) {
+      setActiveBatchId(saved.id);
+      router.push(`/listing-kits/sds/batches/${saved.id}`);
+    }
+  }
+
+  async function createBatchFromSelection(selection: SDSProductVariantSelection) {
     const selectionId = buildGroupedSDSSelectionID(selection);
-    const saved = await saveSheinStudioBatch({
+    return saveSheinStudioBatch({
       prompt: selection.productName,
       styleCount: "1",
       variationIntensity: "medium",
@@ -516,10 +541,6 @@ export function SDSProductBrowser({
       selectedIds: [],
       createdTasks: [],
     });
-    await refreshRecentBatches();
-    if (saved?.id) {
-      setActiveBatchId(saved.id);
-    }
   }
 
   const pickerOpen = Boolean(pickerProductId);

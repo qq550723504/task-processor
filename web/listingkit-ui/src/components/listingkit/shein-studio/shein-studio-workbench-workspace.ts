@@ -36,6 +36,7 @@ export function useSheinStudioWorkspaceLoader({
   activeSelection,
   activeSelectionKey,
   activeStepRef,
+  hasDedicatedBatchContext,
   hasExplicitSelection,
   hasCustomizedSdsSelectionRef,
   hasLocalWorkflowStateRef,
@@ -45,6 +46,7 @@ export function useSheinStudioWorkspaceLoader({
   activeSelection?: SDSProductVariantSelection;
   activeSelectionKey: string;
   activeStepRef: MutableRefObject<SheinStudioStepKey>;
+  hasDedicatedBatchContext: boolean;
   hasExplicitSelection: boolean;
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
@@ -63,11 +65,11 @@ export function useSheinStudioWorkspaceLoader({
     async function loadWorkspaceState() {
       workbench.setField("isLoadingWorkspace", true);
       try {
-        const localDraft = !hasExplicitSelection
+        const localDraft = !hasDedicatedBatchContext && !hasExplicitSelection
           ? loadLocalSheinStudioDraftSnapshot()
           : null;
         const [draft, batches] = await Promise.all([
-          hasExplicitSelection
+          !hasDedicatedBatchContext && hasExplicitSelection
             ? loadSheinStudioDraft(activeSelectionRef.current)
             : Promise.resolve(null),
           listSheinStudioBatches(),
@@ -82,9 +84,13 @@ export function useSheinStudioWorkspaceLoader({
         let importedGalleryDesign = false;
         let resumableGenerationJobId = "";
         const effectiveDraft =
-          localDraft ??
-          draft ??
-          (!activeSelectionRef.current ? pickRecentGroupedBatch(batches) : null);
+          hasDedicatedBatchContext
+            ? null
+            : localDraft ??
+              draft ??
+              (!activeSelectionRef.current
+                ? pickRecentGroupedBatch(batches)
+                : null);
         const groupedCandidateHandoff = consumeSDSGroupedCandidateHandoff();
 
         if (effectiveDraft || !hasLocalWorkflowStateRef.current) {
@@ -104,6 +110,7 @@ export function useSheinStudioWorkspaceLoader({
             draftState.hasCustomizedSdsSelection;
           workbench.applyDraft({
             prompt: draftState.prompt,
+            selection: draftState.selection,
             styleCount: draftState.styleCount,
             variationIntensity: draftState.variationIntensity,
             productImageCount: draftState.productImageCount,
@@ -238,6 +245,7 @@ export function useSheinStudioWorkspaceLoader({
   }, [
     activeSelectionKey,
     activeStepRef,
+    hasDedicatedBatchContext,
     hasExplicitSelection,
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,

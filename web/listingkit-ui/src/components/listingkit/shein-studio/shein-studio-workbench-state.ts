@@ -9,6 +9,7 @@ import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
 import { pickActiveSheinStudioGroup, projectGroupToWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
+import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
   SheinStudioBatchQueueMode,
@@ -24,6 +25,7 @@ import type {
 } from "@/lib/types/shein-studio";
 
 export type SheinStudioWorkbenchState = {
+  selection?: SDSProductVariantSelection;
   prompt: string;
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
@@ -76,6 +78,7 @@ export type SheinStudioWorkbenchStateUpdater<
 export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
   SheinStudioWorkbenchState,
   | "prompt"
+  | "selection"
   | "styleCount"
   | "variationIntensity"
   | "productImageCount"
@@ -131,6 +134,7 @@ export type SheinStudioWorkbenchAction =
 export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchState {
   return {
     prompt: "",
+    selection: undefined,
     styleCount: "1",
     variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
     productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
@@ -306,24 +310,33 @@ export function sheinStudioWorkbenchReducer(
   state: SheinStudioWorkbenchState,
   action: SheinStudioWorkbenchAction,
 ): SheinStudioWorkbenchState {
+  if (!action) {
+    return state;
+  }
   switch (action.type) {
     case "set-field": {
-      const current = state[action.field];
+      const setFieldAction = action as Extract<
+        SheinStudioWorkbenchAction,
+        { type: "set-field" }
+      >;
+      const field = setFieldAction.field;
+      const value = setFieldAction.value;
+      const current = state[field];
       const next =
-        typeof action.value === "function"
-          ? (action.value as (value: typeof current) => typeof current)(current)
-          : action.value;
+        typeof value === "function"
+          ? (value as (value: typeof current) => typeof current)(current)
+          : value;
       if (Object.is(current, next)) {
         return state;
       }
       return {
         ...state,
-        groups: ACTIVE_GROUP_SYNC_FIELDS.has(action.field)
+        groups: ACTIVE_GROUP_SYNC_FIELDS.has(field)
           ? syncActiveGroupFromState(state, {
-              [action.field]: next,
+              [field]: next,
             } as Partial<SheinStudioWorkbenchState>)
           : state.groups,
-        [action.field]: next,
+        [field]: next,
       };
     }
     case "apply-draft":
@@ -339,6 +352,7 @@ export function sheinStudioWorkbenchReducer(
       return projectActiveGroupIntoState(
         {
           ...state,
+          selection: action.batch.selection,
           prompt: action.batch.prompt,
           styleCount: action.batch.styleCount,
           variationIntensity:
