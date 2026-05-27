@@ -58,13 +58,14 @@ export function SDSGroupedCandidatesPanel({
   ) => void;
   onWarmAll?: (items: SDSProductVariantSelection[]) => void;
 }) {
+  const [batchPickerSelectionId, setBatchPickerSelectionId] = useState("");
+
   if (items.length === 0) {
     return null;
   }
 
   const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
   const recentlyWarmedSet = new Set(recentlyWarmedSelectionIds);
-  const [batchPickerSelectionId, setBatchPickerSelectionId] = useState("");
   const warmableItems = items.filter((item) => {
     const selectionId = buildGroupedSDSSelectionID(item);
     const status = baselineStatuses[selectionId]?.status ?? "loading";

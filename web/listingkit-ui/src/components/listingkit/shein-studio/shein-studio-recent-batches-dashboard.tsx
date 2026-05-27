@@ -38,6 +38,18 @@ type RecentBatchesDashboardPreferences = {
   lastBulkActionSummary?: string;
 };
 
+function readStoredDashboardPreferences() {
+  if (typeof window === "undefined") {
+    return {} as RecentBatchesDashboardPreferences;
+  }
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_PREFERENCES_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as RecentBatchesDashboardPreferences) : {};
+  } catch {
+    return {} as RecentBatchesDashboardPreferences;
+  }
+}
+
 function recentBatchAlertToneClass(tone: "warning" | "danger") {
   return tone === "danger"
     ? "border-rose-200 bg-rose-50 text-rose-700"
@@ -181,21 +193,33 @@ export function SheinStudioRecentBatchesDashboard({
   onSelectSummary: (summary: SheinStudioRecentBatchSummary) => void;
 }) {
   const router = useRouter();
-  const [localSelectedSummaryIds, setLocalSelectedSummaryIds] = useState<string[]>([]);
+  const initialPreferences = useMemo(() => readStoredDashboardPreferences(), []);
+  const [localSelectedSummaryIds, setLocalSelectedSummaryIds] = useState<string[]>(
+    () => initialPreferences.selectedSummaryIds ?? [],
+  );
   const [editingSummaryId, setEditingSummaryId] = useState("");
   const [draftName, setDraftName] = useState("");
   const [bulkStoreId, setBulkStoreId] = useState("");
   const [bulkQueueFeedback, setBulkQueueFeedback] = useState("");
-  const [lastBulkActionSummary, setLastBulkActionSummary] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>("all");
-  const [resultFilter, setResultFilter] = useState<RecentBatchResultFilter>("all");
-  const [restoredResultFilterNote, setRestoredResultFilterNote] = useState("");
-  const [activeRiskLabel, setActiveRiskLabel] = useState("");
+  const [lastBulkActionSummary, setLastBulkActionSummary] = useState(
+    () => initialPreferences.lastBulkActionSummary?.trim() ?? "",
+  );
+  const [statusFilter, setStatusFilter] = useState<RecentBatchStatusFilter>(
+    () => initialPreferences.statusFilter ?? "all",
+  );
+  const [resultFilter, setResultFilter] = useState<RecentBatchResultFilter>(
+    () => initialPreferences.resultFilter ?? "all",
+  );
+  const [restoredResultFilterNote, setRestoredResultFilterNote] = useState(() =>
+    restoredResultFilterDescription(initialPreferences.resultFilter ?? "all"),
+  );
+  const [activeRiskLabel, setActiveRiskLabel] = useState(
+    () => initialPreferences.activeRiskLabel ?? "",
+  );
   const [focusedRiskLabel, setFocusedRiskLabel] = useState("");
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
     string[] | null
   >(null);
-  const [preferencesHydrated, setPreferencesHydrated] = useState(false);
   const selectedSummaryIds =
     controlledSelectedSummaryIds ?? localSelectedSummaryIds;
   const setSelectedSummaryIds =
@@ -588,70 +612,24 @@ export function SheinStudioRecentBatchesDashboard({
     if (typeof window === "undefined") {
       return;
     }
-    try {
-      const raw = window.localStorage.getItem(DASHBOARD_PREFERENCES_STORAGE_KEY);
-      if (!raw) {
-        setPreferencesHydrated(true);
-        return;
-      }
-      const parsed = JSON.parse(raw) as RecentBatchesDashboardPreferences;
-      if (parsed.statusFilter) {
-        setStatusFilter(parsed.statusFilter);
-      }
-      if (parsed.resultFilter) {
-        setResultFilter(parsed.resultFilter);
-        const note = restoredResultFilterDescription(parsed.resultFilter);
-        if (note) {
-          setRestoredResultFilterNote(note);
-        }
-      }
-      if (parsed.activeRiskLabel) {
-        setActiveRiskLabel(parsed.activeRiskLabel);
-      }
-      if (
-        parsed.selectedSummaryIds?.length &&
-        selectedSummaryIds.length === 0
-      ) {
-        const validIds = parsed.selectedSummaryIds.filter((key) =>
-          summaryById.has(key),
-        );
-        if (validIds.length > 0) {
-          setSelectedSummaryIds(validIds);
-        }
-      }
-      if (parsed.lastBulkActionSummary?.trim()) {
-        setLastBulkActionSummary(parsed.lastBulkActionSummary.trim());
-      }
-    } catch {
-      // Ignore malformed local state and continue with defaults.
-    } finally {
-      setPreferencesHydrated(true);
-    }
-    }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !preferencesHydrated) {
-      return;
-    }
-      const payload: RecentBatchesDashboardPreferences = {
-        statusFilter,
-        resultFilter,
-        activeRiskLabel,
-        selectedSummaryIds,
-        lastBulkActionSummary,
-      };
-      window.localStorage.setItem(
-        DASHBOARD_PREFERENCES_STORAGE_KEY,
-        JSON.stringify(payload),
-      );
-    }, [
-      activeRiskLabel,
-      lastBulkActionSummary,
-      preferencesHydrated,
-      resultFilter,
-      selectedSummaryIds,
+    const payload: RecentBatchesDashboardPreferences = {
       statusFilter,
-    ]);
+      resultFilter,
+      activeRiskLabel,
+      selectedSummaryIds,
+      lastBulkActionSummary,
+    };
+    window.localStorage.setItem(
+      DASHBOARD_PREFERENCES_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  }, [
+    activeRiskLabel,
+    lastBulkActionSummary,
+    resultFilter,
+    selectedSummaryIds,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

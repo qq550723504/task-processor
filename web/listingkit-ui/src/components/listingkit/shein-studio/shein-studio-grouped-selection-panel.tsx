@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,16 +53,19 @@ export function SheinStudioGroupedSelectionPanel({
   onUpdateSelectionStore: (selectionId: string, storeId: string) => void;
   storeOptions: StoreOption[];
 }) {
-  if (!activeSelection?.variantId) {
-    return null;
-  }
-
   const selectedIDs = new Set(groupedSelections.map((item) => item.selectionId));
   const [activeStoreFilter, setActiveStoreFilter] = useState<GroupedStoreFilter>("all");
   const [bulkStoreId, setBulkStoreId] = useState("");
   const [bulkUpdateFeedback, setBulkUpdateFeedback] = useState("");
-  const storeLabelById = new Map(
-    storeOptions.map((option) => [String(option.store_id), formatSheinStoreOptionLabel(option)]),
+  const storeLabelById = useMemo(
+    () =>
+      new Map(
+        storeOptions.map((option) => [
+          String(option.store_id),
+          formatSheinStoreOptionLabel(option),
+        ]),
+      ),
+    [storeOptions],
   );
   const normalizedCurrentStoreId = currentStoreId?.trim() ?? "";
   const groupedStoreSummary = groupedSelections.reduce(
@@ -95,9 +98,14 @@ export function SheinStudioGroupedSelectionPanel({
     [activeStoreFilter, groupedSelections, normalizedCurrentStoreId],
   );
 
-  useEffect(() => {
+  function handleStoreFilterChange(nextFilter: GroupedStoreFilter) {
     setBulkUpdateFeedback("");
-  }, [activeStoreFilter]);
+    setActiveStoreFilter((current) => (current === nextFilter ? "all" : nextFilter));
+  }
+
+  if (!activeSelection?.variantId) {
+    return null;
+  }
 
   return (
     <section className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50/80 px-4 py-4">
@@ -144,11 +152,7 @@ export function SheinStudioGroupedSelectionPanel({
             {groupedStoreSummary.followingCurrent > 0 ? (
               <button
                 className="cursor-pointer"
-                onClick={() =>
-                  setActiveStoreFilter((current) =>
-                    current === "following_current" ? "all" : "following_current",
-                  )
-                }
+                onClick={() => handleStoreFilterChange("following_current")}
                 type="button"
               >
                 <Badge
@@ -162,11 +166,7 @@ export function SheinStudioGroupedSelectionPanel({
             {groupedStoreSummary.currentStore > 0 ? (
               <button
                 className="cursor-pointer"
-                onClick={() =>
-                  setActiveStoreFilter((current) =>
-                    current === "current_store" ? "all" : "current_store",
-                  )
-                }
+                onClick={() => handleStoreFilterChange("current_store")}
                 type="button"
               >
                 <Badge
@@ -180,11 +180,7 @@ export function SheinStudioGroupedSelectionPanel({
             {groupedStoreSummary.crossStore > 0 ? (
               <button
                 className="cursor-pointer"
-                onClick={() =>
-                  setActiveStoreFilter((current) =>
-                    current === "cross_store" ? "all" : "cross_store",
-                  )
-                }
+                onClick={() => handleStoreFilterChange("cross_store")}
                 type="button"
               >
                 <Badge
@@ -221,7 +217,10 @@ export function SheinStudioGroupedSelectionPanel({
                       </label>
                       <Select
                         id="grouped-selection-bulk-store"
-                        onChange={(event) => setBulkStoreId(event.target.value)}
+                        onChange={(event) => {
+                          setBulkUpdateFeedback("");
+                          setBulkStoreId(event.target.value);
+                        }}
                         value={bulkStoreId}
                       >
                         <option value="">

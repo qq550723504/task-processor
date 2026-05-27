@@ -274,7 +274,7 @@ export function SheinStudioWorkbench({
   const activeSelection = directSelection ?? activeGroupSelection;
   const groupedCandidateSelections = useSDSGroupedCandidates();
   const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
-  const [selectedRecentBatchSummaryIds, setSelectedRecentBatchSummaryIds] = useState<
+  const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
     string[]
   >([]);
   const [queueResumeState, setQueueResumeState] = useState<{
@@ -391,14 +391,29 @@ export function SheinStudioWorkbench({
       }),
     [localDraftSnapshot, savedBatches],
   );
-  useEffect(() => {
-    const validSummaryKeys = new Set(
-      recentBatchSummaries.map((summary) => `${summary.source}:${summary.id}`),
-    );
-    setSelectedRecentBatchSummaryIds((current) =>
-      current.filter((key) => validSummaryKeys.has(key)),
-    );
-  }, [recentBatchSummaries]);
+  const validRecentBatchSummaryKeys = useMemo(
+    () =>
+      new Set(
+        recentBatchSummaries.map((summary) => `${summary.source}:${summary.id}`),
+      ),
+    [recentBatchSummaries],
+  );
+  const selectedRecentBatchSummaryIds = useMemo(
+    () =>
+      rawSelectedRecentBatchSummaryIds.filter((key) =>
+        validRecentBatchSummaryKeys.has(key),
+      ),
+    [rawSelectedRecentBatchSummaryIds, validRecentBatchSummaryKeys],
+  );
+  const setSelectedRecentBatchSummaryIds = useCallback(
+    (value: string[] | ((current: string[]) => string[])) => {
+      setRawSelectedRecentBatchSummaryIds((current) => {
+        const next = typeof value === "function" ? value(current) : value;
+        return next.filter((key) => validRecentBatchSummaryKeys.has(key));
+      });
+    },
+    [validRecentBatchSummaryKeys],
+  );
   const currentQueuedBatchId = batchQueueMode
     ? queuedBatchIds[queuedBatchIndex] ?? ""
     : "";

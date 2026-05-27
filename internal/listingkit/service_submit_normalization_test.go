@@ -78,11 +78,17 @@ func TestSubmitTaskRebuildsNormalizedProductAttributesFromPackage(t *testing.T) 
 	if submitted == nil {
 		t.Fatal("expected publish payload to be captured")
 	}
-	if len(submitted.ProductAttributeList) != 2 {
-		t.Fatalf("submitted product attributes = %#v, want deduped composition+material", submitted.ProductAttributeList)
+	if len(submitted.ProductAttributeList) != 3 {
+		t.Fatalf("submitted product attributes = %#v, want composition plus preserved material values", submitted.ProductAttributeList)
 	}
 	if submitted.ProductAttributeList[0].AttributeID != 62 || submitted.ProductAttributeList[0].AttributeExtraValue != "100" {
 		t.Fatalf("submitted composition attribute = %#v, want extra value 100", submitted.ProductAttributeList[0])
+	}
+	if submitted.ProductAttributeList[1].AttributeID != 160 || submitted.ProductAttributeList[1].AttributeExtraValue != "100" {
+		t.Fatalf("submitted first material attribute = %#v, want preserved numeric extra value", submitted.ProductAttributeList[1])
+	}
+	if submitted.ProductAttributeList[2].AttributeID != 160 || submitted.ProductAttributeList[2].AttributeExtraValue != "" {
+		t.Fatalf("submitted second material attribute = %#v, want preserved text-only material value", submitted.ProductAttributeList[2])
 	}
 }
 

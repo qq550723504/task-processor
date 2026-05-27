@@ -136,6 +136,32 @@ export function SDSProductBrowser({
     () => recentBatches.find((batch) => batch.id === activeBatchId)?.name ?? "",
     [activeBatchId, recentBatches],
   );
+  const visibleGroupedCandidateBaselineStatuses = useMemo(
+    () =>
+      Object.fromEntries(
+        groupedCandidates.map((item) => {
+          const selectionId = buildGroupedSDSSelectionID(item);
+          return [
+            selectionId,
+            groupedCandidateBaselineStatuses[selectionId] ?? {
+              status: "loading" as const,
+              reason: "正在检查 baseline 状态...",
+            },
+          ];
+        }),
+      ),
+    [groupedCandidateBaselineStatuses, groupedCandidates],
+  );
+  const visibleRecentlyWarmedSelectionIds = useMemo(() => {
+    if (recentlyWarmedSelectionIds.length === 0) {
+      return recentlyWarmedSelectionIds;
+    }
+    const visibleSelectionIds = new Set(groupedCandidates.map(buildGroupedSDSSelectionID));
+    return recentlyWarmedSelectionIds.filter((selectionId) =>
+      visibleSelectionIds.has(selectionId),
+    );
+  }, [groupedCandidates, recentlyWarmedSelectionIds]);
+  const visibleWarmSummary = groupedCandidates.length > 0 ? warmSummary : null;
 
   async function refreshRecentBatches() {
     try {
@@ -182,25 +208,6 @@ export function SDSProductBrowser({
   }, []);
 
   useEffect(() => {
-    if (groupedCandidates.length === 0) {
-      setGroupedCandidateBaselineStatuses({});
-      setRecentlyWarmedSelectionIds([]);
-      setWarmSummary(null);
-      return;
-    }
-
-    setGroupedCandidateBaselineStatuses((current) => {
-      const next: Record<string, { reason: string; status: SDSBaselineStatus | "loading" }> = {};
-      groupedCandidates.forEach((item) => {
-        const selectionId = buildGroupedSDSSelectionID(item);
-        next[selectionId] = current[selectionId] ?? {
-          status: "loading",
-          reason: "正在检查 baseline 状态...",
-        };
-      });
-      return next;
-    });
-
     let cancelled = false;
     void Promise.all(
       groupedCandidates.map(async (item) => {
@@ -570,7 +577,7 @@ export function SDSProductBrowser({
           activeBatchId={activeBatchId}
           activeBatchLabel={activeBatchLabel}
           activeSelection={currentSelection}
-          baselineStatuses={groupedCandidateBaselineStatuses}
+          baselineStatuses={visibleGroupedCandidateBaselineStatuses}
           isWarmingAll={isWarmingGroupedCandidates}
           items={groupedCandidates}
           onAddToBatch={(selection, batchId) => {
@@ -579,12 +586,12 @@ export function SDSProductBrowser({
           onCreateBatch={(selection) => {
             void handleCreateBatchFromCandidate(selection);
           }}
-          recentlyWarmedSelectionIds={recentlyWarmedSelectionIds}
+          recentlyWarmedSelectionIds={visibleRecentlyWarmedSelectionIds}
           recentBatches={recentBatches.map((batch) => ({
             id: batch.id,
             title: batch.name,
           }))}
-          warmSummary={warmSummary}
+          warmSummary={visibleWarmSummary}
           onRemove={removeSDSGroupedCandidate}
           onSelect={(selection, baseline) => {
             const handoff = buildGroupedCandidateHandoff(baseline);
