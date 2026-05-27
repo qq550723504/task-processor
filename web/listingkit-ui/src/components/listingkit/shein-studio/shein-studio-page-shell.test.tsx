@@ -6,6 +6,12 @@ import { dispatchSheinStudioRecentBatchesRecommendation } from "@/lib/shein-stud
 import { SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT } from "@/lib/shein-studio/recent-batches-focus";
 import { dispatchSheinStudioSectionFocus, SHEIN_STUDIO_SECTION_FOCUS_EVENT } from "@/lib/shein-studio/section-highlight";
 
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
 vi.mock("@/lib/utils/live-search-params", () => ({
   useLiveSearchParams: () => new URLSearchParams(""),
 }));
@@ -109,14 +115,12 @@ describe("SheinStudioPageShell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("highlights the product picker after starting a new batch from the homepage guidance", () => {
+  it("navigates to the dedicated new-batch route from the homepage guidance", () => {
     render(<SheinStudioPageShell />);
 
     fireEvent.click(screen.getByRole("button", { name: "新建批次后选品" }));
 
-    expect(screen.getByTestId("shein-studio-product-picker")).toHaveClass(
-      "ring-2",
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new");
   });
 
   it("highlights recent batches after continuing from the homepage guidance", () => {
@@ -141,7 +145,7 @@ describe("SheinStudioPageShell", () => {
     );
   });
 
-  it("follows the shared homepage flow from recommendation to focused product picker", () => {
+  it("follows the shared homepage flow from recommendation to the new-batch route", () => {
     render(<SheinStudioPageShell />);
 
     act(() => {
@@ -155,8 +159,6 @@ describe("SheinStudioPageShell", () => {
     expect(
       screen.getByText("还没有可继续的最近批次，建议先新建一个批次再开始选品。"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("shein-studio-product-picker")).toHaveClass(
-      "ring-2",
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new");
   });
 });

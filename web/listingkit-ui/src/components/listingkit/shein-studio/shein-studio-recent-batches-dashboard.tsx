@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -179,6 +180,7 @@ export function SheinStudioRecentBatchesDashboard({
   ) => void;
   onSelectSummary: (summary: SheinStudioRecentBatchSummary) => void;
 }) {
+  const router = useRouter();
   const [localSelectedSummaryIds, setLocalSelectedSummaryIds] = useState<string[]>([]);
   const [editingSummaryId, setEditingSummaryId] = useState("");
   const [draftName, setDraftName] = useState("");
@@ -558,6 +560,13 @@ export function SheinStudioRecentBatchesDashboard({
     { value: "success", label: "最近成功", count: resultFilterCounts.success },
     { value: "failure", label: "最近失败", count: resultFilterCounts.failure },
   ];
+  const openSummaryRoute = (summary: SheinStudioRecentBatchSummary) => {
+    if (summary.source !== "batch") {
+      return false;
+    }
+    router.push(`/listing-kits/sds/batches/${summary.id}`);
+    return true;
+  };
   const riskCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const summary of summaries) {
@@ -1272,6 +1281,9 @@ export function SheinStudioRecentBatchesDashboard({
                             key={`${summaryKey}:risk:${riskAction.label}:${index}`}
                             onClick={(event) => {
                               event.stopPropagation();
+                              if (openSummaryRoute(summary)) {
+                                return;
+                              }
                               onSelectSummaryAction?.(summary, riskAction.action);
                             }}
                             size="sm"
@@ -1331,6 +1343,9 @@ export function SheinStudioRecentBatchesDashboard({
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button
                         onClick={() => {
+                          if (openSummaryRoute(summary)) {
+                            return;
+                          }
                           onSelectSummaryAction?.(summary, primaryAction.action);
                         }}
                         size="sm"
@@ -1340,6 +1355,9 @@ export function SheinStudioRecentBatchesDashboard({
                       </Button>
                       <Button
                         onClick={() => {
+                          if (openSummaryRoute(summary)) {
+                            return;
+                          }
                           onSelectSummary(summary);
                         }}
                         size="sm"

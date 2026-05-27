@@ -6,9 +6,16 @@ import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein
 import { dispatchSheinStudioRecentBatchesFocus } from "@/lib/shein-studio/recent-batches-focus";
 import { SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT } from "@/lib/shein-studio/recent-batches-focus";
 
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
 describe("SheinStudioRecentBatchesDashboard", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    push.mockReset();
   });
 
   it("restores dashboard filter and selection context from local storage", async () => {
@@ -118,13 +125,10 @@ describe("SheinStudioRecentBatchesDashboard", () => {
   });
 
   it("shows state-driven primary actions and emits the selected action", () => {
-    const onSelectSummaryAction = vi.fn();
-
     render(
       <SheinStudioRecentBatchesDashboard
         onCreateBatch={() => undefined}
         onSelectSummary={() => undefined}
-        onSelectSummaryAction={onSelectSummaryAction}
         summaries={[
           {
             id: "batch-1",
@@ -174,10 +178,35 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByRole("button", { name: "查看任务" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "去创建任务" }));
-    expect(onSelectSummaryAction).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "batch-2" }),
-      "review",
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-2");
+  });
+
+  it("opens a recent batch on the dedicated batch route", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Retro Cherries",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 1,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+        ]}
+      />,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开批次" }));
+
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
   });
 
   it("filters recent batches by status buckets", () => {
@@ -990,14 +1019,11 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("当前只显示最近处理成功的批次。")).toBeInTheDocument();
   });
 
-  it("routes risk alert actions to the matching workbench step", () => {
-    const onSelectSummaryAction = vi.fn();
-
+  it("routes risk alert actions to the dedicated batch route", () => {
     render(
       <SheinStudioRecentBatchesDashboard
         onCreateBatch={() => undefined}
         onSelectSummary={() => undefined}
-        onSelectSummaryAction={onSelectSummaryAction}
         summaries={[
           {
             id: "batch-1",
@@ -1031,22 +1057,13 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "去生成区处理" }));
-    expect(onSelectSummaryAction).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "batch-1" }),
-      "generate",
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
 
     fireEvent.click(screen.getByRole("button", { name: "回到生成区重试" }));
-    expect(onSelectSummaryAction).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "batch-1" }),
-      "generate",
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
 
     fireEvent.click(screen.getByRole("button", { name: "去确认设计" }));
-    expect(onSelectSummaryAction).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "batch-1" }),
-      "review",
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
   });
 
   it("emits selected persisted batch ids for continue-generate mode", () => {

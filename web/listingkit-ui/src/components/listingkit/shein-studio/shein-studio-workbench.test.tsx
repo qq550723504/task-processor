@@ -15,6 +15,7 @@ const warmSDSBaselineForSelection = vi.fn();
 const ensureSheinStudioSession = vi.fn();
 const hydrateSDSVariantSelection = vi.fn();
 const listSheinStudioBatches = vi.fn();
+const getSheinStudioBatch = vi.fn();
 const loadSheinStudioDraft = vi.fn();
 const saveSheinStudioBatch = vi.fn();
 const saveSheinStudioDraftWithOptions = vi.fn();
@@ -22,10 +23,12 @@ const setActiveSheinStudioBatchId = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const useSDSGroupedCandidates = vi.fn();
+const push = vi.fn();
 let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/listing-kits/sds",
+  useRouter: () => ({ push }),
   useSearchParams: () => new URLSearchParams("step=generate"),
 }));
 
@@ -148,6 +151,7 @@ vi.mock("@/lib/api/sds-baseline", () => ({
 
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
   deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
+  getSheinStudioBatch: (...args: unknown[]) => getSheinStudioBatch(...args),
   listSheinStudioBatches: (...args: unknown[]) => listSheinStudioBatches(...args),
   loadSheinStudioDraft: (...args: unknown[]) => loadSheinStudioDraft(...args),
   saveSheinStudioBatch: (...args: unknown[]) => saveSheinStudioBatch(...args),
@@ -218,6 +222,7 @@ describe("SheinStudioWorkbench", () => {
       reason: "",
     });
     hydrateSDSVariantSelection.mockResolvedValue(selection);
+    getSheinStudioBatch.mockResolvedValue(null);
     listSheinStudioBatches.mockResolvedValue([]);
     loadSheinStudioDraft.mockResolvedValue(null);
     warmSDSBaselineForSelection.mockResolvedValue({
@@ -230,6 +235,7 @@ describe("SheinStudioWorkbench", () => {
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
     useSDSGroupedCandidates.mockReturnValue([]);
+    push.mockReset();
   });
 
   it("defaults to one SDS main image plus size references in hybrid and SDS modes", async () => {
@@ -404,6 +410,32 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("2 款商品")).toBeInTheDocument();
   });
 
+  it("loads a batch by id when mounted from the dedicated batch route", async () => {
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "Retro Cherries",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(getSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+    );
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+  });
+
   it("shows the recent batch homepage before a selection is chosen", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
@@ -464,7 +496,7 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
-  it("opens a recent batch directly at the review step from the homepage action", async () => {
+  it("routes a recent review-ready batch to the dedicated batch page", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -484,12 +516,10 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "去创建任务" }));
 
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
   });
 
-  it("opens a recent batch directly at the tasks step from the homepage action", async () => {
+  it("routes a recent batch with tasks to the dedicated batch page", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -509,9 +539,7 @@ describe("SheinStudioWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "查看任务" }));
 
-    await waitFor(() =>
-      expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
-    );
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
   });
 
   it("starts queue mode from homepage selection and loads the first batch", async () => {

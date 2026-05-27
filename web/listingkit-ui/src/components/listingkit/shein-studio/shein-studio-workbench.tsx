@@ -50,7 +50,6 @@ import {
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
-import { dispatchSheinStudioSectionFocus } from "@/lib/shein-studio/section-highlight";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
@@ -58,6 +57,7 @@ import { getCurrentSubscription } from "@/lib/api/subscription";
 import { useSDSGroupedCandidates } from "@/lib/query/use-sds-grouped-candidates";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import {
+  getSheinStudioBatch,
   listSheinStudioBatches,
   saveSheinStudioBatch,
 } from "@/lib/utils/shein-studio-batches";
@@ -72,13 +72,17 @@ import type {
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 
+type SheinStudioWorkbenchProps = {
+  activeStep?: SheinStudioStepKey;
+  initialBatchId?: string;
+  selection?: SDSProductVariantSelection;
+};
+
 export function SheinStudioWorkbench({
   activeStep = "generate",
+  initialBatchId,
   selection,
-}: {
-  activeStep?: SheinStudioStepKey;
-  selection?: SDSProductVariantSelection;
-}) {
+}: SheinStudioWorkbenchProps) {
   const [workbenchState, dispatchWorkbenchState] = useReducer(
     sheinStudioWorkbenchReducer,
     undefined,
@@ -692,6 +696,28 @@ export function SheinStudioWorkbench({
       setEffectiveStep,
       workbench: workbenchController,
     });
+  useEffect(() => {
+    if (!initialBatchId) {
+      return;
+    }
+    const batchId = initialBatchId;
+
+    let cancelled = false;
+
+    async function loadInitialBatch() {
+      const batch = await getSheinStudioBatch(batchId);
+      if (cancelled || !batch) {
+        return;
+      }
+      handleLoadBatch(batch);
+    }
+
+    void loadInitialBatch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleLoadBatch, initialBatchId]);
 
   const stepForRecentBatchAction = useCallback(
     (action?: "generate" | "review" | "tasks"): SheinStudioStepKey => {
@@ -1095,8 +1121,7 @@ export function SheinStudioWorkbench({
       <SheinStudioRecentBatchesDashboard
         onBulkUpdateStore={handleBulkUpdateRecentBatchStore}
         onCreateBatch={() => {
-          setEffectiveStep("select");
-          dispatchSheinStudioSectionFocus({ action: "product-picker" });
+          window.location.assign("/listing-kits/sds/new");
         }}
         onDeleteSummary={handleDeleteRecentBatchSummary}
         onDuplicateSummary={handleDuplicateRecentBatchSummary}

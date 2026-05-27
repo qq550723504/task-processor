@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export function SheinStudioPageShell({
   selection?: SDSProductVariantSelection;
   title?: string;
 } = {}) {
+  const router = useRouter();
   const searchParams = useLiveSearchParams();
   const liveKeyword = searchParams.get("keyword") ?? initialKeyword ?? "";
   const livePage = Number(searchParams.get("page") ?? initialPage ?? 1) || 1;
@@ -307,11 +309,7 @@ export function SheinStudioPageShell({
                     </Button>
                   ) : null}
                   <Button
-                    onClick={() =>
-                      dispatchSheinStudioSectionFocus({
-                        action: "product-picker",
-                      })
-                    }
+                    onClick={() => router.push("/listing-kits/sds/new")}
                     type="button"
                   >
                     {hasRecoverableBatches ? "新建批次后选品" : "开始新建批次并选品"}
