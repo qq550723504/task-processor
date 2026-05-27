@@ -168,7 +168,6 @@ describe("SDSProductBrowser", () => {
     await waitFor(() => {
       expect(saveSheinStudioBatch).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: "Placemat",
           prompt: "",
           selection: expect.objectContaining({
             variantId: 201,

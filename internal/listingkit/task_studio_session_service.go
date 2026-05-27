@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -281,6 +282,7 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 
 	var session *SheinStudioSession
 	var err error
+	isCreate := strings.TrimSpace(req.ID) == ""
 	if strings.TrimSpace(req.ID) != "" {
 		session, err = s.repo.GetSession(ctx, req.ID)
 		if err != nil {
@@ -297,6 +299,7 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 			RenderSizeImagesWithSDS: true,
 		}
 	}
+	existingBatchName := strings.TrimSpace(session.BatchName)
 
 	session.SelectionKey = buildStudioSelectionKey(req.Selection)
 	session.Status = deriveBatchStatus(req)
@@ -328,10 +331,18 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	session.SavedAsBatch = true
 	session.BatchName = strings.TrimSpace(req.BatchName)
 	if session.BatchName == "" {
-		session.BatchName = deriveStudioBatchName(req.Prompt)
+		switch {
+		case !isCreate && existingBatchName != "":
+			session.BatchName = existingBatchName
+		default:
+			session.BatchName, err = s.nextTenantBatchName(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	if strings.TrimSpace(req.ID) == "" {
+	if isCreate {
 		if err := s.repo.CreateSession(ctx, session); err != nil {
 			return nil, err
 		}
@@ -342,6 +353,33 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 		return nil, err
 	}
 	return s.loadStudioSessionDetail(ctx, session)
+}
+
+func (s *taskStudioSessionService) nextTenantBatchName(ctx context.Context) (string, error) {
+	names, err := s.repo.ListTenantBatchNames(ctx)
+	if err != nil {
+		return "", err
+	}
+	maxBatchNumber := 0
+	for _, name := range names {
+		nextValue, ok := parseStudioBatchNumber(name)
+		if ok && nextValue > maxBatchNumber {
+			maxBatchNumber = nextValue
+		}
+	}
+	return fmt.Sprintf("批次%d", maxBatchNumber+1), nil
+}
+
+func parseStudioBatchNumber(name string) (int, bool) {
+	trimmed := strings.TrimSpace(name)
+	if !strings.HasPrefix(trimmed, "批次") {
+		return 0, false
+	}
+	value, err := strconv.Atoi(strings.TrimPrefix(trimmed, "批次"))
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 func (s *taskStudioSessionService) DeleteStudioBatch(ctx context.Context, batchID string) error {

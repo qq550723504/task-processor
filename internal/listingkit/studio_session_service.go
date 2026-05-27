@@ -86,17 +86,6 @@ func buildStudioSelectionKey(selection *SheinStudioSelection) string {
 	)
 }
 
-func deriveStudioBatchName(prompt string) string {
-	trimmed := strings.TrimSpace(prompt)
-	if trimmed == "" {
-		return "未命名批次"
-	}
-	if len([]rune(trimmed)) > 36 {
-		return string([]rune(trimmed)[:36]) + "..."
-	}
-	return trimmed
-}
-
 func deriveBatchStatus(req *UpsertStudioBatchRequest) SheinStudioSessionStatus {
 	switch {
 	case len(req.CreatedTasks) > 0:

@@ -277,6 +277,126 @@ describe("shein studio storage api", () => {
     expect(batches[0]?.prompt).toBe("retro cherries");
   });
 
+  it("does not synthesize a default batch name on create", async () => {
+    listSheinStudioSessionBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "批次1",
+        prompt: "legacy one",
+        styleCount: "1",
+        sheinStoreId: "",
+        selectionVariantId: 100,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 100,
+          prototypeGroupId: 200,
+          layerId: "layer-1",
+          productName: "tee",
+          variantLabel: "M / black",
+        },
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-04-24T00:00:00.000Z",
+      },
+      {
+        id: "batch-2",
+        name: "节日专题",
+        prompt: "legacy two",
+        styleCount: "1",
+        sheinStoreId: "",
+        selectionVariantId: 101,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 101,
+          prototypeGroupId: 200,
+          layerId: "layer-2",
+          productName: "hoodie",
+          variantLabel: "L / white",
+        },
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-04-24T00:00:00.000Z",
+      },
+      {
+        id: "batch-3",
+        name: "批次7",
+        prompt: "legacy seven",
+        styleCount: "1",
+        sheinStoreId: "",
+        selectionVariantId: 102,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 102,
+          prototypeGroupId: 200,
+          layerId: "layer-3",
+          productName: "clock",
+          variantLabel: "One size / black",
+        },
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-04-24T00:00:00.000Z",
+      },
+    ]);
+    upsertSheinStudioSessionBatch.mockResolvedValue({
+      id: "batch-8",
+      name: "批次8",
+      prompt: "",
+      styleCount: "1",
+      sheinStoreId: "",
+      selectionVariantId: 100,
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-24T00:00:00.000Z",
+    });
+
+    await saveSheinStudioBatch({
+      prompt: "",
+      styleCount: "1",
+      sheinStoreId: "",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+
+    expect(upsertSheinStudioSessionBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "",
+      }),
+    );
+    expect(upsertSheinStudioSessionBatch).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        name: expect.any(String),
+      }),
+    );
+  });
+
   it("saves draft through server api", async () => {
     getCachedStudioSessionId.mockReturnValue(undefined);
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });

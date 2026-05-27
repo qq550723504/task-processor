@@ -209,7 +209,7 @@ export async function saveSheinStudioBatch(
   const saved = normalizeBatch(
     await upsertSheinStudioSessionBatch({
       id: input.id,
-      name: input.name,
+      name: input.name?.trim() || undefined,
       prompt: input.prompt,
       styleCount: input.styleCount,
       variationIntensity: input.variationIntensity,

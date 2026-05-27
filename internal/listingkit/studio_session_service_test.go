@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit/tenantctx"
 )
 
 type studioSessionRepoStub struct {
@@ -29,7 +30,13 @@ func (r *studioSessionRepoStub) FindLatestSessionBySelectionKey(_ context.Contex
 	return nil, nil
 }
 
-func (r *studioSessionRepoStub) CreateSession(_ context.Context, session *SheinStudioSession) error {
+func (r *studioSessionRepoStub) CreateSession(ctx context.Context, session *SheinStudioSession) error {
+	if session.TenantID == "" {
+		session.TenantID = tenantctx.TenantIDFromContext(ctx)
+	}
+	if session.UserID == "" {
+		session.UserID = RequestUserIDFromContext(ctx)
+	}
 	r.sessions[session.ID] = cloneSession(session)
 	return nil
 }
@@ -42,7 +49,13 @@ func (r *studioSessionRepoStub) GetSession(_ context.Context, sessionID string) 
 	return cloneSession(session), nil
 }
 
-func (r *studioSessionRepoStub) UpdateSession(_ context.Context, session *SheinStudioSession) error {
+func (r *studioSessionRepoStub) UpdateSession(ctx context.Context, session *SheinStudioSession) error {
+	if session.TenantID == "" {
+		session.TenantID = tenantctx.TenantIDFromContext(ctx)
+	}
+	if session.UserID == "" {
+		session.UserID = RequestUserIDFromContext(ctx)
+	}
 	r.sessions[session.ID] = cloneSession(session)
 	return nil
 }
@@ -102,6 +115,18 @@ func (r *studioSessionRepoStub) ListBatchSessions(_ context.Context, limit int) 
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+func (r *studioSessionRepoStub) ListTenantBatchNames(ctx context.Context) ([]string, error) {
+	tenantID := tenantctx.TenantIDFromContext(ctx)
+	names := make([]string, 0, len(r.sessions))
+	for _, session := range r.sessions {
+		if !session.SavedAsBatch || !tenantctx.MatchesTenant(session.TenantID, tenantID) {
+			continue
+		}
+		names = append(names, session.BatchName)
+	}
+	return names, nil
 }
 
 func (r *studioSessionRepoStub) DeleteSession(_ context.Context, sessionID string) error {
@@ -414,6 +439,47 @@ func TestStudioSessionServiceDeleteBatchRemovesSession(t *testing.T) {
 	}
 	if err != ErrStudioSessionNotFound {
 		t.Fatalf("delete batch error = %v, want ErrStudioSessionNotFound", err)
+	}
+}
+
+func TestStudioSessionServiceAssignsTenantScopedSequentialBatchNames(t *testing.T) {
+	restoreOwnerScope := SetOwnerScopeRequiredForTesting(true)
+	defer restoreOwnerScope()
+
+	svc := newStudioSessionTestService()
+	baseTenantA := WithTenantID(context.Background(), "tenant-a")
+	baseTenantB := WithTenantID(context.Background(), "tenant-b")
+	ctxTenantAUserA := openaiclient.WithIdentity(baseTenantA, openaiclient.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	ctxTenantAUserB := openaiclient.WithIdentity(baseTenantA, openaiclient.Identity{TenantID: "tenant-a", UserID: "user-b"})
+	ctxTenantBUserC := openaiclient.WithIdentity(baseTenantB, openaiclient.Identity{TenantID: "tenant-b", UserID: "user-c"})
+
+	createBatch := func(t *testing.T, ctx context.Context, name string) {
+		t.Helper()
+		if _, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+			Prompt:     "retro cherries",
+			StyleCount: "1",
+			Selection:  testStudioSelection(),
+			BatchName:  name,
+		}); err != nil {
+			t.Fatalf("upsert batch %q: %v", name, err)
+		}
+	}
+
+	createBatch(t, ctxTenantAUserA, "批次1")
+	createBatch(t, ctxTenantAUserA, "节日专题")
+	createBatch(t, ctxTenantAUserA, "批次7")
+	createBatch(t, ctxTenantBUserC, "批次99")
+
+	detail, err := svc.UpsertStudioBatch(ctxTenantAUserB, &UpsertStudioBatchRequest{
+		Prompt:     "fresh batch",
+		StyleCount: "1",
+		Selection:  testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("upsert sequential batch: %v", err)
+	}
+	if detail.Session.BatchName != "批次8" {
+		t.Fatalf("batch name = %q, want 批次8", detail.Session.BatchName)
 	}
 }
 

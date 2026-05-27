@@ -206,6 +206,17 @@ func (r *GormRepository) ListBatchSessions(ctx context.Context, limit int) ([]li
 	return sessions, nil
 }
 
+func (r *GormRepository) ListTenantBatchNames(ctx context.Context) ([]string, error) {
+	names := make([]string, 0)
+	if err := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id").
+		Model(&listingkit.SheinStudioSession{}).
+		Where("saved_as_batch = ?", true).
+		Pluck("batch_name", &names).Error; err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
 func applySessionAccessScope(db *gorm.DB, ctx context.Context, tenantColumn string, userColumn string) *gorm.DB {
 	db = applyTenantScope(db, ctx, tenantColumn)
 	if !listingkit.OwnerScopeEnabled() || strings.TrimSpace(userColumn) == "" {

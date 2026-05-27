@@ -12,4 +12,5 @@ type StudioSessionRepository interface {
 	ListSessionDesigns(ctx context.Context, sessionID string) ([]SheinStudioDesign, error)
 	ListGalleryItems(ctx context.Context, limit int) ([]SheinStudioSessionGalleryItem, error)
 	ListBatchSessions(ctx context.Context, limit int) ([]SheinStudioSession, error)
+	ListTenantBatchNames(ctx context.Context) ([]string, error)
 }

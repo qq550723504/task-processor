@@ -512,7 +512,6 @@ export function SDSProductBrowser({
   async function createBatchFromSelection(selection: SDSProductVariantSelection) {
     const selectionId = buildGroupedSDSSelectionID(selection);
     return saveSheinStudioBatch({
-      name: selection.productName,
       prompt: "",
       styleCount: "1",
       variationIntensity: "medium",
