@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -91,9 +92,12 @@ export function SheinStudioWorkbench({
   initialBatchId,
   selection,
 }: SheinStudioWorkbenchProps) {
+  const router = useRouter();
   const [isDedicatedBatchLoaded, setIsDedicatedBatchLoaded] = useState(
     () => !initialBatchId,
   );
+  const [isEditingCurrentBatchName, setIsEditingCurrentBatchName] = useState(false);
+  const [currentBatchDraftName, setCurrentBatchDraftName] = useState("");
   const [workbenchState, dispatchWorkbenchState] = useReducer(
     sheinStudioWorkbenchReducer,
     undefined,
@@ -435,6 +439,13 @@ export function SheinStudioWorkbench({
   const currentQueuedBatch = useMemo(
     () => savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null,
     [currentQueuedBatchId, savedBatches],
+  );
+  const currentDedicatedBatch = useMemo(
+    () =>
+      initialBatchId
+        ? savedBatches.find((item) => item.id === initialBatchId) ?? null
+        : null,
+    [initialBatchId, savedBatches],
   );
   const batchQueueGuidance = useMemo(() => {
     if (batchQueueMode === "generate") {
@@ -963,10 +974,64 @@ export function SheinStudioWorkbench({
     }),
     [],
   );
+  const buildSaveInputForCurrentDedicatedBatch = useCallback(
+    (name?: string) => ({
+      ...buildDraftInput(),
+      id: initialBatchId,
+      name: name?.trim() || undefined,
+    }),
+    [buildDraftInput, initialBatchId],
+  );
 
   const refreshSavedBatches = useCallback(async () => {
     workbenchController.setField("savedBatches", await listSheinStudioBatches());
   }, [workbenchController]);
+
+  useEffect(() => {
+    if (!isEditingCurrentBatchName) {
+      setCurrentBatchDraftName(currentDedicatedBatch?.name ?? "");
+    }
+  }, [currentDedicatedBatch?.name, isEditingCurrentBatchName]);
+
+  const handleRenameCurrentDedicatedBatch = useCallback(async () => {
+    if (!initialBatchId) {
+      return;
+    }
+    const nextName = currentBatchDraftName.trim();
+    if (!nextName) {
+      setQueueMessage("批次名称不能为空。");
+      return;
+    }
+    const saved = await saveSheinStudioBatch(
+      buildSaveInputForCurrentDedicatedBatch(nextName),
+      { makeActive: false },
+    );
+    if (!saved) {
+      setQueueMessage("批次重命名失败。");
+      return;
+    }
+    setIsEditingCurrentBatchName(false);
+    setCurrentBatchDraftName(saved.name);
+    setQueueMessage(`已重命名为：${saved.name}`);
+    await refreshSavedBatches();
+  }, [
+    buildSaveInputForCurrentDedicatedBatch,
+    currentBatchDraftName,
+    initialBatchId,
+    refreshSavedBatches,
+    setQueueMessage,
+  ]);
+
+  const handleDeleteCurrentDedicatedBatch = useCallback(async () => {
+    if (!initialBatchId) {
+      return;
+    }
+    if (!window.confirm("确认删除当前批次吗？删除后无法恢复。")) {
+      return;
+    }
+    await handleDeleteBatch(initialBatchId);
+    router.push("/listing-kits/sds");
+  }, [handleDeleteBatch, initialBatchId, router]);
 
   const handleRenameRecentBatchSummary = useCallback(
     async (summary: (typeof recentBatchSummaries)[number], name: string) => {
@@ -1319,6 +1384,73 @@ export function SheinStudioWorkbench({
       {queueMessage ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
           {queueMessage}
+        </div>
+      ) : null}
+
+      {initialBatchId ? (
+        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                当前批次
+              </p>
+              {isEditingCurrentBatchName ? (
+                <label className="block">
+                  <span className="sr-only">当前批次名称</span>
+                  <input
+                    aria-label="当前批次名称"
+                    className="w-full min-w-[280px] rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+                    onChange={(event) => setCurrentBatchDraftName(event.target.value)}
+                    value={currentBatchDraftName}
+                  />
+                </label>
+              ) : (
+                <p className="text-lg font-semibold text-zinc-950">
+                  {currentDedicatedBatch?.name || "未命名批次"}
+                </p>
+              )}
+              <p className="text-sm text-zinc-600">
+                在这里可以管理当前这一个批次；批量管理仍然保留在最近批次首页。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {isEditingCurrentBatchName ? (
+                <>
+                  <Button onClick={() => void handleRenameCurrentDedicatedBatch()} size="sm" type="button">
+                    保存名称
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsEditingCurrentBatchName(false);
+                      setCurrentBatchDraftName(currentDedicatedBatch?.name ?? "");
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    取消
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  onClick={() => setIsEditingCurrentBatchName(true)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  重命名当前批次
+                </Button>
+              )}
+              <Button
+                onClick={() => void handleDeleteCurrentDedicatedBatch()}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                删除当前批次
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
 

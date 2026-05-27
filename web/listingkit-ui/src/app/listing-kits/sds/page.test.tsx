@@ -5,6 +5,9 @@ import ListingKitSDSPage from "@/app/listing-kits/sds/page";
 
 const push = vi.fn();
 const listSheinStudioBatches = vi.fn();
+const getSheinStudioBatch = vi.fn();
+const saveSheinStudioBatch = vi.fn();
+const deleteSheinStudioBatch = vi.fn();
 const buildRecentBatchSummaries = vi.fn();
 const loadLocalSheinStudioDraftSnapshot = vi.fn();
 const scrollIntoView = vi.fn();
@@ -16,6 +19,9 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
   listSheinStudioBatches: (...args: unknown[]) => listSheinStudioBatches(...args),
+  getSheinStudioBatch: (...args: unknown[]) => getSheinStudioBatch(...args),
+  saveSheinStudioBatch: (...args: unknown[]) => saveSheinStudioBatch(...args),
+  deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
 }));
 
 vi.mock("@/lib/shein-studio/recent-batch-summaries", () => ({
@@ -35,15 +41,38 @@ vi.mock(
   "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard",
   () => ({
     SheinStudioRecentBatchesDashboard: ({
+      onDeleteSummary,
+      onDuplicateSummary,
+      onRenameSummary,
       summaries,
     }: {
+      onDeleteSummary?: (summary: { id: string; title: string }) => void;
+      onDuplicateSummary?: (summary: { id: string; title: string }) => void;
+      onRenameSummary?: (summary: { id: string; title: string }, name: string) => void;
       summaries: Array<{ id: string; title: string }>;
     }) => (
       <section>
         <h2>最近批次</h2>
         <ul>
           {summaries.map((summary) => (
-            <li key={summary.id}>{summary.title}</li>
+            <li key={summary.id}>
+              <span>{summary.title}</span>
+              {onRenameSummary ? (
+                <button onClick={() => onRenameSummary(summary, `${summary.title} Renamed`)}>
+                  重命名-{summary.id}
+                </button>
+              ) : null}
+              {onDuplicateSummary ? (
+                <button onClick={() => onDuplicateSummary(summary)}>
+                  复制-{summary.id}
+                </button>
+              ) : null}
+              {onDeleteSummary ? (
+                <button onClick={() => onDeleteSummary(summary)}>
+                  删除-{summary.id}
+                </button>
+              ) : null}
+            </li>
           ))}
         </ul>
       </section>
@@ -55,6 +84,9 @@ describe("/listing-kits/sds page", () => {
   beforeEach(() => {
     push.mockReset();
     listSheinStudioBatches.mockReset();
+    getSheinStudioBatch.mockReset();
+    saveSheinStudioBatch.mockReset();
+    deleteSheinStudioBatch.mockReset();
     buildRecentBatchSummaries.mockReset();
     loadLocalSheinStudioDraftSnapshot.mockReset();
     scrollIntoView.mockReset();
@@ -64,6 +96,33 @@ describe("/listing-kits/sds page", () => {
     });
 
     listSheinStudioBatches.mockResolvedValue([]);
+    getSheinStudioBatch.mockImplementation(async (id: string) => ({
+      id,
+      name: id === "batch-4" ? "Batch Four" : "Batch",
+      prompt: "prompt",
+      styleCount: "1",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: false,
+      sheinStoreId: "",
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 123,
+      selection: undefined,
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-27T01:23:00.000Z",
+    }));
+    saveSheinStudioBatch.mockResolvedValue(null);
+    deleteSheinStudioBatch.mockResolvedValue(undefined);
     loadLocalSheinStudioDraftSnapshot.mockReturnValue(null);
     buildRecentBatchSummaries.mockReturnValue([
       {
@@ -195,6 +254,38 @@ describe("/listing-kits/sds page", () => {
     expect(
       screen.getByRole("button", { name: "返回首页摘要（最近 3 个）" }),
     ).toBeInTheDocument();
+  });
+
+  it("wires rename and delete actions into the full recent batches dashboard", async () => {
+    saveSheinStudioBatch.mockResolvedValue({
+      id: "batch-4",
+      name: "Batch Four Renamed",
+    });
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Four")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部批次" }));
+    fireEvent.click(screen.getByRole("button", { name: "重命名-batch-4" }));
+
+    await waitFor(() => {
+      expect(getSheinStudioBatch).toHaveBeenCalledWith("batch-4");
+    });
+    expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "batch-4",
+        name: "Batch Four Renamed",
+      }),
+      { makeActive: false },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "删除-batch-4" }));
+    await waitFor(() => {
+      expect(deleteSheinStudioBatch).toHaveBeenCalledWith("batch-4");
+    });
   });
 
   it("renders a lighter empty recent-batches state when there is nothing to continue", async () => {

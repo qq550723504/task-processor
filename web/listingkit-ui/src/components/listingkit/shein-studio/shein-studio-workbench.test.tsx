@@ -584,6 +584,110 @@ describe("SheinStudioWorkbench", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lets the dedicated batch page rename the current batch without losing current draft state", async () => {
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "批次1",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+    saveSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次9",
+      prompt: "updated prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:10:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    const promptInput = await screen.findByLabelText("prompt");
+    fireEvent.change(promptInput, { target: { value: "updated prompt" } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "重命名当前批次" }));
+    const nameInput = await screen.findByLabelText("当前批次名称");
+    fireEvent.change(nameInput, { target: { value: "批次9" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+
+    await waitFor(() =>
+      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "batch-1",
+          name: "批次9",
+          prompt: "updated prompt",
+        }),
+        { makeActive: false },
+      ),
+    );
+    expect(await screen.findByText("已重命名为：批次9")).toBeInTheDocument();
+  });
+
+  it("lets the dedicated batch page delete the current batch and return to the homepage", async () => {
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "批次1",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "删除当前批次" }));
+
+    await waitFor(() => expect(deleteSheinStudioBatch).toHaveBeenCalledWith("batch-1"));
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds");
+  });
+
   it("shows the recent batch homepage before a selection is chosen", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {

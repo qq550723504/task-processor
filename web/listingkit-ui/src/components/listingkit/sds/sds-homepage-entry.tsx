@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button";
 import { loadLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
-import { listSheinStudioBatches } from "@/lib/utils/shein-studio-batches";
+import {
+  deleteSheinStudioBatch,
+  getSheinStudioBatch,
+  listSheinStudioBatches,
+  saveSheinStudioBatch,
+} from "@/lib/utils/shein-studio-batches";
 
 function pickRecommendedRiskLabel(summaries: SheinStudioRecentBatchSummary[]) {
   return (
@@ -35,6 +40,15 @@ export function SdsHomepageEntry() {
   const [summaries, setSummaries] = useState<SheinStudioRecentBatchSummary[]>([]);
   const [showAllBatches, setShowAllBatches] = useState(false);
   const fullDashboardHeadingRef = useRef<HTMLHeadingElement | null>(null);
+
+  const refreshSummaries = useCallback(async () => {
+    const batches = await listSheinStudioBatches();
+    setSummaries(
+      buildRecentBatchSummaries(batches, {
+        draft: loadLocalSheinStudioDraftSnapshot(),
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +137,64 @@ export function SdsHomepageEntry() {
   function handleToggleAllBatches() {
     setShowAllBatches((current) => !current);
   }
+
+  const handleRenameSummary = useCallback(
+    async (summary: SheinStudioRecentBatchSummary, name: string) => {
+      if (summary.source !== "batch") {
+        return;
+      }
+      const nextName = name.trim();
+      if (!nextName) {
+        return;
+      }
+      const batch = await getSheinStudioBatch(summary.id);
+      if (!batch) {
+        return;
+      }
+      await saveSheinStudioBatch(
+        {
+          ...batch,
+          name: nextName,
+        },
+        { makeActive: false },
+      );
+      await refreshSummaries();
+    },
+    [refreshSummaries],
+  );
+
+  const handleDuplicateSummary = useCallback(
+    async (summary: SheinStudioRecentBatchSummary) => {
+      if (summary.source !== "batch") {
+        return;
+      }
+      const batch = await getSheinStudioBatch(summary.id);
+      if (!batch) {
+        return;
+      }
+      await saveSheinStudioBatch(
+        {
+          ...batch,
+          id: undefined,
+          name: `${batch.name} 副本`,
+        },
+        { makeActive: false },
+      );
+      await refreshSummaries();
+    },
+    [refreshSummaries],
+  );
+
+  const handleDeleteSummary = useCallback(
+    async (summary: SheinStudioRecentBatchSummary) => {
+      if (summary.source !== "batch") {
+        return;
+      }
+      await deleteSheinStudioBatch(summary.id);
+      await refreshSummaries();
+    },
+    [refreshSummaries],
+  );
 
   return (
     <div className="flex-1 overflow-hidden bg-zinc-50">
@@ -263,6 +335,9 @@ export function SdsHomepageEntry() {
               </div>
               <SheinStudioRecentBatchesDashboard
                 onCreateBatch={handleCreateNew}
+                onDeleteSummary={handleDeleteSummary}
+                onDuplicateSummary={handleDuplicateSummary}
+                onRenameSummary={handleRenameSummary}
                 onSelectSummary={handleOpenSummary}
                 onSelectSummaryAction={handleOpenSummary}
                 summaries={summaries}
