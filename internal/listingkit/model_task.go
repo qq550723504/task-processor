@@ -41,6 +41,7 @@ type TaskListQuery struct {
 	SheinWarningKey     string `form:"shein_warning_key" json:"shein_warning_key,omitempty"`
 	SheinWorkQueue      string `form:"shein_work_queue" json:"shein_work_queue,omitempty"`
 	SheinActionQueue    string `form:"shein_action_queue" json:"shein_action_queue,omitempty"`
+	IncludeSummary      bool   `form:"include_summary" json:"include_summary,omitempty"`
 	Page                int    `form:"page" json:"page,omitempty"`
 	PageSize            int    `form:"page_size" json:"page_size,omitempty"`
 }

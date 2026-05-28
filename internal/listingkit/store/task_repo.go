@@ -100,31 +100,14 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 	}
 
 	var total int64
-	if !listingkit.OwnerScopeEnabled() || listingkit.RequestUserIDFromContext(ctx) == "" {
-		if err := db.Count(&total).Error; err != nil {
-			return nil, 0, err
-		}
-		var tasks []listingkit.Task
-		if err := db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
-			return nil, 0, err
-		}
-		return tasks, total, nil
-	}
 	var tasks []listingkit.Task
-	if err := db.Order("created_at DESC").Find(&tasks).Error; err != nil {
+	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	filtered := filterTasksForUser(ctx, tasks)
-	total = int64(len(filtered))
-	start := (page - 1) * pageSize
-	if start >= len(filtered) {
-		return []listingkit.Task{}, total, nil
+	if err := db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
+		return nil, 0, err
 	}
-	end := start + pageSize
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-	return filtered[start:end], total, nil
+	return tasks, total, nil
 }
 
 func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, error) {
@@ -428,6 +411,10 @@ func (r *taskRepository) SaveSDSBaselineCache(ctx context.Context, entry *listin
 				"source_task_id":         cloned.SourceTaskID,
 				"identity":               cloned.Identity,
 				"canonical_product_base": cloned.CanonicalProductBase,
+				"validation_status":      cloned.ValidationStatus,
+				"validation_reason_code": cloned.ValidationReasonCode,
+				"validation_reason":      cloned.ValidationReason,
+				"validated_at":           cloned.ValidatedAt,
 				"updated_at":             time.Now(),
 			}),
 		}).
@@ -481,7 +468,31 @@ func applyTaskAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 	if userID == "" {
 		return db
 	}
-	return db.Where("user_id = ?", userID)
+	return applyTaskUserScope(db, userID)
+}
+
+func applyTaskUserScope(db *gorm.DB, userID string) *gorm.DB {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return db
+	}
+
+	switch db.Dialector.Name() {
+	case "postgres":
+		return db.Where(
+			"(BTRIM(COALESCE(user_id, '')) = ? OR (BTRIM(COALESCE(user_id, '')) = '' AND request IS NOT NULL AND request::jsonb ->> 'user_id' = ?))",
+			userID,
+			userID,
+		)
+	case "sqlite":
+		return db.Where(
+			"(TRIM(COALESCE(user_id, '')) = ? OR (TRIM(COALESCE(user_id, '')) = '' AND json_extract(request, '$.user_id') = ?))",
+			userID,
+			userID,
+		)
+	default:
+		return db.Where("user_id = ?", userID)
+	}
 }
 
 func storedCanonicalFingerprint(ctx context.Context, fingerprint string) string {

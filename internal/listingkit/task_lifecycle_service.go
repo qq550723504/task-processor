@@ -10,34 +10,37 @@ import (
 )
 
 type taskLifecycleServiceConfig struct {
-	repo                  Repository
-	requestDefaults       func() generateRequestDefaults
-	taskSubmitter         func() TaskSubmitter
-	standardWorkflow      func() (StandardProductWorkflowClient, bool)
-	processListingKit     func(context.Context, *Task) (*ListingKitResult, error)
-	resolveStoreSelection func(context.Context, *Task) (*sheinStoreSelection, error)
-	buildResultPayload    func(context.Context, *Task) (*ListingKitResult, error)
+	repo                   Repository
+	sdsLoginStatusProvider SDSLoginStatusProvider
+	requestDefaults        func() generateRequestDefaults
+	taskSubmitter          func() TaskSubmitter
+	standardWorkflow       func() (StandardProductWorkflowClient, bool)
+	processListingKit      func(context.Context, *Task) (*ListingKitResult, error)
+	resolveStoreSelection  func(context.Context, *Task) (*sheinStoreSelection, error)
+	buildResultPayload     func(context.Context, *Task) (*ListingKitResult, error)
 }
 
 type taskLifecycleService struct {
-	repo                  Repository
-	requestDefaults       func() generateRequestDefaults
-	taskSubmitter         func() TaskSubmitter
-	standardWorkflow      func() (StandardProductWorkflowClient, bool)
-	processListingKit     func(context.Context, *Task) (*ListingKitResult, error)
-	resolveStoreSelection func(context.Context, *Task) (*sheinStoreSelection, error)
-	buildResultPayload    func(context.Context, *Task) (*ListingKitResult, error)
+	repo                   Repository
+	sdsLoginStatusProvider SDSLoginStatusProvider
+	requestDefaults        func() generateRequestDefaults
+	taskSubmitter          func() TaskSubmitter
+	standardWorkflow       func() (StandardProductWorkflowClient, bool)
+	processListingKit      func(context.Context, *Task) (*ListingKitResult, error)
+	resolveStoreSelection  func(context.Context, *Task) (*sheinStoreSelection, error)
+	buildResultPayload     func(context.Context, *Task) (*ListingKitResult, error)
 }
 
 func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleService {
 	return &taskLifecycleService{
-		repo:                  config.repo,
-		requestDefaults:       config.requestDefaults,
-		taskSubmitter:         config.taskSubmitter,
-		standardWorkflow:      config.standardWorkflow,
-		processListingKit:     config.processListingKit,
-		resolveStoreSelection: config.resolveStoreSelection,
-		buildResultPayload:    config.buildResultPayload,
+		repo:                   config.repo,
+		sdsLoginStatusProvider: config.sdsLoginStatusProvider,
+		requestDefaults:        config.requestDefaults,
+		taskSubmitter:          config.taskSubmitter,
+		standardWorkflow:       config.standardWorkflow,
+		processListingKit:      config.processListingKit,
+		resolveStoreSelection:  config.resolveStoreSelection,
+		buildResultPayload:     config.buildResultPayload,
 	}
 }
 
@@ -74,7 +77,10 @@ func (s *taskLifecycleService) GetSDSBaselineReadiness(ctx context.Context, quer
 	if query.TenantID != "" {
 		ctx = WithTenantID(ctx, query.TenantID)
 	}
-	return (&sdsBaselineService{repo: s.repo}).GetReadiness(ctx, query)
+	return (&sdsBaselineService{
+		repo:                   s.repo,
+		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
+	}).GetReadiness(ctx, query)
 }
 
 func (s *taskLifecycleService) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {
@@ -92,12 +98,15 @@ func (s *taskLifecycleService) ListTasks(ctx context.Context, query *TaskListQue
 		items = append(items, buildTaskListItem(&tasks[i]))
 	}
 	var summary *TaskListSummary
-	if source, ok := s.repo.(TaskListSummarySource); ok {
-		summaryTasks, summaryErr := source.ListTaskSummaryTasks(ctx, summaryTaskListQuery(normalized))
-		if summaryErr != nil {
-			return nil, summaryErr
+	if normalized.IncludeSummary {
+		source, ok := s.repo.(TaskListSummarySource)
+		if ok {
+			summaryTasks, summaryErr := source.ListTaskSummaryTasks(ctx, summaryTaskListQuery(normalized))
+			if summaryErr != nil {
+				return nil, summaryErr
+			}
+			summary = buildTaskListSummary(summaryTasks)
 		}
-		summary = buildTaskListSummary(summaryTasks)
 	}
 	return &TaskListPage{
 		Page:     normalized.Page,

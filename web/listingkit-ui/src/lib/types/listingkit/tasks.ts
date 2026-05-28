@@ -125,6 +125,7 @@ export type ListingKitTaskListQuery = {
   shein_warning_key?: string;
   shein_work_queue?: string;
   shein_action_queue?: string;
+  include_summary?: boolean;
   page?: number;
   page_size?: number;
 };

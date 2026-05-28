@@ -383,6 +383,42 @@ func TestTaskRepositoryOwnerScopeFiltersTasksByUser(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryOwnerScopeIncludesLegacyRequestUserIDTasks(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	baseCtx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	userCtx := openaiclient.WithIdentity(baseCtx, openaiclient.Identity{TenantID: "tenant-a", UserID: "legacy-user"})
+
+	legacyTask := makeTaskRepoFixture("task-legacy", time.Now().UTC(), []string{"shein"}, "published", "")
+	legacyTask.UserID = ""
+	legacyTask.Request.UserID = "legacy-user"
+	otherTask := makeTaskRepoFixture("task-other", time.Now().UTC().Add(-time.Minute), []string{"shein"}, "published", "")
+	otherTask.UserID = ""
+	otherTask.Request.UserID = "someone-else"
+	for _, task := range []*listingkit.Task{legacyTask, otherTask} {
+		if err := repo.CreateTask(baseCtx, task); err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	items, total, err := repo.ListTasks(userCtx, &listingkit.TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != "task-legacy" {
+		t.Fatalf("owner scoped legacy tasks = %+v total=%d, want only task-legacy", items, total)
+	}
+}
+
 func TestTaskRepositoryPlatformAdminBypassesOwnerScope(t *testing.T) {
 	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
 

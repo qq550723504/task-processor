@@ -10,8 +10,10 @@ import (
 )
 
 type studioSessionRepoStub struct {
-	sessions map[string]*SheinStudioSession
-	designs  map[string][]SheinStudioDesign
+	sessions           map[string]*SheinStudioSession
+	designs            map[string][]SheinStudioDesign
+	countDesignsCalls  int
+	listDesignsCalls   int
 }
 
 func newStudioSessionRepoStub() *studioSessionRepoStub {
@@ -93,7 +95,17 @@ func (r *studioSessionRepoStub) ReplaceDesigns(_ context.Context, sessionID stri
 }
 
 func (r *studioSessionRepoStub) ListSessionDesigns(_ context.Context, sessionID string) ([]SheinStudioDesign, error) {
+	r.listDesignsCalls++
 	return slices.Clone(r.designs[sessionID]), nil
+}
+
+func (r *studioSessionRepoStub) CountSessionDesignsBySessionIDs(_ context.Context, sessionIDs []string) (map[string]int, error) {
+	r.countDesignsCalls++
+	counts := make(map[string]int, len(sessionIDs))
+	for _, sessionID := range sessionIDs {
+		counts[sessionID] = len(r.designs[sessionID])
+	}
+	return counts, nil
 }
 
 func (r *studioSessionRepoStub) ListGalleryItems(_ context.Context, _ int) ([]SheinStudioSessionGalleryItem, error) {
@@ -398,6 +410,14 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	if list.Items[0].ID != detail.Session.ID {
 		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Session.ID)
 	}
+	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
+	listDesignCallsBeforeGetBatch := repo.listDesignsCalls
+	if repo.countDesignsCalls != 1 {
+		t.Fatalf("count design calls = %d, want 1", repo.countDesignsCalls)
+	}
+	if listDesignCallsBeforeGetBatch != 1 {
+		t.Fatalf("list design calls before get batch = %d, want 1", listDesignCallsBeforeGetBatch)
+	}
 
 	loaded, err := svc.GetStudioBatch(ctx, detail.Session.ID)
 	if err != nil {
@@ -411,6 +431,13 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	}
 	if len(loaded.Session.GroupedSelections) != 1 || loaded.Session.GroupedSelections[0].SheinStoreID != "store-9" {
 		t.Fatalf("loaded grouped selections = %#v, want store-9", loaded.Session.GroupedSelections)
+	}
+	if repo.listDesignsCalls != listDesignCallsBeforeGetBatch+1 {
+		t.Fatalf(
+			"list design calls after get batch = %d, want %d",
+			repo.listDesignsCalls,
+			listDesignCallsBeforeGetBatch+1,
+		)
 	}
 }
 

@@ -108,6 +108,34 @@ func (r *GormRepository) ListSessionDesigns(ctx context.Context, sessionID strin
 	return designs, nil
 }
 
+func (r *GormRepository) CountSessionDesignsBySessionIDs(ctx context.Context, sessionIDs []string) (map[string]int, error) {
+	counts := make(map[string]int, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return counts, nil
+	}
+
+	rows := make([]struct {
+		SessionID string
+		Count     int
+	}, 0, len(sessionIDs))
+	if err := applySessionAccessScope(r.db.WithContext(ctx), ctx, "tenant_id", "").
+		Model(&listingkit.SheinStudioDesign{}).
+		Select("session_id, COUNT(*) AS count").
+		Where("session_id IN ?", sessionIDs).
+		Group("session_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, sessionID := range sessionIDs {
+		counts[sessionID] = 0
+	}
+	for _, row := range rows {
+		counts[row.SessionID] = row.Count
+	}
+	return counts, nil
+}
+
 func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]listingkit.SheinStudioSessionGalleryItem, error) {
 	if limit <= 0 {
 		limit = 240

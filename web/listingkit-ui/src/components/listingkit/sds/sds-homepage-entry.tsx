@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { Button } from "@/components/ui/button";
-import { loadLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import { ApiError } from "@/lib/api/client";
+import {
+  clearLocalSheinStudioDraftSnapshot,
+  loadLocalSheinStudioDraftSnapshotDetail,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { getSDSBaselineReasonShortLabel } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
@@ -35,49 +39,132 @@ function summarizeHomepageStatus(summary: SheinStudioRecentBatchSummary) {
   return "待生成";
 }
 
+function stepForSummaryAction(
+  summary: SheinStudioRecentBatchSummary,
+  action?: "generate" | "review" | "tasks",
+) {
+  if (action) {
+    return action;
+  }
+  if (summary.createdTaskCount > 0) {
+    return "tasks";
+  }
+  if (summary.designCount > 0) {
+    return "review";
+  }
+  return "generate";
+}
+
+function buildSummaryRoute(
+  summary: SheinStudioRecentBatchSummary,
+  action?: "generate" | "review" | "tasks",
+) {
+  if (summary.source === "batch") {
+    return `/listing-kits/sds/batches/${summary.id}`;
+  }
+  const step = stepForSummaryAction(summary, action);
+  return `/listing-kits/sds/new?step=${step}`;
+}
+
 function isMissingStudioBatchDeleteError(error: unknown) {
   return error instanceof Error && /studio session not found/i.test(error.message);
 }
 
+function isRecentBatchRejectedError(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.status === 401 || error.status === 403;
+  }
+  return (
+    error instanceof Error &&
+    /missing zitadel session|missing zitadel bearer token|zitadel/i.test(
+      error.message,
+    )
+  );
+}
+
+function isRecentBatchInactiveTokenError(error: unknown) {
+  return (
+    error instanceof Error &&
+    /inactive token|same zitadel issuer\/client configuration|different issuer\/client/i.test(
+      error.message,
+    )
+  );
+}
+
+function getRecentBatchErrorMessage(error: unknown) {
+  if (isRecentBatchInactiveTokenError(error)) {
+    return "最近批次接口拿到的是一张当前后端不认可的 ZITADEL token。既然其他页面正常，这通常不是你没登录，而是前端和 API 用的 ZITADEL issuer 或 client 配置没对齐。";
+  }
+  if (isRecentBatchRejectedError(error)) {
+    return "最近批次接口这次请求被拒绝了。既然其他页面正常，这更像是这个接口自己的鉴权或会话透传有问题，请重试；如果持续失败，再单独排查这个接口。";
+  }
+  return "最近批次这次没有成功加载出来，请重试；如果持续失败，再检查登录态或后端服务。";
+}
+
 export function SdsHomepageEntry() {
   const router = useRouter();
+  const [localDraftSnapshotDetail, setLocalDraftSnapshotDetail] = useState(
+    () => loadLocalSheinStudioDraftSnapshotDetail(),
+  );
   const [summaries, setSummaries] = useState<SheinStudioRecentBatchSummary[]>([]);
+  const [summariesError, setSummariesError] = useState("");
+  const [isLoadingSummaries, setIsLoadingSummaries] = useState(true);
   const [showAllBatches, setShowAllBatches] = useState(false);
   const fullDashboardHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const refreshSummaries = useCallback(async () => {
-    const batches = await listSheinStudioBatches();
-    setSummaries(
-      buildRecentBatchSummaries(batches, {
-        draft: loadLocalSheinStudioDraftSnapshot(),
-      }),
-    );
-  }, []);
+    setIsLoadingSummaries(true);
+    setSummariesError("");
+    try {
+      const batches = await listSheinStudioBatches();
+      setSummaries(
+        buildRecentBatchSummaries(batches, {
+          draft: localDraftSnapshotDetail?.draft ?? null,
+          draftBatchId: localDraftSnapshotDetail?.batchId,
+        }),
+      );
+    } catch (error) {
+      setSummaries([]);
+      setSummariesError(getRecentBatchErrorMessage(error));
+    } finally {
+      setIsLoadingSummaries(false);
+    }
+  }, [localDraftSnapshotDetail]);
 
   useEffect(() => {
     let cancelled = false;
 
-    void listSheinStudioBatches()
-      .then((batches) => {
+    void (async () => {
+      setIsLoadingSummaries(true);
+      setSummariesError("");
+      try {
+        const batches = await listSheinStudioBatches();
         if (cancelled) {
           return;
         }
         setSummaries(
           buildRecentBatchSummaries(batches, {
-            draft: loadLocalSheinStudioDraftSnapshot(),
+            draft: localDraftSnapshotDetail?.draft ?? null,
+            draftBatchId: localDraftSnapshotDetail?.batchId,
           }),
         );
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSummaries([]);
+      } catch (error) {
+        if (cancelled) {
+          return;
         }
-      });
+        setSummaries([]);
+        setSummariesError(getRecentBatchErrorMessage(error));
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSummaries(false);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [localDraftSnapshotDetail]);
 
   useEffect(() => {
     if (!showAllBatches) {
@@ -122,7 +209,14 @@ export function SdsHomepageEntry() {
     }
     const latestPersistedBatch = summaries.find((summary) => summary.source === "batch");
     if (latestPersistedBatch) {
-      router.push(`/listing-kits/sds/batches/${latestPersistedBatch.id}`);
+      router.push(buildSummaryRoute(latestPersistedBatch));
+      return;
+    }
+    const latestRecoverableDraft = summaries.find(
+      (summary) => summary.source === "local_draft",
+    );
+    if (latestRecoverableDraft) {
+      router.push(buildSummaryRoute(latestRecoverableDraft));
       return;
     }
     setShowAllBatches(true);
@@ -135,12 +229,11 @@ export function SdsHomepageEntry() {
     }
   }
 
-  function handleOpenSummary(summary: SheinStudioRecentBatchSummary) {
-    if (summary.source === "batch") {
-      router.push(`/listing-kits/sds/batches/${summary.id}`);
-      return;
-    }
-    setShowAllBatches(true);
+  function handleOpenSummary(
+    summary: SheinStudioRecentBatchSummary,
+    action?: "generate" | "review" | "tasks",
+  ) {
+    router.push(buildSummaryRoute(summary, action));
   }
 
   function handleToggleAllBatches() {
@@ -196,6 +289,12 @@ export function SdsHomepageEntry() {
 
   const handleDeleteSummary = useCallback(
     async (summary: SheinStudioRecentBatchSummary) => {
+      if (summary.source === "local_draft") {
+        clearLocalSheinStudioDraftSnapshot();
+        setLocalDraftSnapshotDetail(null);
+        await refreshSummaries();
+        return;
+      }
       if (summary.source !== "batch") {
         return;
       }
@@ -243,7 +342,9 @@ export function SdsHomepageEntry() {
               </p>
             </div>
             <p className="max-w-2xl text-sm text-zinc-600">
-              {summaries.length === 0
+              {summariesError
+                ? summariesError
+                : summaries.length === 0
                 ? "还没有可继续的最近批次，建议先新建一个批次再开始选品。"
                 : recommendedRiskLabel
                   ? `如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“${recommendedRiskLabel}${recommendedRiskDetail ? ` · ${recommendedRiskDetail}` : ""}”。`
@@ -269,7 +370,39 @@ export function SdsHomepageEntry() {
         </section>
 
         <section className="space-y-3" id="sds-recent-batches">
-          {featuredSummaries.length > 0 ? (
+          {summariesError ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                RECENT BATCHES
+              </p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-zinc-950">
+                最近批次暂时加载失败
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-7 text-zinc-700">
+                {summariesError}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button onClick={() => void refreshSummaries()} type="button">
+                  重新加载最近批次
+                </Button>
+                <Button onClick={handleCreateNew} type="button" variant="outline">
+                  新建批次并选品
+                </Button>
+              </div>
+            </div>
+          ) : isLoadingSummaries ? (
+            <div className="rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                RECENT BATCHES
+              </p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-zinc-950">
+                正在加载最近批次
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-7 text-zinc-600">
+                正在同步最近批次摘要和状态，请稍等。
+              </p>
+            </div>
+          ) : featuredSummaries.length > 0 ? (
             <div className="rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
               <div className="space-y-1">
                 <div className="space-y-1">
@@ -370,7 +503,9 @@ export function SdsHomepageEntry() {
                 onDuplicateSummary={handleDuplicateSummary}
                 onRenameSummary={handleRenameSummary}
                 onSelectSummary={handleOpenSummary}
-                onSelectSummaryAction={handleOpenSummary}
+                onSelectSummaryAction={(summary, action) =>
+                  handleOpenSummary(summary, action)
+                }
                 summaries={summaries}
               />
             </div>

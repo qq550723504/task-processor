@@ -247,13 +247,17 @@ func (s *taskStudioSessionService) ListStudioBatches(ctx context.Context, limit 
 	if err != nil {
 		return nil, err
 	}
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		sessionIDs = append(sessionIDs, session.ID)
+	}
+	designCounts, err := s.repo.CountSessionDesignsBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]SheinStudioBatchListItem, 0, len(sessions))
 	for _, session := range sessions {
-		designs, err := s.repo.ListSessionDesigns(ctx, session.ID)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, mapStudioBatchListItem(&session, len(designs)))
+		items = append(items, mapStudioBatchListItem(&session, designCounts[session.ID]))
 	}
 	return &StudioBatchListResponse{Items: items, Total: len(items)}, nil
 }

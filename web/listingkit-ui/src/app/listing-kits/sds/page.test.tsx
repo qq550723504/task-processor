@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import ListingKitSDSPage from "@/app/listing-kits/sds/page";
+import { ApiError } from "@/lib/api/client";
 
 const push = vi.fn();
 const listSheinStudioBatches = vi.fn();
@@ -10,6 +11,8 @@ const saveSheinStudioBatch = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const buildRecentBatchSummaries = vi.fn();
 const loadLocalSheinStudioDraftSnapshot = vi.fn();
+const loadLocalSheinStudioDraftSnapshotDetail = vi.fn();
+const clearLocalSheinStudioDraftSnapshot = vi.fn();
 const scrollIntoView = vi.fn();
 
 vi.mock("next/navigation", () => ({
@@ -34,6 +37,10 @@ vi.mock(
   () => ({
     loadLocalSheinStudioDraftSnapshot: (...args: unknown[]) =>
       loadLocalSheinStudioDraftSnapshot(...args),
+    loadLocalSheinStudioDraftSnapshotDetail: (...args: unknown[]) =>
+      loadLocalSheinStudioDraftSnapshotDetail(...args),
+    clearLocalSheinStudioDraftSnapshot: (...args: unknown[]) =>
+      clearLocalSheinStudioDraftSnapshot(...args),
   }),
 );
 
@@ -96,6 +103,8 @@ describe("/listing-kits/sds page", () => {
     deleteSheinStudioBatch.mockReset();
     buildRecentBatchSummaries.mockReset();
     loadLocalSheinStudioDraftSnapshot.mockReset();
+    loadLocalSheinStudioDraftSnapshotDetail.mockReset();
+    clearLocalSheinStudioDraftSnapshot.mockReset();
     scrollIntoView.mockReset();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
@@ -131,6 +140,8 @@ describe("/listing-kits/sds page", () => {
     saveSheinStudioBatch.mockResolvedValue(null);
     deleteSheinStudioBatch.mockResolvedValue(undefined);
     loadLocalSheinStudioDraftSnapshot.mockReturnValue(null);
+    loadLocalSheinStudioDraftSnapshotDetail.mockReturnValue(null);
+    clearLocalSheinStudioDraftSnapshot.mockReturnValue(undefined);
     buildRecentBatchSummaries.mockReturnValue([
       {
         id: "batch-4",
@@ -240,6 +251,134 @@ describe("/listing-kits/sds page", () => {
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-4");
   });
 
+  it("routes continue recent to the recoverable draft when no persisted batch exists", async () => {
+    buildRecentBatchSummaries.mockReturnValue([
+      {
+        id: "local-draft:group-1",
+        title: "Local Draft",
+        source: "local_draft",
+        isRecoverableDraft: true,
+        primaryProductName: "Half Flag",
+        createdTaskCount: 0,
+        designCount: 2,
+        productCount: 1,
+        storeSummary: "US",
+        updatedAt: "2026-05-27T01:23:00.000Z",
+        alerts: [],
+      },
+    ]);
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Local Draft")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "继续最近批次" }));
+
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new?step=review");
+  });
+
+  it("opens a recoverable draft summary card in the draft workbench route", async () => {
+    buildRecentBatchSummaries.mockReturnValue([
+      {
+        id: "local-draft:group-1",
+        title: "Local Draft",
+        source: "local_draft",
+        isRecoverableDraft: true,
+        primaryProductName: "Half Flag",
+        createdTaskCount: 0,
+        designCount: 0,
+        productCount: 1,
+        storeSummary: "US",
+        updatedAt: "2026-05-27T01:23:00.000Z",
+        alerts: [{ tone: "warning", label: "未保存草稿" }],
+      },
+    ]);
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Local Draft")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Local Draft/ }));
+
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new?step=generate");
+  });
+
+  it("clears a recoverable local draft from the recent dashboard", async () => {
+    buildRecentBatchSummaries
+      .mockReturnValueOnce([
+        {
+          id: "local-draft:group-1",
+          title: "Local Draft",
+          source: "local_draft",
+          isRecoverableDraft: true,
+          primaryProductName: "Half Flag",
+          createdTaskCount: 0,
+          designCount: 0,
+          productCount: 1,
+          storeSummary: "US",
+          updatedAt: "2026-05-27T01:23:00.000Z",
+          alerts: [{ tone: "warning", label: "未保存草稿" }],
+        },
+        {
+          id: "batch-2",
+          title: "Batch Two",
+          source: "batch",
+          isRecoverableDraft: false,
+          primaryProductName: "Half Flag",
+          createdTaskCount: 0,
+          designCount: 0,
+          productCount: 1,
+          storeSummary: "US",
+          updatedAt: "2026-05-27T01:22:00.000Z",
+          alerts: [],
+        },
+        {
+          id: "batch-3",
+          title: "Batch Three",
+          source: "batch",
+          isRecoverableDraft: false,
+          primaryProductName: "Half Flag",
+          createdTaskCount: 0,
+          designCount: 0,
+          productCount: 1,
+          storeSummary: "US",
+          updatedAt: "2026-05-27T01:21:00.000Z",
+          alerts: [],
+        },
+        {
+          id: "batch-4",
+          title: "Batch Four",
+          source: "batch",
+          isRecoverableDraft: false,
+          primaryProductName: "Half Flag",
+          createdTaskCount: 0,
+          designCount: 0,
+          productCount: 1,
+          storeSummary: "US",
+          updatedAt: "2026-05-27T01:20:00.000Z",
+          alerts: [],
+        },
+      ])
+      .mockReturnValueOnce([]);
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Local Draft")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部批次" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除-local-draft:group-1" }));
+
+    await waitFor(() => {
+      expect(clearLocalSheinStudioDraftSnapshot).toHaveBeenCalled();
+    });
+  });
+
   it("expands the full batches dashboard as a secondary view", async () => {
     render(<ListingKitSDSPage />);
 
@@ -334,5 +473,95 @@ describe("/listing-kits/sds page", () => {
     expect(
       screen.getByText("首页先保留为空态入口，等你创建第一个批次后，这里会显示最近批次摘要和完整看板入口。"),
     ).toBeInTheDocument();
+  });
+
+  it("shows a recoverable error state instead of pretending failed loads are empty", async () => {
+    listSheinStudioBatches.mockRejectedValueOnce(
+      new Error("ListingKit API request failed: 504"),
+    );
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "最近批次暂时加载失败" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getAllByText(
+        "最近批次这次没有成功加载出来，请重试；如果持续失败，再检查登录态或后端服务。",
+      ),
+    ).toHaveLength(2);
+    expect(
+      screen.queryByRole("heading", { name: "还没有可继续的最近批次" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "重新加载最近批次" }),
+    ).toBeInTheDocument();
+  });
+
+  it("lets the user retry a failed recent-batches load", async () => {
+    listSheinStudioBatches
+      .mockRejectedValueOnce(new Error("ListingKit API request failed: 504"))
+      .mockResolvedValueOnce([]);
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "最近批次暂时加载失败" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "重新加载最近批次" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Four")).toBeInTheDocument();
+    });
+    expect(listSheinStudioBatches).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not mislabel endpoint-specific 401s as a global login expiry", async () => {
+    listSheinStudioBatches.mockRejectedValueOnce(
+      new ApiError("ListingKit API request failed: 401", 401),
+    );
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "最近批次暂时加载失败" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getAllByText(
+        "最近批次接口这次请求被拒绝了。既然其他页面正常，这更像是这个接口自己的鉴权或会话透传有问题，请重试；如果持续失败，再单独排查这个接口。",
+      ),
+    ).toHaveLength(2);
+    expect(screen.queryByText("登录状态可能已失效，请刷新页面或重新登录后再试。")).not.toBeInTheDocument();
+  });
+
+  it("surfaces inactive-token errors as a UI/API config mismatch hint", async () => {
+    listSheinStudioBatches.mockRejectedValueOnce(
+      new Error(
+        "ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration",
+      ),
+    );
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "最近批次暂时加载失败" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getAllByText(
+        "最近批次接口拿到的是一张当前后端不认可的 ZITADEL token。既然其他页面正常，这通常不是你没登录，而是前端和 API 用的 ZITADEL issuer 或 client 配置没对齐。",
+      ),
+    ).toHaveLength(2);
   });
 });

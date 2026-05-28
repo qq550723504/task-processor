@@ -312,6 +312,7 @@ func TestListTasksFiltersBySheinActionQueue(t *testing.T) {
 		Page:             1,
 		PageSize:         10,
 		SheinActionQueue: SheinActionQueueClassification,
+		IncludeSummary:   true,
 	})
 	if err != nil {
 		t.Fatalf("ListTasks error = %v", err)
