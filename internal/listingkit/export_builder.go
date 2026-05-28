@@ -69,9 +69,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 				ImageBundle:    task.Result.Shein.ImageBundle,
 				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "shein"),
 				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Shein.ImageBundle, task.Result.AssetBundle),
-				RequestDraft:   task.Result.Shein.DraftPayload,
 				DraftPayload:   task.Result.Shein.DraftPayload,
-				PreviewProduct: task.Result.Shein.PreviewPayload,
 				PreviewPayload: task.Result.Shein.PreviewPayload,
 				ReviewNotes:    append([]string(nil), task.Result.Shein.ReviewNotes...),
 			}

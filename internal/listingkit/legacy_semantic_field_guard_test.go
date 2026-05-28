@@ -59,23 +59,37 @@ func TestLegacySemanticFieldsStayInsideCompatibilityBoundaries(t *testing.T) {
 			allowed := allowedSelectors[relPath]
 
 			ast.Inspect(file, func(node ast.Node) bool {
-				selector, ok := node.(*ast.SelectorExpr)
-				if !ok {
-					return true
+				switch typed := node.(type) {
+				case *ast.SelectorExpr:
+					fieldName := typed.Sel.Name
+					reason, isLegacyField := legacyFields[fieldName]
+					if !isLegacyField {
+						return true
+					}
+					if ident, ok := typed.X.(*ast.Ident); ok && importAliases[ident.Name] {
+						return true
+					}
+					if slices.Contains(allowed, fieldName) {
+						return true
+					}
+					position := fset.Position(typed.Sel.Pos())
+					violations = append(violations, position.String()+": legacy semantic field "+fieldName+" is restricted; "+reason)
+				case *ast.KeyValueExpr:
+					key, ok := typed.Key.(*ast.Ident)
+					if !ok {
+						return true
+					}
+					fieldName := key.Name
+					reason, isLegacyField := legacyFields[fieldName]
+					if !isLegacyField {
+						return true
+					}
+					if slices.Contains(allowed, fieldName) {
+						return true
+					}
+					position := fset.Position(key.Pos())
+					violations = append(violations, position.String()+": legacy semantic field "+fieldName+" is restricted in keyed literals; "+reason)
 				}
-				fieldName := selector.Sel.Name
-				reason, isLegacyField := legacyFields[fieldName]
-				if !isLegacyField {
-					return true
-				}
-				if ident, ok := selector.X.(*ast.Ident); ok && importAliases[ident.Name] {
-					return true
-				}
-				if slices.Contains(allowed, fieldName) {
-					return true
-				}
-				position := fset.Position(selector.Sel.Pos())
-				violations = append(violations, position.String()+": legacy semantic field "+fieldName+" is restricted; "+reason)
 				return true
 			})
 			return nil
