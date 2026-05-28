@@ -350,6 +350,16 @@ func TestConfigValidation(t *testing.T) {
 	assert.True(t, len(errors) >= 4)
 }
 
+func TestBuildConfigRespectsDisabledListingKitZitadelAuth(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+	v.Set("listingkit.zitadel.authRequired", false)
+
+	cfg := BuildConfig(v)
+
+	assert.False(t, cfg.ListingKit.Zitadel.AuthRequired)
+}
+
 func TestBrowserConfigValidation(t *testing.T) {
 	validConfig := &Config{
 		Browser: BrowserConfig{

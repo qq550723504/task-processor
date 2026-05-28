@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 )
 
@@ -120,6 +121,42 @@ func TestListingKitZitadelAuthReturnsUnavailableWhenRequiredButNotConfigured(t *
 	}
 	if !strings.Contains(resp.Body.String(), "zitadel_auth_not_configured") {
 		t.Fatalf("body = %s, want zitadel_auth_not_configured", resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthStaysDisabledWhenConfigIsOptionalAndEmpty(t *testing.T) {
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{Required: false},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			},
+		},
+	})
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
+func TestConfigureListingKitZitadelAuthKeepsOptionalEmptyConfigDisabled(t *testing.T) {
+	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
+	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+		AuthRequired: false,
+	})
+
+	if middleware := NewZitadelAuthMiddlewareFromEnv(); middleware != nil {
+		t.Fatal("expected nil middleware for optional empty ZITADEL config")
 	}
 }
 
