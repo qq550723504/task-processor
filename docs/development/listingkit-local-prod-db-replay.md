@@ -155,7 +155,6 @@ redis-cli -h 127.0.0.1 -p 16379 -n 9 KEYS "shein:cookie:*"
 Set-Location web/listingkit-ui
 $env:LISTINGKIT_API_BASE='http://localhost:8085/api/v1/listing-kits'
 $env:LISTINGKIT_SERVICE_API_BASE='http://localhost:8085/api/v1'
-$env:LISTINGKIT_UI_BYPASS_AUTH_GATE='1'
 npm run dev
 ```
 
@@ -165,8 +164,8 @@ npm run dev
 http://localhost:3000
 ```
 
-如果只是本地绕过 UI 登录门禁，`LISTINGKIT_UI_BYPASS_AUTH_GATE=1` 就够了；
-但这不会替你修正后端连接目标，真正决定“读的是本地还是远端”的仍然是上面的 API 环境变量。
+本地 UI 现在也必须走真实 ZITADEL 登录；
+真正决定“读的是本地还是远端”的仍然是上面的 API 环境变量。
 
 ## 适合复验的内容
 

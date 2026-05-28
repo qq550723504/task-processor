@@ -7,6 +7,7 @@ import { SheinDesignLightbox } from "@/components/listingkit/shein-studio/shein-
 import { SheinDesignReviewNote } from "@/components/listingkit/shein-studio/shein-design-review-note";
 import { Button } from "@/components/ui/button";
 import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
+import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioGeneratedDesign,
@@ -88,6 +89,10 @@ export function SheinDesignPreviewGrid({
           {designs.map((design, index) => {
             const selected = selectedIds.includes(design.id);
             const designSrc = resolveGeneratedDesignSrc(design);
+            const designThumbSrc = toThumbnailPreviewUrl(designSrc, {
+              width: 720,
+              height: 720,
+            });
             return (
               <article
                 className={`overflow-hidden rounded-[1.5rem] border transition ${
@@ -165,7 +170,7 @@ export function SheinDesignPreviewGrid({
                         alt={`生成款式 ${index + 1}`}
                         className="h-full w-full object-cover"
                         height={1024}
-                        src={designSrc}
+                        src={designThumbSrc || designSrc}
                         unoptimized
                         width={1024}
                       />
@@ -225,7 +230,12 @@ export function SheinDesignPreviewGrid({
                 <div className="font-semibold">当前商品图设置</div>
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm leading-6 text-emerald-900">
                   <span>商品图方式：{formatImageStrategyLabel(imageStrategy)}</span>
-                  <span>商品图数量：{productImageCount} 张</span>
+                  <span>
+                    商品图数量：
+                    {imageStrategy === "sds_official"
+                      ? "使用全部 SDS 图"
+                      : `${productImageCount} 张`}
+                  </span>
                   <span>
                     尺寸图：{renderSizeImagesWithSds ? "使用 SDS 渲染" : "不额外使用 SDS 渲染"}
                   </span>

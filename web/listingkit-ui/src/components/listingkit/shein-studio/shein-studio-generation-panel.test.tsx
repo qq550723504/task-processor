@@ -40,12 +40,17 @@ function renderPanel(options?: {
   availableSdsImages?: SheinStudioSelectableSDSImage[];
   promptHistory?: SDSGroupedPromptHistoryEntry[];
   styleCount?: string;
+  storeRequiredMessage?: string;
   subscriptionBlockedMessage?: string;
 }) {
   return render(
     <SheinStudioGenerationPanel
       availableSdsImages={options?.availableSdsImages ?? []}
       artworkModel="nanobanana"
+      batchProductCount={4}
+      batchStoreLabel={
+        options?.storeRequiredMessage ? "未设置" : "SHEIN US 1 (shein-us-1 / NA / US)"
+      }
       createdTasks={[]}
       creatingError=""
       creatingMessage=""
@@ -72,6 +77,7 @@ function renderPanel(options?: {
       selectedSdsImages={[]}
       selectedStyleCount={0}
       selectionReady={true}
+      storeRequiredMessage={options?.storeRequiredMessage ?? ""}
       subscriptionBlockedMessage={options?.subscriptionBlockedMessage ?? ""}
       variationIntensity="medium"
       setArtworkModel={() => undefined}
@@ -83,11 +89,9 @@ function renderPanel(options?: {
       setPrompt={() => undefined}
       setRenderSizeImagesWithSds={() => undefined}
       setSelectedSdsImages={() => undefined}
-      setSheinStoreId={() => undefined}
       setStyleCount={() => undefined}
       setVariationIntensity={() => undefined}
       setTransparentBackground={() => undefined}
-      sheinStoreId="869"
       styleCount={options?.styleCount ?? "1"}
       transparentBackground={false}
     />,
@@ -117,6 +121,15 @@ describe("SheinStudioGenerationPanel", () => {
     });
 
     expect(screen.queryByText("尺寸图也使用 SDS 渲染")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("商品图数量")).not.toBeInTheDocument();
+  });
+
+  it("keeps product image count visible when the strategy still needs AI image generation", () => {
+    renderPanel({
+      imageStrategy: "hybrid",
+    });
+
+    expect(screen.getByLabelText("商品图数量")).toBeInTheDocument();
   });
 
   it("shows per-image product prompts only in AI image mode", () => {
@@ -124,6 +137,7 @@ describe("SheinStudioGenerationPanel", () => {
       imageStrategy: "ai_generated",
     });
 
+    expect(screen.getByText("全局商品图提示词")).toBeInTheDocument();
     expect(screen.getByText("每张商品图提示词")).toBeInTheDocument();
 
     rerender(
@@ -156,6 +170,7 @@ describe("SheinStudioGenerationPanel", () => {
         selectedSdsImages={[]}
         selectedStyleCount={0}
         selectionReady={true}
+        storeRequiredMessage=""
         subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
@@ -167,16 +182,15 @@ describe("SheinStudioGenerationPanel", () => {
         setPrompt={() => undefined}
         setRenderSizeImagesWithSds={() => undefined}
         setSelectedSdsImages={() => undefined}
-        setSheinStoreId={() => undefined}
         setStyleCount={() => undefined}
         setVariationIntensity={() => undefined}
         setTransparentBackground={() => undefined}
-        sheinStoreId="869"
         styleCount="1"
         transparentBackground={false}
       />,
     );
 
+    expect(screen.queryByText("全局商品图提示词")).not.toBeInTheDocument();
     expect(screen.queryByText("每张商品图提示词")).not.toBeInTheDocument();
   });
 
@@ -220,6 +234,7 @@ describe("SheinStudioGenerationPanel", () => {
         selectedSdsImages={[]}
         selectedStyleCount={0}
         selectionReady={false}
+        storeRequiredMessage=""
         subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
@@ -231,17 +246,15 @@ describe("SheinStudioGenerationPanel", () => {
         setPrompt={() => undefined}
         setRenderSizeImagesWithSds={() => undefined}
         setSelectedSdsImages={() => undefined}
-        setSheinStoreId={() => undefined}
         setStyleCount={() => undefined}
         setVariationIntensity={() => undefined}
         setTransparentBackground={() => undefined}
-        sheinStoreId="869"
         styleCount="1"
         transparentBackground={false}
       />,
     );
 
-    expect(screen.getByText("请先选择商品")).toBeInTheDocument();
+    expect(screen.getAllByText("请先选择商品")).toHaveLength(2);
     expect(
       screen.getByText("当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。"),
     ).toBeInTheDocument();
@@ -299,6 +312,7 @@ describe("SheinStudioGenerationPanel", () => {
         selectedSdsImages={[]}
         selectedStyleCount={0}
         selectionReady={true}
+        storeRequiredMessage=""
         subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
@@ -310,11 +324,9 @@ describe("SheinStudioGenerationPanel", () => {
         setPrompt={() => undefined}
         setRenderSizeImagesWithSds={() => undefined}
         setSelectedSdsImages={() => undefined}
-        setSheinStoreId={() => undefined}
         setStyleCount={() => undefined}
         setVariationIntensity={() => undefined}
         setTransparentBackground={() => undefined}
-        sheinStoreId="869"
         styleCount="1"
         transparentBackground={false}
       />,
@@ -335,6 +347,19 @@ describe("SheinStudioGenerationPanel", () => {
         "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
+  });
+
+  it("blocks generation and task creation when the batch store is still missing", () => {
+    renderPanel({
+      storeRequiredMessage: "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    });
+
+    expect(screen.getByText("批次店铺")).toBeInTheDocument();
+    expect(screen.getByText("未设置")).toBeInTheDocument();
+    expect(screen.getByText("需先设置批次店铺")).toBeInTheDocument();
+    expect(screen.getByText("先回到上方选择批次店铺，再继续生成。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
   });
@@ -370,6 +395,7 @@ describe("SheinStudioGenerationPanel", () => {
         selectedSdsImages={[]}
         selectedStyleCount={0}
         selectionReady={true}
+        storeRequiredMessage=""
         subscriptionBlockedMessage=""
         variationIntensity="medium"
         setArtworkModel={() => undefined}
@@ -381,11 +407,9 @@ describe("SheinStudioGenerationPanel", () => {
         setPrompt={() => undefined}
         setRenderSizeImagesWithSds={() => undefined}
         setSelectedSdsImages={() => undefined}
-        setSheinStoreId={() => undefined}
         setStyleCount={() => undefined}
         setVariationIntensity={() => undefined}
         setTransparentBackground={() => undefined}
-        sheinStoreId="869"
         styleCount="2"
         transparentBackground={true}
       />,
@@ -404,6 +428,5 @@ describe("SheinStudioGenerationPanel", () => {
     expect(
       screen.getByPlaceholderText("可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"),
     ).toBeEnabled();
-    expect(screen.getByLabelText("SHEIN 店铺")).toBeEnabled();
   });
 });

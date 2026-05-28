@@ -169,6 +169,10 @@ export function useSheinStudioDesignActions({
       workbench.setField("generationError", "请先选择 SDS 变体。");
       return;
     }
+    if (!sheinStoreId.trim()) {
+      workbench.setField("generationError", "请先选择批次店铺。");
+      return;
+    }
     if (!prompt.trim()) {
       workbench.setField("generationError", "请先填写主题提示词。");
       promptInputRef.current?.scrollIntoView({

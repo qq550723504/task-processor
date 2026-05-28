@@ -114,7 +114,7 @@ export function ArtworkGenerationSettings({
       <Label className="space-y-2">
         <span className="text-sm font-medium text-zinc-700">分组出图策略</span>
         <Select
-          className="rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+          className="h-11 rounded-2xl border-emerald-200 bg-white/80 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-white"
           disabled={disabled}
           onChange={(event) =>
             setGroupedImageMode(
@@ -134,7 +134,7 @@ export function ArtworkGenerationSettings({
         <Label className="space-y-2">
           <span className="text-sm font-medium text-zinc-700">变化强度</span>
           <Select
-            className="rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+            className="h-11 rounded-2xl border-emerald-200 bg-white/80 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-white"
             disabled={disabled}
             onChange={(event) =>
               setVariationIntensity(
@@ -219,8 +219,6 @@ export function ProductImageGenerationSettings({
   setProductImagePrompts,
   setRenderSizeImagesWithSds,
   setSelectedSdsImages,
-  setSheinStoreId,
-  sheinStoreId,
   showRenderSizeImagesWithSdsOption,
 }: {
   availableSdsImages: SheinStudioSelectableSDSImage[];
@@ -236,12 +234,8 @@ export function ProductImageGenerationSettings({
   setProductImagePrompts: (value: SheinStudioProductImagePrompt[]) => void;
   setRenderSizeImagesWithSds: (value: boolean) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
-  setSheinStoreId: (value: string) => void;
-  sheinStoreId: string;
   showRenderSizeImagesWithSdsOption: boolean;
 }) {
-  const { enabledProfiles, profiles } = useSheinStoreSelector();
-
   return (
     <div className="space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
       <SectionHeading
@@ -249,45 +243,22 @@ export function ProductImageGenerationSettings({
         title="设置上架商品图生成"
         description="审核通过的款式转成 SHEIN 资料时，会使用这里的商品图设置。"
       />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <NumberInput
-          label="商品图数量"
-          max={9}
-          min={1}
-          setValue={setProductImageCount}
-          value={productImageCount}
-        />
-        <Label className="space-y-2">
-          <span className="text-sm font-medium text-zinc-700">
-            SHEIN 店铺
-          </span>
-          <Select
-            aria-label="SHEIN 店铺"
-            className="rounded-2xl px-4 py-3"
-            onChange={(event) => setSheinStoreId(event.target.value)}
-            value={sheinStoreId}
-          >
-            <option value="">
-              {enabledProfiles.length > 0 ? "按默认路由自动选择" : "当前没有已启用店铺配置"}
-            </option>
-            {enabledProfiles.map((item) => (
-              <option key={item.id ?? item.store_id} value={String(item.store_id)}>
-                {formatSheinStoreOptionLabel(item)}
-              </option>
-            ))}
-          </Select>
-          {profiles.isError ? (
-            <p className="text-xs leading-6 text-rose-600">
-              店铺配置读取失败，当前会依赖后端默认路由。
-            </p>
-          ) : null}
-        </Label>
-      </div>
+      {imageStrategy !== "sds_official" ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <NumberInput
+            label="商品图数量"
+            max={9}
+            min={1}
+            setValue={setProductImageCount}
+            value={productImageCount}
+          />
+        </div>
+      ) : null}
 
       <Label className="space-y-2">
         <span className="text-sm font-medium text-zinc-700">图片策略</span>
         <Select
-          className="rounded-2xl px-4 py-3"
+          className="h-11 rounded-2xl px-4 py-2 leading-5"
           onChange={(event) =>
             setImageStrategy(event.target.value as SheinStudioImageStrategy)
           }
@@ -329,28 +300,102 @@ export function ProductImageGenerationSettings({
         </Label>
       ) : null}
 
-      <Label className="space-y-2">
-        <span className="text-sm font-medium text-zinc-700">
-          全局商品图提示词
-        </span>
-        <Textarea
-          className="min-h-24 rounded-2xl px-4 py-3"
-          onChange={(event) => setProductImagePrompt(event.target.value)}
-          placeholder="可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"
-          value={productImagePrompt}
-        />
-        <p className="text-xs leading-6 text-zinc-500">
-          会追加到后端默认的亚马逊合规商品图模板中。
-        </p>
-      </Label>
-
       {imageStrategy === "ai_generated" ? (
-        <ProductImagePromptPlanner
-          count={productImageCount}
-          prompts={productImagePrompts}
-          setPrompts={setProductImagePrompts}
-        />
+        <>
+          <Label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-700">
+              全局商品图提示词
+            </span>
+            <Textarea
+              className="min-h-24 rounded-2xl px-4 py-3"
+              onChange={(event) => setProductImagePrompt(event.target.value)}
+              placeholder="可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"
+              value={productImagePrompt}
+            />
+            <p className="text-xs leading-6 text-zinc-500">
+              会追加到后端默认的亚马逊合规商品图模板中。
+            </p>
+          </Label>
+
+          <ProductImagePromptPlanner
+            count={productImageCount}
+            prompts={productImagePrompts}
+            setPrompts={setProductImagePrompts}
+          />
+        </>
       ) : null}
+    </div>
+  );
+}
+
+export function BatchStoreSettings({
+  currentStoreLabel,
+  requiredMessage,
+  sheinStoreId,
+  setSheinStoreId,
+}: {
+  currentStoreLabel?: string;
+  requiredMessage?: string;
+  sheinStoreId: string;
+  setSheinStoreId: (value: string) => void;
+}) {
+  const { enabledProfiles, profiles } = useSheinStoreSelector();
+
+  return (
+    <div
+      className={`rounded-2xl px-4 py-4 ${
+        requiredMessage
+          ? "border border-rose-200 bg-rose-50/80"
+          : "border border-zinc-200 bg-zinc-50/80"
+      }`}
+    >
+      <div className="space-y-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            批次店铺
+          </p>
+          <p className="mt-1 text-sm text-zinc-600">
+            批次内商品默认跟随这里，生成和建任务前也需要先确定它。
+          </p>
+        </div>
+        {requiredMessage ? (
+          <div className="rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm leading-6 text-rose-700">
+            请先设置批次店铺，否则当前不能生成或创建 SHEIN 资料。
+          </div>
+        ) : currentStoreLabel ? (
+          <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+              当前默认跟随
+            </div>
+            <div className="mt-1 text-sm font-semibold leading-6 text-emerald-800">
+              {currentStoreLabel}
+            </div>
+          </div>
+        ) : null}
+        <Label className="space-y-2">
+          <span className="text-sm font-medium text-zinc-700">选择批次店铺</span>
+          <Select
+            aria-label="批次店铺"
+            className="h-11 rounded-2xl px-4 py-2 leading-5"
+            onChange={(event) => setSheinStoreId(event.target.value)}
+            value={sheinStoreId}
+          >
+            <option value="">
+              {enabledProfiles.length > 0 ? "请选择批次店铺" : "当前没有已启用店铺配置"}
+            </option>
+            {enabledProfiles.map((item) => (
+              <option key={item.id ?? item.store_id} value={String(item.store_id)}>
+                {formatSheinStoreOptionLabel(item)}
+              </option>
+            ))}
+          </Select>
+          {profiles.isError ? (
+            <p className="text-xs leading-6 text-rose-600">
+              店铺配置读取失败，请先检查批次店铺配置。
+            </p>
+          ) : null}
+        </Label>
+      </div>
     </div>
   );
 }

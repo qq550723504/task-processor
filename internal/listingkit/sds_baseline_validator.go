@@ -6,8 +6,8 @@ import (
 	"time"
 
 	sdsdesign "task-processor/internal/sds/design"
-	"task-processor/internal/sdslogin"
 	sdstemplate "task-processor/internal/sds/template"
+	"task-processor/internal/sdslogin"
 )
 
 type SDSLoginStatusProvider interface {
@@ -66,11 +66,11 @@ func (s *service) validateSDSBaseline(ctx context.Context, options *SDSSyncOptio
 			Reason:     "SDS login state is unavailable: " + strings.TrimSpace(status.LastError),
 		}
 	}
-	if !status.HasAccessToken || !status.HasCookie {
+	if !status.HasAccessToken {
 		return sdsBaselineValidationResult{
 			Status:     SDSBaselineValidationStatusBlocked,
 			ReasonCode: SDSBaselineReasonCodeLoginMissingCredentials,
-			Reason:     "SDS login state is missing cookie or access token.",
+			Reason:     "SDS login state is missing access token.",
 		}
 	}
 	if s.sdsBaselineRemoteProvider != nil {
@@ -183,6 +183,11 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 	}
 	page, err := s.sdsBaselineRemoteProvider.GetDesignProduct(ctx, options.VariantID)
 	if err != nil {
+		if isSDSBaselineCredentialBootstrapError(err) {
+			return sdsBaselineValidationResult{
+				Status: SDSBaselineValidationStatusReady,
+			}
+		}
 		return sdsBaselineValidationResult{
 			Status:     SDSBaselineValidationStatusFailed,
 			ReasonCode: SDSBaselineReasonCodeDesignSurfaceCheckFailed,
@@ -235,6 +240,14 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 		}
 	}
 	return sdsBaselineValidationResult{Status: SDSBaselineValidationStatusReady}
+}
+
+func isSDSBaselineCredentialBootstrapError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "merchant_name, username and password are required")
 }
 
 func sdsBaselineLayerExists(page *sdsdesign.DesignProductPage, layerID string) bool {

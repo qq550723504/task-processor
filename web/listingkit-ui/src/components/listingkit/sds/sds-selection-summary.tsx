@@ -5,14 +5,10 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 export function SDSSelectionSummary({
   selection,
-  isGroupedCandidate,
-  onToggleGroupedCandidate,
   onChange,
   onClear,
 }: {
   selection?: SDSProductVariantSelection;
-  isGroupedCandidate?: boolean;
-  onToggleGroupedCandidate: () => void;
   onChange: () => void;
   onClear: () => void;
 }) {
@@ -43,9 +39,6 @@ export function SDSSelectionSummary({
         <div className="flex gap-3">
           <Button onClick={onClear} variant="ghost">
             清除
-          </Button>
-          <Button onClick={onToggleGroupedCandidate} variant="ghost">
-            {isGroupedCandidate ? "移出批量候选" : "加入批量候选"}
           </Button>
           <Button onClick={onChange} variant="secondary">
             更换变体

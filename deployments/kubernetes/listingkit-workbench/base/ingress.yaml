@@ -12,6 +12,13 @@ spec:
     - host: listingkit.example.com
       http:
         paths:
+          - path: /img
+            pathType: Prefix
+            backend:
+              service:
+                name: imgproxy
+                port:
+                  name: http
           - path: /
             pathType: Prefix
             backend:

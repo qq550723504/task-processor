@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,7 +107,6 @@ func (s *Service) statusLocked() (*Status, error) {
 		status.Identifier = coalesce(payload.Identifier, status.Identifier)
 		status.Username = coalesce(payload.Username, status.Username)
 		status.MerchantName = coalesce(payload.MerchantName, status.MerchantName)
-		status.HasCookie = len(payload.Cookies) > 0
 		status.HasAccessToken = strings.TrimSpace(payload.AccessToken) != ""
 		status.MerchantID = payload.MerchantID
 		status.Source = payload.Source
@@ -124,7 +122,7 @@ func hasUsablePayload(payload *AuthPayload) bool {
 	if payload == nil || strings.TrimSpace(payload.AccessToken) == "" {
 		return false
 	}
-	return payload.MerchantID > 0 || payload.UserID > 0 || len(payload.Cookies) > 0
+	return payload.MerchantID > 0 || payload.UserID > 0
 }
 
 func (s *Service) Login(ctx context.Context, req LoginRequest) (*AuthPayload, error) {
@@ -287,23 +285,7 @@ func (s *Service) persistPayload(payload *AuthPayload) error {
 		}); err != nil {
 			return err
 		}
-		cookies := make([]*http.Cookie, 0, len(payload.Cookies))
-		for _, item := range payload.Cookies {
-			cookie := &http.Cookie{
-				Name:     item.Name,
-				Value:    item.Value,
-				Domain:   item.Domain,
-				Path:     item.Path,
-				Expires:  item.Expires,
-				Secure:   item.Secure,
-				HttpOnly: item.HTTPOnly,
-			}
-			if cookie.Path == "" {
-				cookie.Path = "/"
-			}
-			cookies = append(cookies, cookie)
-		}
-		if err := sessionStore.Save(cookies); err != nil {
+		if err := sessionStore.Clear(); err != nil {
 			return err
 		}
 		if payload.BrowserState != nil {
@@ -401,17 +383,6 @@ func (s *Service) LoadAuthState(_ context.Context, tenantID, identifier string) 
 		UserID:      payload.UserID,
 		Username:    payload.Username,
 		Source:      payload.Source,
-	}
-	for _, item := range payload.Cookies {
-		result.Cookies = append(result.Cookies, &sdsclient.PersistedCookie{
-			Name:     item.Name,
-			Value:    item.Value,
-			Domain:   item.Domain,
-			Path:     item.Path,
-			Expires:  item.Expires,
-			Secure:   item.Secure,
-			HttpOnly: item.HTTPOnly,
-		})
 	}
 	return result, nil
 }

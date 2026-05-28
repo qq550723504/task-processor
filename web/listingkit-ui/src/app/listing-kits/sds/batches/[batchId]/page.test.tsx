@@ -9,7 +9,7 @@ vi.mock(
     SheinStudioBatchPageShell: ({ batchId }: { batchId: string }) => (
       <div>
         <a href="/listing-kits/sds">返回最近批次首页</a>
-        <a href="/listing-kits/sds/new">返回新建批次并选品</a>
+        <a href={`/listing-kits/sds/new?targetBatchId=${batchId}`}>去 SDS 选品并加入当前批次</a>
         <h1>批次工作台</h1>
         <div>batch shell: {batchId}</div>
       </div>
@@ -29,8 +29,8 @@ describe("/listing-kits/sds/batches/[batchId] page", () => {
       screen.getByRole("link", { name: "返回最近批次首页" }),
     ).toHaveAttribute("href", "/listing-kits/sds");
     expect(
-      screen.getByRole("link", { name: "返回新建批次并选品" }),
-    ).toHaveAttribute("href", "/listing-kits/sds/new");
+      screen.getByRole("link", { name: "去 SDS 选品并加入当前批次" }),
+    ).toHaveAttribute("href", "/listing-kits/sds/new?targetBatchId=batch-1");
     expect(screen.getByRole("heading", { name: "批次工作台" })).toBeInTheDocument();
     expect(screen.getByText("batch shell: batch-1")).toBeInTheDocument();
     expect(

@@ -2,12 +2,13 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
 	sdsdesign "task-processor/internal/sds/design"
-	"task-processor/internal/sdslogin"
 	sdstemplate "task-processor/internal/sds/template"
+	"task-processor/internal/sdslogin"
 )
 
 type stubSDSLoginStatusProvider struct {
@@ -47,7 +48,6 @@ func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 		repo: NewInMemoryRepositoryForTest(),
 		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
 			status: &sdslogin.Status{
-				HasCookie:      true,
 				HasAccessToken: true,
 			},
 		},
@@ -98,7 +98,6 @@ func TestWarmSDSBaselineReturnsBlockedWhenRemoteSurfaceMismatches(t *testing.T) 
 		repo: NewInMemoryRepositoryForTest(),
 		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
 			status: &sdslogin.Status{
-				HasCookie:      true,
 				HasAccessToken: true,
 			},
 		},
@@ -221,5 +220,50 @@ func TestGetSDSBaselineReadinessReturnsCachedWhenValidationUnknown(t *testing.T)
 	}
 	if readiness.Status != SDSBaselineStatusBaselineCached {
 		t.Fatalf("status = %q, want baseline_cached", readiness.Status)
+	}
+}
+
+func TestWarmSDSBaselineTreatsRemoteDesignSurfaceCredentialBootstrapFailureAsReady(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{
+		repo: NewInMemoryRepositoryForTest(),
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{
+				HasAccessToken: true,
+			},
+		},
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail:    &sdstemplate.ProductDetail{},
+			designProductErr: fmt.Errorf("merchant_name, username and password are required"),
+		},
+	}
+
+	readiness, err := svc.WarmSDSBaseline(context.Background(), &WarmSDSBaselineRequest{
+		SDS: &SDSSyncOptions{
+			ParentProductID:  9001,
+			PrototypeGroupID: 7001,
+			VariantID:        101,
+			DesignType:       "material",
+			LayerID:          "layer-1",
+			PrintableWidth:   1000,
+			PrintableHeight:  1000,
+			ProductName:      "Baseline product",
+		},
+	})
+	if err != nil {
+		t.Fatalf("WarmSDSBaseline() error = %v", err)
+	}
+	if readiness == nil {
+		t.Fatal("expected readiness payload")
+	}
+	if readiness.ValidationStatus != SDSBaselineValidationStatusReady {
+		t.Fatalf("validation status = %q, want ready", readiness.ValidationStatus)
+	}
+	if readiness.Status != SDSBaselineStatusReady {
+		t.Fatalf("status = %q, want ready", readiness.Status)
+	}
+	if readiness.ReasonCode != "" || readiness.Reason != "" {
+		t.Fatalf("readiness = %+v, want empty downgraded reason", readiness)
 	}
 }

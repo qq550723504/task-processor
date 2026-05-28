@@ -1,7 +1,7 @@
 const STORAGE_KEY = "listingkit:sds:grouped-candidate-handoff";
 
 export type SDSGroupedCandidateHandoff = {
-  action?: "focus_generate" | "warm_baseline";
+  action?: "focus_generate" | "warm_baseline" | "open_sds_login";
   actionLabel?: string;
   createdAt: string;
   message: string;
@@ -50,7 +50,9 @@ export function consumeSDSGroupedCandidateHandoff() {
     }
     return {
       action:
-        parsed.action === "focus_generate" || parsed.action === "warm_baseline"
+        parsed.action === "focus_generate" ||
+        parsed.action === "warm_baseline" ||
+        parsed.action === "open_sds_login"
           ? parsed.action
           : undefined,
       actionLabel:

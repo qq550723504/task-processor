@@ -27,6 +27,8 @@ import type {
 
 export function SheinStudioGenerationPanel({
   availableSdsImages,
+  batchProductCount = 0,
+  batchStoreLabel = "未设置",
   createdTasks,
   creatingError,
   creatingMessage,
@@ -56,6 +58,7 @@ export function SheinStudioGenerationPanel({
   createTaskButtonLabel = "生成 SHEIN 资料",
   selectionReady,
   showSavedBatches = true,
+  storeRequiredMessage,
   subscriptionBlockedMessage,
   variationIntensity,
   setImageStrategy,
@@ -68,14 +71,14 @@ export function SheinStudioGenerationPanel({
   setPrompt,
   onRestorePrompt,
   setRenderSizeImagesWithSds,
-  setSheinStoreId,
   setStyleCount,
   setVariationIntensity,
   setTransparentBackground,
-  sheinStoreId,
   styleCount,
 }: {
   availableSdsImages: SheinStudioSelectableSDSImage[];
+  batchProductCount?: number;
+  batchStoreLabel?: string;
   createdTasks: SheinStudioCreatedTask[];
   creatingError: string;
   creatingMessage: string;
@@ -105,6 +108,7 @@ export function SheinStudioGenerationPanel({
   createTaskButtonLabel?: string;
   selectionReady: boolean;
   showSavedBatches?: boolean;
+  storeRequiredMessage: string;
   subscriptionBlockedMessage: string;
   variationIntensity: SheinStudioVariationIntensity;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
@@ -117,11 +121,9 @@ export function SheinStudioGenerationPanel({
   setPrompt: (value: string) => void;
   onRestorePrompt: (value: string) => void;
   setRenderSizeImagesWithSds: (value: boolean) => void;
-  setSheinStoreId: (value: string) => void;
   setStyleCount: (value: string) => void;
   setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
   setTransparentBackground: (value: boolean) => void;
-  sheinStoreId: string;
   styleCount: string;
 }) {
   const hasSdsSizeReferenceImages = availableSdsImages.some(
@@ -149,6 +151,40 @@ export function SheinStudioGenerationPanel({
           {selectionReady ? "商品已选择" : "请先选择商品"}
         </Badge>
       </div>
+
+      <div
+        className={`grid gap-3 rounded-[1.5rem] border px-4 py-4 sm:grid-cols-3 ${
+          storeRequiredMessage
+            ? "border-amber-200 bg-amber-50/70"
+            : "border-zinc-200 bg-zinc-50/80"
+        }`}
+      >
+        <ExecutionMetric label="批次店铺" value={batchStoreLabel} />
+        <ExecutionMetric label="批次商品" value={`${batchProductCount} 款`} />
+        <ExecutionMetric
+          label="当前可执行状态"
+          value={
+            !selectionReady
+              ? "请先选择商品"
+              : storeRequiredMessage
+                ? "需先设置批次店铺"
+                : "可以生成或创建任务"
+          }
+        />
+      </div>
+      {selectionReady ? (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            storeRequiredMessage
+              ? "border-amber-200 bg-amber-50/70 text-amber-800"
+              : "border-emerald-200 bg-emerald-50/70 text-emerald-800"
+          }`}
+        >
+          {storeRequiredMessage
+            ? "先回到上方选择批次店铺，再继续生成。"
+            : "当前条件已齐备，确认下方参数后即可继续生成或创建任务。"}
+        </div>
+      ) : null}
 
       <div className="grid gap-4">
         <ArtworkGenerationSettings
@@ -184,8 +220,6 @@ export function SheinStudioGenerationPanel({
           setProductImagePrompts={setProductImagePrompts}
           setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
           setSelectedSdsImages={setSelectedSdsImages}
-          setSheinStoreId={setSheinStoreId}
-          sheinStoreId={sheinStoreId}
           showRenderSizeImagesWithSdsOption={showRenderSizeImagesWithSdsOption}
         />
       </div>
@@ -197,13 +231,18 @@ export function SheinStudioGenerationPanel({
         saveMessage={saveMessage}
         selectedStyleCount={selectedStyleCount}
         selectionReady={selectionReady}
+        storeRequiredMessage={storeRequiredMessage}
         subscriptionBlockedMessage={subscriptionBlockedMessage}
       />
 
       {selectionReady ? (
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 border-t border-zinc-100 pt-4">
           <Button
-            disabled={isGenerating || Boolean(subscriptionBlockedMessage)}
+            disabled={
+              isGenerating ||
+              Boolean(subscriptionBlockedMessage) ||
+              Boolean(storeRequiredMessage)
+            }
             onClick={onGenerate}
           >
             {isGenerating ? "生成中..." : "生成款式图"}
@@ -217,7 +256,8 @@ export function SheinStudioGenerationPanel({
               isCreatingTasks ||
               selectedStyleCount === 0 ||
               !selectionReady ||
-              Boolean(subscriptionBlockedMessage)
+              Boolean(subscriptionBlockedMessage) ||
+              Boolean(storeRequiredMessage)
             }
             onClick={onCreateTasks}
             variant="secondary"
@@ -243,6 +283,23 @@ export function SheinStudioGenerationPanel({
           onLoad={onLoadBatch}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ExecutionMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/80 bg-white px-3 py-3 shadow-sm">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-zinc-900">{value}</div>
     </div>
   );
 }

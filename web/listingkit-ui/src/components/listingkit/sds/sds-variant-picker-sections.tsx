@@ -123,27 +123,40 @@ export function SDSVariantFilters({
 }
 
 export function SDSVariantSelectionSummary({
-  addSelectedVariantsToGroupedCandidates,
+  addSelectedVariantsToCurrentBatch,
   clearFilteredVariants,
+  createBatchFromSelectedVariants,
+  currentBatchLabel,
+  isTargetingExistingBatch = false,
+  isSubmittingToBatch = false,
+  openOtherBatchPicker,
   selectFilteredVariants,
   selectedColorCount,
   selectedSizeCount,
   selectedVariantCount,
+  useSelectedVariantsLabel = "使用已选变体",
   useSelectedVariants,
 }: {
-  addSelectedVariantsToGroupedCandidates: () => void;
+  addSelectedVariantsToCurrentBatch?: () => void;
   clearFilteredVariants: () => void;
+  createBatchFromSelectedVariants?: () => void;
+  currentBatchLabel?: string;
+  isTargetingExistingBatch?: boolean;
+  isSubmittingToBatch?: boolean;
+  openOtherBatchPicker?: () => void;
   selectFilteredVariants: () => void;
   selectedColorCount: number;
   selectedSizeCount: number;
   selectedVariantCount: number;
+  useSelectedVariantsLabel?: string;
   useSelectedVariants: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
       <div>
-        已选 {selectedVariantCount} 个 SKU · {selectedColorCount} 个颜色 ·{" "}
-        {selectedSizeCount} 个尺码
+        {isTargetingExistingBatch && currentBatchLabel
+          ? `已选 ${selectedVariantCount} 个 SKU，将加入批次 ${currentBatchLabel}`
+          : `已选 ${selectedVariantCount} 个 SKU · ${selectedColorCount} 个颜色 · ${selectedSizeCount} 个尺码`}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={selectFilteredVariants} variant="secondary" type="button">
@@ -152,33 +165,63 @@ export function SDSVariantSelectionSummary({
         <Button onClick={clearFilteredVariants} variant="ghost" type="button">
           清除当前筛选
         </Button>
-        <Button
-          disabled={selectedVariantCount === 0}
-          onClick={addSelectedVariantsToGroupedCandidates}
-          type="button"
-          variant="ghost"
-        >
-          加入批量候选池
-        </Button>
-        <Button
-          disabled={selectedVariantCount === 0}
-          onClick={useSelectedVariants}
-          type="button"
-        >
-          使用已选变体
-        </Button>
+        {addSelectedVariantsToCurrentBatch ? (
+          <Button
+            disabled={selectedVariantCount === 0 || isSubmittingToBatch}
+            onClick={addSelectedVariantsToCurrentBatch}
+            type="button"
+            variant={isTargetingExistingBatch ? "primary" : "ghost"}
+          >
+            {isSubmittingToBatch
+              ? "加入中..."
+              : isTargetingExistingBatch
+                ? "加入当前批次，继续选下一个"
+              : `加入当前批次${currentBatchLabel ? ` · ${currentBatchLabel}` : ""}`}
+          </Button>
+        ) : null}
+        {openOtherBatchPicker ? (
+          <Button
+            disabled={selectedVariantCount === 0 || isSubmittingToBatch}
+            onClick={openOtherBatchPicker}
+            type="button"
+            variant="ghost"
+          >
+            加入其他批次
+          </Button>
+        ) : null}
+        {createBatchFromSelectedVariants && !isTargetingExistingBatch ? (
+          <Button
+            disabled={selectedVariantCount === 0}
+            onClick={createBatchFromSelectedVariants}
+            type="button"
+            variant="ghost"
+          >
+            创建新批次并加入
+          </Button>
+        ) : null}
+        {!isTargetingExistingBatch ? (
+          <Button
+            disabled={selectedVariantCount === 0}
+            onClick={useSelectedVariants}
+            type="button"
+          >
+            {useSelectedVariantsLabel}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
 }
 
 export function SDSVariantGrid({
+  allowPrimarySelection = true,
   filteredVariants,
   onSelectAsPrimary,
   selectedIds,
   selectedVariantId,
   toggleVariant,
 }: {
+  allowPrimarySelection?: boolean;
   filteredVariants: SDSProductVariant[];
   onSelectAsPrimary: (variant: SDSProductVariant) => void;
   selectedIds: number[];
@@ -191,6 +234,7 @@ export function SDSVariantGrid({
         {filteredVariants.map((variant) => (
           <SDSVariantCard
             active={selectedIds.includes(variant.id)}
+            allowPrimarySelection={allowPrimarySelection}
             key={variant.id}
             onSelectAsPrimary={() => onSelectAsPrimary(variant)}
             primary={selectedVariantId === variant.id}
@@ -210,12 +254,14 @@ export function SDSVariantGrid({
 
 function SDSVariantCard({
   active,
+  allowPrimarySelection = true,
   onSelectAsPrimary,
   primary,
   toggleVariant,
   variant,
 }: {
   active: boolean;
+  allowPrimarySelection?: boolean;
   onSelectAsPrimary: () => void;
   primary: boolean;
   toggleVariant: () => void;
@@ -294,15 +340,16 @@ function SDSVariantCard({
             {variant.productionCycle ? `${variant.productionCycle}h` : "-"}
           </div>
         </div>
-
-        <Button
-          className="w-full"
-          onClick={onSelectAsPrimary}
-          variant={primary ? "secondary" : "primary"}
-          type="button"
-        >
-          {primary ? "主变体" : "设为主变体"}
-        </Button>
+        {allowPrimarySelection ? (
+          <Button
+            className="w-full"
+            onClick={onSelectAsPrimary}
+            variant={primary ? "secondary" : "primary"}
+            type="button"
+          >
+            {primary ? "默认变体" : "设为默认变体"}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

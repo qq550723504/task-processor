@@ -8,6 +8,8 @@ const getSheinStudioBatch = vi.fn();
 const saveSheinStudioBatch = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const createSheinReviewTasks = vi.fn();
+const setActiveSheinStudioBatchId = vi.fn();
+const push = vi.fn();
 
 vi.mock("next/link", () => ({
   default: ({
@@ -17,6 +19,12 @@ vi.mock("next/link", () => ({
     children: React.ReactNode;
     href: string;
   }) => <a href={href}>{children}</a>,
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push,
+  }),
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-batch-publish-gate", () => ({
@@ -39,9 +47,52 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
   getSheinStudioBatch: (...args: unknown[]) => getSheinStudioBatch(...args),
   saveSheinStudioBatch: (...args: unknown[]) => saveSheinStudioBatch(...args),
   deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
+  setActiveSheinStudioBatchId: (...args: unknown[]) =>
+    setActiveSheinStudioBatchId(...args),
 }));
 
 describe("SheinStudioBatchDetail", () => {
+  it("routes back to SDS selection with the current batch activated for adding products", async () => {
+    getSheinStudioBatch.mockResolvedValueOnce({
+      id: "batch-1",
+      name: "retro cherries",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection: {
+        productId: 1,
+        parentProductId: 10,
+        variantId: 2,
+        prototypeGroupId: 3,
+        layerId: "layer-1",
+        productName: "Curtain",
+        variantLabel: "Blue",
+        printableWidth: 1200,
+        printableHeight: 1600,
+        selectedVariantIds: [2, 4],
+      },
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-18T18:30:00.000Z",
+    });
+
+    render(<SheinStudioBatchDetail batchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: "retro cherries" }),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "继续选品并加入当前批次" }));
+
+    expect(setActiveSheinStudioBatchId).toHaveBeenCalledWith("batch-1");
+    expect(push).toHaveBeenCalledWith(
+      "/listing-kits/sds?productId=1&parentProductId=10&variantId=2&prototypeGroupId=3&layerId=layer-1&printWidth=1200&printHeight=1600&variantIds=2%2C4",
+    );
+  });
+
   it("shows not found only for a real 404 batch lookup", async () => {
     getSheinStudioBatch.mockRejectedValueOnce(
       new ApiError("ListingKit API request failed: 404", 404, {

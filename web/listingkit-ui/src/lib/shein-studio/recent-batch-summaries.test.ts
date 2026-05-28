@@ -160,6 +160,59 @@ describe("buildRecentBatchSummaries", () => {
     ]);
   });
 
+  it("does not render a separate local draft summary when the snapshot belongs to an existing saved batch", () => {
+    const summaries = buildRecentBatchSummaries(
+      [
+        {
+          id: "batch-1",
+          name: "Saved Batch",
+          prompt: "older prompt",
+          styleCount: "1",
+          sheinStoreId: "",
+          selection,
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T09:00:00.000Z",
+        },
+      ],
+      {
+        draft: {
+          prompt: "draft prompt",
+          styleCount: "1",
+          sheinStoreId: "",
+          groups: [
+            {
+              id: "group-1",
+              name: "Draft Group",
+              primarySelection: selection,
+              groupedSelections: [],
+              sheinStoreId: "",
+              currentPrompt: "draft prompt",
+              promptHistory: [],
+              designs: [],
+              selectedIds: [],
+              createdTasks: [],
+              updatedAt: "2026-05-26T11:00:00.000Z",
+            },
+          ],
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T11:00:00.000Z",
+        },
+        draftBatchId: "batch-1",
+      },
+    );
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      id: "batch-1",
+      source: "batch",
+      title: "Saved Batch",
+    });
+  });
+
   it("derives grouped baseline validation and eligibility alerts from persisted batches", () => {
     const summaries = buildRecentBatchSummaries([
       {

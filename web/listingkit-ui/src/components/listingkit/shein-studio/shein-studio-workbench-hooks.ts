@@ -170,6 +170,13 @@ export function saveLocalSheinStudioDraftSnapshot(
   }
 }
 
+export function clearLocalSheinStudioDraftSnapshot() {
+  if (!canUseLocalDraftSnapshot()) {
+    return;
+  }
+  window.localStorage.removeItem(LOCAL_DRAFT_SNAPSHOT_KEY);
+}
+
 export function useHydratedSDSVariantSelection(
   selection?: SDSProductVariantSelection,
 ) {

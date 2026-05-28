@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 import {
   buildSDSVariantOptions,
@@ -17,7 +18,13 @@ import {
 import type { SDSProductSummary, SDSProductVariant } from "@/lib/types/sds";
 
 export function SDSVariantPicker({
-  onAddSelectedVariantsToGroupedCandidates,
+  activeBatchId = "",
+  activeBatchLabel = "",
+  batchOptions = [],
+  isTargetingExistingBatch = false,
+  isSubmittingToBatch = false,
+  onAddSelectedVariantsToBatch,
+  onCreateBatchFromSelectedVariants,
   open,
   product,
   variants,
@@ -27,7 +34,17 @@ export function SDSVariantPicker({
   onClose,
   onSelectVariants,
 }: {
-  onAddSelectedVariantsToGroupedCandidates?: (
+  activeBatchId?: string;
+  activeBatchLabel?: string;
+  batchOptions?: Array<{ id: string; title: string }>;
+  isTargetingExistingBatch?: boolean;
+  isSubmittingToBatch?: boolean;
+  onAddSelectedVariantsToBatch?: (
+    primary: SDSProductVariant,
+    variants: SDSProductVariant[],
+    batchId: string,
+  ) => void;
+  onCreateBatchFromSelectedVariants?: (
     primary: SDSProductVariant,
     variants: SDSProductVariant[],
   ) => void;
@@ -49,6 +66,7 @@ export function SDSVariantPicker({
     key: string;
     ids: number[];
   }>({ key: "", ids: [] });
+  const [showBatchPicker, setShowBatchPicker] = useState(false);
 
   const sizeOptions = useMemo(
     () => buildSDSVariantOptions(variants, "size"),
@@ -116,7 +134,7 @@ export function SDSVariantPicker({
     onSelectVariants(primary, selected);
   }
 
-  function addSelectedVariantsToGroupedCandidates() {
+  function addSelectedVariantsToBatch(batchId: string) {
     const { primary, selected } = resolveSelectedVariants({
       selectedVariantId,
       selectedVariants,
@@ -125,7 +143,20 @@ export function SDSVariantPicker({
     if (!primary) {
       return;
     }
-    onAddSelectedVariantsToGroupedCandidates?.(primary, selected);
+    onAddSelectedVariantsToBatch?.(primary, selected, batchId);
+    setShowBatchPicker(false);
+  }
+
+  function createBatchFromSelectedVariants() {
+    const { primary, selected } = resolveSelectedVariants({
+      selectedVariantId,
+      selectedVariants,
+      variants,
+    });
+    if (!primary) {
+      return;
+    }
+    onCreateBatchFromSelectedVariants?.(primary, selected);
   }
 
   function selectAsPrimary(variant: SDSProductVariant) {
@@ -170,18 +201,50 @@ export function SDSVariantPicker({
                 sizeOptions={sizeOptions}
               />
               <SDSVariantSelectionSummary
-                addSelectedVariantsToGroupedCandidates={
-                  addSelectedVariantsToGroupedCandidates
+                addSelectedVariantsToCurrentBatch={
+                  activeBatchId
+                    ? () => addSelectedVariantsToBatch(activeBatchId)
+                    : undefined
                 }
                 clearFilteredVariants={clearFilteredVariants}
+                createBatchFromSelectedVariants={createBatchFromSelectedVariants}
+                currentBatchLabel={activeBatchLabel}
+                isTargetingExistingBatch={isTargetingExistingBatch}
+                isSubmittingToBatch={isSubmittingToBatch}
+                openOtherBatchPicker={
+                  batchOptions.length > 0
+                    ? () => setShowBatchPicker((current) => !current)
+                    : undefined
+                }
                 selectFilteredVariants={selectFilteredVariants}
                 selectedColorCount={selectedColors.length}
                 selectedSizeCount={selectedSizes.length}
                 selectedVariantCount={selectedVariants.length}
+                useSelectedVariantsLabel={
+                  isTargetingExistingBatch && activeBatchId
+                    ? "加入当前批次并返回"
+                    : "使用已选变体"
+                }
                 useSelectedVariants={useSelectedVariants}
               />
+              {showBatchPicker && batchOptions.length > 0 ? (
+                <div className="flex flex-wrap gap-2 rounded-[1.25rem] border border-zinc-200 bg-white px-4 py-3">
+                  {batchOptions.map((batch) => (
+                    <Button
+                      key={batch.id}
+                      onClick={() => addSelectedVariantsToBatch(batch.id)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {batch.title}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
               <SDSVariantGrid
                 filteredVariants={filteredVariants}
+                allowPrimarySelection={!isTargetingExistingBatch}
                 onSelectAsPrimary={selectAsPrimary}
                 selectedIds={selectedIds}
                 selectedVariantId={selectedVariantId}

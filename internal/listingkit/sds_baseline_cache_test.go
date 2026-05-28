@@ -130,6 +130,53 @@ func TestTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 	}
 }
 
+func TestTaskRepositorySaveSDSBaselineCacheUpdatesValidationFieldsOnConflict(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SDSBaselineCacheEntry{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo, ok := interface{}(store.NewTaskRepository(db)).(listingkit.SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("task repository does not expose SDS baseline cache repository")
+	}
+
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	entry := newSDSBaselineCacheEntry("baseline-key", "tenant-a")
+	if err := repo.SaveSDSBaselineCache(ctx, entry); err != nil {
+		t.Fatalf("save baseline: %v", err)
+	}
+
+	entry.ValidationStatus = listingkit.SDSBaselineValidationStatusBlocked
+	entry.ValidationReasonCode = listingkit.SDSBaselineReasonCodeLayerMissing
+	entry.ValidationReason = "SDS design surface does not include the selected layer."
+	if err := repo.SaveSDSBaselineCache(ctx, entry); err != nil {
+		t.Fatalf("save baseline second pass: %v", err)
+	}
+
+	got, err := repo.GetSDSBaselineCache(ctx, "tenant-a", "baseline-key")
+	if err != nil {
+		t.Fatalf("get baseline: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected persisted baseline entry")
+	}
+	if got.ValidationStatus != listingkit.SDSBaselineValidationStatusBlocked {
+		t.Fatalf("validation status = %q, want blocked", got.ValidationStatus)
+	}
+	if got.ValidationReasonCode != listingkit.SDSBaselineReasonCodeLayerMissing {
+		t.Fatalf("validation reason code = %q, want layer_missing", got.ValidationReasonCode)
+	}
+	if got.ValidationReason != "SDS design surface does not include the selected layer." {
+		t.Fatalf("validation reason = %q, want selected-layer message", got.ValidationReason)
+	}
+}
+
 func TestSDSBaselineCacheRepositorySaveUsesTenantFromContextWhenEntryTenantEmpty(t *testing.T) {
 	t.Parallel()
 

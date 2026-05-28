@@ -84,6 +84,7 @@ export function GenerationMessages({
   saveMessage,
   selectedStyleCount,
   selectionReady,
+  storeRequiredMessage,
   subscriptionBlockedMessage,
 }: {
   creatingError: string;
@@ -92,6 +93,7 @@ export function GenerationMessages({
   saveMessage: string;
   selectedStyleCount: number;
   selectionReady: boolean;
+  storeRequiredMessage: string;
   subscriptionBlockedMessage: string;
 }) {
   return (

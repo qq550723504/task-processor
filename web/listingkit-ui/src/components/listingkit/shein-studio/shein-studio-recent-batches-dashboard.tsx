@@ -537,27 +537,38 @@ export function SheinStudioRecentBatchesDashboard({
     });
   }
 
-  function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
-    action: RecentBatchCardAction;
-    label: string;
-  } {
-    if (summary.createdTaskCount > 0) {
-      return {
-        action: "tasks",
-        label: "查看任务",
-      };
-    }
-    if (summary.designCount > 0) {
-      return {
-        action: "review",
-        label: "去创建任务",
-      };
-    }
+function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
+  action: RecentBatchCardAction;
+  label: string;
+} {
+  if (summary.isRecoverableDraft) {
     return {
-      action: "generate",
-      label: "继续生成",
+      action:
+        summary.createdTaskCount > 0
+          ? "tasks"
+          : summary.designCount > 0
+            ? "review"
+            : "generate",
+      label: "恢复草稿",
     };
   }
+  if (summary.createdTaskCount > 0) {
+    return {
+      action: "tasks",
+      label: "查看任务",
+    };
+  }
+  if (summary.designCount > 0) {
+    return {
+      action: "review",
+      label: "去创建任务",
+    };
+  }
+  return {
+    action: "generate",
+    label: "继续生成",
+  };
+}
 
   const filteredSummaries = useMemo(
     () =>
@@ -892,7 +903,7 @@ export function SheinStudioRecentBatchesDashboard({
                 onChange={(event) => setBulkStoreId(event.target.value)}
                 value={bulkStoreId}
               >
-                <option value="">跟随当前店铺</option>
+                <option value="">跟随批次店铺</option>
                 {storeOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
@@ -1268,14 +1279,14 @@ export function SheinStudioRecentBatchesDashboard({
                         复制
                       </Button>
                     ) : null}
-                    {!summary.isRecoverableDraft && onDeleteSummary ? (
+                    {onDeleteSummary ? (
                       <Button
                         onClick={() => onDeleteSummary(summary)}
                         size="sm"
                         type="button"
                         variant="ghost"
                       >
-                        删除
+                        {summary.isRecoverableDraft ? "删除草稿" : "删除"}
                       </Button>
                     ) : null}
                   </div>
@@ -1413,7 +1424,7 @@ export function SheinStudioRecentBatchesDashboard({
                     ) : null}
                     <dl className="mt-4 space-y-2 text-sm text-zinc-700">
                       <div className="flex items-start justify-between gap-3">
-                        <dt className="text-zinc-500">主商品</dt>
+                        <dt className="text-zinc-500">商品</dt>
                         <dd className="text-right">{summary.primaryProductName}</dd>
                       </div>
                       <div className="flex items-start justify-between gap-3">
@@ -1468,19 +1479,6 @@ export function SheinStudioRecentBatchesDashboard({
                         type="button"
                       >
                         {primaryAction.label}
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          if (openSummaryRoute(summary)) {
-                            return;
-                          }
-                          onSelectSummary(summary);
-                        }}
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        打开批次
                       </Button>
                     </div>
                   </div>

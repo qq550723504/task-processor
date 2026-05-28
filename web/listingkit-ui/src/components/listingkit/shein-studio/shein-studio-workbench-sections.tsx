@@ -21,7 +21,7 @@ export function SheinStudioWorkbenchAlerts({
   generationWarning: string;
   generationWarningAction:
     | {
-        intent: "focus_generate" | "warm_baseline";
+        intent: "focus_generate" | "warm_baseline" | "open_sds_login";
         label: string;
         onClick: () => void;
       }

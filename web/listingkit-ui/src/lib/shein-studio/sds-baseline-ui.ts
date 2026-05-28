@@ -26,7 +26,7 @@ export function getSDSBaselineReasonMessage(reasonCode?: string) {
     case "login_in_progress":
       return "当前 SDS 登录仍在进行中。";
     case "login_missing_credentials":
-      return "当前 SDS 登录缺少 cookie 或 access token。";
+      return "当前 SDS 登录缺少 access token。";
     case "login_status_check_failed":
       return "SDS 登录态检查失败。";
     case "product_detail_check_failed":
@@ -210,6 +210,14 @@ export function buildGroupedSDSBaselineHandoff(input: {
   const reason = input.reason?.trim();
   const reasonFromCode = getSDSBaselineReasonMessage(input.reasonCode);
   const resolvedReason = reason || reasonFromCode;
+  const normalizedReason = resolvedReason.toLowerCase();
+  const isLoginBlocked =
+    input.reasonCode === "login_missing_credentials" ||
+    input.reasonCode === "login_unavailable" ||
+    input.reasonCode === "login_in_progress" ||
+    input.reasonCode === "login_status_check_failed" ||
+    normalizedReason.includes("sds login") ||
+    normalizedReason.includes("access token");
   switch (input.status) {
     case "missing":
       return {
@@ -228,6 +236,15 @@ export function buildGroupedSDSBaselineHandoff(input: {
           "这款候选商品已经完成 baseline 缓存，但还没通过进一步校验。先继续校验，再回来加入 grouped 批量上品。",
       };
     case "blocked":
+      if (isLoginBlocked) {
+        return {
+          action: "open_sds_login",
+          actionLabel: "去处理 SDS 登录",
+          message:
+            resolvedReason ||
+            "当前候选商品的 baseline 校验被 SDS 登录态阻断。请先处理 SDS 登录，再回来继续校验并加入 grouped 批量上品。",
+        };
+      }
       return {
         action: "focus_generate",
         actionLabel: "去生成区修复",

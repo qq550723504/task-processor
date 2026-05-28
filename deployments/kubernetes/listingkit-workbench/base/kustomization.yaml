@@ -6,6 +6,8 @@ namespace: task-processor
 resources:
   - namespace.yaml
   - configmap.yaml
+  - imgproxy-deployment.yaml
+  - imgproxy-service.yaml
   - product-listing-api-deployment.yaml
   - product-listing-api-service.yaml
   - listingkit-ui-deployment.yaml

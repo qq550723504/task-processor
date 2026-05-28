@@ -74,28 +74,16 @@ describe("SHEIN login proxy ZITADEL auth", () => {
     );
   });
 
-  it("allows local bypass when ZITADEL is not configured", async () => {
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_TENANT_ID", "286");
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      new Response("[]", {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("returns 503 when ZITADEL is not configured", async () => {
     const response = await GET(
       new NextRequest("http://localhost/api/shein-login/accounts"),
       { params: Promise.resolve({ path: ["accounts"] }) },
     );
 
-    expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const upstreamInit = fetchMock.mock.calls[0]?.[1];
-    const headers = new Headers(upstreamInit?.headers);
-    expect(headers.get("tenant-id")).toBe("286");
-    expect(headers.get("X-Tenant-ID")).toBe("286");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: "zitadel_auth_not_configured" }),
+    );
   });
 
   it("forwards a verified ZITADEL bearer token upstream", async () => {

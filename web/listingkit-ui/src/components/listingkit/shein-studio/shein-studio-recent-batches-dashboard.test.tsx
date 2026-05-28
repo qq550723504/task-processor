@@ -124,6 +124,45 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     );
   });
 
+  it("labels recoverable drafts with restore actions", () => {
+    const onDeleteSummary = vi.fn();
+
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onDeleteSummary={onDeleteSummary}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "draft-1",
+            source: "local_draft",
+            isRecoverableDraft: true,
+            title: "Local Draft",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "draft prompt",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "恢复草稿" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "恢复草稿继续生成" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除草稿" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "删除草稿" }));
+    expect(onDeleteSummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "draft-1",
+        source: "local_draft",
+      }),
+    );
+  });
+
   it("shows state-driven primary actions and emits the selected action", () => {
     render(
       <SheinStudioRecentBatchesDashboard
@@ -204,7 +243,11 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开批次" }));
+    expect(
+      screen.queryByRole("button", { name: "打开批次" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "去创建任务" }));
 
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
   });
@@ -752,7 +795,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             primaryProductName: "hoodie",
             productCount: 1,
             promptPreview: "second prompt",
-            storeSummary: "跟随当前店铺",
+            storeSummary: "跟随批次店铺",
             designCount: 0,
             createdTaskCount: 0,
             updatedAt: "2026-05-26T09:00:00.000Z",
@@ -803,7 +846,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             primaryProductName: "hoodie",
             productCount: 1,
             promptPreview: "second prompt",
-            storeSummary: "跟随当前店铺",
+            storeSummary: "跟随批次店铺",
             designCount: 0,
             createdTaskCount: 0,
             updatedAt: "2026-05-26T09:00:00.000Z",
@@ -1216,7 +1259,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             primaryProductName: "mug",
             productCount: 1,
             promptPreview: "draft prompt",
-            storeSummary: "跟随当前店铺",
+            storeSummary: "跟随批次店铺",
             designCount: 0,
             createdTaskCount: 0,
             updatedAt: "2026-05-26T11:00:00.000Z",
@@ -1265,7 +1308,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             primaryProductName: "hoodie",
             productCount: 1,
             promptPreview: "second prompt",
-            storeSummary: "跟随当前店铺",
+            storeSummary: "跟随批次店铺",
             designCount: 2,
             createdTaskCount: 1,
             updatedAt: "2026-05-26T09:00:00.000Z",
@@ -1320,7 +1363,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             primaryProductName: "hoodie",
             productCount: 1,
             promptPreview: "second prompt",
-            storeSummary: "跟随当前店铺",
+            storeSummary: "跟随批次店铺",
             designCount: 2,
             createdTaskCount: 0,
             updatedAt: "2026-05-26T09:00:00.000Z",
@@ -1333,7 +1376,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             primaryProductName: "mug",
             productCount: 1,
             promptPreview: "third prompt",
-            storeSummary: "跟随当前店铺",
+            storeSummary: "跟随批次店铺",
             designCount: 2,
             createdTaskCount: 1,
             updatedAt: "2026-05-26T08:00:00.000Z",

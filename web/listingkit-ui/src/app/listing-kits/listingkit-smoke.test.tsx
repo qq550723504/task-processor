@@ -5,7 +5,6 @@ vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
 
-import { shouldBypassListingKitProxyAuth } from "@/app/api/listing-kits/proxy-auth";
 import { selectListingKitMockPayload } from "@/app/api/listing-kits/proxy-mock";
 import ListingKitSDSPage from "@/app/listing-kits/sds/page";
 import ListingKitStyleGalleryRoute from "@/app/listing-kits/style-gallery/page";
@@ -27,16 +26,6 @@ vi.mock("@/lib/server/style-gallery", () => ({
 }));
 
 describe("ListingKit lightweight smoke", () => {
-  it("allows local ZITADEL auth bypass only with the explicit bypass flag", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-
-    expect(shouldBypassListingKitProxyAuth()).toBe(true);
-
-    vi.stubEnv("NODE_ENV", "production");
-    expect(shouldBypassListingKitProxyAuth()).toBe(false);
-  });
-
   it("keeps the local mock selector wired for ListingKit task routes", () => {
     const payload = selectListingKitMockPayload({
       method: "GET",

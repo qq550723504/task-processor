@@ -29,10 +29,8 @@
 
 - `ZITADEL_ISSUER_URL`、`ZITADEL_CLIENT_ID`、`ZITADEL_CLIENT_SECRET`、
   redirect URI 这类值继续保留在 Secret，因为 UI 仍直接读取它们。
-- Go API 的鉴权开关和 allowlist 优先使用
-  `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED`、
-  `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED`、
-  `LISTINGKIT_ZITADEL_ALLOWED_*` 这些绑定 env，或者直接写入
-  `listingkit.zitadel.*`。
+- Go API 的 ZITADEL issuer/client secret 与 allowlist 继续通过
+  `ZITADEL_*`、`LISTINGKIT_ZITADEL_ALLOWED_*` 或对应的
+  `listingkit.zitadel.*` 配置项注入；ListingKit 鉴权不再提供运行时关闭开关。
 - 迁移步骤与验收项见
   [listingkit-config-migration-checklist.md](/D:/code/task-processor/docs/development/listingkit-config-migration-checklist.md)。

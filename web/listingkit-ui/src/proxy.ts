@@ -26,10 +26,6 @@ async function handleProxy(request: AuthenticatedProxyRequest) {
     return NextResponse.next();
   }
 
-  if (shouldBypassListingKitAuth()) {
-    return NextResponse.next();
-  }
-
   if (!isZitadelAuthConfigured()) {
     return NextResponse.json(
       { error: "ZITADEL auth is not configured" },
@@ -59,13 +55,6 @@ async function handleProxy(request: AuthenticatedProxyRequest) {
 
 function isListingKitPagePath(pathname: string) {
   return pathname === "/" || pathname === "/listing-kits" || pathname.startsWith("/listing-kits/");
-}
-
-function shouldBypassListingKitAuth() {
-  return (
-    process.env.NODE_ENV !== "production" &&
-    process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE === "1"
-  );
 }
 
 function redirectToZitadelLogin(request: NextRequest) {

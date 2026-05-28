@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { SheinBatchPublishGate } from "@/components/listingkit/shein-studio/shein-batch-publish-gate";
@@ -17,9 +18,11 @@ import {
   deleteSheinStudioBatch,
   getSheinStudioBatch,
   saveSheinStudioBatch,
+  setActiveSheinStudioBatchId,
 } from "@/lib/utils/shein-studio-batches";
 
 export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
+  const router = useRouter();
   const [batch, setBatch] = useState<SheinStudioSavedBatch | null>(null);
   const [isLoadingBatch, setIsLoadingBatch] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -189,6 +192,11 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     setBatch(null);
   }
 
+  function handleContinueSelecting() {
+    setActiveSheinStudioBatchId(currentBatch.id);
+    router.push(studioHref);
+  }
+
   function handleToggle(designId: string) {
     const nextSelected = currentBatch.selectedIds.includes(designId)
       ? currentBatch.selectedIds.filter((item) => item !== designId)
@@ -262,9 +270,9 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
             <Link href="/listing-kits/sds">
               <Button>返回工作室</Button>
             </Link>
-            <Link href={studioHref}>
-              <Button variant="secondary">用当前选择打开</Button>
-            </Link>
+            <Button onClick={handleContinueSelecting} variant="secondary">
+              继续选品并加入当前批次
+            </Button>
             <Button
               disabled={isCreatingTasks || Boolean(createActionDisabledReason)}
               onClick={handleCreateTasks}

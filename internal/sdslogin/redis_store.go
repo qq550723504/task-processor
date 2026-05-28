@@ -15,11 +15,10 @@ import (
 const sdsSharedAuthStateKey = "sds:auth:global"
 
 type redisPersistedPayload struct {
-	AccessToken string         `json:"access_token"`
-	OutToken    string         `json:"out_token,omitempty"`
-	MerchantID  int64          `json:"merchant_id,omitempty"`
-	UserID      int64          `json:"user_id,omitempty"`
-	Cookies     []CookieRecord `json:"cookies,omitempty"`
+	AccessToken string `json:"access_token"`
+	OutToken    string `json:"out_token,omitempty"`
+	MerchantID  int64  `json:"merchant_id,omitempty"`
+	UserID      int64  `json:"user_id,omitempty"`
 }
 
 type RedisStateStore struct {
@@ -80,7 +79,6 @@ func (s *RedisStateStore) Load(ctx context.Context) (*AuthPayload, error) {
 		OutToken:    persisted.OutToken,
 		MerchantID:  persisted.MerchantID,
 		UserID:      persisted.UserID,
-		Cookies:     append([]CookieRecord(nil), persisted.Cookies...),
 	}, nil
 }
 
@@ -96,7 +94,6 @@ func (s *RedisStateStore) Save(ctx context.Context, payload *AuthPayload) error 
 		OutToken:    payload.OutToken,
 		MerchantID:  payload.MerchantID,
 		UserID:      payload.UserID,
-		Cookies:     append([]CookieRecord(nil), payload.Cookies...),
 	})
 	if err != nil {
 		return err

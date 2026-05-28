@@ -10,6 +10,16 @@ import (
 )
 
 func BuildConfig(v *viper.Viper) *Config {
+	listingKitAllowedTenantIDs := getStringSlice(v, "listingkit.zitadel.allowedTenantIDs")
+	listingKitAllowedUserIDs := getStringSlice(v, "listingkit.zitadel.allowedUserIDs")
+	listingKitAllowedUsernames := getStringSlice(v, "listingkit.zitadel.allowedUsernames")
+	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
+	listingKitAuthorizationRequired :=
+		len(listingKitAllowedTenantIDs) > 0 ||
+		len(listingKitAllowedUserIDs) > 0 ||
+		len(listingKitAllowedUsernames) > 0 ||
+		len(listingKitAllowedRoles) > 0
+
 	cfg := &Config{
 		Processor: ProcessorConfig{
 			MaxRetries: v.GetInt("processor.maxRetries"),
@@ -183,17 +193,17 @@ func BuildConfig(v *viper.Viper) *Config {
 			SheinSubmitDebugDumpDir: v.GetString("listingkit.sheinSubmitDebugDumpDir"),
 			PlatformAdminUsers:      getStringSlice(v, "listingkit.platformAdminUsers"),
 			PlatformAdminRoles:      getStringSlice(v, "listingkit.platformAdminRoles"),
-			OwnerScopeRequired:      v.GetBool("listingkit.ownerScopeRequired"),
+			OwnerScopeRequired:      true,
 			Zitadel: ListingKitZitadelConfig{
 				IssuerURL:             v.GetString("listingkit.zitadel.issuerURL"),
 				ClientID:              v.GetString("listingkit.zitadel.clientID"),
 				ClientSecret:          v.GetString("listingkit.zitadel.clientSecret"),
-				AuthRequired:          v.GetBool("listingkit.zitadel.authRequired"),
-				AuthorizationRequired: v.GetBool("listingkit.zitadel.authorizationRequired"),
-				AllowedTenantIDs:      getStringSlice(v, "listingkit.zitadel.allowedTenantIDs"),
-				AllowedUserIDs:        getStringSlice(v, "listingkit.zitadel.allowedUserIDs"),
-				AllowedUsernames:      getStringSlice(v, "listingkit.zitadel.allowedUsernames"),
-				AllowedRoles:          getStringSlice(v, "listingkit.zitadel.allowedRoles"),
+				AuthRequired:          true,
+				AuthorizationRequired: listingKitAuthorizationRequired,
+				AllowedTenantIDs:      listingKitAllowedTenantIDs,
+				AllowedUserIDs:        listingKitAllowedUserIDs,
+				AllowedUsernames:      listingKitAllowedUsernames,
+				AllowedRoles:          listingKitAllowedRoles,
 			},
 		},
 	}

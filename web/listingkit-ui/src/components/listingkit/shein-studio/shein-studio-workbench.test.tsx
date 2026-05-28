@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -28,7 +28,6 @@ const saveSheinStudioDraftWithOptions = vi.fn();
 const setActiveSheinStudioBatchId = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
-const useSDSGroupedCandidates = vi.fn();
 const push = vi.fn();
 let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
@@ -40,19 +39,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: (...args: unknown[]) => useQuery(...args),
-}));
-
-vi.mock("@/components/listingkit/shein-studio/shein-studio-selection-overview", () => ({
-  SheinStudioSelectionOverview: ({
-    selection,
-  }: {
-    selection?: { variantId?: number };
-  }) => (
-    <div>
-      selection overview
-      {selection?.variantId ? ` selection variant: ${selection.variantId}` : ""}
-    </div>
-  ),
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-progress-strip", () => ({
@@ -94,6 +80,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     promptHistory?: Array<{ prompt: string; createdAt: string }>;
     showSavedBatches?: boolean;
     subscriptionBlockedMessage?: string;
+    storeRequiredMessage?: string;
     setPrompt: (value: string) => void;
     selectedSdsImages?: Array<{
       color?: string;
@@ -130,6 +117,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
         {props.subscriptionBlockedMessage ? (
           <div>{props.subscriptionBlockedMessage}</div>
         ) : null}
+        {props.storeRequiredMessage ? <div>{props.storeRequiredMessage}</div> : null}
         {props.generationError ? <div>{props.generationError}</div> : null}
       </div>
     );
@@ -185,10 +173,6 @@ vi.mock("@/lib/query/use-shein-store-selector", () => ({
     routing: { isError: false },
     recommendedStoreId: "",
   }),
-}));
-
-vi.mock("@/lib/query/use-sds-grouped-candidates", () => ({
-  useSDSGroupedCandidates: () => useSDSGroupedCandidates(),
 }));
 
 const selection = {
@@ -252,7 +236,6 @@ describe("SheinStudioWorkbench", () => {
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
-    useSDSGroupedCandidates.mockReturnValue([]);
     push.mockReset();
   });
 
@@ -452,7 +435,9 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
-    expect(screen.getByText("selection overview selection variant: 100")).toBeInTheDocument();
+    expect(screen.getByText("入口商品")).toBeInTheDocument();
+    expect(screen.queryByText("入口商品状态")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("批次店铺")).toBeInTheDocument();
     expect(screen.getByText("saved batches visible: no")).toBeInTheDocument();
     expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
   });
@@ -538,6 +523,61 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
+  it("saves the dedicated batch back into the same batch id from the save button", async () => {
+    saveSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "updated prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "updated prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    const onSaveBatch = await waitFor(() => {
+      const handler = lastGenerationPanelProps?.onSaveBatch as
+        | (() => Promise<void> | void)
+        | undefined;
+      expect(typeof handler).toBe("function");
+      return handler;
+    });
+
+    saveSheinStudioBatch.mockClear();
+
+    await act(async () => {
+      await onSaveBatch?.();
+    });
+
+    await waitFor(() =>
+      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "batch-1",
+          prompt: "updated prompt",
+        }),
+        { makeActive: false },
+      ),
+    );
+  });
+
   it("does not let a local draft override the dedicated batch selection", async () => {
     saveLocalSheinStudioDraftSnapshot({
       prompt: "legacy local draft",
@@ -576,12 +616,72 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
-    expect(
-      screen.getByText("selection overview selection variant: 100"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("入口商品")).toBeInTheDocument();
     expect(
       screen.queryByDisplayValue("legacy local draft"),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not let a stale local snapshot hide newer grouped selections from the dedicated batch", async () => {
+    saveLocalSheinStudioDraftSnapshot(
+      {
+        prompt: "stale local draft",
+        styleCount: "1",
+        productImageCount: "5",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        artworkModel: "nanobanana",
+        transparentBackground: false,
+        sheinStoreId: "1",
+        imageStrategy: "ai_generated",
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [],
+        renderSizeImagesWithSds: true,
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      { batchId: "batch-1" },
+    );
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "Retro Cherries",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      groupedSelections: [
+        {
+          selectionId: "sel-hoodie",
+          sheinStoreId: "869",
+          selection: {
+            ...selection,
+            variantId: 101,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          eligible: true,
+        },
+      ],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:05:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("已加入 1 款")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("已加入 0 款")).not.toBeInTheDocument();
   });
 
   it("lets the dedicated batch page rename the current batch without losing current draft state", async () => {
@@ -688,6 +788,84 @@ describe("SheinStudioWorkbench", () => {
     expect(push).toHaveBeenCalledWith("/listing-kits/sds");
   });
 
+  it("lets the dedicated batch page jump to SDS selection for the current batch", async () => {
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "批次1",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "去 SDS 选品并加入当前批次" }),
+    );
+
+    expect(setActiveSheinStudioBatchId).toHaveBeenCalledWith("batch-1");
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new?targetBatchId=batch-1");
+  });
+
+  it("offers a baseline recovery action on the dedicated batch page when the active selection is abnormal", async () => {
+    getSDSBaselineReadiness.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "failed",
+      reasonCode: "cache_unavailable",
+      reason: "",
+    });
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("当前 SDS 选择还没有可用的 baseline 缓存。")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "重试 baseline 校验" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试 baseline 校验" }));
+
+    await waitFor(() =>
+      expect(warmSDSBaselineForSelection).toHaveBeenCalledWith(selection),
+    );
+  });
+
   it("shows the recent batch homepage before a selection is chosen", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
@@ -708,7 +886,7 @@ describe("SheinStudioWorkbench", () => {
 
     expect(await screen.findByText("最近批次")).toBeInTheDocument();
     expect(screen.getByText("Retro Cherries")).toBeInTheDocument();
-    expect(screen.queryByText("selection overview")).not.toBeInTheDocument();
+    expect(screen.queryByText("入口商品")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "generate styles" })).not.toBeInTheDocument();
   });
 
@@ -745,6 +923,68 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+  });
+
+  it("updates the loaded homepage batch instead of creating a duplicate when saving", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+    saveSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "Retro Cherries",
+      prompt: "retro cherries updated",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:05:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+
+    fireEvent.change(screen.getByLabelText("prompt"), {
+      target: { value: "retro cherries updated" },
+    });
+
+    const onSaveBatch = lastGenerationPanelProps?.onSaveBatch as
+      | (() => Promise<void> | void)
+      | undefined;
+    expect(typeof onSaveBatch).toBe("function");
+    await act(async () => {
+      await onSaveBatch?.();
+    });
+
+    await waitFor(() =>
+      expect(
+        saveSheinStudioBatch.mock.calls.some(
+          ([input]) => {
+            const candidate = input as { id?: string; prompt?: string } | undefined;
+            return (
+              candidate?.id === "batch-1" &&
+              candidate.prompt === "retro cherries updated"
+            );
+          },
+        ),
+      ).toBe(true),
     );
   });
 
@@ -1280,15 +1520,33 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("keeps generated designs visible when draft save fails", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
     generateSheinStudioDesigns.mockResolvedValue({
       images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
-    fireEvent.change(screen.getByLabelText("prompt"), {
-      target: { value: "retro cherries" },
-    });
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
@@ -1302,6 +1560,24 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("does not block generation when studio session sync fails", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
     ensureSheinStudioSession.mockRejectedValue(new Error("ListingKit API request failed: 408"));
     generateSheinStudioDesigns.mockResolvedValue({
       images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
@@ -1309,9 +1585,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
-    fireEvent.change(screen.getByLabelText("prompt"), {
-      target: { value: "retro cherries" },
-    });
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
@@ -1321,6 +1597,24 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("guards against leaving the page while style generation is running", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     generateSheinStudioDesigns.mockImplementation(
       () =>
@@ -1331,9 +1625,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
-    fireEvent.change(screen.getByLabelText("prompt"), {
-      target: { value: "retro cherries" },
-    });
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
@@ -1394,6 +1688,24 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("shows backend generation warnings when only part of the requested styles succeed", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
     generateSheinStudioDesigns.mockResolvedValue({
       warnings: [
         "款式变体提示词生成失败，已回退为基础提示词重复生成。",
@@ -1406,9 +1718,6 @@ describe("SheinStudioWorkbench", () => {
 
     await waitFor(() => expect(loadSheinStudioDraft).toHaveBeenCalled());
 
-    fireEvent.change(screen.getByLabelText("prompt"), {
-      target: { value: "retro cherries" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
@@ -1422,6 +1731,24 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("keeps generated designs when parent step changes to review", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
     generateSheinStudioDesigns.mockResolvedValue({
       images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
     });
@@ -1430,9 +1757,9 @@ describe("SheinStudioWorkbench", () => {
       <SheinStudioWorkbench activeStep="generate" selection={selection} />,
     );
 
-    fireEvent.change(screen.getByLabelText("prompt"), {
-      target: { value: "retro cherries" },
-    });
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
@@ -1468,6 +1795,24 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("shows explicit error and stays out of review when generation returns no images", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
     generateSheinStudioDesigns.mockResolvedValue({
       images: [],
     });
@@ -1601,6 +1946,48 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
+  it("requires choosing a batch store before generating styles", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("请先选择批次店铺，再生成款式图或创建 SHEIN 资料。"),
+      ).toBeInTheDocument(),
+    );
+    expect(lastGenerationPanelProps?.storeRequiredMessage).toBe(
+      "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    );
+
+    const onGenerate = lastGenerationPanelProps?.onGenerate as
+      | (() => Promise<void> | void)
+      | undefined;
+    await act(async () => {
+      await onGenerate?.();
+    });
+
+    expect(generateSheinStudioDesigns).not.toHaveBeenCalled();
+    expect(screen.getByText("请先选择批次店铺。")).toBeInTheDocument();
+  });
+
   it("restores grouped selections from a saved draft even when they are not in recent variants", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
@@ -1648,29 +2035,6 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("hoodie")).toBeInTheDocument();
   });
 
-  it("shows candidate-pool items even when there are no recent variants", async () => {
-    useSDSGroupedCandidates.mockReturnValue([
-      {
-        productId: 1,
-        parentProductId: 1,
-        variantId: 101,
-        prototypeGroupId: 200,
-        layerId: "layer-2",
-        productName: "hoodie",
-        variantLabel: "L / white",
-        printableWidth: 1000,
-        printableHeight: 1000,
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
-
-    await waitFor(() =>
-      expect(screen.getByText("批量候选池")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("hoodie")).toBeInTheDocument();
-  });
-
   it("passes the grouped image mode into the generation panel", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
@@ -1699,30 +2063,6 @@ describe("SheinStudioWorkbench", () => {
     expect(lastGenerationPanelProps?.groupedImageMode).toBe("per_product");
   });
 
-  it("allows a ready candidate with a different printable size to join grouped creation", async () => {
-    useSDSGroupedCandidates.mockReturnValue([
-      {
-        productId: 1,
-        parentProductId: 1,
-        variantId: 101,
-        prototypeGroupId: 200,
-        layerId: "layer-2",
-        productName: "hoodie",
-        variantLabel: "L / white",
-        printableWidth: 1400,
-        printableHeight: 1000,
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
-
-    const addButton = await screen.findByRole("button", { name: "加入分组" });
-    expect(addButton).toBeEnabled();
-    expect(
-      screen.queryByText("印刷宽度与当前主商品不一致，先不要混在同一批创建。"),
-    ).not.toBeInTheDocument();
-  });
-
   it("shows grouped-candidate recovery guidance after returning from candidate pool", async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -1746,6 +2086,54 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 
+  it("routes login-blocked grouped guidance to the SDS login page", async () => {
+    saveSDSGroupedCandidateHandoff({
+      action: "open_sds_login",
+      actionLabel: "去处理 SDS 登录",
+      message: "当前 SDS 登录缺少 access token。",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "去处理 SDS 登录" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "去处理 SDS 登录" }));
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds-login");
+  });
+
+  it("routes the active-selection baseline action to the SDS login page when login is blocked", async () => {
+    getSDSBaselineReadiness.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "blocked",
+      reasonCode: "login_missing_credentials",
+      reason: "",
+    });
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    const actionButton = await screen.findByRole("button", {
+      name: "去处理 SDS 登录",
+    });
+    fireEvent.click(actionButton);
+
+    expect(push).toHaveBeenCalledWith("/listing-kits/sds-login");
+  });
+
   it("warms baseline directly from grouped-candidate guidance", async () => {
     saveSDSGroupedCandidateHandoff({
       action: "warm_baseline",
@@ -1765,6 +2153,63 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(
         screen.getByText("这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。"),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("keeps the baseline recovery action available when warmup still needs more validation", async () => {
+    warmSDSBaselineForSelection.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "baseline_cached",
+      reasonCode: "cache_unavailable",
+      reason: "",
+    });
+    saveSDSGroupedCandidateHandoff({
+      action: "warm_baseline",
+      actionLabel: "一键预热并校验 baseline",
+      message:
+        "这款候选商品还没有 baseline 缓存。先预热并校验 baseline，再回来加入 grouped 批量上品。",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "一键预热并校验 baseline" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "一键预热并校验 baseline" }));
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "继续 baseline 校验" }).length).toBeGreaterThan(0),
+    );
+    expect(
+      screen.getAllByText("当前 SDS 选择还没有可用的 baseline 缓存。").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows a direct fallback message when warmup returns cached baseline without a reason", async () => {
+    warmSDSBaselineForSelection.mockResolvedValue({
+      baselineKey: "baseline-key",
+      status: "baseline_cached",
+      reasonCode: "",
+      reason: "",
+    });
+    saveSDSGroupedCandidateHandoff({
+      action: "warm_baseline",
+      actionLabel: "一键预热并校验 baseline",
+      message:
+        "这款候选商品还没有 baseline 缓存。先预热并校验 baseline，再回来加入 grouped 批量上品。",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "一键预热并校验 baseline" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "一键预热并校验 baseline" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("这款 SDS 商品已经完成 baseline 缓存，当前没有更多校验结果。可以继续使用，必要时再手动复查。"),
       ).toBeInTheDocument(),
     );
   });

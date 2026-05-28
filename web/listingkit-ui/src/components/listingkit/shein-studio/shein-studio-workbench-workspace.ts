@@ -255,28 +255,38 @@ export function useSheinStudioWorkspaceLoader({
 }
 
 export function useSheinStudioBatchActions({
+  activeBatchId,
   activeStep,
   buildDraftInput,
   hasCustomizedSdsSelectionRef,
   hasLocalWorkflowStateRef,
+  setActiveBatchId,
   setEffectiveStep,
   workbench,
 }: {
+  activeBatchId?: string;
   activeStep: SheinStudioStepKey;
   buildDraftInput: () => SheinStudioSaveInput;
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
+  setActiveBatchId: (batchId: string) => void;
   setEffectiveStep: (step: SheinStudioStepKey) => void;
   workbench: SheinStudioWorkbenchController;
 }) {
   const handleSaveBatch = useCallback(async () => {
-    const draftInput = buildDraftInput();
+    const currentBatchId = activeBatchId?.trim() || "";
+    const draftInput = {
+      ...buildDraftInput(),
+      id: currentBatchId || undefined,
+    };
     if (!draftInput.prompt?.trim()) {
       workbench.setField("saveMessage", "保存批次前请先填写主题提示词。");
       return;
     }
 
-    const saved = await saveSheinStudioBatch(draftInput);
+    const saved = await saveSheinStudioBatch(draftInput, {
+      makeActive: currentBatchId ? false : undefined,
+    });
 
     if (!saved) {
       workbench.setField("saveMessage", "批次保存失败。");
@@ -285,10 +295,12 @@ export function useSheinStudioBatchActions({
 
     workbench.setField("savedBatches", await listSheinStudioBatches());
     workbench.setField("saveMessage", `批次已保存：${saved.name}`);
-  }, [buildDraftInput, workbench]);
+    setActiveBatchId(saved.id);
+  }, [activeBatchId, buildDraftInput, setActiveBatchId, workbench]);
 
   const handleLoadBatch = useCallback((batch: SheinStudioSavedBatch) => {
     hasLocalWorkflowStateRef.current = true;
+    setActiveBatchId(batch.id);
     setActiveSheinStudioBatchId(batch.id);
     workbench.applyBatch(batch);
     hasCustomizedSdsSelectionRef.current =
@@ -305,6 +317,7 @@ export function useSheinStudioBatchActions({
     activeStep,
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
+    setActiveBatchId,
     setEffectiveStep,
     workbench,
   ]);

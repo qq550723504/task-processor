@@ -41,7 +41,8 @@ func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 		return s.taskLifecycle
 	}
 	s.taskLifecycle = newTaskLifecycleService(taskLifecycleServiceConfig{
-		repo: s.repo,
+		repo:                   s.repo,
+		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
 		requestDefaults: func() generateRequestDefaults {
 			return s.requestDefaults
 		},

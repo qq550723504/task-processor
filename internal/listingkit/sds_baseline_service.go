@@ -9,14 +9,18 @@ import (
 )
 
 type sdsBaselineService struct {
-	repo Repository
+	repo                   Repository
+	sdsLoginStatusProvider SDSLoginStatusProvider
 }
 
 func (s *service) sdsBaselineOrDefault() *sdsBaselineService {
 	if s == nil {
 		return &sdsBaselineService{}
 	}
-	return &sdsBaselineService{repo: s.repo}
+	return &sdsBaselineService{
+		repo:                   s.repo,
+		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
+	}
 }
 
 func (b *sdsBaselineService) GetCachedBaseline(ctx context.Context, task *Task) (*canonical.Product, bool, error) {
@@ -97,9 +101,13 @@ func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselin
 
 	status := strings.ToLower(strings.TrimSpace(entry.Status))
 	switch status {
-	case SDSBaselineStatusBaselineCached:
-		readiness.CacheStatus = SDSBaselineStatusBaselineCached
+	case SDSBaselineStatusBaselineCached, SDSBaselineStatusReady:
+		readiness.CacheStatus = status
 		readiness.ValidationStatus = normalizedSDSBaselineValidationStatus(entry.ValidationStatus)
+		if status == SDSBaselineStatusReady &&
+			readiness.ValidationStatus == SDSBaselineValidationStatusUnknown {
+			readiness.ValidationStatus = SDSBaselineValidationStatusReady
+		}
 		if entry.CanonicalProductBase == nil {
 			readiness.CacheStatus = SDSBaselineStatusFailed
 			readiness.Status = SDSBaselineStatusFailed
@@ -127,6 +135,7 @@ func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselin
 			strings.TrimSpace(entry.ValidationReasonCode),
 			strings.TrimSpace(entry.ValidationReason),
 		)
+		b.reconcileCachedSDSLoginBaselineReadiness(ctx, readiness)
 		return readiness, nil
 	case "", "pending", "processing", "queued", "building":
 		readiness.CacheStatus = firstNonEmpty(status, SDSBaselineStatusMissing)
@@ -142,6 +151,40 @@ func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselin
 		readiness.Reason = fmt.Sprintf("Baseline cache is not usable for grouped SDS create (status: %s).", status)
 		return readiness, nil
 	}
+}
+
+func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
+	ctx context.Context,
+	readiness *SDSBaselineReadiness,
+) {
+	if b == nil || readiness == nil {
+		return
+	}
+	if readiness.ReasonCode != SDSBaselineReasonCodeLoginMissingCredentials &&
+		!isSDSBaselineCredentialBootstrapReadinessFailure(readiness) {
+		return
+	}
+	if b.sdsLoginStatusProvider == nil {
+		return
+	}
+	status, err := b.sdsLoginStatusProvider.Status(ctx)
+	if err != nil || status == nil || !status.HasAccessToken {
+		return
+	}
+	readiness.ValidationStatus = SDSBaselineValidationStatusReady
+	readiness.Status = SDSBaselineStatusReady
+	readiness.ReasonCode = ""
+	readiness.Reason = ""
+}
+
+func isSDSBaselineCredentialBootstrapReadinessFailure(readiness *SDSBaselineReadiness) bool {
+	if readiness == nil {
+		return false
+	}
+	if readiness.ReasonCode != SDSBaselineReasonCodeDesignSurfaceCheckFailed {
+		return false
+	}
+	return isSDSBaselineCredentialBootstrapError(fmt.Errorf("%s", readiness.Reason))
 }
 
 func normalizedSDSBaselineValidationStatus(status string) string {

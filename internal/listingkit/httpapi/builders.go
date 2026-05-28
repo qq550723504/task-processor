@@ -209,14 +209,19 @@ func BuildImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit
 		return nil
 	}
 	if shouldUseS3ImageUploadStore(cfg) {
-		return buildS3ImageUploadStore(cfg, logger)
+		primaryStore := buildS3ImageUploadStore(cfg, logger)
+		if primaryStore == nil {
+			return nil
+		}
+		fallbackStore := buildLocalImageUploadStore(cfg, logger)
+		store, err := listingkit.NewFallbackImageUploadStore(primaryStore, fallbackStore)
+		if err != nil {
+			logger.WithError(err).Warn("listingkit image upload store fallback unavailable")
+			return primaryStore
+		}
+		return store
 	}
-	rootDir := localImageUploadRootDir(cfg)
-	store, err := listingkit.NewLocalImageUploadStore(rootDir)
-	if err != nil {
-		return nil
-	}
-	return store
+	return buildLocalImageUploadStore(cfg, logger)
 }
 
 func shouldUseS3ImageUploadStore(cfg *config.Config) bool {
@@ -228,6 +233,18 @@ func localImageUploadRootDir(cfg *config.Config) string {
 		return ""
 	}
 	return filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+}
+
+func buildLocalImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {
+	rootDir := localImageUploadRootDir(cfg)
+	store, err := listingkit.NewLocalImageUploadStore(rootDir)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("local listingkit image upload store unavailable")
+		}
+		return nil
+	}
+	return store
 }
 
 func ConfigureLegacyTenantResolver(cfg *config.Config, logger *logrus.Logger) (func() error, error) {

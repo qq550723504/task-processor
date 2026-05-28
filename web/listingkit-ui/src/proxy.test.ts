@@ -67,7 +67,6 @@ describe("ListingKit ZITADEL proxy", () => {
   it("redirects authenticated but unauthorized users to the unauthorized page", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
-    vi.stubEnv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "1");
     vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin");
     mockedAuthState.session = {
       accessToken: "token-1",
@@ -84,15 +83,6 @@ describe("ListingKit ZITADEL proxy", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("http://localhost/unauthorized");
-  });
-
-  it("keeps the local bypass path available outside production", async () => {
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-
-    const response = await callProxy("/listing-kits/sds");
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("location")).toBeNull();
   });
 
   it("returns 503 when ZITADEL auth is required but not configured", async () => {

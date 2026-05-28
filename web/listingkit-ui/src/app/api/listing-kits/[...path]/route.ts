@@ -11,7 +11,6 @@ import { resolveListingKitProxyTimeoutMs } from "@/app/api/listing-kits/proxy-re
 import { buildListingKitProxyResponse } from "@/app/api/listing-kits/proxy-upstream-response";
 import {
   buildListingKitUpstreamHeaders,
-  shouldBypassListingKitProxyAuth,
   verifyListingKitRequestIdentity,
   type VerifiedIdentity,
 } from "@/app/api/listing-kits/proxy-auth";
@@ -112,9 +111,7 @@ async function proxyRequest(
         error: message,
       },
     );
-    if (!shouldBypassListingKitProxyAuth() || status !== 503) {
-      return auth.response;
-    }
+    return auth.response;
   } else {
     verifiedIdentity = auth.identity;
     zitadelToken = auth.token;

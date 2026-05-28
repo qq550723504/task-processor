@@ -93,6 +93,29 @@ describe("sds baseline ui helpers", () => {
     expect(
       buildGroupedSDSBaselineHandoff({
         status: "blocked",
+        reasonCode: "login_missing_credentials",
+        reason: "",
+      }),
+    ).toEqual({
+      action: "open_sds_login",
+      actionLabel: "去处理 SDS 登录",
+      message: "当前 SDS 登录缺少 access token。",
+    });
+
+    expect(
+      buildGroupedSDSBaselineHandoff({
+        status: "blocked",
+        reason: "SDS login state is missing access token.",
+      }),
+    ).toEqual({
+      action: "open_sds_login",
+      actionLabel: "去处理 SDS 登录",
+      message: "SDS login state is missing access token.",
+    });
+
+    expect(
+      buildGroupedSDSBaselineHandoff({
+        status: "blocked",
         reason: "",
       }),
     ).toEqual({

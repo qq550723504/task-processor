@@ -8,7 +8,7 @@ import {
   roleLabel,
   type ImageRole,
 } from "@/components/listingkit/shein/shein-data-image-gallery-model";
-import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
+import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 
 export function FinalImageGrid({
   defaultsOrder,
@@ -76,7 +76,7 @@ export function FinalImageGrid({
                 <img
                   alt={image.label}
                   className="h-full w-full object-contain transition group-hover:scale-[1.02]"
-                  src={toImageProxyUrl(image.url)}
+                  src={toThumbnailPreviewUrl(image.url, { width: 480, height: 480 })}
                 />
                 <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-800">
                   {image.url === mainUrl ? "主图" : roleLabel(role)}
@@ -208,7 +208,7 @@ export function MockupReferenceGrid({
               <img
                 alt={image.label}
                 className="h-full w-full object-contain transition group-hover:scale-[1.02]"
-                src={toImageProxyUrl(image.url)}
+                src={toThumbnailPreviewUrl(image.url, { width: 480, height: 480 })}
               />
               <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-800">
                 Mockup

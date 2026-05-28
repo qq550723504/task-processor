@@ -14,7 +14,7 @@ function buildStoreSummaryFromAssignments(assignments: string[]) {
     new Set(assignments.map((item) => item.trim()).filter(Boolean)),
   );
   if (normalized.length === 0) {
-    return "跟随当前店铺";
+    return "跟随批次店铺";
   }
   if (normalized.length === 1) {
     return normalized[0];
@@ -263,11 +263,17 @@ export function buildRecentBatchSummaries(
   batches: SheinStudioSavedBatch[],
   options?: {
     draft?: SheinStudioDraft | null;
+    draftBatchId?: string;
   },
 ) {
   const summaries = batches.map(buildPersistedBatchSummary);
+  const suppressDraftSummary =
+    Boolean(options?.draftBatchId?.trim()) &&
+    batches.some((batch) => batch.id === options?.draftBatchId?.trim());
   const draftSummary = options?.draft
-    ? buildRecoverableDraftSummary(options.draft)
+    ? suppressDraftSummary
+      ? null
+      : buildRecoverableDraftSummary(options.draft)
     : null;
   const merged = draftSummary ? [draftSummary, ...summaries] : summaries;
 

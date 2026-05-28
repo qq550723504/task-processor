@@ -562,10 +562,6 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.platformAdminRoles": {
 			Primary: "LISTINGKIT_PLATFORM_ADMIN_ROLES",
 		},
-		"listingkit.ownerScopeRequired": {
-			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED",
-			Deprecated: []string{"LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED"},
-		},
 		"listingkit.zitadel.issuerURL": {
 			Primary: "ZITADEL_ISSUER_URL",
 		},
@@ -574,14 +570,6 @@ func knownEnvBindings() map[string]envBinding {
 		},
 		"listingkit.zitadel.clientSecret": {
 			Primary: "ZITADEL_CLIENT_SECRET",
-		},
-		"listingkit.zitadel.authRequired": {
-			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED",
-			Deprecated: []string{"LISTINGKIT_ZITADEL_AUTH_REQUIRED"},
-		},
-		"listingkit.zitadel.authorizationRequired": {
-			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
-			Deprecated: []string{"LISTINGKIT_ZITADEL_AUTHZ_REQUIRED"},
 		},
 		"listingkit.zitadel.allowedTenantIDs": {
 			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",

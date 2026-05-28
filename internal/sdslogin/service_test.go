@@ -70,12 +70,12 @@ func TestServiceStatusReadsPersistedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}
-	if !status.HasCookie || !status.HasAccessToken || status.Source != "fresh_login" || status.MerchantID != 12 || status.IssuedAt == nil {
+	if !status.HasAccessToken || status.Source != "fresh_login" || status.MerchantID != 12 || status.IssuedAt == nil {
 		t.Fatalf("unexpected status: %+v", status)
 	}
 }
 
-func TestServiceLoadAuthStateReturnsPersistedCookies(t *testing.T) {
+func TestServiceLoadAuthStateReturnsPersistedAccessTokenWithoutCookies(t *testing.T) {
 	svc := newTestService(t)
 	if err := svc.persistPayload(&AuthPayload{
 		TenantID:    "1",
@@ -92,7 +92,7 @@ func TestServiceLoadAuthStateReturnsPersistedCookies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load auth state: %v", err)
 	}
-	if payload == nil || payload.AccessToken != "token" || len(payload.Cookies) != 1 {
+	if payload == nil || payload.AccessToken != "token" || len(payload.Cookies) != 0 {
 		t.Fatalf("unexpected local auth payload: %+v", payload)
 	}
 }
@@ -184,16 +184,16 @@ func TestServiceLoadAuthStateUsesRedisSharedStateAcrossTenants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load auth state: %v", err)
 	}
-	if payload == nil || payload.AccessToken != "token-a" || payload.MerchantID != 12 || len(payload.Cookies) != 1 {
+	if payload == nil || payload.AccessToken != "token-a" || payload.MerchantID != 12 || len(payload.Cookies) != 0 {
 		t.Fatalf("unexpected redis auth payload: %+v", payload)
 	}
 }
 
-func TestServiceLoginReusesMinimalPersistedPayloadWithoutCookies(t *testing.T) {
+func TestServiceLoginReusesPersistedPayloadWithoutCookies(t *testing.T) {
 	previous := runSDSBrowserLogin
 	t.Cleanup(func() { runSDSBrowserLogin = previous })
 	runSDSBrowserLogin = func(ctx context.Context, account configuredAccount, cfg browserRunConfig) (*AuthPayload, bool, error) {
-		t.Fatal("runSDSBrowserLogin should not be called when minimal persisted payload is usable")
+		t.Fatal("runSDSBrowserLogin should not be called when persisted token is usable")
 		return nil, false, nil
 	}
 
@@ -305,14 +305,14 @@ func TestTriggerLoginUsesCloakBrowserConfigWhenEnabled(t *testing.T) {
 	}
 
 	svc, err := NewService(config.LoginServiceConfig{
-		TenantID:             "1",
-		Identifier:           "869",
-		MerchantName:         "merchant",
-		Username:             "user",
-		Password:             "pass",
-		CloakBrowserEnabled:  true,
-		CloakBrowserPath:     "D:/custom/cloak/chrome.exe",
-		DefaultHeadless:      true,
+		TenantID:            "1",
+		Identifier:          "869",
+		MerchantName:        "merchant",
+		Username:            "user",
+		Password:            "pass",
+		CloakBrowserEnabled: true,
+		CloakBrowserPath:    "D:/custom/cloak/chrome.exe",
+		DefaultHeadless:     true,
 	}, config.RedisConfig{}, config.BrowserConfig{BrowserPath: "D:/fallback/browser.exe"})
 	if err != nil {
 		t.Fatalf("new service: %v", err)

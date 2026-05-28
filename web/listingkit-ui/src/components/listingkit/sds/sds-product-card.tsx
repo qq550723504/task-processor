@@ -21,8 +21,6 @@ function ProductThumb({ imageUrl }: { imageUrl?: string }) {
 }
 
 type SDSProductCardProps = {
-  groupedCandidateCount?: number;
-  hasGroupedCandidate: boolean;
   isSelected: boolean;
   isVariantSelected: boolean;
   onOpenVariants: () => void;
@@ -30,8 +28,6 @@ type SDSProductCardProps = {
 };
 
 export function SDSProductCard({
-  groupedCandidateCount = 0,
-  hasGroupedCandidate,
   isSelected,
   isVariantSelected,
   onOpenVariants,
@@ -76,15 +72,6 @@ export function SDSProductCard({
                 {product.issuingBayArea.name}
               </span>
             ) : null}
-            {hasGroupedCandidate ? (
-              <span
-                className={`rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                  isSelected ? "bg-sky-300/20 text-sky-50" : "bg-sky-50 text-sky-700"
-                }`}
-              >
-                候选池 {groupedCandidateCount > 1 ? `${groupedCandidateCount} 款` : "已加入"}
-              </span>
-            ) : null}
           </div>
           <div className="line-clamp-2 text-sm font-semibold leading-6">{product.name}</div>
           <div className={isSelected ? "text-emerald-100" : "text-zinc-500"}>
@@ -119,9 +106,7 @@ export function SDSProductCard({
           </div>
           {!isVariantSelected ? (
             <div className={isSelected ? "text-xs text-emerald-100" : "text-xs text-zinc-400"}>
-              {hasGroupedCandidate
-                ? "这款商品已有候选变体，可直接回选或继续补充更多子 SKU。"
-                : "打开尺码/颜色选择器，并锁定具体 SDS 子 SKU。"}
+              打开尺码/颜色选择器，并锁定具体 SDS 子 SKU。
             </div>
           ) : null}
         </div>

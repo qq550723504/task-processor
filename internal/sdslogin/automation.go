@@ -519,22 +519,6 @@ func buildPayload(account configuredAccount, state *pageLoginState, source strin
 		Source:       source,
 		CurrentURL:   state.Href,
 	}
-	if cookies, ok := state.BrowserState["cookies"].([]playwright.OptionalCookie); ok {
-		for _, item := range cookies {
-			record := CookieRecord{
-				Name:     item.Name,
-				Value:    item.Value,
-				Domain:   optionalString(item.Domain),
-				Path:     optionalString(item.Path),
-				Secure:   optionalBool(item.Secure),
-				HTTPOnly: optionalBool(item.HttpOnly),
-			}
-			if item.Expires != nil && *item.Expires > 0 {
-				record.Expires = time.Unix(int64(*item.Expires), 0)
-			}
-			payload.Cookies = append(payload.Cookies, record)
-		}
-	}
 	return payload
 }
 
@@ -547,60 +531,195 @@ func summarizeText(value string, maxChars int) string {
 }
 
 func prefillLoginForm(page playwright.Page, account configuredAccount) error {
-	if _, err := typeCandidate(page, []string{
-		`input[placeholder*="商户"]`,
-		`input[name="merchant_name"]`,
-		`input[id*="merchant"]`,
-		`input[autocomplete="organization"]`,
-	}, account.MerchantName); err != nil {
-		return err
+	return prefillLoginFormWithPage(playwrightLoginPage{page: page}, account)
+}
+
+type loginLocator interface {
+	Count() (int, error)
+	Click() error
+	Press(key string) error
+	Fill(value string) error
+	Type(text string) error
+	InputValue() (string, error)
+	Evaluate(expression string, arg any) (any, error)
+}
+
+type loginPage interface {
+	Locator(selector string) loginLocator
+}
+
+type playwrightLoginPage struct {
+	page playwright.Page
+}
+
+func (p playwrightLoginPage) Locator(selector string) loginLocator {
+	return playwrightLoginLocator{locator: p.page.Locator(selector).First()}
+}
+
+type playwrightLoginLocator struct {
+	locator playwright.Locator
+}
+
+func (l playwrightLoginLocator) Count() (int, error) {
+	return l.locator.Count()
+}
+
+func (l playwrightLoginLocator) Click() error {
+	return l.locator.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(3000)})
+}
+
+func (l playwrightLoginLocator) Press(key string) error {
+	return l.locator.Press(key, playwright.LocatorPressOptions{Timeout: playwright.Float(2000)})
+}
+
+func (l playwrightLoginLocator) Fill(value string) error {
+	return l.locator.Fill(value, playwright.LocatorFillOptions{Timeout: playwright.Float(5000)})
+}
+
+func (l playwrightLoginLocator) Type(text string) error {
+	return l.locator.Type(text, playwright.LocatorTypeOptions{
+		Delay:   playwright.Float(120),
+		Timeout: playwright.Float(8000),
+	})
+}
+
+func (l playwrightLoginLocator) InputValue() (string, error) {
+	return l.locator.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(2000)})
+}
+
+func (l playwrightLoginLocator) Evaluate(expression string, arg any) (any, error) {
+	return l.locator.Evaluate(expression, arg, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(2000)})
+}
+
+type loginField struct {
+	name      string
+	selectors []string
+	value     string
+}
+
+func prefillLoginFormWithPage(page loginPage, account configuredAccount) error {
+	fields := []loginField{
+		{
+			name: "merchant_name",
+			selectors: []string{
+				`#merchant_name`,
+				`input[placeholder*="商户"]`,
+				`input[name="merchant_name"]`,
+				`input[id*="merchant"]`,
+				`input[autocomplete="organization"]`,
+			},
+			value: account.MerchantName,
+		},
+		{
+			name: "username",
+			selectors: []string{
+				`#username`,
+				`input[placeholder*="手机"]`,
+				`input[placeholder*="账号"]`,
+				`input[placeholder*="用户名"]`,
+				`input[name="username"]`,
+				`input[name="account"]`,
+				`input[type="text"]`,
+				`input[type="tel"]`,
+			},
+			value: account.Username,
+		},
+		{
+			name: "password",
+			selectors: []string{
+				`#password`,
+				`input[type="password"]`,
+				`input[placeholder*="密码"]`,
+				`input[name="password"]`,
+			},
+			value: account.Password,
+		},
 	}
-	time.Sleep(200 * time.Millisecond)
-	if _, err := typeCandidate(page, []string{
-		`input[placeholder*="手机"]`,
-		`input[placeholder*="账号"]`,
-		`input[placeholder*="用户名"]`,
-		`input[name="username"]`,
-		`input[name="account"]`,
-		`input[type="text"]`,
-		`input[type="tel"]`,
-	}, account.Username); err != nil {
-		return err
-	}
-	time.Sleep(250 * time.Millisecond)
-	if _, err := typeCandidate(page, []string{
-		`input[type="password"]`,
-		`input[placeholder*="密码"]`,
-		`input[name="password"]`,
-	}, account.Password); err != nil {
-		return err
+	for index, field := range fields {
+		filled, err := typeCandidate(page, field.selectors, field.value)
+		if err != nil {
+			return fmt.Errorf("fill %s: %w", field.name, err)
+		}
+		if !filled {
+			return fmt.Errorf("fill %s: no writable input matched", field.name)
+		}
+		if index < len(fields)-1 {
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 	time.Sleep(300 * time.Millisecond)
 	return nil
 }
 
-func typeCandidate(page playwright.Page, selectors []string, value string) (bool, error) {
+func typeCandidate(page loginPage, selectors []string, value string) (bool, error) {
 	if strings.TrimSpace(value) == "" {
 		return false, nil
 	}
 	for _, selector := range selectors {
-		loc := page.Locator(selector).First()
+		loc := page.Locator(selector)
 		count, err := loc.Count()
 		if err != nil || count == 0 {
 			continue
 		}
-		if err := loc.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(3000)}); err != nil {
+		if err := loc.Click(); err != nil {
 			continue
 		}
-		if err := loc.Press("Control+A", playwright.LocatorPressOptions{Timeout: playwright.Float(2000)}); err == nil {
-			_ = loc.Press("Backspace", playwright.LocatorPressOptions{Timeout: playwright.Float(2000)})
+		if err := loc.Press("Control+A"); err == nil {
+			_ = loc.Press("Backspace")
 		}
-		if err := loc.Type(value, playwright.LocatorTypeOptions{
-			Delay:   playwright.Float(120),
-			Timeout: playwright.Float(8000),
-		}); err == nil {
-			return true, nil
+		if err := loc.Fill(value); err == nil {
+			ok, verifyErr := locatorHasValue(loc, value)
+			if verifyErr != nil {
+				return false, verifyErr
+			}
+			if ok {
+				return true, nil
+			}
 		}
+		if err := loc.Type(value); err == nil {
+			ok, verifyErr := locatorHasValue(loc, value)
+			if verifyErr != nil {
+				return false, verifyErr
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		if _, err := loc.Evaluate(`(node, value) => {
+			const input = node;
+			if (!input) {
+				return "";
+			}
+			input.focus();
+			input.value = "";
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+			input.value = value;
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+			input.dispatchEvent(new Event("change", { bubbles: true }));
+			return input.value;
+		}`, value); err == nil {
+			ok, verifyErr := locatorHasValue(loc, value)
+			if verifyErr != nil {
+				return false, verifyErr
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		if actual, err := loc.InputValue(); err == nil && strings.TrimSpace(actual) != "" {
+			return false, fmt.Errorf("input value %q did not match expected value", actual)
+		}
+	}
+	return false, nil
+}
+
+func locatorHasValue(loc loginLocator, value string) (bool, error) {
+	actual, err := loc.InputValue()
+	if err != nil {
+		return false, nil
+	}
+	if strings.TrimSpace(actual) == strings.TrimSpace(value) {
+		return true, nil
 	}
 	return false, nil
 }

@@ -21,13 +21,10 @@ listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
-  ownerScopeRequired: false
   zitadel:
     issuerURL: ""
     clientID: ""
     clientSecret: ""
-    authRequired: false
-    authorizationRequired: false
     allowedTenantIDs: []
     allowedUserIDs: []
     allowedUsernames: []
@@ -39,9 +36,6 @@ Relevant env bindings:
 - `LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR`
 - `LISTINGKIT_PLATFORM_ADMIN_USERS`
 - `LISTINGKIT_PLATFORM_ADMIN_ROLES`
-- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED`
-- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED`
-- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED`
 - `LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS`
 - `LISTINGKIT_ZITADEL_ALLOWED_USER_IDS`
 - `LISTINGKIT_ZITADEL_ALLOWED_USERNAMES`
@@ -58,13 +52,10 @@ they exist.
 2. Keep `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`,
    `ZITADEL_REDIRECT_URI`, and `ZITADEL_POST_LOGOUT_REDIRECT_URI` in the
    runtime secret because the Next.js UI still reads them directly.
-3. Move Go API auth toggles and allowlists to the bound envs or YAML:
-   `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED`,
-   `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED`,
+3. Move Go API allowlists to the bound envs or YAML:
    `LISTINGKIT_ZITADEL_ALLOWED_*`.
-4. If you want user-level data isolation in addition to tenant-level isolation,
-   enable `TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED` only after
-   confirming historical rows have `user_id` populated.
+4. ListingKit owner scope and ZITADEL auth now fail closed by default. Confirm
+   historical rows already have `user_id` populated before rollout.
 5. Remove any operator runbooks that tell engineers to patch
    `internal/app/httpapi/zitadel_auth.go` behavior with ad hoc env changes; the
    middleware now consumes injected runtime config only.
