@@ -40,7 +40,7 @@ env:
   DOCKERHUB_NAMESPACE: xuwei190
   API_IMAGE_NAME: task-processor-product-listing-api
   UI_IMAGE_NAME: task-processor-listingkit-ui
-  API_RUNTIME_BASE_IMAGE: docker.io/xuwei190/task-processor-product-listing-api-runtime-base:20260527
+  API_RUNTIME_BASE_IMAGE: docker.io/xuwei190/crawler-env:latest
   K8S_NAMESPACE: task-processor
   K8S_OVERLAY_PATH: deployments/kubernetes/listingkit-workbench/overlays/prod
 

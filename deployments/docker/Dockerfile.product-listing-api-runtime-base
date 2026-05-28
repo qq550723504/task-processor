@@ -1,5 +1,15 @@
 # syntax=docker/dockerfile:1
 
+# Deprecated:
+# ListingKit product-listing-api no longer uses this runtime base by default.
+# The default runtime is now xuwei190/crawler-env:latest via
+# deployments/docker/Dockerfile.product-listing-api and
+# .github/workflows/listingkit-deploy.yml.
+#
+# This image preinstalls Playwright and fingerprint browser assets, which makes
+# the final image several gigabytes larger. Keep this file only for manual
+# experiments that explicitly need preinstalled browser binaries.
+
 FROM golang:1.25-alpine AS installer-builder
 
 WORKDIR /src
