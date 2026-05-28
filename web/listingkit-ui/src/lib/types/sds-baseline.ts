@@ -53,6 +53,8 @@ export type GroupedSDSSelectionInput = {
   baselineStatus: SDSBaselineStatus;
   baselineReason?: string;
   baselineReasonCode?: string;
+  eligible?: boolean;
+  eligibilityReason?: string;
 };
 
 export function buildGroupedSDSSelectionID(

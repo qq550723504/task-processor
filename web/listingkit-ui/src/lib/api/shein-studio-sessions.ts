@@ -78,6 +78,13 @@ export type StudioSessionDetailResponse = {
   }>;
 };
 
+type RawCreatedTask = {
+  id?: string;
+  title?: string;
+  designId?: string;
+  design_id?: string;
+};
+
 type StudioBatchListResponse = {
   items?: Array<{
     id: string;
@@ -200,8 +207,7 @@ export async function updateSheinStudioSession(
         image_strategy: patch.imageStrategy,
         grouped_image_mode: patch.groupedImageMode,
         selected_sds_images: patch.selectedSdsImages,
-        groups: patch.groups?.map(groupToPayload),
-        grouped_selections: patch.groups ? undefined : patch.groupedSelections?.map(groupedSelectionToPayload),
+        grouped_selections: patch.groupedSelections?.map(groupedSelectionToPayload),
         transparent_background: patch.transparentBackground,
         render_size_images_with_sds: patch.renderSizeImagesWithSds,
         shein_store_id: patch.sheinStoreId,
@@ -301,12 +307,15 @@ export async function upsertSheinStudioSessionBatch(
   },
   options?: StudioSessionRequestOptions,
 ) {
+  const explicitBatchName = input.name?.trim() || undefined;
+  const batchName =
+    explicitBatchName ?? (input.id ? undefined : deriveBatchName(input.prompt));
   const detail = parseStudioSessionDetailResponse(
     await apiRequest<unknown>("/studio/batches", {
       method: "POST",
       body: {
         id: input.id,
-        batch_name: input.name?.trim() || deriveBatchName(input.prompt),
+        batch_name: batchName,
         prompt: input.prompt,
         style_count: input.styleCount,
         variation_intensity: input.variationIntensity,
@@ -321,8 +330,7 @@ export async function upsertSheinStudioSessionBatch(
         render_size_images_with_sds: input.renderSizeImagesWithSds,
         shein_store_id: input.sheinStoreId,
         selection: input.selection ? selectionToPayload(input.selection) : undefined,
-        groups: input.groups?.map(groupToPayload),
-        grouped_selections: input.groups ? undefined : input.groupedSelections?.map(groupedSelectionToPayload),
+        grouped_selections: input.groupedSelections?.map(groupedSelectionToPayload),
         approved_design_ids: input.approvedDesignIds,
         created_tasks: input.createdTasks,
         designs: input.designs.map((design) => ({
@@ -412,7 +420,11 @@ export function mapStudioSessionDetailToDraft(
         productImageUrls: design.product_image_urls,
       })) ?? [],
     selectedIds,
-    createdTasks: detail.session.created_tasks ?? [],
+    createdTasks: normalizeCreatedTasks(
+      detail.session.created_tasks,
+      selectedIds,
+      detail.designs,
+    ),
     generationError: detail.session.generation_error ?? "",
     generationJobId: detail.session.generation_job_id ?? "",
     sessionStatus: detail.session.status ?? "",
@@ -544,7 +556,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     groupedSelections: normalizeGroupedSelectionsResponse(item.grouped_selections),
     designs: [],
     selectedIds: item.approved_design_ids ?? [],
-    createdTasks: item.created_tasks ?? [],
+    createdTasks: normalizeCreatedTasks(item.created_tasks, item.approved_design_ids),
     updatedAt: item.updated_at ?? new Date().toISOString(),
   } satisfies SheinStudioSavedBatch;
 }
@@ -559,6 +571,39 @@ function deriveBatchName(prompt: string) {
 
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function normalizeCreatedTasks(
+  input: unknown,
+  fallbackDesignIds?: string[],
+  fallbackDesigns?: Array<{ id: string } | undefined>,
+): SheinStudioCreatedTask[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((item, index) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const raw = item as RawCreatedTask;
+      const id = asString(raw.id);
+      const title = asString(raw.title);
+      if (!id || !title) {
+        return null;
+      }
+      return {
+        id,
+        title,
+        designId:
+          asString(raw.designId ?? raw.design_id) ??
+          fallbackDesignIds?.[index] ??
+          fallbackDesigns?.[index]?.id ??
+          "",
+      } satisfies SheinStudioCreatedTask;
+    })
+    .filter((item): item is SheinStudioCreatedTask => Boolean(item));
 }
 
 function asStringArray(value: unknown) {
@@ -635,55 +680,6 @@ function groupedSelectionToPayload(selection: GroupedSDSSelectionEligibility) {
     shein_store_id: selection.sheinStoreId,
     eligible: selection.eligible,
     eligibility_reason: selection.eligibilityReason,
-  };
-}
-
-function promptHistoryEntryToPayload(entry: SDSGroupedPromptHistoryEntry) {
-  return {
-    prompt: entry.prompt,
-    grouped_image_mode: entry.groupedImageMode,
-    created_at: entry.createdAt,
-  };
-}
-
-function groupToPayload(group: SheinStudioGroupedWorkspace) {
-  return {
-    id: group.id,
-    name: group.name,
-    current_prompt: group.currentPrompt,
-    prompt_history: group.promptHistory.map(promptHistoryEntryToPayload),
-    primary_selection: selectionToPayload(group.primarySelection),
-    grouped_selections: group.groupedSelections.map(groupedSelectionToPayload),
-    style_count: group.styleCount,
-    shein_store_id: group.sheinStoreId,
-    image_strategy: group.imageStrategy,
-    grouped_image_mode: group.groupedImageMode,
-    selected_sds_images: group.selectedSdsImages,
-    render_size_images_with_sds: group.renderSizeImagesWithSds,
-    product_image_count: group.productImageCount,
-    product_image_prompt: group.productImagePrompt,
-    product_image_prompts: group.productImagePrompts,
-    artwork_model: group.artworkModel,
-    transparent_background: group.transparentBackground,
-    variation_intensity: group.variationIntensity,
-    approved_design_ids: group.selectedIds,
-    created_tasks: group.createdTasks,
-    updated_at: group.updatedAt,
-    designs: group.designs.map((design) => ({
-      id: design.id,
-      image_url: design.imageUrl ?? design.dataUrl,
-      prompt: design.prompt,
-      revised_prompt: design.revisedPrompt,
-      image_model: design.imageModel,
-      transparent_background: design.transparentBackground,
-      variation_intensity: design.variationIntensity,
-      review_note: design.reviewNote,
-      role: design.role,
-      role_label: design.roleLabel,
-      target_group_key: design.targetGroupKey,
-      target_group_label: design.targetGroupLabel,
-      product_image_urls: design.productImageUrls,
-    })),
   };
 }
 
@@ -1001,25 +997,19 @@ function normalizeGroupsResponse(
                 (item): item is string => typeof item === "string",
               )
             : [],
-        createdTasks: Array.isArray(group.created_tasks)
-          ? (group.created_tasks as unknown[]).filter(
-              (item): item is SheinStudioCreatedTask =>
-                !!item &&
-                typeof item === "object" &&
-                typeof (item as SheinStudioCreatedTask).id === "string" &&
-                typeof (item as SheinStudioCreatedTask).title === "string" &&
-                typeof (item as SheinStudioCreatedTask).designId === "string",
-            )
-          : Array.isArray(group.createdTasks)
-            ? (group.createdTasks as unknown[]).filter(
-                (item): item is SheinStudioCreatedTask =>
-                  !!item &&
-                  typeof item === "object" &&
-                  typeof (item as SheinStudioCreatedTask).id === "string" &&
-                  typeof (item as SheinStudioCreatedTask).title === "string" &&
-                  typeof (item as SheinStudioCreatedTask).designId === "string",
+        createdTasks: normalizeCreatedTasks(
+          Array.isArray(group.created_tasks) ? group.created_tasks : group.createdTasks,
+          Array.isArray(group.approved_design_ids)
+            ? (group.approved_design_ids as unknown[]).filter(
+                (item): item is string => typeof item === "string",
               )
-            : [],
+            : undefined,
+          Array.isArray(group.designs)
+            ? (group.designs as Array<Record<string, unknown>>)
+                .map((design) => normalizeDesignResponse(design))
+                .filter((design): design is NonNullable<typeof design> => Boolean(design))
+            : undefined,
+        ),
         updatedAt,
       } satisfies SheinStudioGroupedWorkspace;
     })

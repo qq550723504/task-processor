@@ -332,7 +332,7 @@ describe("shein studio design metadata", () => {
     );
   });
 
-  it("sends grouped workspaces when updating a studio session", async () => {
+  it("ignores grouped workspaces when updating a studio session because the backend only persists grouped selections", async () => {
     mockedApiRequest.mockResolvedValueOnce({
       session: { id: "session-1" },
       designs: [],
@@ -385,10 +385,47 @@ describe("shein studio design metadata", () => {
       expect.objectContaining({
         body: expect.objectContaining({
           grouped_selections: undefined,
-          groups: [
+        }),
+      }),
+    );
+  });
+
+  it("keeps top-level grouped selections when updating a legacy session with empty groups", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "session-1" },
+      designs: [],
+    });
+
+    await updateSheinStudioSession("session-1", {
+      groups: [],
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/sessions/session-1",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          grouped_selections: [
             expect.objectContaining({
-              id: "group-1",
-              current_prompt: "prompt a",
+              selection_id: "1:200:101:layer-2:101",
+              shein_store_id: "store-9",
             }),
           ],
         }),
@@ -457,7 +494,7 @@ describe("shein studio design metadata", () => {
     );
   });
 
-  it("sends grouped workspaces when saving a studio batch", async () => {
+  it("ignores grouped workspaces when saving a studio batch because the backend only persists grouped selections", async () => {
     mockedApiRequest.mockResolvedValueOnce({
       session: { id: "batch-1" },
       designs: [],
@@ -524,10 +561,62 @@ describe("shein studio design metadata", () => {
       expect.objectContaining({
         body: expect.objectContaining({
           grouped_selections: undefined,
-          groups: [
+        }),
+      }),
+    );
+  });
+
+  it("keeps top-level grouped selections when saving a legacy batch with empty groups", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "batch-1" },
+      designs: [],
+    });
+
+    await upsertSheinStudioSessionBatch({
+      id: "batch-1",
+      prompt: "retro botanical clock",
+      styleCount: "2",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      groups: [],
+      groupedSelections: [
+        {
+          selectionId: "1:200:101:layer-2:101",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "store-9",
+          eligible: true,
+        },
+      ],
+      approvedDesignIds: [],
+      createdTasks: [],
+      designs: [],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          grouped_selections: [
             expect.objectContaining({
-              id: "group-1",
-              current_prompt: "prompt a",
+              selection_id: "1:200:101:layer-2:101",
+              shein_store_id: "store-9",
             }),
           ],
         }),
@@ -598,6 +687,90 @@ describe("shein studio design metadata", () => {
         }),
       ],
     });
+  });
+
+  it("normalizes legacy created tasks that use design_id or omit design ids", () => {
+    const batch = mapStudioSessionDetailToBatch({
+      session: {
+        id: "batch-legacy",
+        batch_name: "历史批次",
+        prompt: "legacy prompt",
+        approved_design_ids: ["design-1", "design-2"],
+        created_tasks: [
+          {
+            id: "task-1",
+            title: "Style 1",
+            design_id: "design-1",
+          },
+          {
+            id: "task-2",
+            title: "Style 2",
+          },
+        ],
+      },
+      designs: [
+        {
+          id: "design-1",
+        },
+        {
+          id: "design-2",
+        },
+      ],
+    });
+
+    expect(batch?.createdTasks).toEqual([
+      { id: "task-1", title: "Style 1", designId: "design-1" },
+      { id: "task-2", title: "Style 2", designId: "design-2" },
+    ]);
+  });
+
+  it("does not synthesize a fallback batch name when updating an existing batch", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: {
+        id: "batch-1",
+        batch_name: "半圆旗帜",
+        prompt: "new prompt",
+        style_count: "1",
+        selection: {
+          product_id: 1,
+          parent_product_id: 1,
+          variant_id: 2,
+          prototype_group_id: 3,
+          layer_id: "layer-1",
+          product_name: "Curtain",
+          variant_label: "Blue",
+        },
+      },
+      designs: [],
+    });
+
+    await upsertSheinStudioSessionBatch({
+      id: "batch-1",
+      prompt: "new prompt",
+      styleCount: "1",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 2,
+        prototypeGroupId: 3,
+        layerId: "layer-1",
+        productName: "Curtain",
+        variantLabel: "Blue",
+      },
+      approvedDesignIds: [],
+      createdTasks: [],
+      designs: [],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          id: "batch-1",
+          batch_name: undefined,
+        }),
+      }),
+    );
   });
 
   it("rejects studio session responses without a string session id", async () => {

@@ -172,6 +172,47 @@ describe("createGroupedSheinReviewTasks", () => {
     ]);
   });
 
+  it("skips grouped selections that are marked ineligible", async () => {
+    const createReviewTasks = vi
+      .fn()
+      .mockResolvedValue([{ id: "task-1", title: "Style 1", designId: baseDesign.id }]);
+
+    const result = await createGroupedSheinReviewTasks({
+      prompt: "Grouped prompt",
+      groups: [
+        {
+          sheinStoreId: "869",
+          selections: [
+            {
+              selection: baseSelection,
+              baselineStatus: "ready",
+              eligible: true,
+            },
+            {
+              selection: secondSelection,
+              baselineStatus: "ready",
+              eligible: false,
+              eligibilityReason: "Duplicate product",
+            },
+          ],
+          designs: [baseDesign],
+          selectedIds: [baseDesign.id],
+        },
+      ],
+      createReviewTasks,
+    });
+
+    expect(createReviewTasks).toHaveBeenCalledTimes(1);
+    expect(createReviewTasks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: baseSelection,
+      }),
+    );
+    expect(result).toEqual([
+      { id: "task-1", title: "Style 1", designId: baseDesign.id },
+    ]);
+  });
+
   it("reuses the same designs for selections with the same printable size", async () => {
     const createReviewTasks = vi.fn().mockResolvedValue([]);
 

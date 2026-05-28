@@ -422,6 +422,9 @@ export async function createGroupedSheinReviewTasks(
 
   for (const group of input.groups) {
     for (const item of group.selections) {
+      if (item.eligible === false) {
+        continue;
+      }
       if (item.baselineStatus !== "ready") {
         throw new Error(
           item.baselineReason?.trim()

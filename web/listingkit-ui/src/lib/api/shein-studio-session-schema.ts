@@ -15,7 +15,8 @@ const createdTaskSchema = z
   .object({
     id: z.string(),
     title: z.string(),
-    designId: z.string(),
+    designId: z.string().optional(),
+    design_id: z.string().optional(),
   })
   .passthrough();
 

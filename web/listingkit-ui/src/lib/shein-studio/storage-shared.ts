@@ -147,13 +147,40 @@ function normalizeGeneratedDesign(item: SheinStudioGeneratedDesign) {
 }
 
 export function isCreatedTask(item: unknown): item is SheinStudioCreatedTask {
+  const raw = item as
+    | (SheinStudioCreatedTask & { design_id?: string })
+    | undefined;
   return (
     !!item &&
     typeof item === "object" &&
-    typeof (item as SheinStudioCreatedTask).id === "string" &&
-    typeof (item as SheinStudioCreatedTask).title === "string" &&
-    typeof (item as SheinStudioCreatedTask).designId === "string"
+    typeof raw?.id === "string" &&
+    typeof raw?.title === "string" &&
+    (typeof raw?.designId === "string" || typeof raw?.design_id === "string")
   );
+}
+
+function normalizeCreatedTasks(input: unknown): SheinStudioCreatedTask[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const raw = item as SheinStudioCreatedTask & { design_id?: string };
+      if (typeof raw.id !== "string" || typeof raw.title !== "string") {
+        return null;
+      }
+      const designId =
+        typeof raw.designId === "string"
+          ? raw.designId
+          : typeof raw.design_id === "string"
+            ? raw.design_id
+            : "";
+      return { id: raw.id, title: raw.title, designId };
+    })
+    .filter((item): item is SheinStudioCreatedTask => Boolean(item));
 }
 
 function normalizeProductImagePrompts(input: unknown): SheinStudioProductImagePrompt[] {
@@ -299,9 +326,7 @@ function normalizeGroupedWorkspace(
     selectedIds: Array.isArray(candidate.selectedIds)
       ? candidate.selectedIds.filter((item): item is string => typeof item === "string")
       : [],
-    createdTasks: Array.isArray(candidate.createdTasks)
-      ? candidate.createdTasks.filter(isCreatedTask)
-      : [],
+    createdTasks: normalizeCreatedTasks(candidate.createdTasks),
     updatedAt: candidate.updatedAt,
   } satisfies SheinStudioGroupedWorkspace;
 }
@@ -330,9 +355,7 @@ function buildLegacyGroupedWorkspace(
   const selectedIds = Array.isArray(raw.selectedIds)
     ? raw.selectedIds.filter((item): item is string => typeof item === "string")
     : [];
-  const createdTasks = Array.isArray(raw.createdTasks)
-    ? raw.createdTasks.filter(isCreatedTask)
-    : [];
+  const createdTasks = normalizeCreatedTasks(raw.createdTasks);
   return [
     {
       id: `legacy-${primarySelection.parentProductId}-${primarySelection.variantId}`,
@@ -398,9 +421,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : [],
-    createdTasks: Array.isArray(raw.createdTasks)
-      ? raw.createdTasks.filter(isCreatedTask)
-      : [],
+    createdTasks: normalizeCreatedTasks(raw.createdTasks),
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   } satisfies SheinStudioDraft;
 }
@@ -440,9 +461,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : [],
-    createdTasks: Array.isArray(raw.createdTasks)
-      ? raw.createdTasks.filter(isCreatedTask)
-      : [],
+    createdTasks: normalizeCreatedTasks(raw.createdTasks),
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   } satisfies SheinStudioSavedBatch;
 }

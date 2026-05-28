@@ -90,6 +90,10 @@ export function useSheinStudioTaskCreationAction({
       setCreatingError("请先选择 SDS 变体。");
       return;
     }
+    if (!sheinStoreId.trim()) {
+      setCreatingError("请先选择批次店铺。");
+      return;
+    }
     const approved = designs.filter((design) => selectedIds.includes(design.id));
     if (approved.length === 0) {
       setCreatingError("请至少批准 1 个款式后再创建 SHEIN 任务。");
@@ -130,6 +134,7 @@ export function useSheinStudioTaskCreationAction({
                       selection: activeSelection,
                       baselineStatus: activeSelectionBaselineStatus,
                       baselineReason: activeSelectionBaselineReason,
+                      eligible: true,
                     },
                   ],
                   designs: approved,
@@ -141,6 +146,8 @@ export function useSheinStudioTaskCreationAction({
                     selection: item.selection,
                     baselineStatus: item.baselineStatus,
                     baselineReason: item.baselineReason,
+                    eligible: item.eligible,
+                    eligibilityReason: item.eligibilityReason,
                   })),
                   designs: approved,
                   selectedIds: approved.map((design) => design.id),
