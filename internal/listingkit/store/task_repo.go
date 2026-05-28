@@ -182,7 +182,8 @@ type taskListFilterRequest struct {
 }
 
 type taskListFilterResult struct {
-	Shein *sheinpub.Package `json:"shein,omitempty"`
+	Shein        *sheinpub.Package               `json:"shein,omitempty"`
+	PodExecution *listingkit.PodExecutionSummary `json:"pod_execution,omitempty"`
 }
 
 func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskListQuery) bool {
@@ -204,7 +205,7 @@ func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskList
 	if query != nil && (query.SheinWorkflowStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var result taskListFilterResult
 		if err := json.Unmarshal([]byte(row.Result), &result); err == nil {
-			task.Result = &listingkit.ListingKitResult{Shein: result.Shein}
+			task.Result = &listingkit.ListingKitResult{Shein: result.Shein, PodExecution: result.PodExecution}
 		}
 	}
 	return listingkit.TaskMatchesListQuery(task, query)

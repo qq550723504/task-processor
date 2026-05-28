@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	"task-processor/internal/sdslogin"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -38,6 +39,8 @@ type service struct {
 	productSvc                     ProductService
 	imageSvc                       ImageService
 	sdsSyncSvc                     sdsusecase.Service
+	sdsLoginStatusProvider         SDSLoginStatusProvider
+	sdsBaselineRemoteProvider      SDSBaselineRemoteProvider
 	uploadStore                    ImageUploadStore
 	uploadedImageRepo              UploadedImageRepository
 	assembler                      Assembler
@@ -81,6 +84,8 @@ type ServiceCoreDependencies struct {
 	ProductService                 ProductService
 	ImageService                   ImageService
 	SDSSyncService                 sdsusecase.Service
+	SDSLoginStatusProvider         SDSLoginStatusProvider
+	SDSBaselineRemoteProvider      SDSBaselineRemoteProvider
 	ImageUploadStore               ImageUploadStore
 	UploadedImageRepository        UploadedImageRepository
 	StoreProfileRepository         StoreProfileRepository
@@ -155,6 +160,8 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		productSvc:                     config.Core.ProductService,
 		imageSvc:                       config.Core.ImageService,
 		sdsSyncSvc:                     config.Core.SDSSyncService,
+		sdsLoginStatusProvider:         config.Core.SDSLoginStatusProvider,
+		sdsBaselineRemoteProvider:      config.Core.SDSBaselineRemoteProvider,
 		uploadStore:                    config.Core.ImageUploadStore,
 		uploadedImageRepo:              config.Core.UploadedImageRepository,
 		assembler:                      config.Assets.Assembler,
@@ -307,6 +314,8 @@ func (config *ServiceConfig) ensureSheinDefaults() {
 		config.Shein.StudioPromptDiversifier = config.Shein.SheinContentOptimizer
 	}
 }
+
+var _ SDSLoginStatusProvider = (*sdslogin.Service)(nil)
 
 func defaultSheinSettings(storeID int64, policy sheinpub.PricingPolicy) SheinSettings {
 	rule := sheinpub.PricingRule{

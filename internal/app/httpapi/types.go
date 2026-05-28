@@ -42,6 +42,8 @@ type runtimeDeps struct {
 	productService             productenrich.ProductService
 	imageService               productimage.Service
 	sdsSyncService             sdsusecase.Service
+	sdsLoginStatusProvider     listingkit.SDSLoginStatusProvider
+	sdsBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
 	imageSubjectExtractor      productimage.SubjectExtractor
 	imageWhiteBgRenderer       productimage.WhiteBackgroundRenderer
 	imageSceneRenderer         productimage.SceneRenderer

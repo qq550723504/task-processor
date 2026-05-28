@@ -273,6 +273,75 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.queryByText("Need Review")).not.toBeInTheDocument();
   });
 
+  it("supports filtering baseline risks by reason code", async () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Layer Missing Batch",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "Baseline 校验未通过",
+                reasonCode: "layer_missing",
+                detail: "这款商品的 baseline 选中图层在 SDS 设计面里不存在。",
+              },
+            ],
+          },
+          {
+            id: "batch-2",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Login Batch",
+            primaryProductName: "hoodie",
+            productCount: 1,
+            promptPreview: "prompt two",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T09:00:00.000Z",
+            alerts: [
+              {
+                tone: "danger",
+                label: "Baseline 校验未通过",
+                reasonCode: "login_unavailable",
+                detail: "当前 SDS 登录态不可用。",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "有风险 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Baseline 校验未通过 2" }));
+
+    expect(screen.getByRole("button", { name: "图层缺失 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "登录态不可用 1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "图层缺失 1" }));
+
+    expect(
+      await screen.findByText(
+        '当前只显示包含“Baseline 校验未通过”的风险批次。 已细分到“图层缺失”。',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Layer Missing Batch")).toBeInTheDocument();
+    expect(screen.queryByText("Login Batch")).not.toBeInTheDocument();
+  });
+
   it("filters recent batches to only risky batches", () => {
     render(
       <SheinStudioRecentBatchesDashboard
@@ -344,7 +413,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             alerts: [
               {
                 tone: "danger",
-                label: "Baseline 未就绪",
+                label: "Baseline 待校验",
               },
             ],
           },
@@ -376,7 +445,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("Risky Batch")).toBeInTheDocument();
     expect(screen.queryByText("Healthy Batch")).not.toBeInTheDocument();
     expect(
-      screen.getByText("已优先切到风险视图，建议先处理“Baseline 未就绪”相关批次。"),
+      screen.getByText("已优先切到风险视图，建议先处理“Baseline 待校验”相关批次。"),
     ).toBeInTheDocument();
   });
 
@@ -398,7 +467,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             designCount: 1,
             createdTaskCount: 0,
             updatedAt: "2026-05-27T00:00:00.000Z",
-            alerts: [{ tone: "danger", label: "Baseline 未就绪" }],
+            alerts: [{ tone: "danger", label: "Baseline 待校验" }],
           },
           {
             id: "batch-2",
@@ -427,7 +496,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "只看这一类风险" }));
 
     expect(
-      screen.getByText("当前只显示包含“Baseline 未就绪”的风险批次。"),
+      screen.getByText("当前只显示包含“Baseline 待校验”的风险批次。"),
     ).toBeInTheDocument();
     expect(screen.getByText("Baseline Batch")).toBeInTheDocument();
     expect(screen.queryByText("Other Risk Batch")).not.toBeInTheDocument();
@@ -451,7 +520,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             designCount: 1,
             createdTaskCount: 0,
             updatedAt: "2026-05-27T00:00:00.000Z",
-            alerts: [{ tone: "danger", label: "Baseline 未就绪" }],
+            alerts: [{ tone: "danger", label: "Baseline 待校验" }],
           },
           {
             id: "batch-2",
@@ -477,7 +546,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "只看这一类风险" }));
 
     expect(
-      screen.getByText("当前只显示包含“Baseline 未就绪”的风险批次。"),
+      screen.getByText("当前只显示包含“Baseline 待校验”的风险批次。"),
     ).toBeInTheDocument();
     expect(screen.getByText("Baseline Batch")).toBeInTheDocument();
     expect(screen.queryByText("Other Risk Batch")).not.toBeInTheDocument();
@@ -504,7 +573,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             alerts: [
               {
                 tone: "danger",
-                label: "Baseline 未就绪",
+                label: "Baseline 待校验",
               },
             ],
           },
@@ -550,15 +619,15 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Baseline 未就绪 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Baseline 待校验 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "待确认款式 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成失败 1" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Baseline 未就绪 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Baseline 待校验 1" }));
     expect(screen.getByText("Baseline Batch")).toBeInTheDocument();
     expect(screen.queryByText("Review Batch")).not.toBeInTheDocument();
     expect(screen.queryByText("Failed Batch")).not.toBeInTheDocument();
-    expect(screen.getByText("当前只显示包含“Baseline 未就绪”的风险批次。")).toBeInTheDocument();
+    expect(screen.getByText("当前只显示包含“Baseline 待校验”的风险批次。")).toBeInTheDocument();
   });
 
   it("shows the empty state when no recent batches exist", () => {
@@ -922,8 +991,8 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             alerts: [
               {
                 tone: "danger",
-                label: "Baseline 未就绪",
-                detail: "尚未预热",
+                label: "Baseline 待校验",
+                detail: "基础模板已缓存，等待进一步校验",
               },
               {
                 tone: "warning",
@@ -936,9 +1005,9 @@ describe("SheinStudioRecentBatchesDashboard", () => {
       />,
     );
 
-    expect(screen.getByText("Baseline 未就绪")).toBeInTheDocument();
+    expect(screen.getByText("Baseline 待校验")).toBeInTheDocument();
     expect(screen.getByText("待确认款式")).toBeInTheDocument();
-    expect(screen.getByText("Baseline 未就绪：尚未预热")).toBeInTheDocument();
+    expect(screen.getByText("Baseline 待校验：基础模板已缓存，等待进一步校验")).toBeInTheDocument();
     expect(screen.getByText("待确认款式：需要确认设计")).toBeInTheDocument();
   });
 
@@ -1091,7 +1160,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             alerts: [
               {
                 tone: "danger",
-                label: "Baseline 未就绪",
+                label: "Baseline 待校验",
               },
               {
                 tone: "danger",
@@ -1383,7 +1452,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
             createdTaskCount: 0,
             updatedAt: "2026-05-27T00:00:00.000Z",
             alerts: [
-              { tone: "danger", label: "Baseline 未就绪" },
+              { tone: "danger", label: "Baseline 待校验" },
             ],
           },
           {
@@ -1427,7 +1496,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-3" }));
 
     expect(
-      screen.getByText("风险拆分：Baseline 未就绪 1 个 / 生成失败 1 个 / 待确认款式 1 个"),
+      screen.getByText("风险拆分：Baseline 待校验 1 个 / 生成失败 1 个 / 待确认款式 1 个"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "批量去生成区处理 2 个" }),

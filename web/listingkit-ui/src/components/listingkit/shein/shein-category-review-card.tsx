@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,8 @@ import type {
 
 export function SheinCategoryReviewCard({
   applyErrorMessage,
+  statusMessage,
+  statusTone = "default",
   taskId,
   editorContext,
   isApplying = false,
@@ -30,6 +33,8 @@ export function SheinCategoryReviewCard({
   onApplyManualCategory,
 }: {
   applyErrorMessage?: string | null;
+  statusMessage?: string | null;
+  statusTone?: "default" | "success";
   taskId: string;
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
@@ -98,6 +103,11 @@ export function SheinCategoryReviewCard({
       }
     >
       <div className="space-y-4">
+        {statusMessage ? (
+          <Alert variant={statusTone === "success" ? "success" : "default"}>
+            <AlertDescription>{statusMessage}</AlertDescription>
+          </Alert>
+        ) : null}
         {applyErrorMessage ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
             保存类目修改失败：{applyErrorMessage}

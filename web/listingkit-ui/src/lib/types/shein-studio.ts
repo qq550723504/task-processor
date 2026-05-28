@@ -166,6 +166,7 @@ export type SheinStudioRecentBatchSummary = {
 export type SheinStudioRecentBatchAlert = {
   tone: "warning" | "danger";
   label: string;
+  reasonCode?: string;
   detail?: string;
 };
 

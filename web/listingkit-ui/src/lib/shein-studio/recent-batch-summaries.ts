@@ -1,4 +1,5 @@
 import { pickActiveSheinStudioGroup } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import { buildRecentBatchBaselineAlert } from "@/lib/shein-studio/sds-baseline-ui";
 import type {
   SheinStudioDraft,
   SheinStudioGroupedWorkspace,
@@ -31,22 +32,22 @@ function buildGroupedSelectionAlerts(
     eligibilityReason?: string;
     baselineStatus?: string;
     baselineReason?: string;
-  }[],
+    baselineReasonCode?: string;
+}[],
 ) {
   const alerts: SheinStudioRecentBatchAlert[] = [];
-  if (
-    groupedSelections.some(
-      (item) => item.baselineStatus && item.baselineStatus !== "ready",
-    )
-  ) {
-    const reason = groupedSelections.find(
-      (item) => item.baselineStatus && item.baselineStatus !== "ready",
-    )?.baselineReason;
-    alerts.push({
-      tone: "danger",
-      label: "Baseline 未就绪",
-      detail: reason?.trim() || "组内仍有商品需要先完成 baseline 预热或修复。",
-    });
+  const baselineIssue = groupedSelections.find(
+    (item) => item.baselineStatus && item.baselineStatus !== "ready",
+  );
+  const baselineAlert = baselineIssue
+    ? buildRecentBatchBaselineAlert({
+        status: baselineIssue.baselineStatus,
+        reason: baselineIssue.baselineReason,
+        reasonCode: baselineIssue.baselineReasonCode,
+      })
+    : null;
+  if (baselineAlert) {
+    alerts.push(baselineAlert);
   }
   if (groupedSelections.some((item) => item.eligible === false)) {
     const reason = groupedSelections.find((item) => item.eligible === false)

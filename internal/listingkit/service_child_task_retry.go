@@ -212,9 +212,10 @@ func pruneChildTaskRetryArtifacts(result *ListingKitResult, kind string) {
 	if result == nil {
 		return
 	}
+	removedIssueTexts := workflowIssueTextsByStage(result.WorkflowIssues, kind)
 	result.WorkflowIssues = filterWorkflowIssuesByStage(result.WorkflowIssues, kind)
 	if result.Summary != nil && len(result.Summary.Warnings) > 0 {
-		result.Summary.Warnings = nil
+		result.Summary.Warnings = filterOutSummaryWarnings(result.Summary.Warnings, removedIssueTexts)
 	}
 }
 
@@ -230,6 +231,57 @@ func filterWorkflowIssuesByStage(issues []WorkflowIssue, stage string) []Workflo
 		out = append(out, issue)
 	}
 	return out
+}
+
+func workflowIssueTextsByStage(issues []WorkflowIssue, stage string) []string {
+	if len(issues) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(issues)*2)
+	for _, issue := range issues {
+		if issue.Stage != stage {
+			continue
+		}
+		if message := strings.TrimSpace(issue.Message); message != "" {
+			values = append(values, message)
+		}
+		if detail := strings.TrimSpace(issue.Detail); detail != "" {
+			values = append(values, detail)
+		}
+	}
+	return normalizeReviewReasons(values)
+}
+
+func filterOutSummaryWarnings(warnings []string, removals []string) []string {
+	if len(warnings) == 0 {
+		return nil
+	}
+	if len(removals) == 0 {
+		return append([]string(nil), warnings...)
+	}
+	removalSet := make(map[string]struct{}, len(removals))
+	for _, value := range removals {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		removalSet[trimmed] = struct{}{}
+	}
+	filtered := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		trimmed := strings.TrimSpace(warning)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := removalSet[trimmed]; exists {
+			continue
+		}
+		filtered = append(filtered, warning)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func ensureGenerationSummary(summary *GenerationSummary) *GenerationSummary {

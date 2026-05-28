@@ -200,8 +200,11 @@ export function buildSheinAdvancedReviewDetailsProps({
     showCategoryReview,
     showAttributeReview,
     showSaleAttributeReview,
+    refreshHistory: sheinActions.sheinRefreshHistory,
     categoryReviewProps: {
       applyErrorMessage,
+      statusMessage: sheinActions.sheinCategoryRevisionNotice?.message,
+      statusTone: sheinActions.sheinCategoryRevisionNotice?.tone,
       taskId,
       editorContext: shein?.editor_context,
       isApplying,
@@ -211,6 +214,8 @@ export function buildSheinAdvancedReviewDetailsProps({
     },
     attributeReviewProps: {
       applyErrorMessage,
+      statusMessage: sheinActions.sheinAttributeRevisionNotice?.message,
+      statusTone: sheinActions.sheinAttributeRevisionNotice?.tone,
       editorContext: shein?.editor_context,
       isApplying,
       onConfirmAttributes: sheinActions.handleConfirmSheinAttributes,
@@ -219,6 +224,8 @@ export function buildSheinAdvancedReviewDetailsProps({
     },
     saleAttributeReviewProps: {
       applyErrorMessage,
+      statusMessage: sheinActions.sheinSaleAttributeRevisionNotice?.message,
+      statusTone: sheinActions.sheinSaleAttributeRevisionNotice?.tone,
       editorContext: shein?.editor_context,
       isApplying,
       onConfirmCurrentSaleAttributes:

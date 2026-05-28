@@ -28,7 +28,9 @@ func (s *service) warmSDSBaseline(ctx context.Context, req *WarmSDSBaselineReque
 	if req.TenantID != "" {
 		ctx = WithTenantID(ctx, req.TenantID)
 	}
-	if readiness, err := s.GetSDSBaselineReadiness(ctx, query); err == nil && readiness != nil && readiness.Status == "ready" {
+	if readiness, err := s.GetSDSBaselineReadiness(ctx, query); err == nil && readiness != nil &&
+		readiness.CacheStatus == SDSBaselineStatusBaselineCached &&
+		readiness.ValidationStatus != SDSBaselineValidationStatusUnknown {
 		return readiness, nil
 	}
 
@@ -38,6 +40,9 @@ func (s *service) warmSDSBaseline(ctx context.Context, req *WarmSDSBaselineReque
 		return nil, fmt.Errorf("failed to build SDS baseline canonical product")
 	}
 	if err := s.persistSDSBaselineCanonical(ctx, task, product); err != nil {
+		return nil, err
+	}
+	if err := s.persistSDSBaselineValidation(ctx, task); err != nil {
 		return nil, err
 	}
 	return s.GetSDSBaselineReadiness(ctx, query)
@@ -71,7 +76,7 @@ func (s *service) persistSDSBaselineCanonical(ctx context.Context, task *Task, p
 	return cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
 		TenantID:             tenantID,
 		BaselineKey:          baselineKey,
-		Status:               "ready",
+		Status:               SDSBaselineStatusBaselineCached,
 		Version:              1,
 		SourceTaskID:         task.ID,
 		Identity:             sdsBaselineIdentityFromOptions(task.Request.Options.SDS),

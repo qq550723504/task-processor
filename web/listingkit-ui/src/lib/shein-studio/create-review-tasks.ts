@@ -425,8 +425,8 @@ export async function createGroupedSheinReviewTasks(
       if (item.baselineStatus !== "ready") {
         throw new Error(
           item.baselineReason?.trim()
-            ? `Only baseline ready SDS products can be created in grouped mode. ${item.baselineReason.trim()}`
-            : "Only baseline ready SDS products can be created in grouped mode.",
+            ? `Only baseline-validated SDS products can be created in grouped mode. ${item.baselineReason.trim()}`
+            : "Only baseline-validated SDS products can be created in grouped mode.",
         );
       }
 

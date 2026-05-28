@@ -6,6 +6,7 @@ import type {
 } from "./preview";
 import type {
   PlatformPreviewPayload,
+  PodExecutionSummary,
   SheinPreviewPayload,
   SheinStoreResolutionSummary,
   SheinStatusOverview,
@@ -88,6 +89,7 @@ export type ListingKitTaskResultData = {
     blocking_count?: number;
     warnings?: string[];
   };
+  pod_execution?: PodExecutionSummary;
   sds_sync?: SDSSyncSummary;
   sds_design_result?: SDSSyncSummary;
   child_tasks?: ListingKitChildTask[];
@@ -138,6 +140,7 @@ export type ListingKitTaskListItem = {
   task_id: string;
   tenant_id?: string;
   status?: string;
+  pod_execution?: PodExecutionSummary;
   platforms?: string[];
   title?: string;
   image_count?: number;

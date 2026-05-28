@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 
 import {
   buildSheinGeneralReviewHref,
+  normalizeSheinFreshnessActionKey,
   isSheinWorkspaceActionKey,
   isSheinAdvancedRepairKey,
   normalizeSheinWorkspaceActionKey,
+  type SheinFreshnessActionKey,
   sheinWorkspaceTargetIdForKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
 import {
@@ -34,18 +36,27 @@ type SearchParamsLike = {
   toString(): string;
 };
 
+type SheinFreshnessActionHandlers = Partial<
+  Record<
+    Exclude<SheinFreshnessActionKey, "shein_online_auth">,
+    () => void
+  >
+>;
+
 export function useWorkspaceNavigationActions({
   taskId,
   baseQuery,
   searchParams,
   focusedTarget,
   sheinStoreID,
+  sheinFreshnessActions,
 }: {
   taskId: string;
   baseQuery: QueueQuery;
   searchParams: SearchParamsLike;
   focusedTarget?: ReviewTarget;
   sheinStoreID?: number | null;
+  sheinFreshnessActions?: SheinFreshnessActionHandlers;
 }) {
   const router = useRouter();
   const dispatch = useDispatchNavigation(taskId, baseQuery);
@@ -94,6 +105,7 @@ export function useWorkspaceNavigationActions({
         searchParams: searchParams.toString(),
         key: actionSummary.action_key,
         storeID: sheinStoreID,
+        sheinFreshnessActions,
       });
       return;
     }
@@ -155,6 +167,7 @@ export function useWorkspaceNavigationActions({
       searchParams: searchParams.toString(),
       key: item.key,
       storeID: sheinStoreID,
+      sheinFreshnessActions,
     });
   };
 
@@ -165,6 +178,7 @@ export function useWorkspaceNavigationActions({
       searchParams: searchParams.toString(),
       key,
       storeID: sheinStoreID,
+      sheinFreshnessActions,
     });
   };
 
@@ -186,13 +200,18 @@ function navigateOrScrollSheinActionTarget({
   searchParams,
   key,
   storeID,
+  sheinFreshnessActions,
 }: {
   taskId: string;
   router: ReturnType<typeof useRouter>;
   searchParams: string;
   key?: string | null;
   storeID?: number | null;
+  sheinFreshnessActions?: SheinFreshnessActionHandlers;
 }) {
+  if (runSheinFreshnessAction(key, sheinFreshnessActions)) {
+    return;
+  }
   const normalizedKey = normalizeSheinWorkspaceActionKey(key);
   if (!normalizedKey) {
     return;
@@ -215,4 +234,42 @@ function navigateOrScrollSheinActionTarget({
     return;
   }
   scrollSheinWorkspaceTarget(normalizedKey, targetId);
+}
+
+export function runSheinFreshnessAction(
+  key?: string | null,
+  sheinFreshnessActions?: SheinFreshnessActionHandlers,
+) {
+  const normalizedFreshnessKey = normalizeSheinFreshnessActionKey(key);
+  if (!normalizedFreshnessKey || !sheinFreshnessActions) {
+    return false;
+  }
+  switch (normalizedFreshnessKey) {
+    case "shein_category_template_freshness":
+      if (!sheinFreshnessActions.shein_category_template_freshness) {
+        return false;
+      }
+      sheinFreshnessActions.shein_category_template_freshness();
+      return true;
+    case "shein_attribute_template_freshness":
+      if (!sheinFreshnessActions.shein_attribute_template_freshness) {
+        return false;
+      }
+      sheinFreshnessActions.shein_attribute_template_freshness();
+      return true;
+    case "shein_sale_attribute_template_freshness":
+      if (!sheinFreshnessActions.shein_sale_attribute_template_freshness) {
+        return false;
+      }
+      sheinFreshnessActions.shein_sale_attribute_template_freshness();
+      return true;
+    case "shein_sale_attribute_freshness":
+      if (!sheinFreshnessActions.shein_sale_attribute_freshness) {
+        return false;
+      }
+      sheinFreshnessActions.shein_sale_attribute_freshness();
+      return true;
+    default:
+      return false;
+  }
 }

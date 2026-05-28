@@ -10,6 +10,8 @@ func normalizeListingKitResultSemanticFields(result *ListingKitResult) *ListingK
 		result.SDSDesignResult = result.SDSSync
 	}
 	result.SDSSync = result.SDSDesignResult
+	result.PodExecution = normalizePodExecutionSummary(result.PodExecution)
+	result.StandardProductSnapshot = normalizeStandardProductSnapshotSemanticFields(result.StandardProductSnapshot)
 	return result
 }
 
@@ -21,6 +23,7 @@ func normalizeStandardProductSnapshotSemanticFields(snapshot *StandardProductSna
 		snapshot.SDSDesignResult = snapshot.SDSSync
 	}
 	snapshot.SDSSync = snapshot.SDSDesignResult
+	snapshot.PodExecution = normalizePodExecutionSummary(snapshot.PodExecution)
 	return snapshot
 }
 

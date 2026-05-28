@@ -160,7 +160,7 @@ describe("buildRecentBatchSummaries", () => {
     ]);
   });
 
-  it("derives grouped baseline and eligibility alerts from persisted batches", () => {
+  it("derives grouped baseline validation and eligibility alerts from persisted batches", () => {
     const summaries = buildRecentBatchSummaries([
       {
         id: "batch-1",
@@ -176,8 +176,8 @@ describe("buildRecentBatchSummaries", () => {
             selection: hoodie,
             eligible: false,
             eligibilityReason: "印刷区域待确认",
-            baselineStatus: "missing",
-            baselineReason: "尚未预热",
+            baselineStatus: "blocked",
+            baselineReason: "SDS 模板层未通过校验",
           },
         ],
         designs: [],
@@ -190,12 +190,85 @@ describe("buildRecentBatchSummaries", () => {
     expect(summaries[0].alerts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          label: "Baseline 未就绪",
-          detail: "尚未预热",
+          label: "Baseline 校验未通过",
+          detail: "SDS 模板层未通过校验",
         }),
         expect.objectContaining({
           label: "Grouped 商品待处理",
           detail: "印刷区域待确认",
+        }),
+      ]),
+    );
+  });
+
+  it("surfaces cached baseline guidance when grouped products have not been validated yet", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-2",
+        name: "Cached Batch",
+        prompt: "cached prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        groupedSelections: [
+          {
+            selectionId: "sel-2",
+            sheinStoreId: "869",
+            selection: hoodie,
+            eligible: true,
+            baselineStatus: "baseline_cached",
+            baselineReason: "基础模板已缓存，等待进一步校验",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:30:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0].alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Baseline 待校验",
+          detail: "基础模板已缓存，等待进一步校验",
+        }),
+      ]),
+    );
+  });
+
+  it("falls back to baseline reason code when persisted grouped selections have no free-form reason", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-3",
+        name: "Reason Code Batch",
+        prompt: "reason code prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        groupedSelections: [
+          {
+            selectionId: "sel-3",
+            sheinStoreId: "869",
+            selection: hoodie,
+            eligible: false,
+            baselineStatus: "blocked",
+            baselineReason: "",
+            baselineReasonCode: "prototype_group_mismatch",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:40:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0].alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Baseline 校验未通过",
+          detail: "这款商品的 prototype group 与当前 SDS 设计面不匹配。",
         }),
       ]),
     );

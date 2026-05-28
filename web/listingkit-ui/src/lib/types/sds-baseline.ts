@@ -1,9 +1,23 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
-export type SDSBaselineStatus = "ready" | "missing" | "failed";
+export type SDSBaselineStatus =
+  | "baseline_cached"
+  | "ready"
+  | "blocked"
+  | "missing"
+  | "failed";
+
+export type SDSBaselineValidationStatus =
+  | "unknown"
+  | "ready"
+  | "blocked"
+  | "failed";
 
 export type SDSBaselineReadiness = {
   baselineKey: string;
+  cacheStatus?: SDSBaselineStatus;
+  validationStatus?: SDSBaselineValidationStatus;
+  reasonCode?: string;
   status: SDSBaselineStatus;
   reason?: string;
 };
@@ -28,6 +42,7 @@ export type GroupedSDSSelectionEligibility = {
   baselineKey?: string;
   baselineStatus: SDSBaselineStatus;
   baselineReason: string;
+  baselineReasonCode?: string;
   sheinStoreId: string;
   eligible: boolean;
   eligibilityReason?: string;
@@ -37,6 +52,7 @@ export type GroupedSDSSelectionInput = {
   selection: SDSProductVariantSelection;
   baselineStatus: SDSBaselineStatus;
   baselineReason?: string;
+  baselineReasonCode?: string;
 };
 
 export function buildGroupedSDSSelectionID(
@@ -59,7 +75,11 @@ export function buildGroupedSDSSelectionID(
 }
 
 export function normalizeSDSBaselineStatus(value: unknown): SDSBaselineStatus {
-  return value === "ready" || value === "failed" || value === "missing"
+  return value === "baseline_cached" ||
+    value === "ready" ||
+    value === "blocked" ||
+    value === "failed" ||
+    value === "missing"
     ? value
     : "missing";
 }
@@ -87,6 +107,10 @@ export function normalizeGroupedSDSSelectionEligibility(
     baselineStatus: normalizeSDSBaselineStatus(item.baselineStatus),
     baselineReason:
       typeof item.baselineReason === "string" ? item.baselineReason : "",
+    baselineReasonCode:
+      typeof item.baselineReasonCode === "string" && item.baselineReasonCode.trim()
+        ? item.baselineReasonCode
+        : undefined,
     sheinStoreId:
       typeof item.sheinStoreId === "string" ? item.sheinStoreId : "",
     eligible: item.eligible !== false,

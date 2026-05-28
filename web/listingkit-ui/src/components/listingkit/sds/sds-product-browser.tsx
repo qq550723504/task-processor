@@ -26,8 +26,11 @@ import { buildSDSVariantSelection } from "@/lib/sds/variant-selection";
 import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   buildGroupedSDSSelectionID,
-  type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
+import {
+  buildGroupedSDSBaselineHandoff,
+  type SDSBaselineDisplayStatus,
+} from "@/lib/shein-studio/sds-baseline-ui";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
@@ -70,7 +73,12 @@ export function SDSProductBrowser({
   >([]);
   const [activeBatchId, setActiveBatchId] = useState("");
   const [groupedCandidateBaselineStatuses, setGroupedCandidateBaselineStatuses] =
-    useState<Record<string, { reason: string; status: SDSBaselineStatus | "loading" }>>({});
+    useState<
+      Record<
+        string,
+        { reason: string; reasonCode?: string; status: SDSBaselineDisplayStatus }
+      >
+    >({});
 
   const queryKeyword = searchParams.get("keyword") ?? initialKeyword;
   const currentPage = Number(searchParams.get("page") ?? initialPage) || 1;
@@ -146,6 +154,7 @@ export function SDSProductBrowser({
             selectionId,
             groupedCandidateBaselineStatuses[selectionId] ?? {
               status: "loading" as const,
+              reasonCode: undefined,
               reason: "正在检查 baseline 状态...",
             },
           ];
@@ -224,6 +233,7 @@ export function SDSProductBrowser({
             selectionId,
             {
               status: readiness.status,
+              reasonCode: readiness.reasonCode,
               reason: readiness.reason ?? "",
             },
           ] as const;
@@ -232,6 +242,7 @@ export function SDSProductBrowser({
             selectionId,
             {
               status: "failed" as const,
+              reasonCode: undefined,
               reason:
                 error instanceof Error
                   ? error.message
@@ -380,7 +391,8 @@ export function SDSProductBrowser({
       items.forEach((item) => {
         next[buildGroupedSDSSelectionID(item)] = {
           status: "loading",
-          reason: "正在批量预热 baseline...",
+          reasonCode: undefined,
+          reason: "正在批量执行 baseline 预热与校验...",
         };
       });
       return next;
@@ -395,10 +407,11 @@ export function SDSProductBrowser({
               selectionId,
               {
                 status: readiness.status,
+                reasonCode: readiness.reasonCode,
                 reason:
                   readiness.reason ??
                   (readiness.status === "ready"
-                    ? "baseline 预热完成。"
+                    ? "baseline 已通过校验。"
                     : ""),
               },
             ] as const;
@@ -407,6 +420,7 @@ export function SDSProductBrowser({
               selectionId,
               {
                 status: "failed" as const,
+                reasonCode: undefined,
                 reason:
                   error instanceof Error ? error.message : "baseline 批量预热失败。",
               },
@@ -615,7 +629,7 @@ export function SDSProductBrowser({
           warmSummary={visibleWarmSummary}
           onRemove={removeSDSGroupedCandidate}
           onSelect={(selection, baseline) => {
-            const handoff = buildGroupedCandidateHandoff(baseline);
+            const handoff = buildGroupedSDSBaselineHandoff(baseline);
             if (handoff) {
               saveSDSGroupedCandidateHandoff(handoff);
             }
@@ -721,38 +735,4 @@ export function SDSProductBrowser({
       ) : null}
     </Card>
   );
-}
-
-function buildGroupedCandidateHandoff(baseline: {
-  reason: string;
-  status: SDSBaselineStatus | "loading";
-}) {
-  if (baseline.status === "missing") {
-    return {
-      action: "warm_baseline" as const,
-      actionLabel: "一键预热 baseline",
-      message:
-        baseline.reason ||
-        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
-    };
-  }
-  if (baseline.status === "failed") {
-    return {
-      action: "warm_baseline" as const,
-      actionLabel: "重试 baseline 预热",
-      message:
-        baseline.reason ||
-        "这款候选商品的 baseline 检查失败。请先重新生成或排查 SDS 转标准商品链路，再尝试 grouped 批量上品。",
-    };
-  }
-  if (baseline.status === "loading") {
-    return {
-      action: "focus_generate" as const,
-      actionLabel: "去生成区查看",
-      message:
-        baseline.reason ||
-        "这款候选商品的 baseline 状态还在检查中。稍等片刻，确认就绪后再加入 grouped 批量上品。",
-    };
-  }
-  return null;
 }

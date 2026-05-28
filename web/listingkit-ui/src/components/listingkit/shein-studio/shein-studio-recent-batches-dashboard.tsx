@@ -11,6 +11,7 @@ import {
   type SheinStudioRecentBatchesFocusDetail,
   type SheinStudioRecentBatchesRecommendationDetail,
 } from "@/lib/shein-studio/recent-batches-focus";
+import { getSDSBaselineReasonShortLabel } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
 
 type StoreOption = {
@@ -34,6 +35,7 @@ type RecentBatchesDashboardPreferences = {
   statusFilter?: RecentBatchStatusFilter;
   resultFilter?: RecentBatchResultFilter;
   activeRiskLabel?: string;
+  activeRiskReasonCode?: string;
   selectedSummaryIds?: string[];
   lastBulkActionSummary?: string;
 };
@@ -67,8 +69,16 @@ function recentBatchResultToneClass(tone: "success" | "warning" | "danger") {
   }
 }
 
+function isBaselineRiskLabel(label: string) {
+  return (
+    label === "Baseline 未就绪" ||
+    label === "Baseline 待校验" ||
+    label === "Baseline 校验未通过"
+  );
+}
+
 function actionForRiskAlert(label: string): RecentBatchAlertAction | null {
-  if (label === "Baseline 未就绪") {
+  if (isBaselineRiskLabel(label)) {
     return {
       action: "generate",
       label: "去生成区处理",
@@ -103,6 +113,10 @@ function summaryHasRecentResultTone(
 function riskLabelPriority(label: string) {
   switch (label) {
     case "Baseline 未就绪":
+      return 0;
+    case "Baseline 待校验":
+      return 0;
+    case "Baseline 校验未通过":
       return 0;
     case "生成失败":
       return 1;
@@ -140,10 +154,12 @@ function applyRiskFocus(
   label: string,
   setStatusFilter: (value: RecentBatchStatusFilter) => void,
   setActiveRiskLabel: (value: string) => void,
+  setActiveRiskReasonCode: (value: string) => void,
   setFocusedRiskLabel: (value: string) => void,
 ) {
   setStatusFilter("risk");
   setActiveRiskLabel(label);
+  setActiveRiskReasonCode("");
   setFocusedRiskLabel(label);
 }
 
@@ -217,6 +233,9 @@ export function SheinStudioRecentBatchesDashboard({
   );
   const [activeRiskLabel, setActiveRiskLabel] = useState(
     () => initialPreferences.activeRiskLabel ?? "",
+  );
+  const [activeRiskReasonCode, setActiveRiskReasonCode] = useState(
+    () => initialPreferences.activeRiskReasonCode ?? "",
   );
   const [focusedRiskLabel, setFocusedRiskLabel] = useState("");
   const [previousSelectedSummaryIds, setPreviousSelectedSummaryIds] = useState<
@@ -334,7 +353,7 @@ export function SheinStudioRecentBatchesDashboard({
         .filter((summary) =>
           summary.alerts?.some(
             (alert) =>
-              alert.label === "Baseline 未就绪" || alert.label === "生成失败",
+              isBaselineRiskLabel(alert.label) || alert.label === "生成失败",
           ),
         )
         .map((summary) => summary.id),
@@ -548,7 +567,12 @@ export function SheinStudioRecentBatchesDashboard({
             return false;
           }
           return activeRiskLabel
-            ? summary.alerts?.some((alert) => alert.label === activeRiskLabel)
+            ? summary.alerts?.some(
+                (alert) =>
+                  alert.label === activeRiskLabel &&
+                  (!activeRiskReasonCode ||
+                    alert.reasonCode === activeRiskReasonCode),
+              )
             : true;
         }
         const action = primaryActionForSummary(summary).action;
@@ -563,7 +587,7 @@ export function SheinStudioRecentBatchesDashboard({
         }
         return true;
       }),
-    [activeRiskLabel, resultFilter, statusFilter, summaries],
+    [activeRiskLabel, activeRiskReasonCode, resultFilter, statusFilter, summaries],
   );
   const filterCounts = useMemo(
     () => ({
@@ -636,6 +660,49 @@ export function SheinStudioRecentBatchesDashboard({
           left.label.localeCompare(right.label),
       );
   }, [summaries]);
+  const recommendedRiskReasonCode = useMemo(() => {
+    const topRiskLabel = riskCounts[0]?.label ?? "";
+    if (!isBaselineRiskLabel(topRiskLabel)) {
+      return "";
+    }
+    const counts = new Map<string, number>();
+    for (const summary of summaries) {
+      for (const alert of summary.alerts ?? []) {
+        if (alert.label !== topRiskLabel || !alert.reasonCode?.trim()) {
+          continue;
+        }
+        counts.set(alert.reasonCode, (counts.get(alert.reasonCode) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries()).sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )[0]?.[0] ?? "";
+  }, [riskCounts, summaries]);
+  const activeRiskReasonCounts = useMemo(() => {
+    if (statusFilter !== "risk" || !isBaselineRiskLabel(activeRiskLabel)) {
+      return [];
+    }
+    const counts = new Map<string, number>();
+    for (const summary of summaries) {
+      for (const alert of summary.alerts ?? []) {
+        if (alert.label !== activeRiskLabel || !alert.reasonCode?.trim()) {
+          continue;
+        }
+        counts.set(alert.reasonCode, (counts.get(alert.reasonCode) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([reasonCode, count]) => ({
+        reasonCode,
+        count,
+        label:
+          getSDSBaselineReasonShortLabel(reasonCode) || reasonCode.replaceAll("_", " "),
+      }))
+      .sort(
+        (left, right) =>
+          right.count - left.count || left.label.localeCompare(right.label),
+      );
+  }, [activeRiskLabel, statusFilter, summaries]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -645,6 +712,7 @@ export function SheinStudioRecentBatchesDashboard({
       statusFilter,
       resultFilter,
       activeRiskLabel,
+      activeRiskReasonCode,
       selectedSummaryIds,
       lastBulkActionSummary,
     };
@@ -654,6 +722,7 @@ export function SheinStudioRecentBatchesDashboard({
     );
   }, [
     activeRiskLabel,
+    activeRiskReasonCode,
     lastBulkActionSummary,
     resultFilter,
     selectedSummaryIds,
@@ -675,6 +744,7 @@ export function SheinStudioRecentBatchesDashboard({
       }
       setStatusFilter("risk");
       setActiveRiskLabel("");
+      setActiveRiskReasonCode("");
       setFocusedRiskLabel(riskCounts[0]?.label ?? "");
       setRestoredResultFilterNote("");
     };
@@ -696,8 +766,9 @@ export function SheinStudioRecentBatchesDashboard({
     dispatchSheinStudioRecentBatchesRecommendation({
       hasRecoverableBatches: summaries.length > 0,
       recommendedRiskLabel: riskCounts[0]?.label ?? "",
+      recommendedRiskReasonCode,
     });
-  }, [riskCounts, summaries.length]);
+  }, [recommendedRiskReasonCode, riskCounts, summaries.length]);
 
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
@@ -997,13 +1068,14 @@ export function SheinStudioRecentBatchesDashboard({
               {filterOptions.map((option) => (
                 <Button
                   key={option.value}
-                  onClick={() => {
-                    setStatusFilter(option.value);
-                    if (option.value !== "risk") {
-                      setActiveRiskLabel("");
-                      setFocusedRiskLabel("");
-                    }
-                  }}
+                    onClick={() => {
+                      setStatusFilter(option.value);
+                      if (option.value !== "risk") {
+                        setActiveRiskLabel("");
+                        setActiveRiskReasonCode("");
+                        setFocusedRiskLabel("");
+                      }
+                    }}
                   size="sm"
                   type="button"
                   variant={statusFilter === option.value ? "default" : "secondary"}
@@ -1019,12 +1091,13 @@ export function SheinStudioRecentBatchesDashboard({
                 <Button
                   key={item.label}
                   onClick={() => {
-                    applyRiskFocus(
-                      item.label,
-                      setStatusFilter,
-                      setActiveRiskLabel,
-                      setFocusedRiskLabel,
-                    );
+                  applyRiskFocus(
+                    item.label,
+                    setStatusFilter,
+                    setActiveRiskLabel,
+                    setActiveRiskReasonCode,
+                    setFocusedRiskLabel,
+                  );
                   }}
                   className={
                     statusFilter === "risk" &&
@@ -1065,6 +1138,32 @@ export function SheinStudioRecentBatchesDashboard({
           {statusFilter === "risk" && activeRiskLabel ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
               当前只显示包含“{activeRiskLabel}”的风险批次。
+              {activeRiskReasonCode
+                ? ` 已细分到“${getSDSBaselineReasonShortLabel(activeRiskReasonCode) || activeRiskReasonCode}”。`
+                : ""}
+            </div>
+          ) : null}
+          {statusFilter === "risk" &&
+          activeRiskLabel &&
+          activeRiskReasonCounts.length > 0 ? (
+            <div className="flex flex-wrap gap-2 border-t border-zinc-200/80 pt-3">
+              {activeRiskReasonCounts.map((item) => (
+                <Button
+                  key={item.reasonCode}
+                  onClick={() => {
+                    setActiveRiskReasonCode((current) =>
+                      current === item.reasonCode ? "" : item.reasonCode,
+                    );
+                  }}
+                  size="sm"
+                  type="button"
+                  variant={
+                    activeRiskReasonCode === item.reasonCode ? "default" : "secondary"
+                  }
+                >
+                  {item.label} {item.count}
+                </Button>
+              ))}
             </div>
           ) : null}
           {statusFilter === "risk" && !activeRiskLabel && focusedRiskLabel ? (
@@ -1074,13 +1173,14 @@ export function SheinStudioRecentBatchesDashboard({
               </span>
               <Button
                 onClick={() =>
-                  applyRiskFocus(
-                    focusedRiskLabel,
-                    setStatusFilter,
-                    setActiveRiskLabel,
-                    setFocusedRiskLabel,
-                  )
-                }
+                    applyRiskFocus(
+                      focusedRiskLabel,
+                      setStatusFilter,
+                      setActiveRiskLabel,
+                      setActiveRiskReasonCode,
+                      setFocusedRiskLabel,
+                    )
+                  }
                 size="sm"
                 type="button"
                 variant="secondary"

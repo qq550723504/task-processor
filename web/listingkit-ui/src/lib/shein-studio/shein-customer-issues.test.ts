@@ -91,6 +91,108 @@ describe("buildSheinCustomerIssues", () => {
     });
   });
 
+  it("maps SHEIN online auth freshness blockers to store login guidance", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        blocking_items: [
+          {
+            key: "shein_online_auth",
+            label: "SHEIN 在线登录态",
+            message: "SHEIN 提交店铺当前不可用，请先刷新登录态后再提交：store token missing",
+          },
+        ],
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "提交接口问题",
+      title: "SHEIN 店铺需要重新登录",
+      severity: "blocking",
+      actionKey: "store_login",
+    });
+  });
+
+  it("maps category freshness blockers to category guidance", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        blocking_items: [
+          {
+            key: "shein_category_template_freshness",
+            label: "类目模板新鲜度",
+            message: "当前类目模板已发生变化",
+          },
+        ],
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "类目问题",
+      title: "类目模板已经变化",
+      severity: "blocking",
+      actionKey: "category",
+    });
+  });
+
+  it("maps sale attribute freshness blockers to sale attribute guidance", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        blocking_items: [
+          {
+            key: "shein_sale_attribute_freshness",
+            label: "销售属性模板新鲜度",
+            message: "当前销售属性模板已变化",
+          },
+        ],
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "销售属性问题",
+      title: "销售属性模板已经变化",
+      severity: "blocking",
+      actionKey: "sale_attributes",
+    });
+  });
+
+  it("maps pod platform blockers to pod guidance", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        blocking_items: [
+          {
+            key: "pod_platform",
+            label: "POD 平台处理",
+            message: "SDS 平台处理为发布前置，当前不可提交：design template unavailable",
+          },
+        ],
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "图片问题",
+      title: "POD 平台结果还未就绪",
+      severity: "blocking",
+      actionKey: "pod_platform",
+    });
+  });
+
+  it("maps degraded pod size-image fallback to image guidance", () => {
+    const issues = buildSheinCustomerIssues({
+      pod_execution: {
+        provider: "sds",
+        dependency_mode: "optional",
+        status: "failed_degraded",
+        failure_reason: "size image render unavailable",
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "图片问题",
+      title: "POD 尺寸图已降级",
+      severity: "warning",
+      actionKey: "images",
+    });
+  });
+
   it("keeps unknown errors as raw other issues", () => {
     const issues = buildSheinCustomerIssues({
       submission_state: {

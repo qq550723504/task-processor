@@ -18,7 +18,7 @@ func TestGetSDSBaselineReadinessBindsQueryAndReturnsPayload(t *testing.T) {
 	svc := &stubGenerationTaskService{
 		baselineReadiness: &listingkit.SDSBaselineReadiness{
 			BaselineKey: "baseline-key",
-			Status:      "ready",
+			Status:      listingkit.SDSBaselineStatusBaselineCached,
 		},
 	}
 	h, err := NewHandler(svc, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
@@ -59,7 +59,7 @@ func TestGetSDSBaselineReadinessBindsQueryAndReturnsPayload(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
-	if body.Status != "ready" || body.BaselineKey != "baseline-key" {
+	if body.Status != listingkit.SDSBaselineStatusBaselineCached || body.BaselineKey != "baseline-key" {
 		t.Fatalf("body = %+v, want readiness payload", body)
 	}
 }

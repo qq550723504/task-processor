@@ -49,6 +49,7 @@ type TaskListItem struct {
 	TaskIdentityFields
 	TaskListLifecycleFields
 	TaskListDisplayFields
+	PodExecution *PodExecutionSummary `json:"pod_execution,omitempty"`
 	SheinTaskListWorkflowFields
 	SheinTaskListStoreFields
 	SheinTaskListSubmissionFields

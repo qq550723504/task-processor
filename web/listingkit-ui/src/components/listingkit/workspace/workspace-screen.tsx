@@ -95,6 +95,15 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     sheinStoreID:
       preview.data?.shein?.store_resolution?.store_id ??
       taskResult.data?.result?.shein_store_resolution?.store_id,
+    sheinFreshnessActions: {
+      shein_category_template_freshness: sheinActions.handleRefreshSheinCategory,
+      shein_attribute_template_freshness:
+        sheinActions.handleRegenerateSheinAttributes,
+      shein_sale_attribute_template_freshness:
+        sheinActions.handleRegenerateSheinSaleAttributes,
+      shein_sale_attribute_freshness:
+        sheinActions.handleRegenerateSheinSaleAttributes,
+    },
   });
   const childTaskRetry = useRetryChildTask(taskId);
   const sheinViewProps = buildSheinWorkspaceViewProps({

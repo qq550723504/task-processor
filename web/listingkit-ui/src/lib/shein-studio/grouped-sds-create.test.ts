@@ -74,7 +74,7 @@ const secondProductDesign: SheinStudioGeneratedDesign = {
 };
 
 describe("createGroupedSheinReviewTasks", () => {
-  it("rejects grouped create when a selection is missing baseline readiness", async () => {
+  it("rejects grouped create when a selection is not baseline validated", async () => {
     await expect(
       createGroupedSheinReviewTasks({
         prompt: "Grouped prompt",
@@ -93,7 +93,29 @@ describe("createGroupedSheinReviewTasks", () => {
           },
         ],
       }),
-    ).rejects.toThrow("baseline ready");
+    ).rejects.toThrow("baseline-validated");
+  });
+
+  it("rejects grouped create when a selection is only baseline cached", async () => {
+    await expect(
+      createGroupedSheinReviewTasks({
+        prompt: "Grouped prompt",
+        groups: [
+          {
+            sheinStoreId: "869",
+            selections: [
+              {
+                selection: baseSelection,
+                baselineStatus: "baseline_cached",
+                baselineReason: "Baseline has been cached but not validated yet",
+              },
+            ],
+            designs: [baseDesign],
+            selectedIds: [baseDesign.id],
+          },
+        ],
+      }),
+    ).rejects.toThrow("Baseline has been cached but not validated yet");
   });
 
   it("calls through to createSheinReviewTasks for each ready grouped selection", async () => {

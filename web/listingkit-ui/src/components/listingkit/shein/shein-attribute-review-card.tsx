@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -20,6 +21,8 @@ import type {
 
 export function SheinAttributeReviewCard({
   applyErrorMessage,
+  statusMessage,
+  statusTone = "default",
   editorContext,
   isApplying,
   onConfirmAttributes,
@@ -27,6 +30,8 @@ export function SheinAttributeReviewCard({
   onRegenerateAttributes,
 }: {
   applyErrorMessage?: string | null;
+  statusMessage?: string | null;
+  statusTone?: "default" | "success";
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
@@ -54,8 +59,10 @@ export function SheinAttributeReviewCard({
   }
 
   return (
-      <SheinAttributeReviewContent
+    <SheinAttributeReviewContent
       applyErrorMessage={applyErrorMessage}
+      statusMessage={statusMessage}
+      statusTone={statusTone}
       current={current}
       isApplying={isApplying}
       key={pendingCandidatesSignature([...pendingCandidates, ...recommendedCandidates])}
@@ -71,6 +78,8 @@ export function SheinAttributeReviewCard({
 
 function SheinAttributeReviewContent({
   applyErrorMessage,
+  statusMessage,
+  statusTone = "default",
   current,
   isApplying,
   onConfirmAttributes,
@@ -81,6 +90,8 @@ function SheinAttributeReviewContent({
   resolvedAttributes,
 }: {
   applyErrorMessage?: string | null;
+  statusMessage?: string | null;
+  statusTone?: "default" | "success";
   current: NonNullable<NonNullable<SheinEditorContext["attributes"]>["current"]>;
   isApplying?: boolean;
   onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
@@ -123,6 +134,11 @@ function SheinAttributeReviewContent({
   return (
     <Card className="border-zinc-200 bg-white p-5">
       <div className="space-y-4">
+        {statusMessage ? (
+          <Alert variant={statusTone === "success" ? "success" : "default"}>
+            <AlertDescription>{statusMessage}</AlertDescription>
+          </Alert>
+        ) : null}
         {applyErrorMessage ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
             保存普通属性失败：{applyErrorMessage}

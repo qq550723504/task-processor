@@ -118,6 +118,79 @@ describe("ListingKitHomeTaskCard", () => {
     expect(screen.getByText("下一步")).toBeInTheDocument();
   });
 
+  it("shows pod platform signal and pod-specific next step when blocked by pod", () => {
+    render(
+      <ListingKitHomeTaskCard
+        task={makeTask({
+          pod_execution: {
+            provider: "sds",
+            dependency_mode: "required",
+            status: "failed_blocking",
+          },
+          shein_status_overview: {
+            headline: "SHEIN 资料包暂不能直接提交",
+            primary_action: "最终确认",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("POD SDS 阻断中")).toBeInTheDocument();
+    expect(screen.getByText("处理 POD 平台结果")).toBeInTheDocument();
+  });
+
+  it("shows pod processing guidance before shein blockers are materialized", () => {
+    render(
+      <ListingKitHomeTaskCard
+        task={makeTask({
+          pod_execution: {
+            provider: "sds",
+            dependency_mode: "required",
+            status: "processing",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("POD SDS 处理中")).toBeInTheDocument();
+    expect(screen.getByText("等待 POD 平台处理")).toBeInTheDocument();
+  });
+
+  it("shows size-image fallback guidance for degraded optional pod tasks", () => {
+    render(
+      <ListingKitHomeTaskCard
+        task={makeTask({
+          pod_execution: {
+            provider: "sds",
+            dependency_mode: "optional",
+            status: "failed_degraded",
+            failure_reason: "size image render unavailable",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("POD SDS 尺寸图已降级")).toBeInTheDocument();
+    expect(screen.getByText("确认尺寸图降级结果")).toBeInTheDocument();
+  });
+
+  it("shows freshness drift signals and next step before generic shein guidance", () => {
+    render(
+      <ListingKitHomeTaskCard
+        task={makeTask({
+          shein_blocking_keys: ["shein_online_auth"],
+          shein_status_overview: {
+            headline: "SHEIN 资料包暂不能直接提交",
+            primary_action: "最终确认",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 店铺待登录")).toBeInTheDocument();
+    expect(screen.getByText("重新登录 SHEIN 店铺")).toBeInTheDocument();
+  });
+
   it("uses the SHEIN workspace query for resumable mixed-platform tasks", () => {
     render(
       <ListingKitHomeTaskCard

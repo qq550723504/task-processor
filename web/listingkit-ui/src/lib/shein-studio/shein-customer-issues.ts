@@ -1,10 +1,12 @@
 import type {
+  PodExecutionSummary,
   SheinPreviewPayload,
   SheinReadinessItem,
   SheinSubmissionReport,
   SheinSubmitReadiness,
 } from "@/lib/types/listingkit";
 import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
+import { isPodSizeImageFallback } from "@/lib/listingkit/pod-execution";
 
 export type CustomerIssueCategory =
   | "图片问题"
@@ -23,7 +25,8 @@ export type CustomerIssueActionKey =
   | "category"
   | "attributes"
   | "sale_attributes"
-  | "pricing";
+  | "pricing"
+  | "pod_platform";
 
 export type CustomerIssue = {
   category: CustomerIssueCategory;
@@ -73,6 +76,59 @@ function byKey(key?: string | null): IssueTemplate | null {
       title: "等待最终确认",
       message: "当前页面就是最终确认页。核对无误后，可以直接保存草稿或发布到 SHEIN。",
       actionLabel: "继续最终确认",
+    };
+  }
+  if (normalized === "shein_online_auth") {
+    return {
+      category: "提交接口问题",
+      title: "SHEIN 店铺需要重新登录",
+      message:
+        "当前 SHEIN 提交店铺登录态已失效。请重新登录店铺或刷新 cookie 后，再重新生成或继续提交。",
+      actionLabel: "去登录店铺",
+      actionKey: "store_login",
+    };
+  }
+  if (normalized === "shein_category_template_freshness") {
+    return {
+      category: "类目问题",
+      title: "类目模板已经变化",
+      message:
+        "生成阶段使用的 SHEIN 类目模板和当前在线模板已经不一致。请重新确认类目后，再刷新属性和销售属性。",
+      actionLabel: "去确认类目",
+      actionKey: "category",
+    };
+  }
+  if (normalized === "shein_attribute_template_freshness") {
+    return {
+      category: "普通属性问题",
+      title: "普通属性模板已经变化",
+      message:
+        "生成阶段使用的普通属性模板和当前在线模板已经不一致。请重新刷新属性模板后再提交。",
+      actionLabel: "去确认属性",
+      actionKey: "attributes",
+    };
+  }
+  if (
+    normalized === "shein_sale_attribute_template_freshness" ||
+    normalized === "shein_sale_attribute_freshness"
+  ) {
+    return {
+      category: "销售属性问题",
+      title: "销售属性模板已经变化",
+      message:
+        "生成阶段使用的销售属性模板和当前在线模板已经不一致。请重新确认主副规格和 sale attribute/value 映射。",
+      actionLabel: "去确认销售属性",
+      actionKey: "sale_attributes",
+    };
+  }
+  if (normalized.includes("pod_platform") || normalized.includes("pod")) {
+    return {
+      category: "图片问题",
+      title: "POD 平台结果还未就绪",
+      message:
+        "当前商品依赖 POD 平台处理结果。请先确认平台出图/模板同步是否成功，再继续发布到 SHEIN。",
+      actionLabel: "去检查 POD 结果",
+      actionKey: "pod_platform",
     };
   }
   if (normalized.includes("cookie") || normalized.includes("login")) {
@@ -243,12 +299,32 @@ function byText(rawText: string): IssueTemplate {
     };
   }
   if (rawText.includes("图片") || text.includes("image")) {
+    if (text.includes("size image") || rawText.includes("尺寸图")) {
+      return {
+        category: "图片问题",
+        title: "POD 尺寸图已降级",
+        message:
+          "当前只有尺寸图走了降级路径。主图和场景图仍可继续使用，提交前请确认尺寸图是否需要手工补齐。",
+        actionLabel: "去检查图片",
+        actionKey: "images",
+      };
+    }
     return {
       category: "图片问题",
       title: "图片资料需要检查",
       message: "请检查最终提交图片、图片角色和 SHEIN 图片上传结果。",
       actionLabel: "去检查图片",
       actionKey: "images",
+    };
+  }
+  if (rawText.includes("POD") || rawText.includes("pod")) {
+    return {
+      category: "图片问题",
+      title: "POD 平台结果还未就绪",
+      message:
+        "当前商品依赖 POD 平台处理结果。请先确认平台出图/模板同步是否成功，再继续发布到 SHEIN。",
+      actionLabel: "去检查 POD 结果",
+      actionKey: "pod_platform",
     };
   }
 
@@ -271,6 +347,37 @@ function issueFromReadinessItem(
     keyTemplate ?? textTemplate,
     item.key === "final_review" ? "warning" : severity,
     rawText,
+  );
+}
+
+function issueFromPodExecution(pod?: PodExecutionSummary | null) {
+  if (!pod || pod.status !== "failed_degraded") {
+    return null;
+  }
+  if (isPodSizeImageFallback(pod)) {
+    return makeIssue(
+      {
+        category: "图片问题",
+        title: "POD 尺寸图已降级",
+        message:
+          "当前只有 POD 尺寸图生成失败。主图和场景图仍可继续使用，提交前请确认尺寸图是否需要手工补齐。",
+        actionLabel: "去检查图片",
+        actionKey: "images",
+      },
+      "warning",
+      pod.failure_reason ?? "",
+    );
+  }
+  return makeIssue(
+    {
+      category: "图片问题",
+      title: "POD 平台结果已降级",
+      message: "当前商品会按降级素材继续发布，提交前请确认是否接受这次降级结果。",
+      actionLabel: "去检查 POD 结果",
+      actionKey: "pod_platform",
+    },
+    "warning",
+    pod.failure_reason ?? "",
   );
 }
 
@@ -303,9 +410,16 @@ function appendSubmissionIssues(
 }
 
 export function buildSheinCustomerIssues(
-  shein?: Pick<SheinPreviewPayload, "submit_readiness" | "submission" | "submission_state"> | null,
+  shein?: Pick<
+    SheinPreviewPayload,
+    "submit_readiness" | "submission" | "submission_state" | "pod_execution"
+  > | null,
 ) {
   const issues: CustomerIssue[] = [];
+  const podIssue = issueFromPodExecution(shein?.pod_execution);
+  if (podIssue) {
+    issues.push(podIssue);
+  }
   appendReadinessIssues(issues, shein?.submit_readiness);
   appendSubmissionIssues(issues, getSheinSubmissionState(shein));
 

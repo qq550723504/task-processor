@@ -302,6 +302,7 @@ func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error,
 	if err != nil {
 		return nil, nil, err
 	}
+	deps.sdsLoginStatusProvider = svc
 	sdsclient.ConfigureLocalLoginProvider(svc)
 	return sdslogin.NewHandler(svc), nil, nil
 }

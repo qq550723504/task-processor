@@ -662,4 +662,25 @@ describe("SheinSaleAttributeReviewCard", () => {
     ).toBeInTheDocument();
     expect(within(selects[1]).getByRole("option", { name: "Size" })).toBeInTheDocument();
   });
+
+  it("shows in-card sale attribute refresh feedback", () => {
+    render(
+      <SheinSaleAttributeReviewCard
+        statusMessage="已触发销售属性刷新，系统会重新拉取模板并刷新颜色、尺寸等映射。"
+        statusTone="success"
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              review_notes: ["缺少 SHEIN AttributeAPI，当前无法加载销售属性模板"],
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("已触发销售属性刷新，系统会重新拉取模板并刷新颜色、尺寸等映射。"),
+    ).toBeInTheDocument();
+  });
 });

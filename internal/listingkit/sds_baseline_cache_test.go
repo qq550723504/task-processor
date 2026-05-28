@@ -60,7 +60,7 @@ func TestMemTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 	entry := &listingkit.SDSBaselineCacheEntry{
 		TenantID:    "tenant-a",
 		BaselineKey: "baseline-key",
-		Status:      "ready",
+		Status:      listingkit.SDSBaselineStatusBaselineCached,
 		Version:     1,
 		Identity: listingkit.SDSBaselineIdentity{
 			ParentProductID:    9001,
@@ -103,7 +103,7 @@ func TestTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 	entry := &listingkit.SDSBaselineCacheEntry{
 		TenantID:    "tenant-a",
 		BaselineKey: "baseline-key",
-		Status:      "ready",
+		Status:      listingkit.SDSBaselineStatusBaselineCached,
 		Version:     1,
 		Identity: listingkit.SDSBaselineIdentity{
 			ParentProductID:    9001,
@@ -219,7 +219,7 @@ func TestMemTaskRepositorySDSBaselineCacheIsMutationSafe(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected baseline entry")
 	}
-	if got.Status != "ready" {
+	if got.Status != listingkit.SDSBaselineStatusBaselineCached {
 		t.Fatalf("saved status mutated unexpectedly: %q", got.Status)
 	}
 	if got.Identity.SelectedVariantIDs[0] != 101 {
@@ -240,7 +240,7 @@ func TestMemTaskRepositorySDSBaselineCacheIsMutationSafe(t *testing.T) {
 	if again == nil {
 		t.Fatal("expected baseline entry on second read")
 	}
-	if again.Status != "ready" {
+	if again.Status != listingkit.SDSBaselineStatusBaselineCached {
 		t.Fatalf("stored status mutated by returned clone: %q", again.Status)
 	}
 	if again.Identity.SelectedVariantIDs[0] != 101 {
@@ -281,7 +281,7 @@ func newSDSBaselineCacheEntry(baselineKey string, tenantID string) *listingkit.S
 	return &listingkit.SDSBaselineCacheEntry{
 		TenantID:    tenantID,
 		BaselineKey: baselineKey,
-		Status:      "ready",
+		Status:      listingkit.SDSBaselineStatusBaselineCached,
 		Version:     1,
 		Identity: listingkit.SDSBaselineIdentity{
 			ParentProductID:    9001,

@@ -296,6 +296,8 @@ type BuildServiceInput struct {
 	ProductService             productenrich.ProductService
 	ImageService               productimage.Service
 	SDSSyncService             sdsusecase.Service
+	SDSLoginStatusProvider     listingkit.SDSLoginStatusProvider
+	SDSBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
 	ImageSubjectExtractor      productimage.SubjectExtractor
 	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer         productimage.SceneRenderer
@@ -831,6 +833,8 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		ProductService:                 in.input.ProductService,
 		ImageService:                   in.input.ImageService,
 		SDSSyncService:                 in.input.SDSSyncService,
+		SDSLoginStatusProvider:         in.input.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider:      in.input.SDSBaselineRemoteProvider,
 		ImageUploadStore:               in.submit.assets.imageUploadStore,
 		UploadedImageRepository:        in.repositories.uploadedImageRepository,
 		StoreProfileRepository:         in.repositories.storeProfileRepository,

@@ -7,6 +7,7 @@ import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein
 import { Button } from "@/components/ui/button";
 import { loadLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
+import { getSDSBaselineReasonShortLabel } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
 import {
   deleteSheinStudioBatch,
@@ -15,10 +16,9 @@ import {
   saveSheinStudioBatch,
 } from "@/lib/utils/shein-studio-batches";
 
-function pickRecommendedRiskLabel(summaries: SheinStudioRecentBatchSummary[]) {
+function pickRecommendedRisk(summaries: SheinStudioRecentBatchSummary[]) {
   return (
-    summaries.flatMap((summary) => summary.alerts?.map((alert) => alert.label) ?? [])[0] ??
-    ""
+    summaries.flatMap((summary) => summary.alerts ?? [])[0] ?? null
   );
 }
 
@@ -96,10 +96,15 @@ export function SdsHomepageEntry() {
     heading.focus();
   }, [showAllBatches]);
 
-  const recommendedRiskLabel = useMemo(
-    () => pickRecommendedRiskLabel(summaries),
+  const recommendedRisk = useMemo(
+    () => pickRecommendedRisk(summaries),
     [summaries],
   );
+  const recommendedRiskLabel = recommendedRisk?.label ?? "";
+  const recommendedRiskDetail = recommendedRisk?.reasonCode
+    ? getSDSBaselineReasonShortLabel(recommendedRisk.reasonCode) ||
+      recommendedRisk.reasonCode
+    : "";
   const featuredSummaries = summaries.slice(0, 3);
 
   function handleCreateNew() {
@@ -241,7 +246,7 @@ export function SdsHomepageEntry() {
               {summaries.length === 0
                 ? "还没有可继续的最近批次，建议先新建一个批次再开始选品。"
                 : recommendedRiskLabel
-                  ? `如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“${recommendedRiskLabel}”。`
+                  ? `如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“${recommendedRiskLabel}${recommendedRiskDetail ? ` · ${recommendedRiskDetail}` : ""}”。`
                   : "如果只是接着处理上一轮内容，优先从最近批次进入会更快。"}
             </p>
           </div>
@@ -250,7 +255,7 @@ export function SdsHomepageEntry() {
             {summaries.length > 0 ? (
               <Button onClick={handleContinueRecent} type="button" variant="secondary">
                 {recommendedRiskLabel
-                  ? `继续最近批次（优先处理 ${recommendedRiskLabel}）`
+                  ? `继续最近批次（优先处理 ${recommendedRiskLabel}${recommendedRiskDetail ? ` · ${recommendedRiskDetail}` : ""}）`
                   : "继续最近批次"}
               </Button>
             ) : null}

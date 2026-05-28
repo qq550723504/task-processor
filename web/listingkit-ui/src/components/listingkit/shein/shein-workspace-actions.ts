@@ -9,7 +9,15 @@ export type SheinWorkspaceActionKey =
   | "sale_attributes"
   | "variants"
   | "images"
+  | "pod_platform"
   | "pricing";
+
+export type SheinFreshnessActionKey =
+  | "shein_online_auth"
+  | "shein_category_template_freshness"
+  | "shein_attribute_template_freshness"
+  | "shein_sale_attribute_template_freshness"
+  | "shein_sale_attribute_freshness";
 
 const SHEIN_REPAIR_TARGETS: Record<SheinWorkspaceActionKey, string> = {
   store_login: "shein-store-login",
@@ -20,8 +28,25 @@ const SHEIN_REPAIR_TARGETS: Record<SheinWorkspaceActionKey, string> = {
   sale_attributes: "shein-sale-attribute-review-card",
   variants: "shein-sale-attribute-review-card",
   images: "shein-preview-images",
+  pod_platform: "shein-preview-images",
   pricing: "shein-final-review-pricing",
 };
+
+export function normalizeSheinFreshnessActionKey(
+  key?: string | null,
+): SheinFreshnessActionKey | false {
+  const normalized = (key ?? "").toLowerCase();
+  switch (normalized) {
+    case "shein_online_auth":
+    case "shein_category_template_freshness":
+    case "shein_attribute_template_freshness":
+    case "shein_sale_attribute_template_freshness":
+    case "shein_sale_attribute_freshness":
+      return normalized;
+    default:
+      return false;
+  }
+}
 
 export function normalizeSheinWorkspaceActionKey(
   key?: string | null,
@@ -32,10 +57,23 @@ export function normalizeSheinWorkspaceActionKey(
   }
   if (
     normalized === "store_login" ||
+    normalized === "shein_online_auth" ||
     normalized.includes("cookie") ||
     normalized.includes("login")
   ) {
     return "store_login";
+  }
+  if (normalized === "shein_category_template_freshness") {
+    return "category";
+  }
+  if (normalized === "shein_attribute_template_freshness") {
+    return "attributes";
+  }
+  if (
+    normalized === "shein_sale_attribute_template_freshness" ||
+    normalized === "shein_sale_attribute_freshness"
+  ) {
+    return "sale_attributes";
   }
   if (normalized === "category" || normalized === "category_review") {
     return normalized;
@@ -45,6 +83,12 @@ export function normalizeSheinWorkspaceActionKey(
   }
   if (normalized === "sale_attributes" || normalized === "variants") {
     return normalized;
+  }
+  if (
+    normalized === "pod_platform" ||
+    normalized.includes("pod")
+  ) {
+    return "pod_platform";
   }
   if (
     normalized === "images" ||

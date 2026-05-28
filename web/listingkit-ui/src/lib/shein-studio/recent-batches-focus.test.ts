@@ -31,7 +31,7 @@ describe("recent batches focus helpers", () => {
 
     dispatchSheinStudioRecentBatchesRecommendation({
       hasRecoverableBatches: true,
-      recommendedRiskLabel: "Baseline 未就绪",
+      recommendedRiskLabel: "Baseline 待校验",
     });
 
     expect(dispatchSpy).toHaveBeenCalledWith(
@@ -39,7 +39,7 @@ describe("recent batches focus helpers", () => {
         type: SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
         detail: {
           hasRecoverableBatches: true,
-          recommendedRiskLabel: "Baseline 未就绪",
+          recommendedRiskLabel: "Baseline 待校验",
         },
       }),
     );

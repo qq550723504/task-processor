@@ -31,6 +31,18 @@ import {
   sheinSubmissionStatusLabel,
   sheinWorkflowStatusLabel,
 } from "@/lib/shein-studio/shein-submission-display";
+import {
+  hasActionablePodExecution,
+  podExecutionBadgeLabel,
+  podExecutionHistorySummary,
+  podExecutionTone,
+} from "@/lib/listingkit/pod-execution";
+import {
+  hasActionableSheinFreshness,
+  sheinFreshnessBadgeLabel,
+  sheinFreshnessSummaryText,
+  sheinFreshnessTone,
+} from "@/lib/listingkit/shein-freshness";
 import type {
   ListingKitTaskListItem,
   ListingKitTaskListSummary,
@@ -145,6 +157,13 @@ function sheinWorkflowBadgeLabel(status?: string) {
 
 function sheinRemoteBadgeLabel(status?: string) {
   return sheinSubmissionRemoteStatusLabel(status);
+}
+
+function hasPodPlatformIssue(task: ListingKitTaskListItem) {
+  return (
+    task.shein_blocking_keys?.includes("pod_platform") ||
+    task.shein_warning_keys?.includes("pod_platform")
+  );
 }
 
 export function TaskListFilters({
@@ -593,6 +612,7 @@ function TaskRow({
     task.shein_action_queue,
     taxonomy?.shein_action_queues,
   );
+  const podAuditTitle = podExecutionHistorySummary(task.pod_execution);
 
   return (
     <Card className="group border-white/70 bg-white/88 p-5 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
@@ -605,12 +625,37 @@ function TaskRow({
             >
               {taskLifecycleBadgeLabel(task.status)}
             </Badge>
-            {task.sds_sync_status ? (
+            {hasActionablePodExecution(task.pod_execution) ? (
+              <Badge
+                className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] ${podExecutionTone(task.pod_execution)}`}
+                variant="outline"
+                title={podAuditTitle || undefined}
+              >
+                {podExecutionBadgeLabel(task.pod_execution)}
+              </Badge>
+            ) : task.sds_sync_status ? (
               <Badge
                 className="rounded-full border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-teal-700"
                 variant="outline"
               >
                 SDS {task.sds_sync_status}
+              </Badge>
+            ) : null}
+            {hasPodPlatformIssue(task) ? (
+              <Badge
+                className="rounded-full border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-sky-700"
+                variant="outline"
+              >
+                POD 平台待处理
+              </Badge>
+            ) : null}
+            {hasActionableSheinFreshness(task) ? (
+              <Badge
+                className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] ${sheinFreshnessTone(task)}`}
+                variant="outline"
+                title={sheinFreshnessSummaryText(task) || undefined}
+              >
+                {sheinFreshnessBadgeLabel(task)}
               </Badge>
             ) : null}
             {task.shein_workflow_status ? (

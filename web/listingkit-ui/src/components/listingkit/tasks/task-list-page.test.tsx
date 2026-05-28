@@ -98,6 +98,88 @@ describe("TaskListPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("prefers pod execution badges over legacy sds sync badges", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            task_id: "task-pod-1",
+            status: "processing",
+            platforms: ["shein"],
+            title: "POD 商品",
+            pod_execution: {
+              provider: "sds",
+              dependency_mode: "required",
+              status: "failed_blocking",
+              history: [
+                {
+                  kind: "policy_decision",
+                  dependency_mode: "required",
+                  provider: "sds",
+                  occurred_at: "2026-04-27T10:05:00Z",
+                },
+                {
+                  kind: "status_transition",
+                  from_status: "processing",
+                  to_status: "failed_blocking",
+                  detail: "mockup sync timeout",
+                  occurred_at: "2026-04-27T10:06:00Z",
+                },
+              ],
+            },
+            sds_sync_status: "processing",
+            created_at: "2026-04-27T10:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByText("POD SDS 阻断中")).toBeInTheDocument();
+    expect(screen.queryByText("SDS processing")).not.toBeInTheDocument();
+    expect(screen.getByText("POD SDS 阻断中").getAttribute("title") ?? "").toContain(
+      "状态 Processing -> Failed blocking · mockup sync timeout",
+    );
+  });
+
+  it("renders shein freshness badges with targeted tooltip summaries", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            task_id: "task-freshness-1",
+            status: "completed",
+            platforms: ["shein"],
+            title: "模板漂移商品",
+            shein_blocking_keys: ["shein_sale_attribute_freshness"],
+            created_at: "2026-04-27T10:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    const badge = screen.getByText("SHEIN 销售属性漂移");
+    expect(badge).toBeInTheDocument();
+    expect(badge.getAttribute("title") ?? "").toContain(
+      "生成阶段使用的销售属性模板和当前在线模板已经不一致",
+    );
+  });
+
   it("renders the full task id in each row", () => {
     mocks.useListingKitTasks.mockReturnValue({
       data: {

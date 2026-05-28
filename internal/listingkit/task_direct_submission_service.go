@@ -10,6 +10,7 @@ import (
 
 type taskDirectSubmissionServiceConfig struct {
 	normalizeSheinSubmitPackage     func(*Task, *SheinPackage, *SubmitTaskRequest, string)
+	validateSheinPublishFreshness   func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error)
 	failSheinDirectSubmit           func(context.Context, string, *Task, *SheinPackage, string, error) error
 	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	persistSheinDirectSubmitPhase   func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string) error
@@ -20,6 +21,7 @@ type taskDirectSubmissionServiceConfig struct {
 
 type taskDirectSubmissionService struct {
 	normalizeSheinSubmitPackage     func(*Task, *SheinPackage, *SubmitTaskRequest, string)
+	validateSheinPublishFreshness   func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error)
 	failSheinDirectSubmit           func(context.Context, string, *Task, *SheinPackage, string, error) error
 	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	persistSheinDirectSubmitPhase   func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string) error
@@ -31,6 +33,7 @@ type taskDirectSubmissionService struct {
 func newTaskDirectSubmissionService(config taskDirectSubmissionServiceConfig) *taskDirectSubmissionService {
 	return &taskDirectSubmissionService{
 		normalizeSheinSubmitPackage:     config.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:   config.validateSheinPublishFreshness,
 		failSheinDirectSubmit:           config.failSheinDirectSubmit,
 		buildSheinSubmitProductAPI:      config.buildSheinSubmitProductAPI,
 		persistSheinDirectSubmitPhase:   config.persistSheinDirectSubmitPhase,
@@ -46,9 +49,19 @@ func (s *taskDirectSubmissionService) submitSheinTaskDirect(ctx context.Context,
 		s.normalizeSheinSubmitPackage(task, pkg, req, opts.action)
 	}
 
-	readiness := buildSheinSubmitReadinessForAction(pkg, opts.action)
+	ensureTaskPodExecution(task)
+	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, task.Result.PodExecution, opts.action)
 	if readiness == nil || !readiness.Ready {
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness)))
+	}
+	if s.validateSheinPublishFreshness != nil {
+		freshness, err := s.validateSheinPublishFreshness(ctx, task, pkg, opts.action)
+		if err != nil {
+			return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+		}
+		if freshness != nil && !freshness.Ready {
+			return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(freshness)))
+		}
 	}
 
 	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)

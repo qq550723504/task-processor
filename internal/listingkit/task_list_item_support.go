@@ -65,7 +65,9 @@ func buildTaskListItem(task *Task) TaskListItem {
 	applyTaskListStoreSnapshot(&item, task)
 	item.ImageCount = taskListImageCount(task)
 	if task.Result != nil {
+		ensureTaskPodExecution(task)
 		task.Result = normalizeListingKitResultSemanticFields(task.Result)
+		item.PodExecution = clonePodExecutionSummary(task.Result.PodExecution)
 	}
 	if task.Result != nil && task.Result.SDSDesignResult != nil {
 		item.SDSSyncStatus = task.Result.SDSDesignResult.Status
@@ -146,9 +148,13 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 		}
 	}
 	applySheinSubmissionStatusFields(&item.SheinSubmissionStatusFields, pkg)
-	item.SheinBlockingKeys = sheinBlockingKeys(pkg)
-	item.SheinWarningKeys = sheinWarningKeys(pkg)
-	item.SheinStatusOverview = buildSheinTaskStatusOverview(pkg)
+	var pod *PodExecutionSummary
+	if task != nil && task.Result != nil {
+		pod = task.Result.PodExecution
+	}
+	item.SheinBlockingKeys = sheinBlockingKeysWithPod(pkg, pod)
+	item.SheinWarningKeys = sheinWarningKeysWithPod(pkg, pod)
+	item.SheinStatusOverview = buildSheinTaskStatusOverviewWithPod(pkg, pod)
 	item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
 	applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, pkg)

@@ -11,6 +11,7 @@ func buildStandardProductSnapshot(result *ListingKitResult) *StandardProductSnap
 		AssetBundle:           result.AssetBundle,
 		AssetInventorySummary: result.AssetInventorySummary,
 		ImageAssets:           result.ImageAssets,
+		PodExecution:          clonePodExecutionSummary(result.PodExecution),
 		SDSDesignResult:       result.SDSDesignResult,
 		Summary:               cloneGenerationSummary(result.Summary),
 		ChildTasks:            append([]ChildTaskState(nil), result.ChildTasks...),
@@ -31,6 +32,7 @@ func applyStandardProductSnapshot(result *ListingKitResult, snapshot *StandardPr
 	result.AssetBundle = snapshot.AssetBundle
 	result.AssetInventorySummary = snapshot.AssetInventorySummary
 	result.ImageAssets = snapshot.ImageAssets
+	result.PodExecution = clonePodExecutionSummary(snapshot.PodExecution)
 	result.SDSDesignResult = snapshot.SDSDesignResult
 	result.ChildTasks = append([]ChildTaskState(nil), snapshot.ChildTasks...)
 	result.WorkflowStages = append([]WorkflowStage(nil), snapshot.WorkflowStages...)
@@ -56,6 +58,7 @@ func standardProductSnapshotEmpty(snapshot *StandardProductSnapshot) bool {
 		snapshot.AssetBundle == nil &&
 		snapshot.AssetInventorySummary == nil &&
 		snapshot.ImageAssets == nil &&
+		snapshot.PodExecution == nil &&
 		snapshot.SDSDesignResult == nil &&
 		snapshot.Summary == nil &&
 		len(snapshot.ChildTasks) == 0 &&

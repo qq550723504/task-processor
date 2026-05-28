@@ -51,6 +51,10 @@ type SDSBaselineCacheEntry struct {
 	SourceTaskID         string                        `json:"source_task_id,omitempty" gorm:"type:varchar(36);index"`
 	Identity             SDSBaselineIdentity           `json:"identity" gorm:"type:text"`
 	CanonicalProductBase *CanonicalProductCachePayload `json:"canonical_product_base,omitempty" gorm:"type:text"`
+	ValidationStatus     string                        `json:"validation_status,omitempty" gorm:"type:varchar(20);index"`
+	ValidationReasonCode string                        `json:"validation_reason_code,omitempty" gorm:"type:varchar(64);index"`
+	ValidationReason     string                        `json:"validation_reason,omitempty" gorm:"type:text"`
+	ValidatedAt          *time.Time                    `json:"validated_at,omitempty"`
 	CreatedAt            time.Time                     `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt            time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
 }

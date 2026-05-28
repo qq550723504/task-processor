@@ -183,6 +183,92 @@ describe("ListingKitHomeRecentWork", () => {
     );
   });
 
+  it("surfaces pod platform blockers in the continue card and links to blocker filter", () => {
+    render(
+      <ListingKitHomeRecentWork
+        isLoading={false}
+        isError={false}
+        tasks={[
+          makeTask({
+            task_id: "resume-pod",
+            title: "Resume pod task",
+            shein_blocking_keys: ["pod_platform"],
+            shein_status_overview: {
+              headline: "POD 结果待确认",
+              blocking_count: 1,
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("POD 平台待处理").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("POD 平台结果还未就绪，处理完成后才能继续正式发布。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看同队列" })).toHaveAttribute(
+      "href",
+      "/listing-kits?platform=shein&shein_blocker_key=pod_platform",
+    );
+  });
+
+  it("describes size-image fallback as a degradable pod warning", () => {
+    render(
+      <ListingKitHomeRecentWork
+        isLoading={false}
+        isError={false}
+        tasks={[
+          makeTask({
+            task_id: "resume-size-fallback",
+            title: "Resume size fallback task",
+            pod_execution: {
+              provider: "sds",
+              dependency_mode: "optional",
+              status: "failed_degraded",
+              failure_reason: "size image render unavailable",
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("POD SDS 尺寸图已降级").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "POD 平台尺寸图生成失败，当前会保留主图和场景图，按非 SDS 尺寸图路径继续发布。",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces shein freshness blockers in the continue card and links to freshness filter", () => {
+    render(
+      <ListingKitHomeRecentWork
+        isLoading={false}
+        isError={false}
+        tasks={[
+          makeTask({
+            task_id: "resume-auth-refresh",
+            title: "Resume auth refresh task",
+            shein_blocking_keys: ["shein_online_auth"],
+            shein_status_overview: {
+              headline: "店铺登录态待刷新",
+              blocking_count: 1,
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("SHEIN 店铺待登录").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("SHEIN 提交店铺登录态已失效，刷新登录态后再继续正式发布。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看同队列" })).toHaveAttribute(
+      "href",
+      "/listing-kits?platform=shein&shein_blocker_key=shein_online_auth",
+    );
+  });
+
   it("renders empty state when no tasks exist", () => {
     render(<ListingKitHomeRecentWork isLoading={false} isError={false} tasks={[]} />);
 

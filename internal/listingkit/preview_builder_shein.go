@@ -7,14 +7,14 @@ import (
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
-func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *canonical.Product, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
+func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, canonical *canonical.Product, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 	needsReview := len(pkg.ReviewNotes) > 0
 	summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))
-	readiness := buildSheinSubmitReadiness(pkg)
+	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
 	checklist := buildSheinSubmitChecklist(readiness)
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
 	submitState := sheinworkspace.BuildSubmitStateInput(readiness)

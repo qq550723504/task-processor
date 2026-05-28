@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 )
 
-func TestGetSDSBaselineReadinessReturnsReadyForUsableBaseline(t *testing.T) {
+func TestGetSDSBaselineReadinessReturnsBaselineCachedForUsableBaseline(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
@@ -31,7 +31,7 @@ func TestGetSDSBaselineReadinessReturnsReadyForUsableBaseline(t *testing.T) {
 	if err := cacheRepo.SaveSDSBaselineCache(WithTenantID(context.Background(), "tenant-a"), &SDSBaselineCacheEntry{
 		TenantID:             "tenant-a",
 		BaselineKey:          SDSBaselineKeyFromOptions("tenant-a", query.BaselineOptions()),
-		Status:               "ready",
+		Status:               SDSBaselineStatusBaselineCached,
 		Version:              1,
 		CanonicalProductBase: payload,
 	}); err != nil {
@@ -43,8 +43,14 @@ func TestGetSDSBaselineReadinessReturnsReadyForUsableBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSDSBaselineReadiness() error = %v", err)
 	}
-	if readiness == nil || readiness.Status != "ready" {
-		t.Fatalf("readiness = %+v, want ready", readiness)
+	if readiness == nil || readiness.Status != SDSBaselineStatusBaselineCached {
+		t.Fatalf("readiness = %+v, want baseline_cached", readiness)
+	}
+	if readiness.CacheStatus != SDSBaselineStatusBaselineCached || readiness.ValidationStatus != SDSBaselineValidationStatusUnknown {
+		t.Fatalf("readiness = %+v, want cache_status=baseline_cached validation_status=unknown", readiness)
+	}
+	if readiness.ReasonCode != "" {
+		t.Fatalf("readiness = %+v, want empty reason code for unknown validation", readiness)
 	}
 	if readiness.BaselineKey == "" {
 		t.Fatalf("readiness = %+v, want baseline key", readiness)
@@ -64,12 +70,15 @@ func TestGetSDSBaselineReadinessReturnsMissingWhenBaselineDoesNotExist(t *testin
 	if err != nil {
 		t.Fatalf("GetSDSBaselineReadiness() error = %v", err)
 	}
-	if readiness == nil || readiness.Status != "missing" {
+	if readiness == nil || readiness.Status != SDSBaselineStatusMissing {
 		t.Fatalf("readiness = %+v, want missing", readiness)
+	}
+	if readiness.CacheStatus != SDSBaselineStatusMissing || readiness.ValidationStatus != SDSBaselineValidationStatusUnknown {
+		t.Fatalf("readiness = %+v, want cache_status=missing validation_status=unknown", readiness)
 	}
 }
 
-func TestGetSDSBaselineReadinessReturnsFailedForMalformedReadyBaseline(t *testing.T) {
+func TestGetSDSBaselineReadinessReturnsFailedForMalformedCachedBaseline(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
@@ -87,7 +96,7 @@ func TestGetSDSBaselineReadinessReturnsFailedForMalformedReadyBaseline(t *testin
 	ctx := WithTenantID(context.Background(), DefaultTenantID)
 	if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
 		BaselineKey: SDSBaselineKeyFromOptions(DefaultTenantID, query.BaselineOptions()),
-		Status:      "ready",
+		Status:      SDSBaselineStatusBaselineCached,
 		Version:     1,
 	}); err != nil {
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
@@ -97,7 +106,10 @@ func TestGetSDSBaselineReadinessReturnsFailedForMalformedReadyBaseline(t *testin
 	if err != nil {
 		t.Fatalf("GetSDSBaselineReadiness() error = %v", err)
 	}
-	if readiness == nil || readiness.Status != "failed" {
+	if readiness == nil || readiness.Status != SDSBaselineStatusFailed {
 		t.Fatalf("readiness = %+v, want failed", readiness)
+	}
+	if readiness.CacheStatus != SDSBaselineStatusFailed {
+		t.Fatalf("readiness = %+v, want cache_status=failed for malformed payload", readiness)
 	}
 }

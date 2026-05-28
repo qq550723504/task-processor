@@ -8,6 +8,38 @@ const taskListItemSchema = z
     task_id: z.string(),
     tenant_id: z.string().optional(),
     status: z.string().optional(),
+    pod_execution: z
+      .object({
+        provider: z.string().optional(),
+        dependency_mode: z.string().optional(),
+        status: z.string().optional(),
+        failure_reason: z.string().optional(),
+        fallback_type: z.string().optional(),
+        decision_source: z.string().optional(),
+        completed_at: z.string().optional(),
+        last_attempt_at: z.string().optional(),
+        retry_count: z.coerce.number().optional(),
+        history: z
+          .array(
+            z
+              .object({
+                kind: z.string().optional(),
+                code: z.string().optional(),
+                message: z.string().optional(),
+                detail: z.string().optional(),
+                provider: z.string().optional(),
+                dependency_mode: z.string().optional(),
+                decision_source: z.string().optional(),
+                from_status: z.string().optional(),
+                to_status: z.string().optional(),
+                occurred_at: z.string().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
     platforms: z.array(z.string()).optional(),
     title: z.string().optional(),
     image_count: z.coerce.number().optional(),

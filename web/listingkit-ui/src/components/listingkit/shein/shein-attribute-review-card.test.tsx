@@ -416,4 +416,25 @@ describe("SheinAttributeReviewCard", () => {
 
     expect(onConfirmFallbackAttributes).toHaveBeenCalledTimes(1);
   });
+
+  it("shows in-card attribute refresh feedback", () => {
+    render(
+      <SheinAttributeReviewCard
+        statusMessage="已触发普通属性刷新，系统会按当前类目模板重新生成属性候选。"
+        statusTone="success"
+        editorContext={{
+          attributes: {
+            current: {
+              status: "partial",
+              review_notes: ["还有 1 个普通属性未命中模板值"],
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("已触发普通属性刷新，系统会按当前类目模板重新生成属性候选。"),
+    ).toBeInTheDocument();
+  });
 });

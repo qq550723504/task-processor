@@ -13,7 +13,22 @@ describe("listingkit response schemas", () => {
       parseTaskResultResponse({
         task_id: "task-1",
         status: "completed",
-        result: { task_id: "task-1", review_reasons: [] },
+        result: {
+          task_id: "task-1",
+          review_reasons: [],
+          pod_execution: {
+            provider: "sds",
+            dependency_mode: "required",
+            status: "failed_blocking",
+            history: [
+              {
+                kind: "policy_decision",
+                code: "pod_policy_applied",
+                occurred_at: "2026-05-28T08:00:00Z",
+              },
+            ],
+          },
+        },
       }),
     ).toMatchObject({ task_id: "task-1" });
 

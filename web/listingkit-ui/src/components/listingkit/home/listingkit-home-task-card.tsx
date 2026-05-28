@@ -10,6 +10,18 @@ import {
   sheinSubmissionRemoteStatusLabel,
   sheinWorkflowStatusLabel,
 } from "@/lib/shein-studio/shein-submission-display";
+import {
+  hasActionablePodExecution,
+  podExecutionBadgeLabel,
+  podExecutionNextAction,
+  podExecutionTone,
+} from "@/lib/listingkit/pod-execution";
+import {
+  hasActionableSheinFreshness,
+  sheinFreshnessBadgeLabel,
+  sheinFreshnessNextAction,
+  sheinFreshnessTone,
+} from "@/lib/listingkit/shein-freshness";
 import type {
   ListingKitTaskListItem,
   ListingKitTaskListTaxonomy,
@@ -84,11 +96,32 @@ function formatTaskTime(value?: string) {
 }
 
 function taskNextAction(task: ListingKitTaskListItem) {
+  const podAction = podExecutionNextAction(task.pod_execution);
+  if (podAction) {
+    return podAction;
+  }
+  const freshnessAction = sheinFreshnessNextAction(task);
+  if (freshnessAction) {
+    return freshnessAction;
+  }
+  if (
+    task.shein_blocking_keys?.includes("pod_platform") ||
+    task.shein_warning_keys?.includes("pod_platform")
+  ) {
+    return "处理 POD 平台结果";
+  }
   return (
     task.shein_status_overview?.primary_action ||
     task.shein_status_overview?.headline ||
     sheinSubmissionRemoteStatusLabel(task.shein_submission_remote_status) ||
     taskStatusLabel(task.status)
+  );
+}
+
+function hasPodPlatformIssue(task: ListingKitTaskListItem) {
+  return hasActionablePodExecution(task.pod_execution) || (
+    task.shein_blocking_keys?.includes("pod_platform") ||
+    task.shein_warning_keys?.includes("pod_platform")
   );
 }
 
@@ -124,6 +157,20 @@ function compactSignals(
     signals.push({
       tone: queueTone(workQueueSeverity),
       value: sheinWorkQueueLabel(task.shein_work_queue, taxonomy),
+    });
+  }
+
+  if (hasPodPlatformIssue(task)) {
+    signals.push({
+      tone: podExecutionTone(task.pod_execution),
+      value: podExecutionBadgeLabel(task.pod_execution) || "POD 平台待处理",
+    });
+  }
+
+  if (hasActionableSheinFreshness(task)) {
+    signals.push({
+      tone: sheinFreshnessTone(task),
+      value: sheinFreshnessBadgeLabel(task),
     });
   }
 

@@ -10,6 +10,10 @@ import type {
   GroupedSDSSelectionEligibility,
   SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
+import {
+  getSDSBaselineStatusBadgeVariant,
+  getSDSBaselineStatusLabel,
+} from "@/lib/shein-studio/sds-baseline-ui";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { ListingKitStoreProfile } from "@/lib/types/listingkit";
 
@@ -19,6 +23,7 @@ type GroupedCandidate = {
   baselineStatus: SDSBaselineStatus;
   baselineKey?: string;
   baselineReason: string;
+  baselineReasonCode?: string;
   eligible: boolean;
   eligibilityReason?: string;
 };
@@ -115,10 +120,10 @@ export function SheinStudioGroupedSelectionPanel({
             分组上品
           </p>
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">
-            把其他已缓存的 SDS 商品加入当前批次
+            把其他通过 baseline 校验的 SDS 商品加入当前批次
           </h3>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-600">
-            先在 SDS 选品区把商品加入批量候选池。这里只展示 baseline 已准备好的候选商品；不同尺寸会按出图策略自动分组或单独生成。
+            先在 SDS 选品区把商品加入批量候选池。这里只展示已经通过 baseline 校验的候选商品；不同尺寸会按出图策略自动分组或单独生成。
           </p>
         </div>
         <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
@@ -409,12 +414,10 @@ function BaselineStatusBadge({
   status: SDSBaselineStatus;
   reason?: string;
 }) {
-  const label =
-    status === "ready" ? "Baseline 已就绪" : status === "failed" ? "Baseline 异常" : "Baseline 缺失";
-  const variant =
-    status === "ready" ? "success" : status === "failed" ? "danger" : "warning";
+  const label = getSDSBaselineStatusLabel(status);
+  const variant = getSDSBaselineStatusBadgeVariant(status);
   return (
-    <Badge title={reason || label} variant={variant as "success" | "danger" | "warning"}>
+    <Badge title={reason || label} variant={variant}>
       {label}
     </Badge>
   );

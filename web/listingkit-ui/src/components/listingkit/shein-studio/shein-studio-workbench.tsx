@@ -52,6 +52,7 @@ import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
+import { getSDSBaselineReasonMessage } from "@/lib/shein-studio/sds-baseline-ui";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
@@ -309,11 +310,21 @@ export function SheinStudioWorkbench({
     (
       _current: Record<
         string,
-        { status: SDSBaselineStatus; reason: string; baselineKey?: string }
+        {
+          status: SDSBaselineStatus;
+          reason: string;
+          reasonCode?: string;
+          baselineKey?: string;
+        }
       >,
       next: Record<
         string,
-        { status: SDSBaselineStatus; reason: string; baselineKey?: string }
+        {
+          status: SDSBaselineStatus;
+          reason: string;
+          reasonCode?: string;
+          baselineKey?: string;
+        }
       >,
     ) => next,
     {},
@@ -349,16 +360,23 @@ export function SheinStudioWorkbench({
   );
   const activeSelectionBaseline = baselineStatuses[activeGroupedSelectionID] ?? {
     status: "missing" as SDSBaselineStatus,
+    reasonCode: undefined,
     reason: activeSelection?.variantId ? "正在检查 baseline 状态..." : "",
   };
+  const activeSelectionBaselineReason =
+    activeSelectionBaseline.reason ||
+    getSDSBaselineReasonMessage(activeSelectionBaseline.reasonCode);
   const groupedCandidates = useMemo(
     () =>
       groupedSelectionCandidates.map((item) => {
         const selectionId = buildGroupedSDSSelectionID(item);
         const baseline = baselineStatuses[selectionId] ?? {
           status: "missing" as SDSBaselineStatus,
+          reasonCode: undefined,
           reason: "正在检查 baseline 状态...",
         };
+        const baselineReason =
+          baseline.reason || getSDSBaselineReasonMessage(baseline.reasonCode);
         const compatibility = evaluateGroupedSelectionCompatibility(
           activeSelection,
           item,
@@ -367,12 +385,13 @@ export function SheinStudioWorkbench({
           selectionId,
           selection: item,
           baselineStatus: baseline.status,
-          baselineReason: baseline.reason,
+          baselineReason: baselineReason,
+          baselineReasonCode: baseline.reasonCode,
           baselineKey: baseline.baselineKey,
           eligible: baseline.status === "ready" && compatibility.compatible,
           eligibilityReason:
             baseline.status !== "ready"
-              ? baseline.reason || "只有 baseline ready 的 SDS 商品才能加入分组。"
+              ? baselineReason || "只有通过 baseline 校验的 SDS 商品才能加入分组。"
               : compatibility.reason,
         };
       }),
@@ -613,14 +632,17 @@ export function SheinStudioWorkbench({
         [activeSelectionId]: {
           status: readiness.status,
           reason: readiness.reason ?? "",
+          reasonCode: readiness.reasonCode,
           baselineKey: readiness.baselineKey,
         },
       });
       setWorkbenchField(
         "generationWarning",
         readiness.status === "ready"
-          ? "这款 SDS 商品的 baseline 已预热完成，现在可以继续加入 grouped 批量上品。"
-          : readiness.reason || "baseline 预热已发起，请稍后再试。",
+          ? "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。"
+          : readiness.reason ||
+            getSDSBaselineReasonMessage(readiness.reasonCode) ||
+            "baseline 预热与校验已发起，请稍后再试。",
       );
       setWorkbenchField("generationWarningAction", null);
     } catch (error) {
@@ -664,6 +686,7 @@ export function SheinStudioWorkbench({
             {
               status: readiness.status,
               reason: readiness.reason ?? "",
+              reasonCode: readiness.reasonCode,
               baselineKey: readiness.baselineKey,
             },
           ] as const;
@@ -672,6 +695,7 @@ export function SheinStudioWorkbench({
             selectionId,
             {
               status: "failed" as SDSBaselineStatus,
+              reasonCode: undefined,
               reason:
                 error instanceof Error
                   ? error.message
@@ -697,9 +721,12 @@ export function SheinStudioWorkbench({
       current.map((item) => {
         const baseline = baselineStatuses[item.selectionId] ?? {
           status: item.baselineStatus,
+          reasonCode: undefined,
           reason: item.baselineReason,
           baselineKey: item.baselineKey,
         };
+        const baselineReason =
+          baseline.reason || getSDSBaselineReasonMessage(baseline.reasonCode);
         const compatibility = evaluateGroupedSelectionCompatibility(
           activeSelection,
           item.selection,
@@ -708,11 +735,12 @@ export function SheinStudioWorkbench({
           ...item,
           baselineKey: baseline.baselineKey,
           baselineStatus: baseline.status,
-          baselineReason: baseline.reason,
+          baselineReason: baselineReason,
+          baselineReasonCode: baseline.reasonCode,
           eligible: baseline.status === "ready" && compatibility.compatible,
           eligibilityReason:
             baseline.status !== "ready"
-              ? baseline.reason || "只有 baseline ready 的 SDS 商品才能加入分组。"
+              ? baselineReason || "只有通过 baseline 校验的 SDS 商品才能加入分组。"
               : compatibility.reason,
         };
       }),
@@ -791,7 +819,7 @@ export function SheinStudioWorkbench({
       selectedSdsImages,
       groupedSelections,
       activeSelectionBaselineStatus: activeSelectionBaseline.status,
-      activeSelectionBaselineReason: activeSelectionBaseline.reason,
+      activeSelectionBaselineReason,
       workbench: workbenchController,
       sheinStoreId,
       styleCount,
@@ -1499,7 +1527,7 @@ export function SheinStudioWorkbench({
                     label:
                       isExecutingWarningAction &&
                       generationWarningAction.intent === "warm_baseline"
-                        ? "预热中..."
+                        ? "校验中..."
                         : generationWarningAction.label,
                     onClick:
                       generationWarningAction.intent === "warm_baseline"
@@ -1517,7 +1545,7 @@ export function SheinStudioWorkbench({
             <div className="space-y-4">
               <SheinStudioGroupedSelectionPanel
                 activeSelection={activeSelection}
-                activeSelectionBaselineReason={activeSelectionBaseline.reason}
+                activeSelectionBaselineReason={activeSelectionBaselineReason}
                 activeSelectionBaselineStatus={activeSelectionBaseline.status}
                 candidates={groupedCandidates}
                 currentStoreId={effectiveCurrentStoreId}
@@ -1536,6 +1564,7 @@ export function SheinStudioWorkbench({
                         baselineKey: candidate.baselineKey,
                         baselineStatus: candidate.baselineStatus,
                         baselineReason: candidate.baselineReason,
+                        baselineReasonCode: candidate.baselineReasonCode,
                         sheinStoreId: sheinStoreId.trim(),
                         eligible: candidate.eligible,
                         eligibilityReason: candidate.eligibilityReason,

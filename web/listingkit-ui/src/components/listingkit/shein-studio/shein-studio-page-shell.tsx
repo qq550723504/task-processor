@@ -28,6 +28,7 @@ import {
   SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
   type SheinStudioRecentBatchesRecommendationDetail,
 } from "@/lib/shein-studio/recent-batches-focus";
+import { getSDSBaselineReasonShortLabel } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
@@ -75,6 +76,7 @@ export function SheinStudioPageShell({
   const compact = layout === "compact";
   const [hasRecoverableBatches, setHasRecoverableBatches] = useState(true);
   const [recommendedRiskLabel, setRecommendedRiskLabel] = useState("");
+  const [recommendedRiskReasonCode, setRecommendedRiskReasonCode] = useState("");
   const { highlightedSectionId, scrollToSectionWithHighlight } =
     useHighlightedSectionScroller();
   const stepCopy = {
@@ -115,6 +117,7 @@ export function SheinStudioPageShell({
         setHasRecoverableBatches(detail.hasRecoverableBatches);
       }
       setRecommendedRiskLabel(detail?.recommendedRiskLabel?.trim() ?? "");
+      setRecommendedRiskReasonCode(detail?.recommendedRiskReasonCode?.trim() ?? "");
     };
     window.addEventListener(
       SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
@@ -292,7 +295,7 @@ export function SheinStudioPageShell({
                     {!hasRecoverableBatches
                       ? "还没有可继续的最近批次，建议先新建一个批次再开始选品。"
                       : recommendedRiskLabel
-                      ? `如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“${recommendedRiskLabel}”。`
+                      ? `如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“${recommendedRiskLabel}${recommendedRiskReasonCode ? ` · ${getSDSBaselineReasonShortLabel(recommendedRiskReasonCode) || recommendedRiskReasonCode}` : ""}”。`
                       : "如果只是接着处理上一轮内容，优先从最近批次进入会更快。"}
                   </p>
                 </div>
@@ -304,7 +307,7 @@ export function SheinStudioPageShell({
                       variant="secondary"
                     >
                       {recommendedRiskLabel
-                        ? `继续最近批次（优先处理 ${recommendedRiskLabel}）`
+                        ? `继续最近批次（优先处理 ${recommendedRiskLabel}${recommendedRiskReasonCode ? ` · ${getSDSBaselineReasonShortLabel(recommendedRiskReasonCode) || recommendedRiskReasonCode}` : ""}）`
                         : "继续最近批次"}
                     </Button>
                   ) : null}

@@ -117,6 +117,56 @@ func TestTaskRepositoryListTasksFiltersBySheinBlockerKey(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryListTasksFiltersByPodPlatformBlocker(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	base := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+
+	blocked := makeTaskRepoFixture("task-pod-blocked", base.Add(2*time.Minute), []string{"shein"}, "pending_confirmation", "ready")
+	blocked.Result.PodExecution = &listingkit.PodExecutionSummary{
+		Provider:       "sds",
+		DependencyMode: "required",
+		Status:         "failed_blocking",
+		FailureReason:  "mockup sync timeout",
+	}
+	ready := makeTaskRepoFixture("task-pod-ready", base.Add(1*time.Minute), []string{"shein"}, "pending_confirmation", "ready")
+	ready.Result.PodExecution = &listingkit.PodExecutionSummary{
+		Provider:       "sds",
+		DependencyMode: "required",
+		Status:         "succeeded",
+	}
+	for _, task := range []*listingkit.Task{blocked, ready} {
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	items, total, err := repo.ListTasks(ctx, &listingkit.TaskListQuery{
+		SheinBlockerKey: "pod_platform",
+		Page:            1,
+		PageSize:        10,
+	})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("total = %d, want 1", total)
+	}
+	if len(items) != 1 || items[0].ID != "task-pod-blocked" {
+		t.Fatalf("items = %+v, want task-pod-blocked", items)
+	}
+}
+
 func TestTaskRepositoryListTasksFiltersBySheinWorkQueue(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   buildGroupedSDSSelectionID,
   type GroupedSDSSelectionEligibility,
+  normalizeSDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
 import type {
   SDSGroupedPromptHistoryEntry,
@@ -630,6 +631,7 @@ function groupedSelectionToPayload(selection: GroupedSDSSelectionEligibility) {
     baseline_key: selection.baselineKey,
     baseline_status: selection.baselineStatus,
     baseline_reason: selection.baselineReason,
+    baseline_reason_code: selection.baselineReasonCode,
     shein_store_id: selection.sheinStoreId,
     eligible: selection.eligible,
     eligibility_reason: selection.eligibilityReason,
@@ -706,6 +708,8 @@ function normalizeGroupedSelectionsResponse(
         baseline_status?: string;
         baselineReason?: string;
         baseline_reason?: string;
+        baselineReasonCode?: string;
+        baseline_reason_code?: string;
         sheinStoreId?: string;
         shein_store_id?: string;
         eligible?: boolean;
@@ -722,17 +726,12 @@ function normalizeGroupedSelectionsResponse(
         selectionId,
         selection,
         baselineKey: entry.baselineKey ?? entry.baseline_key,
-        baselineStatus:
-          entry.baselineStatus === "ready" ||
-          entry.baselineStatus === "failed" ||
-          entry.baselineStatus === "missing"
-            ? entry.baselineStatus
-            : entry.baseline_status === "ready" ||
-                entry.baseline_status === "failed" ||
-                entry.baseline_status === "missing"
-              ? entry.baseline_status
-              : "missing",
+        baselineStatus: normalizeSDSBaselineStatus(
+          entry.baselineStatus ?? entry.baseline_status,
+        ),
         baselineReason: entry.baselineReason ?? entry.baseline_reason ?? "",
+        baselineReasonCode:
+          entry.baselineReasonCode ?? entry.baseline_reason_code,
         sheinStoreId: entry.sheinStoreId ?? entry.shein_store_id ?? "",
         eligible: entry.eligible !== false,
         eligibilityReason: entry.eligibilityReason ?? entry.eligibility_reason,

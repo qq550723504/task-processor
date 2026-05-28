@@ -19,7 +19,10 @@ import {
 } from "@/lib/shein-studio/grouped-image-mode";
 import { parsePositiveInt } from "@/lib/shein-studio/create-review-tasks";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
-import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
+import type {
+  GroupedSDSSelectionEligibility,
+  SDSBaselineStatus,
+} from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SDSGroupedPromptHistoryEntry,
@@ -67,7 +70,7 @@ type UseSheinStudioDesignActionsParams = {
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   groupedSelections: GroupedSDSSelectionEligibility[];
-  activeSelectionBaselineStatus: "ready" | "missing" | "failed";
+  activeSelectionBaselineStatus: SDSBaselineStatus;
   activeSelectionBaselineReason: string;
   workbench: Pick<SheinStudioWorkbenchController, "setField">;
   sheinStoreId: string;

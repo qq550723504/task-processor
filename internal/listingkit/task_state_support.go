@@ -7,15 +7,23 @@ import (
 )
 
 func buildSheinTaskStatusOverview(pkg *SheinPackage) *sheinworkspace.StatusOverview {
+	return buildSheinTaskStatusOverviewWithPod(pkg, nil)
+}
+
+func buildSheinTaskStatusOverviewWithPod(pkg *SheinPackage, pod *PodExecutionSummary) *sheinworkspace.StatusOverview {
 	if pkg == nil {
 		return nil
 	}
-	readiness := buildSheinSubmitReadiness(pkg)
+	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
 	return sheinworkspace.BuildStatusOverview(pkg.Inspection, sheinworkspace.BuildSubmitStateInput(readiness))
 }
 
 func sheinBlockingKeys(pkg *SheinPackage) []string {
-	readiness := buildSheinSubmitReadiness(pkg)
+	return sheinBlockingKeysWithPod(pkg, nil)
+}
+
+func sheinBlockingKeysWithPod(pkg *SheinPackage, pod *PodExecutionSummary) []string {
+	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
 	if readiness == nil || len(readiness.BlockingItems) == 0 {
 		return nil
 	}
@@ -23,7 +31,11 @@ func sheinBlockingKeys(pkg *SheinPackage) []string {
 }
 
 func sheinWarningKeys(pkg *SheinPackage) []string {
-	readiness := buildSheinSubmitReadiness(pkg)
+	return sheinWarningKeysWithPod(pkg, nil)
+}
+
+func sheinWarningKeysWithPod(pkg *SheinPackage, pod *PodExecutionSummary) []string {
+	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
 	if readiness == nil || len(readiness.WarningItems) == 0 {
 		return nil
 	}
@@ -102,6 +114,8 @@ func sheinActionQueueForKey(key string) string {
 	case "sale_attributes", "variants":
 		return SheinActionQueueVariant
 	case "images", "final_images", "variant_image_coverage":
+		return SheinActionQueueMedia
+	case "pod_platform":
 		return SheinActionQueueMedia
 	case "pricing":
 		return SheinActionQueuePricing

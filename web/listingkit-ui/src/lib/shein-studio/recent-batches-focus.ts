@@ -10,6 +10,7 @@ export type SheinStudioRecentBatchesFocusDetail = {
 export type SheinStudioRecentBatchesRecommendationDetail = {
   hasRecoverableBatches?: boolean;
   recommendedRiskLabel?: string;
+  recommendedRiskReasonCode?: string;
 };
 
 export function dispatchSheinStudioRecentBatchesFocus(

@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { useTaskRevisionHistory, useTaskRevisionHistoryDetail } from "@/lib/query/use-revision-history";
 import type { ListingKitRevisionRecord } from "@/lib/types/listingkit";
 
+type RevisionHistoryViewFilter = "all" | "refresh" | "other";
+
 function formatRevisionTime(value?: string) {
   if (!value) {
     return "";
@@ -32,6 +34,19 @@ function actionTypeLabel(actionType?: string) {
     default:
       return "编辑";
   }
+}
+
+function isRefreshRevision(record?: ListingKitRevisionRecord) {
+  const headline = record?.timeline?.headline ?? "";
+  const relationText = record?.timeline?.relation_text ?? "";
+  const reason = record?.reason ?? "";
+  return (
+    headline.includes("刷新 SHEIN") ||
+    relationText.includes("重算") ||
+    relationText.includes("重新生成") ||
+    reason.includes("Refresh SHEIN") ||
+    reason.includes("Regenerate SHEIN")
+  );
 }
 
 function storeStrategyLabel(strategy?: string) {
@@ -129,11 +144,34 @@ export function TaskRevisionHistoryPanel({
   const items = historyQuery.data?.items ?? [];
   const [manualSelectedRevisionId, setManualSelectedRevisionId] = useState<string>("");
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
-  const selectedRevisionId = manualSelectedRevisionId || items[0]?.revision_id || "";
+  const [viewFilter, setViewFilter] = useState<RevisionHistoryViewFilter>("all");
+  const filterCounts = useMemo(
+    () => ({
+      all: items.length,
+      refresh: items.filter((item) => isRefreshRevision(item)).length,
+      other: items.filter((item) => !isRefreshRevision(item)).length,
+    }),
+    [items],
+  );
+  const filteredItems = useMemo(() => {
+    switch (viewFilter) {
+      case "refresh":
+        return items.filter((item) => isRefreshRevision(item));
+      case "other":
+        return items.filter((item) => !isRefreshRevision(item));
+      default:
+        return items;
+    }
+  }, [items, viewFilter]);
+  const selectedRevisionId =
+    (manualSelectedRevisionId &&
+    filteredItems.some((item) => item.revision_id === manualSelectedRevisionId)
+      ? manualSelectedRevisionId
+      : "") || filteredItems[0]?.revision_id || "";
 
   const selectedRevision = useMemo(
-    () => items.find((item) => item.revision_id === selectedRevisionId),
-    [items, selectedRevisionId],
+    () => filteredItems.find((item) => item.revision_id === selectedRevisionId),
+    [filteredItems, selectedRevisionId],
   );
 
   const detailQuery = useTaskRevisionHistoryDetail(taskId, selectedRevisionId || undefined);
@@ -177,8 +215,29 @@ export function TaskRevisionHistoryPanel({
         {isExpanded ? (
           <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-2">
-              {items.map((item) => {
+              <div className="flex flex-wrap gap-2 pb-1">
+                {[
+                  { key: "all", label: "全部", count: filterCounts.all },
+                  { key: "refresh", label: "刷新型", count: filterCounts.refresh },
+                  { key: "other", label: "其他编辑", count: filterCounts.other },
+                ].map((option) => (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    variant={viewFilter === option.key ? "secondary" : "outline"}
+                    className="h-8 rounded-full px-3 text-xs"
+                    onClick={() => {
+                      setViewFilter(option.key as RevisionHistoryViewFilter);
+                      setManualSelectedRevisionId("");
+                    }}
+                  >
+                    {option.label}（{option.count}）
+                  </Button>
+                ))}
+              </div>
+              {filteredItems.map((item) => {
                 const selected = item.revision_id === selectedRevisionId;
+                const refreshRevision = isRefreshRevision(item);
                 return (
                   <Button
                     key={item.revision_id}
@@ -192,11 +251,21 @@ export function TaskRevisionHistoryPanel({
                         <span className="text-sm font-medium text-zinc-900">
                           {item.timeline?.headline || "SHEIN 修订"}
                         </span>
+                        {refreshRevision ? (
+                          <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="warning">
+                            刷新
+                          </Badge>
+                        ) : null}
                         <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="neutral">
                           {actionTypeLabel(item.action_type)}
                         </Badge>
                       </div>
                       <p className="text-xs text-zinc-500">{formatRevisionTime(item.updated_at)}</p>
+                      {item.timeline?.relation_text ? (
+                        <p className="text-xs text-zinc-500">
+                          {item.timeline.relation_text}
+                        </p>
+                      ) : null}
                       {item.store_resolution?.store_id ? (
                         <p className="text-xs text-zinc-500">
                           店铺 {item.store_resolution.store_id}
@@ -217,12 +286,20 @@ export function TaskRevisionHistoryPanel({
                       <p className="text-base font-semibold text-zinc-950">
                         {detailRecord.timeline?.headline || "SHEIN 修订"}
                       </p>
+                      {isRefreshRevision(detailRecord) ? (
+                        <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="warning">
+                          刷新型修订
+                        </Badge>
+                      ) : null}
                       <Badge className="rounded-full px-2 py-0.5 text-[10px]" variant="neutral">
                         {actionTypeLabel(detailRecord.action_type)}
                       </Badge>
                     </div>
                     <div className="mt-2 space-y-1 text-sm text-zinc-600">
                       <p>修订时间：{formatRevisionTime(detailRecord.updated_at)}</p>
+                      {detailRecord.timeline?.relation_text ? (
+                        <p>影响范围：{detailRecord.timeline.relation_text}</p>
+                      ) : null}
                       {detailRecord.updated_by ? <p>操作人：{detailRecord.updated_by}</p> : null}
                       {detailRecord.reason ? <p>原因：{detailRecord.reason}</p> : null}
                       {detailRecord.applied_changes?.change_count ? (
@@ -234,7 +311,7 @@ export function TaskRevisionHistoryPanel({
                 </>
               ) : (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
-                  暂无可展示的修订详情。
+                  {filteredItems.length === 0 ? "当前筛选下暂无修订记录。" : "暂无可展示的修订详情。"}
                 </div>
               )}
               {detailQuery.isLoading ? (

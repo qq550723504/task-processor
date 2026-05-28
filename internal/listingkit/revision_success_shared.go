@@ -26,7 +26,7 @@ func buildRevisionSuccessStatusSummary(result *ListingKitResult) *RevisionStatus
 	if result == nil || result.Shein == nil {
 		return nil
 	}
-	return sheinworkspace.BuildSuccessStatusSummary(result.Shein, buildSheinSubmitReadiness(result.Shein))
+	return sheinworkspace.BuildSuccessStatusSummary(result.Shein, buildSheinSubmitReadinessWithPod(result.Shein, result.PodExecution))
 }
 
 func buildRevisionSuccessMessages(mode revisionSuccessMode, headline string, changeCount int, sourceRevisionID string, summary *RevisionStatusSummary) *RevisionResultMessages {
@@ -42,7 +42,7 @@ func buildRevisionSuccessFollowUpChecklist(result *ListingKitResult) *RevisionFo
 	if result == nil || result.Shein == nil {
 		return nil
 	}
-	return sheinworkspace.BuildSuccessFollowUpChecklist(buildSheinSubmitChecklist(buildSheinSubmitReadiness(result.Shein)))
+	return sheinworkspace.BuildSuccessFollowUpChecklist(buildSheinSubmitChecklist(buildSheinSubmitReadinessWithPod(result.Shein, result.PodExecution)))
 }
 
 func buildRevisionSuccessSuggestedFollowUpRevision(mode revisionSuccessMode, result *ListingKitResult) *SheinEditorRevisionSkeleton {

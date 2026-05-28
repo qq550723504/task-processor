@@ -27,6 +27,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 		}
 		return preview, nil
 	}
+	ensureTaskPodExecution(task)
 
 	preview.Overview = buildPreviewHeader(task.Result, selectedPlatform)
 	preview.NeedsReview = task.Result.Summary != nil && task.Result.Summary.NeedsReview
@@ -57,7 +58,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "shein" {
 		if task.Result.Shein != nil {
-			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, task.Result.CanonicalProduct, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
+			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, task.Result.PodExecution, task.Result.CanonicalProduct, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
 			preview.NeedsReview = preview.NeedsReview || preview.Shein.NeedsReview
 		} else if selectedPlatform == "shein" {
 			return nil, ErrPreviewPlatformUnavailable

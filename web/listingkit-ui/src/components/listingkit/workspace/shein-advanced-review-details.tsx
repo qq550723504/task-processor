@@ -14,12 +14,46 @@ type SheinAttributeReviewCardProps = ComponentProps<
 type SheinSaleAttributeReviewCardProps = ComponentProps<
   typeof SheinSaleAttributeReviewCard
 >;
+type SheinRefreshHistoryEntry = {
+  scope: "category" | "attribute" | "sale_attribute";
+  status: "running" | "completed";
+  title: string;
+  detail: string;
+  affectedAreas: string[];
+  occurredAt: string;
+};
+
+function formatRefreshTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function scopeLabel(scope: SheinRefreshHistoryEntry["scope"]) {
+  switch (scope) {
+    case "category":
+      return "类目";
+    case "attribute":
+      return "普通属性";
+    case "sale_attribute":
+      return "销售属性";
+    default:
+      return scope;
+  }
+}
 
 export function SheinAdvancedReviewDetails({
   open,
   showCategoryReview,
   showAttributeReview,
   showSaleAttributeReview,
+  refreshHistory = [],
   categoryReviewProps,
   attributeReviewProps,
   saleAttributeReviewProps,
@@ -28,6 +62,7 @@ export function SheinAdvancedReviewDetails({
   showCategoryReview: boolean;
   showAttributeReview: boolean;
   showSaleAttributeReview: boolean;
+  refreshHistory?: SheinRefreshHistoryEntry[];
   categoryReviewProps: SheinCategoryReviewCardProps;
   attributeReviewProps: SheinAttributeReviewCardProps;
   saleAttributeReviewProps: SheinSaleAttributeReviewCardProps;
@@ -56,6 +91,49 @@ export function SheinAdvancedReviewDetails({
           {open ? "已自动展开" : "点击展开"}
         </Badge>
       </summary>
+      {refreshHistory.length ? (
+        <details className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-zinc-800">
+            查看本次刷新轨迹（{refreshHistory.length}）
+          </summary>
+          <div className="mt-3 space-y-3">
+            {refreshHistory.map((entry, index) => (
+              <article
+                className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3"
+                key={`${entry.scope}-${entry.status}-${entry.occurredAt}-${index}`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-medium text-zinc-900">
+                    {entry.title}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      className="rounded-full px-2 py-0.5 text-[11px]"
+                      variant={entry.status === "completed" ? "success" : "neutral"}
+                    >
+                      {entry.status === "completed" ? "已触发" : "进行中"}
+                    </Badge>
+                    {entry.occurredAt ? (
+                      <div className="text-xs text-zinc-500">
+                        {formatRefreshTime(entry.occurredAt)}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-zinc-600">
+                  {entry.detail}
+                </p>
+                <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                  当前操作 {scopeLabel(entry.scope)}
+                  {entry.affectedAreas.length
+                    ? ` · 将重算 ${entry.affectedAreas.join(" / ")}`
+                    : ""}
+                </p>
+              </article>
+            ))}
+          </div>
+        </details>
+      ) : null}
       <div className="mt-5 grid min-w-0 items-start gap-4 xl:grid-cols-2">
         {showCategoryReview ? (
           <div id="shein-category-review-card" className="min-w-0">

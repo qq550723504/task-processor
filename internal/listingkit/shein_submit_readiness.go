@@ -10,14 +10,23 @@ import (
 )
 
 func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
-	return buildSheinSubmitReadinessForAction(pkg, "publish")
+	return buildSheinSubmitReadinessWithPodForAction(pkg, nil, "publish")
 }
 
 func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *SheinSubmitReadiness {
+	return buildSheinSubmitReadinessWithPodForAction(pkg, nil, action)
+}
+
+func buildSheinSubmitReadinessWithPod(pkg *SheinPackage, pod *PodExecutionSummary) *SheinSubmitReadiness {
+	return buildSheinSubmitReadinessWithPodForAction(pkg, pod, "publish")
+}
+
+func buildSheinSubmitReadinessWithPodForAction(pkg *SheinPackage, pod *PodExecutionSummary, action string) *SheinSubmitReadiness {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
 	}
+	pod = normalizePodExecutionSummary(clonePodExecutionSummary(pod))
 	action = strings.ToLower(strings.TrimSpace(action))
 	if action == "" {
 		action = "publish"
@@ -47,6 +56,23 @@ func buildSheinSubmitReadinessForAction(pkg *SheinPackage, action string) *Shein
 		"重新登录 SHEIN 店铺",
 		false,
 	)
+
+	if pod != nil && pod.DependencyMode != podDependencyModeDisabled {
+		podBlocked := action != "save_draft" && podSubmissionBlocked(pod)
+		podMessage := podReadinessMessage(pod)
+		if action == "save_draft" && pod.Status != podStatusSucceeded {
+			podMessage = firstNonEmptyString(podMessage, "POD 平台处理尚未完成；当前允许先保存草稿，正式发布前仍需确认平台结果")
+		}
+		addCheck(
+			"pod_platform",
+			"POD 平台处理",
+			!podBlocked && (action == "save_draft" || (pod.Status != podStatusFailedDegraded && pod.Status != podStatusBypassed)),
+			firstNonEmptyString(podMessage, "POD 平台处理状态尚未满足发布要求"),
+			[]string{"pod_execution"},
+			"处理 POD 平台结果",
+			action == "save_draft" || !podBlocked,
+		)
+	}
 
 	addCheck(
 		"category",

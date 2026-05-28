@@ -15,10 +15,56 @@ type SDSBaselineReadinessQuery struct {
 }
 
 type SDSBaselineReadiness struct {
-	BaselineKey string `json:"baseline_key,omitempty"`
-	Status      string `json:"status"`
-	Reason      string `json:"reason,omitempty"`
+	BaselineKey      string `json:"baseline_key,omitempty"`
+	CacheStatus      string `json:"cache_status,omitempty"`
+	ValidationStatus string `json:"validation_status,omitempty"`
+	ReasonCode       string `json:"reason_code,omitempty"`
+	Status           string `json:"status"`
+	Reason           string `json:"reason,omitempty"`
 }
+
+const (
+	SDSBaselineStatusMissing        = "missing"
+	SDSBaselineStatusBaselineCached = "baseline_cached"
+	SDSBaselineStatusReady          = "ready"
+	SDSBaselineStatusBlocked        = "blocked"
+	SDSBaselineStatusFailed         = "failed"
+)
+
+const (
+	SDSBaselineValidationStatusUnknown = "unknown"
+	SDSBaselineValidationStatusReady   = "ready"
+	SDSBaselineValidationStatusBlocked = "blocked"
+	SDSBaselineValidationStatusFailed  = "failed"
+)
+
+const (
+	SDSBaselineReasonCodeMissingOptions             = "missing_options"
+	SDSBaselineReasonCodeMissingParentProduct       = "missing_parent_product"
+	SDSBaselineReasonCodeMissingPrototypeGroup      = "missing_prototype_group"
+	SDSBaselineReasonCodeMissingVariant             = "missing_variant"
+	SDSBaselineReasonCodeMissingDesignType          = "missing_design_type"
+	SDSBaselineReasonCodeMissingPrintableSize       = "missing_printable_size"
+	SDSBaselineReasonCodeMissingLayer               = "missing_layer"
+	SDSBaselineReasonCodeLoginUnavailable           = "login_unavailable"
+	SDSBaselineReasonCodeLoginInProgress            = "login_in_progress"
+	SDSBaselineReasonCodeLoginMissingCredentials    = "login_missing_credentials"
+	SDSBaselineReasonCodeLoginStatusCheckFailed     = "login_status_check_failed"
+	SDSBaselineReasonCodeProductDetailCheckFailed   = "product_detail_check_failed"
+	SDSBaselineReasonCodeProductDetailUnavailable   = "product_detail_unavailable"
+	SDSBaselineReasonCodeDesignSurfaceCheckFailed   = "design_surface_check_failed"
+	SDSBaselineReasonCodeDesignSurfaceUnavailable   = "design_surface_unavailable"
+	SDSBaselineReasonCodeVariantMismatch            = "variant_mismatch"
+	SDSBaselineReasonCodePrototypeGroupMismatch     = "prototype_group_mismatch"
+	SDSBaselineReasonCodeLayerMissing               = "layer_missing"
+	SDSBaselineReasonCodePrototypeGroupCheckFailed  = "prototype_group_check_failed"
+	SDSBaselineReasonCodePrototypeGroupUnavailable  = "prototype_group_unavailable"
+	SDSBaselineReasonCodeCacheRepositoryUnavailable = "cache_repository_unavailable"
+	SDSBaselineReasonCodeCachePayloadMissing        = "cache_payload_missing"
+	SDSBaselineReasonCodeCachePayloadInvalid        = "cache_payload_invalid"
+	SDSBaselineReasonCodeCachePayloadEmpty          = "cache_payload_empty"
+	SDSBaselineReasonCodeCacheUnavailable           = "cache_unavailable"
+)
 
 func (q *SDSBaselineReadinessQuery) Validate() error {
 	if q == nil {

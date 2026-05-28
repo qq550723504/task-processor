@@ -221,7 +221,10 @@ describe("TaskStatusScreen", () => {
             revision_id: "rev-1",
             updated_at: "2026-05-18T08:15:00Z",
             action_type: "edit",
-            timeline: { headline: "更新 SHEIN 资料" },
+            timeline: {
+              headline: "刷新 SHEIN 类目模板",
+              relation_text: "将重算类目 / 普通属性 / 销售属性",
+            },
             store_resolution: {
               store_id: 903,
               site: "GB",
@@ -238,7 +241,10 @@ describe("TaskStatusScreen", () => {
           updated_at: "2026-05-18T08:15:00Z",
           reason: "manual adjustment",
           action_type: "edit",
-          timeline: { headline: "更新 SHEIN 资料" },
+          timeline: {
+            headline: "刷新 SHEIN 类目模板",
+            relation_text: "将重算类目 / 普通属性 / 销售属性",
+          },
           store_resolution: {
             store_id: 903,
             site: "GB",
@@ -264,7 +270,10 @@ describe("TaskStatusScreen", () => {
     );
 
     expect(screen.getByText("修订历史")).toBeInTheDocument();
-    expect(screen.getAllByText("更新 SHEIN 资料").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("刷新 SHEIN 类目模板").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("将重算类目 / 普通属性 / 销售属性").length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("店铺快照")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
     expect(screen.getByText("Profile #17")).toBeInTheDocument();

@@ -66,7 +66,7 @@ describe("SheinSubmitReadinessPanel", () => {
     expect(screen.getByText("当前商品还没有确认到可提交的 SHEIN 类目骨架。")).toBeInTheDocument();
     expect(screen.getByText("必须完成")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "去确认类目" }));
+    await user.click(screen.getAllByRole("button", { name: "去确认类目" })[0]);
     expect(onSelectBlockingItem).toHaveBeenCalledTimes(1);
     expect(onSelectBlockingItem.mock.calls[0][0]).toMatchObject({ key: "category" });
 
@@ -101,6 +101,115 @@ describe("SheinSubmitReadinessPanel", () => {
     expect(screen.getByText("待处理问题")).toBeInTheDocument();
     expect(screen.getByText("存在未识别的问题")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
+  });
+
+  it("renders pod platform blockers with explicit pod badge and repair action", async () => {
+    const user = userEvent.setup();
+    const onSelectBlockingItem = vi.fn();
+
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "blocked",
+          blocking_items: [
+            {
+              key: "pod_platform",
+              label: "POD 平台处理",
+              message: "SDS 平台处理为发布前置，当前不可提交：design template unavailable",
+              suggested_action: "处理 POD 平台结果",
+            },
+          ],
+        }}
+        workspaceOverview={{
+          submit_state: {
+            status: "blocked",
+            blocking_count: 1,
+          },
+        }}
+        canSelectBlockingItem={(item) => item.key === "pod_platform"}
+        onSelectBlockingItem={onSelectBlockingItem}
+      />,
+    );
+
+    expect(screen.getByText("POD 平台处理")).toBeInTheDocument();
+    expect(screen.getByText("POD 平台")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "去检查 POD 结果" })[0]);
+    expect(onSelectBlockingItem).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "pod_platform" }),
+    );
+  });
+
+  it("renders pod size-image degradation warnings with explicit size-image wording", () => {
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "ready_with_warnings",
+          warning_items: [
+            {
+              key: "pod_platform",
+              label: "POD 平台处理",
+              message:
+                "SDS 平台处理失败，当前将按降级素材继续发布：size image render unavailable",
+              suggested_action: "处理 POD 平台结果",
+            },
+          ],
+        }}
+        workspaceOverview={{
+          submit_state: {
+            status: "ready_with_warnings",
+            warning_count: 1,
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText("POD 尺寸图降级")).toBeInTheDocument();
+    expect(screen.getByText("POD 尺寸图")).toBeInTheDocument();
+  });
+
+  it("renders freshness blockers with mapped labels instead of integration-gap fallback", async () => {
+    const user = userEvent.setup();
+    const onSelectBlockingItem = vi.fn();
+
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "blocked",
+          blocking_items: [
+            {
+              key: "shein_online_auth",
+              label: "SHEIN 在线登录态",
+              message: "SHEIN 提交店铺当前不可用，请先刷新登录态后再提交：store token missing",
+              suggested_action: "重新登录 SHEIN 店铺",
+            },
+            {
+              key: "shein_category_template_freshness",
+              label: "类目模板新鲜度",
+              message: "当前类目模板已发生变化",
+              suggested_action: "刷新类目模板",
+            },
+          ],
+        }}
+        workspaceOverview={{
+          submit_state: {
+            status: "blocked",
+            blocking_count: 2,
+          },
+        }}
+        canSelectBlockingItem={() => true}
+        onSelectBlockingItem={onSelectBlockingItem}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 在线登录态")).toBeInTheDocument();
+    expect(screen.getByText("店铺登录")).toBeInTheDocument();
+    expect(screen.getByText("类目模板新鲜度")).toBeInTheDocument();
+    expect(screen.getByText("类目模板")).toBeInTheDocument();
+    expect(screen.queryByText("未支持自动跳转")).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "去登录店铺" })[0]);
+    expect(onSelectBlockingItem).toHaveBeenCalled();
   });
 
   it("surfaces unknown blocker keys as integration gaps", () => {

@@ -4,9 +4,9 @@ import "strings"
 
 func initResult(task *Task) *ListingKitResult {
 	if task == nil || task.Request == nil {
-		return &ListingKitResult{Summary: &GenerationSummary{}}
+		return normalizeListingKitResultSemanticFields(&ListingKitResult{Summary: &GenerationSummary{}})
 	}
-	return &ListingKitResult{
+	result := normalizeListingKitResultSemanticFields(&ListingKitResult{
 		TaskID:    task.ID,
 		Status:    string(TaskStatusProcessing),
 		Platforms: append([]string(nil), task.Request.Platforms...),
@@ -18,7 +18,9 @@ func initResult(task *Task) *ListingKitResult {
 			SourceType: detectSourceType(task.Request),
 			ImageCount: len(task.Request.ImageURLs),
 		},
-	}
+	})
+	ensureResultPodExecution(result, task.Request)
+	return result
 }
 
 func markChildTask(result *ListingKitResult, kind, taskID, status, errorMsg string) {

@@ -8,9 +8,16 @@ import {
   buildGroupedSDSSelectionID,
   type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
+import {
+  buildGroupedSDSBaselineActionLabel,
+  buildGroupedSDSBaselineHelperText,
+  getSDSBaselineStatusBadgeVariant,
+  getSDSBaselineStatusLabel,
+} from "@/lib/shein-studio/sds-baseline-ui";
 
 type GroupedCandidateBaselineState = {
   reason: string;
+  reasonCode?: string;
   status: SDSBaselineStatus | "loading";
 };
 
@@ -96,8 +103,8 @@ export function SDSGroupedCandidatesPanel({
               variant="secondary"
             >
               {isWarmingAll
-                ? `正在预热 ${warmableItems.length} 款...`
-                : `批量预热 ${warmableItems.length} 款`}
+                ? `正在预热并校验 ${warmableItems.length} 款...`
+                : `批量预热并校验 ${warmableItems.length} 款`}
             </Button>
           ) : null}
         </div>
@@ -111,8 +118,8 @@ export function SDSGroupedCandidatesPanel({
           }`}
         >
           {warmSummary.failedCount > 0
-            ? `本次批量预热完成：成功 ${warmSummary.successCount} 款，失败 ${warmSummary.failedCount} 款。失败项可以继续单独重试。`
-            : `本次批量预热完成：${warmSummary.successCount} 款商品已准备就绪，现在可以直接加入 grouped 批量上品。`}
+            ? `本次批量预热与校验完成：成功 ${warmSummary.successCount} 款，失败 ${warmSummary.failedCount} 款。失败项可以继续单独重试。`
+            : `本次批量预热与校验完成：${warmSummary.successCount} 款商品已通过 baseline 校验，现在可以直接加入 grouped 批量上品。`}
         </div>
       ) : null}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -122,6 +129,7 @@ export function SDSGroupedCandidatesPanel({
           const recentlyWarmed = recentlyWarmedSet.has(selectionId);
           const baseline = baselineStatuses[selectionId] ?? {
             status: "loading" as const,
+            reasonCode: undefined,
             reason: "正在检查 baseline 状态...",
           };
           const otherBatchOptions = recentBatches.filter(
@@ -147,6 +155,7 @@ export function SDSGroupedCandidatesPanel({
                   <BaselineStatusBadge
                     highlight={recentlyWarmed && baseline.status === "ready"}
                     reason={baseline.reason}
+                    reasonCode={baseline.reasonCode}
                     status={baseline.status}
                   />
                 </div>
@@ -169,7 +178,7 @@ export function SDSGroupedCandidatesPanel({
                         : "rounded-xl bg-emerald-100 px-3 py-2 text-xs leading-5 text-emerald-800"
                     }
                   >
-                    baseline 刚预热完成，现在可以直接加入 grouped 批量上品。
+                    baseline 刚完成校验，现在可以直接加入 grouped 批量上品。
                   </div>
                 ) : null}
                 {baseline.status !== "ready" ? (
@@ -280,32 +289,20 @@ function BaselineStatusBadge({
   highlight = false,
   status,
   reason,
+  reasonCode,
 }: {
   highlight?: boolean;
   status: SDSBaselineStatus | "loading";
   reason?: string;
+  reasonCode?: string;
 }) {
-  const label =
-    status === "ready"
-      ? "Baseline 已就绪"
-      : status === "failed"
-        ? "Baseline 异常"
-        : status === "missing"
-          ? "Baseline 缺失"
-          : "Baseline 检查中";
-  const variant =
-    status === "ready"
-      ? "success"
-      : status === "failed"
-        ? "danger"
-        : status === "missing"
-          ? "warning"
-          : "neutral";
+  const label = getSDSBaselineStatusLabel(status);
+  const variant = getSDSBaselineStatusBadgeVariant(status);
   return (
     <Badge
       className={highlight ? "shrink-0 ring-2 ring-emerald-200" : "shrink-0"}
-      title={reason || label}
-      variant={variant as "success" | "danger" | "warning" | "neutral"}
+      title={buildGroupedSDSBaselineHelperText({ status, reason, reasonCode }) || label}
+      variant={variant}
     >
       {label}
     </Badge>
@@ -313,27 +310,9 @@ function BaselineStatusBadge({
 }
 
 function buildBaselineHelperText(baseline: GroupedCandidateBaselineState) {
-  if (baseline.status === "loading") {
-    return baseline.reason || "正在读取 baseline 状态，稍后就能判断是否可加入分组。";
-  }
-  if (baseline.status === "failed") {
-    return baseline.reason || "baseline 检查失败，建议先排查这款 SDS 商品的缓存或转换链路。";
-  }
-  if (baseline.status === "missing") {
-    return baseline.reason || "这款商品还没有 baseline 缓存，暂时不能加入 grouped 批量上品。";
-  }
-  return "";
+  return buildGroupedSDSBaselineHelperText(baseline);
 }
 
 function buildBaselineActionLabel(baseline: GroupedCandidateBaselineState) {
-  if (baseline.status === "missing") {
-    return "回选并预热";
-  }
-  if (baseline.status === "failed") {
-    return "回选并重试";
-  }
-  if (baseline.status === "loading") {
-    return "回选并等待";
-  }
-  return "回选这个变体";
+  return buildGroupedSDSBaselineActionLabel(baseline);
 }

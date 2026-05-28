@@ -17,6 +17,7 @@ func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
 	}
 	s.taskDirectSubmission = newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{
 		normalizeSheinSubmitPackage:     s.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:   s.validateSheinPublishFreshness,
 		failSheinDirectSubmit:           s.failSheinDirectSubmit,
 		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
 		persistSheinDirectSubmitPhase:   s.persistSheinDirectSubmitPhase,

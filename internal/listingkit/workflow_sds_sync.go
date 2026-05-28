@@ -33,6 +33,8 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 	options := task.Request.Options.SDS
 	stage := recorder.Start("sds_design_sync", "")
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
+	ensureResultPodExecution(result, task.Request)
+	markPodExecutionStatus(result, podStatusProcessing, time.Now())
 
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
 	defer cancel()
@@ -59,6 +61,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds design sync failed: "+err.Error())
 		finishSDSStageWithError(stage, recorder, "sds_design_sync_failed", "SDS design sync failed", err)
+		ensureResultPodExecution(result, task.Request)
 		return
 	}
 
@@ -77,10 +80,12 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 		result.SDSDesignResult.MockupImageURLs = nil
 		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
 		stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
+		ensureResultPodExecution(result, task.Request)
 		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
 	stage.Complete()
+	ensureResultPodExecution(result, task.Request)
 }
 
 func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {
@@ -124,6 +129,8 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	}
 	stage := recorder.Start("sds_design_sync", "")
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
+	ensureResultPodExecution(result, task.Request)
+	markPodExecutionStatus(result, podStatusProcessing, time.Now())
 	log.WithFields(logrus.Fields{
 		"variant_id":         options.VariantID,
 		"parent_product_id":  options.ParentProductID,
@@ -159,6 +166,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		appendWarning(result, "sds template render failed: "+err.Error())
 		finishSDSStageWithError(stage, recorder, "sds_template_render_failed", "SDS template render failed", err)
 		log.WithError(err).Error("remote SDS design sync failed")
+		ensureResultPodExecution(result, task.Request)
 		return
 	}
 
@@ -173,10 +181,12 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		result.SDSDesignResult.MockupImageURLs = nil
 		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
 		stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
+		ensureResultPodExecution(result, task.Request)
 		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
 	stage.Complete()
+	ensureResultPodExecution(result, task.Request)
 	log.WithFields(logrus.Fields{
 		"status":        result.SDSDesignResult.Status,
 		"mockup_count":  len(result.SDSDesignResult.MockupImageURLs),
@@ -196,6 +206,8 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
+	ensureResultPodExecution(result, task.Request)
+	markPodExecutionStatus(result, podStatusProcessing, time.Now())
 
 	summaries := make([]SDSSyncSummary, 0, len(representatives))
 	for _, variant := range representatives {
@@ -254,9 +266,11 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 		appendWarning(result, result.SDSDesignResult.Error)
 		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), result.SDSDesignResult.Error)
 		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_variant_render_failed", result.SDSDesignResult.Error, "")
+		ensureResultPodExecution(result, task.Request)
 		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+	ensureResultPodExecution(result, task.Request)
 }
 
 func sdsVariantIDs(variants []SDSSyncVariantOption) []int64 {
@@ -387,6 +401,7 @@ func (s *service) applyLocalSDSMockupFallback(ctx context.Context, result *Listi
 	if result.SDSDesignResult.Error == "" {
 		result.SDSDesignResult.Error = "SDS render unavailable; used local SDS mockup composite"
 	}
+	ensureResultPodExecution(result, nil)
 }
 
 func firstImageResultURL(imageResult *productimage.ImageProcessResult) string {

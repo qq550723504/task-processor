@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -11,6 +12,9 @@ import (
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdsclient "task-processor/internal/sds/client"
+	sdsdesign "task-processor/internal/sds/design"
+	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sheinlogin"
 )
@@ -30,6 +34,8 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 		ProductService:             deps.productService,
 		ImageService:               deps.imageService,
 		SDSSyncService:             buildSDSSyncService(logger, deps),
+		SDSLoginStatusProvider:     deps.sdsLoginStatusProvider,
+		SDSBaselineRemoteProvider:  buildSDSBaselineRemoteProvider(logger, deps),
 		ImageSubjectExtractor:      deps.imageSubjectExtractor,
 		ImageWhiteBackgroundRender: deps.imageWhiteBgRenderer,
 		ImageSceneRenderer:         deps.imageSceneRenderer,
@@ -139,4 +145,49 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 	}
 
 	return svc
+}
+
+func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) listingkit.SDSBaselineRemoteProvider {
+	if deps == nil {
+		return nil
+	}
+	if deps.sdsBaselineRemoteProvider != nil {
+		return deps.sdsBaselineRemoteProvider
+	}
+	client, err := sdsclient.New(buildSDSClientConfig(deps.cfg))
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("failed to initialize SDS baseline remote provider; online baseline validation disabled")
+		}
+		return nil
+	}
+	deps.sdsBaselineRemoteProvider = &listingKitSDSBaselineRemoteProvider{
+		design: sdsdesign.NewService(client),
+	}
+	return deps.sdsBaselineRemoteProvider
+}
+
+type listingKitSDSBaselineRemoteProvider struct {
+	design *sdsdesign.Service
+}
+
+func (p *listingKitSDSBaselineRemoteProvider) GetProductDetail(ctx context.Context, parentProductID int64) (*sdstemplate.ProductDetail, error) {
+	if p == nil || p.design == nil {
+		return nil, nil
+	}
+	return p.design.GetProductDetail(ctx, parentProductID)
+}
+
+func (p *listingKitSDSBaselineRemoteProvider) GetDesignProduct(ctx context.Context, variantID int64) (*sdsdesign.DesignProductPage, error) {
+	if p == nil || p.design == nil {
+		return nil, nil
+	}
+	return p.design.GetDesignProduct(ctx, variantID)
+}
+
+func (p *listingKitSDSBaselineRemoteProvider) GetPrototypeGroups(ctx context.Context, parentProductID int64) ([]sdsdesign.PrototypeGroup, error) {
+	if p == nil || p.design == nil {
+		return nil, nil
+	}
+	return p.design.GetPrototypeGroups(ctx, parentProductID)
 }

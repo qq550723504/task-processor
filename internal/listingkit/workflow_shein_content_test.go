@@ -71,7 +71,7 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 		t.Fatalf("shein description = %q", got)
 	}
 
-	preview := buildSheinPreviewPayload(result.Shein, result.CanonicalProduct, nil, nil)
+	preview := buildSheinPreviewPayload(result.Shein, result.PodExecution, result.CanonicalProduct, nil, nil)
 	if preview == nil || preview.FinalReview == nil {
 		t.Fatalf("preview final review = %+v", preview)
 	}

@@ -288,6 +288,56 @@ func TestGetTaskResultIncludesDerivedSheinSubmissionStatus(t *testing.T) {
 	}
 }
 
+func TestGetTaskResultDerivesPodExecutionForLegacyStoredResults(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	now := time.Now()
+	task := &Task{
+		ID:     "listingkit-pod-execution-legacy-1",
+		Status: TaskStatusCompleted,
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{ParentProductID: 1001, VariantID: 2002},
+			},
+		},
+		Result: &ListingKitResult{
+			TaskID: "listingkit-pod-execution-legacy-1",
+			SDSDesignResult: &SDSSyncSummary{
+				Status: "failed",
+				Error:  "mockup sync timeout",
+			},
+		},
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now,
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	svc := &service{repo: repo}
+	result, err := svc.GetTaskResult(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskResult() error = %v", err)
+	}
+	if result.Result == nil || result.Result.PodExecution == nil {
+		t.Fatalf("result = %+v, want derived pod execution", result.Result)
+	}
+	if result.Result.PodExecution.Provider != podProviderSDS {
+		t.Fatalf("provider = %q, want %q", result.Result.PodExecution.Provider, podProviderSDS)
+	}
+	if result.Result.PodExecution.DependencyMode != podDependencyModeRequired {
+		t.Fatalf("dependency mode = %q, want %q", result.Result.PodExecution.DependencyMode, podDependencyModeRequired)
+	}
+	if result.Result.PodExecution.Status != podStatusFailedBlocking {
+		t.Fatalf("status = %q, want %q", result.Result.PodExecution.Status, podStatusFailedBlocking)
+	}
+	if result.Result.PodExecution.FailureReason != "mockup sync timeout" {
+		t.Fatalf("failure reason = %q, want mockup sync timeout", result.Result.PodExecution.FailureReason)
+	}
+}
+
 func TestGetTaskResultPrefersWorkflowIssuesForReviewReasons(t *testing.T) {
 	t.Parallel()
 
@@ -717,7 +767,7 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 	if got := result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice; got != "27.99" {
 		t.Fatalf("request draft base price = %q, want cached 27.99", got)
 	}
-	preview := buildSheinPreviewPayload(result.Shein, result.CanonicalProduct, nil, nil)
+	preview := buildSheinPreviewPayload(result.Shein, result.PodExecution, result.CanonicalProduct, nil, nil)
 	if preview == nil || preview.ResolutionCache == nil || preview.ResolutionCache.Pricing == nil {
 		t.Fatalf("preview resolution cache = %+v, want pricing cache summary", preview)
 	}

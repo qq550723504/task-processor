@@ -72,19 +72,19 @@ describe("SheinStudioPageShell", () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent(SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT, {
-          detail: { recommendedRiskLabel: "Baseline 未就绪" },
+          detail: { recommendedRiskLabel: "Baseline 待校验" },
         }),
       );
     });
 
     expect(
       screen.getByText(
-        "如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“Baseline 未就绪”。",
+        "如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“Baseline 待校验”。",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "继续最近批次（优先处理 Baseline 未就绪）",
+        name: "继续最近批次（优先处理 Baseline 待校验）",
       }),
     ).toBeInTheDocument();
   });
@@ -160,5 +160,28 @@ describe("SheinStudioPageShell", () => {
       screen.getByText("还没有可继续的最近批次，建议先新建一个批次再开始选品。"),
     ).toBeInTheDocument();
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/new");
+  });
+
+  it("shows recommended baseline reason detail from the shared recent batch recommendation", () => {
+    render(<SheinStudioPageShell />);
+
+    act(() => {
+      dispatchSheinStudioRecentBatchesRecommendation({
+        hasRecoverableBatches: true,
+        recommendedRiskLabel: "Baseline 校验未通过",
+        recommendedRiskReasonCode: "layer_missing",
+      });
+    });
+
+    expect(
+      screen.getByText(
+        '如果只是接着处理上一轮内容，优先从最近批次进入会更快，建议先处理“Baseline 校验未通过 · 图层缺失”。',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "继续最近批次（优先处理 Baseline 校验未通过 · 图层缺失）",
+      }),
+    ).toBeInTheDocument();
   });
 });

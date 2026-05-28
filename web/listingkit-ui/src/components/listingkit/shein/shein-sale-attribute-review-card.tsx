@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,8 @@ type ManualSaleAttributeSelection = {
 
 export function SheinSaleAttributeReviewCard({
   applyErrorMessage,
+  statusMessage,
+  statusTone = "default",
   editorContext,
   isApplying,
   onConfirmCurrentSaleAttributes,
@@ -35,6 +38,8 @@ export function SheinSaleAttributeReviewCard({
   onApplyManualSaleAttributes,
 }: {
   applyErrorMessage?: string | null;
+  statusMessage?: string | null;
+  statusTone?: "default" | "success";
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onConfirmCurrentSaleAttributes?: (() => void) | null;
@@ -66,8 +71,10 @@ export function SheinSaleAttributeReviewCard({
   }
 
   return (
-      <SheinSaleAttributeReviewContent
+    <SheinSaleAttributeReviewContent
       applyErrorMessage={applyErrorMessage}
+      statusMessage={statusMessage}
+      statusTone={statusTone}
       current={current}
       isApplying={isApplying}
       key={`${current.status ?? ""}-${current.primary_attribute_id ?? 0}-${current.secondary_attribute_id ?? 0}-${current.template_options?.length ?? 0}-${current.skc_patches?.length ?? 0}`}
@@ -80,6 +87,8 @@ export function SheinSaleAttributeReviewCard({
 
 function SheinSaleAttributeReviewContent({
   applyErrorMessage,
+  statusMessage,
+  statusTone = "default",
   current,
   isApplying,
   onConfirmCurrentSaleAttributes,
@@ -87,6 +96,8 @@ function SheinSaleAttributeReviewContent({
   onApplyManualSaleAttributes,
 }: {
   applyErrorMessage?: string | null;
+  statusMessage?: string | null;
+  statusTone?: "default" | "success";
   current: NonNullable<NonNullable<SheinEditorContext["sale_attributes"]>["current"]>;
   isApplying?: boolean;
   onConfirmCurrentSaleAttributes?: (() => void) | null;
@@ -259,6 +270,11 @@ function SheinSaleAttributeReviewContent({
   return (
     <Card className="border-zinc-200 bg-white p-5">
       <div className="space-y-4">
+        {statusMessage ? (
+          <Alert variant={statusTone === "success" ? "success" : "default"}>
+            <AlertDescription>{statusMessage}</AlertDescription>
+          </Alert>
+        ) : null}
         {applyErrorMessage ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
             保存销售属性失败：{applyErrorMessage}

@@ -96,6 +96,68 @@ describe("SDSGroupedCandidatesPanel", () => {
     expect(screen.getByRole("button", { name: "回选并预热" })).toBeInTheDocument();
   });
 
+  it("shows cached baseline guidance until validation finishes", () => {
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "基础模板已缓存，等待进一步校验",
+            status: "baseline_cached",
+          },
+        }}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Baseline 待校验")).toBeInTheDocument();
+    expect(screen.getByText("基础模板已缓存，等待进一步校验")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回选并继续校验" })).toBeInTheDocument();
+  });
+
+  it("shows blocked baseline guidance inline", () => {
+    const item = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 11,
+      prototypeGroupId: 21,
+      layerId: "layer-a",
+      productName: "Product A",
+      variantLabel: "M · black",
+      selectedVariantIds: [11],
+    };
+
+    render(
+      <SDSGroupedCandidatesPanel
+        baselineStatuses={{
+          "1:21:11:layer-a:11": {
+            reason: "图层信息无效",
+            status: "blocked",
+          },
+        }}
+        items={[item]}
+        onRemove={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Baseline 已阻断")).toBeInTheDocument();
+    expect(screen.getByText("图层信息无效")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回选并修复" })).toBeInTheDocument();
+  });
+
   it("shows failed baseline reasons inline", () => {
     const item = {
       productId: 1,
@@ -219,7 +281,7 @@ describe("SDSGroupedCandidatesPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "批量预热 2 款" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量预热并校验 2 款" }));
     expect(onWarmAll).toHaveBeenCalledWith(items);
   });
 
@@ -251,7 +313,7 @@ describe("SDSGroupedCandidatesPanel", () => {
     );
 
     expect(
-      screen.getByText("baseline 刚预热完成，现在可以直接加入 grouped 批量上品。"),
+      screen.getByText("baseline 刚完成校验，现在可以直接加入 grouped 批量上品。"),
     ).toBeInTheDocument();
   });
 
@@ -283,7 +345,10 @@ describe("SDSGroupedCandidatesPanel", () => {
     );
 
     expect(
-      screen.getByText("本次批量预热完成：成功 2 款，失败 1 款。失败项可以继续单独重试。"),
+      screen.queryByText("本次批量预热完成：成功 2 款，失败 1 款。失败项可以继续单独重试。"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("本次批量预热与校验完成：成功 2 款，失败 1 款。失败项可以继续单独重试。"),
     ).toBeInTheDocument();
   });
 });

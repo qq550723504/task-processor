@@ -54,6 +54,38 @@ export type SheinSubmitReadiness = {
   checks?: SheinReadinessCheck[];
 };
 
+export type PodExecutionSummary = {
+  provider?: string;
+  dependency_mode?: "required" | "optional" | "disabled" | string;
+  status?:
+    | "not_applicable"
+    | "pending"
+    | "processing"
+    | "succeeded"
+    | "failed_blocking"
+    | "failed_degraded"
+    | "bypassed"
+    | string;
+  failure_reason?: string;
+  fallback_type?: string;
+  decision_source?: string;
+  completed_at?: string;
+  last_attempt_at?: string;
+  retry_count?: number;
+  history?: Array<{
+    kind?: "policy_decision" | "status_transition" | string;
+    code?: string;
+    message?: string;
+    detail?: string;
+    provider?: string;
+    dependency_mode?: string;
+    decision_source?: string;
+    from_status?: string;
+    to_status?: string;
+    occurred_at?: string;
+  }>;
+};
+
 export type SheinChecklistGroupItem = {
   key?: string;
   label?: string;
@@ -374,6 +406,7 @@ export type SheinEditorContext = {
 };
 
 export type SheinPreviewPayload = PlatformPreviewPayload & {
+  pod_execution?: PodExecutionSummary;
   category_id?: number;
   category_path?: string[];
   source_product?: {

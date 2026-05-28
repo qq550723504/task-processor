@@ -38,6 +38,8 @@ const groupedSelectionSchema = z
     baselineStatus: z.string().optional(),
     baseline_reason: z.string().optional(),
     baselineReason: z.string().optional(),
+    baseline_reason_code: z.string().optional(),
+    baselineReasonCode: z.string().optional(),
     shein_store_id: z.string().optional(),
     sheinStoreId: z.string().optional(),
     eligible: z.boolean().optional(),

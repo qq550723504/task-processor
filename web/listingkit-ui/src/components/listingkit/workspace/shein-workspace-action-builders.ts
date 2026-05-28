@@ -75,6 +75,37 @@ export function buildConfirmCurrentSheinCategoryRevision(
   };
 }
 
+export function buildRefreshCurrentSheinCategoryRevision(
+  sheinPreview?: SheinPreviewPayload,
+): ApplyRevisionRequest | null {
+  const current = sheinPreview?.editor_context?.category?.current;
+
+  if (!current?.category_id) {
+    return null;
+  }
+
+  return {
+    platform: "shein",
+    actor: "workspace",
+    reason: "Refresh SHEIN category",
+    shein: {
+      category_resolution: {
+        category_id: current.category_id,
+        category_id_list: current.category_id_list,
+        product_type_id: current.product_type_id,
+        top_category_id: current.top_category_id,
+        matched_path: current.category_path,
+        source: "manual_refresh",
+        status: "resolved",
+      },
+      sale_attribute_resolution: {
+        recommend_category_review: false,
+        category_review_reason: "",
+      },
+    },
+  };
+}
+
 export function buildApplyManualSheinCategoryRevision(
   candidate: SheinManualCategoryCandidate,
 ): ApplyRevisionRequest {

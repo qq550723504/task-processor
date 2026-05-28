@@ -18,6 +18,19 @@ import {
   pickContinueTask,
   sortRecentTasksForHomepage,
 } from "@/lib/listingkit/home-recent-tasks";
+import {
+  hasActionablePodExecution,
+  podExecutionBadgeLabel,
+  podExecutionSummaryText,
+  podExecutionTone,
+} from "@/lib/listingkit/pod-execution";
+import {
+  hasActionableSheinFreshness,
+  sheinFreshnessBadgeLabel,
+  sheinFreshnessFilter,
+  sheinFreshnessSummaryText,
+  sheinFreshnessTone,
+} from "@/lib/listingkit/shein-freshness";
 import type {
   ListingKitTaskListItem,
   ListingKitTaskListSummary,
@@ -49,6 +62,20 @@ function continueTaskTitle(task: ListingKitTaskListItem) {
 }
 
 function continueTaskSummary(task: ListingKitTaskListItem) {
+  const podSummary = podExecutionSummaryText(task.pod_execution);
+  if (podSummary) {
+    return podSummary;
+  }
+  const freshnessSummary = sheinFreshnessSummaryText(task);
+  if (freshnessSummary) {
+    return freshnessSummary;
+  }
+  if (
+    task.shein_blocking_keys?.includes("pod_platform") ||
+    task.shein_warning_keys?.includes("pod_platform")
+  ) {
+    return "POD 平台结果还未就绪，处理完成后才能继续正式发布。";
+  }
   return (
     task.shein_status_overview?.subheadline ||
     task.variant_label ||
@@ -61,6 +88,16 @@ function sheinListHref(paramKey: string, value: string) {
 }
 
 function continueTaskListHref(task: ListingKitTaskListItem) {
+  const freshnessFilter = sheinFreshnessFilter(task);
+  if (freshnessFilter) {
+    return sheinListHref(freshnessFilter.paramKey, freshnessFilter.value);
+  }
+  if (task.shein_blocking_keys?.includes("pod_platform")) {
+    return sheinListHref("shein_blocker_key", "pod_platform");
+  }
+  if (task.shein_warning_keys?.includes("pod_platform")) {
+    return sheinListHref("shein_warning_key", "pod_platform");
+  }
   if (task.shein_action_queue) {
     return sheinListHref("shein_action_queue", task.shein_action_queue);
   }
@@ -230,6 +267,26 @@ export function ListingKitHomeRecentWork({
                   className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${queueTone(continueActionQueueSeverity)}`}
                 >
                   {sheinActionQueueLabel(continueTask.shein_action_queue, taxonomy)}
+                </span>
+              ) : null}
+              {hasActionablePodExecution(continueTask.pod_execution) ||
+              continueTask.shein_blocking_keys?.includes("pod_platform") ||
+              continueTask.shein_warning_keys?.includes("pod_platform") ? (
+                <span
+                  className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${podExecutionTone(
+                    continueTask.pod_execution,
+                  )}`}
+                >
+                  {podExecutionBadgeLabel(continueTask.pod_execution) || "POD 平台待处理"}
+                </span>
+              ) : null}
+              {hasActionableSheinFreshness(continueTask) ? (
+                <span
+                  className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${sheinFreshnessTone(
+                    continueTask,
+                  )}`}
+                >
+                  {sheinFreshnessBadgeLabel(continueTask)}
                 </span>
               ) : null}
             </div>

@@ -1728,9 +1728,9 @@ describe("SheinStudioWorkbench", () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     saveSDSGroupedCandidateHandoff({
       action: "focus_generate",
-      actionLabel: "去生成并预热",
+      actionLabel: "去生成并继续校验",
       message:
-        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+        "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来继续校验并加入 grouped 批量上品。",
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
@@ -1738,33 +1738,33 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(
         screen.getByText(
-          "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来加入 grouped 批量上品。",
+          "这款候选商品还没有 baseline 缓存。先在当前工作台完成一次生成或预热，再回来继续校验并加入 grouped 批量上品。",
         ),
       ).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "去生成并预热" }));
+    fireEvent.click(screen.getByRole("button", { name: "去生成并继续校验" }));
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 
   it("warms baseline directly from grouped-candidate guidance", async () => {
     saveSDSGroupedCandidateHandoff({
       action: "warm_baseline",
-      actionLabel: "一键预热 baseline",
+      actionLabel: "一键预热并校验 baseline",
       message:
-        "这款候选商品还没有 baseline 缓存。先预热 baseline，再回来加入 grouped 批量上品。",
+        "这款候选商品还没有 baseline 缓存。先预热并校验 baseline，再回来加入 grouped 批量上品。",
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "一键预热 baseline" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "一键预热并校验 baseline" })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "一键预热 baseline" }));
+    fireEvent.click(screen.getByRole("button", { name: "一键预热并校验 baseline" }));
 
     await waitFor(() => expect(warmSDSBaselineForSelection).toHaveBeenCalledWith(selection));
     await waitFor(() =>
       expect(
-        screen.getByText("这款 SDS 商品的 baseline 已预热完成，现在可以继续加入 grouped 批量上品。"),
+        screen.getByText("这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。"),
       ).toBeInTheDocument(),
     );
   });

@@ -76,14 +76,15 @@ type SheinStudioCreatedTask struct {
 }
 
 type SheinStudioGroupedSelection struct {
-	SelectionID       string               `json:"selection_id,omitempty"`
-	Selection         SheinStudioSelection `json:"selection,omitempty"`
-	BaselineKey       string               `json:"baseline_key,omitempty"`
-	BaselineStatus    string               `json:"baseline_status,omitempty"`
-	BaselineReason    string               `json:"baseline_reason,omitempty"`
-	SheinStoreID      string               `json:"shein_store_id,omitempty"`
-	Eligible          bool                 `json:"eligible"`
-	EligibilityReason string               `json:"eligibility_reason,omitempty"`
+	SelectionID        string               `json:"selection_id,omitempty"`
+	Selection          SheinStudioSelection `json:"selection,omitempty"`
+	BaselineKey        string               `json:"baseline_key,omitempty"`
+	BaselineStatus     string               `json:"baseline_status,omitempty"`
+	BaselineReason     string               `json:"baseline_reason,omitempty"`
+	BaselineReasonCode string               `json:"baseline_reason_code,omitempty"`
+	SheinStoreID       string               `json:"shein_store_id,omitempty"`
+	Eligible           bool                 `json:"eligible"`
+	EligibilityReason  string               `json:"eligibility_reason,omitempty"`
 }
 
 type SheinStudioSelectionVariants []SheinStudioSelectionVariant

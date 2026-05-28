@@ -351,6 +351,43 @@ func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
 	}
 }
 
+func TestBuildTaskListItemIncludesPodExecutionSummary(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID:     "task-pod-summary",
+		Status: TaskStatusCompleted,
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+		},
+		Result: &ListingKitResult{
+			PodExecution: &PodExecutionSummary{
+				Provider:       podProviderSDS,
+				DependencyMode: podDependencyModeRequired,
+				Status:         podStatusFailedBlocking,
+				FailureReason:  "mockup sync timeout",
+			},
+			Shein: &SheinPackage{
+				FinalDraft: &sheinpub.FinalDraft{
+					Confirmed: true,
+				},
+			},
+		},
+	}
+
+	item := buildTaskListItem(task)
+
+	if item.PodExecution == nil {
+		t.Fatal("pod execution = nil, want summary")
+	}
+	if item.PodExecution.Provider != podProviderSDS {
+		t.Fatalf("provider = %q, want %q", item.PodExecution.Provider, podProviderSDS)
+	}
+	if item.PodExecution.Status != podStatusFailedBlocking {
+		t.Fatalf("status = %q, want %q", item.PodExecution.Status, podStatusFailedBlocking)
+	}
+}
+
 func intPtr(value int) *int {
 	return &value
 }

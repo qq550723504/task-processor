@@ -58,6 +58,7 @@ func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissi
 		beginSheinSubmitLease:                s.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTask,
 		normalizeSheinSubmitPackage:          s.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
 		saveTaskResult:                       s.repo.SaveTaskResult,
 		persistSheinSubmitPhase:              s.persistSheinSubmitPhase,
 		prepareSheinSubmitProduct:            s.prepareSheinSubmitProduct,

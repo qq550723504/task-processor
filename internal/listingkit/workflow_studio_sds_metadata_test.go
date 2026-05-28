@@ -260,7 +260,7 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		TenantID:             "",
 		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
-		Status:               "ready",
+		Status:               SDSBaselineStatusBaselineCached,
 		Version:              1,
 		CanonicalProductBase: payload,
 	}); err != nil {
@@ -287,7 +287,7 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 		t.Fatalf("runStandardProductWorkflow() error = %v", err)
 	}
 	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want skipped when baseline is ready", productSvc.lastReq)
+		t.Fatalf("product enrich request = %+v, want skipped when baseline is cached", productSvc.lastReq)
 	}
 	if state.result.CanonicalProduct == nil {
 		t.Fatal("expected canonical product from baseline")
@@ -336,7 +336,7 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		TenantID:             "tenant-a",
 		BaselineKey:          sdsBaselineKey("tenant-a", task.Request.Options.SDS),
-		Status:               "ready",
+		Status:               SDSBaselineStatusBaselineCached,
 		Version:              1,
 		CanonicalProductBase: payload,
 	}); err != nil {
@@ -552,7 +552,7 @@ func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testi
 	}
 }
 
-func TestRunStandardProductWorkflowIgnoresNonReadyOrMalformedSDSBaselineEntries(t *testing.T) {
+func TestRunStandardProductWorkflowIgnoresUnavailableOrMalformedSDSBaselineEntries(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -560,7 +560,7 @@ func TestRunStandardProductWorkflowIgnoresNonReadyOrMalformedSDSBaselineEntries(
 		entry *SDSBaselineCacheEntry
 	}{
 		{
-			name: "non-ready baseline",
+			name: "non-cached baseline",
 			entry: &SDSBaselineCacheEntry{
 				BaselineKey: "placeholder",
 				Status:      "pending",
@@ -572,10 +572,10 @@ func TestRunStandardProductWorkflowIgnoresNonReadyOrMalformedSDSBaselineEntries(
 			},
 		},
 		{
-			name: "ready baseline missing payload",
+			name: "cached baseline missing payload",
 			entry: &SDSBaselineCacheEntry{
 				BaselineKey: "placeholder",
-				Status:      "ready",
+				Status:      SDSBaselineStatusBaselineCached,
 				Version:     1,
 			},
 		},

@@ -157,4 +157,26 @@ describe("SheinCategoryReviewCard", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "应用建议类目" })).not.toBeInTheDocument();
   });
+
+  it("shows in-card refresh feedback when a category refresh is running or completed", () => {
+    render(
+      <SheinCategoryReviewCard
+        taskId="task-1"
+        statusMessage="已触发类目模板刷新，稍后会用最新类目继续刷新属性映射。"
+        statusTone="success"
+        editorContext={{
+          category: {
+            current: {
+              category_id: 12143,
+              category_path: ["家居&生活", "家庭用品", "鞋用品", "鞋配饰"],
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("已触发类目模板刷新，稍后会用最新类目继续刷新属性映射。"),
+    ).toBeInTheDocument();
+  });
 });

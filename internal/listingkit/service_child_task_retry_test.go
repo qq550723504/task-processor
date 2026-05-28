@@ -91,7 +91,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 			ChildTasks:     []ChildTaskState{{Kind: "sds_design_sync", Status: string(TaskStatusFailed), Error: "old failure"}},
 			WorkflowStages: []WorkflowStage{{Kind: "sds_design_sync", Status: WorkflowStageStatusFailed}},
 			WorkflowIssues: []WorkflowIssue{{Stage: "sds_design_sync", Severity: WorkflowIssueSeverityWarning, Message: "old failure"}},
-			Summary:        &GenerationSummary{Warnings: []string{"old failure"}},
+			Summary:        &GenerationSummary{Warnings: []string{"old failure", "keep me"}},
 		},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -186,6 +186,16 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 				t.Fatalf("summary = %+v, want previous SDS warnings cleared", result.Result.Summary)
 			}
 		}
+		foundUnrelated := false
+		for _, warning := range result.Result.Summary.Warnings {
+			if warning == "keep me" {
+				foundUnrelated = true
+				break
+			}
+		}
+		if !foundUnrelated {
+			t.Fatalf("summary = %+v, want unrelated warnings preserved", result.Result.Summary)
+		}
 	}
 	if sdsSvc.lastInput.Sync.VariantID != 10947 {
 		t.Fatalf("last sync input = %+v, want variant id 10947", sdsSvc.lastInput.Sync)
@@ -266,5 +276,28 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 		if issue.Stage == "sds_catalog_product" {
 			t.Fatalf("workflow issues = %+v, want previous SDS catalog issues cleared on successful retry", result.Result.WorkflowIssues)
 		}
+	}
+}
+
+func TestPruneChildTaskRetryArtifactsKeepsOtherStageWarnings(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		WorkflowIssues: []WorkflowIssue{
+			{Stage: "sds_design_sync", Severity: WorkflowIssueSeverityWarning, Message: "design failed", Detail: "render timeout"},
+			{Stage: "shein_review", Severity: WorkflowIssueSeverityReview, Message: "confirm category"},
+		},
+		Summary: &GenerationSummary{
+			Warnings: []string{"design failed", "render timeout", "confirm category", "other warning"},
+		},
+	}
+
+	pruneChildTaskRetryArtifacts(result, "sds_design_sync")
+
+	if len(result.WorkflowIssues) != 1 || result.WorkflowIssues[0].Stage != "shein_review" {
+		t.Fatalf("workflow issues = %+v, want non-retried stage issues preserved", result.WorkflowIssues)
+	}
+	if got := result.Summary.Warnings; len(got) != 2 || got[0] != "confirm category" || got[1] != "other warning" {
+		t.Fatalf("summary warnings = %#v, want only retried-stage warnings removed", got)
 	}
 }

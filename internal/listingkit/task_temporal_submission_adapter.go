@@ -15,6 +15,7 @@ type taskTemporalSubmissionAdapterConfig struct {
 	beginSheinSubmitLease                func(context.Context, string, string, string, time.Time) (*Task, error)
 	loadSheinPublishTask                 func(context.Context, string) (*Task, *SheinPackage, error)
 	normalizeSheinSubmitPackage          func(*Task, *SheinPackage, *SubmitTaskRequest, string)
+	validateSheinPublishFreshness        func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error)
 	saveTaskResult                       func(context.Context, string, *ListingKitResult) error
 	persistSheinSubmitPhase              func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string) error
 	prepareSheinSubmitProduct            func(context.Context, *Task, *SheinPackage, string) (*sheinproduct.Product, error)
@@ -33,6 +34,7 @@ type taskTemporalSubmissionAdapter struct {
 	beginSheinSubmitLease                func(context.Context, string, string, string, time.Time) (*Task, error)
 	loadSheinPublishTask                 func(context.Context, string) (*Task, *SheinPackage, error)
 	normalizeSheinSubmitPackage          func(*Task, *SheinPackage, *SubmitTaskRequest, string)
+	validateSheinPublishFreshness        func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error)
 	saveTaskResult                       func(context.Context, string, *ListingKitResult) error
 	persistSheinSubmitPhase              func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string) error
 	prepareSheinSubmitProduct            func(context.Context, *Task, *SheinPackage, string) (*sheinproduct.Product, error)
@@ -52,6 +54,7 @@ func newTaskTemporalSubmissionAdapter(config taskTemporalSubmissionAdapterConfig
 		beginSheinSubmitLease:                config.beginSheinSubmitLease,
 		loadSheinPublishTask:                 config.loadSheinPublishTask,
 		normalizeSheinSubmitPackage:          config.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:        config.validateSheinPublishFreshness,
 		saveTaskResult:                       config.saveTaskResult,
 		persistSheinSubmitPhase:              config.persistSheinSubmitPhase,
 		prepareSheinSubmitProduct:            config.prepareSheinSubmitProduct,
@@ -96,11 +99,27 @@ func (s *taskTemporalSubmissionAdapter) ValidateSheinPublishReadiness(ctx contex
 		}
 	}
 
-	readiness := buildSheinSubmitReadinessForAction(pkg, in.Action)
-	if readiness != nil && readiness.Ready {
-		return nil
+	changed := ensureTaskPodExecution(task)
+	if changed {
+		task.Result.UpdatedAt = time.Now()
+		if err := s.saveTaskResult(ctx, in.TaskID, task.Result); err != nil {
+			return err
+		}
 	}
-	return fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness))
+	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, task.Result.PodExecution, in.Action)
+	if readiness == nil || !readiness.Ready {
+		return fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness))
+	}
+	if s.validateSheinPublishFreshness != nil {
+		freshness, freshnessErr := s.validateSheinPublishFreshness(ctx, task, pkg, in.Action)
+		if freshnessErr != nil {
+			return freshnessErr
+		}
+		if freshness != nil && !freshness.Ready {
+			return fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(freshness))
+		}
+	}
+	return nil
 }
 
 func (s *taskTemporalSubmissionAdapter) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {

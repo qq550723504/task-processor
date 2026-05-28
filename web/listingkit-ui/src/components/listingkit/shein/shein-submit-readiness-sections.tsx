@@ -6,6 +6,11 @@ import {
   cacheSourceLabel,
   cacheUpdatedLabel,
   fieldPathsLabel,
+  readinessItemActionLabel,
+  readinessItemBadgeLabel,
+  readinessItemButtonLabel,
+  readinessItemDisplayLabel,
+  readinessItemTone,
 } from "@/components/listingkit/shein/shein-submit-readiness-helpers";
 import type {
   SheinChecklistGroupItem,
@@ -102,7 +107,11 @@ export function ReadinessItems({
             >
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-zinc-950">
-                  {item.label ?? item.key ?? "未命名问题"}
+                  {readinessItemDisplayLabel(
+                    item.key,
+                    item.message,
+                    item.label,
+                  )}
                 </p>
                 {item.message ? (
                   <p className="text-sm leading-6 text-zinc-700">{item.message}</p>
@@ -121,10 +130,14 @@ export function ReadinessItems({
               <div className="flex flex-wrap items-center gap-2">
                 {item.suggested_action ? (
                   <Badge
-                    className="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+                    className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${readinessItemTone(
+                      item.key,
+                    )}`}
                     variant="neutral"
                   >
-                    {item.suggested_action}
+                    {item.key === "pod_platform"
+                      ? readinessItemActionLabel(item.key, item.message)
+                      : readinessItemBadgeLabel(item.key, item.suggested_action)}
                   </Badge>
                 ) : null}
                 {canAct && onSelectItem ? (
@@ -133,7 +146,7 @@ export function ReadinessItems({
                     variant="secondary"
                     onClick={() => onSelectItem(item)}
                   >
-                    {actionLabel}
+                    {readinessItemButtonLabel(item.key, actionLabel)}
                   </Button>
                 ) : null}
               </div>

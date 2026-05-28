@@ -10,6 +10,7 @@ func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*List
 		return nil, nil
 	}
 	copied := cloneListingKitResultForReadState(task.Result)
+	ensureResultPodExecution(copied, task.Request)
 	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
 	if err != nil {
 		return nil, err
@@ -104,8 +105,14 @@ func cloneListingKitResultForReadState(src *ListingKitResult) *ListingKitResult 
 		summary.Warnings = append([]string(nil), src.Summary.Warnings...)
 		cloned.Summary = &summary
 	}
+	cloned.PodExecution = clonePodExecutionSummary(src.PodExecution)
 	if src.Shein != nil {
 		cloned.Shein = cloneSheinPackageForReadState(src.Shein)
+	}
+	if src.StandardProductSnapshot != nil {
+		snapshot := *src.StandardProductSnapshot
+		snapshot.PodExecution = clonePodExecutionSummary(src.StandardProductSnapshot.PodExecution)
+		cloned.StandardProductSnapshot = &snapshot
 	}
 	return &cloned
 }

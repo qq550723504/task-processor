@@ -23,6 +23,7 @@ type ListingKitResult struct {
 	Platforms                   []string                         `json:"platforms,omitempty"`
 	Country                     string                           `json:"country,omitempty"`
 	Language                    string                           `json:"language,omitempty"`
+	PodExecution                *PodExecutionSummary             `json:"pod_execution,omitempty"`
 	StandardProductSnapshot     *StandardProductSnapshot         `json:"standard_product_snapshot,omitempty"`
 	CatalogProduct              *catalog.Product                 `json:"catalog_product,omitempty"`
 	AssetBundle                 *asset.Bundle                    `json:"asset_bundle,omitempty"`
@@ -67,6 +68,7 @@ type StandardProductSnapshot struct {
 	AssetBundle           *asset.Bundle                    `json:"asset_bundle,omitempty"`
 	AssetInventorySummary *asset.InventorySummary          `json:"asset_inventory_summary,omitempty"`
 	ImageAssets           *productimage.ImageProcessResult `json:"image_assets,omitempty"`
+	PodExecution          *PodExecutionSummary             `json:"pod_execution,omitempty"`
 	// Deprecated: kept only for JSON/history compatibility. New business code should use SDSDesignResult.
 	SDSSync *SDSSyncSummary `json:"sds_sync,omitempty"`
 	// SDSDesignResult is the canonical SDS design execution result used by current business logic.
@@ -120,6 +122,32 @@ type SDSSyncDiagnostics struct {
 	RenderedCount    int                                `json:"rendered_count"`
 	FinishedProduct  *SDSSyncFinishedProductObservation `json:"finished_product,omitempty"`
 	SensitiveWords   []SDSSyncSensitiveWordHit          `json:"sensitive_words,omitempty"`
+}
+
+type PodExecutionSummary struct {
+	Provider       string                   `json:"provider,omitempty"`
+	DependencyMode string                   `json:"dependency_mode,omitempty"`
+	Status         string                   `json:"status,omitempty"`
+	FailureReason  string                   `json:"failure_reason,omitempty"`
+	FallbackType   string                   `json:"fallback_type,omitempty"`
+	DecisionSource string                   `json:"decision_source,omitempty"`
+	CompletedAt    *time.Time               `json:"completed_at,omitempty"`
+	LastAttemptAt  *time.Time               `json:"last_attempt_at,omitempty"`
+	RetryCount     int                      `json:"retry_count,omitempty"`
+	History        []PodExecutionAuditEvent `json:"history,omitempty"`
+}
+
+type PodExecutionAuditEvent struct {
+	Kind           string    `json:"kind,omitempty"`
+	Code           string    `json:"code,omitempty"`
+	Message        string    `json:"message,omitempty"`
+	Detail         string    `json:"detail,omitempty"`
+	Provider       string    `json:"provider,omitempty"`
+	DependencyMode string    `json:"dependency_mode,omitempty"`
+	DecisionSource string    `json:"decision_source,omitempty"`
+	FromStatus     string    `json:"from_status,omitempty"`
+	ToStatus       string    `json:"to_status,omitempty"`
+	OccurredAt     time.Time `json:"occurred_at,omitempty"`
 }
 
 type SDSSyncFinishedProductObservation struct {

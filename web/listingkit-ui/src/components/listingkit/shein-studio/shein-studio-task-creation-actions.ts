@@ -7,7 +7,10 @@ import {
   createGroupedSheinReviewTasks,
   createSheinReviewTasks,
 } from "@/lib/shein-studio/create-review-tasks";
-import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
+import type {
+  GroupedSDSSelectionEligibility,
+  SDSBaselineStatus,
+} from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
@@ -70,7 +73,7 @@ export function useSheinStudioTaskCreationAction({
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   groupedSelections: GroupedSDSSelectionEligibility[];
-  activeSelectionBaselineStatus: "ready" | "missing" | "failed";
+  activeSelectionBaselineStatus: SDSBaselineStatus;
   activeSelectionBaselineReason: string;
   setCreatedTasks: (value: SheinStudioCreatedTask[]) => void;
   setCreatingError: (value: string) => void;

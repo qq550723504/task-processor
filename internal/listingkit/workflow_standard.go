@@ -36,7 +36,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	})
 
 	var canonicalProduct *canonical.Product
-	if baseline, ok, baselineErr := s.sdsBaselineOrDefault().GetReadyBaseline(ctx, task); baselineErr != nil {
+	if baseline, ok, baselineErr := s.sdsBaselineOrDefault().GetCachedBaseline(ctx, task); baselineErr != nil {
 		log.WithError(baselineErr).Warn("sds baseline lookup failed; continuing")
 	} else if ok {
 		canonicalProduct = baseline
@@ -50,7 +50,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		}).Info("reused SDS baseline canonical product for listing kit workflow")
 	}
 	if canonicalProduct != nil {
-		// Baseline hydration restores the stable SDS skeleton; later runtime SDS overlay still applies.
+		// Baseline hydration restores the cached SDS skeleton; later runtime SDS overlay still applies.
 	} else if shouldUseStudioCatalogCanonical(task) {
 		stage := recorder.Start("sds_catalog_product", "")
 		canonicalProduct = buildStudioFallbackCanonicalProduct(task)
@@ -147,6 +147,8 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	}).Info("canonical product prepared for listing kit workflow")
 	if persistErr := s.persistSDSBaselineIfEligible(ctx, task); persistErr != nil {
 		log.WithError(persistErr).Warn("sds baseline persistence failed")
+	} else if validationErr := s.persistSDSBaselineValidation(ctx, task); validationErr != nil {
+		log.WithError(validationErr).Warn("sds baseline validation persistence failed")
 	}
 
 	var imageResult *productimage.ImageProcessResult
