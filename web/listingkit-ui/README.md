@@ -42,26 +42,20 @@ ZITADEL_REDIRECT_URI=http://localhost:3000/api/zitadel-auth/callback
 ZITADEL_POST_LOGOUT_REDIRECT_URI=http://localhost:3000
 ```
 
+The Next.js UI and the Go API must point at the same `ZITADEL_ISSUER_URL`,
+`ZITADEL_CLIENT_ID`, and `ZITADEL_CLIENT_SECRET`. If they differ, the UI can
+finish login successfully while `/api/listing-kits/*` still fails because the
+Go API introspects the forwarded bearer token against a different issuer/client
+pair.
+
 The Next.js proxy verifies the ZITADEL session or bearer token before forwarding
 requests to the ListingKit Go API. The verified ZITADEL user and resource owner
 are forwarded as ListingKit identity headers.
 
 The Go API also verifies direct `/api/v1/listing-kits/*` and
 `/api/v1/shein-login/*` bearer-token requests when `ZITADEL_ISSUER_URL` and
-`ZITADEL_CLIENT_ID` are set. Set
-`TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED=1` in deployments that should
-fail closed if ZITADEL is missing.
-
-如果只是本地联调，想暂时跳过页面授权门禁，可以额外设置：
-
-```bash
-LISTINGKIT_UI_BYPASS_AUTH_GATE=1
-```
-
-这个开关只在非生产环境生效，只跳过前端 ZITADEL 页面授权门禁，不会修改后端 API 的实际鉴权逻辑。
-
-如果后端同时开启了 owner scope，本地联调又需要查看当前租户下其他用户创建的任务，不要设置 `LISTINGKIT_UI_LOCAL_USER_ID`。
-这样前端代理只会转发本地租户和角色，不会额外注入 `X-User-ID`。
+`ZITADEL_CLIENT_ID` are set. ListingKit routes now fail closed when ZITADEL is
+missing or the current session is invalid.
 
 如果要使用 ListingKit 里的 AI 能力，需要先在 ListingKit 设置页为当前租户或用户保存 AI 配置。
 后端不再回退到仓库级别的默认 OpenAI / 图片环境变量。

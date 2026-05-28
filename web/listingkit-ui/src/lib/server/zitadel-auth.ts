@@ -92,6 +92,18 @@ export function readZitadelSessionError(session: Session | null | undefined) {
   return typeof session?.error === "string" ? session.error : "";
 }
 
+export function readZitadelSessionIssuerURL(
+  session: Session | null | undefined,
+) {
+  return typeof session?.issuerUrl === "string" ? session.issuerUrl : "";
+}
+
+export function readZitadelSessionClientID(
+  session: Session | null | undefined,
+) {
+  return typeof session?.clientId === "string" ? session.clientId : "";
+}
+
 export async function fetchZitadelDiscovery(
   options: ZitadelAuthOptions,
 ): Promise<ZitadelDiscovery> {
@@ -257,14 +269,9 @@ function readZitadelAuthorizationConfig() {
     "LISTINGKIT_ZITADEL_ALLOWED_ROLES",
     "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
   );
-  const explicitRequired = readBooleanEnv(
-    "LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
-    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
-  );
 
   return {
     required:
-      explicitRequired ||
       allowedTenantIds.size > 0 ||
       allowedUserIds.size > 0 ||
       allowedUsernames.size > 0 ||
@@ -291,25 +298,6 @@ function readDelimitedEnvSet(...names: string[]) {
     }
   }
   return values;
-}
-
-function readBooleanEnv(...names: string[]) {
-  for (const name of names) {
-    const raw = process.env[name];
-    if (!raw) {
-      continue;
-    }
-    switch (raw.trim().toLowerCase()) {
-      case "1":
-      case "true":
-      case "yes":
-      case "on":
-        return true;
-      default:
-        return false;
-    }
-  }
-  return false;
 }
 
 function stringifyIdentityValue(value: unknown) {

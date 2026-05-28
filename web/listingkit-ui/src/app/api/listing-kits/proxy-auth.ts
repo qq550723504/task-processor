@@ -6,11 +6,14 @@ import {
   fetchZitadelDiscovery,
   getZitadelAuthOptions,
   readZitadelAccessTokenFromSession,
+  readZitadelSessionClientID,
   readZitadelIdentityFromSession,
   readZitadelSessionError,
+  readZitadelSessionIssuerURL,
   verifyZitadelAccessToken,
   type ZitadelVerifiedIdentity,
 } from "@/lib/server/zitadel-auth";
+import { logRequestInfo, logRequestWarn } from "@/lib/server/request-log";
 
 export type VerifiedIdentity = ZitadelVerifiedIdentity;
 export type VerifiedIdentityResult =
@@ -21,42 +24,9 @@ export type VerifiedIdentityResult =
     }
   | { identity?: undefined; token?: undefined; response: NextResponse };
 
-export function shouldBypassListingKitProxyAuth() {
-  return (
-    process.env.NODE_ENV !== "production" &&
-    process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE === "1"
-  );
-}
-
-export function buildLocalBypassIdentity(): VerifiedIdentity {
-  const tenantId =
-    process.env.LISTINGKIT_UI_LOCAL_TENANT_ID?.trim() || "1";
-  const userId = process.env.LISTINGKIT_UI_LOCAL_USER_ID?.trim() || undefined;
-  const userType =
-    process.env.LISTINGKIT_UI_LOCAL_USER_TYPE?.trim() || "local";
-  const roles = (
-    process.env.LISTINGKIT_UI_LOCAL_ROLES?.trim() ||
-    "platform_admin,listingkit_admin"
-  )
-    .split(",")
-    .map((role) => role.trim())
-    .filter(Boolean);
-
-  return {
-    tenantId,
-    userId,
-    userType,
-    roles,
-  };
-}
-
 export async function verifyListingKitRequestIdentity(
   request: NextRequest,
 ): Promise<VerifiedIdentityResult> {
-  if (shouldBypassListingKitProxyAuth()) {
-    return { identity: buildLocalBypassIdentity(), token: "" };
-  }
-
   const zitadelOptions = getZitadelAuthOptions();
   if (!zitadelOptions) {
     return {
@@ -76,6 +46,9 @@ export async function verifyListingKitRequestIdentity(
     let zitadelToken = headerToken;
 
     if (headerToken) {
+      logRequestInfo("listingkit proxy auth using bearer token", {
+        path: request.nextUrl.pathname,
+      });
       const discovery = await fetchZitadelDiscovery(zitadelOptions);
       identity = await verifyZitadelAccessToken(
         headerToken,
@@ -86,10 +59,56 @@ export async function verifyListingKitRequestIdentity(
       const session = await auth();
       const sessionError = readZitadelSessionError(session);
       if (sessionError) {
+        logRequestWarn("listingkit proxy auth session error", {
+          path: request.nextUrl.pathname,
+          error: sessionError,
+        });
         throw new Error(sessionError);
       }
       zitadelToken = readZitadelAccessTokenFromSession(session);
+      const storedIssuerURL = readZitadelSessionIssuerURL(session);
+      const storedClientID = readZitadelSessionClientID(session);
       identity = readZitadelIdentityFromSession(session);
+
+      logRequestInfo("listingkit proxy auth inspecting stored session", {
+        path: request.nextUrl.pathname,
+        hasToken: Boolean(zitadelToken),
+        hasIdentity: Boolean(identity),
+        storedIssuerURL,
+        storedClientID,
+        configuredIssuerURL: zitadelOptions.issuerUrl,
+        configuredClientID: zitadelOptions.clientId,
+      });
+
+      if (!zitadelToken) {
+        throw new Error("Missing ZITADEL session");
+      }
+
+      if (
+        (storedIssuerURL && storedIssuerURL !== zitadelOptions.issuerUrl) ||
+        (storedClientID && storedClientID !== zitadelOptions.clientId)
+      ) {
+        throw new Error(
+          "Stored ZITADEL session was created for a different issuer/client; please sign in again",
+        );
+      }
+
+      if (!identity || !storedIssuerURL || !storedClientID) {
+        logRequestInfo("listingkit proxy auth revalidating stored session", {
+          path: request.nextUrl.pathname,
+          reason: !identity
+            ? "missing_identity"
+            : !storedIssuerURL
+              ? "missing_issuer"
+              : "missing_client",
+        });
+        const discovery = await fetchZitadelDiscovery(zitadelOptions);
+        identity = await verifyZitadelAccessToken(
+          zitadelToken,
+          zitadelOptions,
+          discovery,
+        );
+      }
     }
 
     if (!zitadelToken || !identity) {
@@ -113,6 +132,13 @@ export async function verifyListingKitRequestIdentity(
       token: zitadelToken,
     };
   } catch (error) {
+    logRequestWarn("listingkit proxy auth rejected request", {
+      path: request.nextUrl.pathname,
+      error:
+        error instanceof Error
+          ? error.message
+          : "ZITADEL token verification failed",
+    });
     return {
       response: NextResponse.json(
         {

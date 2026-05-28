@@ -1,6 +1,9 @@
+import { customFetch } from "@auth/core";
 import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
+
+import { createResilientOidcFetch } from "@/lib/server/auth-fetch";
 
 export type ListingKitSessionIdentity = {
   tenantId?: string | number;
@@ -16,6 +19,8 @@ declare module "next-auth" {
     idToken?: string;
     expiresAt?: number;
     error?: string;
+    issuerUrl?: string;
+    clientId?: string;
     identity?: ListingKitSessionIdentity | null;
   }
 }
@@ -27,6 +32,8 @@ declare module "next-auth/jwt" {
     idToken?: string;
     expiresAt?: number;
     error?: string;
+    issuerUrl?: string;
+    clientId?: string;
     identity?: ListingKitSessionIdentity | null;
   }
 }
@@ -89,6 +96,29 @@ export function getAuthJsSecret() {
 
 export function buildAuthConfig(): NextAuthConfig {
   const zitadel = getZitadelAuthOptions();
+  const oidcFetch = createResilientOidcFetch({
+    onRetry(input, attempt, error) {
+      console.warn("[listingkit-ui] retrying OIDC request", {
+        url: String(input),
+        attempt,
+        error:
+          error instanceof Error
+            ? {
+                message: error.message,
+                cause:
+                  error instanceof Error &&
+                  "cause" in error &&
+                  error.cause &&
+                  typeof error.cause === "object"
+                    ? {
+                        code: Reflect.get(error.cause, "code"),
+                      }
+                    : undefined,
+              }
+            : undefined,
+      });
+    },
+  });
   const publicOrigin =
     process.env.LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
     process.env.TASK_PROCESSOR_LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
@@ -110,6 +140,7 @@ export function buildAuthConfig(): NextAuthConfig {
             clientId: zitadel.clientId,
             clientSecret: zitadel.clientSecret,
             authorization: { params: { scope: zitadel.scopes } },
+            [customFetch]: oidcFetch,
           }),
         ]
       : [],
@@ -127,6 +158,8 @@ export function buildAuthConfig(): NextAuthConfig {
                 : typeof account.expires_in === "number"
                   ? Math.floor(Date.now() / 1000) + account.expires_in
                   : undefined,
+            issuerUrl: zitadel?.issuerUrl,
+            clientId: zitadel?.clientId,
             error: undefined,
             identity: extractIdentity({
               preferredUsername:
@@ -154,10 +187,12 @@ export function buildAuthConfig(): NextAuthConfig {
         }
 
         try {
-          const refreshed = await refreshZitadelToken(token, zitadel);
+          const refreshed = await refreshZitadelToken(token, zitadel, oidcFetch);
           return {
             ...token,
             ...refreshed,
+            issuerUrl: zitadel.issuerUrl,
+            clientId: zitadel.clientId,
             error: undefined,
             identity:
               refreshed.identity ??
@@ -179,6 +214,8 @@ export function buildAuthConfig(): NextAuthConfig {
         session.idToken = token.idToken;
         session.expiresAt = token.expiresAt;
         session.error = token.error;
+        session.issuerUrl = token.issuerUrl;
+        session.clientId = token.clientId;
         session.identity = token.identity ?? null;
         return session;
       },
@@ -204,13 +241,17 @@ export function buildAuthConfig(): NextAuthConfig {
   };
 }
 
-async function refreshZitadelToken(token: JWT, options: ZitadelAuthOptions) {
+async function refreshZitadelToken(
+  token: JWT,
+  options: ZitadelAuthOptions,
+  fetchImpl: typeof fetch,
+) {
   if (!token.refreshToken) {
     throw new Error("Missing ZITADEL refresh token");
   }
 
-  const discovery = await fetchZitadelDiscovery(options);
-  const response = await fetch(discovery.token_endpoint, {
+  const discovery = await fetchZitadelDiscovery(options, fetchImpl);
+  const response = await fetchImpl(discovery.token_endpoint, {
     method: "POST",
     headers: buildZitadelClientAuthHeaders(options),
     body: new URLSearchParams({
@@ -246,8 +287,11 @@ async function refreshZitadelToken(token: JWT, options: ZitadelAuthOptions) {
   } satisfies Partial<JWT>;
 }
 
-async function fetchZitadelDiscovery(options: ZitadelAuthOptions) {
-  const response = await fetch(
+async function fetchZitadelDiscovery(
+  options: ZitadelAuthOptions,
+  fetchImpl: typeof fetch,
+) {
+  const response = await fetchImpl(
     `${options.issuerUrl}/.well-known/openid-configuration`,
     { cache: "no-store" },
   );

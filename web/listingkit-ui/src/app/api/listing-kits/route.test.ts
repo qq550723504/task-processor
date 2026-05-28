@@ -19,7 +19,6 @@ import {
 } from "@/app/api/listing-kits/proxy-response";
 import {
   buildListingKitUpstreamHeaders,
-  shouldBypassListingKitProxyAuth,
   verifyListingKitRequestIdentity,
 } from "@/app/api/listing-kits/proxy-auth";
 import { verifyZitadelAccessToken } from "@/lib/server/zitadel-auth";
@@ -129,21 +128,6 @@ describe("buildListingKitUpstreamHeaders", () => {
   });
 });
 
-describe("shouldBypassListingKitProxyAuth", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("only allows proxy auth bypass outside production with the local bypass flag", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-    expect(shouldBypassListingKitProxyAuth()).toBe(true);
-
-    vi.stubEnv("NODE_ENV", "production");
-    expect(shouldBypassListingKitProxyAuth()).toBe(false);
-  });
-});
-
 describe("verifyListingKitRequestIdentity", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -159,84 +143,17 @@ describe("verifyListingKitRequestIdentity", () => {
     expect(result.response?.status).toBe(503);
   });
 
-  it("returns a local bypass identity when auth is disabled in local development", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_TENANT_ID", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_ID", "local-admin");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_TYPE", "local");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_ROLES", "platform_admin,listingkit_admin");
-
-    const result = await verifyListingKitRequestIdentity(
-      new NextRequest("http://localhost/api/listing-kits/tasks"),
-    );
-
-    expect(result.response).toBeUndefined();
-    expect(result.token).toBe("");
-    expect(result.identity).toEqual({
-      tenantId: "1",
-      userId: "local-admin",
-      userType: "local",
-      roles: ["platform_admin", "listingkit_admin"],
-    });
-  });
-
-  it("prefers local bypass even when zitadel auth settings are present", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_TENANT_ID", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_ID", "local-admin");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_TYPE", "local");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_ROLES", "platform_admin,listingkit_admin");
+  it("rejects requests when no real ZITADEL session is present", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
-    mockedAuthState.session = {
-      accessToken: "session-token-1",
-      identity: {
-        tenantId: "org-286",
-        userId: "user-42",
-        username: "admin",
-        userType: "zitadel",
-        roles: ["listingkit_admin"],
-      },
-    };
 
     const result = await verifyListingKitRequestIdentity(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
-    expect(result.response).toBeUndefined();
-    expect(result.token).toBe("");
-    expect(result.identity).toEqual({
-      tenantId: "1",
-      userId: "local-admin",
-      userType: "local",
-      roles: ["platform_admin", "listingkit_admin"],
-    });
-  });
-
-  it("omits a local bypass user id unless explicitly configured", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_TENANT_ID", "1");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_ID", "");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_USER_TYPE", "local");
-    vi.stubEnv("LISTINGKIT_UI_LOCAL_ROLES", "platform_admin,listingkit_admin");
-
-    const result = await verifyListingKitRequestIdentity(
-      new NextRequest("http://localhost/api/listing-kits/tasks"),
-    );
-
-    expect(result.response).toBeUndefined();
-    expect(result.identity).toEqual({
-      tenantId: "1",
-      userType: "local",
-      roles: ["platform_admin", "listingkit_admin"],
-    });
-
-    const headers = buildListingKitUpstreamHeaders(new Headers(), result.identity);
-    expect(headers.get("X-User-ID")).toBeNull();
-    expect(headers.get("X-User-Roles")).toBe("platform_admin,listingkit_admin");
+    expect(result.identity).toBeUndefined();
+    expect(result.token).toBeUndefined();
+    expect(result.response?.status).toBe(401);
   });
 
   it("returns the Auth.js session identity when a session is present", async () => {
@@ -244,6 +161,8 @@ describe("verifyListingKitRequestIdentity", () => {
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
     mockedAuthState.session = {
       accessToken: "session-token-1",
+      issuerUrl: "https://issuer.example.com",
+      clientId: "client-1",
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -266,6 +185,85 @@ describe("verifyListingKitRequestIdentity", () => {
       userType: "zitadel",
       roles: ["listingkit_admin"],
     });
+  });
+
+  it("revalidates legacy stored sessions that do not record issuer or client", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    vi.stubEnv("ZITADEL_CLIENT_SECRET", "secret-1");
+    mockedAuthState.session = {
+      accessToken: "session-token-1",
+      identity: {
+        tenantId: "org-286",
+        userId: "user-42",
+        username: "admin",
+        userType: "zitadel",
+        roles: ["listingkit_admin"],
+      },
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          authorization_endpoint:
+            "https://issuer.example.com/oauth/v2/authorize",
+          token_endpoint: "https://issuer.example.com/oauth/v2/token",
+          introspection_endpoint:
+            "https://issuer.example.com/oauth/v2/introspect",
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          active: true,
+          sub: "user-42",
+          username: "admin",
+          "urn:zitadel:iam:user:resourceowner:id": "org-286",
+          "urn:zitadel:iam:org:project:roles": {
+            listingkit_admin: {},
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks"),
+    );
+
+    expect(result.response).toBeUndefined();
+    expect(result.token).toBe("session-token-1");
+    expect(result.identity).toEqual({
+      tenantId: "org-286",
+      userId: "user-42",
+      username: "admin",
+      userType: "zitadel",
+      roles: ["listingkit_admin"],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects stored sessions created for a different ZITADEL issuer or client", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedAuthState.session = {
+      accessToken: "session-token-1",
+      issuerUrl: "http://localhost:8080",
+      clientId: "old-client",
+      identity: {
+        tenantId: "org-286",
+        userId: "user-42",
+        username: "admin",
+        userType: "zitadel",
+        roles: ["listingkit_admin"],
+      },
+    };
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks"),
+    );
+
+    expect(result.identity).toBeUndefined();
+    expect(result.token).toBeUndefined();
+    expect(result.response?.status).toBe(401);
   });
 });
 

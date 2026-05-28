@@ -19,7 +19,12 @@ export async function GET() {
     return signOut({ redirectTo: "/" });
   }
 
-  const discovery = await fetchZitadelDiscovery(options);
+  let discovery;
+  try {
+    discovery = await fetchZitadelDiscovery(options);
+  } catch {
+    return signOut({ redirectTo: postLogoutTarget });
+  }
   const session = await auth();
   const logoutUrl = discovery.end_session_endpoint
     ? new URL(discovery.end_session_endpoint)

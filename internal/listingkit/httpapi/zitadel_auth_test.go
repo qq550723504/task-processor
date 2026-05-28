@@ -66,7 +66,7 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthDisabledWhenAuthIsNotRequired(t *testing.T) {
+func TestListingKitZitadelAuthRemainsEnabledEvenWhenConfigDisablesAuth(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: "https://issuer.example",
@@ -90,8 +90,8 @@ func TestListingKitZitadelAuthDisabledWhenAuthIsNotRequired(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
 	}
 }
 
@@ -445,6 +445,58 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForTaskRoutes(t *testing.T)
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthExplainsInactiveTokens(t *testing.T) {
+	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint": r.Host + "/oauth/v2/authorize",
+				"token_endpoint":         r.Host + "/oauth/v2/token",
+				"introspection_endpoint": zitadelURL(r) + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active": false,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+			Required:  true,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "inactive token") {
+		t.Fatalf("body = %s, want inactive token hint", resp.Body.String())
 	}
 }
 

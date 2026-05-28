@@ -68,10 +68,10 @@ var (
 )
 
 func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
-	authzRequired := cfg.AuthorizationRequired
-	if !authzRequired && (len(cfg.AllowedTenantIDs) > 0 || len(cfg.AllowedUserIDs) > 0 || len(cfg.AllowedUsernames) > 0 || len(cfg.AllowedRoles) > 0) {
-		authzRequired = true
-	}
+	authzRequired := len(cfg.AllowedTenantIDs) > 0 ||
+		len(cfg.AllowedUserIDs) > 0 ||
+		len(cfg.AllowedUsernames) > 0 ||
+		len(cfg.AllowedRoles) > 0
 	listingKitZitadelRuntimeConfigMu.Lock()
 	defer listingKitZitadelRuntimeConfigMu.Unlock()
 	listingKitZitadelRuntimeConfigV = &listingKitZitadelRuntimeConfig{
@@ -79,7 +79,7 @@ func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
 			IssuerURL:    strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/"),
 			ClientID:     strings.TrimSpace(cfg.ClientID),
 			ClientSecret: strings.TrimSpace(cfg.ClientSecret),
-			Required:     cfg.AuthRequired,
+			Required:     true,
 			HTTPClient:   &http.Client{Timeout: 5 * time.Second},
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
@@ -137,11 +137,7 @@ func NewZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
 	if runtimeCfg == nil {
 		return nil
 	}
-	cfg := runtimeCfg.AuthConfig
-	if !cfg.Required {
-		return nil
-	}
-	return newListingKitZitadelAuthMiddleware(cfg, runtimeCfg.AuthzConfig).Handle
+	return newListingKitZitadelAuthMiddleware(runtimeCfg.AuthConfig, runtimeCfg.AuthzConfig).Handle
 }
 
 func newListingKitZitadelAuthMiddleware(cfg zitadelAuthConfig, authz zitadelAuthorizationConfig) *zitadelAuthMiddleware {
@@ -154,11 +150,6 @@ func newListingKitZitadelAuthMiddleware(cfg zitadelAuthConfig, authz zitadelAuth
 }
 
 func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
-	if !m.cfg.Required {
-		c.Next()
-		return
-	}
-
 	if m.cfg.IssuerURL == "" || m.cfg.ClientID == "" {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 			"error":   "zitadel_auth_not_configured",
@@ -245,8 +236,13 @@ func (m *zitadelAuthMiddleware) verifyToken(r *http.Request, token string) (*zit
 	}
 	payload.Extra = data
 	payload.Roles = parseZitadelRoles(data)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !payload.Active {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("ZITADEL token introspection failed: %d", resp.StatusCode)
+	}
+	if !payload.Active {
+		return nil, errors.New(
+			"ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration",
+		)
 	}
 	return &payload, nil
 }

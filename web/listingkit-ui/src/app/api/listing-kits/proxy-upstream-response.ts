@@ -45,6 +45,11 @@ export async function buildListingKitProxyResponse({
       ? await upstream.arrayBuffer()
       : await upstream.text();
 
+    const upstreamBodyPreview =
+      !upstream.ok && typeof body === "string"
+        ? body.slice(0, 500)
+        : undefined;
+
     logListingKitProxyResponse({
       durationMs,
       method,
@@ -52,6 +57,7 @@ export async function buildListingKitProxyResponse({
       requestId,
       status: upstream.status,
       upstreamOk: upstream.ok,
+      upstreamBodyPreview,
     });
     return new NextResponse(body, {
       status: upstream.status,
@@ -100,6 +106,7 @@ function logListingKitProxyResponse({
   requestId,
   status,
   upstreamOk,
+  upstreamBodyPreview,
 }: {
   durationMs: number;
   method: string;
@@ -107,6 +114,7 @@ function logListingKitProxyResponse({
   requestId: string;
   status: number;
   upstreamOk: boolean;
+  upstreamBodyPreview?: string;
 }) {
   const logFields = {
     requestId,
@@ -114,6 +122,7 @@ function logListingKitProxyResponse({
     path,
     status,
     durationMs,
+    upstreamBodyPreview,
   };
   if (!upstreamOk || durationMs > 5_000) {
     logRequestWarn("listingkit proxy response", logFields);

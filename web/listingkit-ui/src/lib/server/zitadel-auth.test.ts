@@ -40,7 +40,6 @@ describe("authorizeZitadelIdentity", () => {
   });
 
   it("denies access when authorization is required but identity does not match", () => {
-    vi.stubEnv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "1");
     vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin");
 
     expect(

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { buildListingKitProxyResponse } from "@/app/api/listing-kits/proxy-upstream-response";
+import * as requestLog from "@/lib/server/request-log";
 
 describe("buildListingKitProxyResponse", () => {
   it("preserves 304 responses without reading a body", async () => {
@@ -76,5 +77,34 @@ describe("buildListingKitProxyResponse", () => {
       error: "listingkit_upstream_body_unavailable",
       message: "stream failed",
     });
+  });
+
+  it("logs an upstream error body preview for non-ok text responses", async () => {
+    const warnSpy = vi.spyOn(requestLog, "logRequestWarn");
+
+    const response = await buildListingKitProxyResponse({
+      durationMs: 12,
+      method: "GET",
+      path: "/studio/batches",
+      requestId: "req-500",
+      routePath: ["studio", "batches"],
+      upstream: new Response(
+        JSON.stringify({ error: "boom", message: "database row scan failed" }),
+        {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+
+    expect(response.status).toBe(500);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "listingkit proxy response",
+      expect.objectContaining({
+        requestId: "req-500",
+        status: 500,
+        upstreamBodyPreview: expect.stringContaining("database row scan failed"),
+      }),
+    );
   });
 });
