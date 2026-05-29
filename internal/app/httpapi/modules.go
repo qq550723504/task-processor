@@ -86,30 +86,24 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	}
 	promptModule := promptmgmtapi.BuildModule(deps.tenantPromptStore)
 
-	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
-		"product_enrich": productModule.Pool,
-		"product_image":  imageModule.Pool,
-		"amazon_listing": amazonListingModule.Pool,
-		"listing_kit":    listingKitModule.Pool,
-	})
-
-	taskRPCResult, err := taskrpcapi.BuildModule(deps.managementClient(), localTaskHealthProvider)
-	if err != nil {
-		return nil, err
-	}
-	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
-
 	composition := httpFeatureComposition{
 		productModule:       productModule,
 		imageModule:         imageModule,
 		amazonListingModule: amazonListingModule,
 		listingKitModule:    listingKitModule,
 		promptModule:        promptModule,
-		sdsModule:           sdsModule,
-		taskRPCResult:       taskRPCResult,
 		sheinLoginResult:    sheinLoginResult,
 		sdsLoginResult:      sdsLoginResult,
 	}
+
+	taskRPCResult, err := taskrpcapi.BuildModule(deps.managementClient(), composition.localTaskHealthProvider())
+	if err != nil {
+		return nil, err
+	}
+	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
+
+	composition.sdsModule = sdsModule
+	composition.taskRPCResult = taskRPCResult
 
 	server, routes, err := buildHTTPServerBundleFromModules(options.Port, deps.cfg, composition.routeModules())
 	if err != nil {

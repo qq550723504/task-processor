@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,8 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 func TestCoreHTTPModuleRegistersHealthRoute(t *testing.T) {
@@ -430,6 +436,72 @@ func TestBuildHTTPServerBundleFromModulesSkipsNilModules(t *testing.T) {
 	router.ServeHTTP(resp, req)
 	require.Equal(t, http.StatusOK, resp.Code)
 }
+
+func TestHTTPFeatureCompositionLocalTaskHealthProviderUsesFeaturePoolNames(t *testing.T) {
+	t.Parallel()
+
+	productMetrics := worker.NewMetrics()
+	productMetrics.RecordSubmit()
+	productMetrics.RecordProcessSuccess(1)
+
+	composition := httpFeatureComposition{
+		productModule: &productenrichhttpapi.Module{
+			Pool: stubWorkerPool{
+				stats: worker.QueueStats{
+					QueueSize:      1,
+					BufferSize:     4,
+					AvailableSlots: 3,
+				},
+				metrics: productMetrics,
+			},
+		},
+		imageModule: &productimagehttpapi.Module{
+			Pool: stubWorkerPool{
+				stats: worker.QueueStats{
+					QueueSize:      2,
+					BufferSize:     5,
+					AvailableSlots: 3,
+				},
+			},
+		},
+		amazonListingModule: &amazonlistinghttpapi.Module{},
+		listingKitModule: &listingkithttpapi.Module{
+			Pool: stubWorkerPool{
+				stats: worker.QueueStats{
+					QueueSize:      3,
+					BufferSize:     6,
+					AvailableSlots: 3,
+				},
+			},
+		},
+	}
+
+	status := composition.localTaskHealthProvider()
+	require.NotNil(t, status)
+
+	snapshot := status()
+	require.Equal(t, 3, snapshot["summary"].(map[string]any)["poolCount"])
+	require.Equal(t, 6, snapshot["summary"].(map[string]any)["totalQueueSize"])
+
+	pools := snapshot["pools"].(map[string]any)
+	require.Contains(t, pools, "product_enrich")
+	require.Contains(t, pools, "product_image")
+	require.Contains(t, pools, "listing_kit")
+	require.NotContains(t, pools, "amazon_listing")
+}
+
+type stubWorkerPool struct {
+	stats   worker.QueueStats
+	metrics *worker.Metrics
+}
+
+func (p stubWorkerPool) Start(_ context.Context)          {}
+func (p stubWorkerPool) Stop(_ context.Context)           {}
+func (p stubWorkerPool) Submit(worker.WorkerJob) error    { return nil }
+func (p stubWorkerPool) AvailableSlots() int              { return p.stats.AvailableSlots }
+func (p stubWorkerPool) GetQueueStats() worker.QueueStats { return p.stats }
+func (p stubWorkerPool) SetJobHandler(worker.JobHandler)  {}
+func (p stubWorkerPool) GetMetrics() *worker.Metrics      { return p.metrics }
 
 type stubSDSCatalogRouteHandler struct{}
 

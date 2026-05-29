@@ -115,6 +115,19 @@ func (c httpFeatureComposition) workerPools() []worker.WorkerPool {
 	}
 }
 
+func (c httpFeatureComposition) localTaskHealthProvider() taskrpcapi.LocalStatusProvider {
+	return buildLocalTaskHealthProvider(c.namedWorkerPools())
+}
+
+func (c httpFeatureComposition) namedWorkerPools() map[string]worker.WorkerPool {
+	return map[string]worker.WorkerPool{
+		"product_enrich": c.productPool(),
+		"product_image":  c.imagePool(),
+		"amazon_listing": c.amazonListingPool(),
+		"listing_kit":    c.listingKitPool(),
+	}
+}
+
 func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
 	if c.productModule == nil {
 		return nil
