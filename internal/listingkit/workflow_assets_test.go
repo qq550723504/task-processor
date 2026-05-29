@@ -11,6 +11,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
@@ -972,6 +973,111 @@ func TestRunWorkflowPersistsDeferredPlatformDispatchOutputs(t *testing.T) {
 	}
 	if tasks[0].ExecutionMode != "deferred_stub" || tasks[0].ExecutionStatus != "completed" {
 		t.Fatalf("generation tasks = %+v, want completed deferred dispatch task", tasks)
+	}
+}
+
+func TestRunWorkflowFinalizesSummaryAfterPlatformDispatch(t *testing.T) {
+	t.Parallel()
+
+	assetGenerator := &stubWorkflowAssetGenerator{
+		planResult: &assetgeneration.Result{
+			Tasks: []assetgeneration.Task{{
+				TaskID:          "asset-task-1",
+				ID:              "asset-task-1",
+				Platform:        "amazon",
+				ExecutionStatus: "queued",
+				CanExecute:      true,
+			}},
+		},
+		dispatchResult: &assetgeneration.Result{
+			Tasks: []assetgeneration.Task{{
+				TaskID:          "asset-task-1",
+				ID:              "asset-task-1",
+				Platform:        "amazon",
+				ExecutionMode:   "deferred_stub",
+				ExecutionStatus: "completed",
+			}},
+			Assets: []asset.AssetRecord{{
+				Kind: asset.KindGalleryImage,
+				URL:  "https://cdn.example.com/generated-gallery.jpg",
+			}},
+		},
+	}
+
+	result, _ := runWorkflowWithDeferredDispatchFixture(t, "listingkit-task-summary-finalize", assetGenerator)
+
+	if result.Summary == nil {
+		t.Fatal("expected summary")
+	}
+	if result.Summary.WarningCount < 0 || result.Summary.IssueCount < 0 {
+		t.Fatalf("summary = %+v, want finalized counts", result.Summary)
+	}
+	if result.StandardProductSnapshot == nil {
+		t.Fatalf("standard snapshot = %+v, want preserved snapshot", result.StandardProductSnapshot)
+	}
+	if len(result.PlatformAssetRenderPreviews) == 0 {
+		t.Fatalf("platform asset render previews = %+v, want synced platform previews", result.PlatformAssetRenderPreviews)
+	}
+}
+
+func TestPlatformSummaryPhaseFinalizesReviewAndPreviewState(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{ID: "listingkit-task-summary-phase", Request: &GenerateRequest{Platforms: []string{"shein"}}}
+	final := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{{
+				ID:   "asset-main",
+				Kind: asset.KindMainImage,
+				URL:  "https://cdn.example.com/main.jpg",
+			}},
+		},
+		Shein: &SheinPackage{
+			Inspection: &SheinInspection{
+				NeedsReview: true,
+				Summary:     []string{"manual review"},
+			},
+			ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:     "main",
+					AssetID: "asset-main",
+					URL:     "https://cdn.example.com/main.jpg",
+				},
+			},
+		},
+		Summary: &GenerationSummary{
+			Warnings: []string{"existing warning"},
+		},
+	}
+	snapshot := &StandardProductSnapshot{
+		Summary: &GenerationSummary{
+			Warnings: []string{"snapshot warning"},
+		},
+	}
+
+	result := buildPlatformSummaryPhase().run(task, final, snapshot)
+
+	if result != final {
+		t.Fatalf("result pointer = %p, want %p", result, final)
+	}
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs review", result.Summary)
+	}
+	if !strings.Contains(strings.Join(result.Summary.Warnings, "\n"), "snapshot warning") {
+		t.Fatalf("summary warnings = %#v, want snapshot warnings merged", result.Summary.Warnings)
+	}
+	if !hasWorkflowStageStatus(result.WorkflowStages, "shein_review", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, want completed shein_review", result.WorkflowStages)
+	}
+	if !hasWorkflowIssue(result.WorkflowIssues, "shein_review", WorkflowIssueSeverityReview, "shein_review_required") {
+		t.Fatalf("workflow issues = %+v, want shein review workflow issue", result.WorkflowIssues)
+	}
+	if result.Summary.WarningCount < 0 || result.Summary.ReviewCount == 0 || result.Summary.IssueCount == 0 {
+		t.Fatalf("summary = %+v, want finalized counts", result.Summary)
+	}
+	if len(result.PlatformAssetRenderPreviews) == 0 {
+		t.Fatalf("platform previews = %+v, want synced previews", result.PlatformAssetRenderPreviews)
 	}
 }
 

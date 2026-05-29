@@ -3,8 +3,6 @@ package listingkit
 import (
 	"context"
 
-	"github.com/sirupsen/logrus"
-
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
@@ -31,17 +29,6 @@ func (p *platformFinalizePhase) run(
 	sdsOptions *SDSSyncOptions,
 ) *ListingKitResult {
 	buildPlatformPostprocessPhase(p.service).run(ctx, task, final, sdsOptions)
-	if final.Summary == nil {
-		final.Summary = &GenerationSummary{}
-	}
-	if snapshot != nil && snapshot.Summary != nil {
-		final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, snapshot.Summary.Warnings...))
-	}
-
-	sheinReviewStage := newWorkflowRecorder(final).Start("shein_review", "")
-	applySheinInspectionReviewToSummary(final)
-	addSheinReviewWorkflowIssues(final)
-	sheinReviewStage.Complete()
 	applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)
 	persistedGenerationTasks = buildPlatformAssetDispatchPhase(p.service).run(
 		ctx,
@@ -53,14 +40,5 @@ func (p *platformFinalizePhase) run(
 		persistedGenerationTasks,
 		enableAssetGeneration,
 	)
-
-	newWorkflowRecorder(final).FinalizeSummary()
-	syncAssetRenderPreviews(final)
-	logrus.WithFields(logrus.Fields{
-		"component":     "listingkit/platform_adaptation_finalize",
-		"task_id":       task.ID,
-		"needs_review":  final.Summary != nil && final.Summary.NeedsReview,
-		"warning_count": processWarningCount(final),
-	}).Info("listing kit platform adaptation finalized")
-	return final
+	return buildPlatformSummaryPhase().run(task, final, snapshot)
 }
