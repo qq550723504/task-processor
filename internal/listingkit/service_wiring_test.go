@@ -244,3 +244,53 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		file    string
+		needles []string
+	}{
+		{
+			name: "submit store context",
+			file: "service_submit_store_context.go",
+			needles: []string{
+				"buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)",
+			},
+		},
+		{
+			name: "shein store client",
+			file: "service_shein_store_client.go",
+			needles: []string{
+				"buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)",
+			},
+		},
+		{
+			name: "submit wiring",
+			file: "service_submit_wiring.go",
+			needles: []string{
+				"resolver := buildSubmitRuntimeContextResolver(s)",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, err := os.ReadFile(tc.file)
+			if err != nil {
+				t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+			}
+			content := string(src)
+			for _, needle := range tc.needles {
+				if !strings.Contains(content, needle) {
+					t.Fatalf("%s should contain %q", tc.file, needle)
+				}
+			}
+		})
+	}
+}

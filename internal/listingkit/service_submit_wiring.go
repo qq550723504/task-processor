@@ -18,18 +18,20 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 }
 
 func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {
+	resolver := buildSubmitRuntimeContextResolver(s)
 	return taskSubmissionExecutionServiceConfig{
 		sheinProductAPIBuilder:   s.sheinProductAPIBuilder,
 		sheinImageAPIBuilder:     s.sheinImageAPIBuilder,
 		sheinTranslateAPIBuilder: s.sheinTranslateAPIBuilder,
 		sheinContentOptimizer:    s.sheinContentOptimizer,
 		currentSheinPricingRule:  s.currentSheinPricingRule,
-		resolveSheinStoreID:      s.resolveSheinStoreID,
-		resolveSubmitSettings:    s.resolveSheinSubmitSettings,
+		resolveSheinStoreID:      resolver.resolveStoreID,
+		resolveSubmitSettings:    resolver.resolveSubmitSettings,
 	}
 }
 
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
+	resolver := buildSubmitRuntimeContextResolver(s)
 	return taskTemporalSubmissionAdapterConfig{
 		beginSheinSubmitLease:                s.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTask,
@@ -39,7 +41,7 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		persistSheinSubmitPhase:              s.persistSheinSubmitPhase,
 		prepareSheinSubmitProduct:            s.prepareSheinSubmitProduct,
 		uploadSheinSubmitImages:              s.uploadSheinSubmitImages,
-		resolveSubmitSettings:                s.resolveSheinSubmitSettings,
+		resolveSubmitSettings:                resolver.resolveSubmitSettings,
 		buildSheinSubmitProductAPI:           s.buildSheinSubmitProductAPI,
 		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
 		persistSuccessfulSheinSubmission:     s.persistSuccessfulSheinSubmission,
