@@ -110,7 +110,22 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	sdsCatalogHandler := buildSDSCatalogHandler(logger, deps.cfg)
 
-	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, promptTemplateHandler, listingKitModule.studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandler)
+	handlers := httpModuleHandlers{
+		product:        productModule.handler,
+		image:          imageModule.handler,
+		amazonListing:  amazonListingModule.handler,
+		listingKit:     listingKitModule.handler,
+		promptTemplate: promptTemplateHandler,
+		studioSession:  listingKitModule.studioSessionHandler,
+		sheinLogin:     sheinLoginHandler,
+		sdsLogin:       sdsLoginHandler,
+		taskRPC:        taskRPCHandler,
+		sdsCatalog:     sdsCatalogHandler,
+	}
+	server, routes, err := buildHTTPServerBundleFromHandlers(options.Port, handlers)
+	if err != nil {
+		return nil, err
+	}
 	return &appBootstrap{
 		productHandler:        productModule.handler,
 		imageHandler:          imageModule.handler,

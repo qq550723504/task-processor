@@ -76,6 +76,23 @@ func serveHTTP(logger *logrus.Logger, server *http.Server, routes []routeDescrip
 	return nil
 }
 
+func buildHTTPServerBundleFromHandlers(port int, handlers httpModuleHandlers) (*http.Server, []routeDescriptor, error) {
+	server, routes := buildHTTPServerBundleWithStudio(
+		port,
+		handlers.product,
+		handlers.image,
+		handlers.amazonListing,
+		handlers.listingKit,
+		handlers.promptTemplate,
+		handlers.studioSession,
+		handlers.sheinLogin,
+		handlers.sdsLogin,
+		handlers.taskRPC,
+		handlers.sdsCatalog,
+	)
+	return server, routes, nil
+}
+
 func closeResources(logger *logrus.Logger, closers []func() error) {
 	for _, closeFn := range closers {
 		if closeFn == nil {

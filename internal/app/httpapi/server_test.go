@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
@@ -1962,6 +1963,97 @@ func TestBuildRegisteredRoutesMatchesLegacyRouteDescriptors(t *testing.T) {
 	}
 }
 
+func TestBuildHTTPServerBundleFromHandlersMountsRegisteredRoutes(t *testing.T) {
+	t.Parallel()
+
+	handlers := httpModuleHandlers{
+		product:        &stubProductHandler{},
+		image:          &stubImageHandler{},
+		amazonListing:  &stubAmazonListingHandler{},
+		listingKit:     &stubListingKitHandler{},
+		promptTemplate: &stubPromptTemplateHandler{},
+		studioSession:  &stubStudioSessionHandler{},
+		sheinLogin:     &stubSheinLoginHandler{},
+		sdsLogin:       &stubSDSLoginHandler{},
+		taskRPC:        &stubTaskRPCHandler{},
+		sdsCatalog:     &stubSDSCatalogRouteHandler{},
+	}
+
+	server, routes, err := buildHTTPServerBundleFromHandlers(18080, handlers)
+	if err != nil {
+		t.Fatalf("buildHTTPServerBundleFromHandlers returned error: %v", err)
+	}
+
+	expectedRoutes, err := buildRegisteredRoutes(handlers)
+	if err != nil {
+		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
+	}
+	if got, want := routePaths(routes), routePaths(expectedRoutes); !equalStringSlices(got, want) {
+		t.Fatalf("mounted routes mismatch\n got: %v\nwant: %v", got, want)
+	}
+
+	router, ok := server.Handler.(*gin.Engine)
+	if !ok {
+		t.Fatalf("server handler type = %T, want *gin.Engine", server.Handler)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/sds/categories = %d, want 200", resp.Code)
+	}
+}
+
+func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+
+	bootstrap, err := buildBootstrap(logger, Options{
+		ConfigPath: "../../../config/config-test.yaml",
+		Port:       18080,
+	})
+	if err != nil {
+		t.Fatalf("buildBootstrap returned error: %v", err)
+	}
+	if bootstrap.server == nil {
+		t.Fatal("expected bootstrap server")
+	}
+	if len(bootstrap.routes) == 0 {
+		t.Fatal("expected bootstrap routes")
+	}
+	if !containsRoute(bootstrap.routes, http.MethodGet, "/health") {
+		t.Fatal("expected bootstrap routes to include GET /health")
+	}
+	if !containsRoute(bootstrap.routes, http.MethodGet, "/api/v1/sds/categories") {
+		t.Fatal("expected bootstrap routes to include GET /api/v1/sds/categories")
+	}
+	if containsRoute(bootstrap.routes, http.MethodGet, "/shein-login") {
+		t.Fatal("did not expect legacy shein-login HTML route")
+	}
+
+	router, ok := bootstrap.server.Handler.(*gin.Engine)
+	if !ok {
+		t.Fatalf("server handler type = %T, want *gin.Engine", bootstrap.server.Handler)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /health = %d, want 200", resp.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code == http.StatusNotFound {
+		t.Fatal("expected SDS catalog categories endpoint to be mounted")
+	}
+}
+
 func TestBuildRouteDescriptorsWithSheinPanicsOnMultipleSDSCatalogHandlers(t *testing.T) {
 	t.Parallel()
 
@@ -2026,4 +2118,13 @@ func equalStringSlices(got []string, want []string) bool {
 		}
 	}
 	return true
+}
+
+func containsRoute(routes []routeDescriptor, method string, path string) bool {
+	for _, route := range routes {
+		if route.Method == method && route.Path == path {
+			return true
+		}
+	}
+	return false
 }

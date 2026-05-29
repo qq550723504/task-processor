@@ -51,8 +51,7 @@ func TestSDSCatalogListProductsAppliesLocalFilters(t *testing.T) {
 			}, nil
 		},
 	}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil, newSDSCatalogHandler(stub))
+	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(stub))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products?weightBand=200-500&cycleBand=24-72&page=1&size=12", nil)
 	w := httptest.NewRecorder()
@@ -80,8 +79,7 @@ func TestSDSCatalogCategoriesDeriveLeafCounts(t *testing.T) {
 			}, nil
 		},
 	}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil, newSDSCatalogHandler(stub))
+	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(stub))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories?shipmentArea=US", nil)
 	w := httptest.NewRecorder()
@@ -95,8 +93,7 @@ func TestSDSCatalogCategoriesDeriveLeafCounts(t *testing.T) {
 
 func TestSDSCatalogUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil, newSDSCatalogHandler(nil))
+	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products", nil)
 	w := httptest.NewRecorder()
@@ -112,8 +109,7 @@ func TestSDSCatalogAuthRequiredReturnsUnauthorized(t *testing.T) {
 			return nil, &sdsclient.AuthRequiredError{Op: "GET /products", StatusCode: 400, Message: "用户未登录"}
 		},
 	}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil, newSDSCatalogHandler(stub))
+	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(stub))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products", nil)
 	w := httptest.NewRecorder()
@@ -124,4 +120,12 @@ func TestSDSCatalogAuthRequiredReturnsUnauthorized(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
 	require.Equal(t, "sds_auth_required", payload["error"])
 	require.Contains(t, payload["message"], "SDS 登录状态已失效")
+}
+
+func newSDSCatalogTestRouter(t *testing.T, handler sdsCatalogRouteHandler) *gin.Engine {
+	t.Helper()
+
+	router := gin.New()
+	RegisterRoutes(router, nil, nil, nil, nil, nil, handler)
+	return router
 }
