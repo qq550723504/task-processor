@@ -176,17 +176,15 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		imageWorkDir:  cfg.ProductImage.WorkDir,
 	}
 
-	productModule, err := buildProductModule(logger, deps)
+	features, err := newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
+		includeListingKit: true,
+	})
 	require.NoError(t, err)
-	deps.attachProductModule(productModule)
-	listingKitModule, err := buildListingKitModule(logger, deps)
-	require.NoError(t, err)
-	deps.attachListingKitModule(listingKitModule)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.Pool, listingKitModule.Pool}
+	pools := []worker.WorkerPool{features.productModule.Pool, features.listingKitModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -201,7 +199,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.Handler, nil, nil, listingKitModule.Handler, nil)
+	routerServer := buildHTTPServer(0, features.productModule.Handler, nil, nil, features.listingKitModule.Handler, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")

@@ -99,20 +99,16 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		return &stubE2ESDSSyncService{}, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 
-	productModule, err := buildProductModule(logger, deps)
+	features, err := newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
+		includeImage:      true,
+		includeListingKit: true,
+	})
 	require.NoError(t, err)
-	deps.attachProductModule(productModule)
-	imageModule, err := buildImageModule(logger, deps)
-	require.NoError(t, err)
-	deps.attachImageModule(imageModule)
-	listingKitModule, err := buildListingKitModule(logger, deps)
-	require.NoError(t, err)
-	deps.attachListingKitModule(listingKitModule)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.Pool, imageModule.Pool, listingKitModule.Pool}
+	pools := []worker.WorkerPool{features.productModule.Pool, features.imageModule.Pool, features.listingKitModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -127,7 +123,7 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.Handler, imageModule.Handler, nil, listingKitModule.Handler, nil)
+	routerServer := buildHTTPServer(0, features.productModule.Handler, features.imageModule.Handler, nil, features.listingKitModule.Handler, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
