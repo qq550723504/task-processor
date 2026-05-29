@@ -63,89 +63,14 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 
 	_, sdsOptions := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
 
-	inventory := asset.BuildInventory(task.ID, result.AssetBundle)
-	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, canonicalProduct)
-	baseRecipes := baselineGenerationRecipes()
-	var generationPlan *assetgeneration.Result
-	var persistedGenerationTasks []assetgeneration.Task
-	if inventory != nil {
-		inventoryStage := recorder.Start("asset_inventory", "")
-		if s.assetRepo != nil {
-			if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {
-				appendWarning(result, "asset inventory persistence failed: "+err.Error())
-				inventoryStage.Degrade("asset_inventory_persistence_failed", "Asset inventory persistence failed", err.Error())
-			} else {
-				inventoryStage.Complete()
-			}
-		} else {
-			inventoryStage.Skip()
-		}
-		if enableAssetGeneration && s.assetGenerator != nil && len(baseRecipes) > 0 {
-			stage := recorder.Start("asset_generation_baseline", "")
-			execution, execErr := s.assetGenerator.Execute(ctx, assetgeneration.Request{
-				TaskID:    task.ID,
-				Product:   result.CatalogProduct,
-				Inventory: inventory,
-				Recipes:   append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
-			})
-			if execErr != nil {
-				stage.Degrade("asset_generation_baseline_execute_failed", "Baseline asset generation failed", execErr.Error())
-			} else {
-				stage.Complete()
-			}
-			if execution != nil && len(execution.Assets) > 0 {
-				inventory.Records = append(inventory.Records, execution.Assets...)
-				inventory.Summary = rebuildInventorySummary(inventory)
-				result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, execution.Assets)
-				if s.assetRepo != nil {
-					_ = s.assetRepo.SaveInventory(ctx, inventory)
-				}
-			}
-		}
-		if enableAssetGeneration && s.assetGenerator != nil && s.assetRecipeResolver != nil {
-			stage := recorder.Start("asset_generation_platform", "")
-			var planErr error
-			generationPlan, planErr = s.assetGenerator.Plan(ctx, assetgeneration.Request{
-				TaskID:    task.ID,
-				Product:   result.CatalogProduct,
-				Inventory: inventory,
-				Recipes:   flattenRecipes(recipesByPlatform),
-			})
-			if planErr != nil {
-				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
-			}
-			if generationPlan != nil && len(generationPlan.Tasks) > 0 {
-				dispatchResult, dispatchErr := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
-					TaskID:    task.ID,
-					Product:   result.CatalogProduct,
-					Inventory: inventory,
-					Tasks:     generationPlan.Tasks,
-				})
-				if dispatchErr != nil {
-					stage.Degrade("asset_generation_platform_dispatch_failed", "Platform asset generation dispatch failed", dispatchErr.Error())
-				}
-				if dispatchResult != nil {
-					generationPlan.Tasks = cloneGenerationTasks(dispatchResult.Tasks)
-					persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
-					if len(dispatchResult.Assets) > 0 {
-						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
-						inventory.Summary = rebuildInventorySummary(inventory)
-						result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, dispatchResult.Assets)
-						if s.assetRepo != nil {
-							_ = s.assetRepo.SaveInventory(ctx, inventory)
-						}
-					}
-				}
-			}
-			if stage.IsRunning() {
-				stage.Complete()
-			}
-		}
-		result.AssetInventorySummary = inventory.Summary
-		if result.AssetInventorySummary != nil {
-			result.AssetInventorySummary.RecipeCount = len(baseRecipes) + len(flattenRecipes(recipesByPlatform))
-		}
-	}
+	inventory, recipesByPlatform, generationPlan, persistedGenerationTasks := buildStandardWorkflowAssetPhase(s).run(
+		ctx,
+		task,
+		result,
+		canonicalProduct,
+		recorder,
+		enableAssetGeneration,
+	)
 
 	snapshot := buildStandardProductSnapshot(result)
 	result.StandardProductSnapshot = snapshot
