@@ -54,24 +54,7 @@ func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissi
 	if s.taskTemporalSubmissionAdapter != nil {
 		return s.taskTemporalSubmissionAdapter
 	}
-	s.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(taskTemporalSubmissionAdapterConfig{
-		beginSheinSubmitLease:                s.beginSheinSubmitLease,
-		loadSheinPublishTask:                 s.loadSheinPublishTask,
-		normalizeSheinSubmitPackage:          s.normalizeSheinSubmitPackage,
-		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
-		saveTaskResult:                       s.repo.SaveTaskResult,
-		persistSheinSubmitPhase:              s.persistSheinSubmitPhase,
-		prepareSheinSubmitProduct:            s.prepareSheinSubmitProduct,
-		uploadSheinSubmitImages:              s.uploadSheinSubmitImages,
-		resolveSubmitSettings:                s.resolveSheinSubmitSettings,
-		buildSheinSubmitProductAPI:           s.buildSheinSubmitProductAPI,
-		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
-		persistSuccessfulSheinSubmission:     s.persistSuccessfulSheinSubmission,
-		recordSheinSubmissionFailureForState: s.recordSheinSubmissionFailureForState,
-		refreshSheinSubmitRemoteStatus:       s.refreshSheinSubmitRemoteStatus,
-		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
-		getTaskPreview:                       s.GetTaskPreview,
-	})
+	s.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(buildTaskTemporalSubmissionAdapterConfig(s))
 	return s.taskTemporalSubmissionAdapter
 }
 

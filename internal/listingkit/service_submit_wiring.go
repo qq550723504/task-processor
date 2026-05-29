@@ -1,0 +1,51 @@
+package listingkit
+
+func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
+	return taskSubmissionServiceConfig{
+		repo: s.repo,
+		lockSubmit: func(key string) func() {
+			return s.sheinSubmitLocks.lock(key)
+		},
+		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,
+		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
+		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
+		submitSheinTaskDirect:           s.submitSheinTaskDirect,
+		buildTaskPreview:                s.buildTaskPreview,
+		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		mutateTaskResult:                s.mutateTaskResult,
+		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
+	}
+}
+
+func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {
+	return taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder:   s.sheinProductAPIBuilder,
+		sheinImageAPIBuilder:     s.sheinImageAPIBuilder,
+		sheinTranslateAPIBuilder: s.sheinTranslateAPIBuilder,
+		sheinContentOptimizer:    s.sheinContentOptimizer,
+		currentSheinPricingRule:  s.currentSheinPricingRule,
+		resolveSheinStoreID:      s.resolveSheinStoreID,
+		resolveSubmitSettings:    s.resolveSheinSubmitSettings,
+	}
+}
+
+func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
+	return taskTemporalSubmissionAdapterConfig{
+		beginSheinSubmitLease:                s.beginSheinSubmitLease,
+		loadSheinPublishTask:                 s.loadSheinPublishTask,
+		normalizeSheinSubmitPackage:          s.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
+		saveTaskResult:                       s.repo.SaveTaskResult,
+		persistSheinSubmitPhase:              s.persistSheinSubmitPhase,
+		prepareSheinSubmitProduct:            s.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:              s.uploadSheinSubmitImages,
+		resolveSubmitSettings:                s.resolveSheinSubmitSettings,
+		buildSheinSubmitProductAPI:           s.buildSheinSubmitProductAPI,
+		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
+		persistSuccessfulSheinSubmission:     s.persistSuccessfulSheinSubmission,
+		recordSheinSubmissionFailureForState: s.recordSheinSubmissionFailureForState,
+		refreshSheinSubmitRemoteStatus:       s.refreshSheinSubmitRemoteStatus,
+		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
+		getTaskPreview:                       s.GetTaskPreview,
+	}
+}

@@ -91,20 +91,7 @@ func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
 	if s.sheinSubmitLocks == nil {
 		s.sheinSubmitLocks = newSubmitLockManager()
 	}
-	s.taskSubmission = newTaskSubmissionService(taskSubmissionServiceConfig{
-		repo: s.repo,
-		lockSubmit: func(key string) func() {
-			return s.sheinSubmitLocks.lock(key)
-		},
-		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,
-		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
-		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
-		submitSheinTaskDirect:           s.submitSheinTaskDirect,
-		buildTaskPreview:                s.buildTaskPreview,
-		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
-		mutateTaskResult:                s.mutateTaskResult,
-		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
-	})
+	s.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
 	return s.taskSubmission
 }
 
@@ -112,15 +99,7 @@ func (s *service) taskSubmissionExecutionOrDefault() *taskSubmissionExecutionSer
 	if s.taskSubmissionExecution != nil {
 		return s.taskSubmissionExecution
 	}
-	s.taskSubmissionExecution = newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
-		sheinProductAPIBuilder:   s.sheinProductAPIBuilder,
-		sheinImageAPIBuilder:     s.sheinImageAPIBuilder,
-		sheinTranslateAPIBuilder: s.sheinTranslateAPIBuilder,
-		sheinContentOptimizer:    s.sheinContentOptimizer,
-		currentSheinPricingRule:  s.currentSheinPricingRule,
-		resolveSheinStoreID:      s.resolveSheinStoreID,
-		resolveSubmitSettings:    s.resolveSheinSubmitSettings,
-	})
+	s.taskSubmissionExecution = newTaskSubmissionExecutionService(buildTaskSubmissionExecutionServiceConfig(s))
 	return s.taskSubmissionExecution
 }
 
