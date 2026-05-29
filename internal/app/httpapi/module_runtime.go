@@ -15,6 +15,9 @@ func buildRegisteredRoutesForModules(cfg *config.Config, modules []kernelmodule.
 	reg := kernelmodule.NewRegistry()
 
 	for _, module := range modules {
+		if module == nil {
+			continue
+		}
 		if !module.Enabled(cfg) {
 			continue
 		}

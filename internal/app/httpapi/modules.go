@@ -122,24 +122,28 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
 	sdsCatalogHandler := sdsModule.Handler
 
-	handlers := httpModuleHandlers{
-		product:          productModule.Handler,
-		image:            imageModule.Handler,
-		amazonListing:    amazonListingModule.Handler,
-		listingKit:       listingKitModule.Handler,
-		promptTemplate:   promptTemplateHandler,
-		promptModule:     promptModule.Module,
-		studioSession:    listingKitModule.StudioSessionHandler,
-		sheinLogin:       sheinLoginHandler,
-		sheinLoginModule: sheinLoginModule,
-		sdsLogin:         sdsLoginHandler,
-		sdsLoginModule:   sdsLoginModule,
-		taskRPC:          taskRPCHandler,
-		taskRPCModule:    taskRPCModule,
-		sdsCatalog:       sdsCatalogHandler,
-		sdsModule:        sdsModule.Module,
+	modules := []kernelmodule.Module{
+		newCoreHTTPModule(),
+		newProductHTTPModule(httpModuleHandlers{
+			product: productModule.Handler,
+			image:   imageModule.Handler,
+		}),
+		newAmazonListingHTTPModule(httpModuleHandlers{
+			amazonListing: amazonListingModule.Handler,
+		}),
+		newListingKitHTTPModule(httpModuleHandlers{
+			listingKit: listingKitModule.Handler,
+		}),
+		promptModule.Module,
+		newListingKitStudioHTTPModule(httpModuleHandlers{
+			studioSession: listingKitModule.StudioSessionHandler,
+		}),
+		sdsModule.Module,
+		taskRPCModule,
+		sheinLoginModule,
+		sdsLoginModule,
 	}
-	server, routes, err := buildHTTPServerBundleFromHandlers(options.Port, deps.cfg, handlers)
+	server, routes, err := buildHTTPServerBundleFromModules(options.Port, deps.cfg, modules)
 	if err != nil {
 		return nil, err
 	}

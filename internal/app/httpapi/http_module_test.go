@@ -399,6 +399,38 @@ func TestBuildHTTPServerBundleFromModulesSkipsDisabledModules(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, resp.Code)
 }
 
+func TestBuildHTTPServerBundleFromModulesSkipsNilModules(t *testing.T) {
+	t.Parallel()
+
+	server, routes, err := buildHTTPServerBundleFromModules(18080, &config.Config{}, []kernelmodule.Module{
+		nil,
+		httpModule{
+			name: "enabled",
+			register: func(reg *kernelmodule.Registry) error {
+				reg.AddRoutes(routeDescriptor{
+					Method: http.MethodGet,
+					Path:   "/enabled",
+					Module: "enabled",
+					Handler: func(c *gin.Context) {
+						c.Status(http.StatusOK)
+					},
+				})
+				return nil
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"GET /enabled"}, routeKeys(routes))
+
+	router, ok := server.Handler.(*gin.Engine)
+	require.True(t, ok)
+
+	req := httptest.NewRequest(http.MethodGet, "/enabled", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+}
+
 type stubSDSCatalogRouteHandler struct{}
 
 func (stubSDSCatalogRouteHandler) ListSDSProducts(*gin.Context)      {}
