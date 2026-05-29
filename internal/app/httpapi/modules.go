@@ -13,9 +13,7 @@ import (
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimage "task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
-	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdsclient "task-processor/internal/sds/client"
-	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinclient "task-processor/internal/shein/client"
@@ -51,59 +49,10 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	}
 	sheinclient.ConfigureLoginAccountFromConfig(deps.cfg)
 
-	productModule, err := buildProductModule(logger, deps)
+	composition, err := newHTTPFeatureCompositionBuilder().build(logger, deps)
 	if err != nil {
 		return nil, err
 	}
-
-	imageModule, err := buildImageModule(logger, deps)
-	if err != nil {
-		return nil, err
-	}
-
-	amazonListingModule, err := buildAmazonListingModule(logger, deps)
-	if err != nil {
-		return nil, err
-	}
-
-	sheinLoginResult, sheinLoginCloser, err := buildSheinLoginModuleResult(deps)
-	if err != nil {
-		return nil, err
-	}
-	if sheinLoginCloser != nil {
-		deps.closers = append(deps.closers, sheinLoginCloser)
-	}
-	sdsLoginResult, sdsLoginCloser, err := buildSDSLoginModuleResult(deps)
-	if err != nil {
-		return nil, err
-	}
-	if sdsLoginCloser != nil {
-		deps.closers = append(deps.closers, sdsLoginCloser)
-	}
-	listingKitModule, err := buildListingKitModule(logger, deps)
-	if err != nil {
-		return nil, err
-	}
-	promptModule := promptmgmtapi.BuildModule(deps.tenantPromptStore)
-
-	composition := httpFeatureComposition{
-		productModule:       productModule,
-		imageModule:         imageModule,
-		amazonListingModule: amazonListingModule,
-		listingKitModule:    listingKitModule,
-		promptModule:        promptModule,
-		sheinLoginResult:    sheinLoginResult,
-		sdsLoginResult:      sdsLoginResult,
-	}
-
-	taskRPCResult, err := taskrpcapi.BuildModule(deps.managementClient(), composition.localTaskHealthProvider())
-	if err != nil {
-		return nil, err
-	}
-	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
-
-	composition.sdsModule = sdsModule
-	composition.taskRPCResult = taskRPCResult
 
 	server, routes, err := buildHTTPServerBundleFromModules(options.Port, deps.cfg, composition.routeModules())
 	if err != nil {
@@ -184,7 +133,7 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productenric
 		return nil, err
 	}
 
-	deps.closers = append(deps.closers, module.Closers...)
+	deps.addClosers(module.Closers...)
 	deps.productService = module.Service
 
 	return module, nil
@@ -204,7 +153,7 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*productimageht
 		return nil, err
 	}
 
-	deps.closers = append(deps.closers, module.Closers...)
+	deps.addClosers(module.Closers...)
 	deps.imageService = module.Service
 	deps.imageSubjectExtractor = module.SubjectExtractor
 	deps.imageWhiteBgRenderer = module.WhiteBackgroundRender
@@ -224,7 +173,7 @@ func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazon
 		return nil, err
 	}
 
-	deps.closers = append(deps.closers, module.Closers...)
+	deps.addClosers(module.Closers...)
 	return module, nil
 }
 
@@ -233,7 +182,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingki
 	if err != nil {
 		return nil, err
 	}
-	deps.closers = append(deps.closers, module.Closers...)
+	deps.addClosers(module.Closers...)
 	return module, nil
 }
 

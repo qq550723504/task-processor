@@ -126,6 +126,18 @@ func (d *runtimeDeps) ensureListingKitSupport() *listingKitSupport {
 	return d.listingKitSupport
 }
 
+func (d *runtimeDeps) addClosers(closers ...func() error) {
+	if d == nil {
+		return
+	}
+	for _, closer := range closers {
+		if closer == nil {
+			continue
+		}
+		d.closers = append(d.closers, closer)
+	}
+}
+
 func resolveImageWorkDir(cfg *config.Config) string {
 	if cfg == nil {
 		return filepath.Join(".", "tmp", "productimage")
