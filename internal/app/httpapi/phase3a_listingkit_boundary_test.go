@@ -14,6 +14,9 @@ func TestListingKitSupportFileKeepsFeatureOwnedServiceBundlesOutOfAppLayer(t *te
 	require.NoError(t, err)
 	require.NotContains(t, string(src), "newListingKitBuildServiceRepositories")
 	require.NotContains(t, string(src), "newListingKitBuildServiceHooks")
+	require.NotContains(t, string(src), "BuildServiceRepositories{")
+	require.NotContains(t, string(src), "BuildServiceHooks{")
+	require.Contains(t, string(src), "RuntimeSupportInput{")
 	require.Contains(t, string(src), "BuildRuntimeSupport")
 }
 

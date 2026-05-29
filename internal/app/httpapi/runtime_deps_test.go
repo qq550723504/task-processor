@@ -8,8 +8,16 @@ import (
 
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/listingkit"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	sdsadapter "task-processor/internal/sds/adapter"
+	sdsclient "task-processor/internal/sds/client"
+	sdsdesign "task-processor/internal/sds/design"
+	sdstemplate "task-processor/internal/sds/template"
+	sdsusecase "task-processor/internal/sds/usecase"
+	sdsworkflow "task-processor/internal/sds/workflow"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
@@ -108,18 +116,41 @@ func TestRuntimeDepsAttachBuiltFeatureModulesOnlyMutatesFeatureState(t *testing.
 func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupport(t *testing.T) {
 	logger := logrus.New()
 	statusProvider := stubCompositionSDSStatusProvider{}
+	syncService := stubRuntimeDepsSDSSyncService{}
 	deps := &runtimeDeps{
-		shared:   &sharedRuntimeDeps{},
-		features: &featureRuntimeState{sdsLoginStatusProvider: statusProvider},
+		shared: &sharedRuntimeDeps{},
+		features: &featureRuntimeState{
+			sdsLoginStatusProvider: statusProvider,
+			imageService:           stubRuntimeDepsImageService{},
+		},
+	}
+	previousFactory := newSDSSyncServiceForHTTPAPI
+	t.Cleanup(func() {
+		newSDSSyncServiceForHTTPAPI = previousFactory
+	})
+	newSDSSyncServiceForHTTPAPI = func(productimage.Service, *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+		return syncService, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 
 	input := newListingKitRuntimeBuildInput(logger, deps)
 
+	if input.Runtime.SDSSyncService != nil {
+		t.Fatal("expected legacy runtime SDS sync service to remain unset")
+	}
 	if input.Runtime.SDSLoginStatusProvider != nil {
 		t.Fatal("expected legacy runtime SDS login status provider to remain unset")
 	}
+	if input.Runtime.SDSBaselineRemoteProvider != nil {
+		t.Fatal("expected legacy runtime SDS baseline remote provider to remain unset")
+	}
+	if input.Runtime.Support.SDSSyncService != syncService {
+		t.Fatal("expected SDS sync service to be routed through runtime support")
+	}
 	if input.Runtime.Support.SDSLoginStatusProvider != statusProvider {
 		t.Fatal("expected SDS login status provider to be routed through runtime support")
+	}
+	if input.Runtime.Support.SDSBaselineRemoteProvider == nil {
+		t.Fatal("expected SDS baseline remote provider to be routed through runtime support")
 	}
 }
 
@@ -180,4 +211,60 @@ type stubStatusProvider func(context.Context) (*sdslogin.Status, error)
 
 func (f stubStatusProvider) Status(ctx context.Context) (*sdslogin.Status, error) {
 	return f(ctx)
+}
+
+var _ productimage.Service = stubRuntimeDepsImageService{}
+var _ sdsusecase.Service = stubRuntimeDepsSDSSyncService{}
+var _ listingkit.SDSBaselineRemoteProvider = stubRuntimeDepsSDSBaselineProvider{}
+
+type stubRuntimeDepsImageService struct{}
+
+func (stubRuntimeDepsImageService) CreateProcessTask(context.Context, *productimage.ImageProcessRequest) (*productimage.Task, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsImageService) GetTaskResult(context.Context, string) (*productimage.TaskResult, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsImageService) ReviewTask(context.Context, string, *productimage.ReviewTaskRequest) (*productimage.TaskResult, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsImageService) ProcessImages(context.Context, *productimage.Task) (*productimage.ImageProcessResult, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsImageService) SetTaskSubmitter(productimage.TaskSubmitter) {}
+
+type stubRuntimeDepsSDSSyncService struct{}
+
+func (stubRuntimeDepsSDSSyncService) SyncFromRemoteImage(context.Context, sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsSDSSyncService) SyncFromLocalFile(context.Context, sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsSDSSyncService) SyncFromImageResult(context.Context, sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsSDSSyncService) SyncFromImageRequest(context.Context, sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
+	return nil, nil
+}
+
+type stubRuntimeDepsSDSBaselineProvider struct{}
+
+func (stubRuntimeDepsSDSBaselineProvider) GetProductDetail(context.Context, int64) (*sdstemplate.ProductDetail, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsSDSBaselineProvider) GetDesignProduct(context.Context, int64) (*sdsdesign.DesignProductPage, error) {
+	return nil, nil
+}
+
+func (stubRuntimeDepsSDSBaselineProvider) GetPrototypeGroups(context.Context, int64) ([]sdsdesign.PrototypeGroup, error) {
+	return nil, nil
 }
