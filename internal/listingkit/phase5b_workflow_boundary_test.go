@@ -65,6 +65,9 @@ func TestWorkflowPlatformAdaptationFileDelegatesFinalizationToPhaseSeam(t *testi
 		"attachPlatformImageBundles(",
 		"s.assetGenerator.Dispatch(",
 		"decorateListingKitResultGeneration(",
+		"buildPlatformPostprocessPhase(",
+		"buildPlatformAssetDispatchPhase(",
+		"buildPlatformSummaryPhase(",
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_adaptation.go should not contain %q", needle)
