@@ -32,6 +32,9 @@ func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
 		newProductHTTPModule(handlers),
 		newAmazonListingHTTPModule(handlers),
 		newListingKitHTTPModule(handlers),
-		newOpsHTTPModule(handlers),
+		newSDSCatalogHTTPModule(handlers),
+		newTaskRPCHTTPModule(handlers),
+		newSheinLoginHTTPModule(handlers),
+		newSDSLoginHTTPModule(handlers),
 	}
 }

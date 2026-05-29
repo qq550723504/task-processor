@@ -33,23 +33,18 @@ func newListingKitHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
 	return listingkithttpapi.NewHTTPModule(handlers.listingKit, handlers.promptTemplate, handlers.studioSession)
 }
 
-func newOpsHTTPModule(handlers httpModuleHandlers) httpModule {
-	return httpModule{
-		name: "ops",
-		register: func(reg *kernelmodule.Registry) error {
-			if err := sdshttpapi.NewHTTPModule(handlers.sdsCatalog).Register(reg); err != nil {
-				return err
-			}
-			for _, module := range []kernelmodule.Module{
-				taskrpcapi.NewHTTPModule(handlers.taskRPC),
-				sheinlogin.NewHTTPModule(handlers.sheinLogin),
-				sdslogin.NewHTTPModule(handlers.sdsLogin),
-			} {
-				if err := module.Register(reg); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-	}
+func newSDSCatalogHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return sdshttpapi.NewHTTPModule(handlers.sdsCatalog)
+}
+
+func newTaskRPCHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return taskrpcapi.NewHTTPModule(handlers.taskRPC)
+}
+
+func newSheinLoginHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return sheinlogin.NewHTTPModule(handlers.sheinLogin)
+}
+
+func newSDSLoginHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return sdslogin.NewHTTPModule(handlers.sdsLogin)
 }

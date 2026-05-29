@@ -28,16 +28,13 @@ func TestCoreHTTPModuleRegistersHealthRoute(t *testing.T) {
 	require.Equal(t, "system", routes[0].Module)
 }
 
-func TestOpsHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
+func TestSDSCatalogHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 	t.Parallel()
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newOpsHTTPModule(httpModuleHandlers{
+	err := newSDSCatalogHTTPModule(httpModuleHandlers{
 		sdsCatalog: &stubSDSCatalogRouteHandler{},
-		taskRPC:    &stubTaskRPCHandler{},
-		sheinLogin: &stubSheinLoginHandler{},
-		sdsLogin:   &stubSDSLoginHandler{},
 	}).Register(reg)
 	require.NoError(t, err)
 
@@ -46,11 +43,39 @@ func TestOpsHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 		"GET /api/v1/sds/products/:product_id",
 		"GET /api/v1/sds/categories",
 		"GET /api/v1/sds/shipment-areas",
+	}, routeKeys(reg.Routes()))
+}
+
+func TestTaskRPCHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	err := newTaskRPCHTTPModule(httpModuleHandlers{
+		taskRPC: &stubTaskRPCHandler{},
+	}).Register(reg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
 		"GET /api/v1/management/tasks/health",
 		"GET /api/v1/management/tasks/:task_id/status",
 		"POST /api/v1/management/tasks/:task_id/retry",
 		"POST /api/v1/management/tasks/:task_id/cancel",
 		"GET /api/v1/management/tasks/queue-stats",
+	}, routeKeys(reg.Routes()))
+}
+
+func TestSheinLoginHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	err := newSheinLoginHTTPModule(httpModuleHandlers{
+		sheinLogin: &stubSheinLoginHandler{},
+	}).Register(reg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
 		"GET /api/v1/shein-login/health",
 		"GET /api/v1/shein-login/accounts",
 		"POST /api/v1/shein-login/accounts/:store_id/login",
@@ -61,6 +86,20 @@ func TestOpsHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 		"DELETE /api/v1/shein-login/accounts/:store_id/cookie",
 		"GET /api/v1/shein-login/accounts/:store_id/last-failure",
 		"DELETE /api/v1/shein-login/accounts/:store_id/last-failure",
+	}, routeKeys(reg.Routes()))
+}
+
+func TestSDSLoginHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	err := newSDSLoginHTTPModule(httpModuleHandlers{
+		sdsLogin: &stubSDSLoginHandler{},
+	}).Register(reg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
 		"GET /api/v1/sds-login/health",
 		"GET /api/v1/sds-login/status",
 		"POST /api/v1/sds-login/login",
