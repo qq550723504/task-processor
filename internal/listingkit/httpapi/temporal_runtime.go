@@ -3,11 +3,14 @@ package httpapi
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	appruntime "task-processor/internal/app/runtime"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
 type TemporalRuntimeBuildInput struct {
+	Logger       *logrus.Logger
+	Runtime      RuntimeDependencies
 	ServiceInput BuildServiceInput
 }
 
@@ -18,7 +21,12 @@ type TemporalRuntimeResult struct {
 }
 
 func BuildTemporalRuntime(input TemporalRuntimeBuildInput) (*TemporalRuntimeResult, error) {
-	bundle, err := BuildService(input.ServiceInput)
+	serviceInput := input.ServiceInput
+	if serviceInput.Config == nil {
+		serviceInput = buildRuntimeServiceInput(input.Logger, input.Runtime)
+	}
+
+	bundle, err := BuildService(serviceInput)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +38,7 @@ func BuildTemporalRuntime(input TemporalRuntimeBuildInput) (*TemporalRuntimeResu
 		Module: buildTemporalModule(temporalModuleInput{
 			Service: bundle.runtime.service,
 			Starter: func() (func() error, error) {
-				return appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, input.ServiceInput.Logger)
+				return appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, serviceInput.Logger)
 			},
 		}),
 		WorkerService: bundle.TemporalWorkerService,

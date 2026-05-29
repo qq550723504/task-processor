@@ -26,6 +26,7 @@ type RuntimeDependencies struct {
 	ImageWhiteBackgroundRender         productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer                 productimage.SceneRenderer
 	AICredentialStore                  aiCredentialStore
+	Support                            RuntimeSupport
 	Repositories                       BuildServiceRepositories
 	Hooks                              BuildServiceHooks
 	ShouldStartTemporalWorkerInProcess bool
@@ -33,21 +34,40 @@ type RuntimeDependencies struct {
 
 func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 	return BuildModule(BuildModuleInput{
-		ServiceInput: BuildServiceInput{
-			Config:                     input.Runtime.Config,
-			Logger:                     input.Logger,
-			ProductService:             input.Runtime.ProductService,
-			ImageService:               input.Runtime.ImageService,
-			SDSSyncService:             input.Runtime.SDSSyncService,
-			SDSLoginStatusProvider:     input.Runtime.SDSLoginStatusProvider,
-			SDSBaselineRemoteProvider:  input.Runtime.SDSBaselineRemoteProvider,
-			ImageSubjectExtractor:      input.Runtime.ImageSubjectExtractor,
-			ImageWhiteBackgroundRender: input.Runtime.ImageWhiteBackgroundRender,
-			ImageSceneRenderer:         input.Runtime.ImageSceneRenderer,
-			AICredentialStore:          input.Runtime.AICredentialStore,
-			Repositories:               input.Runtime.Repositories,
-			Hooks:                      input.Runtime.Hooks,
-		},
+		ServiceInput:                       buildRuntimeServiceInput(input.Logger, input.Runtime),
 		ShouldStartTemporalWorkerInProcess: input.Runtime.ShouldStartTemporalWorkerInProcess,
 	})
+}
+
+func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies) BuildServiceInput {
+	support := resolveRuntimeSupport(runtime)
+	return BuildServiceInput{
+		Config:                     runtime.Config,
+		Logger:                     logger,
+		ProductService:             runtime.ProductService,
+		ImageService:               runtime.ImageService,
+		SDSSyncService:             runtime.SDSSyncService,
+		SDSLoginStatusProvider:     runtime.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider:  runtime.SDSBaselineRemoteProvider,
+		ImageSubjectExtractor:      runtime.ImageSubjectExtractor,
+		ImageWhiteBackgroundRender: runtime.ImageWhiteBackgroundRender,
+		ImageSceneRenderer:         runtime.ImageSceneRenderer,
+		AICredentialStore:          runtime.AICredentialStore,
+		Repositories:               support.Repositories,
+		Hooks:                      support.Hooks,
+	}
+}
+
+func resolveRuntimeSupport(runtime RuntimeDependencies) RuntimeSupport {
+	if hasRuntimeSupport(runtime.Support) {
+		return runtime.Support
+	}
+	return RuntimeSupport{
+		Repositories: runtime.Repositories,
+		Hooks:        runtime.Hooks,
+	}
+}
+
+func hasRuntimeSupport(support RuntimeSupport) bool {
+	return support.Repositories.Core.Task != nil || support.Hooks.ConfigureAuthorization != nil
 }
