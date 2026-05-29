@@ -42,7 +42,10 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := logrus.New()
-			deps := &runtimeDeps{}
+			deps := &runtimeDeps{
+				shared:   &sharedRuntimeDeps{},
+				features: &featureRuntimeState{},
+			}
 			order := make([]string, 0, 3)
 			productService := &stubCompositionProductService{}
 			imageService := &stubCompositionImageService{}
@@ -57,7 +60,7 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 				},
 				buildImage: func(*logrus.Logger, *runtimeDeps) (*productimagehttpapi.Module, error) {
 					order = append(order, "image")
-					require.Equal(t, productService, deps.productService)
+					require.Equal(t, productService, deps.features.productService)
 					return &productimagehttpapi.Module{
 						Service: imageService,
 						Pool:    stubWorkerPool{},
@@ -65,7 +68,7 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 				},
 				buildListingKit: func(*logrus.Logger, *runtimeDeps) (*listingkithttpapi.Module, error) {
 					order = append(order, "listingkit")
-					require.Equal(t, productService, deps.productService)
+					require.Equal(t, productService, deps.features.productService)
 					return &listingkithttpapi.Module{
 						Pool: stubWorkerPool{},
 					}, nil

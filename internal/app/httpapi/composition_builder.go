@@ -88,14 +88,14 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	}
 	deps.attachListingKitModule(listingKitModule)
 	composition.listingKitModule = listingKitModule
-	composition.promptModule = b.buildPrompt(deps.tenantPromptStore)
+	composition.promptModule = b.buildPrompt(deps.shared.tenantPromptStore)
 
 	taskRPCResult, err := b.buildTaskRPC(deps.managementClient(), composition.localTaskHealthProvider())
 	if err != nil {
 		return composition, err
 	}
 	composition.taskRPCResult = taskRPCResult
-	composition.sdsModule = b.buildSDS(logger, deps.cfg)
+	composition.sdsModule = b.buildSDS(logger, deps.shared.cfg)
 
 	return composition, nil
 }

@@ -28,7 +28,10 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	t.Parallel()
 
 	logger := logrus.New()
-	deps := &runtimeDeps{}
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{},
+		features: &featureRuntimeState{},
+	}
 	order := make([]string, 0, 9)
 	sheinClosed := false
 	sdsClosed := false
@@ -59,8 +62,8 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 		},
 		buildAmazonListing: func(*logrus.Logger, *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
 			order = append(order, "amazon")
-			require.Equal(t, productService, deps.productService)
-			require.Equal(t, imageService, deps.imageService)
+			require.Equal(t, productService, deps.features.productService)
+			require.Equal(t, imageService, deps.features.imageService)
 			return &amazonlistinghttpapi.Module{}, nil
 		},
 		buildSheinLogin: func(*runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error) {
@@ -79,10 +82,10 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 		},
 		buildListingKit: func(*logrus.Logger, *runtimeDeps) (*listingkithttpapi.Module, error) {
 			order = append(order, "listingkit")
-			require.Equal(t, statusProvider, deps.sdsLoginStatusProvider)
-			require.Equal(t, subjectExtractor, deps.imageSubjectExtractor)
-			require.Equal(t, whiteBgRenderer, deps.imageWhiteBgRenderer)
-			require.Equal(t, sceneRenderer, deps.imageSceneRenderer)
+			require.Equal(t, statusProvider, deps.features.sdsLoginStatusProvider)
+			require.Equal(t, subjectExtractor, deps.features.imageSubjectExtractor)
+			require.Equal(t, whiteBgRenderer, deps.features.imageWhiteBgRenderer)
+			require.Equal(t, sceneRenderer, deps.features.imageSceneRenderer)
 			return &listingkithttpapi.Module{
 				Pool: stubWorkerPool{},
 			}, nil
@@ -128,9 +131,9 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 		"taskrpc",
 		"sds",
 	}, order)
-	require.Len(t, deps.closers, 2)
-	require.NoError(t, deps.closers[0]())
-	require.NoError(t, deps.closers[1]())
+	require.Len(t, deps.shared.closers, 2)
+	require.NoError(t, deps.shared.closers[0]())
+	require.NoError(t, deps.shared.closers[1]())
 	require.True(t, sheinClosed)
 	require.True(t, sdsClosed)
 }

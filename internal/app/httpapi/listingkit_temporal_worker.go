@@ -20,9 +20,9 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 	if err != nil {
 		return fmt.Errorf("build runtime deps: %w", err)
 	}
-	defer closeResources(logger, deps.closers)
+	defer closeResources(logger, deps.shared.closers)
 
-	sheinclient.ConfigureLoginAccountFromConfig(deps.cfg)
+	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
 
 	_, err = newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
 		includeImage: true,
@@ -35,7 +35,7 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 	if err != nil {
 		return fmt.Errorf("build listing kit service: %w", err)
 	}
-	deps.closers = append(deps.closers, bundle.Closers...)
+	deps.addClosers(bundle.Closers...)
 
 	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, logger)
 	if err != nil {

@@ -37,16 +37,24 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg                    *config.Config
-	closers                []func() error
-	openaiMgr              *openaiclient.Manager
-	aiCredentialStore      *openaiclient.GormCredentialResolver
-	tenantPromptStore      prompt.TenantPromptStore
-	llmMgr                 productenrich.LLMManager
-	inputParser            productenrich.InputParser
-	understanding          productenrich.ProductUnderstanding
-	imageWorkDir           string
-	shared                 *appbootstrap.SharedResources
+	shared   *sharedRuntimeDeps
+	features *featureRuntimeState
+}
+
+type sharedRuntimeDeps struct {
+	cfg               *config.Config
+	closers           []func() error
+	openaiMgr         *openaiclient.Manager
+	aiCredentialStore *openaiclient.GormCredentialResolver
+	tenantPromptStore prompt.TenantPromptStore
+	llmMgr            productenrich.LLMManager
+	inputParser       productenrich.InputParser
+	understanding     productenrich.ProductUnderstanding
+	imageWorkDir      string
+	sharedResources   *appbootstrap.SharedResources
+}
+
+type featureRuntimeState struct {
 	productService         productenrich.ProductService
 	imageService           productimage.Service
 	sdsLoginStatusProvider listingkit.SDSLoginStatusProvider

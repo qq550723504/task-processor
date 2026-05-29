@@ -84,11 +84,14 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &runtimeDeps{
-		cfg:           cfg,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: understanding,
-		imageWorkDir:  cfg.ProductImage.WorkDir,
+		shared: &sharedRuntimeDeps{
+			cfg:           cfg,
+			llmMgr:        llmMgr,
+			inputParser:   inputParser,
+			understanding: understanding,
+			imageWorkDir:  cfg.ProductImage.WorkDir,
+		},
+		features: &featureRuntimeState{},
 	}
 
 	previousFactory := newSDSSyncServiceForHTTPAPI
@@ -118,8 +121,8 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		for _, pool := range pools {
 			pool.Stop(stopCtx)
 		}
-		for i := len(deps.closers) - 1; i >= 0; i-- {
-			require.NoError(t, deps.closers[i]())
+		for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.shared.closers[i]())
 		}
 	}()
 

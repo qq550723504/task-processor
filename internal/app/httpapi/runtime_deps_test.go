@@ -1,19 +1,24 @@
 package httpapi
 
 import (
+	"context"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/sdslogin"
+	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
 
 func TestRuntimeDepsManagementClientReturnsSharedClient(t *testing.T) {
 	client := management.NewClientManager(nil)
 	deps := &runtimeDeps{
-		shared: &appbootstrap.SharedResources{
-			ManagementClient: client,
+		shared: &sharedRuntimeDeps{
+			sharedResources: &appbootstrap.SharedResources{
+				ManagementClient: client,
+			},
 		},
 	}
 
@@ -37,7 +42,7 @@ func TestRuntimeDepsListingKitSupportHandlesNilDeps(t *testing.T) {
 }
 
 func TestRuntimeDepsListingKitSupportIsStable(t *testing.T) {
-	deps := &runtimeDeps{}
+	deps := &runtimeDeps{features: &featureRuntimeState{}}
 
 	first := deps.ensureListingKitSupport()
 	if first == nil {
@@ -47,6 +52,54 @@ func TestRuntimeDepsListingKitSupportIsStable(t *testing.T) {
 	second := deps.ensureListingKitSupport()
 	if second != first {
 		t.Fatalf("listingkit support = %p, want %p", second, first)
+	}
+}
+
+func TestBuildRuntimeDepsInitializesSharedRuntimeWithoutFeatureState(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+
+	deps, err := buildRuntimeDeps(logger, "../../../config/config-test.yaml")
+	if err != nil {
+		t.Fatalf("buildRuntimeDeps() error = %v", err)
+	}
+
+	if deps.shared == nil {
+		t.Fatal("expected shared runtime deps")
+	}
+	if deps.features == nil {
+		t.Fatal("expected feature runtime state")
+	}
+	if deps.features.productService != nil {
+		t.Fatal("expected product service to be unset before feature attachment")
+	}
+	if deps.features.imageService != nil {
+		t.Fatal("expected image service to be unset before feature attachment")
+	}
+	if deps.features.listingKitSupport != nil {
+		t.Fatal("expected listingkit support to be lazy")
+	}
+}
+
+func TestRuntimeDepsAttachBuiltFeatureModulesOnlyMutatesFeatureState(t *testing.T) {
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{},
+		features: &featureRuntimeState{},
+	}
+
+	deps.attachSDSLoginResult(&sdsloginbootstrap.BuildResult{
+		StatusProvider: stubStatusProvider(func(context.Context) (*sdslogin.Status, error) {
+			return &sdslogin.Status{}, nil
+		}),
+	})
+
+	if deps.shared.openaiMgr != nil {
+		t.Fatal("expected shared runtime deps to remain unchanged")
+	}
+	if deps.features.sdsLoginStatusProvider == nil {
+		t.Fatal("expected SDS login status provider to be attached to feature state")
 	}
 }
 
@@ -66,7 +119,7 @@ func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 		t.Fatalf("buildProductModule() error = %v", err)
 	}
 	deps.attachProductModule(productModule)
-	if deps.productService == nil {
+	if deps.features.productService == nil {
 		t.Fatal("expected product service to be attached")
 	}
 
@@ -75,16 +128,22 @@ func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 		t.Fatalf("buildImageModule() error = %v", err)
 	}
 	deps.attachImageModule(imageModule)
-	if deps.imageService == nil {
+	if deps.features.imageService == nil {
 		t.Fatal("expected image service to be attached")
 	}
 
-	for i := len(deps.closers) - 1; i >= 0; i-- {
-		if deps.closers[i] == nil {
+	for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+		if deps.shared.closers[i] == nil {
 			continue
 		}
-		if err := deps.closers[i](); err != nil {
+		if err := deps.shared.closers[i](); err != nil {
 			t.Fatalf("closer[%d]() error = %v", i, err)
 		}
 	}
+}
+
+type stubStatusProvider func(context.Context) (*sdslogin.Status, error)
+
+func (f stubStatusProvider) Status(ctx context.Context) (*sdslogin.Status, error) {
+	return f(ctx)
 }

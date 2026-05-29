@@ -47,14 +47,14 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
-	sheinclient.ConfigureLoginAccountFromConfig(deps.cfg)
+	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
 
 	composition, err := newHTTPFeatureCompositionBuilder().build(logger, deps)
 	if err != nil {
 		return nil, err
 	}
 
-	server, routes, err := composition.buildServerBundle(options.Port, deps.cfg)
+	server, routes, err := composition.buildServerBundle(options.Port, deps.shared.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		server:         server,
 		routes:         routes,
 		pools:          composition.workerPools(),
-		closers:        deps.closers,
+		closers:        deps.shared.closers,
 	}, nil
 }
 
@@ -74,7 +74,7 @@ func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildR
 	}
 
 	result, err := sheinloginbootstrap.BuildHandler(sheinloginbootstrap.BuildInput{
-		Config:                   deps.cfg,
+		Config:                   deps.shared.cfg,
 		ManagementClient:         deps.managementClient(),
 		AccountRepositoryBuilder: listingkithttpapi.BuildListingAdminStoreRepository,
 	})
@@ -91,7 +91,7 @@ func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResul
 	if deps == nil {
 		return nil, nil, nil
 	}
-	result, err := sdsloginbootstrap.BuildHandler(deps.cfg)
+	result, err := sdsloginbootstrap.BuildHandler(deps.shared.cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -122,11 +122,11 @@ func newWorkerPool(processor worker.Processor, cfg *config.Config) worker.Worker
 
 func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productenrichhttpapi.Module, error) {
 	module, err := productenrichhttpapi.BuildModule(productenrichhttpapi.BuildModuleInput{
-		Config:        deps.cfg,
+		Config:        deps.shared.cfg,
 		Logger:        logger,
-		LLMManager:    deps.llmMgr,
-		InputParser:   deps.inputParser,
-		Understanding: deps.understanding,
+		LLMManager:    deps.shared.llmMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
 	})
 	if err != nil {
 		return nil, err
@@ -137,13 +137,13 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productenric
 
 func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*productimagehttpapi.Module, error) {
 	module, err := productimagehttpapi.BuildModule(productimagehttpapi.BuildModuleInput{
-		Config:        deps.cfg,
+		Config:        deps.shared.cfg,
 		Logger:        logger,
-		LLMManager:    deps.llmMgr,
-		OpenAIManager: deps.openaiMgr,
-		InputParser:   deps.inputParser,
-		Understanding: deps.understanding,
-		ImageWorkDir:  deps.imageWorkDir,
+		LLMManager:    deps.shared.llmMgr,
+		OpenAIManager: deps.shared.openaiMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+		ImageWorkDir:  deps.shared.imageWorkDir,
 	})
 	if err != nil {
 		return nil, err
@@ -154,10 +154,10 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*productimageht
 
 func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
 	module, err := amazonlistinghttpapi.BuildModule(amazonlistinghttpapi.BuildModuleInput{
-		Config:         deps.cfg,
+		Config:         deps.shared.cfg,
 		Logger:         logger,
-		ProductService: deps.productService,
-		ImageService:   deps.imageService,
+		ProductService: deps.features.productService,
+		ImageService:   deps.features.imageService,
 	})
 	if err != nil {
 		return nil, err

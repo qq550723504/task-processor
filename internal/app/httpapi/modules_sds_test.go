@@ -73,7 +73,12 @@ func TestBuildSDSSyncServiceReturnsServiceWithoutAuthState(t *testing.T) {
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
-		imageService: &stubHTTPAPIImageService{},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{},
+		},
+		features: &featureRuntimeState{
+			imageService: &stubHTTPAPIImageService{},
+		},
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)
@@ -115,7 +120,12 @@ func TestBuildSDSSyncServiceReturnsNilOnFactoryError(t *testing.T) {
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
-		imageService: &stubHTTPAPIImageService{},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{},
+		},
+		features: &featureRuntimeState{
+			imageService: &stubHTTPAPIImageService{},
+		},
 	})
 	if svc != nil {
 		t.Fatalf("buildSDSSyncService() = %v, want nil", svc)
@@ -134,7 +144,12 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
-		imageService: &stubHTTPAPIImageService{},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{},
+		},
+		features: &featureRuntimeState{
+			imageService: &stubHTTPAPIImageService{},
+		},
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)

@@ -98,16 +98,19 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	}
 
 	return &runtimeDeps{
-		cfg:               cfg,
-		closers:           closers,
-		openaiMgr:         openaiMgr,
-		aiCredentialStore: aiCredentialStore,
-		tenantPromptStore: tenantPromptStore,
-		llmMgr:            llmMgr,
-		inputParser:       inputParser,
-		understanding:     productUnderstanding,
-		imageWorkDir:      imageWorkDir,
-		shared:            shared,
+		shared: &sharedRuntimeDeps{
+			cfg:               cfg,
+			closers:           closers,
+			openaiMgr:         openaiMgr,
+			aiCredentialStore: aiCredentialStore,
+			tenantPromptStore: tenantPromptStore,
+			llmMgr:            llmMgr,
+			inputParser:       inputParser,
+			understanding:     productUnderstanding,
+			imageWorkDir:      imageWorkDir,
+			sharedResources:   shared,
+		},
+		features: &featureRuntimeState{},
 	}, nil
 }
 
@@ -118,28 +121,37 @@ func (d *runtimeDeps) managementClient() *management.ClientManager {
 	if d.shared == nil {
 		return nil
 	}
-	return d.shared.ManagementClient
+	if d.shared.sharedResources == nil {
+		return nil
+	}
+	return d.shared.sharedResources.ManagementClient
 }
 
 func (d *runtimeDeps) ensureListingKitSupport() *listingKitSupport {
 	if d == nil {
 		return nil
 	}
-	if d.listingKitSupport == nil {
-		d.listingKitSupport = &listingKitSupport{}
+	if d.features == nil {
+		d.features = &featureRuntimeState{}
 	}
-	return d.listingKitSupport
+	if d.features.listingKitSupport == nil {
+		d.features.listingKitSupport = &listingKitSupport{}
+	}
+	return d.features.listingKitSupport
 }
 
 func (d *runtimeDeps) addClosers(closers ...func() error) {
 	if d == nil {
 		return
 	}
+	if d.shared == nil {
+		d.shared = &sharedRuntimeDeps{}
+	}
 	for _, closer := range closers {
 		if closer == nil {
 			continue
 		}
-		d.closers = append(d.closers, closer)
+		d.shared.closers = append(d.shared.closers, closer)
 	}
 }
 
@@ -147,19 +159,25 @@ func (d *runtimeDeps) attachProductModule(module *productenrichhttpapi.Module) {
 	if d == nil || module == nil {
 		return
 	}
+	if d.features == nil {
+		d.features = &featureRuntimeState{}
+	}
 	d.addClosers(module.Closers...)
-	d.productService = module.Service
+	d.features.productService = module.Service
 }
 
 func (d *runtimeDeps) attachImageModule(module *productimagehttpapi.Module) {
 	if d == nil || module == nil {
 		return
 	}
+	if d.features == nil {
+		d.features = &featureRuntimeState{}
+	}
 	d.addClosers(module.Closers...)
-	d.imageService = module.Service
-	d.imageSubjectExtractor = module.SubjectExtractor
-	d.imageWhiteBgRenderer = module.WhiteBackgroundRender
-	d.imageSceneRenderer = module.SceneRenderer
+	d.features.imageService = module.Service
+	d.features.imageSubjectExtractor = module.SubjectExtractor
+	d.features.imageWhiteBgRenderer = module.WhiteBackgroundRender
+	d.features.imageSceneRenderer = module.SceneRenderer
 }
 
 func (d *runtimeDeps) attachAmazonListingModule(module *amazonlistinghttpapi.Module) {
@@ -180,7 +198,10 @@ func (d *runtimeDeps) attachSDSLoginResult(result *sdsloginbootstrap.BuildResult
 	if d == nil || result == nil {
 		return
 	}
-	d.sdsLoginStatusProvider = result.StatusProvider
+	if d.features == nil {
+		d.features = &featureRuntimeState{}
+	}
+	d.features.sdsLoginStatusProvider = result.StatusProvider
 }
 
 func resolveImageWorkDir(cfg *config.Config) string {

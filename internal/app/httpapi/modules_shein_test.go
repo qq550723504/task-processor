@@ -12,15 +12,17 @@ func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.
 	t.Parallel()
 
 	result, closer, err := buildSheinLoginModuleResult(&runtimeDeps{
-		cfg: &config.Config{
-			Platforms: config.PlatformsConfig{
-				Shein: config.PlatformConfig{
-					CookieRedis: config.RedisConfig{Host: "127.0.0.1"},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{
+				Platforms: config.PlatformsConfig{
+					Shein: config.PlatformConfig{
+						CookieRedis: config.RedisConfig{Host: "127.0.0.1"},
+					},
 				},
 			},
-		},
-		shared: &appbootstrap.SharedResources{
-			ManagementClient: management.NewClientManager(&config.ManagementConfig{}),
+			sharedResources: &appbootstrap.SharedResources{
+				ManagementClient: management.NewClientManager(&config.ManagementConfig{}),
+			},
 		},
 	})
 	if err != nil {

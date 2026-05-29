@@ -44,11 +44,14 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &runtimeDeps{
-		cfg:           cfg,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: understanding,
-		imageWorkDir:  cfg.ProductImage.WorkDir,
+		shared: &sharedRuntimeDeps{
+			cfg:           cfg,
+			llmMgr:        llmMgr,
+			inputParser:   inputParser,
+			understanding: understanding,
+			imageWorkDir:  cfg.ProductImage.WorkDir,
+		},
+		features: &featureRuntimeState{},
 	}
 
 	productModule, err := buildProductModule(logger, deps)
@@ -74,8 +77,8 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		for _, pool := range pools {
 			pool.Stop(stopCtx)
 		}
-		for i := len(deps.closers) - 1; i >= 0; i-- {
-			require.NoError(t, deps.closers[i]())
+		for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.shared.closers[i]())
 		}
 	}()
 
@@ -174,11 +177,14 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &runtimeDeps{
-		cfg:           cfg,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: understanding,
-		imageWorkDir:  cfg.ProductImage.WorkDir,
+		shared: &sharedRuntimeDeps{
+			cfg:           cfg,
+			llmMgr:        llmMgr,
+			inputParser:   inputParser,
+			understanding: understanding,
+			imageWorkDir:  cfg.ProductImage.WorkDir,
+		},
+		features: &featureRuntimeState{},
 	}
 
 	features, err := newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
@@ -199,8 +205,8 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		for _, pool := range pools {
 			pool.Stop(stopCtx)
 		}
-		for i := len(deps.closers) - 1; i >= 0; i-- {
-			require.NoError(t, deps.closers[i]())
+		for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.shared.closers[i]())
 		}
 	}()
 

@@ -30,17 +30,17 @@ func newListingKitBuildModuleInput(logger *logrus.Logger, deps *runtimeDeps) lis
 func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.BuildServiceInput {
 	cookieStore := ensureListingKitSheinCookieStore(logger, deps)
 	return listingkithttpapi.BuildServiceInput{
-		Config:                     deps.cfg,
+		Config:                     deps.shared.cfg,
 		Logger:                     logger,
-		ProductService:             deps.productService,
-		ImageService:               deps.imageService,
+		ProductService:             deps.features.productService,
+		ImageService:               deps.features.imageService,
 		SDSSyncService:             buildSDSSyncService(logger, deps),
-		SDSLoginStatusProvider:     deps.sdsLoginStatusProvider,
+		SDSLoginStatusProvider:     deps.features.sdsLoginStatusProvider,
 		SDSBaselineRemoteProvider:  buildSDSBaselineRemoteProvider(logger, deps),
-		ImageSubjectExtractor:      deps.imageSubjectExtractor,
-		ImageWhiteBackgroundRender: deps.imageWhiteBgRenderer,
-		ImageSceneRenderer:         deps.imageSceneRenderer,
-		AICredentialStore:          deps.aiCredentialStore,
+		ImageSubjectExtractor:      deps.features.imageSubjectExtractor,
+		ImageWhiteBackgroundRender: deps.features.imageWhiteBgRenderer,
+		ImageSceneRenderer:         deps.features.imageSceneRenderer,
+		AICredentialStore:          deps.shared.aiCredentialStore,
 		Repositories: listingkithttpapi.BuildServiceRepositories{
 			Core: listingkithttpapi.CoreRepositoryBuilders{
 				Task:                 listingkithttpapi.BuildListingKitTaskRepository,
@@ -104,7 +104,7 @@ func newListingKitBuildServiceInput(logger *logrus.Logger, deps *runtimeDeps) li
 }
 
 func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) *sheinlogin.RedisStore {
-	if deps == nil || deps.cfg == nil {
+	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {
 		return nil
 	}
 	support := deps.ensureListingKitSupport()
@@ -114,7 +114,7 @@ func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) 
 	if support.sheinCookieStore != nil {
 		return support.sheinCookieStore
 	}
-	redisCfg := deps.cfg.EffectiveSheinCookieRedis()
+	redisCfg := deps.shared.cfg.EffectiveSheinCookieRedis()
 	if strings.TrimSpace(redisCfg.Host) == "" {
 		return nil
 	}
@@ -126,16 +126,16 @@ func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) 
 		return nil
 	}
 	support.sheinCookieStore = store
-	deps.closers = append(deps.closers, store.Close)
+	deps.addClosers(store.Close)
 	return store
 }
 
 func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Service {
-	if deps == nil || deps.imageService == nil {
+	if deps == nil || deps.shared == nil || deps.features == nil || deps.features.imageService == nil {
 		return nil
 	}
 
-	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.imageService, sdshttpapi.BuildClientConfig(deps.cfg))
+	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.features.imageService, sdshttpapi.BuildClientConfig(deps.shared.cfg))
 	if err != nil {
 		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
 		return nil
@@ -153,7 +153,7 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 }
 
 func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) listingkit.SDSBaselineRemoteProvider {
-	if deps == nil {
+	if deps == nil || deps.shared == nil {
 		return nil
 	}
 	support := deps.ensureListingKitSupport()
@@ -163,7 +163,7 @@ func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) li
 	if support.sdsBaselineRemoteProvider != nil {
 		return support.sdsBaselineRemoteProvider
 	}
-	client, err := sdsclient.New(sdshttpapi.BuildClientConfig(deps.cfg))
+	client, err := sdsclient.New(sdshttpapi.BuildClientConfig(deps.shared.cfg))
 	if err != nil {
 		if logger != nil {
 			logger.WithError(err).Warn("failed to initialize SDS baseline remote provider; online baseline validation disabled")
