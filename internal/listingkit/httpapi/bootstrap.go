@@ -9,12 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
-	"task-processor/internal/httpbootstrap"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
@@ -306,30 +302,6 @@ type BuildServiceInput struct {
 	Hooks                      BuildServiceHooks
 }
 
-type buildListingKitServiceConfigInput struct {
-	input        BuildServiceInput
-	repositories *builtRepositories
-	submit       submitModule
-}
-
-type serviceRuntimeModules struct {
-	task     taskModule
-	admin    adminModule
-	submit   submitModule
-	temporal temporalModule
-}
-
-type serviceRuntimeAssembly struct {
-	service             moduleService
-	modules             serviceRuntimeModules
-	handlerDependencies listingkitapi.HandlerDependencies
-}
-
-type moduleRuntimeAssembly struct {
-	processor *listingkit.Processor
-	pool      worker.WorkerPool
-}
-
 func (in BuildServiceInput) Validate() error {
 	if in.Config == nil {
 		return fmt.Errorf("build service config is required")
@@ -438,77 +410,6 @@ func buildModuleService(input BuildServiceInput, repos *builtRepositories, submi
 	return wireTemporalWorkflowClients(moduleSvc, input.Logger, closers)
 }
 
-func buildListingKitServiceConfig(in buildListingKitServiceConfigInput) *listingkit.ServiceConfig {
-	return &listingkit.ServiceConfig{
-		Core:     buildListingKitCoreDependencies(in),
-		Assets:   buildListingKitAssetDependencies(in),
-		Shein:    buildListingKitSheinDependencies(in),
-		Workflow: buildListingKitWorkflowDependencies(),
-	}
-}
-
-func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceCoreDependencies {
-	return listingkit.ServiceCoreDependencies{
-		Repository:                     in.repositories.taskRepository,
-		StudioSessionRepository:        in.repositories.studioSessionRepository,
-		ProductService:                 in.input.ProductService,
-		ImageService:                   in.input.ImageService,
-		SDSSyncService:                 in.input.SDSSyncService,
-		SDSLoginStatusProvider:         in.input.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider:      in.input.SDSBaselineRemoteProvider,
-		ImageUploadStore:               in.submit.assets.imageUploadStore,
-		UploadedImageRepository:        in.repositories.uploadedImageRepository,
-		StoreProfileRepository:         in.repositories.storeProfileRepository,
-		StoreRoutingSettingsRepository: in.repositories.storeRoutingSettingsRepository,
-		AIClientCredentialStore:        in.input.AICredentialStore,
-	}
-}
-
-func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceAssetDependencies {
-	return listingkit.ServiceAssetDependencies{
-		Assembler:           in.submit.assets.assembler,
-		AssetRepository:     in.repositories.assetRepository,
-		ReviewRepository:    in.repositories.reviewRepository,
-		AssetRecipeResolver: assetrecipe.NewStaticResolver(),
-		AssetBundleBuilder:  assetbundle.NewBuilder(),
-		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
-			SubjectExtractor:        in.input.ImageSubjectExtractor,
-			WhiteBackgroundRenderer: in.input.ImageWhiteBackgroundRender,
-			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(in.input.ImageSceneRenderer),
-		}),
-	}
-}
-
-func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceSheinDependencies {
-	return listingkit.ServiceSheinDependencies{
-		SheinDefaultStoreID:        in.submit.shein.defaultStoreID,
-		SheinStoreCatalog:          sheinManagementStoreCatalog{repo: in.repositories.storeRepository},
-		SheinAPIClientFactory:      in.submit.shein.apiClientFactory,
-		SheinCategoryResolver:      in.submit.shein.categoryResolver,
-		SheinResolutionCacheStore:  in.repositories.resolutionCacheStore,
-		SheinAttributeResolver:     in.submit.shein.attributeResolver,
-		SheinSaleAttributeResolver: in.submit.shein.saleAttributeResolver,
-		SheinPricingPolicy:         in.submit.shein.pricingPolicy,
-		SheinProductAPIBuilder:     in.submit.shein.productAPIBuilder,
-		SheinImageAPIBuilder:       in.submit.shein.imageAPIBuilder,
-		SheinTranslateAPIBuilder:   in.submit.shein.translateAPIBuilder,
-		SheinContentOptimizer:      in.submit.shein.contentOptimizer,
-		StudioPromptDiversifier:    in.submit.shein.contentOptimizer,
-		StudioImageGenerator:       in.submit.studio.imageGenerator,
-	}
-}
-
-func buildListingKitWorkflowDependencies() listingkit.ServiceWorkflowDependencies {
-	return listingkit.ServiceWorkflowDependencies{
-		SheinPublishWorkflowClient:     nil,
-		SheinPublishWorkflowEnabled:    false,
-		StandardProductWorkflowClient:  nil,
-		StandardProductWorkflowEnabled: false,
-		PlatformAdaptWorkflowClient:    nil,
-		PlatformAdaptWorkflowEnabled:   false,
-	}
-}
-
 func wireTemporalWorkflowClients(svc moduleService, logger *logrus.Logger, closers *closerStack) (moduleService, error) {
 	temporalWorkflowClient, temporalCloser, err := appruntime.DialListingKitSheinPublishTemporalClient(logger)
 	if err != nil {
@@ -540,71 +441,6 @@ func closeTemporalWorkflowClientOnError(err error, temporalCloser func() error) 
 		_ = temporalCloser()
 	}
 	return err
-}
-
-func prepareModuleRuntimeClosers(input BuildModuleInput, bundle *ServiceBundle) (_ *closerStack, err error) {
-	closers := &closerStack{}
-	closers.Add(bundle.runtime.closers...)
-	if input.ShouldStartTemporalWorkerInProcess {
-		temporalWorkerCloser, startErr := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.runtime.temporalWorkerService, input.ServiceInput.Logger)
-		if startErr != nil {
-			return nil, fmt.Errorf("start listing kit shein publish temporal worker: %w", startErr)
-		}
-		closers.Add(temporalWorkerCloser)
-	}
-	return closers, nil
-}
-
-func assembleModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (*moduleRuntimeAssembly, error) {
-	processor, err := listingkit.NewProcessor(bundle.runtime.service, bundle.runtime.taskRepository, input.ServiceInput.Logger, 2)
-	if err != nil {
-		return nil, fmt.Errorf("create listing kit processor: %w", err)
-	}
-	pool := httpbootstrap.NewWorkerPool(processor, input.ServiceInput.Config)
-	submitter := &httpbootstrap.PoolSubmitter{Pool: pool}
-	bundle.runtime.service.SetTaskSubmitter(submitter)
-	processor.SetTaskSubmitter(submitter)
-	return &moduleRuntimeAssembly{
-		processor: processor,
-		pool:      pool,
-	}, nil
-}
-
-func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers *closerStack) (*Module, error) {
-	assembly, err := assembleModuleRuntime(input, bundle)
-	if err != nil {
-		return nil, err
-	}
-	handler, err := listingkitapi.NewHandler(bundle.runtime.service, buildHandlerOptions(bundle.runtime.handlerDependencies)...)
-	if err != nil {
-		return nil, fmt.Errorf("create listing kit handler: %w", err)
-	}
-
-	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.runtime.service)
-	if err != nil {
-		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
-	}
-
-	return &Module{
-		Handler:              handler,
-		StudioSessionHandler: studioSessionHandler,
-		Pool:                 assembly.pool,
-		Closers:              closers.Snapshot(),
-	}, nil
-}
-
-func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Module, err error) {
-	closers, err := prepareModuleRuntimeClosers(input, bundle)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err == nil {
-			return
-		}
-		_ = closers.Close()
-	}()
-	return createModuleRuntime(input, bundle, closers)
 }
 
 func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleService, workerService TemporalWorkerService, handlerDependencies listingkitapi.HandlerDependencies, closers []func() error) *ServiceBundle {
@@ -647,41 +483,6 @@ func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 		return nil, err
 	}
 	return buildModuleRuntime(input, bundle)
-}
-
-func buildServiceRuntimeModules(input BuildServiceInput, repositories *builtRepositories) serviceRuntimeModules {
-	task := buildTaskModule(newTaskModuleInput(input, repositories))
-	admin := buildAdminModule(newAdminModuleInput(repositories))
-	submit := buildSubmitModule(newSubmitModuleInput(input, repositories))
-	return serviceRuntimeModules{
-		task:   task,
-		admin:  admin,
-		submit: submit,
-	}
-}
-
-func assembleServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (serviceRuntimeAssembly, error) {
-	modules := buildServiceRuntimeModules(input, repositories)
-	moduleSvc, err := buildModuleService(input, repositories, modules.submit, closers)
-	if err != nil {
-		return serviceRuntimeAssembly{}, err
-	}
-	modules.temporal = buildTemporalModule(temporalModuleInput{
-		Service: moduleSvc,
-	})
-	return serviceRuntimeAssembly{
-		service:             moduleSvc,
-		modules:             modules,
-		handlerDependencies: modules.task.handlerDependenciesWithAdmin(modules.admin),
-	}, nil
-}
-
-func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
-	assembly, err := assembleServiceRuntime(input, repositories, closers)
-	if err != nil {
-		return nil, err
-	}
-	return assembleServiceBundle(repositories, assembly.service, assembly.modules.temporal.workerService, assembly.handlerDependencies, closers.Snapshot()), nil
 }
 
 func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {

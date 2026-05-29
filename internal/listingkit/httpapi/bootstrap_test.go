@@ -163,6 +163,35 @@ func TestBootstrapFileDoesNotOwnRepositoryAssemblyHelpers(t *testing.T) {
 	}
 }
 
+func TestBootstrapFileDoesNotOwnServiceOrRuntimeAssemblyHelpers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+	content := string(src)
+	for _, needle := range []string{
+		"type buildListingKitServiceConfigInput struct",
+		"func buildListingKitServiceConfig(",
+		"func buildListingKitCoreDependencies(",
+		"func buildListingKitAssetDependencies(",
+		"func buildListingKitSheinDependencies(",
+		"func buildListingKitWorkflowDependencies(",
+		"type serviceRuntimeModules struct",
+		"func buildServiceRuntimeModules(",
+		"func assembleServiceRuntime(",
+		"func buildServiceRuntime(",
+		"func assembleModuleRuntime(",
+		"func createModuleRuntime(",
+		"func buildModuleRuntime(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("bootstrap.go should not contain %q", needle)
+		}
+	}
+}
+
 func TestBuildServiceClosesAcquiredResourcesWhenBuilderFails(t *testing.T) {
 	t.Parallel()
 
