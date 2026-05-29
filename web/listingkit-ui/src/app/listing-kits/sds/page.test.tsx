@@ -223,6 +223,45 @@ describe("/listing-kits/sds page", () => {
     ).toBeInTheDocument();
   });
 
+  it("still shows the full-dashboard entry when only two recent batches exist", async () => {
+    buildRecentBatchSummaries.mockReturnValueOnce([
+      {
+        id: "batch-2",
+        title: "Batch Two",
+        source: "batch",
+        primaryProductName: "Product Two",
+        createdTaskCount: 1,
+        designCount: 2,
+        productCount: 2,
+        storeSummary: "US",
+        updatedAt: "2026-05-27T01:21:00.000Z",
+        alerts: [],
+      },
+      {
+        id: "batch-1",
+        title: "Batch One",
+        source: "batch",
+        primaryProductName: "Product One",
+        createdTaskCount: 0,
+        designCount: 0,
+        productCount: 1,
+        storeSummary: "US",
+        updatedAt: "2026-05-27T01:20:00.000Z",
+        alerts: [],
+      },
+    ]);
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Two")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: "查看全部批次" }),
+    ).toBeInTheDocument();
+  });
+
   it("navigates to the dedicated new-batch route from the homepage CTA", () => {
     render(<ListingKitSDSPage />);
 

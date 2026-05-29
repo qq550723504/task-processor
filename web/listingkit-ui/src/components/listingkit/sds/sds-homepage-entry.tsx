@@ -471,7 +471,7 @@ export function SdsHomepageEntry() {
             </div>
           )}
 
-          {summaries.length > 3 ? (
+          {summaries.length > 0 ? (
             <div className="flex justify-end">
               <Button
                 onClick={handleToggleAllBatches}
