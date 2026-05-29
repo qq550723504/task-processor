@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -12,11 +11,14 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
 	sdsdesign "task-processor/internal/sds/design"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
+	sheinattribute "task-processor/internal/shein/api/attribute"
+	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type stubWorkflowProductService struct {
@@ -384,29 +386,156 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	}
 }
 
-func TestPlatformFinalizePhaseKeepsVariantCoverageGuardAfterSheinReview(t *testing.T) {
+func TestRunWorkflowAppliesVariantCoverageGuardAfterSheinReview(t *testing.T) {
 	t.Parallel()
 
-	postprocessSrc, err := os.ReadFile("workflow_platform_postprocess_phase.go")
-	if err != nil {
-		t.Fatalf("ReadFile(workflow_platform_postprocess_phase.go) error = %v", err)
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{
+			ID: "product-task-variant-coverage",
+			Request: &productenrich.GenerateRequest{
+				ImageURLs: []string{"https://example.com/shared-main.jpg"},
+				Text:      "insulated tumbler",
+			},
+		},
+		product: &productenrich.ProductJSON{
+			Title:       "Insulated Tumbler",
+			Description: "Double wall tumbler",
+			Category:    []string{"Home", "Kitchen"},
+			Images:      []string{"https://example.com/shared-main.jpg"},
+			Attributes:  map[string]string{"brand": "DemoBrand"},
+			Variants: []productenrich.ProductVariant{
+				{
+					SKU:        "RED-20OZ",
+					Attributes: map[string]string{"Color": "red", "Size": "20oz"},
+					Images:     []string{"https://example.com/shared-main.jpg"},
+					IsDefault:  true,
+				},
+				{
+					SKU:        "GREEN-20OZ",
+					Attributes: map[string]string{"Color": "green", "Size": "20oz"},
+					Images:     []string{"https://example.com/shared-main.jpg"},
+				},
+			},
+		},
 	}
-	if strings.Contains(string(postprocessSrc), "applySheinVariantImageCoverageGuard(") {
-		t.Fatal("workflow_platform_postprocess_phase.go should not contain applySheinVariantImageCoverageGuard")
+	svc := &service{
+		productSvc: productSvc,
+		assembler: NewAssemblerWithConfig(AssemblerConfig{
+			AmazonBuilder: stubAmazonDraftBuilder{},
+			SheinCategoryResolver: sheinpub.NewCategoryResolver(stubSheinCategoryAPI{
+				info: &sheincategory.CategoryInfo{
+					ProductTypeID:        9001,
+					LevelOneCategoryID:   1001,
+					LevelOneCategoryName: "Drinkware",
+				},
+			}),
+			SheinAttributeResolver: sheinpub.NewAttributeResolver(stubSheinAttributeAPI{
+				templates: &sheinattribute.AttributeTemplateInfo{
+					Data: []sheinattribute.AttributeTemplate{{
+						AttributeInfos: []sheinattribute.AttributeInfo{
+							{
+								AttributeID:     501,
+								AttributeName:   "颜色",
+								AttributeNameEn: "Color",
+								AttributeValueInfoList: []sheinattribute.AttributeValue{
+									{AttributeValueID: 90001, AttributeValue: "红色", AttributeValueEn: "red"},
+									{AttributeValueID: 90002, AttributeValue: "绿色", AttributeValueEn: "green"},
+								},
+							},
+							{
+								AttributeID:     502,
+								AttributeName:   "尺寸",
+								AttributeNameEn: "Size",
+								AttributeValueInfoList: []sheinattribute.AttributeValue{
+									{AttributeValueID: 90003, AttributeValue: "20盎司", AttributeValueEn: "20oz"},
+								},
+							},
+						},
+					}},
+				},
+			}, nil),
+			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(stubSheinAttributeAPI{
+				templates: &sheinattribute.AttributeTemplateInfo{
+					Data: []sheinattribute.AttributeTemplate{{
+						AttributeInfos: []sheinattribute.AttributeInfo{
+							{
+								AttributeID:     501,
+								AttributeName:   "颜色",
+								AttributeNameEn: "Color",
+								AttributeValueInfoList: []sheinattribute.AttributeValue{
+									{AttributeValueID: 90001, AttributeValue: "红色", AttributeValueEn: "red"},
+									{AttributeValueID: 90002, AttributeValue: "绿色", AttributeValueEn: "green"},
+								},
+							},
+							{
+								AttributeID:     502,
+								AttributeName:   "尺寸",
+								AttributeNameEn: "Size",
+								AttributeValueInfoList: []sheinattribute.AttributeValue{
+									{AttributeValueID: 90003, AttributeValue: "20盎司", AttributeValueEn: "20oz"},
+								},
+							},
+						},
+					}},
+				},
+			}, nil),
+		}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+	task := &Task{
+		ID: "listingkit-task-variant-coverage",
+		Request: &GenerateRequest{
+			ImageURLs:          []string{"https://example.com/shared-main.jpg"},
+			Text:               "insulated tumbler",
+			Platforms:          []string{"shein"},
+			Country:            "US",
+			Language:           "en_US",
+			TargetCategoryHint: "1001",
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				ImageStrategy: sheinImageStrategyAIGenerated,
+				SheinStudio: &SheinStudioOptions{
+					ProductImageURLs: []string{"https://cdn.example.com/shared-ai-main.jpg"},
+				},
+			},
+		},
 	}
 
-	finalizeSrc, err := os.ReadFile("workflow_platform_finalize_phase.go")
+	result, err := svc.runWorkflow(context.Background(), task)
 	if err != nil {
-		t.Fatalf("ReadFile(workflow_platform_finalize_phase.go) error = %v", err)
+		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	content := string(finalizeSrc)
-	reviewIndex := strings.Index(content, "sheinReviewStage.Complete()")
-	guardIndex := strings.Index(content, "applySheinVariantImageCoverageGuard(")
-	if guardIndex == -1 {
-		t.Fatal("workflow_platform_finalize_phase.go should contain applySheinVariantImageCoverageGuard")
+	if result.Shein == nil || result.Shein.RequestDraft == nil {
+		t.Fatalf("shein package = %+v, want populated package", result.Shein)
 	}
-	if reviewIndex == -1 || guardIndex < reviewIndex {
-		t.Fatalf("variant coverage guard should run after shein review completion: reviewIndex=%d guardIndex=%d", reviewIndex, guardIndex)
+	if got := len(result.Shein.RequestDraft.SKCList); got != 2 {
+		t.Fatalf("shein skc count = %d, want 2", got)
+	}
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs review", result.Summary)
+	}
+	if len(result.Summary.Warnings) == 0 {
+		t.Fatalf("summary warnings = %+v, want coverage warning", result.Summary)
+	}
+	if len(result.ReviewReasons) == 0 {
+		t.Fatalf("review reasons = %+v, want coverage reason", result.ReviewReasons)
+	}
+	if len(result.Shein.ReviewNotes) == 0 {
+		t.Fatalf("shein review notes = %+v, want coverage review note", result.Shein.ReviewNotes)
+	}
+	if result.Shein.Metadata[sheinVariantImageCoverageStatusKey] != "blocked" {
+		t.Fatalf("shein metadata = %#v, want blocked coverage status", result.Shein.Metadata)
+	}
+	coverageWarning := result.Shein.Metadata[sheinVariantImageCoverageMessageKey]
+	if coverageWarning == "" {
+		t.Fatalf("shein metadata = %#v, want coverage warning message", result.Shein.Metadata)
+	}
+	for _, issue := range result.WorkflowIssues {
+		if issue.Stage == "shein_review" && issue.Severity == WorkflowIssueSeverityReview && issue.Message == coverageWarning {
+			t.Fatalf("workflow issues = %+v, variant coverage guard should not add shein_review issue before review phase completes", result.WorkflowIssues)
+		}
 	}
 }
 
