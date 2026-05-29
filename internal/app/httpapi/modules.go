@@ -125,14 +125,6 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	}, nil
 }
 
-func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() error, error) {
-	result, closer, err := buildSheinLoginModuleResult(deps)
-	if err != nil || result == nil {
-		return nil, closer, err
-	}
-	return result.Handler, closer, nil
-}
-
 func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error) {
 	if deps == nil {
 		return nil, nil, nil
@@ -150,14 +142,6 @@ func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildR
 		return nil, nil, nil
 	}
 	return result, result.Close, nil
-}
-
-func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error, error) {
-	result, closer, err := buildSDSLoginModuleResult(deps)
-	if err != nil || result == nil {
-		return nil, closer, err
-	}
-	return result.Handler, closer, nil
 }
 
 func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error) {
@@ -256,7 +240,6 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingki
 		return nil, err
 	}
 	deps.closers = append(deps.closers, module.Closers...)
-	deps.sdsSyncService = buildSDSSyncService(logger, deps)
 	return module, nil
 }
 

@@ -11,7 +11,7 @@ import (
 func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.T) {
 	t.Parallel()
 
-	handler, closer, err := buildSheinLoginModule(&runtimeDeps{
+	result, closer, err := buildSheinLoginModuleResult(&runtimeDeps{
 		cfg: &config.Config{
 			Platforms: config.PlatformsConfig{
 				Shein: config.PlatformConfig{
@@ -24,12 +24,12 @@ func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.
 		},
 	})
 	if err != nil {
-		t.Fatalf("buildSheinLoginModule() error = %v", err)
+		t.Fatalf("buildSheinLoginModuleResult() error = %v", err)
 	}
-	if handler != nil {
-		t.Fatalf("buildSheinLoginModule() handler = %T, want nil", handler)
+	if result != nil {
+		t.Fatalf("buildSheinLoginModuleResult() result = %#v, want nil", result)
 	}
 	if closer != nil {
-		t.Fatal("buildSheinLoginModule() closer should be nil when module is skipped")
+		t.Fatal("buildSheinLoginModuleResult() closer should be nil when module is skipped")
 	}
 }

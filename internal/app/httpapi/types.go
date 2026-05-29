@@ -23,7 +23,6 @@ import (
 	"task-processor/internal/prompt"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
-	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	"task-processor/internal/sheinlogin"
@@ -50,7 +49,6 @@ type runtimeDeps struct {
 	shared                     *appbootstrap.SharedResources
 	productService             productenrich.ProductService
 	imageService               productimage.Service
-	sdsSyncService             sdsusecase.Service
 	sdsLoginStatusProvider     listingkit.SDSLoginStatusProvider
 	sdsBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
 	imageSubjectExtractor      productimage.SubjectExtractor
