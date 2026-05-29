@@ -13,11 +13,13 @@ type httpModuleHandlers struct {
 	amazonListing  amazonListingRouteHandler
 	listingKit     listingKitRouteHandler
 	promptTemplate promptTemplateRouteHandler
+	promptModule   kernelmodule.Module
 	studioSession  studioSessionRouteHandler
 	sheinLogin     sheinLoginRouteHandler
 	sdsLogin       sdsLoginRouteHandler
 	taskRPC        taskRPCRouteHandler
 	sdsCatalog     sdsCatalogRouteHandler
+	sdsModule      kernelmodule.Module
 }
 
 type httpModule struct {

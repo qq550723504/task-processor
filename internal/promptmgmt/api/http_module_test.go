@@ -29,6 +29,15 @@ func TestNewHTTPModuleRegistersPromptRoutes(t *testing.T) {
 	}, routeKeys(reg.Routes()))
 }
 
+func TestBuildModuleReturnsHandlerAndModule(t *testing.T) {
+	t.Parallel()
+
+	result := BuildModule(nil)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Handler)
+	require.NotNil(t, result.Module)
+}
+
 type stubHTTPRouteHandler struct{}
 
 func (stubHTTPRouteHandler) ListPromptTemplateCatalog(*gin.Context) {}

@@ -39,10 +39,16 @@ func newListingKitStudioHTTPModule(handlers httpModuleHandlers) kernelmodule.Mod
 }
 
 func newPromptTemplateHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	if handlers.promptModule != nil {
+		return handlers.promptModule
+	}
 	return promptmgmtapi.NewHTTPModule(handlers.promptTemplate)
 }
 
 func newSDSCatalogHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	if handlers.sdsModule != nil {
+		return handlers.sdsModule
+	}
 	return sdshttpapi.NewHTTPModule(handlers.sdsCatalog)
 }
 

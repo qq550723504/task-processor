@@ -3,15 +3,30 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/kernel/module"
 )
 
+type BuildResult struct {
+	Handler HTTPRouteHandler
+	Module  module.Module
+}
+
 const httpModuleName = "sds"
 
 type routeModule struct {
 	register func(reg *module.Registry) error
+}
+
+func BuildModule(logger *logrus.Logger, cfg *config.Config) *BuildResult {
+	handler := BuildCatalogHandler(logger, cfg)
+	return &BuildResult{
+		Handler: handler,
+		Module:  NewHTTPModule(handler),
+	}
 }
 
 func NewHTTPModule(handler HTTPRouteHandler) module.Module {

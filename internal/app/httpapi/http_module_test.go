@@ -198,6 +198,62 @@ func TestPromptTemplateHTTPModuleRegistersRoutes(t *testing.T) {
 	}, routeKeys(reg.Routes()))
 }
 
+func TestPromptTemplateHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	prebuilt := httpModule{
+		name: "prompt-prebuilt",
+		register: func(reg *kernelmodule.Registry) error {
+			reg.AddRoutes(routeDescriptor{
+				Method: http.MethodGet,
+				Path:   "/prompt-prebuilt",
+				Module: "prompt-prebuilt",
+				Handler: func(c *gin.Context) {
+					c.Status(http.StatusNoContent)
+				},
+			})
+			return nil
+		},
+	}
+
+	err := newPromptTemplateHTTPModule(httpModuleHandlers{
+		promptTemplate: &stubPromptTemplateHandler{},
+		promptModule:   prebuilt,
+	}).Register(reg)
+	require.NoError(t, err)
+	require.Equal(t, []string{"GET /prompt-prebuilt"}, routeKeys(reg.Routes()))
+}
+
+func TestSDSCatalogHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	prebuilt := httpModule{
+		name: "sds-prebuilt",
+		register: func(reg *kernelmodule.Registry) error {
+			reg.AddRoutes(routeDescriptor{
+				Method: http.MethodGet,
+				Path:   "/sds-prebuilt",
+				Module: "sds-prebuilt",
+				Handler: func(c *gin.Context) {
+					c.Status(http.StatusNoContent)
+				},
+			})
+			return nil
+		},
+	}
+
+	err := newSDSCatalogHTTPModule(httpModuleHandlers{
+		sdsCatalog: &stubSDSCatalogRouteHandler{},
+		sdsModule:  prebuilt,
+	}).Register(reg)
+	require.NoError(t, err)
+	require.Equal(t, []string{"GET /sds-prebuilt"}, routeKeys(reg.Routes()))
+}
+
 func TestHTTPModuleRegisterRejectsNilRegistrar(t *testing.T) {
 	t.Parallel()
 

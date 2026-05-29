@@ -1,6 +1,36 @@
 package client
 
-import "testing"
+import (
+	"testing"
+
+	"task-processor/internal/core/config"
+)
+
+func TestConfigureLoginAccountFromConfigUsesIdentifierOnly(t *testing.T) {
+	ConfigureLoginAccount("", "")
+	t.Cleanup(func() {
+		ConfigureLoginAccount("", "")
+	})
+
+	ConfigureLoginAccountFromConfig(&config.Config{
+		Platforms: config.PlatformsConfig{
+			Shein: config.PlatformConfig{
+				LoginService: config.LoginServiceConfig{
+					Identifier: " 869 ",
+					TenantID:   "ignored",
+				},
+			},
+		},
+	})
+
+	cfg := loadSheinLoginAccountConfig()
+	if cfg.tenantID != "" {
+		t.Fatalf("tenantID = %q, want empty", cfg.tenantID)
+	}
+	if cfg.identifier != "869" {
+		t.Fatalf("identifier = %q, want 869", cfg.identifier)
+	}
+}
 
 func TestLoadSheinLoginAccountConfigPrefersConfiguredOverride(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_TENANT_ID", "99")

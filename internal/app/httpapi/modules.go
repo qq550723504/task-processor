@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -50,7 +49,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
-	configureSheinLoginService(deps.cfg)
+	sheinclient.ConfigureLoginAccountFromConfig(deps.cfg)
 
 	productModule, err := buildProductModule(logger, deps)
 	if err != nil {
@@ -85,7 +84,8 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
-	promptTemplateHandler := promptmgmtapi.BuildHandler(deps.tenantPromptStore)
+	promptModule := promptmgmtapi.BuildModule(deps.tenantPromptStore)
+	promptTemplateHandler := promptModule.Handler
 
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
 		"product_enrich": productModule.Pool,
@@ -100,7 +100,8 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	sdsCatalogHandler := sdshttpapi.BuildCatalogHandler(logger, deps.cfg)
+	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
+	sdsCatalogHandler := sdsModule.Handler
 
 	handlers := httpModuleHandlers{
 		product:        productModule.Handler,
@@ -108,11 +109,13 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		amazonListing:  amazonListingModule.Handler,
 		listingKit:     listingKitModule.Handler,
 		promptTemplate: promptTemplateHandler,
+		promptModule:   promptModule.Module,
 		studioSession:  listingKitModule.StudioSessionHandler,
 		sheinLogin:     sheinLoginHandler,
 		sdsLogin:       sdsLoginHandler,
 		taskRPC:        taskRPCHandler,
 		sdsCatalog:     sdsCatalogHandler,
+		sdsModule:      sdsModule.Module,
 	}
 	server, routes, err := buildHTTPServerBundleFromHandlers(options.Port, deps.cfg, handlers)
 	if err != nil {
@@ -168,15 +171,6 @@ func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error,
 	}
 	deps.sdsLoginStatusProvider = result.StatusProvider
 	return result.Handler, nil, nil
-}
-
-func configureSheinLoginService(cfg *config.Config) {
-	if cfg == nil {
-		return
-	}
-	loginService := cfg.Platforms.Shein.LoginService
-	identifier := strings.TrimSpace(loginService.Identifier)
-	sheinclient.ConfigureLoginAccount("", identifier)
 }
 
 func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {

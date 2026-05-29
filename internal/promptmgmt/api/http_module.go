@@ -20,6 +20,11 @@ type HTTPRouteHandler interface {
 	SetPromptTemplateStatus(c *gin.Context)
 }
 
+type BuildResult struct {
+	Handler HTTPRouteHandler
+	Module  module.Module
+}
+
 const httpModuleName = "listing-kit-prompts"
 
 type httpModule struct {
@@ -28,6 +33,14 @@ type httpModule struct {
 
 func BuildHandler(store prompt.TenantPromptStore) *Handler {
 	return NewHandler(promptmgmt.NewService(store))
+}
+
+func BuildModule(store prompt.TenantPromptStore) *BuildResult {
+	handler := BuildHandler(store)
+	return &BuildResult{
+		Handler: handler,
+		Module:  NewHTTPModule(handler),
+	}
 }
 
 func NewHTTPModule(handler HTTPRouteHandler) module.Module {

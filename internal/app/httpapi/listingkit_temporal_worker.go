@@ -10,6 +10,7 @@ import (
 
 	appruntime "task-processor/internal/app/runtime"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 // RunListingKitTemporalWorker boots the minimum ListingKit dependencies required
@@ -21,7 +22,7 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 	}
 	defer closeResources(logger, deps.closers)
 
-	configureSheinLoginService(deps.cfg)
+	sheinclient.ConfigureLoginAccountFromConfig(deps.cfg)
 
 	if _, err := buildProductModule(logger, deps); err != nil {
 		return fmt.Errorf("build product module: %w", err)
