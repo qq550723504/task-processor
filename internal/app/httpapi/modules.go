@@ -54,7 +54,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	server, routes, err := buildHTTPServerBundleFromModules(options.Port, deps.cfg, composition.routeModules())
+	server, routes, err := composition.buildServerBundle(options.Port, deps.cfg)
 	if err != nil {
 		return nil, err
 	}

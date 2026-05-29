@@ -119,6 +119,10 @@ func (c httpFeatureComposition) localTaskHealthProvider() taskrpcapi.LocalStatus
 	return buildLocalTaskHealthProvider(c.namedWorkerPools())
 }
 
+func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) (*http.Server, []routeDescriptor, error) {
+	return buildHTTPServerBundleFromModules(port, cfg, c.routeModules())
+}
+
 func (c httpFeatureComposition) namedWorkerPools() map[string]worker.WorkerPool {
 	return map[string]worker.WorkerPool{
 		"product_enrich": c.productPool(),

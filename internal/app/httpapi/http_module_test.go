@@ -490,6 +490,33 @@ func TestHTTPFeatureCompositionLocalTaskHealthProviderUsesFeaturePoolNames(t *te
 	require.NotContains(t, pools, "amazon_listing")
 }
 
+func TestHTTPFeatureCompositionBuildServerBundleUsesRouteModules(t *testing.T) {
+	t.Parallel()
+
+	composition := httpFeatureComposition{
+		productModule: &productenrichhttpapi.Module{
+			Handler: &stubProductHandler{},
+		},
+		imageModule: &productimagehttpapi.Module{
+			Handler: &stubImageHandler{},
+		},
+	}
+
+	server, routes, err := composition.buildServerBundle(18080, &config.Config{})
+	require.NoError(t, err)
+	require.Contains(t, routeKeys(routes), "GET /health")
+	require.Contains(t, routeKeys(routes), "POST /api/v1/products/generate")
+	require.Contains(t, routeKeys(routes), "POST /api/v1/images/process")
+
+	router, ok := server.Handler.(*gin.Engine)
+	require.True(t, ok)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+}
+
 type stubWorkerPool struct {
 	stats   worker.QueueStats
 	metrics *worker.Metrics

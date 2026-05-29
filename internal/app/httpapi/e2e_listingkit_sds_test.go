@@ -123,7 +123,12 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, features.productModule.Handler, features.imageModule.Handler, nil, features.listingKitModule.Handler, nil)
+	routerServer, _, err := httpFeatureComposition{
+		productModule:    features.productModule,
+		imageModule:      features.imageModule,
+		listingKitModule: features.listingKitModule,
+	}.buildServerBundle(0, nil)
+	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
