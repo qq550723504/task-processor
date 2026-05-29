@@ -42,6 +42,30 @@ func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (shein
 	return sheinattribute.NewClient(baseAPI), nil
 }
 
+func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {
+	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
+	if err != nil {
+		return nil, fmt.Errorf("%w for category resolution", err)
+	}
+	if !apiClient.HasCookies() {
+		if err := apiClient.ForceRefreshCookies(); err != nil {
+			return nil, fmt.Errorf("shein store cookies are unavailable for category resolution: %w", err)
+		}
+	}
+	if !apiClient.HasCookies() {
+		return nil, fmt.Errorf("shein store cookies are unavailable for category resolution")
+	}
+
+	baseAPI := sheinclient.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		storeID,
+		apiClient.GetHTTPClient(),
+	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	return sheincategory.NewClient(baseAPI), nil
+}
+
 func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {
 	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
 		return task.Request.SheinStoreID, nil

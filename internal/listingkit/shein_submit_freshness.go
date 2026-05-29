@@ -11,6 +11,8 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinattribute "task-processor/internal/shein/api/attribute"
+	sheincategory "task-processor/internal/shein/api/category"
 	sheinclient "task-processor/internal/shein/client"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
@@ -86,17 +88,12 @@ func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task,
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
 
-	runtimeFactory := sheinFreshnessRuntimeClientFactory{svc: s, task: task}
-	categoryResolver := sheinpub.NewRuntimeCategoryResolver(runtimeFactory, s.sheinContentOptimizer)
-	attributeResolver := sheinpub.NewRuntimeAttributeResolver(runtimeFactory, s.sheinContentOptimizer)
-	saleAttributeResolver := sheinpub.NewRuntimeSaleAttributeResolver(runtimeFactory, s.sheinContentOptimizer, s.sheinResolutionCacheStore)
-
-	categoryReq := *req
-	if pkg.CategoryID > 0 {
-		categoryReq.TargetCategoryHint = strconv.Itoa(pkg.CategoryID)
+	categoryInfo, categoryInfoErr := s.loadSheinCategoryInfoForFreshness(req.Context, task, pkg.CategoryID)
+	categoryReady, categoryMessage := evaluateSheinCategoryFreshness(pkg, categoryInfo)
+	if categoryInfoErr != nil {
+		categoryReady = false
+		categoryMessage = "当前类目模板在线校验失败，需重新刷新类目结果后再提交：" + strings.TrimSpace(categoryInfoErr.Error())
 	}
-	freshCategory := categoryResolver.Resolve(&categoryReq, currentCanonical, freshPkg)
-	categoryReady, categoryMessage := evaluateSheinCategoryFreshness(pkg, freshCategory)
 	addCheck(
 		sheinFreshnessCategoryKey,
 		"类目模板新鲜度",
@@ -109,20 +106,12 @@ func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task,
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
 
-	freshPkg.CategoryResolution = freshCategory
-	sheinpub.ApplyCategoryResolution(freshPkg, freshCategory)
-	sheinpub.RefreshDerivedState(
-		req,
-		currentCanonical,
-		sheinFreshnessImageAssets(task),
-		freshPkg,
-		nil,
-		attributeResolver,
-		saleAttributeResolver,
-		s.sheinPricingPolicy,
-	)
-
-	attributeReady, attributeMessage := evaluateSheinAttributeFreshness(pkg, freshPkg.AttributeResolution)
+	attributeTemplates, attributeTemplateErr := s.loadSheinAttributeTemplatesForFreshness(req.Context, task, freshPkg.CategoryID)
+	attributeReady, attributeMessage := evaluateSheinAttributeFreshness(pkg, attributeTemplates)
+	if attributeTemplateErr != nil {
+		attributeReady = false
+		attributeMessage = "当前普通属性模板在线校验失败，需重新刷新属性模板后再提交：" + strings.TrimSpace(attributeTemplateErr.Error())
+	}
 	addCheck(
 		sheinFreshnessAttributeKey,
 		"普通属性模板新鲜度",
@@ -132,7 +121,7 @@ func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task,
 		"刷新属性模板",
 	)
 
-	saleReady, saleMessage := evaluateSheinSaleAttributeFreshness(pkg, freshPkg.SaleAttributeResolution)
+	saleReady, saleMessage := evaluateSheinSaleAttributeFreshness(pkg, attributeTemplates)
 	addCheck(
 		sheinFreshnessSaleAttributeKey,
 		"销售属性模板新鲜度",
@@ -191,73 +180,158 @@ func buildSheinSubmitFreshnessReadiness(pkg *SheinPackage, checks []sheinworkspa
 	return readiness
 }
 
-func evaluateSheinCategoryFreshness(current *SheinPackage, fresh *sheinpub.CategoryResolution) (bool, string) {
+func evaluateSheinCategoryFreshness(current *SheinPackage, info *sheincategory.CategoryInfo) (bool, string) {
 	current = sheinpub.NormalizePackageSemanticFields(current)
 	if current == nil {
 		return true, ""
 	}
-	if fresh == nil {
+	if info == nil {
 		return false, "当前类目模板在线校验失败，需重新刷新类目结果后再提交"
 	}
-	if fresh.Status != "resolved" {
-		return false, firstNonEmptyString(joinReviewNotes(fresh.ReviewNotes), "当前类目模板在线校验未通过，需重新刷新类目结果后再提交")
+	if current.CategoryID <= 0 {
+		return false, "当前类目结果缺少 category_id，需重新刷新类目结果后再提交"
+	}
+	if info.CategoryID != current.CategoryID {
+		return false, fmt.Sprintf(
+			"当前类目模板已发生变化：原 category_id=%d，当前在线查询结果为 category_id=%d",
+			current.CategoryID,
+			info.CategoryID,
+		)
 	}
 	currentProductTypeID := 0
 	if current.ProductTypeID != nil {
 		currentProductTypeID = *current.ProductTypeID
 	}
-	if fresh.CategoryID != current.CategoryID || fresh.ProductTypeID != currentProductTypeID {
+	if currentProductTypeID <= 0 {
+		return false, "当前类目结果缺少 product_type_id，需重新刷新类目结果后再提交"
+	}
+	if info.ProductTypeID != currentProductTypeID {
 		return false, fmt.Sprintf(
-			"当前类目模板已发生变化：原 category_id=%d/product_type_id=%d，当前在线结果为 category_id=%d/product_type_id=%d",
+			"当前类目模板已发生变化：原 category_id=%d/product_type_id=%d，当前在线查询结果为 category_id=%d/product_type_id=%d",
 			current.CategoryID,
 			currentProductTypeID,
-			fresh.CategoryID,
-			fresh.ProductTypeID,
+			info.CategoryID,
+			info.ProductTypeID,
 		)
 	}
-	return true, "当前类目模板仍与在线结果一致"
+	return true, "当前类目结果仍然可用于当前提交"
 }
 
-func evaluateSheinAttributeFreshness(current *SheinPackage, fresh *sheinpub.AttributeResolution) (bool, string) {
+func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
 	current = sheinpub.NormalizePackageSemanticFields(current)
 	if current == nil {
 		return true, ""
 	}
-	if fresh == nil {
+	if templates == nil || len(templates.Data) == 0 {
 		return false, "当前普通属性模板在线校验失败，需重新刷新属性模板后再提交"
 	}
-	if fresh.Status != "resolved" || fresh.UnresolvedCount > 0 || len(fresh.PendingAttributes) > 0 {
-		return false, firstNonEmptyString(joinReviewNotes(fresh.ReviewNotes), "当前普通属性模板已变化，需重新刷新属性模板后再提交")
+
+	attributes := filterSheinFreshnessDisplayAttributes(templates.Data[0].AttributeInfos)
+	if len(attributes) == 0 {
+		return false, "当前普通属性模板为空，需重新刷新属性模板后再提交"
 	}
-	if !sameResolvedAttributeSet(current.ResolvedAttributes, fresh.ResolvedAttributes) {
-		return false, buildResolvedAttributeFreshnessDriftMessage(current.ResolvedAttributes, fresh.ResolvedAttributes)
+
+	attributeIndex := make(map[int]sheinattribute.AttributeInfo, len(attributes))
+	resolvedByID := make(map[int]sheinpub.ResolvedAttribute, len(current.ResolvedAttributes))
+	for _, attr := range attributes {
+		attributeIndex[attr.AttributeID] = attr
 	}
-	return true, "当前普通属性模板仍与在线结果一致"
+	for _, item := range current.ResolvedAttributes {
+		if item.AttributeID > 0 {
+			resolvedByID[item.AttributeID] = item
+		}
+	}
+
+	invalid := make([]string, 0)
+	for _, item := range current.ResolvedAttributes {
+		if item.AttributeID <= 0 {
+			continue
+		}
+		if sheinResolvedAttributeStillLegal(item, attributeIndex) {
+			continue
+		}
+		invalid = append(invalid, formatResolvedAttributeDiffItem(item))
+	}
+
+	missingRequired := make([]string, 0)
+	for _, attr := range attributes {
+		if !isSheinTemplateRequired(attr) {
+			continue
+		}
+		if !sheinpubDependencyIsActive(attr, resolvedByID) {
+			continue
+		}
+		if _, ok := resolvedByID[attr.AttributeID]; ok {
+			continue
+		}
+		missingRequired = append(missingRequired, formatSheinFreshnessAttributeName(attr))
+	}
+
+	if len(invalid) > 0 || len(missingRequired) > 0 {
+		parts := []string{"当前普通属性模板已变化，现有 resolved attributes 中有内容已不再满足当前提交要求"}
+		if len(invalid) > 0 {
+			sort.Strings(invalid)
+			parts = append(parts, "当前模板已失效的属性值: "+strings.Join(invalid, "; "))
+		}
+		if len(missingRequired) > 0 {
+			sort.Strings(missingRequired)
+			parts = append(parts, "当前模板新增或恢复生效的必填属性: "+strings.Join(missingRequired, "; "))
+		}
+		return false, strings.Join(parts, "；")
+	}
+	return true, "当前普通属性模板中的已选值仍然合法"
 }
 
-func evaluateSheinSaleAttributeFreshness(current *SheinPackage, fresh *sheinpub.SaleAttributeResolution) (bool, string) {
+func evaluateSheinSaleAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
 	current = sheinpub.NormalizePackageSemanticFields(current)
 	if current == nil {
 		return true, ""
 	}
-	if fresh == nil {
+	if templates == nil || len(templates.Data) == 0 {
 		return false, "当前销售属性模板在线校验失败，需重新刷新销售属性后再提交"
 	}
 	currentResolution := current.SaleAttributeResolution
 	if currentResolution == nil {
 		return true, ""
 	}
-	if fresh.Status != "resolved" {
-		return false, firstNonEmptyString(joinReviewNotes(fresh.ReviewNotes), "当前销售属性模板已变化，需重新刷新销售属性后再提交")
+
+	saleOptions := buildSheinFreshnessSaleTemplateOptions(templates)
+	if len(saleOptions) == 0 {
+		return false, "当前销售属性模板为空，需重新刷新销售属性后再提交"
 	}
-	if fresh.PrimaryAttributeID != currentResolution.PrimaryAttributeID || fresh.SecondaryAttributeID != currentResolution.SecondaryAttributeID {
-		return false, "当前销售属性模板已变化，主副规格映射与在线模板结果不一致"
+
+	byID := make(map[int]sheinpub.SaleAttributeTemplateOption, len(saleOptions))
+	for _, option := range saleOptions {
+		byID[option.AttributeID] = option
 	}
-	if !sameResolvedSaleAttributeSet(currentResolution.SKCAttributes, fresh.SKCAttributes) ||
-		!sameResolvedSaleAttributeSet(currentResolution.SKUAttributes, fresh.SKUAttributes) {
-		return false, "当前销售属性模板已变化，sale attribute/value 映射与在线模板结果不一致"
+
+	issues := make([]string, 0)
+	if currentResolution.PrimaryAttributeID > 0 {
+		if _, ok := byID[currentResolution.PrimaryAttributeID]; !ok {
+			issues = append(issues, fmt.Sprintf("主规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.PrimaryAttributeID))
+		}
 	}
-	return true, "当前销售属性模板仍与在线结果一致"
+	if currentResolution.SecondaryAttributeID > 0 {
+		if _, ok := byID[currentResolution.SecondaryAttributeID]; !ok {
+			issues = append(issues, fmt.Sprintf("副规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.SecondaryAttributeID))
+		}
+	}
+
+	invalidSKC := collectInvalidSaleAttributes(currentResolution.SKCAttributes, byID)
+	invalidSKU := collectInvalidSaleAttributes(currentResolution.SKUAttributes, byID)
+	if len(invalidSKC) > 0 {
+		sort.Strings(invalidSKC)
+		issues = append(issues, "当前模板已失效的 SKC 销售属性值: "+strings.Join(invalidSKC, "; "))
+	}
+	if len(invalidSKU) > 0 {
+		sort.Strings(invalidSKU)
+		issues = append(issues, "当前模板已失效的 SKU 销售属性值: "+strings.Join(invalidSKU, "; "))
+	}
+
+	if len(issues) > 0 {
+		return false, "当前销售属性模板已变化，现有销售属性中有内容已不再满足当前提交要求；" + strings.Join(issues, "；")
+	}
+	return true, "当前销售属性模板中的已选值仍然合法"
 }
 
 func joinReviewNotes(notes []string) string {
@@ -412,6 +486,274 @@ func formatResolvedAttributeDiffItem(item sheinpub.ResolvedAttribute) string {
 		item.AttributeID,
 		valueID,
 		extraValue,
+	)
+}
+
+func (s *service) loadSheinAttributeTemplatesForFreshness(
+	ctx context.Context,
+	task *Task,
+	categoryID int,
+) (*sheinattribute.AttributeTemplateInfo, error) {
+	if categoryID <= 0 {
+		return nil, fmt.Errorf("missing SHEIN category_id")
+	}
+	api, err := s.buildSheinAttributeAPI(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetAttributeTemplates(categoryID)
+}
+
+func (s *service) loadSheinCategoryInfoForFreshness(
+	ctx context.Context,
+	task *Task,
+	categoryID int,
+) (*sheincategory.CategoryInfo, error) {
+	if categoryID <= 0 {
+		return nil, fmt.Errorf("missing SHEIN category_id")
+	}
+	api, err := s.buildSheinCategoryAPI(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetCategory(categoryID)
+}
+
+func sheinResolvedAttributeStillLegal(
+	item sheinpub.ResolvedAttribute,
+	attributeIndex map[int]sheinattribute.AttributeInfo,
+) bool {
+	attr, ok := attributeIndex[item.AttributeID]
+	if !ok {
+		return false
+	}
+	if item.AttributeValueID != nil && *item.AttributeValueID > 0 {
+		for _, option := range attr.AttributeValueInfoList {
+			if option.AttributeValueID == *item.AttributeValueID {
+				return true
+			}
+		}
+		return false
+	}
+	if strings.TrimSpace(item.AttributeExtraValue) != "" {
+		return true
+	}
+	return len(attr.AttributeValueInfoList) == 0
+}
+
+func sheinpubDependencyIsActive(attr sheinattribute.AttributeInfo, resolvedByID map[int]sheinpub.ResolvedAttribute) bool {
+	if attr.CascadeAttributeID <= 0 {
+		return true
+	}
+	parent, ok := resolvedByID[attr.CascadeAttributeID]
+	if !ok || parent.AttributeID <= 0 {
+		return false
+	}
+	if sheinConditionalOtherAttribute(attr, parent) {
+		return false
+	}
+	allowed := sheinParseCascadeValueIDs(attr.CascadeAttributeValueIDList)
+	if len(allowed) == 0 {
+		return true
+	}
+	if parent.AttributeValueID == nil || *parent.AttributeValueID <= 0 {
+		return false
+	}
+	_, ok = allowed[*parent.AttributeValueID]
+	return ok
+}
+
+func sheinConditionalOtherAttribute(attr sheinattribute.AttributeInfo, parent sheinpub.ResolvedAttribute) bool {
+	name := normalizeSheinText(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))
+	if name == "" || !strings.HasPrefix(name, "other ") {
+		return false
+	}
+	if values := sheinParseCascadeValueIDs(attr.CascadeAttributeValueIDList); len(values) > 0 {
+		return false
+	}
+	return parent.AttributeValueID != nil && *parent.AttributeValueID > 0
+}
+
+func sheinParseCascadeValueIDs(raw *string) map[int]struct{} {
+	if raw == nil {
+		return nil
+	}
+	text := strings.TrimSpace(*raw)
+	if text == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ';' || r == '|' || r == ' ' || r == '\n' || r == '\t'
+	})
+	if len(fields) == 0 {
+		return nil
+	}
+	result := make(map[int]struct{}, len(fields))
+	for _, field := range fields {
+		id, err := strconv.Atoi(strings.TrimSpace(field))
+		if err != nil || id <= 0 {
+			continue
+		}
+		result[id] = struct{}{}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func formatSheinFreshnessAttributeName(attr sheinattribute.AttributeInfo) string {
+	return strings.TrimSpace(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))
+}
+
+func filterSheinFreshnessDisplayAttributes(attributes []sheinattribute.AttributeInfo) []sheinattribute.AttributeInfo {
+	if len(attributes) == 0 {
+		return nil
+	}
+	filtered := make([]sheinattribute.AttributeInfo, 0, len(attributes))
+	for _, attr := range attributes {
+		if attr.AttributeType == 1 || (attr.SKCScope != nil && *attr.SKCScope) {
+			continue
+		}
+		filtered = append(filtered, attr)
+	}
+	return filtered
+}
+
+func buildSheinFreshnessSaleTemplateOptions(info *sheinattribute.AttributeTemplateInfo) []sheinpub.SaleAttributeTemplateOption {
+	if info == nil || len(info.Data) == 0 {
+		return nil
+	}
+	template := info.Data[0]
+	attributes := orderSheinFreshnessSaleScopeAttributes(filterSheinFreshnessSaleScopeAttributes(template.AttributeInfos), template.AttributeID)
+	options := make([]sheinpub.SaleAttributeTemplateOption, 0, len(attributes))
+	for _, attribute := range attributes {
+		option := sheinpub.SaleAttributeTemplateOption{
+			AttributeID: attribute.AttributeID,
+			Name:        attribute.AttributeName,
+			NameEn:      attribute.AttributeNameEn,
+			Required:    attribute.AttributeIsShow == 1,
+			Important:   attribute.AttributeLabel == 1,
+		}
+		if attribute.SKCScope != nil {
+			option.SKCScope = *attribute.SKCScope
+		}
+		for _, value := range attribute.AttributeValueInfoList {
+			if value.AttributeValueID <= 0 {
+				continue
+			}
+			option.AttributeValueList = append(option.AttributeValueList, sheinpub.AttributeValueCandidate{
+				AttributeValueID: value.AttributeValueID,
+				Value:            value.AttributeValue,
+				ValueEn:          value.AttributeValueEn,
+			})
+		}
+		options = append(options, option)
+	}
+	return options
+}
+
+func filterSheinFreshnessSaleScopeAttributes(attributes []sheinattribute.AttributeInfo) []sheinattribute.AttributeInfo {
+	result := make([]sheinattribute.AttributeInfo, 0, len(attributes))
+	for _, attr := range attributes {
+		if attr.AttributeType == 1 || (attr.SKCScope != nil && *attr.SKCScope) {
+			result = append(result, attr)
+			continue
+		}
+		switch normalizeSheinText(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)) {
+		case "color", "colour", "size", "style", "pattern", "capacity", "type", "model", "set", "颜色", "颜色分类", "尺码", "尺寸", "规格", "容量", "款式", "类型", "型号", "套装":
+			result = append(result, attr)
+		}
+	}
+	return result
+}
+
+func orderSheinFreshnessSaleScopeAttributes(attributes []sheinattribute.AttributeInfo, orderedIDs []int) []sheinattribute.AttributeInfo {
+	if len(attributes) == 0 {
+		return nil
+	}
+	if len(orderedIDs) == 0 {
+		ordered := append([]sheinattribute.AttributeInfo(nil), attributes...)
+		sort.SliceStable(ordered, func(i, j int) bool {
+			left := ordered[i].AttributeLabel == 1
+			right := ordered[j].AttributeLabel == 1
+			if left != right {
+				return left
+			}
+			return false
+		})
+		return ordered
+	}
+	byID := make(map[int]sheinattribute.AttributeInfo, len(attributes))
+	for _, attr := range attributes {
+		byID[attr.AttributeID] = attr
+	}
+	ordered := make([]sheinattribute.AttributeInfo, 0, len(attributes))
+	seen := make(map[int]struct{}, len(attributes))
+	for _, id := range orderedIDs {
+		attr, ok := byID[id]
+		if !ok {
+			continue
+		}
+		ordered = append(ordered, attr)
+		seen[id] = struct{}{}
+	}
+	for _, attr := range attributes {
+		if _, ok := seen[attr.AttributeID]; ok {
+			continue
+		}
+		ordered = append(ordered, attr)
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := ordered[i].AttributeLabel == 1
+		right := ordered[j].AttributeLabel == 1
+		if left != right {
+			return left
+		}
+		return false
+	})
+	return ordered
+}
+
+func collectInvalidSaleAttributes(
+	items []sheinpub.ResolvedSaleAttribute,
+	options map[int]sheinpub.SaleAttributeTemplateOption,
+) []string {
+	invalid := make([]string, 0)
+	for _, item := range items {
+		option, ok := options[item.AttributeID]
+		if !ok {
+			invalid = append(invalid, formatResolvedSaleAttributeDiffItem(item))
+			continue
+		}
+		if item.AttributeValueID != nil && *item.AttributeValueID > 0 {
+			found := false
+			for _, candidate := range option.AttributeValueList {
+				if candidate.AttributeValueID == *item.AttributeValueID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				invalid = append(invalid, formatResolvedSaleAttributeDiffItem(item))
+			}
+		}
+	}
+	return invalid
+}
+
+func formatResolvedSaleAttributeDiffItem(item sheinpub.ResolvedSaleAttribute) string {
+	valueID := 0
+	if item.AttributeValueID != nil {
+		valueID = *item.AttributeValueID
+	}
+	return fmt.Sprintf(
+		"%s=%s (scope=%s, attribute_id=%d, attribute_value_id=%d)",
+		strings.TrimSpace(item.Name),
+		strings.TrimSpace(item.Value),
+		strings.TrimSpace(item.Scope),
+		item.AttributeID,
+		valueID,
 	)
 }
 
