@@ -17,6 +17,19 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 	}
 }
 
+func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServiceConfig {
+	return taskDirectSubmissionServiceConfig{
+		normalizeSheinSubmitPackage:     s.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:   s.validateSheinPublishFreshness,
+		failSheinDirectSubmit:           s.failSheinDirectSubmit,
+		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		persistSheinDirectSubmitPhase:   s.persistSheinDirectSubmitPhase,
+		prepareSheinDirectSubmitProduct: s.prepareSheinDirectSubmitProduct,
+		completeSheinDirectRemoteSubmit: s.completeSheinDirectRemoteSubmit,
+		buildTaskPreview:                s.buildTaskPreview,
+	}
+}
+
 func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {
 	resolver := buildSubmitRuntimeContextResolver(s)
 	return taskSubmissionExecutionServiceConfig{

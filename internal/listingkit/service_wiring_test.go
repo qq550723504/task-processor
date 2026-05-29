@@ -209,6 +209,16 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
+			name: "direct submit service",
+			file: "service_submit_direct.go",
+			builderCalls: []string{
+				"buildTaskDirectSubmissionServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{",
+			},
+		},
+		{
 			name: "temporal submission adapter",
 			file: "service_submit_temporal_adapter.go",
 			builderCalls: []string{
