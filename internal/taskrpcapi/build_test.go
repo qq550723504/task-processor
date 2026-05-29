@@ -31,3 +31,19 @@ func TestBuildHandlerBuildsFromProvider(t *testing.T) {
 		t.Fatal("BuildHandler() returned nil handler")
 	}
 }
+
+func TestBuildModuleBuildsHandlerAndModule(t *testing.T) {
+	result, err := BuildModule(stubClientProvider{client: &managementclient.TaskRPCAPIClient{}}, nil)
+	if err != nil {
+		t.Fatalf("BuildModule() error = %v", err)
+	}
+	if result == nil {
+		t.Fatal("BuildModule() returned nil result")
+	}
+	if result.Handler == nil {
+		t.Fatal("BuildModule() returned nil handler")
+	}
+	if result.Module == nil {
+		t.Fatal("BuildModule() returned nil module")
+	}
+}

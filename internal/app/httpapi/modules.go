@@ -8,6 +8,7 @@ import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
+	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -66,19 +67,32 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	sheinLoginHandler, sheinLoginCloser, err := buildSheinLoginModule(deps)
+	sheinLoginResult, sheinLoginCloser, err := buildSheinLoginModuleResult(deps)
 	if err != nil {
 		return nil, err
 	}
 	if sheinLoginCloser != nil {
 		deps.closers = append(deps.closers, sheinLoginCloser)
 	}
-	sdsLoginHandler, sdsLoginCloser, err := buildSDSLoginModule(deps)
+	var sheinLoginHandler sheinLoginRouteHandler
+	var sheinLoginModule kernelmodule.Module
+	if sheinLoginResult != nil {
+		sheinLoginHandler = sheinLoginResult.Handler
+		sheinLoginModule = sheinLoginResult.Module
+	}
+
+	sdsLoginResult, sdsLoginCloser, err := buildSDSLoginModuleResult(deps)
 	if err != nil {
 		return nil, err
 	}
 	if sdsLoginCloser != nil {
 		deps.closers = append(deps.closers, sdsLoginCloser)
+	}
+	var sdsLoginHandler sdsLoginRouteHandler
+	var sdsLoginModule kernelmodule.Module
+	if sdsLoginResult != nil {
+		sdsLoginHandler = sdsLoginResult.Handler
+		sdsLoginModule = sdsLoginResult.Module
 	}
 	listingKitModule, err := buildListingKitModule(logger, deps)
 	if err != nil {
@@ -94,28 +108,36 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		"listing_kit":    listingKitModule.Pool,
 	})
 
-	var taskRPCHandler taskrpcapi.Handler
-	taskRPCHandler, err = taskrpcapi.BuildHandler(deps.managementClient(), localTaskHealthProvider)
+	taskRPCResult, err := taskrpcapi.BuildModule(deps.managementClient(), localTaskHealthProvider)
 	if err != nil {
 		return nil, err
+	}
+	var taskRPCHandler taskrpcapi.Handler
+	var taskRPCModule kernelmodule.Module
+	if taskRPCResult != nil {
+		taskRPCHandler = taskRPCResult.Handler
+		taskRPCModule = taskRPCResult.Module
 	}
 
 	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
 	sdsCatalogHandler := sdsModule.Handler
 
 	handlers := httpModuleHandlers{
-		product:        productModule.Handler,
-		image:          imageModule.Handler,
-		amazonListing:  amazonListingModule.Handler,
-		listingKit:     listingKitModule.Handler,
-		promptTemplate: promptTemplateHandler,
-		promptModule:   promptModule.Module,
-		studioSession:  listingKitModule.StudioSessionHandler,
-		sheinLogin:     sheinLoginHandler,
-		sdsLogin:       sdsLoginHandler,
-		taskRPC:        taskRPCHandler,
-		sdsCatalog:     sdsCatalogHandler,
-		sdsModule:      sdsModule.Module,
+		product:          productModule.Handler,
+		image:            imageModule.Handler,
+		amazonListing:    amazonListingModule.Handler,
+		listingKit:       listingKitModule.Handler,
+		promptTemplate:   promptTemplateHandler,
+		promptModule:     promptModule.Module,
+		studioSession:    listingKitModule.StudioSessionHandler,
+		sheinLogin:       sheinLoginHandler,
+		sheinLoginModule: sheinLoginModule,
+		sdsLogin:         sdsLoginHandler,
+		sdsLoginModule:   sdsLoginModule,
+		taskRPC:          taskRPCHandler,
+		taskRPCModule:    taskRPCModule,
+		sdsCatalog:       sdsCatalogHandler,
+		sdsModule:        sdsModule.Module,
 	}
 	server, routes, err := buildHTTPServerBundleFromHandlers(options.Port, deps.cfg, handlers)
 	if err != nil {
@@ -140,6 +162,14 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 }
 
 func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() error, error) {
+	result, closer, err := buildSheinLoginModuleResult(deps)
+	if err != nil || result == nil {
+		return nil, closer, err
+	}
+	return result.Handler, closer, nil
+}
+
+func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error) {
 	if deps == nil {
 		return nil, nil, nil
 	}
@@ -155,10 +185,18 @@ func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() er
 	if result == nil {
 		return nil, nil, nil
 	}
-	return result.Handler, result.Close, nil
+	return result, result.Close, nil
 }
 
 func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error, error) {
+	result, closer, err := buildSDSLoginModuleResult(deps)
+	if err != nil || result == nil {
+		return nil, closer, err
+	}
+	return result.Handler, closer, nil
+}
+
+func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error) {
 	if deps == nil {
 		return nil, nil, nil
 	}
@@ -170,7 +208,7 @@ func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error,
 		return nil, nil, nil
 	}
 	deps.sdsLoginStatusProvider = result.StatusProvider
-	return result.Handler, nil, nil
+	return result, nil, nil
 }
 
 func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {

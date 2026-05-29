@@ -31,6 +31,9 @@ func TestBuildHandlerReturnsHandlerAndStatusProvider(t *testing.T) {
 	if result.Handler == nil {
 		t.Fatal("BuildHandler() returned nil handler")
 	}
+	if result.Module == nil {
+		t.Fatal("BuildHandler() returned nil module")
+	}
 	if result.StatusProvider == nil {
 		t.Fatal("BuildHandler() returned nil status provider")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"task-processor/internal/core/config"
+	kernelmodule "task-processor/internal/kernel/module"
 	sdsclient "task-processor/internal/sds/client"
 	"task-processor/internal/sdslogin"
 )
@@ -14,6 +15,7 @@ type StatusProvider interface {
 
 type BuildResult struct {
 	Handler        sdslogin.HTTPRouteHandler
+	Module         kernelmodule.Module
 	StatusProvider StatusProvider
 }
 
@@ -30,6 +32,7 @@ func BuildHandler(cfg *config.Config) (*BuildResult, error) {
 
 	return &BuildResult{
 		Handler:        result.Handler,
+		Module:         sdslogin.NewHTTPModule(result.Handler),
 		StatusProvider: result.Service,
 	}, nil
 }

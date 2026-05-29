@@ -53,13 +53,22 @@ func newSDSCatalogHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
 }
 
 func newTaskRPCHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	if handlers.taskRPCModule != nil {
+		return handlers.taskRPCModule
+	}
 	return taskrpcapi.NewHTTPModule(handlers.taskRPC)
 }
 
 func newSheinLoginHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	if handlers.sheinLoginModule != nil {
+		return handlers.sheinLoginModule
+	}
 	return sheinlogin.NewHTTPModule(handlers.sheinLogin)
 }
 
 func newSDSLoginHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	if handlers.sdsLoginModule != nil {
+		return handlers.sdsLoginModule
+	}
 	return sdslogin.NewHTTPModule(handlers.sdsLogin)
 }

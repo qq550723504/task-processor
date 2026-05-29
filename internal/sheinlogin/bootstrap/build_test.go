@@ -144,6 +144,9 @@ func TestBuildHandlerReturnsHandlerAndClose(t *testing.T) {
 	if result == nil || result.Handler == nil || result.Service == nil {
 		t.Fatalf("BuildHandler() returned incomplete result: %#v", result)
 	}
+	if result.Module == nil {
+		t.Fatal("BuildHandler() returned nil module")
+	}
 	if result.Close == nil {
 		t.Fatal("BuildHandler() close func is nil")
 	}
