@@ -20,6 +20,7 @@ import (
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
+	"task-processor/internal/sdslogin"
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
 )
@@ -114,13 +115,6 @@ type sheinLoginRouteHandler interface {
 	ClearLastFailure(c *gin.Context)
 }
 
-type sdsLoginRouteHandler interface {
-	Health(c *gin.Context)
-	Status(c *gin.Context)
-	Login(c *gin.Context)
-	ManualLogin(c *gin.Context)
-	GetAuthState(c *gin.Context)
-	ClearState(c *gin.Context)
-}
+type sdsLoginRouteHandler = sdslogin.HTTPRouteHandler
 
 type routeDescriptor = httproute.Descriptor

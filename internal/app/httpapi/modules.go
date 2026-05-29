@@ -99,11 +99,9 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	})
 
 	var taskRPCHandler taskrpcapi.Handler
-	if deps.managementClient() != nil {
-		taskRPCHandler, err = taskrpcapi.NewHandler(deps.managementClient().GetTaskRPCClient(), localTaskHealthProvider)
-		if err != nil {
-			return nil, err
-		}
+	taskRPCHandler, err = taskrpcapi.BuildHandler(deps.managementClient(), localTaskHealthProvider)
+	if err != nil {
+		return nil, err
 	}
 
 	sdsCatalogHandler := sdshttpapi.BuildCatalogHandler(logger, deps.cfg)
@@ -295,20 +293,19 @@ func joinClosers(closers []func() error) func() error {
 }
 
 func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error, error) {
-	if deps == nil || deps.cfg == nil {
+	if deps == nil {
 		return nil, nil, nil
 	}
-	redisCfg := config.RedisConfig{}
-	if deps.cfg.Redis != nil {
-		redisCfg = *deps.cfg.Redis
-	}
-	svc, err := sdslogin.NewService(deps.cfg.Platforms.SDS.LoginService, redisCfg, deps.cfg.Browser)
+	result, err := sdslogin.BuildHandler(deps.cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	deps.sdsLoginStatusProvider = svc
-	sdsclient.ConfigureLocalLoginProvider(svc)
-	return sdslogin.NewHandler(svc), nil, nil
+	if result == nil || result.Service == nil {
+		return nil, nil, nil
+	}
+	deps.sdsLoginStatusProvider = result.Service
+	sdsclient.ConfigureLocalLoginProvider(result.Service)
+	return result.Handler, nil, nil
 }
 
 func configureSheinLoginService(cfg *config.Config) {
