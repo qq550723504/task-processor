@@ -33,7 +33,8 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 	}
 
 	temporalRuntime, err := listingkithttpapi.BuildTemporalRuntime(listingkithttpapi.TemporalRuntimeBuildInput{
-		ServiceInput: newListingKitBuildServiceInput(logger, deps),
+		Logger:  logger,
+		Runtime: newListingKitRuntimeBuildInput(logger, deps).Runtime,
 	})
 	if err != nil {
 		return fmt.Errorf("build listing kit temporal runtime: %w", err)

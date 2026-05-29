@@ -105,12 +105,16 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 				return nil
 			}, nil
 		},
-		buildListingKit: func(listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
+		buildListingKit: func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 			order = append(order, "listingkit")
 			require.Equal(t, statusProvider, deps.features.sdsLoginStatusProvider)
 			require.Equal(t, subjectExtractor, deps.features.imageSubjectExtractor)
 			require.Equal(t, whiteBgRenderer, deps.features.imageWhiteBgRenderer)
 			require.Equal(t, sceneRenderer, deps.features.imageSceneRenderer)
+			require.NotNil(t, input.Runtime.Support.Repositories.Core.Task)
+			require.NotNil(t, input.Runtime.Support.Hooks.ConfigureAuthorization)
+			require.Nil(t, input.Runtime.Repositories.Core.Task)
+			require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
 			return &listingkithttpapi.Module{
 				Pool: stubWorkerPool{},
 			}, nil

@@ -87,9 +87,13 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 						Pool:    stubWorkerPool{},
 					}, nil
 				},
-				buildListingKit: func(listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
+				buildListingKit: func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 					order = append(order, "listingkit")
 					require.Equal(t, productService, deps.features.productService)
+					require.NotNil(t, input.Runtime.Support.Repositories.Core.Task)
+					require.NotNil(t, input.Runtime.Support.Hooks.ConfigureAuthorization)
+					require.Nil(t, input.Runtime.Repositories.Core.Task)
+					require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
 					return &listingkithttpapi.Module{
 						Pool: stubWorkerPool{},
 					}, nil
