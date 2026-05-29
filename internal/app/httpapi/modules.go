@@ -8,7 +8,6 @@ import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
-	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -74,13 +73,6 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if sheinLoginCloser != nil {
 		deps.closers = append(deps.closers, sheinLoginCloser)
 	}
-	var sheinLoginHandler sheinLoginRouteHandler
-	var sheinLoginModule kernelmodule.Module
-	if sheinLoginResult != nil {
-		sheinLoginHandler = sheinLoginResult.Handler
-		sheinLoginModule = sheinLoginResult.Module
-	}
-
 	sdsLoginResult, sdsLoginCloser, err := buildSDSLoginModuleResult(deps)
 	if err != nil {
 		return nil, err
@@ -88,18 +80,11 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if sdsLoginCloser != nil {
 		deps.closers = append(deps.closers, sdsLoginCloser)
 	}
-	var sdsLoginHandler sdsLoginRouteHandler
-	var sdsLoginModule kernelmodule.Module
-	if sdsLoginResult != nil {
-		sdsLoginHandler = sdsLoginResult.Handler
-		sdsLoginModule = sdsLoginResult.Module
-	}
 	listingKitModule, err := buildListingKitModule(logger, deps)
 	if err != nil {
 		return nil, err
 	}
 	promptModule := promptmgmtapi.BuildModule(deps.tenantPromptStore)
-	promptTemplateHandler := promptModule.Handler
 
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
 		"product_enrich": productModule.Pool,
@@ -112,56 +97,31 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
-	var taskRPCHandler taskrpcapi.Handler
-	var taskRPCModule kernelmodule.Module
-	if taskRPCResult != nil {
-		taskRPCHandler = taskRPCResult.Handler
-		taskRPCModule = taskRPCResult.Module
-	}
-
 	sdsModule := sdshttpapi.BuildModule(logger, deps.cfg)
-	sdsCatalogHandler := sdsModule.Handler
 
-	modules := []kernelmodule.Module{
-		newCoreHTTPModule(),
-		newProductHTTPModule(httpModuleHandlers{
-			product: productModule.Handler,
-			image:   imageModule.Handler,
-		}),
-		newAmazonListingHTTPModule(httpModuleHandlers{
-			amazonListing: amazonListingModule.Handler,
-		}),
-		newListingKitHTTPModule(httpModuleHandlers{
-			listingKit: listingKitModule.Handler,
-		}),
-		promptModule.Module,
-		newListingKitStudioHTTPModule(httpModuleHandlers{
-			studioSession: listingKitModule.StudioSessionHandler,
-		}),
-		sdsModule.Module,
-		taskRPCModule,
-		sheinLoginModule,
-		sdsLoginModule,
+	composition := httpFeatureComposition{
+		productModule:       productModule,
+		imageModule:         imageModule,
+		amazonListingModule: amazonListingModule,
+		listingKitModule:    listingKitModule,
+		promptModule:        promptModule,
+		sdsModule:           sdsModule,
+		taskRPCResult:       taskRPCResult,
+		sheinLoginResult:    sheinLoginResult,
+		sdsLoginResult:      sdsLoginResult,
 	}
-	server, routes, err := buildHTTPServerBundleFromModules(options.Port, deps.cfg, modules)
+
+	server, routes, err := buildHTTPServerBundleFromModules(options.Port, deps.cfg, composition.routeModules())
 	if err != nil {
 		return nil, err
 	}
 	return &appBootstrap{
-		productHandler:        productModule.Handler,
-		imageHandler:          imageModule.Handler,
-		amazonListingHandler:  amazonListingModule.Handler,
-		listingKitHandler:     listingKitModule.Handler,
-		promptTemplateHandler: promptTemplateHandler,
-		studioSessionHandler:  listingKitModule.StudioSessionHandler,
-		sdsCatalogHandler:     sdsCatalogHandler,
-		sheinLoginHandler:     sheinLoginHandler,
-		sdsLoginHandler:       sdsLoginHandler,
-		taskRPCHandler:        taskRPCHandler,
-		server:                server,
-		routes:                routes,
-		pools:                 []worker.WorkerPool{productModule.Pool, imageModule.Pool, amazonListingModule.Pool, listingKitModule.Pool},
-		closers:               deps.closers,
+		productHandler: composition.productHandler(),
+		imageHandler:   composition.imageHandler(),
+		server:         server,
+		routes:         routes,
+		pools:          composition.workerPools(),
+		closers:        deps.closers,
 	}, nil
 }
 
