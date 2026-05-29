@@ -1,6 +1,10 @@
 package listingkit
 
-import sheinpub "task-processor/internal/publishing/shein"
+import (
+	"testing"
+
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 type testServiceConfigOption func(*ServiceConfig)
 
@@ -66,4 +70,16 @@ func withTestSheinPublishWorkflow(client SheinPublishWorkflowClient, enabled boo
 
 func withDefaultTestSheinImageAPI() testServiceConfigOption {
 	return withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}})
+}
+
+func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
+	t.Parallel()
+
+	svc := newServiceWithConfig(newTestServiceConfig(&stubSubmitRepo{}))
+	if svc == nil {
+		t.Fatal("expected service instance")
+	}
+	if svc.sheinSubmitLocks == nil {
+		t.Fatal("expected shein submit locks to be initialized")
+	}
 }
