@@ -1045,7 +1045,9 @@ func assembleServiceRuntime(input BuildServiceInput, repositories *builtReposito
 	if err != nil {
 		return serviceRuntimeAssembly{}, err
 	}
-	modules.temporal = buildTemporalModule(temporalModuleInput{Service: moduleSvc})
+	modules.temporal = buildTemporalModule(temporalModuleInput{
+		Service: moduleSvc,
+	})
 	return serviceRuntimeAssembly{
 		service:             moduleSvc,
 		modules:             modules,
