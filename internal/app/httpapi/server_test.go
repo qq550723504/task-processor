@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -2149,6 +2150,29 @@ func singleSDSCatalogHandler(sdsCatalogHandlers ...sdsCatalogRouteHandler) sdsCa
 		return sdsCatalogHandlers[0]
 	}
 	panic(fmt.Sprintf("expected at most 1 SDS catalog handler, got %d", len(sdsCatalogHandlers)))
+}
+
+func buildHTTPServerBundleFromHandlers(port int, cfg *config.Config, handlers httpModuleHandlers) (*http.Server, []routeDescriptor, error) {
+	return buildHTTPServerBundleFromModules(port, cfg, buildHTTPModules(handlers))
+}
+
+func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]routeDescriptor, error) {
+	return buildRegisteredRoutesForModules(cfg, buildHTTPModules(handlers))
+}
+
+func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
+	return []kernelmodule.Module{
+		newCoreHTTPModule(),
+		newProductHTTPModule(handlers),
+		newAmazonListingHTTPModule(handlers),
+		newListingKitHTTPModule(handlers),
+		newPromptTemplateHTTPModule(handlers),
+		newListingKitStudioHTTPModule(handlers),
+		newSDSCatalogHTTPModule(handlers),
+		newTaskRPCHTTPModule(handlers),
+		newSheinLoginHTTPModule(handlers),
+		newSDSLoginHTTPModule(handlers),
+	}
 }
 
 func routePaths(routes []routeDescriptor) []string {

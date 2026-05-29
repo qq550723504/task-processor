@@ -7,10 +7,6 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
-func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]routeDescriptor, error) {
-	return buildRegisteredRoutesForModules(cfg, buildHTTPModules(handlers))
-}
-
 func buildRegisteredRoutesForModules(cfg *config.Config, modules []kernelmodule.Module) ([]routeDescriptor, error) {
 	reg := kernelmodule.NewRegistry()
 
@@ -27,19 +23,4 @@ func buildRegisteredRoutesForModules(cfg *config.Config, modules []kernelmodule.
 	}
 
 	return reg.Routes(), nil
-}
-
-func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
-	return []kernelmodule.Module{
-		newCoreHTTPModule(),
-		newProductHTTPModule(handlers),
-		newAmazonListingHTTPModule(handlers),
-		newListingKitHTTPModule(handlers),
-		newPromptTemplateHTTPModule(handlers),
-		newListingKitStudioHTTPModule(handlers),
-		newSDSCatalogHTTPModule(handlers),
-		newTaskRPCHTTPModule(handlers),
-		newSheinLoginHTTPModule(handlers),
-		newSDSLoginHTTPModule(handlers),
-	}
 }

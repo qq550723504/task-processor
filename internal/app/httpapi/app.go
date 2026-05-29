@@ -79,10 +79,6 @@ func serveHTTP(logger *logrus.Logger, server *http.Server, routes []routeDescrip
 	return nil
 }
 
-func buildHTTPServerBundleFromHandlers(port int, cfg *config.Config, handlers httpModuleHandlers) (*http.Server, []routeDescriptor, error) {
-	return buildHTTPServerBundleFromModules(port, cfg, buildHTTPModules(handlers))
-}
-
 func buildHTTPServerBundleFromModules(port int, cfg *config.Config, modules []kernelmodule.Module) (*http.Server, []routeDescriptor, error) {
 	routes, err := buildRegisteredRoutesForModules(cfg, modules)
 	if err != nil {
