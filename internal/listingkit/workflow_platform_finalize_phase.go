@@ -42,6 +42,7 @@ func (p *platformFinalizePhase) run(
 	applySheinInspectionReviewToSummary(final)
 	addSheinReviewWorkflowIssues(final)
 	sheinReviewStage.Complete()
+	applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)
 
 	if inventory != nil {
 		if enableAssetGeneration {

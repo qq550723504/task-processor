@@ -3,6 +3,8 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"task-processor/internal/asset"
@@ -312,32 +314,40 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	t.Parallel()
 
+	productTask := &productenrich.Task{
+		ID: "product-task-shein-copy",
+		Request: &productenrich.GenerateRequest{
+			ImageURLs: []string{"https://example.com/pillow.jpg"},
+			Text:      "pillow cover",
+		},
+	}
 	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{
-			ID: "product-task-platform-finalize",
-			Request: &productenrich.GenerateRequest{
-				ImageURLs: []string{"https://example.com/source.jpg"},
-				Text:      "gift box",
-			},
-		},
+		task: productTask,
 		product: &productenrich.ProductJSON{
-			Title:      "Gift Box",
-			Category:   []string{"Home"},
-			Images:     []string{"https://example.com/source.jpg"},
-			Attributes: map[string]string{"brand": "DemoBrand"},
+			Title:         "Envelope style pillow cover",
+			Description:   "Simple pillow cover for home decor.",
+			Category:      []string{"Home", "Textiles", "Pillow Covers"},
+			Images:        []string{"https://example.com/pillow.jpg"},
+			SellingPoints: []string{"Soft polyester", "Botanical print"},
+			Attributes:    map[string]string{"brand": "DemoBrand"},
 		},
+	}
+	ai := &stubSheinContentAI{
+		response: `{"title":"Botanical Envelope Pillow Cover for Sofa Couch Bedroom Decor, Soft Polyester Accent Cushion Case","description":"A soft polyester envelope pillow cover designed to refresh sofas, beds, and reading corners with a botanical accent print. The overlap closure keeps the insert tucked in while making everyday styling changes easy."}`,
 	}
 	svc := &service{
-		productSvc:          productSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		productSvc:            productSvc,
+		assembler:             NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		sheinContentOptimizer: ai,
+		assetRecipeResolver:   newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:    newDefaultAssetBundleBuilder(),
+		assetGenerator:        newDefaultAssetGenerationService(),
 	}
 	task := &Task{
-		ID: "listingkit-task-platform-finalize",
+		ID: "listingkit-task-shein-copy",
 		Request: &GenerateRequest{
-			ImageURLs: []string{"https://example.com/source.jpg"},
-			Text:      "gift box",
+			ImageURLs: []string{"https://example.com/pillow.jpg"},
+			Text:      "pillow cover",
 			Platforms: []string{"shein"},
 			Country:   "US",
 			Language:  "en_US",
@@ -352,11 +362,51 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	if result.Shein == nil {
 		t.Fatal("expected shein package")
 	}
-	if result.Summary == nil || !result.Summary.NeedsReview {
-		t.Fatalf("summary = %+v, want review-aware finalized summary", result.Summary)
+	if ai.calls != 1 {
+		t.Fatal("shein content optimizer was not called")
 	}
-	if !hasWorkflowStageStatus(result.WorkflowStages, "shein_review", WorkflowStageStatusCompleted) {
-		t.Fatalf("workflow stages = %+v, want completed shein_review", result.WorkflowStages)
+	if got := result.Shein.ProductNameEn; !strings.Contains(got, "Botanical Envelope Pillow Cover") {
+		t.Fatalf("shein title = %q", got)
+	}
+	if got := result.Shein.Description; !strings.Contains(got, "reading corners") {
+		t.Fatalf("shein description = %q", got)
+	}
+
+	preview := buildSheinPreviewPayload(result.Shein, result.PodExecution, result.CanonicalProduct, nil, nil)
+	if preview == nil || preview.FinalReview == nil {
+		t.Fatalf("preview final review = %+v", preview)
+	}
+	if got := preview.FinalReview.Title; !strings.Contains(got, "Botanical Envelope Pillow Cover") {
+		t.Fatalf("final review title = %q", got)
+	}
+	if got := preview.FinalReview.Description; !strings.Contains(got, "reading corners") {
+		t.Fatalf("final review description = %q", got)
+	}
+}
+
+func TestPlatformFinalizePhaseKeepsVariantCoverageGuardAfterSheinReview(t *testing.T) {
+	t.Parallel()
+
+	postprocessSrc, err := os.ReadFile("workflow_platform_postprocess_phase.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_platform_postprocess_phase.go) error = %v", err)
+	}
+	if strings.Contains(string(postprocessSrc), "applySheinVariantImageCoverageGuard(") {
+		t.Fatal("workflow_platform_postprocess_phase.go should not contain applySheinVariantImageCoverageGuard")
+	}
+
+	finalizeSrc, err := os.ReadFile("workflow_platform_finalize_phase.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_platform_finalize_phase.go) error = %v", err)
+	}
+	content := string(finalizeSrc)
+	reviewIndex := strings.Index(content, "sheinReviewStage.Complete()")
+	guardIndex := strings.Index(content, "applySheinVariantImageCoverageGuard(")
+	if guardIndex == -1 {
+		t.Fatal("workflow_platform_finalize_phase.go should contain applySheinVariantImageCoverageGuard")
+	}
+	if reviewIndex == -1 || guardIndex < reviewIndex {
+		t.Fatalf("variant coverage guard should run after shein review completion: reviewIndex=%d guardIndex=%d", reviewIndex, guardIndex)
 	}
 }
 

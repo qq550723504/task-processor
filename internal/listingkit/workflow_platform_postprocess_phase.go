@@ -33,5 +33,4 @@ func (p *platformPostprocessPhase) run(
 	if shouldUseSheinStudioAIImages(task.Request) {
 		applySheinStudioAIImagesToShein(final.Shein, task.Request, final.SDSDesignResult)
 	}
-	applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)
 }
