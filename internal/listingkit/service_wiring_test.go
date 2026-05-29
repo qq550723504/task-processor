@@ -1,6 +1,10 @@
 package listingkit
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestNewServiceInitializesCollaborators(t *testing.T) {
 	t.Parallel()
@@ -105,5 +109,36 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	svc.initializeTemporalCollaborators()
 	if svc.taskTemporalSubmissionAdapter == nil {
 		t.Fatal("expected taskTemporalSubmissionAdapter to be initialized")
+	}
+}
+
+func TestServiceRootFileDoesNotOwnCollaboratorGroupInitializationBodies(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"func (s *service) initializeCollaborators() {",
+		"func (s *service) initializeTaskCollaborators() {",
+		"func (s *service) initializeAdminCollaborators() {",
+		"func (s *service) initializeSubmitCollaborators() {",
+		"func (s *service) initializeTemporalCollaborators() {",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("service.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func NewService(config *ServiceConfig) (Service, error) {",
+		"func newServiceWithConfig(config *ServiceConfig) *service {",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("service.go should keep %q", needle)
+		}
 	}
 }
