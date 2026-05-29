@@ -2,11 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"net"
+	"strconv"
 	"testing"
 
+	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/sirupsen/logrus"
 
 	appbootstrap "task-processor/internal/app/bootstrap"
+	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/listingkit"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -151,6 +155,67 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 	}
 	if input.Runtime.Support.SDSBaselineRemoteProvider == nil {
 		t.Fatal("expected SDS baseline remote provider to be routed through runtime support")
+	}
+}
+
+func TestEnsureListingKitSheinCookieStoreReturnsNilWithoutRedisConfig(t *testing.T) {
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{cfg: &config.Config{}},
+		features: &featureRuntimeState{},
+	}
+
+	store := ensureListingKitSheinCookieStore(logrus.New(), deps)
+
+	if store != nil {
+		t.Fatal("expected nil store without redis config")
+	}
+	if len(deps.shared.closers) != 0 {
+		t.Fatalf("closers = %d, want 0", len(deps.shared.closers))
+	}
+}
+
+func TestEnsureListingKitSheinCookieStoreCachesStoreAndRegistersCloser(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	host, portText, err := net.SplitHostPort(redisServer.Addr())
+	if err != nil {
+		t.Fatalf("SplitHostPort() error = %v", err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatalf("Atoi() error = %v", err)
+	}
+
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{
+				Platforms: config.PlatformsConfig{
+					Shein: config.PlatformConfig{
+						CookieRedis: config.RedisConfig{Host: host, Port: port},
+					},
+				},
+			},
+		},
+		features: &featureRuntimeState{},
+	}
+
+	logger := logrus.New()
+	first := ensureListingKitSheinCookieStore(logger, deps)
+	if first == nil {
+		t.Fatal("expected redis store")
+	}
+	second := ensureListingKitSheinCookieStore(logger, deps)
+	if second != first {
+		t.Fatalf("cached store = %p, want %p", second, first)
+	}
+	if len(deps.shared.closers) != 1 {
+		t.Fatalf("closers = %d, want 1", len(deps.shared.closers))
+	}
+	if deps.features.listingKitSupport == nil || deps.features.listingKitSupport.sheinCookieStore != first {
+		t.Fatal("expected listingkit support to cache the redis store")
+	}
+
+	if err := deps.shared.closers[0](); err != nil {
+		t.Fatalf("closer() error = %v", err)
 	}
 }
 

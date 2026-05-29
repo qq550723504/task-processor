@@ -192,6 +192,26 @@ func TestBootstrapFileDoesNotOwnServiceOrRuntimeAssemblyHelpers(t *testing.T) {
 	}
 }
 
+func TestBootstrapFileDelegatesToExtractedAssemblers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+	content := string(src)
+	for _, needle := range []string{
+		"buildListingKitServiceConfig(buildListingKitServiceConfigInput{",
+		"buildModuleRuntime(input, bundle)",
+		"buildRepositories(input, closers)",
+		"buildServiceRuntime(input, repositories, closers)",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("bootstrap.go should delegate through %q", needle)
+		}
+	}
+}
+
 func TestBuildServiceClosesAcquiredResourcesWhenBuilderFails(t *testing.T) {
 	t.Parallel()
 
