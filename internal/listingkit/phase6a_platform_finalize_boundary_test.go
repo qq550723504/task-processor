@@ -20,6 +20,7 @@ func TestWorkflowPlatformFinalizePhaseFileDelegatesToFinalizeSubSeams(t *testing
 		"buildPlatformAssetDispatchPhase(p.service).run(",
 		"buildPlatformSummaryPhase()",
 		"summaryPhase.prepareReview(final, snapshot)",
+		"applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)",
 		"return summaryPhase.complete(task, final)",
 	} {
 		if !strings.Contains(content, needle) {
@@ -37,6 +38,34 @@ func TestWorkflowPlatformFinalizePhaseFileDelegatesToFinalizeSubSeams(t *testing
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_finalize_phase.go should not contain %q", needle)
+		}
+	}
+}
+
+func TestWorkflowPlatformFinalizeCoverageGuardStaysInFinalizePhase(t *testing.T) {
+	t.Parallel()
+
+	const coverageGuardCall = "applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)"
+
+	for _, tc := range []struct {
+		file        string
+		shouldExist bool
+	}{
+		{file: "workflow_platform_finalize_phase.go", shouldExist: true},
+		{file: "workflow_platform_postprocess_phase.go", shouldExist: false},
+		{file: "workflow_platform_summary_phase.go", shouldExist: false},
+	} {
+		src, err := os.ReadFile(tc.file)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+		}
+		content := string(src)
+		hasCall := strings.Contains(content, coverageGuardCall)
+		if hasCall != tc.shouldExist {
+			if tc.shouldExist {
+				t.Fatalf("%s should contain %q", tc.file, coverageGuardCall)
+			}
+			t.Fatalf("%s should not contain %q", tc.file, coverageGuardCall)
 		}
 	}
 }
