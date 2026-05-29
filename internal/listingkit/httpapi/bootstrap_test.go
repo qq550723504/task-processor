@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -137,6 +138,28 @@ func buildServiceInputFixture() BuildServiceInput {
 			ConfigureZitadelAuth:        func(config.ListingKitZitadelConfig) {},
 			ConfigureAuthorization:      func([]string, []string) error { return nil },
 		},
+	}
+}
+
+func TestBootstrapFileDoesNotOwnRepositoryAssemblyHelpers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+	content := string(src)
+	for _, needle := range []string{
+		"type builtRepositories struct",
+		"func buildCoreRepositories(",
+		"func buildLateCoreRepositories(",
+		"func buildAdminRepositories(",
+		"func assembleRepositories(",
+		"func buildRepositories(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("bootstrap.go should not contain %q", needle)
+		}
 	}
 }
 
