@@ -11,11 +11,11 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
-func TestNewHTTPModuleRegistersListingPromptAndStudioRoutes(t *testing.T) {
+func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	t.Parallel()
 
 	reg := kernelmodule.NewRegistry()
-	module := NewHTTPModule(stubRouteHandler{}, stubPromptTemplateRouteHandler{}, stubStudioSessionRouteHandler{})
+	module := NewHTTPModule(stubRouteHandler{})
 
 	require.Equal(t, "listing-kit", module.Name())
 	require.True(t, module.Enabled(nil))
@@ -23,17 +23,23 @@ func TestNewHTTPModuleRegistersListingPromptAndStudioRoutes(t *testing.T) {
 
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
-	require.Contains(t, keys, "GET /api/v1/listing-kits/prompts/catalog")
-	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 
-type stubPromptTemplateRouteHandler struct{}
+func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
+	t.Parallel()
 
-func (stubPromptTemplateRouteHandler) ListPromptTemplateCatalog(*gin.Context) {}
-func (stubPromptTemplateRouteHandler) GetPromptTemplateSchema(*gin.Context)   {}
-func (stubPromptTemplateRouteHandler) ListPromptTemplates(*gin.Context)       {}
-func (stubPromptTemplateRouteHandler) UpsertPromptTemplate(*gin.Context)      {}
-func (stubPromptTemplateRouteHandler) SetPromptTemplateStatus(*gin.Context)   {}
+	reg := kernelmodule.NewRegistry()
+	module := NewStudioHTTPModule(stubStudioSessionRouteHandler{})
+
+	require.Equal(t, "listing-kit-studio", module.Name())
+	require.True(t, module.Enabled(nil))
+	require.NoError(t, module.Register(reg))
+
+	keys := routeKeys(reg.Routes())
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+}
 
 type stubStudioSessionRouteHandler struct{}
 

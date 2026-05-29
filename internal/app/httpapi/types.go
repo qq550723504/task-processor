@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sheinlogin"
@@ -96,13 +97,7 @@ type listingKitRouteHandler = listingkithttpapi.RouteHandler
 type studioSessionRouteHandler = listingkit.StudioSessionHandler
 type taskRPCRouteHandler = taskrpcapi.Handler
 
-type promptTemplateRouteHandler interface {
-	ListPromptTemplateCatalog(c *gin.Context)
-	GetPromptTemplateSchema(c *gin.Context)
-	ListPromptTemplates(c *gin.Context)
-	UpsertPromptTemplate(c *gin.Context)
-	SetPromptTemplateStatus(c *gin.Context)
-}
+type promptTemplateRouteHandler = promptmgmtapi.HTTPRouteHandler
 
 type sdsCatalogRouteHandler = sdshttpapi.HTTPRouteHandler
 

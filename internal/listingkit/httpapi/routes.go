@@ -9,14 +9,6 @@ import (
 	"task-processor/internal/listingkit"
 )
 
-type PromptTemplateRouteHandler interface {
-	ListPromptTemplateCatalog(c *gin.Context)
-	GetPromptTemplateSchema(c *gin.Context)
-	ListPromptTemplates(c *gin.Context)
-	UpsertPromptTemplate(c *gin.Context)
-	SetPromptTemplateStatus(c *gin.Context)
-}
-
 type TaskActionRouteHandler interface {
 	GenerateListingKit(c *gin.Context)
 	ListTasks(c *gin.Context)
@@ -208,19 +200,6 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler)
 	routes = appendStudioGenerationRouteDescriptors(routes, handler)
 	routes = appendTaskRouteDescriptors(routes, handler)
 	return routes
-}
-
-func AppendPromptTemplateRouteDescriptors(routes []httproute.Descriptor, handler PromptTemplateRouteHandler) []httproute.Descriptor {
-	if handler == nil {
-		return routes
-	}
-	return append(routes,
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/prompts/catalog", Module: "listing-kit-prompts", Handler: handler.ListPromptTemplateCatalog},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/prompts/schema/:key", Module: "listing-kit-prompts", Handler: handler.GetPromptTemplateSchema},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/prompts", Module: "listing-kit-prompts", Handler: handler.ListPromptTemplates},
-		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/prompts", Module: "listing-kit-prompts", Handler: handler.UpsertPromptTemplate},
-		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/prompts/:key/status", Module: "listing-kit-prompts", Handler: handler.SetPromptTemplateStatus},
-	)
 }
 
 func AppendStudioSessionRouteDescriptors(routes []httproute.Descriptor, handler listingkit.StudioSessionHandler) []httproute.Descriptor {

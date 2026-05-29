@@ -17,7 +17,6 @@ import (
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimage "task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
-	"task-processor/internal/promptmgmt"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdsclient "task-processor/internal/sds/client"
 	sdshttpapi "task-processor/internal/sds/httpapi"
@@ -90,7 +89,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
-	promptTemplateHandler := promptmgmtapi.NewHandler(promptmgmt.NewService(deps.tenantPromptStore))
+	promptTemplateHandler := promptmgmtapi.BuildHandler(deps.tenantPromptStore)
 
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
 		"product_enrich": productModule.pool,

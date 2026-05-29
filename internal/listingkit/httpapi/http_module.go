@@ -7,24 +7,37 @@ import (
 )
 
 const httpModuleName = "listing-kit"
+const studioHTTPModuleName = "listing-kit-studio"
 
 type httpModule struct {
+	name     string
 	register func(reg *module.Registry) error
 }
 
-func NewHTTPModule(handler RouteHandler, promptTemplateHandler PromptTemplateRouteHandler, studioSessionHandler listingkit.StudioSessionHandler) module.Module {
+func NewHTTPModule(handler RouteHandler) module.Module {
 	return httpModule{
+		name: httpModuleName,
 		register: func(reg *module.Registry) error {
-			routes := AppendRouteDescriptors(nil, handler)
-			routes = AppendPromptTemplateRouteDescriptors(routes, promptTemplateHandler)
-			routes = AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
-			reg.AddRoutes(routes...)
+			reg.AddRoutes(AppendRouteDescriptors(nil, handler)...)
+			return nil
+		},
+	}
+}
+
+func NewStudioHTTPModule(handler listingkit.StudioSessionHandler) module.Module {
+	return httpModule{
+		name: studioHTTPModuleName,
+		register: func(reg *module.Registry) error {
+			reg.AddRoutes(AppendStudioSessionRouteDescriptors(nil, handler)...)
 			return nil
 		},
 	}
 }
 
 func (m httpModule) Name() string {
+	if m.name != "" {
+		return m.name
+	}
 	return httpModuleName
 }
 

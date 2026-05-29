@@ -155,16 +155,47 @@ func TestListingKitHTTPModuleRegistersRoutes(t *testing.T) {
 	reg := kernelmodule.NewRegistry()
 
 	err := newListingKitHTTPModule(httpModuleHandlers{
-		listingKit:     &stubListingKitHandler{},
-		promptTemplate: &stubPromptTemplateHandler{},
-		studioSession:  &stubStudioSessionHandler{},
+		listingKit: &stubListingKitHandler{},
 	}).Register(reg)
 	require.NoError(t, err)
 
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
-	require.Contains(t, keys, "GET /api/v1/listing-kits/prompts/catalog")
+	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+}
+
+func TestListingKitStudioHTTPModuleRegistersRoutes(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	err := newListingKitStudioHTTPModule(httpModuleHandlers{
+		studioSession: &stubStudioSessionHandler{},
+	}).Register(reg)
+	require.NoError(t, err)
+
+	keys := routeKeys(reg.Routes())
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+}
+
+func TestPromptTemplateHTTPModuleRegistersRoutes(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	err := newPromptTemplateHTTPModule(httpModuleHandlers{
+		promptTemplate: &stubPromptTemplateHandler{},
+	}).Register(reg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
+		"GET /api/v1/listing-kits/prompts/catalog",
+		"GET /api/v1/listing-kits/prompts/schema/:key",
+		"GET /api/v1/listing-kits/prompts",
+		"PUT /api/v1/listing-kits/prompts",
+		"PATCH /api/v1/listing-kits/prompts/:key/status",
+	}, routeKeys(reg.Routes()))
 }
 
 func TestHTTPModuleRegisterRejectsNilRegistrar(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
 	"task-processor/internal/sheinlogin"
@@ -30,7 +31,15 @@ func newAmazonListingHTTPModule(handlers httpModuleHandlers) kernelmodule.Module
 }
 
 func newListingKitHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
-	return listingkithttpapi.NewHTTPModule(handlers.listingKit, handlers.promptTemplate, handlers.studioSession)
+	return listingkithttpapi.NewHTTPModule(handlers.listingKit)
+}
+
+func newListingKitStudioHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return listingkithttpapi.NewStudioHTTPModule(handlers.studioSession)
+}
+
+func newPromptTemplateHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return promptmgmtapi.NewHTTPModule(handlers.promptTemplate)
 }
 
 func newSDSCatalogHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {

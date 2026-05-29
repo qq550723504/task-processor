@@ -16,6 +16,7 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
 )
 
 func init() {
@@ -2116,7 +2117,7 @@ func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, im
 	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
 	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
 	routes = listingkithttpapi.AppendRouteDescriptors(routes, listingKitHandler)
-	routes = listingkithttpapi.AppendPromptTemplateRouteDescriptors(routes, promptTemplateHandler)
+	routes = promptmgmtapi.AppendRouteDescriptors(routes, promptTemplateHandler)
 	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
 	routes = appendSDSCatalogRouteDescriptors(routes, sdsCatalogHandlers...)
 	routes = appendTaskRPCRouteDescriptors(routes, taskRPCHandler)
