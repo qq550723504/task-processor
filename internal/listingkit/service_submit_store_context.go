@@ -11,35 +11,13 @@ import (
 func (s *service) resolveSheinSubmitSettings(ctx context.Context, task *Task) SheinSettings {
 	settings := s.currentSheinSubmitSettings()
 	if profile, err := s.resolveSheinStoreProfile(ctx, task); err == nil && profile != nil {
-		if profile.StoreID > 0 {
-			settings.DefaultStoreID = profile.StoreID
-		}
-		if profile.Site != "" {
-			settings.Site = profile.Site
-		}
-		if profile.WarehouseCode != "" {
-			settings.WarehouseCode = profile.WarehouseCode
-		}
-		if profile.DefaultStock > 0 {
-			settings.DefaultStock = profile.DefaultStock
-		}
-		if profile.DefaultSubmitMode != "" {
-			settings.DefaultSubmitMode = profile.DefaultSubmitMode
-		}
-		settings.Pricing = normalizeSheinPricingRule(profile.Pricing, settings.Pricing)
+		settings = applySubmitSettingsProfile(settings, profile)
 	}
-	if task != nil && task.Request != nil {
-		if country := strings.ToUpper(strings.TrimSpace(task.Request.Country)); country != "" {
-			settings.Site = country
-		}
-	}
+	settings = applySubmitSettingsTaskRequest(settings, task)
 	if task == nil {
 		return settings
 	}
-	if warehouseCode := s.resolveSheinWarehouseCode(ctx, task, settings.Site); warehouseCode != "" {
-		settings.WarehouseCode = warehouseCode
-	}
-	return settings
+	return applySubmitWarehouseOverride(settings, s.resolveSheinWarehouseCode(ctx, task, settings.Site))
 }
 
 func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {
