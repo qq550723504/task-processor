@@ -440,6 +440,74 @@ func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T)
 	}
 }
 
+func TestRunStandardProductWorkflowRunsRemoteSDSSyncWhenImageProcessingIsDisabled(t *testing.T) {
+	t.Parallel()
+
+	sdsSvc := &stubWorkflowSDSSyncService{
+		remoteResult: &sdsworkflow.SyncResult{
+			DesignResult: &sdsdesign.PrepareSyncDesignResult{
+				Page: &sdsdesign.DesignProductPage{
+					Product: sdsdesign.DesignProduct{
+						ID:   101,
+						Name: "Remote Rendered Product",
+					},
+				},
+				Request: &sdsdesign.SyncDesignRequest{
+					PrototypeGroupID: 7001,
+					Prototypes: []sdsdesign.SyncDesignPrototype{{
+						Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-1"}},
+					}},
+				},
+				RenderedImageURLs: []string{
+					"https://cdn.sdspod.com/out/remote-main.jpg",
+				},
+			},
+		},
+	}
+	svc := &service{
+		sdsSyncSvc:          sdsSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+	task := &Task{
+		ID: "task-remote-sds-sync",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source-remote.jpg"},
+			Text:      "remote sds sync",
+			Platforms: []string{"shein"},
+			Country:   "US",
+			Language:  "en_US",
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					VariantID:        101,
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+				},
+			},
+		},
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if sdsSvc.remoteCalls != 1 {
+		t.Fatalf("remote calls = %d, want 1", sdsSvc.remoteCalls)
+	}
+	if state.result.SDSDesignResult == nil || state.result.SDSDesignResult.Status != "completed" {
+		t.Fatalf("sds design result = %+v, want completed remote SDS sync", state.result.SDSDesignResult)
+	}
+	if state.result.CanonicalProduct == nil || len(state.result.CanonicalProduct.Images) != 1 || state.result.CanonicalProduct.Images[0].URL != "https://cdn.sdspod.com/out/remote-main.jpg" {
+		t.Fatalf("canonical product = %+v, want remote rendered image applied", state.result.CanonicalProduct)
+	}
+	if !hasChildTaskStatus(state.result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+		t.Fatalf("child tasks = %+v, want completed sds_design_sync", state.result.ChildTasks)
+	}
+}
+
 func TestRunWorkflowRecordsBlockingProductEnrichFailure(t *testing.T) {
 	t.Parallel()
 

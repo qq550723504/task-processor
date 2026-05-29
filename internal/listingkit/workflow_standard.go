@@ -9,7 +9,6 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog"
-	"task-processor/internal/productimage"
 )
 
 type standardWorkflowState struct {
@@ -62,60 +61,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		log.WithError(validationErr).Warn("sds baseline validation persistence failed")
 	}
 
-	var imageResult *productimage.ImageProcessResult
-	if shouldProcessImages(task.Request) && s.imageSvc != nil {
-		stage := recorder.Start("product_image", "")
-		imageTask, imageErr := s.imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), toImageProcessRequest(task))
-		if imageErr != nil {
-			markChildTask(result, "product_image", "", string(TaskStatusFailed), imageErr.Error())
-			appendWarning(result, "image processing skipped: "+imageErr.Error())
-			stage.Degrade("image_processing_skipped", "Image processing skipped", imageErr.Error())
-		} else {
-			stage.SetTaskID(imageTask.ID)
-			markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
-			imageResult, imageErr = s.imageSvc.ProcessImages(ctx, imageTask)
-			if imageErr != nil {
-				markChildTask(result, "product_image", imageTask.ID, string(TaskStatusFailed), imageErr.Error())
-				appendWarning(result, "image processing failed: "+imageErr.Error())
-				stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
-			} else {
-				markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusCompleted), "")
-				stage.Complete()
-				result.ImageAssets = imageResult
-				result.AssetBundle = asset.BuildBundle(canonicalProduct, imageResult)
-				result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
-				s.syncSDSDesign(ctx, task, result, imageResult, recorder)
-			}
-		}
-	}
-	if imageResult == nil && shouldRunRemoteSDSDesignSync(task.Request) {
-		log.Info("starting remote SDS design sync for listing kit workflow")
-		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
-		log.WithFields(logrus.Fields{
-			"sds_status": func() string {
-				if result.SDSDesignResult == nil {
-					return ""
-				}
-				return result.SDSDesignResult.Status
-			}(),
-			"sds_error": func() string {
-				if result.SDSDesignResult == nil {
-					return ""
-				}
-				return result.SDSDesignResult.Error
-			}(),
-		}).Info("finished remote SDS design sync for listing kit workflow")
-	}
-	var sdsOptions *SDSSyncOptions
-	if task.Request.Options != nil {
-		sdsOptions = task.Request.Options.SDS
-	}
-	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
-		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-		result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
-		log.Info("applied SDS sync metadata to canonical product")
-	}
+	_, sdsOptions := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
 
 	inventory := asset.BuildInventory(task.ID, result.AssetBundle)
 	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, canonicalProduct)
