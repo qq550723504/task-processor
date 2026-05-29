@@ -94,7 +94,7 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.pool, imageModule.pool, listingKitModule.pool}
+	pools := []worker.WorkerPool{productModule.Pool, imageModule.Pool, listingKitModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -109,7 +109,7 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, nil, listingKitModule.handler, nil)
+	routerServer := buildHTTPServer(0, productModule.Handler, imageModule.Handler, nil, listingKitModule.Handler, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")

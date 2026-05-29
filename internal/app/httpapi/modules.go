@@ -92,10 +92,10 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	promptTemplateHandler := promptmgmtapi.BuildHandler(deps.tenantPromptStore)
 
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
-		"product_enrich": productModule.pool,
-		"product_image":  imageModule.pool,
-		"amazon_listing": amazonListingModule.pool,
-		"listing_kit":    listingKitModule.pool,
+		"product_enrich": productModule.Pool,
+		"product_image":  imageModule.Pool,
+		"amazon_listing": amazonListingModule.Pool,
+		"listing_kit":    listingKitModule.Pool,
 	})
 
 	var taskRPCHandler taskrpcapi.Handler
@@ -107,12 +107,12 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	sdsCatalogHandler := sdshttpapi.BuildCatalogHandler(logger, deps.cfg)
 
 	handlers := httpModuleHandlers{
-		product:        productModule.handler,
-		image:          imageModule.handler,
-		amazonListing:  amazonListingModule.handler,
-		listingKit:     listingKitModule.handler,
+		product:        productModule.Handler,
+		image:          imageModule.Handler,
+		amazonListing:  amazonListingModule.Handler,
+		listingKit:     listingKitModule.Handler,
 		promptTemplate: promptTemplateHandler,
-		studioSession:  listingKitModule.studioSessionHandler,
+		studioSession:  listingKitModule.StudioSessionHandler,
 		sheinLogin:     sheinLoginHandler,
 		sdsLogin:       sdsLoginHandler,
 		taskRPC:        taskRPCHandler,
@@ -123,19 +123,19 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 	return &appBootstrap{
-		productHandler:        productModule.handler,
-		imageHandler:          imageModule.handler,
-		amazonListingHandler:  amazonListingModule.handler,
-		listingKitHandler:     listingKitModule.handler,
+		productHandler:        productModule.Handler,
+		imageHandler:          imageModule.Handler,
+		amazonListingHandler:  amazonListingModule.Handler,
+		listingKitHandler:     listingKitModule.Handler,
 		promptTemplateHandler: promptTemplateHandler,
-		studioSessionHandler:  listingKitModule.studioSessionHandler,
+		studioSessionHandler:  listingKitModule.StudioSessionHandler,
 		sdsCatalogHandler:     sdsCatalogHandler,
 		sheinLoginHandler:     sheinLoginHandler,
 		sdsLoginHandler:       sdsLoginHandler,
 		taskRPCHandler:        taskRPCHandler,
 		server:                server,
 		routes:                routes,
-		pools:                 []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
+		pools:                 []worker.WorkerPool{productModule.Pool, imageModule.Pool, amazonListingModule.Pool, listingKitModule.Pool},
 		closers:               deps.closers,
 	}, nil
 }
@@ -336,7 +336,7 @@ func newWorkerPool(processor worker.Processor, cfg *config.Config) worker.Worker
 	})
 }
 
-func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModule, error) {
+func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productenrichhttpapi.Module, error) {
 	module, err := productenrichhttpapi.BuildModule(productenrichhttpapi.BuildModuleInput{
 		Config:        deps.cfg,
 		Logger:        logger,
@@ -351,10 +351,10 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModul
 	deps.closers = append(deps.closers, module.Closers...)
 	deps.productService = module.Service
 
-	return &productModule{handler: module.Handler, pool: module.Pool}, nil
+	return module, nil
 }
 
-func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, error) {
+func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*productimagehttpapi.Module, error) {
 	module, err := productimagehttpapi.BuildModule(productimagehttpapi.BuildModuleInput{
 		Config:        deps.cfg,
 		Logger:        logger,
@@ -374,10 +374,10 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 	deps.imageWhiteBgRenderer = module.WhiteBackgroundRender
 	deps.imageSceneRenderer = module.SceneRenderer
 
-	return &imageModule{handler: module.Handler, pool: module.Pool}, nil
+	return module, nil
 }
 
-func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazonListingModule, error) {
+func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
 	module, err := amazonlistinghttpapi.BuildModule(amazonlistinghttpapi.BuildModuleInput{
 		Config:         deps.cfg,
 		Logger:         logger,
@@ -389,17 +389,17 @@ func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazon
 	}
 
 	deps.closers = append(deps.closers, module.Closers...)
-	return &amazonListingModule{handler: module.Handler, pool: module.Pool}, nil
+	return module, nil
 }
 
-func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKitModule, error) {
+func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error) {
 	module, err := listingkithttpapi.BuildModule(newListingKitBuildModuleInput(logger, deps))
 	if err != nil {
 		return nil, err
 	}
 	deps.closers = append(deps.closers, module.Closers...)
 	deps.sdsSyncService = buildSDSSyncService(logger, deps)
-	return &listingKitModule{handler: module.Handler, studioSessionHandler: module.StudioSessionHandler, pool: module.Pool}, nil
+	return module, nil
 }
 
 func buildLocalTaskHealthProvider(pools map[string]worker.WorkerPool) taskrpcapi.LocalStatusProvider {

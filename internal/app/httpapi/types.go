@@ -70,27 +70,6 @@ type appBootstrap struct {
 	closers               []func() error
 }
 
-type productModule struct {
-	handler productenrich.ProductHandler
-	pool    worker.WorkerPool
-}
-
-type imageModule struct {
-	handler productimage.Handler
-	pool    worker.WorkerPool
-}
-
-type amazonListingModule struct {
-	handler amazonlisting.Handler
-	pool    worker.WorkerPool
-}
-
-type listingKitModule struct {
-	handler              listingkithttpapi.RouteHandler
-	studioSessionHandler listingkit.StudioSessionHandler
-	pool                 worker.WorkerPool
-}
-
 type productRouteHandler = productenrich.ProductHandler
 type imageRouteHandler = productimage.Handler
 type amazonListingRouteHandler = amazonlisting.Handler

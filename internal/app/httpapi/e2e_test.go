@@ -61,7 +61,7 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.pool, imageModule.pool, amazonModule.pool}
+	pools := []worker.WorkerPool{productModule.Pool, imageModule.Pool, amazonModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -76,7 +76,7 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, amazonModule.handler, nil, nil)
+	routerServer := buildHTTPServer(0, productModule.Handler, imageModule.Handler, amazonModule.Handler, nil, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 
@@ -181,7 +181,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.pool, listingKitModule.pool}
+	pools := []worker.WorkerPool{productModule.Pool, listingKitModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -196,7 +196,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, nil, nil, listingKitModule.handler, nil)
+	routerServer := buildHTTPServer(0, productModule.Handler, nil, nil, listingKitModule.Handler, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
