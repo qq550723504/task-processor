@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -21,8 +20,7 @@ import (
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sdslogin"
 	sheinclient "task-processor/internal/shein/client"
-	"task-processor/internal/sheinlogin"
-	sheinloginmanaged "task-processor/internal/sheinloginmanaged"
+	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -139,76 +137,22 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 }
 
 func buildSheinLoginModule(deps *runtimeDeps) (sheinLoginRouteHandler, func() error, error) {
-	if deps == nil || deps.cfg == nil || deps.managementClient() == nil {
+	if deps == nil {
 		return nil, nil, nil
 	}
-	redisCfg := deps.cfg.EffectiveSheinCookieRedis()
-	if strings.TrimSpace(redisCfg.Host) == "" {
-		return nil, nil, nil
-	}
-	provider, repoCloser, err := buildSheinLoginAccountProvider(deps)
-	if err != nil {
-		return nil, nil, err
-	}
-	if provider == nil {
-		if repoCloser != nil {
-			_ = repoCloser()
-		}
-		return nil, nil, nil
-	}
-	svc, err := sheinlogin.NewService(deps.cfg.Platforms.Shein.LoginService, redisCfg, deps.cfg.Browser, provider)
-	if err != nil {
-		if repoCloser != nil {
-			_ = repoCloser()
-		}
-		return nil, nil, err
-	}
-	svc.ConfigureRuntimeSheinAPIClients()
-	svc.ConfigureStoreSyncClientFactory(sheinloginmanaged.NewStoreSyncClientFactory(deps.managementClient()))
-	svc.ConfigureDuplicateStoreLookup(sheinloginmanaged.NewDuplicateStoreLookup(deps.managementClient()))
-	sheinclient.ConfigureLocalLoginRefresher(svc)
-	return sheinlogin.NewHandler(svc), func() error {
-		closeErr := svc.Close()
-		if repoCloser != nil {
-			if err := repoCloser(); err != nil && closeErr == nil {
-				closeErr = err
-			}
-		}
-		return closeErr
-	}, nil
-}
 
-func buildSheinLoginAccountProvider(deps *runtimeDeps) (sheinlogin.AccountProvider, func() error, error) {
-	if deps == nil || deps.cfg == nil {
-		return nil, nil, fmt.Errorf("runtime deps are incomplete")
-	}
-	localLogger := logrus.New()
-	repo, closers, err := listingkithttpapi.BuildListingAdminStoreRepository(deps.cfg, localLogger)
+	result, err := sheinloginbootstrap.BuildHandler(sheinloginbootstrap.BuildInput{
+		Config:                   deps.cfg,
+		ManagementClient:         deps.managementClient(),
+		AccountRepositoryBuilder: listingkithttpapi.BuildListingAdminStoreRepository,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	if repo == nil {
+	if result == nil {
 		return nil, nil, nil
 	}
-	return sheinlogin.NewListingAdminAccountProvider(repo), joinClosers(closers), nil
-}
-
-func joinClosers(closers []func() error) func() error {
-	if len(closers) == 0 {
-		return nil
-	}
-	return func() error {
-		var closeErr error
-		for i := len(closers) - 1; i >= 0; i-- {
-			if closers[i] == nil {
-				continue
-			}
-			if err := closers[i](); err != nil && closeErr == nil {
-				closeErr = err
-			}
-		}
-		return closeErr
-	}
+	return result.Handler, result.Close, nil
 }
 
 func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error, error) {

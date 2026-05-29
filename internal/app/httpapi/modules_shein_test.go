@@ -8,23 +8,6 @@ import (
 	"task-processor/internal/infra/clients/management"
 )
 
-func TestBuildSheinLoginAccountProviderReturnsNilWithoutLocalStoreRepository(t *testing.T) {
-	t.Parallel()
-
-	provider, closer, err := buildSheinLoginAccountProvider(&runtimeDeps{
-		cfg: &config.Config{},
-	})
-	if err != nil {
-		t.Fatalf("buildSheinLoginAccountProvider() error = %v", err)
-	}
-	if provider != nil {
-		t.Fatalf("buildSheinLoginAccountProvider() provider = %T, want nil", provider)
-	}
-	if closer != nil {
-		t.Fatal("buildSheinLoginAccountProvider() closer should be nil when local repository is unavailable")
-	}
-}
-
 func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.T) {
 	t.Parallel()
 
