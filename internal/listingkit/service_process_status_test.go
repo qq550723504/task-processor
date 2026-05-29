@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -18,12 +19,48 @@ type stubProcessStatusAssembler struct {
 	result *ListingKitResult
 }
 
+type stubProcessStatusRepo struct {
+	*stubGenerationRepo
+	completedTaskID string
+	completedCalls  int
+	failedTaskID    string
+	failedError     string
+	failedCalls     int
+	savedResults    []*ListingKitResult
+}
+
 func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
 	if a.result == nil {
 		return &ListingKitResult{Summary: &GenerationSummary{}}
 	}
 	copied := *a.result
 	return &copied
+}
+
+func (r *stubProcessStatusRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
+	r.completedTaskID = taskID
+	r.completedCalls++
+	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
+		return err
+	}
+	r.task.Status = TaskStatusCompleted
+	return nil
+}
+
+func (r *stubProcessStatusRepo) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
+	r.failedTaskID = taskID
+	r.failedError = errorMsg
+	r.failedCalls++
+	if r.task != nil && r.task.ID == taskID {
+		r.task.Status = TaskStatusFailed
+		r.task.Error = errorMsg
+	}
+	return nil
+}
+
+func (r *stubProcessStatusRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
+	r.savedResults = append(r.savedResults, result)
+	return r.stubGenerationRepo.SaveTaskResult(ctx, taskID, result)
 }
 
 func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T) {
@@ -91,6 +128,74 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 	}
 	if stored.Error == "" {
 		t.Fatal("stored error/review reason is empty, want persisted review reason")
+	}
+}
+
+func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}}
+	productTask := &productenrich.Task{
+		ID:      "product-task-completed-1",
+		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+	}
+	productService := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:      "Travel Bag",
+			Category:   []string{"bags"},
+			Attributes: map[string]string{"color": "black"},
+		},
+	}
+
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{
+			result: &ListingKitResult{
+				TaskID:  "listingkit-completed-1",
+				Shein:   &SheinPackage{},
+				Summary: &GenerationSummary{},
+			},
+		}),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task := &Task{
+		ID:        "listingkit-completed-1",
+		Status:    TaskStatusPending,
+		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessListingKit(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if result.Status != string(TaskStatusCompleted) {
+		t.Fatalf("result status = %q, want %q", result.Status, TaskStatusCompleted)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != TaskStatusCompleted {
+		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusCompleted)
+	}
+	if stored.Result == nil || stored.Result.Status != string(TaskStatusCompleted) {
+		t.Fatalf("stored result = %+v, want completed result status", stored.Result)
+	}
+	if repo.completedCalls != 1 || repo.completedTaskID != task.ID {
+		t.Fatalf("MarkCompleted calls = %d for %q, want 1 for %q", repo.completedCalls, repo.completedTaskID, task.ID)
+	}
+	if repo.failedCalls != 0 {
+		t.Fatalf("MarkFailed calls = %d, want 0", repo.failedCalls)
 	}
 }
 
@@ -168,6 +273,77 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 	}
 	if got, want := result.ReviewReasons, []string{sheinCookieUnavailableMessage}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("review reasons = %#v, want %#v", got, want)
+	}
+}
+
+func TestProcessListingKitPersistsPartialResultBeforeMarkingFailed(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}}
+	productTask := &productenrich.Task{
+		ID:      "product-task-failed-1",
+		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+	}
+	productService := &stubWorkflowProductService{
+		task:       productTask,
+		processErr: errors.New("upstream product enrich failed"),
+	}
+
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{}),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task := &Task{
+		ID:        "listingkit-failed-1",
+		Status:    TaskStatusPending,
+		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessListingKit(context.Background(), task)
+	if err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want workflow failure")
+	}
+	if result != nil {
+		t.Fatalf("ProcessListingKit() result = %+v, want nil on failure", result)
+	}
+	if repo.failedCalls != 1 || repo.failedTaskID != task.ID {
+		t.Fatalf("MarkFailed calls = %d for %q, want 1 for %q", repo.failedCalls, repo.failedTaskID, task.ID)
+	}
+	if repo.failedError == "" || !strings.Contains(repo.failedError, "product enrichment failed") {
+		t.Fatalf("MarkFailed error = %q, want wrapped product enrichment error", repo.failedError)
+	}
+	if len(repo.savedResults) != 1 || repo.savedResults[0] == nil {
+		t.Fatalf("saved results = %+v, want one partial result before failure", repo.savedResults)
+	}
+	stored, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("GetTask() error = %v", getErr)
+	}
+	if stored.Result == nil {
+		t.Fatal("stored result = nil, want persisted partial workflow result")
+	}
+	if stored.Status != TaskStatusFailed {
+		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusFailed)
+	}
+	foundFailedChild := false
+	for _, child := range stored.Result.ChildTasks {
+		if child.Kind == "product_enrich" && child.Status == string(TaskStatusFailed) {
+			foundFailedChild = true
+			break
+		}
+	}
+	if !foundFailedChild {
+		t.Fatalf("child tasks = %+v, want failed product_enrich child in persisted result", stored.Result.ChildTasks)
 	}
 }
 

@@ -28,10 +28,7 @@ func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKi
 	result, err := s.runWorkflow(ctx, task)
 	if err != nil {
 		log.WithError(err).Error("listing kit workflow failed")
-		if result != nil {
-			_ = s.repo.SaveTaskResult(ctx, task.ID, result)
-		}
-		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
+		s.persistProcessFailure(ctx, task.ID, result, err)
 		return nil, err
 	}
 	log.WithFields(logrus.Fields{
@@ -44,11 +41,11 @@ func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKi
 		}(),
 	}).Info("listing kit workflow returned result")
 
-	if result.Summary != nil && result.Summary.NeedsReview {
-		result.Status = string(TaskStatusNeedsReview)
-		result.ReviewReasons = reviewReasonsFromResult(result)
+	status := deriveProcessTerminalStatus(result)
+	result = applyProcessTerminalResult(result, status)
+	if status == TaskStatusNeedsReview {
 		log.WithField("review_reason_count", len(result.ReviewReasons)).Info("marking listing kit task as needs_review")
-		if err := s.repo.MarkNeedsReview(ctx, task.ID, result, taskNeedsReviewReason(result)); err != nil {
+		if err := s.persistProcessSuccess(ctx, task.ID, result); err != nil {
 			log.WithError(err).Error("failed to mark listing kit task as needs_review")
 			return nil, err
 		}
@@ -56,9 +53,8 @@ func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKi
 		return result, nil
 	}
 
-	result.Status = string(TaskStatusCompleted)
 	log.Info("marking listing kit task as completed")
-	if err := s.repo.MarkCompleted(ctx, task.ID, result); err != nil {
+	if err := s.persistProcessSuccess(ctx, task.ID, result); err != nil {
 		log.WithError(err).Error("failed to mark listing kit task as completed")
 		return nil, err
 	}
