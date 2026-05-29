@@ -18,7 +18,7 @@ import (
 	sdsclient "task-processor/internal/sds/client"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
-	"task-processor/internal/sdslogin"
+	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinclient "task-processor/internal/shein/client"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
@@ -159,15 +159,14 @@ func buildSDSLoginModule(deps *runtimeDeps) (sdsLoginRouteHandler, func() error,
 	if deps == nil {
 		return nil, nil, nil
 	}
-	result, err := sdslogin.BuildHandler(deps.cfg)
+	result, err := sdsloginbootstrap.BuildHandler(deps.cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	if result == nil || result.Service == nil {
+	if result == nil || result.StatusProvider == nil {
 		return nil, nil, nil
 	}
-	deps.sdsLoginStatusProvider = result.Service
-	sdsclient.ConfigureLocalLoginProvider(result.Service)
+	deps.sdsLoginStatusProvider = result.StatusProvider
 	return result.Handler, nil, nil
 }
 
