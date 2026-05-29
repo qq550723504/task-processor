@@ -16,6 +16,8 @@ func TestListingKitSupportFileKeepsFeatureOwnedServiceBundlesOutOfAppLayer(t *te
 	require.NotContains(t, string(src), "newListingKitBuildServiceHooks")
 	require.NotContains(t, string(src), "BuildServiceRepositories{")
 	require.NotContains(t, string(src), "BuildServiceHooks{")
+	require.NotContains(t, string(src), "sheinlogin.NewRedisStore(")
+	require.Contains(t, string(src), "sheinloginbootstrap.BuildRedisStore")
 	require.Contains(t, string(src), "RuntimeSupportInput{")
 	require.Contains(t, string(src), "BuildRuntimeSupport")
 }

@@ -12,6 +12,7 @@ import (
 	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sheinlogin"
+	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
 
 func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.RuntimeBuildInput {
@@ -47,15 +48,14 @@ func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) 
 	if support.sheinCookieStore != nil {
 		return support.sheinCookieStore
 	}
-	redisCfg := deps.shared.cfg.EffectiveSheinCookieRedis()
-	if strings.TrimSpace(redisCfg.Host) == "" {
-		return nil
-	}
-	store, err := sheinlogin.NewRedisStore(redisCfg)
+	store, err := sheinloginbootstrap.BuildRedisStore(deps.shared.cfg)
 	if err != nil {
 		if logger != nil {
 			logger.WithError(err).Warn("failed to initialize listingkit shein cookie store; shein runtime will degrade")
 		}
+		return nil
+	}
+	if store == nil {
 		return nil
 	}
 	support.sheinCookieStore = store

@@ -1,8 +1,6 @@
 package bootstrap
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
@@ -34,8 +32,7 @@ func BuildHandler(input BuildInput) (*BuildResult, error) {
 		return nil, nil
 	}
 
-	redisCfg := input.Config.EffectiveSheinCookieRedis()
-	if strings.TrimSpace(redisCfg.Host) == "" {
+	if !HasRedisStoreConfig(input.Config) {
 		return nil, nil
 	}
 
@@ -50,7 +47,7 @@ func BuildHandler(input BuildInput) (*BuildResult, error) {
 		return nil, nil
 	}
 
-	svc, err := sheinlogin.NewService(input.Config.Platforms.Shein.LoginService, redisCfg, input.Config.Browser, provider)
+	svc, err := sheinlogin.NewService(input.Config.Platforms.Shein.LoginService, input.Config.EffectiveSheinCookieRedis(), input.Config.Browser, provider)
 	if err != nil {
 		if repoCloser != nil {
 			_ = repoCloser()
