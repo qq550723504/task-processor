@@ -142,3 +142,47 @@ func TestServiceRootFileDoesNotOwnCollaboratorGroupInitializationBodies(t *testi
 		}
 	}
 }
+
+func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		file         string
+		builderCall  string
+		inlineConfig string
+	}{
+		{
+			name:         "settings admin",
+			file:         "settings_admin_service.go",
+			builderCall:  "buildSettingsAdminServiceConfig(s)",
+			inlineConfig: "newSettingsAdminService(settingsAdminServiceConfig{",
+		},
+		{
+			name:         "shein admin",
+			file:         "shein_admin_service.go",
+			builderCall:  "buildSheinAdminServiceConfig(s)",
+			inlineConfig: "newSheinAdminService(sheinAdminServiceConfig{",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, err := os.ReadFile(tc.file)
+			if err != nil {
+				t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+			}
+			content := string(src)
+
+			if !strings.Contains(content, tc.builderCall) {
+				t.Fatalf("%s should contain %q", tc.file, tc.builderCall)
+			}
+			if strings.Contains(content, tc.inlineConfig) {
+				t.Fatalf("%s should not contain %q", tc.file, tc.inlineConfig)
+			}
+		})
+	}
+}
