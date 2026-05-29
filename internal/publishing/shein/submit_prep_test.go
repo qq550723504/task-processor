@@ -255,6 +255,37 @@ func TestPrepareSubmitProductContent_PreservesExistingContentWithoutAIRewrite(t 
 	}
 }
 
+func TestApplySubmitContent_TruncatesTitleToSheinLimit(t *testing.T) {
+	t.Parallel()
+
+	title := strings.Repeat("A", sheinSubmitTitleMaxLength+20)
+	description := strings.Repeat("B", sheinSubmitDescriptionMaxLength+50)
+	product := &sheinproduct.Product{
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "white"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "white",
+			}},
+		}},
+	}
+
+	applySubmitContent(product, title, description)
+
+	gotTitle := findLocalizedText(product.MultiLanguageNameList, "en")
+	if len(gotTitle) != sheinSubmitTitleMaxLength {
+		t.Fatalf("title length = %d, want %d", len(gotTitle), sheinSubmitTitleMaxLength)
+	}
+	gotDescription := findLocalizedText(product.MultiLanguageDescList, "en")
+	if len(gotDescription) != sheinSubmitDescriptionMaxLength {
+		t.Fatalf("description length = %d, want %d", len(gotDescription), sheinSubmitDescriptionMaxLength)
+	}
+	gotSKCTitle := findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en")
+	if len(gotSKCTitle) > sheinSubmitTitleMaxLength {
+		t.Fatalf("skc title length = %d, want <= %d", len(gotSKCTitle), sheinSubmitTitleMaxLength)
+	}
+}
+
 func TestBuildSubmitSnapshot_CapturesFinalPayloadFields(t *testing.T) {
 	supplierCode := "SKC-1"
 	product := &sheinproduct.Product{
@@ -304,7 +335,7 @@ func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}},
 		MultiLanguageDescList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy curtain for home decor"}},
 		SKCList: []sheinproduct.SKC{{
-			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "whimsy white"},
+			MultiLanguageName:     sheinproduct.LanguageContent{Language: "en", Name: "whimsy white"},
 			MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "whimsy white"}},
 		}},
 	}

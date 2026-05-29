@@ -134,8 +134,8 @@ func applyPackageReviewContent(pkg *Package, title, description string) {
 	if pkg == nil {
 		return
 	}
-	title = truncateSubmitTitle(strings.TrimSpace(title), 800)
-	description = truncateSubmitDescription(strings.TrimSpace(description), 5000)
+	title = truncateSubmitTitle(strings.TrimSpace(title), sheinSubmitTitleMaxLength)
+	description = truncateSubmitDescription(strings.TrimSpace(description), sheinSubmitDescriptionMaxLength)
 	if title == "" && description == "" {
 		return
 	}
