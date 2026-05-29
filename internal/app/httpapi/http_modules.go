@@ -5,6 +5,9 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	"task-processor/internal/sdslogin"
+	"task-processor/internal/sheinlogin"
+	"task-processor/internal/taskrpcapi"
 )
 
 func newCoreHTTPModule() httpModule {
@@ -17,48 +20,32 @@ func newCoreHTTPModule() httpModule {
 	}
 }
 
-func newProductHTTPModule(handlers httpModuleHandlers) httpModule {
-	return httpModule{
-		name: "product",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(productenrichhttpapi.AppendProductRouteDescriptors(nil, handlers.product, handlers.image)...)
-			return nil
-		},
-	}
+func newProductHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return productenrichhttpapi.NewHTTPModule(handlers.product, handlers.image)
 }
 
-func newAmazonListingHTTPModule(handlers httpModuleHandlers) httpModule {
-	return httpModule{
-		name: "amazon-listing",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(amazonlistinghttpapi.AppendRouteDescriptors(nil, handlers.amazonListing)...)
-			return nil
-		},
-	}
+func newAmazonListingHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return amazonlistinghttpapi.NewHTTPModule(handlers.amazonListing)
 }
 
-func newListingKitHTTPModule(handlers httpModuleHandlers) httpModule {
-	return httpModule{
-		name: "listing-kit",
-		register: func(reg *kernelmodule.Registry) error {
-			routes := listingkithttpapi.AppendRouteDescriptors(nil, handlers.listingKit)
-			routes = listingkithttpapi.AppendPromptTemplateRouteDescriptors(routes, handlers.promptTemplate)
-			routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, handlers.studioSession)
-			reg.AddRoutes(routes...)
-			return nil
-		},
-	}
+func newListingKitHTTPModule(handlers httpModuleHandlers) kernelmodule.Module {
+	return listingkithttpapi.NewHTTPModule(handlers.listingKit, handlers.promptTemplate, handlers.studioSession)
 }
 
 func newOpsHTTPModule(handlers httpModuleHandlers) httpModule {
 	return httpModule{
 		name: "ops",
 		register: func(reg *kernelmodule.Registry) error {
-			routes := appendSDSCatalogRouteDescriptors(nil, handlers.sdsCatalog)
-			routes = appendTaskRPCRouteDescriptors(routes, handlers.taskRPC)
-			routes = appendSheinLoginRouteDescriptors(routes, handlers.sheinLogin)
-			routes = appendSDSLoginRouteDescriptors(routes, handlers.sdsLogin)
-			reg.AddRoutes(routes...)
+			reg.AddRoutes(appendSDSCatalogRouteDescriptors(nil, handlers.sdsCatalog)...)
+			for _, module := range []kernelmodule.Module{
+				taskrpcapi.NewHTTPModule(handlers.taskRPC),
+				sheinlogin.NewHTTPModule(handlers.sheinLogin),
+				sdslogin.NewHTTPModule(handlers.sdsLogin),
+			} {
+				if err := module.Register(reg); err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 	}
