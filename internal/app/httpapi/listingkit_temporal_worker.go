@@ -24,12 +24,17 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 
 	sheinclient.ConfigureLoginAccountFromConfig(deps.cfg)
 
-	if _, err := buildProductModule(logger, deps); err != nil {
+	productModule, err := buildProductModule(logger, deps)
+	if err != nil {
 		return fmt.Errorf("build product module: %w", err)
 	}
-	if _, err := buildImageModule(logger, deps); err != nil {
+	deps.attachProductModule(productModule)
+
+	imageModule, err := buildImageModule(logger, deps)
+	if err != nil {
 		return fmt.Errorf("build image module: %w", err)
 	}
+	deps.attachImageModule(imageModule)
 
 	bundle, err := listingkithttpapi.BuildService(newListingKitBuildServiceInput(logger, deps))
 	if err != nil {

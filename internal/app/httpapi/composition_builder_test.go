@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -9,11 +10,15 @@ import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	"task-processor/internal/productimage"
+	productimagedomain "task-processor/internal/productimage/domain"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	prompt "task-processor/internal/prompt"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
+	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
@@ -27,22 +32,35 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	order := make([]string, 0, 9)
 	sheinClosed := false
 	sdsClosed := false
+	productService := &stubCompositionProductService{}
+	imageService := &stubCompositionImageService{}
+	subjectExtractor := &stubCompositionSubjectExtractor{}
+	whiteBgRenderer := &stubCompositionWhiteBackgroundRenderer{}
+	sceneRenderer := &stubCompositionSceneRenderer{}
+	statusProvider := &stubCompositionSDSStatusProvider{}
 
 	builder := httpFeatureCompositionBuilder{
 		buildProduct: func(*logrus.Logger, *runtimeDeps) (*productenrichhttpapi.Module, error) {
 			order = append(order, "product")
 			return &productenrichhttpapi.Module{
-				Pool: stubWorkerPool{},
+				Service: productService,
+				Pool:    stubWorkerPool{},
 			}, nil
 		},
 		buildImage: func(*logrus.Logger, *runtimeDeps) (*productimagehttpapi.Module, error) {
 			order = append(order, "image")
 			return &productimagehttpapi.Module{
-				Pool: stubWorkerPool{},
+				Service:               imageService,
+				SubjectExtractor:      subjectExtractor,
+				WhiteBackgroundRender: whiteBgRenderer,
+				SceneRenderer:         sceneRenderer,
+				Pool:                  stubWorkerPool{},
 			}, nil
 		},
 		buildAmazonListing: func(*logrus.Logger, *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
 			order = append(order, "amazon")
+			require.Equal(t, productService, deps.productService)
+			require.Equal(t, imageService, deps.imageService)
 			return &amazonlistinghttpapi.Module{}, nil
 		},
 		buildSheinLogin: func(*runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error) {
@@ -54,13 +72,17 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 		},
 		buildSDSLogin: func(*runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error) {
 			order = append(order, "sds-login")
-			return &sdsloginbootstrap.BuildResult{}, func() error {
+			return &sdsloginbootstrap.BuildResult{StatusProvider: statusProvider}, func() error {
 				sdsClosed = true
 				return nil
 			}, nil
 		},
 		buildListingKit: func(*logrus.Logger, *runtimeDeps) (*listingkithttpapi.Module, error) {
 			order = append(order, "listingkit")
+			require.Equal(t, statusProvider, deps.sdsLoginStatusProvider)
+			require.Equal(t, subjectExtractor, deps.imageSubjectExtractor)
+			require.Equal(t, whiteBgRenderer, deps.imageWhiteBgRenderer)
+			require.Equal(t, sceneRenderer, deps.imageSceneRenderer)
 			return &listingkithttpapi.Module{
 				Pool: stubWorkerPool{},
 			}, nil
@@ -111,4 +133,64 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NoError(t, deps.closers[1]())
 	require.True(t, sheinClosed)
 	require.True(t, sdsClosed)
+}
+
+type stubCompositionProductService struct{}
+
+func (stubCompositionProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {
+	return nil, nil
+}
+
+func (stubCompositionProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
+	return nil, nil
+}
+
+func (stubCompositionProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
+	return nil, nil
+}
+
+func (stubCompositionProductService) SetTaskSubmitter(productenrich.TaskSubmitter) {}
+
+type stubCompositionImageService struct{}
+
+func (stubCompositionImageService) CreateProcessTask(context.Context, *productimage.ImageProcessRequest) (*productimage.Task, error) {
+	return nil, nil
+}
+
+func (stubCompositionImageService) GetTaskResult(context.Context, string) (*productimage.TaskResult, error) {
+	return nil, nil
+}
+
+func (stubCompositionImageService) ReviewTask(context.Context, string, *productimage.ReviewTaskRequest) (*productimage.TaskResult, error) {
+	return nil, nil
+}
+
+func (stubCompositionImageService) ProcessImages(context.Context, *productimage.Task) (*productimage.ImageProcessResult, error) {
+	return nil, nil
+}
+
+func (stubCompositionImageService) SetTaskSubmitter(productimage.TaskSubmitter) {}
+
+type stubCompositionSubjectExtractor struct{}
+
+func (stubCompositionSubjectExtractor) Extract(context.Context, string, *productimagedomain.ProductContext) (*productimagedomain.ImageAsset, error) {
+	return nil, nil
+}
+
+type stubCompositionWhiteBackgroundRenderer struct{}
+
+func (stubCompositionWhiteBackgroundRenderer) Render(context.Context, *productimagedomain.ImageAsset, *productimagedomain.ProductContext) (*productimagedomain.ImageAsset, error) {
+	return nil, nil
+}
+
+type stubCompositionSceneRenderer struct{}
+
+func (stubCompositionSceneRenderer) Render(context.Context, *productimagedomain.ImageAsset, *productimagedomain.ProductContext) ([]productimagedomain.ImageAsset, error) {
+	return nil, nil
+}
+
+type stubCompositionSDSStatusProvider struct{}
+
+func (stubCompositionSDSStatusProvider) Status(context.Context) (*sdslogin.Status, error) {
+	return nil, nil
 }

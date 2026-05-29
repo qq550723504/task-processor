@@ -50,18 +50,21 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	if err != nil {
 		return composition, err
 	}
+	deps.attachProductModule(productModule)
 	composition.productModule = productModule
 
 	imageModule, err := b.buildImage(logger, deps)
 	if err != nil {
 		return composition, err
 	}
+	deps.attachImageModule(imageModule)
 	composition.imageModule = imageModule
 
 	amazonListingModule, err := b.buildAmazonListing(logger, deps)
 	if err != nil {
 		return composition, err
 	}
+	deps.attachAmazonListingModule(amazonListingModule)
 	composition.amazonListingModule = amazonListingModule
 
 	sheinLoginResult, sheinLoginCloser, err := b.buildSheinLogin(deps)
@@ -76,12 +79,14 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		return composition, err
 	}
 	deps.addClosers(sdsLoginCloser)
+	deps.attachSDSLoginResult(sdsLoginResult)
 	composition.sdsLoginResult = sdsLoginResult
 
 	listingKitModule, err := b.buildListingKit(logger, deps)
 	if err != nil {
 		return composition, err
 	}
+	deps.attachListingKitModule(listingKitModule)
 	composition.listingKitModule = listingKitModule
 	composition.promptModule = b.buildPrompt(deps.tenantPromptStore)
 

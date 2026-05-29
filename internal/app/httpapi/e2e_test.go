@@ -53,10 +53,13 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 
 	productModule, err := buildProductModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachProductModule(productModule)
 	imageModule, err := buildImageModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachImageModule(imageModule)
 	amazonModule, err := buildAmazonListingModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachAmazonListingModule(amazonModule)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -175,8 +178,10 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 
 	productModule, err := buildProductModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachProductModule(productModule)
 	listingKitModule, err := buildListingKitModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachListingKitModule(listingKitModule)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

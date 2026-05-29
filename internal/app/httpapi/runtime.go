@@ -7,13 +7,18 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/prompt"
+	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
@@ -136,6 +141,46 @@ func (d *runtimeDeps) addClosers(closers ...func() error) {
 		}
 		d.closers = append(d.closers, closer)
 	}
+}
+
+func (d *runtimeDeps) attachProductModule(module *productenrichhttpapi.Module) {
+	if d == nil || module == nil {
+		return
+	}
+	d.addClosers(module.Closers...)
+	d.productService = module.Service
+}
+
+func (d *runtimeDeps) attachImageModule(module *productimagehttpapi.Module) {
+	if d == nil || module == nil {
+		return
+	}
+	d.addClosers(module.Closers...)
+	d.imageService = module.Service
+	d.imageSubjectExtractor = module.SubjectExtractor
+	d.imageWhiteBgRenderer = module.WhiteBackgroundRender
+	d.imageSceneRenderer = module.SceneRenderer
+}
+
+func (d *runtimeDeps) attachAmazonListingModule(module *amazonlistinghttpapi.Module) {
+	if d == nil || module == nil {
+		return
+	}
+	d.addClosers(module.Closers...)
+}
+
+func (d *runtimeDeps) attachListingKitModule(module *listingkithttpapi.Module) {
+	if d == nil || module == nil {
+		return
+	}
+	d.addClosers(module.Closers...)
+}
+
+func (d *runtimeDeps) attachSDSLoginResult(result *sdsloginbootstrap.BuildResult) {
+	if d == nil || result == nil {
+		return
+	}
+	d.sdsLoginStatusProvider = result.StatusProvider
 }
 
 func resolveImageWorkDir(cfg *config.Config) string {

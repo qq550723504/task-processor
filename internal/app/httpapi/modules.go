@@ -98,7 +98,6 @@ func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResul
 	if result == nil || result.StatusProvider == nil {
 		return nil, nil, nil
 	}
-	deps.sdsLoginStatusProvider = result.StatusProvider
 	return result, nil, nil
 }
 
@@ -133,9 +132,6 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productenric
 		return nil, err
 	}
 
-	deps.addClosers(module.Closers...)
-	deps.productService = module.Service
-
 	return module, nil
 }
 
@@ -153,12 +149,6 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*productimageht
 		return nil, err
 	}
 
-	deps.addClosers(module.Closers...)
-	deps.imageService = module.Service
-	deps.imageSubjectExtractor = module.SubjectExtractor
-	deps.imageWhiteBgRenderer = module.WhiteBackgroundRender
-	deps.imageSceneRenderer = module.SceneRenderer
-
 	return module, nil
 }
 
@@ -172,8 +162,6 @@ func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazon
 	if err != nil {
 		return nil, err
 	}
-
-	deps.addClosers(module.Closers...)
 	return module, nil
 }
 
@@ -182,7 +170,6 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingki
 	if err != nil {
 		return nil, err
 	}
-	deps.addClosers(module.Closers...)
 	return module, nil
 }
 

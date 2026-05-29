@@ -101,10 +101,13 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 
 	productModule, err := buildProductModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachProductModule(productModule)
 	imageModule, err := buildImageModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachImageModule(imageModule)
 	listingKitModule, err := buildListingKitModule(logger, deps)
 	require.NoError(t, err)
+	deps.attachListingKitModule(listingKitModule)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
