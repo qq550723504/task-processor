@@ -22,3 +22,5 @@ type WorkflowHandler interface {
 	WorkflowName() string
 	RegisterWorkflow(reg *WorkflowRegistry) error
 }
+
+type TemporalWorkerStarter func() (func() error, error)

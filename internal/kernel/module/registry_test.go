@@ -96,6 +96,37 @@ func TestRegistryAddWorkerPoolRejectsNilPool(t *testing.T) {
 	require.ErrorContains(t, err, "worker pool is nil")
 }
 
+func TestRegistryAddTemporalWorkerPreservesOrder(t *testing.T) {
+	reg := NewRegistry()
+
+	err := reg.AddTemporalWorker("listingkit_publish", stubTemporalWorkerStarter("first"))
+	require.NoError(t, err)
+	err = reg.AddTemporalWorker("listingkit_layers", stubTemporalWorkerStarter("second"))
+	require.NoError(t, err)
+
+	workers := reg.TemporalWorkers()
+	require.Len(t, workers, 2)
+	require.Equal(t, "listingkit_publish", workers[0].Name)
+	require.Equal(t, "listingkit_layers", workers[1].Name)
+}
+
+func TestRegistryAddTemporalWorkerRejectsDuplicateNames(t *testing.T) {
+	reg := NewRegistry()
+
+	err := reg.AddTemporalWorker("listingkit_publish", stubTemporalWorkerStarter("first"))
+	require.NoError(t, err)
+
+	err = reg.AddTemporalWorker("listingkit_publish", stubTemporalWorkerStarter("second"))
+	require.ErrorContains(t, err, "temporal worker already registered")
+}
+
+func TestRegistryAddTemporalWorkerRejectsNilStarter(t *testing.T) {
+	reg := NewRegistry()
+
+	err := reg.AddTemporalWorker("listingkit_publish", nil)
+	require.ErrorContains(t, err, "temporal worker starter is nil")
+}
+
 func TestRegistryRegisterWorkflowHandlerRejectsDuplicateWorkflow(t *testing.T) {
 	reg := NewRegistry()
 
@@ -179,3 +210,9 @@ func (stubWorkerPool) AvailableSlots() int              { return 0 }
 func (stubWorkerPool) GetQueueStats() worker.QueueStats { return worker.QueueStats{} }
 func (stubWorkerPool) SetJobHandler(worker.JobHandler)  {}
 func (stubWorkerPool) GetMetrics() *worker.Metrics      { return nil }
+
+func stubTemporalWorkerStarter(name string) TemporalWorkerStarter {
+	return func() (func() error, error) {
+		return func() error { return nil }, nil
+	}
+}
