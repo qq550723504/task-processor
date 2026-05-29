@@ -14,6 +14,7 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsclient "task-processor/internal/sds/client"
 	sdsdesign "task-processor/internal/sds/design"
+	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sheinlogin"
@@ -130,7 +131,7 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 		return nil
 	}
 
-	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.imageService, buildSDSClientConfig(deps.cfg))
+	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.imageService, sdshttpapi.BuildClientConfig(deps.cfg))
 	if err != nil {
 		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
 		return nil
@@ -154,7 +155,7 @@ func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) li
 	if deps.sdsBaselineRemoteProvider != nil {
 		return deps.sdsBaselineRemoteProvider
 	}
-	client, err := sdsclient.New(buildSDSClientConfig(deps.cfg))
+	client, err := sdsclient.New(sdshttpapi.BuildClientConfig(deps.cfg))
 	if err != nil {
 		if logger != nil {
 			logger.WithError(err).Warn("failed to initialize SDS baseline remote provider; online baseline validation disabled")

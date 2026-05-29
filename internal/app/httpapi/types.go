@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
+	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
@@ -103,12 +104,7 @@ type promptTemplateRouteHandler interface {
 	SetPromptTemplateStatus(c *gin.Context)
 }
 
-type sdsCatalogRouteHandler interface {
-	ListSDSProducts(c *gin.Context)
-	GetSDSProduct(c *gin.Context)
-	ListSDSCategories(c *gin.Context)
-	ListSDSShipmentAreas(c *gin.Context)
-}
+type sdsCatalogRouteHandler = sdshttpapi.HTTPRouteHandler
 
 type sheinLoginRouteHandler interface {
 	Health(c *gin.Context)

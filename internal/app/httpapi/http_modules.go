@@ -5,6 +5,7 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
@@ -36,7 +37,9 @@ func newOpsHTTPModule(handlers httpModuleHandlers) httpModule {
 	return httpModule{
 		name: "ops",
 		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(appendSDSCatalogRouteDescriptors(nil, handlers.sdsCatalog)...)
+			if err := sdshttpapi.NewHTTPModule(handlers.sdsCatalog).Register(reg); err != nil {
+				return err
+			}
 			for _, module := range []kernelmodule.Module{
 				taskrpcapi.NewHTTPModule(handlers.taskRPC),
 				sheinlogin.NewHTTPModule(handlers.sheinLogin),

@@ -10,17 +10,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/httproute"
 	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
-type stubSDSCatalogTemplateService struct {
+type stubTemplateService struct {
 	listCalls []sdstemplate.ListParams
 	listFn    func(params sdstemplate.ListParams) (*sdstemplate.ListResponse, error)
 	detailFn  func(productID string) (*sdstemplate.ProductDetail, error)
 }
 
-func (s *stubSDSCatalogTemplateService) ListProducts(_ context.Context, params sdstemplate.ListParams) (*sdstemplate.ListResponse, error) {
+func (s *stubTemplateService) ListProducts(_ context.Context, params sdstemplate.ListParams) (*sdstemplate.ListResponse, error) {
 	s.listCalls = append(s.listCalls, params)
 	if s.listFn != nil {
 		return s.listFn(params)
@@ -28,16 +29,16 @@ func (s *stubSDSCatalogTemplateService) ListProducts(_ context.Context, params s
 	return &sdstemplate.ListResponse{}, nil
 }
 
-func (s *stubSDSCatalogTemplateService) GetProduct(_ context.Context, productID string) (*sdstemplate.ProductDetail, error) {
+func (s *stubTemplateService) GetProduct(_ context.Context, productID string) (*sdstemplate.ProductDetail, error) {
 	if s.detailFn != nil {
 		return s.detailFn(productID)
 	}
 	return &sdstemplate.ProductDetail{ProductSummary: sdstemplate.ProductSummary{ID: 99, Name: productID}}, nil
 }
 
-func TestSDSCatalogListProductsAppliesLocalFilters(t *testing.T) {
+func TestCatalogListProductsAppliesLocalFilters(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	stub := &stubSDSCatalogTemplateService{
+	stub := &stubTemplateService{
 		listFn: func(params sdstemplate.ListParams) (*sdstemplate.ListResponse, error) {
 			return &sdstemplate.ListResponse{
 				Page:       params.Page,
@@ -51,7 +52,7 @@ func TestSDSCatalogListProductsAppliesLocalFilters(t *testing.T) {
 			}, nil
 		},
 	}
-	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(stub))
+	router := newCatalogTestRouter(t, NewCatalogHandler(stub))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products?weightBand=200-500&cycleBand=24-72&page=1&size=12", nil)
 	w := httptest.NewRecorder()
@@ -66,9 +67,9 @@ func TestSDSCatalogListProductsAppliesLocalFilters(t *testing.T) {
 	require.Equal(t, 100, stub.listCalls[0].Size)
 }
 
-func TestSDSCatalogCategoriesDeriveLeafCounts(t *testing.T) {
+func TestCatalogCategoriesDeriveLeafCounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	stub := &stubSDSCatalogTemplateService{
+	stub := &stubTemplateService{
 		listFn: func(params sdstemplate.ListParams) (*sdstemplate.ListResponse, error) {
 			return &sdstemplate.ListResponse{
 				TotalCount: 2,
@@ -79,21 +80,21 @@ func TestSDSCatalogCategoriesDeriveLeafCounts(t *testing.T) {
 			}, nil
 		},
 	}
-	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(stub))
+	router := newCatalogTestRouter(t, NewCatalogHandler(stub))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories?shipmentArea=US", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	var payload []sdsCategorySummary
+	var payload []CategorySummary
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
-	require.Equal(t, []sdsCategorySummary{{ID: 20, Name: "Pillow", Count: 2}}, payload)
+	require.Equal(t, []CategorySummary{{ID: 20, Name: "Pillow", Count: 2}}, payload)
 }
 
-func TestSDSCatalogUnavailable(t *testing.T) {
+func TestCatalogUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(nil))
+	router := newCatalogTestRouter(t, NewCatalogHandler(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products", nil)
 	w := httptest.NewRecorder()
@@ -102,14 +103,14 @@ func TestSDSCatalogUnavailable(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-func TestSDSCatalogAuthRequiredReturnsUnauthorized(t *testing.T) {
+func TestCatalogAuthRequiredReturnsUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	stub := &stubSDSCatalogTemplateService{
+	stub := &stubTemplateService{
 		listFn: func(params sdstemplate.ListParams) (*sdstemplate.ListResponse, error) {
 			return nil, &sdsclient.AuthRequiredError{Op: "GET /products", StatusCode: 400, Message: "用户未登录"}
 		},
 	}
-	router := newSDSCatalogTestRouter(t, newSDSCatalogHandler(stub))
+	router := newCatalogTestRouter(t, NewCatalogHandler(stub))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/products", nil)
 	w := httptest.NewRecorder()
@@ -122,10 +123,16 @@ func TestSDSCatalogAuthRequiredReturnsUnauthorized(t *testing.T) {
 	require.Contains(t, payload["message"], "SDS 登录状态已失效")
 }
 
-func newSDSCatalogTestRouter(t *testing.T, handler sdsCatalogRouteHandler) *gin.Engine {
+func newCatalogTestRouter(t *testing.T, handler HTTPRouteHandler) *gin.Engine {
 	t.Helper()
 
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil, handler)
+	mountRoutes(router, AppendRouteDescriptors(nil, handler))
 	return router
+}
+
+func mountRoutes(router *gin.Engine, routes []httproute.Descriptor) {
+	for _, route := range routes {
+		router.Handle(route.Method, route.Path, route.Handler)
+	}
 }
