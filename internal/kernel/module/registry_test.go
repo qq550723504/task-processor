@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/httproute"
+	"task-processor/internal/infra/worker"
 )
 
 func TestRegistryAddRoutesPreservesOrder(t *testing.T) {
@@ -57,6 +58,42 @@ func TestRegistryRegisterTaskHandlerRejectsNilHandler(t *testing.T) {
 	var handler TaskHandler
 	err := reg.RegisterTaskHandler(handler)
 	require.ErrorContains(t, err, "task handler is nil")
+}
+
+func TestRegistryAddWorkerPoolPreservesOrder(t *testing.T) {
+	reg := NewRegistry()
+	first := stubWorkerPool{}
+	second := stubWorkerPool{}
+
+	err := reg.AddWorkerPool("product_enrich", first)
+	require.NoError(t, err)
+	err = reg.AddWorkerPool("product_image", second)
+	require.NoError(t, err)
+
+	pools := reg.WorkerPools()
+	require.Len(t, pools, 2)
+	require.Equal(t, "product_enrich", pools[0].Name)
+	require.Equal(t, first, pools[0].Pool)
+	require.Equal(t, "product_image", pools[1].Name)
+	require.Equal(t, second, pools[1].Pool)
+}
+
+func TestRegistryAddWorkerPoolRejectsDuplicateNames(t *testing.T) {
+	reg := NewRegistry()
+
+	err := reg.AddWorkerPool("product_enrich", stubWorkerPool{})
+	require.NoError(t, err)
+
+	err = reg.AddWorkerPool("product_enrich", stubWorkerPool{})
+	require.ErrorContains(t, err, "worker pool already registered")
+}
+
+func TestRegistryAddWorkerPoolRejectsNilPool(t *testing.T) {
+	reg := NewRegistry()
+
+	var pool worker.WorkerPool
+	err := reg.AddWorkerPool("product_enrich", pool)
+	require.ErrorContains(t, err, "worker pool is nil")
 }
 
 func TestRegistryRegisterWorkflowHandlerRejectsDuplicateWorkflow(t *testing.T) {
@@ -132,3 +169,13 @@ func (h stubWorkflowHandler) RegisterWorkflow(reg *WorkflowRegistry) error {
 	}
 	return reg.Register(h.name)
 }
+
+type stubWorkerPool struct{}
+
+func (stubWorkerPool) Start(context.Context)            {}
+func (stubWorkerPool) Stop(context.Context)             {}
+func (stubWorkerPool) Submit(worker.WorkerJob) error    { return nil }
+func (stubWorkerPool) AvailableSlots() int              { return 0 }
+func (stubWorkerPool) GetQueueStats() worker.QueueStats { return worker.QueueStats{} }
+func (stubWorkerPool) SetJobHandler(worker.JobHandler)  {}
+func (stubWorkerPool) GetMetrics() *worker.Metrics      { return nil }

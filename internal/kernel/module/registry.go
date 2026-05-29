@@ -3,14 +3,23 @@ package module
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"task-processor/internal/httproute"
+	"task-processor/internal/infra/worker"
 )
 
+type NamedWorkerPool struct {
+	Name string
+	Pool worker.WorkerPool
+}
+
 type Registry struct {
-	routes        []httproute.Descriptor
-	taskHandlers  map[string]TaskHandler
-	workflowNames map[string]struct{}
+	routes          []httproute.Descriptor
+	workerPools     []NamedWorkerPool
+	workerPoolNames map[string]struct{}
+	taskHandlers    map[string]TaskHandler
+	workflowNames   map[string]struct{}
 }
 
 type WorkflowRegistry struct {
@@ -21,8 +30,9 @@ type WorkflowRegistry struct {
 
 func NewRegistry() *Registry {
 	return &Registry{
-		taskHandlers:  make(map[string]TaskHandler),
-		workflowNames: make(map[string]struct{}),
+		workerPoolNames: make(map[string]struct{}),
+		taskHandlers:    make(map[string]TaskHandler),
+		workflowNames:   make(map[string]struct{}),
 	}
 }
 
@@ -33,6 +43,28 @@ func (r *Registry) AddRoutes(routes ...httproute.Descriptor) {
 func (r *Registry) Routes() []httproute.Descriptor {
 	out := make([]httproute.Descriptor, len(r.routes))
 	copy(out, r.routes)
+	return out
+}
+
+func (r *Registry) AddWorkerPool(name string, pool worker.WorkerPool) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("worker pool name is empty")
+	}
+	if isNilInterface(pool) {
+		return fmt.Errorf("worker pool is nil: %s", name)
+	}
+	if _, exists := r.workerPoolNames[name]; exists {
+		return fmt.Errorf("worker pool already registered: %s", name)
+	}
+
+	r.workerPoolNames[name] = struct{}{}
+	r.workerPools = append(r.workerPools, NamedWorkerPool{Name: name, Pool: pool})
+	return nil
+}
+
+func (r *Registry) WorkerPools() []NamedWorkerPool {
+	out := make([]NamedWorkerPool, len(r.workerPools))
+	copy(out, r.workerPools)
 	return out
 }
 
