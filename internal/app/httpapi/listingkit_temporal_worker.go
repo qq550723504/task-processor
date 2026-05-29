@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
+	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	sheinclient "task-processor/internal/shein/client"
 )
@@ -31,18 +32,27 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 		return fmt.Errorf("build listingkit runtime prerequisites: %w", err)
 	}
 
-	bundle, err := listingkithttpapi.BuildService(newListingKitBuildServiceInput(logger, deps))
+	temporalRuntime, err := listingkithttpapi.BuildTemporalRuntime(listingkithttpapi.TemporalRuntimeBuildInput{
+		ServiceInput: newListingKitBuildServiceInput(logger, deps),
+	})
 	if err != nil {
-		return fmt.Errorf("build listing kit service: %w", err)
+		return fmt.Errorf("build listing kit temporal runtime: %w", err)
 	}
-	deps.addClosers(bundle.Closers...)
+	if temporalRuntime == nil {
+		return fmt.Errorf("listing kit temporal runtime is unavailable")
+	}
+	deps.addClosers(temporalRuntime.Closers...)
 
-	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, logger)
+	bundle, err := appruntime.BuildTemporalRuntimeBundleFromModules(deps.shared.cfg, []kernelmodule.Module{temporalRuntime.Module})
 	if err != nil {
-		return fmt.Errorf("start listing kit temporal worker: %w", err)
+		return fmt.Errorf("build temporal runtime bundle: %w", err)
 	}
-	if workerCloser != nil {
-		defer closeResources(logger, []func() error{workerCloser})
+	workerClosers, err := bundle.Start()
+	if err != nil {
+		return fmt.Errorf("start temporal runtime bundle: %w", err)
+	}
+	if len(workerClosers) > 0 {
+		defer closeResources(logger, workerClosers)
 	}
 
 	sigChan := options.ShutdownSignal
