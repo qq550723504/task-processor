@@ -230,7 +230,7 @@ func evaluateSheinAttributeFreshness(current *SheinPackage, fresh *sheinpub.Attr
 		return false, firstNonEmptyString(joinReviewNotes(fresh.ReviewNotes), "当前普通属性模板已变化，需重新刷新属性模板后再提交")
 	}
 	if !sameResolvedAttributeSet(current.ResolvedAttributes, fresh.ResolvedAttributes) {
-		return false, "当前普通属性模板已变化，现有 resolved attributes 与在线模板结果不一致"
+		return false, buildResolvedAttributeFreshnessDriftMessage(current.ResolvedAttributes, fresh.ResolvedAttributes)
 	}
 	return true, "当前普通属性模板仍与在线结果一致"
 }
@@ -347,6 +347,72 @@ func normalizeResolvedAttributes(items []sheinpub.ResolvedAttribute) []string {
 		))
 	}
 	return normalized
+}
+
+func buildResolvedAttributeFreshnessDriftMessage(current []sheinpub.ResolvedAttribute, fresh []sheinpub.ResolvedAttribute) string {
+	currentOnly, freshOnly := diffResolvedAttributes(current, fresh)
+	parts := []string{"当前普通属性模板已变化，现有 resolved attributes 与在线模板结果不一致"}
+	if len(currentOnly) > 0 {
+		parts = append(parts, "当前任务独有: "+strings.Join(currentOnly, "; "))
+	}
+	if len(freshOnly) > 0 {
+		parts = append(parts, "在线模板独有: "+strings.Join(freshOnly, "; "))
+	}
+	return strings.Join(parts, "；")
+}
+
+func diffResolvedAttributes(current []sheinpub.ResolvedAttribute, fresh []sheinpub.ResolvedAttribute) ([]string, []string) {
+	currentCounts := make(map[string]int, len(current))
+	for _, item := range current {
+		currentCounts[formatResolvedAttributeDiffItem(item)]++
+	}
+	freshCounts := make(map[string]int, len(fresh))
+	for _, item := range fresh {
+		freshCounts[formatResolvedAttributeDiffItem(item)]++
+	}
+
+	currentOnly := make([]string, 0)
+	freshOnly := make([]string, 0)
+	for key, count := range currentCounts {
+		diff := count - freshCounts[key]
+		for i := 0; i < diff; i++ {
+			currentOnly = append(currentOnly, key)
+		}
+	}
+	for key, count := range freshCounts {
+		diff := count - currentCounts[key]
+		for i := 0; i < diff; i++ {
+			freshOnly = append(freshOnly, key)
+		}
+	}
+	sort.Strings(currentOnly)
+	sort.Strings(freshOnly)
+	return currentOnly, freshOnly
+}
+
+func formatResolvedAttributeDiffItem(item sheinpub.ResolvedAttribute) string {
+	valueID := 0
+	if item.AttributeValueID != nil {
+		valueID = *item.AttributeValueID
+	}
+	extraValue := strings.TrimSpace(item.AttributeExtraValue)
+	if extraValue == "" {
+		return fmt.Sprintf(
+			"%s=%s (attribute_id=%d, attribute_value_id=%d)",
+			strings.TrimSpace(item.Name),
+			strings.TrimSpace(item.Value),
+			item.AttributeID,
+			valueID,
+		)
+	}
+	return fmt.Sprintf(
+		"%s=%s (attribute_id=%d, attribute_value_id=%d, extra=%s)",
+		strings.TrimSpace(item.Name),
+		strings.TrimSpace(item.Value),
+		item.AttributeID,
+		valueID,
+		extraValue,
+	)
 }
 
 func normalizeResolvedSaleAttributes(items []sheinpub.ResolvedSaleAttribute) []string {

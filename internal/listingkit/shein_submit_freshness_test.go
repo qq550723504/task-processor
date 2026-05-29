@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"strings"
 	"testing"
 
 	sheinpub "task-processor/internal/publishing/shein"
@@ -59,6 +60,46 @@ func TestEvaluateSheinAttributeFreshnessDetectsTemplateMismatch(t *testing.T) {
 	}
 }
 
+func TestEvaluateSheinAttributeFreshnessReportsValueIDDifferenceDetails(t *testing.T) {
+	t.Parallel()
+
+	currentValueID := 1002592
+	freshValueID := 1000145
+	current := &SheinPackage{
+		ResolvedAttributes: []sheinpub.ResolvedAttribute{{
+			Name:             "Material",
+			Value:            "PU",
+			AttributeID:      160,
+			AttributeValueID: &currentValueID,
+		}},
+	}
+	fresh := &sheinpub.AttributeResolution{
+		Status: "resolved",
+		ResolvedAttributes: []sheinpub.ResolvedAttribute{{
+			Name:             "Material",
+			Value:            "PU",
+			AttributeID:      160,
+			AttributeValueID: &freshValueID,
+		}},
+	}
+
+	ok, message := evaluateSheinAttributeFreshness(current, fresh)
+	if ok {
+		t.Fatal("expected attribute freshness drift to block")
+	}
+	if message == "" {
+		t.Fatal("expected drift message")
+	}
+	if got := message; !containsAll(got,
+		"attribute_value_id=1002592",
+		"attribute_value_id=1000145",
+		"Material",
+		"PU",
+	) {
+		t.Fatalf("drift message = %q, want current/fresh attribute diff details", got)
+	}
+}
+
 func TestEvaluateSheinSaleAttributeFreshnessDetectsTemplateMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -92,4 +133,13 @@ func TestEvaluateSheinSaleAttributeFreshnessDetectsTemplateMismatch(t *testing.T
 	if message == "" {
 		t.Fatal("expected drift message")
 	}
+}
+
+func containsAll(haystack string, needles ...string) bool {
+	for _, needle := range needles {
+		if !strings.Contains(haystack, needle) {
+			return false
+		}
+	}
+	return true
 }
