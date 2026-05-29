@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 )
@@ -39,6 +41,29 @@ func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
 	keys := routeKeys(reg.Routes())
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+}
+
+func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+	module := NewRuntimeModule(&Module{
+		Handler:              stubRouteHandler{},
+		StudioSessionHandler: stubStudioSessionRouteHandler{},
+		Pool:                 stubWorkerPool{},
+	})
+
+	require.Equal(t, "listing-kit", module.Name())
+	require.True(t, module.Enabled(nil))
+	require.NoError(t, module.Register(reg))
+
+	keys := routeKeys(reg.Routes())
+	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+
+	pools := reg.WorkerPools()
+	require.Len(t, pools, 1)
+	require.Equal(t, "listing_kit", pools[0].Name)
 }
 
 type stubStudioSessionRouteHandler struct{}
@@ -195,3 +220,13 @@ func routeKeys(routes []httproute.Descriptor) []string {
 	}
 	return keys
 }
+
+type stubWorkerPool struct{}
+
+func (stubWorkerPool) Start(context.Context)            {}
+func (stubWorkerPool) Stop(context.Context)             {}
+func (stubWorkerPool) Submit(worker.WorkerJob) error    { return nil }
+func (stubWorkerPool) AvailableSlots() int              { return 0 }
+func (stubWorkerPool) GetQueueStats() worker.QueueStats { return worker.QueueStats{} }
+func (stubWorkerPool) SetJobHandler(worker.JobHandler)  {}
+func (stubWorkerPool) GetMetrics() *worker.Metrics      { return nil }
