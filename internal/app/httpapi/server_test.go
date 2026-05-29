@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -864,8 +866,9 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubAmazonListingHandler{}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, handler, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		amazonListing: handler,
+	})
 
 	tests := []struct {
 		name     string
@@ -977,8 +980,9 @@ func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubProductHandler{}
-	router := gin.New()
-	RegisterRoutes(router, handler, nil, nil, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		product: handler,
+	})
 
 	// generate endpoint
 	generatePayload := map[string]any{"text": "test"}
@@ -1011,8 +1015,9 @@ func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubImageHandler{}
-	router := gin.New()
-	RegisterRoutes(router, nil, handler, nil, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		image: handler,
+	})
 
 	// process endpoint
 	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
@@ -1061,8 +1066,10 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 
 	handler := &stubListingKitHandler{}
 	promptHandler := &stubPromptTemplateHandler{}
-	router := gin.New()
-	RegisterRoutesWithPrompt(router, nil, nil, nil, handler, promptHandler, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		listingKit:     handler,
+		promptTemplate: promptHandler,
+	})
 
 	body, _ := json.Marshal(map[string]any{
 		"text":      "test",
@@ -1756,8 +1763,7 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 	t.Parallel()
 
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{})
 
 	tests := []struct {
 		method string
@@ -1784,7 +1790,10 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, &stubSheinLoginHandler{}, nil, nil)
+	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
+		sheinLogin: &stubSheinLoginHandler{},
+	})
+	require.NoError(t, err)
 
 	index := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
@@ -1802,7 +1811,10 @@ func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 func TestBuildRouteDescriptorsWithSDSLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, nil, &stubSDSLoginHandler{}, nil)
+	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
+		sdsLogin: &stubSDSLoginHandler{},
+	})
+	require.NoError(t, err)
 
 	index := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
@@ -1821,8 +1833,9 @@ func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubTaskRPCHandler{}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, handler)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		taskRPC: handler,
+	})
 
 	tests := []struct {
 		name     string
@@ -1900,13 +1913,16 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 	t.Parallel()
 
 	router := gin.New()
-	productHandler := &stubProductHandler{}
-	imageHandler := &stubImageHandler{}
-	amazonHandler := &stubAmazonListingHandler{}
-	listingKitHandler := &stubListingKitHandler{}
-	taskRPCHandler := &stubTaskRPCHandler{}
+	handlers := httpModuleHandlers{
+		product:       &stubProductHandler{},
+		image:         &stubImageHandler{},
+		amazonListing: &stubAmazonListingHandler{},
+		listingKit:    &stubListingKitHandler{},
+		taskRPC:       &stubTaskRPCHandler{},
+	}
 
-	routes := buildRouteDescriptors(productHandler, imageHandler, amazonHandler, listingKitHandler, nil, taskRPCHandler)
+	routes, err := buildRegisteredRoutes(nil, handlers)
+	require.NoError(t, err)
 	mountRoutes(router, routes)
 
 	registered := router.Routes()
@@ -2080,7 +2096,7 @@ func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 	}
 }
 
-func TestBuildRouteDescriptorsWithSheinPanicsOnMultipleSDSCatalogHandlers(t *testing.T) {
+func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 	t.Parallel()
 
 	defer func() {
@@ -2097,19 +2113,7 @@ func TestBuildRouteDescriptorsWithSheinPanicsOnMultipleSDSCatalogHandlers(t *tes
 		}
 	}()
 
-	buildRouteDescriptorsWithShein(
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		&stubSDSCatalogRouteHandler{},
-		&stubSDSCatalogRouteHandler{},
-	)
+	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
 }
 
 func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
@@ -2124,6 +2128,27 @@ func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, im
 	routes = appendSheinLoginRouteDescriptors(routes, sheinLoginHandler)
 	routes = appendSDSLoginRouteDescriptors(routes, sdsLoginHandler)
 	return routes
+}
+
+func mustBuildTestRouterFromHandlers(t *testing.T, handlers httpModuleHandlers) *gin.Engine {
+	t.Helper()
+
+	server, _, err := buildHTTPServerBundleFromHandlers(0, nil, handlers)
+	require.NoError(t, err)
+
+	router, ok := server.Handler.(*gin.Engine)
+	require.True(t, ok)
+	return router
+}
+
+func singleSDSCatalogHandler(sdsCatalogHandlers ...sdsCatalogRouteHandler) sdsCatalogRouteHandler {
+	if len(sdsCatalogHandlers) == 0 {
+		return nil
+	}
+	if len(sdsCatalogHandlers) == 1 {
+		return sdsCatalogHandlers[0]
+	}
+	panic(fmt.Sprintf("expected at most 1 SDS catalog handler, got %d", len(sdsCatalogHandlers)))
 }
 
 func routePaths(routes []routeDescriptor) []string {
