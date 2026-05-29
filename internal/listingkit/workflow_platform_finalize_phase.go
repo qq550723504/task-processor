@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
-	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type platformFinalizePhase struct {
@@ -31,19 +30,7 @@ func (p *platformFinalizePhase) run(
 	enableAssetGeneration bool,
 	sdsOptions *SDSSyncOptions,
 ) *ListingKitResult {
-	if final.Shein != nil {
-		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, p.service.sheinContentOptimizer); err != nil {
-			appendWarning(final, "shein content optimization skipped: "+err.Error())
-		}
-	}
-	p.service.applyDefaultSheinPricing(task.Request, final.Shein)
-	if shouldUseSDSOfficialImages(task.Request) {
-		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSDesignResult, sdsOptions)
-		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSDesignResult))
-	}
-	if shouldUseSheinStudioAIImages(task.Request) {
-		applySheinStudioAIImagesToShein(final.Shein, task.Request, final.SDSDesignResult)
-	}
+	buildPlatformPostprocessPhase(p.service).run(ctx, task, final, sdsOptions)
 	if final.Summary == nil {
 		final.Summary = &GenerationSummary{}
 	}
@@ -55,7 +42,6 @@ func (p *platformFinalizePhase) run(
 	applySheinInspectionReviewToSummary(final)
 	addSheinReviewWorkflowIssues(final)
 	sheinReviewStage.Complete()
-	applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)
 
 	if inventory != nil {
 		if enableAssetGeneration {

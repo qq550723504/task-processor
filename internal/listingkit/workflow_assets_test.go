@@ -309,6 +309,57 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	}
 }
 
+func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{
+			ID: "product-task-platform-finalize",
+			Request: &productenrich.GenerateRequest{
+				ImageURLs: []string{"https://example.com/source.jpg"},
+				Text:      "gift box",
+			},
+		},
+		product: &productenrich.ProductJSON{
+			Title:      "Gift Box",
+			Category:   []string{"Home"},
+			Images:     []string{"https://example.com/source.jpg"},
+			Attributes: map[string]string{"brand": "DemoBrand"},
+		},
+	}
+	svc := &service{
+		productSvc:          productSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+	}
+	task := &Task{
+		ID: "listingkit-task-platform-finalize",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source.jpg"},
+			Text:      "gift box",
+			Platforms: []string{"shein"},
+			Country:   "US",
+			Language:  "en_US",
+			Options:   &GenerateOptions{ProcessImages: false},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if result.Shein == nil {
+		t.Fatal("expected shein package")
+	}
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want review-aware finalized summary", result.Summary)
+	}
+	if !hasWorkflowStageStatus(result.WorkflowStages, "shein_review", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, want completed shein_review", result.WorkflowStages)
+	}
+}
+
 func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing.T) {
 	t.Parallel()
 
