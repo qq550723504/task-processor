@@ -37,24 +37,28 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg                        *config.Config
-	closers                    []func() error
-	openaiMgr                  *openaiclient.Manager
-	aiCredentialStore          *openaiclient.GormCredentialResolver
-	tenantPromptStore          prompt.TenantPromptStore
-	llmMgr                     productenrich.LLMManager
-	inputParser                productenrich.InputParser
-	understanding              productenrich.ProductUnderstanding
-	imageWorkDir               string
-	shared                     *appbootstrap.SharedResources
-	productService             productenrich.ProductService
-	imageService               productimage.Service
-	sdsLoginStatusProvider     listingkit.SDSLoginStatusProvider
-	sdsBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
-	imageSubjectExtractor      productimage.SubjectExtractor
-	imageWhiteBgRenderer       productimage.WhiteBackgroundRenderer
-	imageSceneRenderer         productimage.SceneRenderer
-	listingKitSheinCookieStore *sheinlogin.RedisStore
+	cfg                    *config.Config
+	closers                []func() error
+	openaiMgr              *openaiclient.Manager
+	aiCredentialStore      *openaiclient.GormCredentialResolver
+	tenantPromptStore      prompt.TenantPromptStore
+	llmMgr                 productenrich.LLMManager
+	inputParser            productenrich.InputParser
+	understanding          productenrich.ProductUnderstanding
+	imageWorkDir           string
+	shared                 *appbootstrap.SharedResources
+	productService         productenrich.ProductService
+	imageService           productimage.Service
+	sdsLoginStatusProvider listingkit.SDSLoginStatusProvider
+	imageSubjectExtractor  productimage.SubjectExtractor
+	imageWhiteBgRenderer   productimage.WhiteBackgroundRenderer
+	imageSceneRenderer     productimage.SceneRenderer
+	listingKitSupport      *listingKitSupport
+}
+
+type listingKitSupport struct {
+	sdsBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
+	sheinCookieStore          *sheinlogin.RedisStore
 }
 
 type appBootstrap struct {

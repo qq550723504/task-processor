@@ -116,6 +116,16 @@ func (d *runtimeDeps) managementClient() *management.ClientManager {
 	return d.shared.ManagementClient
 }
 
+func (d *runtimeDeps) ensureListingKitSupport() *listingKitSupport {
+	if d == nil {
+		return nil
+	}
+	if d.listingKitSupport == nil {
+		d.listingKitSupport = &listingKitSupport{}
+	}
+	return d.listingKitSupport
+}
+
 func resolveImageWorkDir(cfg *config.Config) string {
 	if cfg == nil {
 		return filepath.Join(".", "tmp", "productimage")

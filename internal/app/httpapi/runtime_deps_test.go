@@ -26,3 +26,24 @@ func TestRuntimeDepsManagementClientHandlesNilDeps(t *testing.T) {
 		t.Fatal("expected nil management client for nil deps")
 	}
 }
+
+func TestRuntimeDepsListingKitSupportHandlesNilDeps(t *testing.T) {
+	var deps *runtimeDeps
+	if deps.ensureListingKitSupport() != nil {
+		t.Fatal("expected nil listingkit support for nil deps")
+	}
+}
+
+func TestRuntimeDepsListingKitSupportIsStable(t *testing.T) {
+	deps := &runtimeDeps{}
+
+	first := deps.ensureListingKitSupport()
+	if first == nil {
+		t.Fatal("expected listingkit support")
+	}
+
+	second := deps.ensureListingKitSupport()
+	if second != first {
+		t.Fatalf("listingkit support = %p, want %p", second, first)
+	}
+}

@@ -107,8 +107,12 @@ func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) 
 	if deps == nil || deps.cfg == nil {
 		return nil
 	}
-	if deps.listingKitSheinCookieStore != nil {
-		return deps.listingKitSheinCookieStore
+	support := deps.ensureListingKitSupport()
+	if support == nil {
+		return nil
+	}
+	if support.sheinCookieStore != nil {
+		return support.sheinCookieStore
 	}
 	redisCfg := deps.cfg.EffectiveSheinCookieRedis()
 	if strings.TrimSpace(redisCfg.Host) == "" {
@@ -121,7 +125,7 @@ func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) 
 		}
 		return nil
 	}
-	deps.listingKitSheinCookieStore = store
+	support.sheinCookieStore = store
 	deps.closers = append(deps.closers, store.Close)
 	return store
 }
@@ -152,8 +156,12 @@ func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) li
 	if deps == nil {
 		return nil
 	}
-	if deps.sdsBaselineRemoteProvider != nil {
-		return deps.sdsBaselineRemoteProvider
+	support := deps.ensureListingKitSupport()
+	if support == nil {
+		return nil
+	}
+	if support.sdsBaselineRemoteProvider != nil {
+		return support.sdsBaselineRemoteProvider
 	}
 	client, err := sdsclient.New(sdshttpapi.BuildClientConfig(deps.cfg))
 	if err != nil {
@@ -162,10 +170,10 @@ func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) li
 		}
 		return nil
 	}
-	deps.sdsBaselineRemoteProvider = &listingKitSDSBaselineRemoteProvider{
+	support.sdsBaselineRemoteProvider = &listingKitSDSBaselineRemoteProvider{
 		design: sdsdesign.NewService(client),
 	}
-	return deps.sdsBaselineRemoteProvider
+	return support.sdsBaselineRemoteProvider
 }
 
 type listingKitSDSBaselineRemoteProvider struct {
