@@ -85,3 +85,35 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("service_process.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_process.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
+		"func taskNeedsReviewReason(result *ListingKitResult) string {",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("service_process.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"s.repo.MarkProcessing(",
+		"s.runWorkflow(",
+		"s.persistProcessFailure(",
+		"s.persistProcessSuccess(",
+		"deriveProcessTerminalStatus(",
+		"applyProcessTerminalResult(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("service_process.go should not contain %q", needle)
+		}
+	}
+}
