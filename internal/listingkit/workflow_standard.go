@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sirupsen/logrus"
 
@@ -10,8 +9,6 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog"
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
 
@@ -35,95 +32,9 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		"task_id":   task.ID,
 	})
 
-	var canonicalProduct *canonical.Product
-	if baseline, ok, baselineErr := s.sdsBaselineOrDefault().GetCachedBaseline(ctx, task); baselineErr != nil {
-		log.WithError(baselineErr).Warn("sds baseline lookup failed; continuing")
-	} else if ok {
-		canonicalProduct = baseline
-		log.WithFields(logrus.Fields{
-			"title": func() string {
-				if canonicalProduct == nil {
-					return ""
-				}
-				return canonicalProduct.Title
-			}(),
-		}).Info("reused SDS baseline canonical product for listing kit workflow")
-	}
-	if canonicalProduct != nil {
-		// Baseline hydration restores the cached SDS skeleton; later runtime SDS overlay still applies.
-	} else if shouldUseStudioCatalogCanonical(task) {
-		stage := recorder.Start("sds_catalog_product", "")
-		canonicalProduct = buildStudioFallbackCanonicalProduct(task)
-		if canonicalProduct == nil {
-			stage.Fail("sds_catalog_product_failed", "Failed to build SDS studio product", "")
-			recorder.FinalizeSummary()
-			return &standardWorkflowState{result: result}, fmt.Errorf("failed to build SDS studio product")
-		}
-		markChildTask(result, "sds_catalog_product", "", string(TaskStatusCompleted), "")
-		stage.Complete()
-	} else {
-		if cached, ok, cacheErr := s.getCachedCanonicalProduct(ctx, task); cacheErr != nil {
-			log.WithError(cacheErr).Warn("canonical product cache lookup failed; running product enrich")
-		} else if ok {
-			stage := recorder.Start("product_enrich", "")
-			canonicalProduct = cached
-			markChildTask(result, "product_enrich", "", string(productenrich.TaskStatusCompleted), "")
-			stage.Complete()
-			log.WithFields(logrus.Fields{
-				"title": func() string {
-					if canonicalProduct == nil {
-						return ""
-					}
-					return canonicalProduct.Title
-				}(),
-			}).Info("reused cached canonical product for listing kit workflow")
-		}
-		if canonicalProduct == nil {
-			stage := recorder.Start("product_enrich", "")
-			productTask, err := s.productSvc.CreateGenerateTask(productenrich.WithInlineTaskExecution(ctx), toProductGenerateRequest(task))
-			if err != nil {
-				markChildTask(result, "product_enrich", "", string(TaskStatusFailed), err.Error())
-				stage.Fail("product_task_creation_failed", "Product enrichment task creation failed", err.Error())
-				recorder.FinalizeSummary()
-				return &standardWorkflowState{result: result}, fmt.Errorf("failed to create product task: %w", err)
-			}
-			stage.SetTaskID(productTask.ID)
-			markChildTask(result, "product_enrich", productTask.ID, string(productenrich.TaskStatusPending), "")
-
-			productJSON, err := s.productSvc.ProcessProduct(ctx, productTask)
-			if err != nil {
-				markChildTask(result, "product_enrich", productTask.ID, string(TaskStatusFailed), err.Error())
-				if !shouldUseStudioProductFallback(task) {
-					stage.Fail("product_enrich_failed", "Product enrichment failed", err.Error())
-					recorder.FinalizeSummary()
-					return &standardWorkflowState{result: result}, fmt.Errorf("product enrichment failed: %w", err)
-				}
-				canonicalProduct = buildStudioFallbackCanonicalProduct(task)
-				if canonicalProduct == nil {
-					stage.Fail("product_enrich_failed", "Product enrichment failed", err.Error())
-					recorder.FinalizeSummary()
-					return &standardWorkflowState{result: result}, fmt.Errorf("product enrichment failed: %w", err)
-				}
-				appendWarning(result, "product enrichment failed, studio fallback canonical product used: "+err.Error())
-				stage.Degrade("product_enrich_studio_fallback", "Product enrichment failed; studio fallback canonical product used", err.Error())
-			} else {
-				markChildTask(result, "product_enrich", productTask.ID, string(productenrich.TaskStatusCompleted), "")
-				stage.Complete()
-				canonicalProduct = productenrich.BuildCanonicalProduct(productTask.Request, productJSON)
-				if cacheErr := s.saveCanonicalProductCache(ctx, task, canonicalProduct); cacheErr != nil {
-					log.WithError(cacheErr).Warn("canonical product cache save failed")
-				}
-				log.WithFields(logrus.Fields{
-					"child_task_id": productTask.ID,
-					"title": func() string {
-						if canonicalProduct == nil {
-							return ""
-						}
-						return canonicalProduct.Title
-					}(),
-				}).Info("product enrichment completed for listing kit workflow")
-			}
-		}
+	canonicalProduct, err := buildStandardWorkflowCanonicalPhase(s).run(ctx, task, result, recorder, log)
+	if err != nil {
+		return &standardWorkflowState{result: result}, err
 	}
 
 	result.CanonicalProduct = canonicalProduct
