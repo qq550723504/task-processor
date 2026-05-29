@@ -123,7 +123,7 @@ func TestProductHTTPModuleRegistersRoutes(t *testing.T) {
 	err := newProductHTTPModule(httpModuleHandlers{
 		product: &stubProductHandler{},
 		image:   &stubImageHandler{},
-	}).Register(reg)
+	}, nil, nil).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -142,7 +142,7 @@ func TestAmazonListingHTTPModuleRegistersRoutes(t *testing.T) {
 
 	err := newAmazonListingHTTPModule(httpModuleHandlers{
 		amazonListing: &stubAmazonListingHandler{},
-	}).Register(reg)
+	}, nil).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -162,7 +162,7 @@ func TestListingKitHTTPModuleRegistersRoutes(t *testing.T) {
 
 	err := newListingKitHTTPModule(httpModuleHandlers{
 		listingKit: &stubListingKitHandler{},
-	}).Register(reg)
+	}, nil).Register(reg)
 	require.NoError(t, err)
 
 	keys := routeKeys(reg.Routes())
@@ -177,7 +177,7 @@ func TestListingKitStudioHTTPModuleRegistersRoutes(t *testing.T) {
 
 	err := newListingKitStudioHTTPModule(httpModuleHandlers{
 		studioSession: &stubStudioSessionHandler{},
-	}).Register(reg)
+	}, nil).Register(reg)
 	require.NoError(t, err)
 
 	keys := routeKeys(reg.Routes())
@@ -437,25 +437,111 @@ func TestBuildHTTPServerBundleFromModulesSkipsNilModules(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code)
 }
 
-func TestHTTPFeatureCompositionLocalTaskHealthProviderUsesFeaturePoolNames(t *testing.T) {
+func TestBuildRuntimeBundleFromModulesCollectsRoutesAndWorkerPools(t *testing.T) {
 	t.Parallel()
 
-	productMetrics := worker.NewMetrics()
-	productMetrics.RecordSubmit()
-	productMetrics.RecordProcessSuccess(1)
+	bundle, err := buildRuntimeBundleFromModules(&config.Config{}, []kernelmodule.Module{
+		httpModule{
+			name: "product",
+			register: func(reg *kernelmodule.Registry) error {
+				reg.AddRoutes(routeDescriptor{
+					Method: http.MethodGet,
+					Path:   "/health",
+					Module: "product",
+					Handler: func(c *gin.Context) {
+						c.Status(http.StatusOK)
+					},
+				})
+				return reg.AddWorkerPool("product_enrich", stubWorkerPool{})
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"GET /health"}, routeKeys(bundle.routes))
+	require.Len(t, bundle.workerPools, 1)
+	require.Equal(t, "product_enrich", bundle.workerPools[0].Name)
+}
+
+func TestRuntimeBundleBuildsLocalTaskHealthProviderFromRegisteredPools(t *testing.T) {
+	t.Parallel()
+
+	metrics := worker.NewMetrics()
+	metrics.RecordSubmit()
+	metrics.RecordProcessSuccess(1)
+
+	bundle, err := buildRuntimeBundleFromModules(&config.Config{}, []kernelmodule.Module{
+		httpModule{
+			name: "custom-runtime",
+			register: func(reg *kernelmodule.Registry) error {
+				return reg.AddWorkerPool("custom_pool", stubWorkerPool{
+					stats: worker.QueueStats{
+						QueueSize:      1,
+						BufferSize:     4,
+						AvailableSlots: 3,
+					},
+					metrics: metrics,
+				})
+			},
+		},
+		httpModule{
+			name: "secondary-runtime",
+			register: func(reg *kernelmodule.Registry) error {
+				return reg.AddWorkerPool("secondary_pool", stubWorkerPool{
+					stats: worker.QueueStats{
+						QueueSize:      2,
+						BufferSize:     5,
+						AvailableSlots: 3,
+					},
+				})
+			},
+		},
+		httpModule{
+			name: "disabled-runtime",
+			enabled: func(*config.Config) bool {
+				return false
+			},
+			register: func(reg *kernelmodule.Registry) error {
+				return reg.AddWorkerPool("disabled_pool", stubWorkerPool{
+					stats: worker.QueueStats{
+						QueueSize:      99,
+						BufferSize:     99,
+						AvailableSlots: 0,
+					},
+				})
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	status := bundle.localTaskHealthProvider()
+	require.NotNil(t, status)
+
+	snapshot := status()
+	require.Equal(t, 2, snapshot["summary"].(map[string]any)["poolCount"])
+	require.Equal(t, 3, snapshot["summary"].(map[string]any)["totalQueueSize"])
+
+	pools := snapshot["pools"].(map[string]any)
+	require.Contains(t, pools, "custom_pool")
+	require.Contains(t, pools, "secondary_pool")
+	require.NotContains(t, pools, "disabled_pool")
+}
+
+func TestHTTPFeatureCompositionBuildRuntimeBundleUsesRegisteredModules(t *testing.T) {
+	t.Parallel()
 
 	composition := httpFeatureComposition{
 		productModule: &productenrichhttpapi.Module{
+			Handler: &stubProductHandler{},
 			Pool: stubWorkerPool{
 				stats: worker.QueueStats{
 					QueueSize:      1,
 					BufferSize:     4,
 					AvailableSlots: 3,
 				},
-				metrics: productMetrics,
 			},
 		},
 		imageModule: &productimagehttpapi.Module{
+			Handler: &stubImageHandler{},
 			Pool: stubWorkerPool{
 				stats: worker.QueueStats{
 					QueueSize:      2,
@@ -466,6 +552,7 @@ func TestHTTPFeatureCompositionLocalTaskHealthProviderUsesFeaturePoolNames(t *te
 		},
 		amazonListingModule: &amazonlistinghttpapi.Module{},
 		listingKitModule: &listingkithttpapi.Module{
+			Handler: &stubListingKitHandler{},
 			Pool: stubWorkerPool{
 				stats: worker.QueueStats{
 					QueueSize:      3,
@@ -476,18 +563,12 @@ func TestHTTPFeatureCompositionLocalTaskHealthProviderUsesFeaturePoolNames(t *te
 		},
 	}
 
-	status := composition.localTaskHealthProvider()
-	require.NotNil(t, status)
-
-	snapshot := status()
-	require.Equal(t, 3, snapshot["summary"].(map[string]any)["poolCount"])
-	require.Equal(t, 6, snapshot["summary"].(map[string]any)["totalQueueSize"])
-
-	pools := snapshot["pools"].(map[string]any)
-	require.Contains(t, pools, "product_enrich")
-	require.Contains(t, pools, "product_image")
-	require.Contains(t, pools, "listing_kit")
-	require.NotContains(t, pools, "amazon_listing")
+	bundle, err := composition.buildRuntimeBundle(&config.Config{})
+	require.NoError(t, err)
+	require.Len(t, bundle.workerPools, 3)
+	require.Contains(t, routeKeys(bundle.routes), "POST /api/v1/products/generate")
+	require.Contains(t, routeKeys(bundle.routes), "POST /api/v1/images/process")
+	require.Contains(t, routeKeys(bundle.routes), "POST /api/v1/listing-kits/generate")
 }
 
 func TestHTTPFeatureCompositionBuildServerBundleUsesRouteModules(t *testing.T) {

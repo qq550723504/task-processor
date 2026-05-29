@@ -109,7 +109,12 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.listingKitModule = listingKitModule
 	composition.promptModule = b.buildPrompt(deps.shared.tenantPromptStore)
 
-	taskRPCResult, err := b.buildTaskRPC(deps.managementClient(), composition.localTaskHealthProvider())
+	runtimeBundle, err := buildRuntimeBundleFromModules(deps.shared.cfg, composition.runtimeModules())
+	if err != nil {
+		return composition, err
+	}
+
+	taskRPCResult, err := b.buildTaskRPC(deps.managementClient(), runtimeBundle.localTaskHealthProvider())
 	if err != nil {
 		return composition, err
 	}

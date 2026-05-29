@@ -2163,11 +2163,11 @@ func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]r
 func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
 	return []kernelmodule.Module{
 		newCoreHTTPModule(),
-		newProductHTTPModule(handlers),
-		newAmazonListingHTTPModule(handlers),
-		newListingKitHTTPModule(handlers),
+		newProductHTTPModule(handlers, nil, nil),
+		newAmazonListingHTTPModule(handlers, nil),
+		newListingKitHTTPModule(handlers, nil),
 		newPromptTemplateHTTPModule(handlers),
-		newListingKitStudioHTTPModule(handlers),
+		newListingKitStudioHTTPModule(handlers, nil),
 		newSDSCatalogHTTPModule(handlers),
 		newTaskRPCHTTPModule(handlers),
 		newSheinLoginHTTPModule(handlers),

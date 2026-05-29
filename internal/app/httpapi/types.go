@@ -90,54 +90,46 @@ type httpFeatureComposition struct {
 	sdsLoginResult      *sdsloginbootstrap.BuildResult
 }
 
-func (c httpFeatureComposition) routeModules() []kernelmodule.Module {
+func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 	return []kernelmodule.Module{
 		newCoreHTTPModule(),
 		newProductHTTPModule(httpModuleHandlers{
 			product: c.productHandler(),
 			image:   c.imageHandler(),
-		}),
+		}, c.productModule, c.imageModule),
 		newAmazonListingHTTPModule(httpModuleHandlers{
 			amazonListing: c.amazonListingHandler(),
-		}),
+		}, c.amazonListingModule),
 		newListingKitHTTPModule(httpModuleHandlers{
 			listingKit: c.listingKitHandler(),
-		}),
+		}, c.listingKitModule),
 		c.promptHTTPModule(),
 		newListingKitStudioHTTPModule(httpModuleHandlers{
 			studioSession: c.studioSessionHandler(),
-		}),
+		}, c.listingKitModule),
 		c.sdsHTTPModule(),
-		c.taskRPCHTTPModule(),
 		c.sheinLoginHTTPModule(),
 		c.sdsLoginHTTPModule(),
 	}
 }
 
-func (c httpFeatureComposition) workerPools() []worker.WorkerPool {
-	return []worker.WorkerPool{
-		c.productPool(),
-		c.imagePool(),
-		c.amazonListingPool(),
-		c.listingKitPool(),
-	}
+func (c httpFeatureComposition) routeModules() []kernelmodule.Module {
+	modules := c.runtimeModules()
+	modules = append(modules, c.taskRPCHTTPModule())
+	return modules
 }
 
-func (c httpFeatureComposition) localTaskHealthProvider() taskrpcapi.LocalStatusProvider {
-	return buildLocalTaskHealthProvider(c.namedWorkerPools())
+func (c httpFeatureComposition) buildRuntimeBundle(cfg *config.Config) (runtimeBundle, error) {
+	return buildRuntimeBundleFromModules(cfg, c.routeModules())
 }
 
 func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) (*http.Server, []routeDescriptor, error) {
-	return buildHTTPServerBundleFromModules(port, cfg, c.routeModules())
-}
-
-func (c httpFeatureComposition) namedWorkerPools() map[string]worker.WorkerPool {
-	return map[string]worker.WorkerPool{
-		"product_enrich": c.productPool(),
-		"product_image":  c.imagePool(),
-		"amazon_listing": c.amazonListingPool(),
-		"listing_kit":    c.listingKitPool(),
+	bundle, err := c.buildRuntimeBundle(cfg)
+	if err != nil {
+		return nil, nil, err
 	}
+	server, routes := bundle.buildServerBundle(port)
+	return server, routes, nil
 }
 
 func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
@@ -208,34 +200,6 @@ func (c httpFeatureComposition) sdsLoginHTTPModule() kernelmodule.Module {
 		return nil
 	}
 	return c.sdsLoginResult.Module
-}
-
-func (c httpFeatureComposition) productPool() worker.WorkerPool {
-	if c.productModule == nil {
-		return nil
-	}
-	return c.productModule.Pool
-}
-
-func (c httpFeatureComposition) imagePool() worker.WorkerPool {
-	if c.imageModule == nil {
-		return nil
-	}
-	return c.imageModule.Pool
-}
-
-func (c httpFeatureComposition) amazonListingPool() worker.WorkerPool {
-	if c.amazonListingModule == nil {
-		return nil
-	}
-	return c.amazonListingModule.Pool
-}
-
-func (c httpFeatureComposition) listingKitPool() worker.WorkerPool {
-	if c.listingKitModule == nil {
-		return nil
-	}
-	return c.listingKitModule.Pool
 }
 
 type productRouteHandler = productenrich.ProductHandler

@@ -80,11 +80,12 @@ func serveHTTP(logger *logrus.Logger, server *http.Server, routes []routeDescrip
 }
 
 func buildHTTPServerBundleFromModules(port int, cfg *config.Config, modules []kernelmodule.Module) (*http.Server, []routeDescriptor, error) {
-	routes, err := buildRegisteredRoutesForModules(cfg, modules)
+	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, nil, err
 	}
-	return buildHTTPServerFromRoutes(port, routes), routes, nil
+	server, routes := bundle.buildServerBundle(port)
+	return server, routes, nil
 }
 
 func closeResources(logger *logrus.Logger, closers []func() error) {

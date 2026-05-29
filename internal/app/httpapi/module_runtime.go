@@ -1,26 +1,14 @@
 package httpapi
 
 import (
-	"fmt"
-
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
 func buildRegisteredRoutesForModules(cfg *config.Config, modules []kernelmodule.Module) ([]routeDescriptor, error) {
-	reg := kernelmodule.NewRegistry()
-
-	for _, module := range modules {
-		if module == nil {
-			continue
-		}
-		if !module.Enabled(cfg) {
-			continue
-		}
-		if err := module.Register(reg); err != nil {
-			return nil, fmt.Errorf("register module %s: %w", module.Name(), err)
-		}
+	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
+	if err != nil {
+		return nil, err
 	}
-
-	return reg.Routes(), nil
+	return bundle.routes, nil
 }

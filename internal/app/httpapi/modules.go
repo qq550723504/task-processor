@@ -51,16 +51,18 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	server, routes, err := composition.buildServerBundle(options.Port, deps.shared.cfg)
+	runtimeBundle, err := composition.buildRuntimeBundle(deps.shared.cfg)
 	if err != nil {
 		return nil, err
 	}
+
+	server, routes := runtimeBundle.buildServerBundle(options.Port)
 	return &appBootstrap{
 		productHandler: composition.productHandler(),
 		imageHandler:   composition.imageHandler(),
 		server:         server,
 		routes:         routes,
-		pools:          composition.workerPools(),
+		pools:          runtimeBundle.pools(),
 		closers:        deps.shared.closers,
 	}, nil
 }
