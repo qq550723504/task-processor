@@ -910,6 +910,128 @@ func TestRunWorkflowRecordsDeferredAssetGenerationDispatchFailure(t *testing.T) 
 	}
 }
 
+func TestRunWorkflowPersistsDeferredPlatformDispatchOutputs(t *testing.T) {
+	t.Parallel()
+
+	assetGenerator := &stubWorkflowAssetGenerator{
+		planResult: &assetgeneration.Result{
+			Tasks: []assetgeneration.Task{{
+				TaskID:          "asset-task-1",
+				ID:              "asset-task-1",
+				Platform:        "amazon",
+				ExecutionStatus: "queued",
+				CanExecute:      true,
+			}},
+		},
+		dispatchResult: &assetgeneration.Result{
+			Tasks: []assetgeneration.Task{{
+				TaskID:          "asset-task-1",
+				ID:              "asset-task-1",
+				Platform:        "amazon",
+				ExecutionMode:   "deferred_stub",
+				ExecutionStatus: "completed",
+			}},
+			Assets: []asset.AssetRecord{{
+				Kind: asset.KindGalleryImage,
+				URL:  "https://cdn.example.com/generated-gallery.jpg",
+			}},
+		},
+	}
+
+	result, repo := runWorkflowWithDeferredDispatchFixture(t, "listingkit-task-deferred-success", assetGenerator)
+
+	if result.AssetInventorySummary == nil || result.AssetInventorySummary.TotalRecords == 0 {
+		t.Fatalf("asset inventory summary = %+v, want persisted records", result.AssetInventorySummary)
+	}
+	if result.Amazon == nil || result.Amazon.ImageBundle == nil {
+		t.Fatalf("amazon image bundle = %+v, want bundle after deferred dispatch", result.Amazon)
+	}
+	hasGeneratedGalleryAsset := false
+	for _, item := range result.Amazon.ImageBundle.Gallery {
+		if item.URL == "https://cdn.example.com/generated-gallery.jpg" {
+			hasGeneratedGalleryAsset = true
+			break
+		}
+	}
+	if !hasGeneratedGalleryAsset {
+		t.Fatalf("amazon image bundle = %+v, want merged deferred-dispatch gallery asset", result.Amazon.ImageBundle)
+	}
+	inventory, err := repo.GetInventory(context.Background(), asset.InventoryRef{TaskID: "listingkit-task-deferred-success"})
+	if err != nil {
+		t.Fatalf("GetInventory() error = %v", err)
+	}
+	if inventory == nil || !hasInventoryURL(inventory, "https://cdn.example.com/generated-gallery.jpg") {
+		t.Fatalf("inventory = %+v, want merged deferred-dispatch asset", inventory)
+	}
+	tasks, err := repo.ListGenerationTasks(context.Background(), "listingkit-task-deferred-success")
+	if err != nil {
+		t.Fatalf("ListGenerationTasks() error = %v", err)
+	}
+	if len(tasks) == 0 {
+		t.Fatal("expected persisted generation tasks")
+	}
+	if tasks[0].ExecutionMode != "deferred_stub" || tasks[0].ExecutionStatus != "completed" {
+		t.Fatalf("generation tasks = %+v, want completed deferred dispatch task", tasks)
+	}
+}
+
+func runWorkflowWithDeferredDispatchFixture(
+	t *testing.T,
+	taskID string,
+	assetGenerator *stubWorkflowAssetGenerator,
+) (*ListingKitResult, *assetrepo.MemRepository) {
+	t.Helper()
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{
+			ID: "product-task-" + taskID,
+			Request: &productenrich.GenerateRequest{
+				ImageURLs: []string{"https://example.com/source.jpg"},
+				Text:      "poster",
+			},
+		},
+		product: &productenrich.ProductJSON{
+			Title:      "Poster",
+			Category:   []string{"Home"},
+			Images:     []string{"https://example.com/source.jpg"},
+			Attributes: map[string]string{"material": "paper"},
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-" + taskID},
+		result: &productimage.ImageProcessResult{
+			MainImage: &productimage.ImageAsset{URL: "https://cdn.example.com/main.jpg"},
+		},
+	}
+	assetRepository := assetrepo.NewMemRepository()
+	svc := &service{
+		productSvc:          productSvc,
+		imageSvc:            imageSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRepo:           assetRepository,
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      assetGenerator,
+	}
+	task := &Task{
+		ID: taskID,
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source.jpg"},
+			Text:      "poster",
+			Platforms: []string{"amazon"},
+			Country:   "US",
+			Language:  "en_US",
+			Options:   &GenerateOptions{ProcessImages: true},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	return result, assetRepository
+}
+
 func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) {
 	t.Parallel()
 
@@ -1390,6 +1512,18 @@ func hasInventoryKind(inventory *asset.Inventory, kind asset.Kind) bool {
 	}
 	for _, record := range inventory.Records {
 		if record.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func hasInventoryURL(inventory *asset.Inventory, url string) bool {
+	if inventory == nil {
+		return false
+	}
+	for _, record := range inventory.Records {
+		if record.URL == url {
 			return true
 		}
 	}
