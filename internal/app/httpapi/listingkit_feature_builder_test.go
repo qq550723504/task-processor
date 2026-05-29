@@ -26,6 +26,10 @@ func TestNewListingKitFeatureBuilderUsesFeatureOwnedRuntimeBuilders(t *testing.T
 		runtime.FuncForPC(reflect.ValueOf(productimagehttpapi.BuildRuntimeModule).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildImage).Pointer()).Name(),
 	)
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(listingkithttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildListingKit).Pointer()).Name(),
+	)
 }
 
 func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
@@ -83,7 +87,7 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 						Pool:    stubWorkerPool{},
 					}, nil
 				},
-				buildListingKit: func(*logrus.Logger, *runtimeDeps) (*listingkithttpapi.Module, error) {
+				buildListingKit: func(listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 					order = append(order, "listingkit")
 					require.Equal(t, productService, deps.features.productService)
 					return &listingkithttpapi.Module{

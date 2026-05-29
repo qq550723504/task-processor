@@ -22,14 +22,14 @@ type listingKitFeatureSet struct {
 type listingKitFeatureBuilder struct {
 	buildProduct    func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
 	buildImage      func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
-	buildListingKit func(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error)
+	buildListingKit func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
 }
 
 func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 	return listingKitFeatureBuilder{
 		buildProduct:    productenrichhttpapi.BuildRuntimeModule,
 		buildImage:      productimagehttpapi.BuildRuntimeModule,
-		buildListingKit: buildListingKitModule,
+		buildListingKit: listingkithttpapi.BuildRuntimeModule,
 	}
 }
 
@@ -67,7 +67,7 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	}
 
 	if options.includeListingKit {
-		listingKitModule, err := b.buildListingKit(logger, deps)
+		listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
 		if err != nil {
 			return features, err
 		}

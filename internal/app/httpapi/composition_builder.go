@@ -23,7 +23,7 @@ type httpFeatureCompositionBuilder struct {
 	buildAmazonListing func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
 	buildSheinLogin    func(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error)
 	buildSDSLogin      func(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error)
-	buildListingKit    func(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error)
+	buildListingKit    func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
 	buildPrompt        func(store prompt.TenantPromptStore) *promptmgmtapi.BuildResult
 	buildTaskRPC       func(provider taskrpcapi.ClientProvider, localStatusProvider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error)
 	buildSDS           func(logger *logrus.Logger, cfg *config.Config) *sdshttpapi.BuildResult
@@ -36,7 +36,7 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 		buildAmazonListing: amazonlistinghttpapi.BuildRuntimeModule,
 		buildSheinLogin:    buildSheinLoginModuleResult,
 		buildSDSLogin:      buildSDSLoginModuleResult,
-		buildListingKit:    buildListingKitModule,
+		buildListingKit:    listingkithttpapi.BuildRuntimeModule,
 		buildPrompt:        promptmgmtapi.BuildModule,
 		buildTaskRPC:       taskrpcapi.BuildModule,
 		buildSDS:           sdshttpapi.BuildModule,
@@ -101,7 +101,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	deps.attachSDSLoginResult(sdsLoginResult)
 	composition.sdsLoginResult = sdsLoginResult
 
-	listingKitModule, err := b.buildListingKit(logger, deps)
+	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
 	if err != nil {
 		return composition, err
 	}

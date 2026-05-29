@@ -117,14 +117,6 @@ func newWorkerPool(processor worker.Processor, cfg *config.Config) worker.Worker
 	})
 }
 
-func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error) {
-	module, err := listingkithttpapi.BuildModule(newListingKitBuildModuleInput(logger, deps))
-	if err != nil {
-		return nil, err
-	}
-	return module, nil
-}
-
 func buildLocalTaskHealthProvider(pools map[string]worker.WorkerPool) taskrpcapi.LocalStatusProvider {
 	return func() map[string]any {
 		summary := map[string]any{

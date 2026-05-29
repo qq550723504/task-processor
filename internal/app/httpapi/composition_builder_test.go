@@ -43,6 +43,10 @@ func TestNewHTTPFeatureCompositionBuilderUsesFeatureOwnedRuntimeBuilders(t *test
 		runtime.FuncForPC(reflect.ValueOf(amazonlistinghttpapi.BuildRuntimeModule).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildAmazonListing).Pointer()).Name(),
 	)
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(listingkithttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildListingKit).Pointer()).Name(),
+	)
 }
 
 func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing.T) {
@@ -101,7 +105,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 				return nil
 			}, nil
 		},
-		buildListingKit: func(*logrus.Logger, *runtimeDeps) (*listingkithttpapi.Module, error) {
+		buildListingKit: func(listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 			order = append(order, "listingkit")
 			require.Equal(t, statusProvider, deps.features.sdsLoginStatusProvider)
 			require.Equal(t, subjectExtractor, deps.features.imageSubjectExtractor)
