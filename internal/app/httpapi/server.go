@@ -7,9 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 )
 
 func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
@@ -47,17 +45,33 @@ func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imag
 }
 
 func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
-	routes := buildCoreRouteDescriptors()
-	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
-	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
-	routes = listingkithttpapi.AppendRouteDescriptors(routes, listingKitHandler)
-	routes = listingkithttpapi.AppendPromptTemplateRouteDescriptors(routes, promptTemplateHandler)
-	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
-	routes = appendSDSCatalogRouteDescriptors(routes, sdsCatalogHandlers...)
-	routes = appendTaskRPCRouteDescriptors(routes, taskRPCHandler)
-	routes = appendSheinLoginRouteDescriptors(routes, sheinLoginHandler)
-	routes = appendSDSLoginRouteDescriptors(routes, sdsLoginHandler)
+	routes, err := buildRegisteredRoutes(httpModuleHandlers{
+		product:        productHandler,
+		image:          imageHandler,
+		amazonListing:  amazonListingHandler,
+		listingKit:     listingKitHandler,
+		promptTemplate: promptTemplateHandler,
+		studioSession:  studioSessionHandler,
+		sheinLogin:     sheinLoginHandler,
+		sdsLogin:       sdsLoginHandler,
+		taskRPC:        taskRPCHandler,
+		sdsCatalog:     singleSDSCatalogHandler(sdsCatalogHandlers...),
+	})
+	if err != nil {
+		panic(err)
+	}
 	return routes
+}
+
+func singleSDSCatalogHandler(sdsCatalogHandlers ...sdsCatalogRouteHandler) sdsCatalogRouteHandler {
+	switch len(sdsCatalogHandlers) {
+	case 0:
+		return nil
+	case 1:
+		return sdsCatalogHandlers[0]
+	default:
+		panic(fmt.Sprintf("expected at most 1 SDS catalog handler, got %d", len(sdsCatalogHandlers)))
+	}
 }
 
 func mountRoutes(r *gin.Engine, routes []routeDescriptor) {

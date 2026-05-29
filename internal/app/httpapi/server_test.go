@@ -9,6 +9,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 )
 
 func init() {
@@ -1917,4 +1921,109 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 			t.Fatalf("expected mounted route %s", key)
 		}
 	}
+}
+
+func TestBuildRegisteredRoutesMatchesLegacyRouteDescriptors(t *testing.T) {
+	t.Parallel()
+
+	handlers := httpModuleHandlers{
+		product:        &stubProductHandler{},
+		image:          &stubImageHandler{},
+		amazonListing:  &stubAmazonListingHandler{},
+		listingKit:     &stubListingKitHandler{},
+		promptTemplate: &stubPromptTemplateHandler{},
+		studioSession:  &stubStudioSessionHandler{},
+		sheinLogin:     &stubSheinLoginHandler{},
+		sdsLogin:       &stubSDSLoginHandler{},
+		taskRPC:        &stubTaskRPCHandler{},
+		sdsCatalog:     &stubSDSCatalogRouteHandler{},
+	}
+
+	legacy := buildLegacyRouteDescriptorsWithShein(
+		handlers.product,
+		handlers.image,
+		handlers.amazonListing,
+		handlers.listingKit,
+		handlers.promptTemplate,
+		handlers.studioSession,
+		handlers.sheinLogin,
+		handlers.sdsLogin,
+		handlers.taskRPC,
+		handlers.sdsCatalog,
+	)
+
+	registered, err := buildRegisteredRoutes(handlers)
+	if err != nil {
+		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
+	}
+
+	if got, want := routePaths(registered), routePaths(legacy); !equalStringSlices(got, want) {
+		t.Fatalf("registered routes mismatch\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestBuildRouteDescriptorsWithSheinPanicsOnMultipleSDSCatalogHandlers(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("expected panic for multiple SDS catalog handlers")
+		}
+		message, ok := recovered.(string)
+		if !ok {
+			t.Fatalf("panic type = %T, want string", recovered)
+		}
+		if !strings.Contains(message, "expected at most 1 SDS catalog handler") {
+			t.Fatalf("panic message = %q, want multiple SDS catalog handler error", message)
+		}
+	}()
+
+	buildRouteDescriptorsWithShein(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		&stubSDSCatalogRouteHandler{},
+		&stubSDSCatalogRouteHandler{},
+	)
+}
+
+func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
+	routes := buildCoreRouteDescriptors()
+	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
+	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
+	routes = listingkithttpapi.AppendRouteDescriptors(routes, listingKitHandler)
+	routes = listingkithttpapi.AppendPromptTemplateRouteDescriptors(routes, promptTemplateHandler)
+	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
+	routes = appendSDSCatalogRouteDescriptors(routes, sdsCatalogHandlers...)
+	routes = appendTaskRPCRouteDescriptors(routes, taskRPCHandler)
+	routes = appendSheinLoginRouteDescriptors(routes, sheinLoginHandler)
+	routes = appendSDSLoginRouteDescriptors(routes, sdsLoginHandler)
+	return routes
+}
+
+func routePaths(routes []routeDescriptor) []string {
+	out := make([]string, 0, len(routes))
+	for _, route := range routes {
+		out = append(out, route.Method+" "+route.Path)
+	}
+	return out
+}
+
+func equalStringSlices(got []string, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
