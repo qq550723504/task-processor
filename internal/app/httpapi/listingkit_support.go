@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -9,10 +8,8 @@ import (
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	sdsclient "task-processor/internal/sds/client"
-	sdsdesign "task-processor/internal/sds/design"
 	sdshttpapi "task-processor/internal/sds/httpapi"
-	sdstemplate "task-processor/internal/sds/template"
+	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sheinlogin"
 )
@@ -99,40 +96,13 @@ func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) li
 	if support.sdsBaselineRemoteProvider != nil {
 		return support.sdsBaselineRemoteProvider
 	}
-	client, err := sdsclient.New(sdshttpapi.BuildClientConfig(deps.shared.cfg))
+	provider, err := sdsbootstrap.NewBaselineRemoteProvider(sdshttpapi.BuildClientConfig(deps.shared.cfg))
 	if err != nil {
 		if logger != nil {
 			logger.WithError(err).Warn("failed to initialize SDS baseline remote provider; online baseline validation disabled")
 		}
 		return nil
 	}
-	support.sdsBaselineRemoteProvider = &listingKitSDSBaselineRemoteProvider{
-		design: sdsdesign.NewService(client),
-	}
+	support.sdsBaselineRemoteProvider = provider
 	return support.sdsBaselineRemoteProvider
-}
-
-type listingKitSDSBaselineRemoteProvider struct {
-	design *sdsdesign.Service
-}
-
-func (p *listingKitSDSBaselineRemoteProvider) GetProductDetail(ctx context.Context, parentProductID int64) (*sdstemplate.ProductDetail, error) {
-	if p == nil || p.design == nil {
-		return nil, nil
-	}
-	return p.design.GetProductDetail(ctx, parentProductID)
-}
-
-func (p *listingKitSDSBaselineRemoteProvider) GetDesignProduct(ctx context.Context, variantID int64) (*sdsdesign.DesignProductPage, error) {
-	if p == nil || p.design == nil {
-		return nil, nil
-	}
-	return p.design.GetDesignProduct(ctx, variantID)
-}
-
-func (p *listingKitSDSBaselineRemoteProvider) GetPrototypeGroups(ctx context.Context, parentProductID int64) ([]sdsdesign.PrototypeGroup, error) {
-	if p == nil || p.design == nil {
-		return nil, nil
-	}
-	return p.design.GetPrototypeGroups(ctx, parentProductID)
 }

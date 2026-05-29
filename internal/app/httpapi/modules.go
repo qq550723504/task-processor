@@ -10,34 +10,14 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
-	sdsclient "task-processor/internal/sds/client"
-	sdsusecase "task-processor/internal/sds/usecase"
+	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinclient "task-processor/internal/shein/client"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 )
 
-var newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
-	if cfg == nil {
-		cfg = sdsclient.DefaultConfig()
-	}
-	sdsHTTPClient, err := sdsclient.New(cfg)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	authState := sdsHTTPClient.AuthState()
-	svc, err := sdsusecase.NewService(sdsusecase.Config{
-		SDSClient:    sdsHTTPClient,
-		ImageService: imageSvc,
-	})
-	if err != nil {
-		return nil, authState, err
-	}
-
-	return svc, authState, nil
-}
+var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	deps, err := buildRuntimeDeps(logger, options.ConfigPath)
