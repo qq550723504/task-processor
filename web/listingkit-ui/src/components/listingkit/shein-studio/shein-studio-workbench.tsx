@@ -57,6 +57,7 @@ import {
   buildGroupedSDSBaselineHandoff,
   getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
+import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
@@ -1119,10 +1120,7 @@ export function SheinStudioWorkbench({
         return;
       }
       await saveSheinStudioBatch(
-        buildSaveInputFromBatch(batch, {
-          id: undefined,
-          name: `${batch.name} 副本`,
-        }),
+        buildDuplicatedSheinStudioBatchInput(batch),
         { makeActive: false },
       );
       await refreshSavedBatches();

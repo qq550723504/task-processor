@@ -10,6 +10,7 @@ import {
   clearLocalSheinStudioDraftSnapshot,
   loadLocalSheinStudioDraftSnapshotDetail,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { getSDSBaselineReasonShortLabel } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";
@@ -275,11 +276,7 @@ export function SdsHomepageEntry() {
         return;
       }
       await saveSheinStudioBatch(
-        {
-          ...batch,
-          id: undefined,
-          name: `${batch.name} 副本`,
-        },
+        buildDuplicatedSheinStudioBatchInput(batch),
         { makeActive: false },
       );
       await refreshSummaries();
