@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -431,6 +432,154 @@ func TestEvaluateSheinSaleAttributeFreshnessIgnoresUnselectedRequiredSaleCandida
 	if !ok {
 		t.Fatalf("expected unrelated required sale candidates to be ignored, got %q", message)
 	}
+}
+
+func TestEvaluateSheinSaleAttributeFreshnessRepairsOfflineValueViaCustomValidation(t *testing.T) {
+	t.Parallel()
+
+	offlineValueID := 27
+	current := &SheinPackage{
+		CategoryID: 12143,
+		SpuName:    "Bench Cushion",
+		SaleAttributeResolution: &sheinpub.SaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 1001,
+			SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+				Name:             "Color",
+				Scope:            "skc",
+				AttributeID:      1001,
+				AttributeValueID: &offlineValueID,
+				Value:            "米驼",
+			}},
+		},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeID: []int{1001},
+			AttributeInfos: []sheinattribute.AttributeInfo{{
+				AttributeID:     1001,
+				AttributeName:   "Color",
+				AttributeNameEn: "Color",
+				AttributeType:   1,
+				AttributeLabel:  1,
+				SKCScope:        boolPtr(true),
+				AttributeValueInfoList: []sheinattribute.AttributeValue{
+					{AttributeValueID: 28, AttributeValue: "White", AttributeValueEn: "White"},
+				},
+			}},
+		}},
+	}
+	api := stubFreshnessAttributeAPI{
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			resp.Data.AttributeValueNameMultis = []struct {
+				Language                string `json:"language"`
+				AttributeValueNameMulti string `json:"attribute_value_name_multi"`
+				WarningType             int    `json:"warning_type"`
+			}{
+				{Language: "en", AttributeValueNameMulti: "Cream Beige"},
+			}
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}
+
+	ok, message, changed := evaluateSheinSaleAttributeFreshnessWithCustomValidation(current, templates, api)
+	if !ok {
+		t.Fatalf("expected custom validation repair to pass, got %q", message)
+	}
+	if !changed {
+		t.Fatal("expected sale freshness repair to report changes")
+	}
+	got := current.SaleAttributeResolution.SKCAttributes[0].AttributeValueID
+	if got == nil || *got != 9001 {
+		t.Fatalf("repaired attribute_value_id = %v, want 9001", got)
+	}
+}
+
+func TestEvaluateSheinSaleAttributeFreshnessBlocksWhenCustomValidationRejectsOfflineValue(t *testing.T) {
+	t.Parallel()
+
+	offlineValueID := 27
+	current := &SheinPackage{
+		CategoryID: 12144,
+		SpuName:    "Bench Cushion",
+		SaleAttributeResolution: &sheinpub.SaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 1001,
+			SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+				Name:             "Color",
+				Scope:            "skc",
+				AttributeID:      1001,
+				AttributeValueID: &offlineValueID,
+				Value:            "米驼",
+			}},
+		},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeID: []int{1001},
+			AttributeInfos: []sheinattribute.AttributeInfo{{
+				AttributeID:     1001,
+				AttributeName:   "Color",
+				AttributeNameEn: "Color",
+				AttributeType:   1,
+				AttributeLabel:  1,
+				SKCScope:        boolPtr(true),
+				AttributeValueInfoList: []sheinattribute.AttributeValue{
+					{AttributeValueID: 28, AttributeValue: "White", AttributeValueEn: "White"},
+				},
+			}},
+		}},
+	}
+	api := stubFreshnessAttributeAPI{
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			return nil, fmt.Errorf("没有自定义属性值权限")
+		},
+	}
+
+	ok, message, changed := evaluateSheinSaleAttributeFreshnessWithCustomValidation(current, templates, api)
+	if ok {
+		t.Fatal("expected unresolved offline sale value to keep blocking")
+	}
+	if changed {
+		t.Fatal("expected no mutations when custom validation rejects value")
+	}
+	if !containsAll(message, "attribute_value_id=27", "米驼") {
+		t.Fatalf("message = %q, want offline value detail", message)
+	}
+}
+
+type stubFreshnessAttributeAPI struct {
+	validateCustom func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error)
+	addCustom      func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error)
+}
+
+func (s stubFreshnessAttributeAPI) GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error) {
+	return nil, nil
+}
+
+func (s stubFreshnessAttributeAPI) ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+	if s.validateCustom == nil {
+		return nil, nil
+	}
+	return s.validateCustom(attributeID, attributeValue, categoryID, spuName)
+}
+
+func (s stubFreshnessAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+	if s.addCustom == nil {
+		return nil, nil
+	}
+	return s.addCustom(req)
 }
 
 func containsAll(haystack string, needles ...string) bool {

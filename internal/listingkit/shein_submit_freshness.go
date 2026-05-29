@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
@@ -121,7 +122,17 @@ func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task,
 		"刷新属性模板",
 	)
 
-	saleReady, saleMessage := evaluateSheinSaleAttributeFreshness(pkg, attributeTemplates)
+	var saleAPI sheinpub.AttributeAPI
+	if attributeTemplateErr == nil {
+		saleAPI, _ = s.buildSheinAttributeAPI(req.Context, task)
+	}
+	saleReady, saleMessage, saleChanged := evaluateSheinSaleAttributeFreshnessWithCustomValidation(pkg, attributeTemplates, saleAPI)
+	if saleChanged && task.Result != nil && s.repo != nil {
+		task.Result.UpdatedAt = time.Now()
+		if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
+			return nil, err
+		}
+	}
 	addCheck(
 		sheinFreshnessSaleAttributeKey,
 		"销售属性模板新鲜度",
@@ -283,42 +294,66 @@ func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattr
 }
 
 func evaluateSheinSaleAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
+	ok, message, _ := evaluateSheinSaleAttributeFreshnessWithCustomValidation(current, templates, nil)
+	return ok, message
+}
+
+func evaluateSheinSaleAttributeFreshnessWithCustomValidation(
+	current *SheinPackage,
+	templates *sheinattribute.AttributeTemplateInfo,
+	api sheinpub.AttributeAPI,
+) (bool, string, bool) {
 	current = sheinpub.NormalizePackageSemanticFields(current)
 	if current == nil {
-		return true, ""
+		return true, "", false
 	}
 	if templates == nil || len(templates.Data) == 0 {
-		return false, "当前销售属性模板在线校验失败，需重新刷新销售属性后再提交"
+		return false, "当前销售属性模板在线校验失败，需重新刷新销售属性后再提交", false
 	}
 	currentResolution := current.SaleAttributeResolution
 	if currentResolution == nil {
-		return true, ""
+		return true, "", false
 	}
 
 	saleOptions := buildSheinFreshnessSaleTemplateOptions(templates)
 	if len(saleOptions) == 0 {
-		return false, "当前销售属性模板为空，需重新刷新销售属性后再提交"
+		return false, "当前销售属性模板为空，需重新刷新销售属性后再提交", false
 	}
 
 	byID := make(map[int]sheinpub.SaleAttributeTemplateOption, len(saleOptions))
 	for _, option := range saleOptions {
 		byID[option.AttributeID] = option
 	}
+	attrByID := flattenSheinAttributeTemplatesByID(templates)
 
+	baseIssues := make([]string, 0)
+	changed := false
 	issues := make([]string, 0)
 	if currentResolution.PrimaryAttributeID > 0 {
 		if _, ok := byID[currentResolution.PrimaryAttributeID]; !ok {
-			issues = append(issues, fmt.Sprintf("主规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.PrimaryAttributeID))
+			baseIssues = append(baseIssues, fmt.Sprintf("主规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.PrimaryAttributeID))
 		}
 	}
 	if currentResolution.SecondaryAttributeID > 0 {
 		if _, ok := byID[currentResolution.SecondaryAttributeID]; !ok {
-			issues = append(issues, fmt.Sprintf("副规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.SecondaryAttributeID))
+			baseIssues = append(baseIssues, fmt.Sprintf("副规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.SecondaryAttributeID))
 		}
 	}
 
-	invalidSKC := collectInvalidSaleAttributes(currentResolution.SKCAttributes, byID)
-	invalidSKU := collectInvalidSaleAttributes(currentResolution.SKUAttributes, byID)
+	customRelationIDs := sheinFreshnessCustomAttributeValueIDs(currentResolution.CustomAttributeRelation)
+	invalidSKC := collectInvalidSaleAttributes(currentResolution.SKCAttributes, byID, customRelationIDs)
+	invalidSKU := collectInvalidSaleAttributes(currentResolution.SKUAttributes, byID, customRelationIDs)
+	if len(invalidSKC) > 0 || len(invalidSKU) > 0 {
+		repaired := repairSheinFreshnessSaleAttributes(current, attrByID, api)
+		if repaired {
+			changed = true
+			currentResolution = current.SaleAttributeResolution
+			customRelationIDs = sheinFreshnessCustomAttributeValueIDs(currentResolution.CustomAttributeRelation)
+			invalidSKC = collectInvalidSaleAttributes(currentResolution.SKCAttributes, byID, customRelationIDs)
+			invalidSKU = collectInvalidSaleAttributes(currentResolution.SKUAttributes, byID, customRelationIDs)
+		}
+	}
+	issues = append(issues, baseIssues...)
 	if len(invalidSKC) > 0 {
 		sort.Strings(invalidSKC)
 		issues = append(issues, "当前模板已失效的 SKC 销售属性值: "+strings.Join(invalidSKC, "; "))
@@ -329,9 +364,89 @@ func evaluateSheinSaleAttributeFreshness(current *SheinPackage, templates *shein
 	}
 
 	if len(issues) > 0 {
-		return false, "当前销售属性模板已变化，现有销售属性中有内容已不再满足当前提交要求；" + strings.Join(issues, "；")
+		return false, "当前销售属性模板已变化，现有销售属性中有内容已不再满足当前提交要求；" + strings.Join(issues, "；"), changed
 	}
-	return true, "当前销售属性模板中的已选值仍然合法"
+	if changed {
+		return true, "当前销售属性模板中的已选值仍然合法，失效值已通过 SHEIN 自定义销售属性校验自动修正", true
+	}
+	return true, "当前销售属性模板中的已选值仍然合法", false
+}
+
+func repairSheinFreshnessSaleAttributes(
+	current *SheinPackage,
+	attrByID map[int]sheinattribute.AttributeInfo,
+	api sheinpub.AttributeAPI,
+) bool {
+	current = sheinpub.NormalizePackageSemanticFields(current)
+	if current == nil || current.SaleAttributeResolution == nil || len(attrByID) == 0 || api == nil || current.CategoryID <= 0 {
+		return false
+	}
+
+	spuName := strings.TrimSpace(current.SpuName)
+	if spuName == "" {
+		spuName = strings.TrimSpace(current.ProductNameEn)
+	}
+
+	changed := false
+	relations := make([]sheinattribute.CustomAttributeRelation, 0)
+	for index, item := range current.SaleAttributeResolution.SKCAttributes {
+		repaired, itemRelations, ok := tryRepairFreshnessSaleAttribute(item, attrByID, current.CategoryID, spuName, api)
+		if !ok {
+			continue
+		}
+		current.SaleAttributeResolution.SKCAttributes[index] = repaired
+		relations = append(relations, itemRelations...)
+		changed = true
+	}
+	for index, item := range current.SaleAttributeResolution.SKUAttributes {
+		repaired, itemRelations, ok := tryRepairFreshnessSaleAttribute(item, attrByID, current.CategoryID, spuName, api)
+		if !ok {
+			continue
+		}
+		current.SaleAttributeResolution.SKUAttributes[index] = repaired
+		relations = append(relations, itemRelations...)
+		changed = true
+	}
+	if !changed {
+		return false
+	}
+	if len(relations) > 0 {
+		current.SaleAttributeResolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(
+			append([]sheinattribute.CustomAttributeRelation(nil), current.SaleAttributeResolution.CustomAttributeRelation...),
+			relations...,
+		))
+	}
+	sheinpub.ApplySaleAttributeResolution(current, current.SaleAttributeResolution)
+	return true
+}
+
+func tryRepairFreshnessSaleAttribute(
+	item sheinpub.ResolvedSaleAttribute,
+	attrByID map[int]sheinattribute.AttributeInfo,
+	categoryID int,
+	spuName string,
+	api sheinpub.AttributeAPI,
+) (sheinpub.ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, bool) {
+	if item.AttributeID <= 0 || strings.TrimSpace(item.Value) == "" {
+		return sheinpub.ResolvedSaleAttribute{}, nil, false
+	}
+	attr, ok := attrByID[item.AttributeID]
+	if !ok {
+		return sheinpub.ResolvedSaleAttribute{}, nil, false
+	}
+	repaired, relations, _, matched := sheinpub.ResolveSingleSaleAttributeValue(
+		attr,
+		firstNonEmpty(strings.TrimSpace(item.Name), firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)),
+		item.Value,
+		strings.TrimSpace(item.Scope),
+		api,
+		categoryID,
+		spuName,
+	)
+	if !matched || repaired.AttributeValueID == nil || *repaired.AttributeValueID <= 0 {
+		return sheinpub.ResolvedSaleAttribute{}, nil, false
+	}
+	return repaired, relations, true
 }
 
 func joinReviewNotes(notes []string) string {
@@ -718,6 +833,7 @@ func orderSheinFreshnessSaleScopeAttributes(attributes []sheinattribute.Attribut
 func collectInvalidSaleAttributes(
 	items []sheinpub.ResolvedSaleAttribute,
 	options map[int]sheinpub.SaleAttributeTemplateOption,
+	customRelationIDs map[int]struct{},
 ) []string {
 	invalid := make([]string, 0)
 	for _, item := range items {
@@ -727,6 +843,9 @@ func collectInvalidSaleAttributes(
 			continue
 		}
 		if item.AttributeValueID != nil && *item.AttributeValueID > 0 {
+			if _, ok := customRelationIDs[*item.AttributeValueID]; ok {
+				continue
+			}
 			found := false
 			for _, candidate := range option.AttributeValueList {
 				if candidate.AttributeValueID == *item.AttributeValueID {
@@ -740,6 +859,23 @@ func collectInvalidSaleAttributes(
 		}
 	}
 	return invalid
+}
+
+func sheinFreshnessCustomAttributeValueIDs(relations []sheinattribute.CustomAttributeRelation) map[int]struct{} {
+	if len(relations) == 0 {
+		return nil
+	}
+	result := make(map[int]struct{}, len(relations))
+	for _, relation := range relations {
+		if relation.AttributeValueID <= 0 {
+			continue
+		}
+		result[int(relation.AttributeValueID)] = struct{}{}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func formatResolvedSaleAttributeDiffItem(item sheinpub.ResolvedSaleAttribute) string {
