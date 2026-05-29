@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -10,6 +12,21 @@ import (
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
+
+func TestNewListingKitFeatureBuilderUsesFeatureOwnedRuntimeBuilders(t *testing.T) {
+	t.Parallel()
+
+	builder := newListingKitFeatureBuilder()
+
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(productenrichhttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildProduct).Pointer()).Name(),
+	)
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(productimagehttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildImage).Pointer()).Name(),
+	)
+}
 
 func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 	t.Parallel()
@@ -51,14 +68,14 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 			imageService := &stubCompositionImageService{}
 
 			builder := listingKitFeatureBuilder{
-				buildProduct: func(*logrus.Logger, *runtimeDeps) (*productenrichhttpapi.Module, error) {
+				buildProduct: func(productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
 					order = append(order, "product")
 					return &productenrichhttpapi.Module{
 						Service: productService,
 						Pool:    stubWorkerPool{},
 					}, nil
 				},
-				buildImage: func(*logrus.Logger, *runtimeDeps) (*productimagehttpapi.Module, error) {
+				buildImage: func(productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error) {
 					order = append(order, "image")
 					require.Equal(t, productService, deps.features.productService)
 					return &productimagehttpapi.Module{

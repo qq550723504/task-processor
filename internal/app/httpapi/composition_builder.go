@@ -18,9 +18,9 @@ import (
 )
 
 type httpFeatureCompositionBuilder struct {
-	buildProduct       func(logger *logrus.Logger, deps *runtimeDeps) (*productenrichhttpapi.Module, error)
-	buildImage         func(logger *logrus.Logger, deps *runtimeDeps) (*productimagehttpapi.Module, error)
-	buildAmazonListing func(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error)
+	buildProduct       func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
+	buildImage         func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
+	buildAmazonListing func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
 	buildSheinLogin    func(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error)
 	buildSDSLogin      func(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error)
 	buildListingKit    func(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error)
@@ -31,9 +31,9 @@ type httpFeatureCompositionBuilder struct {
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
-		buildProduct:       buildProductModule,
-		buildImage:         buildImageModule,
-		buildAmazonListing: buildAmazonListingModule,
+		buildProduct:       productenrichhttpapi.BuildRuntimeModule,
+		buildImage:         productimagehttpapi.BuildRuntimeModule,
+		buildAmazonListing: amazonlistinghttpapi.BuildRuntimeModule,
 		buildSheinLogin:    buildSheinLoginModuleResult,
 		buildSDSLogin:      buildSDSLoginModuleResult,
 		buildListingKit:    buildListingKitModule,
@@ -46,21 +46,40 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 	var composition httpFeatureComposition
 
-	productModule, err := b.buildProduct(logger, deps)
+	productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+	})
 	if err != nil {
 		return composition, err
 	}
 	deps.attachProductModule(productModule)
 	composition.productModule = productModule
 
-	imageModule, err := b.buildImage(logger, deps)
+	imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		OpenAIManager: deps.shared.openaiMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+		ImageWorkDir:  deps.shared.imageWorkDir,
+	})
 	if err != nil {
 		return composition, err
 	}
 	deps.attachImageModule(imageModule)
 	composition.imageModule = imageModule
 
-	amazonListingModule, err := b.buildAmazonListing(logger, deps)
+	amazonListingModule, err := b.buildAmazonListing(amazonlistinghttpapi.RuntimeBuildInput{
+		Logger:         logger,
+		Config:         deps.shared.cfg,
+		ProductService: deps.features.productService,
+		ImageService:   deps.features.imageService,
+	})
 	if err != nil {
 		return composition, err
 	}

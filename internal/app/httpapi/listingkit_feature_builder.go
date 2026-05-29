@@ -20,15 +20,15 @@ type listingKitFeatureSet struct {
 }
 
 type listingKitFeatureBuilder struct {
-	buildProduct    func(logger *logrus.Logger, deps *runtimeDeps) (*productenrichhttpapi.Module, error)
-	buildImage      func(logger *logrus.Logger, deps *runtimeDeps) (*productimagehttpapi.Module, error)
+	buildProduct    func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
+	buildImage      func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
 	buildListingKit func(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error)
 }
 
 func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 	return listingKitFeatureBuilder{
-		buildProduct:    buildProductModule,
-		buildImage:      buildImageModule,
+		buildProduct:    productenrichhttpapi.BuildRuntimeModule,
+		buildImage:      productimagehttpapi.BuildRuntimeModule,
 		buildListingKit: buildListingKitModule,
 	}
 }
@@ -36,7 +36,13 @@ func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps, options listingKitFeatureBuildOptions) (listingKitFeatureSet, error) {
 	var features listingKitFeatureSet
 
-	productModule, err := b.buildProduct(logger, deps)
+	productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+	})
 	if err != nil {
 		return features, err
 	}
@@ -44,7 +50,15 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	features.productModule = productModule
 
 	if options.includeImage {
-		imageModule, err := b.buildImage(logger, deps)
+		imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
+			Logger:        logger,
+			Config:        deps.shared.cfg,
+			LLMManager:    deps.shared.llmMgr,
+			OpenAIManager: deps.shared.openaiMgr,
+			InputParser:   deps.shared.inputParser,
+			Understanding: deps.shared.understanding,
+			ImageWorkDir:  deps.shared.imageWorkDir,
+		})
 		if err != nil {
 			return features, err
 		}

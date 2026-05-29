@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -24,6 +26,25 @@ import (
 	"task-processor/internal/taskrpcapi"
 )
 
+func TestNewHTTPFeatureCompositionBuilderUsesFeatureOwnedRuntimeBuilders(t *testing.T) {
+	t.Parallel()
+
+	builder := newHTTPFeatureCompositionBuilder()
+
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(productenrichhttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildProduct).Pointer()).Name(),
+	)
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(productimagehttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildImage).Pointer()).Name(),
+	)
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(amazonlistinghttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildAmazonListing).Pointer()).Name(),
+	)
+}
+
 func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing.T) {
 	t.Parallel()
 
@@ -43,14 +64,14 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	statusProvider := &stubCompositionSDSStatusProvider{}
 
 	builder := httpFeatureCompositionBuilder{
-		buildProduct: func(*logrus.Logger, *runtimeDeps) (*productenrichhttpapi.Module, error) {
+		buildProduct: func(productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
 			order = append(order, "product")
 			return &productenrichhttpapi.Module{
 				Service: productService,
 				Pool:    stubWorkerPool{},
 			}, nil
 		},
-		buildImage: func(*logrus.Logger, *runtimeDeps) (*productimagehttpapi.Module, error) {
+		buildImage: func(productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error) {
 			order = append(order, "image")
 			return &productimagehttpapi.Module{
 				Service:               imageService,
@@ -60,7 +81,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 				Pool:                  stubWorkerPool{},
 			}, nil
 		},
-		buildAmazonListing: func(*logrus.Logger, *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
+		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 			order = append(order, "amazon")
 			require.Equal(t, productService, deps.features.productService)
 			require.Equal(t, imageService, deps.features.imageService)

@@ -5,14 +5,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimage "task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	sdsclient "task-processor/internal/sds/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
@@ -118,51 +115,6 @@ func newWorkerPool(processor worker.Processor, cfg *config.Config) worker.Worker
 		EnableMetrics:   true,
 		ShutdownTimeout: 30 * time.Second,
 	})
-}
-
-func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productenrichhttpapi.Module, error) {
-	module, err := productenrichhttpapi.BuildModule(productenrichhttpapi.BuildModuleInput{
-		Config:        deps.shared.cfg,
-		Logger:        logger,
-		LLMManager:    deps.shared.llmMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return module, nil
-}
-
-func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*productimagehttpapi.Module, error) {
-	module, err := productimagehttpapi.BuildModule(productimagehttpapi.BuildModuleInput{
-		Config:        deps.shared.cfg,
-		Logger:        logger,
-		LLMManager:    deps.shared.llmMgr,
-		OpenAIManager: deps.shared.openaiMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-		ImageWorkDir:  deps.shared.imageWorkDir,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return module, nil
-}
-
-func buildAmazonListingModule(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
-	module, err := amazonlistinghttpapi.BuildModule(amazonlistinghttpapi.BuildModuleInput{
-		Config:         deps.shared.cfg,
-		Logger:         logger,
-		ProductService: deps.features.productService,
-		ImageService:   deps.features.imageService,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return module, nil
 }
 
 func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error) {

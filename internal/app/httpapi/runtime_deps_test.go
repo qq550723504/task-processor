@@ -8,6 +8,8 @@ import (
 
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/infra/clients/management"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
@@ -114,18 +116,32 @@ func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 		t.Fatalf("buildRuntimeDeps() error = %v", err)
 	}
 
-	productModule, err := buildProductModule(logger, deps)
+	productModule, err := productenrichhttpapi.BuildRuntimeModule(productenrichhttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+	})
 	if err != nil {
-		t.Fatalf("buildProductModule() error = %v", err)
+		t.Fatalf("BuildRuntimeModule() product error = %v", err)
 	}
 	deps.attachProductModule(productModule)
 	if deps.features.productService == nil {
 		t.Fatal("expected product service to be attached")
 	}
 
-	imageModule, err := buildImageModule(logger, deps)
+	imageModule, err := productimagehttpapi.BuildRuntimeModule(productimagehttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		OpenAIManager: deps.shared.openaiMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+		ImageWorkDir:  deps.shared.imageWorkDir,
+	})
 	if err != nil {
-		t.Fatalf("buildImageModule() error = %v", err)
+		t.Fatalf("BuildRuntimeModule() image error = %v", err)
 	}
 	deps.attachImageModule(imageModule)
 	if deps.features.imageService == nil {

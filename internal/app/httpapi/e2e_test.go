@@ -18,13 +18,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/amazonlisting"
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
@@ -54,13 +57,32 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		features: &featureRuntimeState{},
 	}
 
-	productModule, err := buildProductModule(logger, deps)
+	productModule, err := productenrichhttpapi.BuildRuntimeModule(productenrichhttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+	})
 	require.NoError(t, err)
 	deps.attachProductModule(productModule)
-	imageModule, err := buildImageModule(logger, deps)
+	imageModule, err := productimagehttpapi.BuildRuntimeModule(productimagehttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		OpenAIManager: deps.shared.openaiMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+		ImageWorkDir:  deps.shared.imageWorkDir,
+	})
 	require.NoError(t, err)
 	deps.attachImageModule(imageModule)
-	amazonModule, err := buildAmazonListingModule(logger, deps)
+	amazonModule, err := amazonlistinghttpapi.BuildRuntimeModule(amazonlistinghttpapi.RuntimeBuildInput{
+		Logger:         logger,
+		Config:         deps.shared.cfg,
+		ProductService: deps.features.productService,
+		ImageService:   deps.features.imageService,
+	})
 	require.NoError(t, err)
 	deps.attachAmazonListingModule(amazonModule)
 
