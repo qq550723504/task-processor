@@ -21,15 +21,19 @@ func buildHTTPServerWithStudio(port int, productHandler productRouteHandler, ima
 }
 
 func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) (*http.Server, []routeDescriptor) {
+	routes := buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, promptTemplateHandler, studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandlers...)
+	return buildHTTPServerFromRoutes(port, routes), routes
+}
+
+func buildHTTPServerFromRoutes(port int, routes []routeDescriptor) *http.Server {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	routes := buildRouteDescriptorsWithShein(productHandler, imageHandler, amazonListingHandler, listingKitHandler, promptTemplateHandler, studioSessionHandler, sheinLoginHandler, sdsLoginHandler, taskRPCHandler, sdsCatalogHandlers...)
 	mountRoutes(router, routes)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
-	}, routes
+	}
 }
 
 func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) {
@@ -45,7 +49,7 @@ func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imag
 }
 
 func buildRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
-	routes, err := buildRegisteredRoutes(httpModuleHandlers{
+	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
 		product:        productHandler,
 		image:          imageHandler,
 		amazonListing:  amazonListingHandler,

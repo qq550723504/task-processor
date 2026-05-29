@@ -122,7 +122,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		taskRPC:        taskRPCHandler,
 		sdsCatalog:     sdsCatalogHandler,
 	}
-	server, routes, err := buildHTTPServerBundleFromHandlers(options.Port, handlers)
+	server, routes, err := buildHTTPServerBundleFromHandlers(options.Port, deps.cfg, handlers)
 	if err != nil {
 		return nil, err
 	}

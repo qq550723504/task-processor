@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 )
@@ -1953,7 +1955,7 @@ func TestBuildRegisteredRoutesMatchesLegacyRouteDescriptors(t *testing.T) {
 		handlers.sdsCatalog,
 	)
 
-	registered, err := buildRegisteredRoutes(handlers)
+	registered, err := buildRegisteredRoutes(nil, handlers)
 	if err != nil {
 		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
 	}
@@ -1979,12 +1981,12 @@ func TestBuildHTTPServerBundleFromHandlersMountsRegisteredRoutes(t *testing.T) {
 		sdsCatalog:     &stubSDSCatalogRouteHandler{},
 	}
 
-	server, routes, err := buildHTTPServerBundleFromHandlers(18080, handlers)
+	server, routes, err := buildHTTPServerBundleFromHandlers(18080, nil, handlers)
 	if err != nil {
 		t.Fatalf("buildHTTPServerBundleFromHandlers returned error: %v", err)
 	}
 
-	expectedRoutes, err := buildRegisteredRoutes(handlers)
+	expectedRoutes, err := buildRegisteredRoutes(nil, handlers)
 	if err != nil {
 		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
 	}
@@ -2002,6 +2004,29 @@ func TestBuildHTTPServerBundleFromHandlersMountsRegisteredRoutes(t *testing.T) {
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/sds/categories = %d, want 200", resp.Code)
+	}
+}
+
+func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
+	t.Parallel()
+
+	server, routes, err := buildHTTPServerBundleFromModules(18080, nil, []kernelmodule.Module{
+		httpModule{
+			name: "broken",
+			register: func(*kernelmodule.Registry) error {
+				return errors.New("boom")
+			},
+		},
+	})
+
+	if server != nil {
+		t.Fatalf("server = %#v, want nil", server)
+	}
+	if routes != nil {
+		t.Fatalf("routes = %#v, want nil", routes)
+	}
+	if err == nil || err.Error() != "register module broken: boom" {
+		t.Fatalf("err = %v, want register module broken: boom", err)
 	}
 }
 

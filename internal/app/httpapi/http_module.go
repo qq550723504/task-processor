@@ -22,6 +22,7 @@ type httpModuleHandlers struct {
 
 type httpModule struct {
 	name     string
+	enabled  func(cfg *config.Config) bool
 	register func(reg *kernelmodule.Registry) error
 }
 
@@ -29,7 +30,10 @@ func (m httpModule) Name() string {
 	return m.name
 }
 
-func (httpModule) Enabled(_ *config.Config) bool {
+func (m httpModule) Enabled(cfg *config.Config) bool {
+	if m.enabled != nil {
+		return m.enabled(cfg)
+	}
 	return true
 }
 

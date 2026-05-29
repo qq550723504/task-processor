@@ -3,11 +3,13 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
@@ -131,6 +133,60 @@ func TestHTTPModuleRegisterRejectsNilRegistrar(t *testing.T) {
 
 	err := (httpModule{name: "broken"}).Register(kernelmodule.NewRegistry())
 	require.EqualError(t, err, "http module broken has no registrar")
+}
+
+func TestBuildHTTPServerBundleFromModulesSkipsDisabledModules(t *testing.T) {
+	enabledRoute := routeDescriptor{
+		Method: http.MethodGet,
+		Path:   "/enabled",
+		Module: "enabled",
+		Handler: func(c *gin.Context) {
+			c.Status(http.StatusOK)
+		},
+	}
+	disabledRoute := routeDescriptor{
+		Method: http.MethodGet,
+		Path:   "/disabled",
+		Module: "disabled",
+		Handler: func(c *gin.Context) {
+			c.Status(http.StatusTeapot)
+		},
+	}
+
+	server, routes, err := buildHTTPServerBundleFromModules(18080, &config.Config{}, []kernelmodule.Module{
+		httpModule{
+			name: "enabled",
+			register: func(reg *kernelmodule.Registry) error {
+				reg.AddRoutes(enabledRoute)
+				return nil
+			},
+		},
+		httpModule{
+			name: "disabled",
+			enabled: func(*config.Config) bool {
+				return false
+			},
+			register: func(reg *kernelmodule.Registry) error {
+				reg.AddRoutes(disabledRoute)
+				return nil
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"GET /enabled"}, routeKeys(routes))
+
+	router, ok := server.Handler.(*gin.Engine)
+	require.True(t, ok)
+
+	req := httptest.NewRequest(http.MethodGet, "/enabled", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	req = httptest.NewRequest(http.MethodGet, "/disabled", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusNotFound, resp.Code)
 }
 
 type stubSDSCatalogRouteHandler struct{}
