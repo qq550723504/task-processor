@@ -46,9 +46,9 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 		Logger:                     logger,
 		ProductService:             runtime.ProductService,
 		ImageService:               runtime.ImageService,
-		SDSSyncService:             runtime.SDSSyncService,
-		SDSLoginStatusProvider:     runtime.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider:  runtime.SDSBaselineRemoteProvider,
+		SDSSyncService:             support.SDSSyncService,
+		SDSLoginStatusProvider:     support.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider:  support.SDSBaselineRemoteProvider,
 		ImageSubjectExtractor:      runtime.ImageSubjectExtractor,
 		ImageWhiteBackgroundRender: runtime.ImageWhiteBackgroundRender,
 		ImageSceneRenderer:         runtime.ImageSceneRenderer,
@@ -63,11 +63,18 @@ func resolveRuntimeSupport(runtime RuntimeDependencies) RuntimeSupport {
 		return runtime.Support
 	}
 	return RuntimeSupport{
-		Repositories: runtime.Repositories,
-		Hooks:        runtime.Hooks,
+		Repositories:              runtime.Repositories,
+		Hooks:                     runtime.Hooks,
+		SDSSyncService:            runtime.SDSSyncService,
+		SDSLoginStatusProvider:    runtime.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider: runtime.SDSBaselineRemoteProvider,
 	}
 }
 
 func hasRuntimeSupport(support RuntimeSupport) bool {
-	return support.Repositories.Core.Task != nil || support.Hooks.ConfigureAuthorization != nil
+	return support.Repositories.Core.Task != nil ||
+		support.Hooks.ConfigureAuthorization != nil ||
+		support.SDSSyncService != nil ||
+		support.SDSLoginStatusProvider != nil ||
+		support.SDSBaselineRemoteProvider != nil
 }

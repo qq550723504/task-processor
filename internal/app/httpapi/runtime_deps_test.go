@@ -105,6 +105,24 @@ func TestRuntimeDepsAttachBuiltFeatureModulesOnlyMutatesFeatureState(t *testing.
 	}
 }
 
+func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupport(t *testing.T) {
+	logger := logrus.New()
+	statusProvider := stubCompositionSDSStatusProvider{}
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{},
+		features: &featureRuntimeState{sdsLoginStatusProvider: statusProvider},
+	}
+
+	input := newListingKitRuntimeBuildInput(logger, deps)
+
+	if input.Runtime.SDSLoginStatusProvider != nil {
+		t.Fatal("expected legacy runtime SDS login status provider to remain unset")
+	}
+	if input.Runtime.Support.SDSLoginStatusProvider != statusProvider {
+		t.Fatal("expected SDS login status provider to be routed through runtime support")
+	}
+}
+
 func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
