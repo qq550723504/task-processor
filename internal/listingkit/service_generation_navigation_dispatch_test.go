@@ -53,8 +53,8 @@ func TestTaskGenerationNavigationDispatchEntryRunNormalizesTargetAndPlanMode(t *
 	if err != nil {
 		t.Fatalf("run() default plan mode error = %v", err)
 	}
-	if defaultInput.planMode != "resolve_only" {
-		t.Fatalf("run() default planMode = %q, want resolve_only", defaultInput.planMode)
+	if defaultInput.planMode != "primary_only" {
+		t.Fatalf("run() default planMode = %q, want primary_only", defaultInput.planMode)
 	}
 	if target.SessionQuery.IfMatch != "" || target.SessionQuery.DeltaToken != "" {
 		t.Fatalf("original target = %+v, want unchanged source target", target.SessionQuery)
@@ -101,6 +101,57 @@ func TestTaskGenerationNavigationDispatchEntryRunRejectsMissingTarget(t *testing
 				t.Fatalf("run() input = %+v, want nil", input)
 			}
 		})
+	}
+}
+
+func TestDispatchTaskGenerationNavigationDefaultsPlanModeToPrimaryOnly(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &service{repo: repo}
+	task := &Task{
+		ID:        "task-generation-navigation-default-plan-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-default-plan-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	response, err := svc.DispatchTaskGenerationNavigation(context.Background(), task.ID, &GenerationReviewNavigationDispatchRequest{
+		Target: &GenerationReviewNavigationTarget{
+			DispatchKind: "session",
+			SessionQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DispatchTaskGenerationNavigation() error = %v", err)
+	}
+	if response == nil {
+		t.Fatalf("response = nil, want dispatch response")
+	}
+	if response.PlanMode != "primary_only" {
+		t.Fatalf("response.PlanMode = %q, want primary_only", response.PlanMode)
+	}
+	if response.ExecutedPlan != nil {
+		t.Fatalf("response.ExecutedPlan = %+v, want nil for default primary-only dispatch", response.ExecutedPlan)
 	}
 }
 
