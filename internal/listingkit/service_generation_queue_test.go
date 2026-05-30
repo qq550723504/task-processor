@@ -367,6 +367,151 @@ func TestTaskGenerationReviewSessionReadPhaseRunBuildsFullResponseDeltaToken(t *
 	}
 }
 
+func TestTaskGenerationReviewPreviewReadPhaseRunBuildsPreviewFromSessionBaseline(t *testing.T) {
+	t.Parallel()
+
+	result := newTaskGenerationActionProjectionResult(
+		"task-generation-review-preview-read-baseline-1",
+		"asset-rev-preview",
+		"preview-rev-preview",
+		"task-rev-preview",
+	)
+	result.AssetBundle = &asset.Bundle{
+		Assets: []asset.Asset{{
+			ID:   "asset-preview-1",
+			Kind: asset.KindSceneImage,
+			Metadata: map[string]string{
+				"prompt_key":            "productimage.scene.bags",
+				"scene_defaults_source": "platform_category",
+				"scene_category":        "bags",
+			},
+		}},
+	}
+	snapshot := &taskGenerationReviewReadSnapshot{
+		taskID: result.TaskID,
+		result: result,
+		queue: newTaskGenerationActionProjectionQueue(
+			result.TaskID,
+			&GenerationWorkQueueSummary{
+				TotalItems:       1,
+				ReadyItems:       1,
+				PreviewableItems: 1,
+			},
+			"ready",
+		),
+	}
+	query := &GenerationQueueQuery{
+		Platform:          "shein",
+		Slot:              "main",
+		PreviewCapability: "detail_preview",
+		AssetID:           "asset-preview-1",
+		AssetRevision:     "asset-rev-preview",
+		PreviewRevision:   "preview-rev-other",
+		TaskRevision:      "task-rev-preview",
+	}
+	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
+	if session == nil {
+		t.Fatal("session = nil, want baseline review session for preview read")
+	}
+	wantViewer, wantPreview, wantTarget, wantToolbar := resolveGenerationReviewPreviewResponse(session, query)
+	wantRevisionStatus, wantRevisionReason := resolveGenerationReviewPreviewRevisionStatus(wantViewer, query)
+
+	response := buildTaskGenerationReviewPreviewReadPhase().run(snapshot.taskID, snapshot, query)
+	if response == nil {
+		t.Fatal("response = nil, want preview read response")
+	}
+	if response.DeltaToken != buildGenerationReviewReadDeltaToken(session) {
+		t.Fatalf("response.DeltaToken = %q, want %q", response.DeltaToken, buildGenerationReviewReadDeltaToken(session))
+	}
+	if response.Viewer == nil || wantViewer == nil || response.Viewer.AssetID != wantViewer.AssetID || response.Viewer.AssetRevision != wantViewer.AssetRevision || response.Viewer.PreviewRevision != wantViewer.PreviewRevision || response.Viewer.TaskRevision != wantViewer.TaskRevision {
+		t.Fatalf("response.Viewer = %+v, want baseline viewer %+v", response.Viewer, wantViewer)
+	}
+	if response.Preview == nil || wantPreview == nil || response.Preview.AssetID != wantPreview.AssetID || response.Preview.Slot != wantPreview.Slot {
+		t.Fatalf("response.Preview = %+v, want baseline preview %+v", response.Preview, wantPreview)
+	}
+	if response.ReviewTarget == nil || wantTarget == nil || response.ReviewTarget.Platform != wantTarget.Platform || response.ReviewTarget.Slot != wantTarget.Slot || response.ReviewTarget.Capability != wantTarget.Capability {
+		t.Fatalf("response.ReviewTarget = %+v, want baseline target %+v", response.ReviewTarget, wantTarget)
+	}
+	if response.Toolbar == nil || wantToolbar == nil || response.Toolbar.Platform != wantToolbar.Platform || response.Toolbar.Slot != wantToolbar.Slot || response.Toolbar.Capability != wantToolbar.Capability {
+		t.Fatalf("response.Toolbar = %+v, want baseline toolbar %+v", response.Toolbar, wantToolbar)
+	}
+	if response.RevisionStatus != wantRevisionStatus || response.RevisionMismatchReason != wantRevisionReason {
+		t.Fatalf("revision = (%q, %q), want (%q, %q)", response.RevisionStatus, response.RevisionMismatchReason, wantRevisionStatus, wantRevisionReason)
+	}
+	if response.ScenePreset == nil || response.ScenePreset.PromptKey != "productimage.scene.bags" || response.ScenePreset.SceneCategory != "bags" {
+		t.Fatalf("response.ScenePreset = %+v, want scene preset summary from focused preview asset", response.ScenePreset)
+	}
+	if response.Conditional == nil || response.Conditional.DeltaToken != response.DeltaToken {
+		t.Fatalf("response.Conditional = %+v, want final conditional decoration", response.Conditional)
+	}
+	if len(response.ResourceDescriptors) == 0 {
+		t.Fatalf("response.ResourceDescriptors = %+v, want decorated preview resource descriptors", response.ResourceDescriptors)
+	}
+}
+
+func TestTaskGenerationReviewPreviewReadPhaseRunShortCircuitsNotModifiedBeforeProjection(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &taskGenerationReviewReadSnapshot{
+		taskID: "task-generation-review-preview-read-not-modified-1",
+		result: newTaskGenerationActionProjectionResult(
+			"task-generation-review-preview-read-not-modified-1",
+			"asset-rev-preview-not-modified",
+			"preview-rev-preview-not-modified",
+			"task-rev-preview-not-modified",
+		),
+		queue: newTaskGenerationActionProjectionQueue(
+			"task-generation-review-preview-read-not-modified-1",
+			&GenerationWorkQueueSummary{
+				TotalItems:       1,
+				ReadyItems:       1,
+				PreviewableItems: 1,
+			},
+			"ready",
+		),
+	}
+	query := &GenerationQueueQuery{
+		Platform:          "shein",
+		Slot:              "main",
+		PreviewCapability: "detail_preview",
+	}
+	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
+	if session == nil {
+		t.Fatal("session = nil, want preview session baseline for not_modified test")
+	}
+	query.DeltaToken = buildGenerationReviewReadDeltaToken(session)
+
+	response := buildTaskGenerationReviewPreviewReadPhase().run(snapshot.taskID, snapshot, query)
+	if response == nil {
+		t.Fatal("response = nil, want not_modified preview response")
+	}
+	if !response.NotModified {
+		t.Fatalf("response = %+v, want not_modified short-circuit", response)
+	}
+	if response.Viewer != nil || response.Preview != nil || response.ReviewTarget != nil || response.Toolbar != nil || response.ScenePreset != nil {
+		t.Fatalf("response = %+v, want not_modified short-circuit before preview projection", response)
+	}
+	if response.Conditional == nil || !response.Conditional.NotModified || response.Conditional.DeltaToken != response.DeltaToken {
+		t.Fatalf("response.Conditional = %+v, want not_modified conditional decoration", response.Conditional)
+	}
+}
+
+func TestTaskGenerationReviewPreviewReadPhaseRunReturnsEmptyResponseWhenSessionMissing(t *testing.T) {
+	t.Parallel()
+
+	response := buildTaskGenerationReviewPreviewReadPhase().run(
+		"task-generation-review-preview-read-empty-1",
+		&taskGenerationReviewReadSnapshot{taskID: "task-generation-review-preview-read-empty-1"},
+		&GenerationQueueQuery{Platform: "shein", Slot: "main"},
+	)
+	if response == nil {
+		t.Fatal("response = nil, want empty preview response")
+	}
+	if response.TaskID != "task-generation-review-preview-read-empty-1" || response.Viewer != nil || response.Preview != nil || response.ReviewTarget != nil || response.Toolbar != nil || response.ScenePreset != nil || response.DeltaToken != "" || response.NotModified {
+		t.Fatalf("response = %+v, want current empty preview response shape", response)
+	}
+}
+
 func TestBuildGenerationWorkQueueBuildsReadyFallbackAndStubbedStates(t *testing.T) {
 	t.Parallel()
 

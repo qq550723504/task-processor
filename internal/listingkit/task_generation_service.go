@@ -140,31 +140,7 @@ func (s *taskGenerationService) GetTaskGenerationReviewPreview(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
-	if session == nil {
-		return applyGenerationConditionalStateToReviewPreviewResponse(&GenerationReviewPreviewResponse{TaskID: taskID}), nil
-	}
-	deltaToken := buildGenerationReviewReadDeltaToken(session)
-	if isGenerationReviewReadNotModified(query, deltaToken) {
-		return applyGenerationConditionalStateToReviewPreviewResponse(&GenerationReviewPreviewResponse{
-			TaskID:      taskID,
-			DeltaToken:  deltaToken,
-			NotModified: true,
-		}), nil
-	}
-	viewer, preview, target, toolbar := resolveGenerationReviewPreviewResponse(session, query)
-	revisionStatus, revisionReason := resolveGenerationReviewPreviewRevisionStatus(viewer, query)
-	return applyGenerationConditionalStateToReviewPreviewResponse(&GenerationReviewPreviewResponse{
-		TaskID:                 taskID,
-		DeltaToken:             deltaToken,
-		Viewer:                 viewer,
-		Preview:                preview,
-		ScenePreset:            buildGenerationScenePresetSummary(snapshot.result.AssetBundle, focusedPreviewAssetID(preview)),
-		ReviewTarget:           target,
-		Toolbar:                toolbar,
-		RevisionStatus:         revisionStatus,
-		RevisionMismatchReason: revisionReason,
-	}), nil
+	return buildTaskGenerationReviewPreviewReadPhase().run(taskID, snapshot, query), nil
 }
 
 func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error) {
