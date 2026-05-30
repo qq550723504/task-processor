@@ -19,6 +19,16 @@ import (
 
 type stubRetryNilDispatchGenerator struct{}
 
+type stubRetryDispatchGenerator struct {
+	dispatchResult *assetgeneration.Result
+	dispatchErr    error
+}
+
+type recordingRetryPersistenceServiceRepo struct {
+	delegate            *stubGenerationRepo
+	saveTaskResultCalls int
+}
+
 type recordingRetryPersistenceAssetRepo struct {
 	delegate               assetrepo.Repository
 	calls                  []string
@@ -58,6 +68,47 @@ func (r *recordingRetryPersistenceAssetRepo) resetCalls() {
 	r.calls = nil
 }
 
+func (r *recordingRetryPersistenceServiceRepo) CreateTask(ctx context.Context, task *Task) error {
+	return r.delegate.CreateTask(ctx, task)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	return r.delegate.GetTask(ctx, taskID)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	return r.delegate.ListTasks(ctx, query)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) MarkProcessing(ctx context.Context, taskID string) error {
+	return r.delegate.MarkProcessing(ctx, taskID)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
+	return r.delegate.MarkCompleted(ctx, taskID, result)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error {
+	return r.delegate.MarkNeedsReview(ctx, taskID, result, reason)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
+	return r.delegate.MarkFailed(ctx, taskID, errorMsg)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) PrepareRetry(ctx context.Context, taskID string) error {
+	return r.delegate.PrepareRetry(ctx, taskID)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) IncrementRetryCount(ctx context.Context, taskID string) error {
+	return r.delegate.IncrementRetryCount(ctx, taskID)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
+	r.saveTaskResultCalls++
+	return r.delegate.SaveTaskResult(ctx, taskID, result)
+}
+
 func (s *stubRetryNilDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
 	return &assetgeneration.Result{}, nil
 }
@@ -68,6 +119,18 @@ func (s *stubRetryNilDispatchGenerator) Execute(ctx context.Context, req assetge
 
 func (s *stubRetryNilDispatchGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
 	return nil, nil
+}
+
+func (s *stubRetryDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	return &assetgeneration.Result{}, nil
+}
+
+func (s *stubRetryDispatchGenerator) Execute(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	return &assetgeneration.Result{}, nil
+}
+
+func (s *stubRetryDispatchGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
+	return s.dispatchResult, s.dispatchErr
 }
 
 func TestRetryGenerationPersistenceSavesInventoryBeforeTasks(t *testing.T) {
@@ -1304,6 +1367,146 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	}
 	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 2 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 1 || updatedInventory.Summary.RecipeCount != 1 {
 		t.Fatalf("inventory summary = %+v, want unchanged counts", updatedInventory.Summary)
+	}
+}
+
+func TestRetryTaskGenerationTasksPersistenceFailureStopsRetry(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("save generation tasks failed")
+	repo := &recordingRetryPersistenceServiceRepo{delegate: &stubGenerationRepo{}}
+	assetRepository := newRecordingRetryPersistenceAssetRepo()
+	task := &Task{
+		ID:        "task-generation-retry-persist-fail-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-persist-fail-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			Amazon: &AmazonPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Auxiliary: []common.BundleSlot{{
+						Key:             "auxiliary",
+						Purpose:         "scene",
+						RecipeID:        "amazon-lifestyle",
+						IdealKind:       string(asset.KindSceneImage),
+						StateLabel:      "fallback_in_use",
+						SatisfiedBy:     "fallback_asset",
+						ExecutionStatus: "fallback",
+					}},
+				},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: task.ID, Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/gallery.jpg"},
+			{ID: "scene-stub-persist-fail-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "file:///tmp/scene-stub-persist-fail.jpg", RecipeID: "amazon-lifestyle", Metadata: map[string]string{"execution_mode": assetgeneration.ExecutionModeDeferredStub, "bundle_slot": "auxiliary"}},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 2, DerivedRecords: 1, GeneratedRecords: 1, RecipeCount: 1},
+	}
+	if err := assetRepository.SaveInventory(context.Background(), inventory); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	persistedTasks := []assetgeneration.Task{{
+		TaskID:          task.ID,
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		Purpose:         "scene",
+		Status:          "completed",
+		ExecutionStatus: "completed",
+		ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+		CanExecute:      true,
+		SatisfiedBy:     "fallback_asset",
+		SourceAssetIDs:  []string{"gallery-1"},
+	}}
+	if err := assetRepository.SaveGenerationTasks(context.Background(), task.ID, persistedTasks); err != nil {
+		t.Fatalf("SaveGenerationTasks() error = %v", err)
+	}
+	selectedTasks := []assetgeneration.Task{{
+		TaskID:          task.ID,
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		Purpose:         "scene",
+		Status:          "planned",
+		ExecutionStatus: "planned",
+		ExecutionMode:   assetgeneration.PlannedExecutionMode(asset.KindSceneImage),
+		CanExecute:      true,
+		SourceAssetIDs:  []string{"gallery-1"},
+	}}
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator: &stubRetryDispatchGenerator{
+			dispatchResult: &assetgeneration.Result{
+				Tasks: []assetgeneration.Task{{
+					TaskID:          task.ID,
+					ID:              "amazon:amazon-lifestyle",
+					Platform:        "amazon",
+					RecipeID:        "amazon-lifestyle",
+					AssetKind:       asset.KindSceneImage,
+					Slot:            "auxiliary",
+					Purpose:         "scene",
+					Status:          "completed",
+					ExecutionStatus: "completed",
+					ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+					CanExecute:      true,
+					SourceAssetIDs:  []string{"gallery-1"},
+				}},
+				Assets: []asset.AssetRecord{{
+					ID:       "scene-rendered-persist-fail-1",
+					TaskID:   task.ID,
+					Kind:     asset.KindSceneImage,
+					Origin:   asset.OriginGenerated,
+					URL:      "file:///tmp/scene-rendered-persist-fail.jpg",
+					RecipeID: "amazon-lifestyle",
+					Metadata: map[string]string{"bundle_slot": "auxiliary"},
+				}},
+			},
+		},
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return cloneGenerationTasks(persistedTasks), nil
+		},
+		listGenerationReviews: func(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			return cloneGenerationTasks(selectedTasks), nil
+		},
+	})
+	assetRepository.saveGenerationTasksErr = wantErr
+	assetRepository.resetCalls()
+
+	page, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{
+		Slots: []string{"auxiliary"},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v, want %v", err, wantErr)
+	}
+	if page != nil {
+		t.Fatalf("page = %+v, want nil on persistence failure", page)
+	}
+	if !reflect.DeepEqual(assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
+		t.Fatalf("persistence calls = %+v, want inventory then generation tasks before failing", assetRepository.calls)
+	}
+	if repo.saveTaskResultCalls != 0 {
+		t.Fatalf("SaveTaskResult() calls = %d, want 0 after persistence failure", repo.saveTaskResultCalls)
 	}
 }
 
