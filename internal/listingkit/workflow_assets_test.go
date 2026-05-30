@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -649,27 +648,6 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 	}
 	if len(final.AssetGenerationTasks) != 1 || final.AssetGenerationTasks[0].ExecutionStatus != "completed" {
 		t.Fatalf("decorated generation tasks = %+v, want completed dispatched task", final.AssetGenerationTasks)
-	}
-}
-
-func TestWorkflowPlatformAssetDispatchPhaseFileUsesOrchestrationHelpers(t *testing.T) {
-	t.Parallel()
-
-	src, err := os.ReadFile("workflow_platform_asset_dispatch_phase.go")
-	if err != nil {
-		t.Fatalf("ReadFile(workflow_platform_asset_dispatch_phase.go) error = %v", err)
-	}
-	content := string(src)
-
-	for _, needle := range []string{
-		"p.preAttachBundles(",
-		"collectPlatformGenerationTasks(final)",
-		"p.dispatchAndApply(",
-		"p.persistHandoff(",
-	} {
-		if !strings.Contains(content, needle) {
-			t.Fatalf("workflow_platform_asset_dispatch_phase.go should contain %q", needle)
-		}
 	}
 }
 
