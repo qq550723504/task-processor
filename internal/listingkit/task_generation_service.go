@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	asset "task-processor/internal/asset"
@@ -504,58 +503,7 @@ func (s *taskGenerationService) executeGenerationNavigationDispatchPlanSequentia
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlanParallel(ctx context.Context, taskID string, responseMode string, plan *GenerationNavigationDispatchPlan, execution *GenerationNavigationDispatchExecution) {
-	type dedupeEntry struct {
-		step   GenerationNavigationDispatchStep
-		result *GenerationNavigationDispatchExecutionStep
-	}
-	entries := make([]dedupeEntry, 0, len(plan.Steps))
-	indexByKey := make(map[string]int, len(plan.Steps))
-	for _, step := range plan.Steps {
-		key := generationNavigationDispatchStepDeduplicationKey(step, responseMode)
-		if existing, ok := indexByKey[key]; ok {
-			deduped := generationNavigationDispatchPlanDeduplicatedStep(step, key, existing)
-			entries = append(entries, dedupeEntry{step: step, result: &deduped})
-			continue
-		}
-		result := generationNavigationDispatchExecutionPendingStep(step, key, responseMode)
-		indexByKey[key] = len(entries)
-		entries = append(entries, dedupeEntry{step: step, result: result})
-	}
-	maxParallelism := plan.MaxParallelism
-	if maxParallelism <= 0 {
-		maxParallelism = 1
-	}
-	sem := make(chan struct{}, maxParallelism)
-	var wg sync.WaitGroup
-	for index := range entries {
-		if entries[index].result.Status == "deduplicated" {
-			continue
-		}
-		wg.Add(1)
-		go func(entry *dedupeEntry) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			entry.result = s.executeGenerationNavigationDispatchPlanStep(ctx, taskID, entry.step, responseMode)
-			entry.result.DeduplicationKey = generationNavigationDispatchStepDeduplicationKey(entry.step, responseMode)
-		}(&entries[index])
-	}
-	wg.Wait()
-	for _, entry := range entries {
-		stepResult := entry.result
-		if stepResult == nil {
-			continue
-		}
-		if stepResult.Status == "deduplicated" {
-			if source := entry.result.DeduplicatedFrom; source >= 0 && source < len(entries) && entries[source].result != nil {
-				stepResult.DeltaToken = entries[source].result.DeltaToken
-				stepResult.NotModified = entries[source].result.NotModified
-				stepResult.NoChanges = entries[source].result.NoChanges
-			}
-		}
-		execution.Steps = append(execution.Steps, *stepResult)
-		applyGenerationNavigationDispatchExecutionStats(execution, stepResult)
-	}
+	buildTaskGenerationNavigationDispatchPlanParallelPhase(s).run(ctx, taskID, responseMode, plan, execution)
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlanStep(ctx context.Context, taskID string, step GenerationNavigationDispatchStep, responseMode string) *GenerationNavigationDispatchExecutionStep {

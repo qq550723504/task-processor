@@ -1483,3 +1483,91 @@ func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *te
 		}
 	}
 }
+
+func TestTaskGenerationNavigationDispatchParallelPhaseDeduplicatesAndReplaysSourceState(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+	task := &Task{
+		ID:        "task-generation-navigation-plan-parallel-seam-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-plan-parallel-seam-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:        "main",
+					AssetID:    "asset-preview-1",
+					StateLabel: "ready",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	first, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, &GenerationQueueQuery{
+		Platform: "shein",
+		Slot:     "main",
+	})
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() error = %v", err)
+	}
+	if first == nil || first.DeltaToken == "" {
+		t.Fatalf("first queue = %+v, want delta token for replay test", first)
+	}
+
+	target := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+		DispatchKind: "queue",
+		QueueQuery: &GenerationQueueQuery{
+			Platform: "shein",
+			Slot:     "main",
+			IfMatch:  first.DeltaToken,
+		},
+	})
+	target.Descriptor.DispatchPlan = &GenerationNavigationDispatchPlan{
+		Strategy:       "fanout_read",
+		MaxParallelism: 0,
+		Steps: []GenerationNavigationDispatchStep{
+			{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+			{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+		},
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPlanParallelPhase(svc)
+	execution := &GenerationNavigationDispatchExecution{}
+	phase.run(context.Background(), task.ID, "full", target.Descriptor.DispatchPlan, execution)
+	if execution == nil {
+		t.Fatalf("run() execution = nil, want parallel execution")
+	}
+	if execution.DedupedSteps != 1 || execution.CompletedSteps != 1 || execution.FailedSteps != 0 {
+		t.Fatalf("run() execution = %+v, want one source step and one deduplicated step", execution)
+	}
+	if len(execution.Steps) != 2 {
+		t.Fatalf("run() execution steps = %+v, want two replayed steps", execution.Steps)
+	}
+	if execution.Steps[0].Status != "not_modified" || !execution.Steps[0].Executed {
+		t.Fatalf("run() source step = %+v, want executed not_modified source", execution.Steps[0])
+	}
+	if execution.Steps[1].Status != "deduplicated" || execution.Steps[1].DeduplicatedFrom != 0 {
+		t.Fatalf("run() deduplicated step = %+v, want replay from first source step", execution.Steps[1])
+	}
+	if execution.Steps[1].DeltaToken != execution.Steps[0].DeltaToken ||
+		execution.Steps[1].NotModified != execution.Steps[0].NotModified ||
+		execution.Steps[1].NoChanges != execution.Steps[0].NoChanges {
+		t.Fatalf("run() deduplicated step = %+v, want replayed source state from %+v", execution.Steps[1], execution.Steps[0])
+	}
+}
