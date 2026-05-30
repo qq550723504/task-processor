@@ -2079,11 +2079,7 @@ func TestTaskGenerationActionProjectionFinalizeBuildsWorkflowAndPatch(t *testing
 		PreviewableItems: 1,
 		ApprovedSections: 1,
 	}, "completed")
-	session := &taskGenerationActionProjectionSessionResult{
-		currentResult: currentResult,
-		reviewQueue:   currentQueue,
-		reviewSession: buildGenerationReviewSession(currentResult, currentQueue, target.QueueQuery),
-	}
+	reviewSession := buildGenerationReviewSession(currentResult, currentQueue, target.QueueQuery)
 	result := &GenerationActionExecutionResult{
 		ActionKey:              "stale-action",
 		ResponseMode:           "full",
@@ -2095,7 +2091,7 @@ func TestTaskGenerationActionProjectionFinalizeBuildsWorkflowAndPatch(t *testing
 		actionKey:             target.ActionKey,
 		target:                target,
 		previousReviewSession: previousSession,
-	}, result, session)
+	}, result, reviewSession)
 
 	if finalized != result {
 		t.Fatalf("finalized result = %+v, want in-place mutation of input result", finalized)
@@ -2166,6 +2162,7 @@ func TestTaskGenerationActionProjectionFinalizeSupportsPatchOnlyResponses(t *tes
 		PreviewableItems: 1,
 		ApprovedSections: 1,
 	}, "completed")
+	reviewSession := buildGenerationReviewSession(currentResult, currentQueue, target.QueueQuery)
 
 	finalized := buildTaskGenerationActionProjectionFinalizePhase().run(&taskGenerationActionProjectionInput{
 		actionKey:             target.ActionKey,
@@ -2175,11 +2172,7 @@ func TestTaskGenerationActionProjectionFinalizeSupportsPatchOnlyResponses(t *tes
 	}, &GenerationActionExecutionResult{
 		ResponseMode:           "patch_only",
 		PlatformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
-	}, &taskGenerationActionProjectionSessionResult{
-		currentResult: currentResult,
-		reviewQueue:   currentQueue,
-		reviewSession: buildGenerationReviewSession(currentResult, currentQueue, target.QueueQuery),
-	})
+	}, reviewSession)
 
 	if finalized == nil {
 		t.Fatal("finalized result = nil, want patch-only finalization result")
@@ -2545,17 +2538,7 @@ func TestTaskGenerationActionRefreshHydrationBackfillsCurrentAssetRenderPreviews
 func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	t.Parallel()
 
-	content, err := os.ReadFile("task_generation_service.go")
-	if err != nil {
-		t.Fatalf("ReadFile(task_generation_service.go) error = %v", err)
-	}
-	source := string(content)
-	start := strings.Index(source, "func (s *taskGenerationService) ExecuteTaskGenerationAction(")
-	end := strings.Index(source, "func (s *taskGenerationService) DispatchTaskGenerationNavigation(")
-	if start == -1 || end == -1 || end <= start {
-		t.Fatalf("task_generation_service.go should contain action execution boundaries")
-	}
-	actionSource := source[start:end]
+	actionSource := readExecuteTaskGenerationActionSource(t)
 
 	required := []string{
 		"buildTaskGenerationActionExecutePhase(s).run(",

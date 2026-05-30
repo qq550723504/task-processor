@@ -1,7 +1,11 @@
 package listingkit
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -120,6 +124,23 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 	}
 }
 
+func TestReadNamedFunctionSourceHandlesBracesInsideStrings(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "named_function_source.go")
+	source := "package listingkit\n\ntype namedFunctionSourceFixture struct{}\n\nfunc (f *namedFunctionSourceFixture) run() string {\n\ttext := \"}\"\n\treturn text\n}\n"
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+
+	funcSource := readNamedFunctionSource(t, path, "run")
+
+	assertSourceContainsAll(t, funcSource, []string{
+		`text := "}"`,
+		"return text",
+	})
+}
+
 func readExecuteTaskGenerationActionSource(t *testing.T) string {
 	t.Helper()
 	return readNamedFunctionSource(t, "task_generation_service.go", "ExecuteTaskGenerationAction")
@@ -138,33 +159,35 @@ func readTaskGenerationSourceFile(t *testing.T, path string) string {
 func readNamedFunctionSource(t *testing.T, path, funcName string) string {
 	t.Helper()
 
+	return readFunctionSourceMatching(t, path, "function "+funcName, func(decl *ast.FuncDecl) bool {
+		return decl.Name != nil && decl.Name.Name == funcName
+	})
+}
+
+func readFunctionSourceMatching(t *testing.T, path, description string, match func(*ast.FuncDecl) bool) string {
+	t.Helper()
+
 	source := readTaskGenerationSourceFile(t, path)
-	nameIndex := strings.Index(source, funcName+"(")
-	if nameIndex == -1 {
-		t.Fatalf("%s should contain function %q", path, funcName)
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, path, source, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("ParseFile(%s) error = %v", path, err)
 	}
-	start := strings.LastIndex(source[:nameIndex], "func ")
-	if start == -1 {
-		t.Fatalf("%s should declare function %q", path, funcName)
-	}
-	bodyStart := strings.Index(source[nameIndex:], "{")
-	if bodyStart == -1 {
-		t.Fatalf("%s should contain body for function %q", path, funcName)
-	}
-	bodyStart += nameIndex
-	depth := 0
-	for index := bodyStart; index < len(source); index++ {
-		switch source[index] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return source[start : index+1]
-			}
+
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok || !match(funcDecl) {
+			continue
 		}
+		start := fileSet.PositionFor(funcDecl.Pos(), false).Offset
+		end := fileSet.PositionFor(funcDecl.End(), false).Offset
+		if start < 0 || end < start || end > len(source) {
+			t.Fatalf("%s should contain valid source offsets for %s", path, description)
+		}
+		return source[start:end]
 	}
-	t.Fatalf("%s should contain a complete body for function %q", path, funcName)
+
+	t.Fatalf("%s should contain %s", path, description)
 	return ""
 }
 

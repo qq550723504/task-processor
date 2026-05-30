@@ -42,6 +42,10 @@ func (p *taskGenerationActionProjectionPhase) run(input *taskGenerationActionPro
 	}
 
 	session := buildTaskGenerationActionProjectionSessionPhase().run(input)
+	var reviewSession *GenerationReviewSession
+	if session != nil {
+		reviewSession = session.reviewSession
+	}
 
-	return buildTaskGenerationActionProjectionFinalizePhase().run(input, result, session)
+	return buildTaskGenerationActionProjectionFinalizePhase().run(input, result, reviewSession)
 }

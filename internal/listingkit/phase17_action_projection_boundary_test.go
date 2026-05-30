@@ -1,6 +1,9 @@
 package listingkit
 
 import (
+	"go/ast"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,6 +84,98 @@ func TestTaskGenerationActionProjectionFinalizeBoundary(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationActionProjectionPhaseOwnershipBoundary(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		path      string
+		required  []string
+		forbidden []string
+	}{
+		{
+			name: "projection_phase_file",
+			path: "task_generation_action_projection.go",
+			required: []string{
+				"buildTaskGenerationActionProjectionSessionPhase().run(",
+				"buildTaskGenerationActionProjectionFinalizePhase().run(",
+			},
+			forbidden: []string{
+				"taskGenerationActionProjectionReviewQueue(",
+				"buildGenerationReviewSession(",
+				"buildGenerationReviewWorkflowResult(",
+				"applyGenerationReviewWorkflow(",
+				"buildGenerationReviewSessionPatch(",
+				`"patch_only"`,
+				"buildGenerationReviewDeltaToken(",
+			},
+		},
+		{
+			name: "session_phase_file",
+			path: "task_generation_action_projection_session.go",
+			required: []string{
+				"taskGenerationActionProjectionReviewQueue(",
+				"buildGenerationReviewSession(",
+				"projectionQueueQuery(",
+			},
+			forbidden: []string{
+				"buildGenerationReviewWorkflowResult(",
+				"applyGenerationReviewWorkflow(",
+				"buildGenerationReviewSessionPatch(",
+				`"patch_only"`,
+				"buildGenerationReviewDeltaToken(",
+			},
+		},
+		{
+			name: "finalize_phase_file",
+			path: "task_generation_action_projection_finalize.go",
+			required: []string{
+				"reviewSession *GenerationReviewSession",
+				"buildGenerationReviewWorkflowResult(",
+				"applyGenerationReviewWorkflow(",
+				"buildGenerationReviewSessionPatch(",
+				"buildGenerationReviewDeltaToken(",
+			},
+			forbidden: []string{
+				"taskGenerationActionProjectionSessionResult",
+				"taskGenerationActionProjectionReviewQueue(",
+				"generationWorkQueueFromRetryPage(",
+				"generationWorkQueueFromPage(",
+				"buildGenerationReviewSession(",
+				"projectionQueueQuery(",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := readTaskGenerationSourceFile(t, tc.path)
+			assertSourceContainsAll(t, source, tc.required)
+			assertSourceExcludesAll(t, source, tc.forbidden)
+		})
+	}
+}
+
+func TestReadDeclaredFunctionSourceHandlesBracesInsideStrings(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "declared_function_source.go")
+	source := "package listingkit\n\nfunc trickyDeclaredFunction() string {\n\ttext := \"}\"\n\treturn text\n}\n"
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+
+	funcSource := readDeclaredFunctionSource(t, path, "trickyDeclaredFunction(")
+
+	assertSourceContainsAll(t, funcSource, []string{
+		`text := "}"`,
+		"return text",
+	})
+}
+
 func assertSourceContainsInOrder(t *testing.T, source, first, second string) {
 	t.Helper()
 
@@ -100,28 +195,9 @@ func assertSourceContainsInOrder(t *testing.T, source, first, second string) {
 func readDeclaredFunctionSource(t *testing.T, path, decl string) string {
 	t.Helper()
 
-	source := readTaskGenerationSourceFile(t, path)
-	start := strings.Index(source, "func "+decl)
-	if start == -1 {
-		t.Fatalf("%s should contain function declaration %q", path, decl)
-	}
-	bodyStart := strings.Index(source[start:], "{")
-	if bodyStart == -1 {
-		t.Fatalf("%s should contain body for function declaration %q", path, decl)
-	}
-	bodyStart += start
-	depth := 0
-	for index := bodyStart; index < len(source); index++ {
-		switch source[index] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return source[start : index+1]
-			}
-		}
-	}
-	t.Fatalf("%s should contain a complete body for function declaration %q", path, decl)
-	return ""
+	funcName, _, _ := strings.Cut(decl, "(")
+	funcName = strings.TrimSpace(funcName)
+	return readFunctionSourceMatching(t, path, "function declaration "+decl, func(decl *ast.FuncDecl) bool {
+		return decl.Name != nil && decl.Name.Name == funcName
+	})
 }

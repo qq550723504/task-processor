@@ -9,15 +9,15 @@ func buildTaskGenerationActionProjectionFinalizePhase() *taskGenerationActionPro
 func (p *taskGenerationActionProjectionFinalizePhase) run(
 	input *taskGenerationActionProjectionInput,
 	result *GenerationActionExecutionResult,
-	session *taskGenerationActionProjectionSessionResult,
+	reviewSession *GenerationReviewSession,
 ) *GenerationActionExecutionResult {
 	if result == nil {
 		result = &GenerationActionExecutionResult{}
 	}
 
 	result.ReviewSession = nil
-	if session != nil {
-		result.ReviewSession = session.reviewSession
+	if reviewSession != nil {
+		result.ReviewSession = reviewSession
 	}
 
 	actionKey := ""
