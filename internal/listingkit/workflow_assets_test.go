@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -727,6 +728,25 @@ func TestPlatformAssetDispatchBundleApplyPhaseRunReattachesBundlesAndMergesTasks
 	}
 	if !reflect.DeepEqual(gotTasks, wantTasks) {
 		t.Fatalf("generation tasks = %+v, want %+v", gotTasks, wantTasks)
+	}
+}
+
+func TestWorkflowPlatformAssetDispatchBundleApplyFileDelegatesToTriggerSubSeams(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("workflow_platform_asset_dispatch_bundle_apply.go")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	source := string(content)
+	for _, want := range []string{
+		"buildPlatformAssetDispatchBundleReshapePhase(p.bundleBuilder).run(",
+		"buildPlatformAssetDispatchTaskMergePhase().run(",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("workflow_platform_asset_dispatch_bundle_apply.go missing %q", want)
+		}
 	}
 }
 

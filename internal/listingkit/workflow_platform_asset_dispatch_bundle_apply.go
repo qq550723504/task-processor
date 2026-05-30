@@ -26,9 +26,12 @@ func (p *platformAssetDispatchBundleApplyPhase) run(
 		return generationTasks
 	}
 
-	attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchTasks}, p.bundleBuilder)
-	if len(dispatchTasks) == 0 {
-		return generationTasks
-	}
-	return mergeGenerationTasks(generationTasks, dispatchTasks)
+	buildPlatformAssetDispatchBundleReshapePhase(p.bundleBuilder).run(
+		final,
+		inventory,
+		recipesByPlatform,
+		dispatchTasks,
+	)
+
+	return buildPlatformAssetDispatchTaskMergePhase().run(generationTasks, dispatchTasks)
 }
