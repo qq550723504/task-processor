@@ -14,6 +14,7 @@ import (
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinimage "task-processor/internal/shein/api/image"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
 )
@@ -345,6 +346,38 @@ func (s *stubSheinContentAI) AnalyzeImage(context.Context, string, string) (stri
 
 func (s *stubSheinContentAI) GetDefaultModel() string {
 	return "test"
+}
+
+type stubSheinOtherAPI struct {
+	batchCheckOnWayHook func([]string)
+	batchCheckOnWayResp *sheinother.BatchCheckOnWayResponse
+	batchCheckOnWayErr  error
+}
+
+func (s stubSheinOtherAPI) BatchCheckOnWay(spuNameList []string) (*sheinother.BatchCheckOnWayResponse, error) {
+	if s.batchCheckOnWayHook != nil {
+		s.batchCheckOnWayHook(spuNameList)
+	}
+	if s.batchCheckOnWayErr != nil {
+		return nil, s.batchCheckOnWayErr
+	}
+	return s.batchCheckOnWayResp, nil
+}
+
+func (stubSheinOtherAPI) GetUser(int64) (*sheinother.UserInfo, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSheinOtherAPI) GetSupplierOperateInfo() (*sheinother.SupplierOperateInfoResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSheinOtherAPI) GetSpuLimitCount() (*sheinother.SpuLimitCountInfo, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSheinOtherAPI) QueryShelfQuota() (*sheinother.ShelfQuotaResponse, error) {
+	return nil, errors.New("not implemented")
 }
 
 type stubSheinImageAPI struct {

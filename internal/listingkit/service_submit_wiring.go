@@ -12,6 +12,7 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 		submitSheinTaskDirect:           s.submitSheinTaskDirect,
 		buildTaskPreview:                s.buildTaskPreview,
 		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:        s.buildSheinSubmitOtherAPI,
 		mutateTaskResult:                s.mutateTaskResult,
 		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
 	}

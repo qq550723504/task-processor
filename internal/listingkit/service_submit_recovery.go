@@ -2,13 +2,17 @@ package listingkit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
+
+	"github.com/sirupsen/logrus"
 )
 
 func (s *service) beginSheinSubmitLease(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, error) {
@@ -27,8 +31,8 @@ func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*
 	return s.taskSubmissionOrDefault().RefreshSubmissionStatus(ctx, taskID)
 }
 
-func (s *service) refreshSheinSubmitRemoteStatus(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
-	return s.taskSubmissionRecoveryOrDefault().refreshSheinSubmitRemoteStatus(ctx, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
+func (s *service) refreshSheinSubmitRemoteStatus(ctx context.Context, task *Task, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
+	return s.taskSubmissionRecoveryOrDefault().refreshSheinSubmitRemoteStatus(ctx, task, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
 }
 
 func (s *service) clearSheinSubmitLease(ctx context.Context, taskID, action, requestID string) error {
@@ -39,16 +43,22 @@ func (s *service) clearSheinSubmitLeaseAfterStartFailure(ctx context.Context, ta
 	return s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, action, requestID, startErr)
 }
 
-func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	if defaultConfirmed {
-		now := time.Now()
-		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
-		return &sheinRemoteConfirmation{
-			remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
-			checkedAt:    now,
-			message:      fallbackMessage,
-			event:        &event,
-		}, nil
+		fallbackMessage = "SHEIN accepted publish request; remote confirmation pending"
+	}
+	if action == "publish" {
+		if onWay, onWayErr := lookupSheinOnWayDocument(otherAPI, spuName); onWayErr == nil && onWay != nil {
+			now := time.Now()
+			detail := fmt.Sprintf("SHEIN on-way document confirmed for spu_name=%s document_sn=%s", onWay.SpuName, onWay.DocumentSn)
+			event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
+			return &sheinRemoteConfirmation{
+				remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+				checkedAt:    now,
+				message:      detail,
+				event:        &event,
+			}, nil
+		}
 	}
 	item, recordErr := lookupSheinRemoteRecord(productAPI, lookupCodes, spuName)
 	now := time.Now()
@@ -88,6 +98,15 @@ func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.Product
 			event:        &event,
 		}, nil
 	}
+	if defaultConfirmed {
+		event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
+		return &sheinRemoteConfirmation{
+			remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+			checkedAt:    now,
+			message:      fallbackMessage,
+			event:        &event,
+		}, nil
+	}
 	event := buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
 	return &sheinRemoteConfirmation{
 		remoteStatus: sheinpub.SubmissionRemoteStatusPending,
@@ -95,6 +114,61 @@ func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.Product
 		message:      "record not found",
 		event:        &event,
 	}, nil
+}
+
+type sheinOnWayDocument struct {
+	SpuName    string
+	SkcName    string
+	DocumentSn string
+}
+
+func lookupSheinOnWayDocument(otherAPI sheinother.OtherAPI, expectedSPUName string) (*sheinOnWayDocument, error) {
+	if otherAPI == nil {
+		return nil, nil
+	}
+	expectedSPUName = strings.TrimSpace(expectedSPUName)
+	if expectedSPUName == "" {
+		return nil, nil
+	}
+	resp, err := otherAPI.BatchCheckOnWay([]string{expectedSPUName})
+	logSheinBatchCheckOnWayResponse(expectedSPUName, resp, err)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || strings.TrimSpace(resp.Code) != "0" {
+		return nil, nil
+	}
+	for _, item := range resp.Info {
+		if strings.EqualFold(strings.TrimSpace(item.SpuName), expectedSPUName) && strings.TrimSpace(item.DocumentSn) != "" {
+			return &sheinOnWayDocument{
+				SpuName:    strings.TrimSpace(item.SpuName),
+				SkcName:    strings.TrimSpace(item.SkcName),
+				DocumentSn: strings.TrimSpace(item.DocumentSn),
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+func logSheinBatchCheckOnWayResponse(expectedSPUName string, resp *sheinother.BatchCheckOnWayResponse, err error) {
+	fields := logrus.Fields{
+		"expected_spu_name": strings.TrimSpace(expectedSPUName),
+	}
+	if resp != nil {
+		fields["response_code"] = strings.TrimSpace(resp.Code)
+		fields["response_msg"] = strings.TrimSpace(resp.Msg)
+		if encoded, marshalErr := json.Marshal(resp); marshalErr == nil {
+			fields["response_json"] = string(encoded)
+		} else {
+			fields["response_json_error"] = marshalErr.Error()
+		}
+	}
+	if err != nil {
+		fields["error"] = err.Error()
+		logrus.WithFields(fields).Warn("listingkit shein batch_check_on_way response error")
+		return
+	}
+	logrus.WithFields(fields).Info("listingkit shein batch_check_on_way response")
 }
 
 func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryService {
@@ -105,6 +179,7 @@ func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryServi
 		repo:                       s.repo,
 		buildTaskPreview:           s.buildTaskPreview,
 		buildSheinSubmitProductAPI: s.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:     s.rememberSheinSubmittedResolution,
 		persistSuccessfulSubmission: func(ctx context.Context, taskID string, task *Task, action string) error {
 			return s.persistSuccessfulSheinSubmission(ctx, taskID, task, action)
@@ -277,10 +352,7 @@ func sheinSubmissionResponseAccepted(result *sheinpub.SubmissionResponse) bool {
 	if result == nil {
 		return false
 	}
-	if result.Success {
-		return true
-	}
-	return strings.TrimSpace(result.Code) == "0"
+	return result.Success
 }
 
 func sheinSubmissionResponseAcceptedWithSPU(result *sheinpub.SubmissionResponse) bool {

@@ -9,7 +9,9 @@ import (
 
 	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 const sheinSubmitInFlightTTL = listingsubmission.InFlightTTL
@@ -201,6 +203,30 @@ func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
 
 func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (sheinproduct.ProductAPI, error) {
 	return s.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
+}
+
+func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (sheinother.OtherAPI, error) {
+	resolver := buildSubmitRuntimeContextResolver(s)
+	apiClient, storeID, err := resolver.newAPIClient(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	if !apiClient.HasCookies() {
+		if err := apiClient.ForceRefreshCookies(); err != nil {
+			return nil, fmt.Errorf("shein other api auth unavailable: %w", err)
+		}
+	}
+	if !apiClient.HasCookies() {
+		return nil, fmt.Errorf("shein other api auth unavailable")
+	}
+	baseAPI := sheinclient.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		storeID,
+		apiClient.GetHTTPClient(),
+	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	return sheinother.NewClient(baseAPI), nil
 }
 
 func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {

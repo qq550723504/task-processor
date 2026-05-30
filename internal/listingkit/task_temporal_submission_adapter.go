@@ -25,7 +25,7 @@ type taskTemporalSubmissionAdapterConfig struct {
 	retrySheinSensitiveWordSubmit        func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	persistSuccessfulSheinSubmission     func(context.Context, string, *Task, string) error
 	recordSheinSubmissionFailureForState func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
-	refreshSheinSubmitRemoteStatus       func(context.Context, string, *SheinPackage, sheinproduct.ProductAPI, string, string, string, time.Time) (*sheinpub.SubmissionEvent, error)
+	refreshSheinSubmitRemoteStatus       func(context.Context, *Task, string, *SheinPackage, sheinproduct.ProductAPI, string, string, string, time.Time) (*sheinpub.SubmissionEvent, error)
 	rememberSheinSubmitted               func(*Task, string)
 	getTaskPreview                       func(context.Context, string, string) (*ListingKitPreview, error)
 }
@@ -44,7 +44,7 @@ type taskTemporalSubmissionAdapter struct {
 	retrySheinSensitiveWordSubmit        func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	persistSuccessfulSheinSubmission     func(context.Context, string, *Task, string) error
 	recordSheinSubmissionFailureForState func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
-	refreshSheinSubmitRemoteStatus       func(context.Context, string, *SheinPackage, sheinproduct.ProductAPI, string, string, string, time.Time) (*sheinpub.SubmissionEvent, error)
+	refreshSheinSubmitRemoteStatus       func(context.Context, *Task, string, *SheinPackage, sheinproduct.ProductAPI, string, string, string, time.Time) (*sheinpub.SubmissionEvent, error)
 	rememberSheinSubmitted               func(*Task, string)
 	getTaskPreview                       func(context.Context, string, string) (*ListingKitPreview, error)
 }
@@ -312,7 +312,7 @@ func (s *taskTemporalSubmissionAdapter) RefreshSheinPublishRemoteStatus(ctx cont
 	}
 
 	startedAt := sheinSubmitStartedAt(pkg, in.Action, in.RequestID, time.Now())
-	remoteEvent, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, in.TaskID, pkg, productAPI, in.Action, in.RequestID, in.SupplierCode, startedAt)
+	remoteEvent, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, task, in.TaskID, pkg, productAPI, in.Action, in.RequestID, in.SupplierCode, startedAt)
 	if remoteEvent != nil {
 		appendSheinSubmissionEvent(pkg, *remoteEvent)
 	}

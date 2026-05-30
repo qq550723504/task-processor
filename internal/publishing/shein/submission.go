@@ -129,9 +129,18 @@ func BuildSubmissionResponseSummary(resp *sheinproduct.SheinResponse) *Submissio
 	summary.Version = resp.Info.Version
 	for _, result := range resp.Info.PreValidResult {
 		summary.ValidationNotes = append(summary.ValidationNotes, result.Messages...)
+		for _, skcError := range result.SkcErrorMessageMap {
+			summary.ValidationNotes = append(summary.ValidationNotes, skcError.Messages...)
+			for _, localized := range skcError.OtherLanguageMessageMap {
+				summary.ValidationNotes = append(summary.ValidationNotes, localized...)
+			}
+		}
+		for _, localized := range result.OtherLanguageMessageMap {
+			summary.ValidationNotes = append(summary.ValidationNotes, localized...)
+		}
 	}
 	summary.ValidationNotes = uniqueSubmissionStrings(summary.ValidationNotes)
-	summary.Success = resp.Info.Success || (summary.Code == "0" && len(summary.ValidationNotes) == 0)
+	summary.Success = resp.Info.Success && len(summary.ValidationNotes) == 0
 	return summary
 }
 
