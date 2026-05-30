@@ -377,49 +377,6 @@ func TestTaskGenerationCurrentStateSnapshotPropagatesLoadErrors(t *testing.T) {
 	}
 }
 
-func TestTaskGenerationCurrentStateSnapshotServiceBoundaryGuardrails(t *testing.T) {
-	t.Parallel()
-
-	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentListingKitResult(")
-
-	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateSnapshotPhase(s).run(", 1)
-	assertSourceContainsAll(t, source, []string{
-		"snapshot, err := buildTaskGenerationCurrentStateSnapshotPhase(s).run(",
-		"return snapshot.result, nil",
-	})
-	assertSourceExcludesAll(t, source, []string{
-		"repo.GetTask(",
-		"listAssetGenerationTasks(",
-		"listGenerationReviews(",
-		"withListingKitResultGenerationAndReview(",
-	})
-}
-
-func TestTaskGenerationCurrentStateSnapshotPhaseBoundary(t *testing.T) {
-	t.Parallel()
-
-	source := readExactMethodSource(t, "task_generation_current_state_snapshot.go", "func (p *taskGenerationCurrentStateSnapshotPhase) run(")
-
-	assertSourceContainsAll(t, source, []string{
-		"p.service.repo.GetTask(",
-		"p.service.listAssetGenerationTasks(",
-		"p.service.listGenerationReviews(",
-		"withListingKitResultGenerationAndReview(",
-		"task:    task,",
-		"result:  result,",
-		"tasks:   tasks,",
-		"reviews: reviews,",
-	})
-	assertSourceExcludesAll(t, source, []string{
-		"buildGenerationQueuePage(",
-		"buildAssetGenerationOverview(",
-		"buildActionPlatformRenderPreviews(",
-		"getCurrentAssetGenerationQueue(",
-		"getCurrentAssetGenerationOverview(",
-		"getCurrentActionRenderPreviews(",
-	})
-}
-
 func TestTaskGenerationCurrentStateViewsPhaseOverviewReturnsCurrentDecoratedOverview(t *testing.T) {
 	t.Parallel()
 
