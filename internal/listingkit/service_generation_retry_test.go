@@ -1286,8 +1286,8 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	if page.ExecutedQueue.Summary.TotalItems != 0 || len(page.ExecutedQueue.Items) != 0 {
 		t.Fatalf("executed queue = %+v, want empty queue for nil dispatch result", page.ExecutedQueue)
 	}
-	if !reflect.DeepEqual(assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
-		t.Fatalf("persistence calls = %+v, want inventory/tasks save sequence even when dispatch result is nil", assetRepository.calls)
+	if len(assetRepository.calls) != 0 {
+		t.Fatalf("persistence calls = %+v, want no persistence when dispatch result is nil", assetRepository.calls)
 	}
 
 	updatedInventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: task.ID})

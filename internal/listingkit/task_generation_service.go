@@ -258,8 +258,10 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		return nil, err
 	}
 
-	if err := buildRetryGenerationPersistPhase(s.assetRepo).run(ctx, task.ID, inventory, updatedTasks); err != nil {
-		return nil, err
+	if mutationResult != nil {
+		if err := buildRetryGenerationPersistPhase(s.assetRepo).run(ctx, task.ID, inventory, updatedTasks); err != nil {
+			return nil, err
+		}
 	}
 
 	rebuiltResult := *task.Result
