@@ -12,6 +12,10 @@ func TestTaskGenerationReviewReadServiceBoundary(t *testing.T) {
 		"getCurrentListingKitResult(",
 		"buildGenerationReviewSession(",
 		"buildGenerationReviewReadDeltaToken(",
+		"isGenerationReviewReadNotModified(",
+		"normalizeGenerationActionResponseMode(",
+		"buildGenerationReviewSessionBaseQuery(",
+		"buildGenerationReviewSessionPatch(",
 		"applyGenerationConditionalStateToReviewSessionResponse(",
 		"resolveGenerationReviewPreviewResponse(",
 		"resolveGenerationReviewPreviewRevisionStatus(",
@@ -25,10 +29,15 @@ func TestTaskGenerationReviewReadServiceBoundary(t *testing.T) {
 		"getCurrentListingKitResult(",
 		"buildGenerationReviewSession(",
 		"buildGenerationReviewReadDeltaToken(",
+		"isGenerationReviewReadNotModified(",
+		"normalizeGenerationActionResponseMode(",
+		"buildGenerationReviewSessionBaseQuery(",
+		"buildGenerationReviewSessionPatch(",
 		"applyGenerationConditionalStateToReviewSessionResponse(",
 		"resolveGenerationReviewPreviewResponse(",
 		"resolveGenerationReviewPreviewRevisionStatus(",
 		"applyGenerationConditionalStateToReviewPreviewResponse(",
+		"buildGenerationScenePresetSummary(",
 	})
 }
 
@@ -44,6 +53,7 @@ func TestTaskGenerationReviewReadSnapshotPhaseBoundary(t *testing.T) {
 	assertSourceExcludesAll(t, source, []string{
 		"buildGenerationReviewSession(",
 		"buildGenerationReviewReadDeltaToken(",
+		"isGenerationReviewReadNotModified(",
 		"normalizeGenerationActionResponseMode(",
 		"applyGenerationConditionalStateToReviewSessionResponse(",
 		"resolveGenerationReviewPreviewResponse(",
