@@ -480,26 +480,7 @@ func (s *taskGenerationService) executeGenerationNavigationDispatchPlan(ctx cont
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlanSequential(ctx context.Context, taskID string, responseMode string, plan *GenerationNavigationDispatchPlan, execution *GenerationNavigationDispatchExecution) {
-	for index, step := range plan.Steps {
-		stepResult := s.executeGenerationNavigationDispatchPlanStep(ctx, taskID, step, responseMode)
-		execution.Steps = append(execution.Steps, *stepResult)
-		applyGenerationNavigationDispatchExecutionStats(execution, stepResult)
-		if stepResult.Status == "failed" && plan.StopOnError {
-			execution.StopReason = "error"
-		}
-		if execution.StopReason == "" && shouldStopGenerationNavigationDispatchPlan(plan, stepResult) {
-			execution.StopReason = generationNavigationDispatchPlanStopReason(plan, stepResult)
-		}
-		if execution.StopReason != "" {
-			for remaining := index + 1; remaining < len(plan.Steps); remaining++ {
-				next := plan.Steps[remaining]
-				skipped := generationNavigationDispatchPlanSkippedStep(next, execution.StopReason)
-				execution.Steps = append(execution.Steps, skipped)
-				applyGenerationNavigationDispatchExecutionStats(execution, &skipped)
-			}
-			break
-		}
-	}
+	buildTaskGenerationNavigationDispatchStepExecutionPhase(s).runSequential(ctx, taskID, responseMode, plan, execution)
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlanParallel(ctx context.Context, taskID string, responseMode string, plan *GenerationNavigationDispatchPlan, execution *GenerationNavigationDispatchExecution) {
@@ -507,71 +488,5 @@ func (s *taskGenerationService) executeGenerationNavigationDispatchPlanParallel(
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlanStep(ctx context.Context, taskID string, step GenerationNavigationDispatchStep, responseMode string) *GenerationNavigationDispatchExecutionStep {
-	result := &GenerationNavigationDispatchExecutionStep{
-		Kind:               step.Kind,
-		ResponseMode:       firstNonEmpty(step.ResponseMode, responseMode),
-		CachePreference:    step.CachePreference,
-		RequiresRevalidate: step.RequiresRevalidate,
-		DeduplicationKey:   generationNavigationDispatchStepDeduplicationKey(step, responseMode),
-		Executed:           true,
-		Status:             "completed",
-	}
-	query := cloneGenerationQueueQuery(step.Query)
-	if query != nil && strings.TrimSpace(result.ResponseMode) != "" {
-		query.ResponseMode = result.ResponseMode
-	}
-	switch strings.ToLower(strings.TrimSpace(step.Kind)) {
-	case "queue":
-		queue, err := s.GetTaskGenerationQueue(ctx, taskID, query)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-			result.ErrorKind = classifyGenerationNavigationDispatchStepError(err)
-			return result
-		}
-		result.Queue = queue
-		if queue != nil {
-			result.DeltaToken = queue.DeltaToken
-			result.NotModified = queue.NotModified
-			result.NoChanges = queue.NotModified
-			if queue.NotModified {
-				result.Status = "not_modified"
-			}
-		}
-	case "preview":
-		preview, err := s.GetTaskGenerationReviewPreview(ctx, taskID, query)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-			result.ErrorKind = classifyGenerationNavigationDispatchStepError(err)
-			return result
-		}
-		result.ReviewPreview = preview
-		if preview != nil {
-			result.DeltaToken = preview.DeltaToken
-			result.NotModified = preview.NotModified
-			result.NoChanges = preview.NotModified
-			if preview.NotModified {
-				result.Status = "not_modified"
-			}
-		}
-	default:
-		session, err := s.GetTaskGenerationReviewSession(ctx, taskID, query)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-			result.ErrorKind = classifyGenerationNavigationDispatchStepError(err)
-			return result
-		}
-		result.ReviewSession = session
-		if session != nil {
-			result.DeltaToken = session.DeltaToken
-			result.NotModified = session.NotModified
-			result.NoChanges = session.NotModified
-			if session.NotModified {
-				result.Status = "not_modified"
-			}
-		}
-	}
-	return result
+	return buildTaskGenerationNavigationDispatchStepExecutionPhase(s).run(ctx, taskID, step, responseMode)
 }
