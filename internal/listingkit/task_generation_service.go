@@ -312,29 +312,14 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 			ExecutedAt:         time.Now().UTC(),
 		},
 	}
-	switch target.InteractionMode {
-	case "retryable":
-		retryPage, err := s.RetryTaskGenerationTasks(ctx, taskID, cloneRetryGenerationTasksRequest(target.RetryRequest))
-		if err != nil {
-			return nil, err
-		}
-		result.Retry = retryPage
-	default:
-		queuePage, err := s.GetTaskGenerationQueue(ctx, taskID, cloneGenerationQueueQuery(target.QueueQuery))
-		if err != nil {
-			return nil, err
-		}
-		result.Queue = queuePage
+	execution, err := buildTaskGenerationActionExecutePhase(s).run(ctx, taskID, baseResult, target)
+	if err != nil {
+		return nil, err
 	}
+	result.Retry = execution.retryPage
+	result.Queue = execution.queuePage
 	if isPersistedGenerationReviewAction(target.ActionKey) && s.persistGenerationReviewDecision != nil {
-		var persistenceSession *GenerationReviewSession
-		switch target.InteractionMode {
-		case "retryable":
-			persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromRetryPage(result.Retry), target.QueueQuery)
-		default:
-			persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromPage(result.Queue), target.QueueQuery)
-		}
-		if _, err := s.persistGenerationReviewDecision(ctx, taskID, target.ActionKey, persistenceSession, target); err != nil {
+		if _, err := s.persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target); err != nil {
 			return nil, err
 		}
 	}

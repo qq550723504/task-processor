@@ -269,6 +269,46 @@ func newRetryPersistenceFailureFixture(t *testing.T, taskID string) *retryPersis
 	}
 }
 
+func newTaskGenerationActionQueueFixture(t *testing.T, taskID string) (*Task, *taskGenerationService) {
+	t.Helper()
+
+	repo := &stubGenerationRepo{}
+	task := &Task{
+		ID:        taskID,
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID: taskID,
+			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "amazon",
+				MissingSlots: []common.MissingSlot{{
+					Slot:          "auxiliary",
+					Purpose:       "scene",
+					RecipeID:      "amazon-lifestyle",
+					TemplateLabel: "Amazon Lifestyle Scene",
+					RenderProfile: "amazon_lifestyle_scene",
+					StateLabel:    "missing",
+				}},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	return task, newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(ctx context.Context, requestedTaskID string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(ctx context.Context, requestedTaskID string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	})
+}
+
 func TestRetryGenerationPersistenceSavesInventoryBeforeTasks(t *testing.T) {
 	t.Parallel()
 
@@ -1727,6 +1767,128 @@ func TestTaskGenerationServiceFileDelegatesRetryProjection(t *testing.T) {
 	}
 	if !strings.Contains(source, "if err := s.repo.SaveTaskResult(ctx, task.ID, rebuiltResult); err != nil {") {
 		t.Fatalf("task_generation_service.go should keep SaveTaskResult at service call site")
+	}
+}
+
+func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retryable_targets_use_retry_generation_tasks", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRetryPersistenceFailureFixture(t, "task-generation-action-execute-retry-1")
+		task, err := fixture.repo.GetTask(context.Background(), fixture.taskID)
+		if err != nil {
+			t.Fatalf("GetTask() error = %v", err)
+		}
+
+		execution, err := buildTaskGenerationActionExecutePhase(fixture.generation).run(context.Background(), fixture.taskID, task.Result, &AssetGenerationActionTarget{
+			ActionKey:       "generate_missing_assets",
+			InteractionMode: "retryable",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "amazon",
+				Slot:     "auxiliary",
+			},
+			RetryRequest: &RetryGenerationTasksRequest{
+				Slots: []string{"auxiliary"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("taskGenerationActionExecutePhase.run() error = %v", err)
+		}
+		if execution == nil || execution.retryPage == nil {
+			t.Fatalf("execution = %+v, want retry page", execution)
+		}
+		if execution.queuePage != nil {
+			t.Fatalf("execution.queuePage = %+v, want nil for retryable path", execution.queuePage)
+		}
+		if execution.retryPage.ExecutedQueue == nil || execution.retryPage.ExecutedQueue.Summary == nil || execution.retryPage.ExecutedQueue.Summary.TotalItems != 1 {
+			t.Fatalf("retry page = %+v, want executed retry queue", execution.retryPage)
+		}
+		if execution.persistenceSession == nil || execution.persistenceSession.Queue == nil {
+			t.Fatalf("persistence session = %+v, want retry execution queue session", execution.persistenceSession)
+		}
+		if execution.persistenceSession.SelectedPlatform != "amazon" || execution.persistenceSession.SelectedSlot != "auxiliary" {
+			t.Fatalf("persistence session selection = %+v, want amazon/auxiliary from retry execution", execution.persistenceSession)
+		}
+		if execution.persistenceSession.Queue.Summary == nil || execution.persistenceSession.Queue.Summary.TotalItems != execution.retryPage.ExecutedQueue.Summary.TotalItems {
+			t.Fatalf("persistence session queue = %+v, want retry executed queue summary", execution.persistenceSession.Queue)
+		}
+	})
+
+	t.Run("non_retryable_targets_use_generation_queue", func(t *testing.T) {
+		t.Parallel()
+
+		task, generation := newTaskGenerationActionQueueFixture(t, "task-generation-action-execute-queue-1")
+
+		execution, err := buildTaskGenerationActionExecutePhase(generation).run(context.Background(), task.ID, task.Result, &AssetGenerationActionTarget{
+			ActionKey:       "review_missing_slots",
+			InteractionMode: "queue_only",
+			QueueQuery: &GenerationQueueQuery{
+				QualityGrade: "missing",
+			},
+		})
+		if err != nil {
+			t.Fatalf("taskGenerationActionExecutePhase.run() error = %v", err)
+		}
+		if execution == nil || execution.queuePage == nil {
+			t.Fatalf("execution = %+v, want queue page", execution)
+		}
+		if execution.retryPage != nil {
+			t.Fatalf("execution.retryPage = %+v, want nil for non-retryable path", execution.retryPage)
+		}
+		if execution.queuePage.Summary == nil || execution.queuePage.Summary.TotalItems != 1 {
+			t.Fatalf("queue page = %+v, want missing-slot queue page", execution.queuePage)
+		}
+		if execution.persistenceSession == nil || execution.persistenceSession.Queue == nil {
+			t.Fatalf("persistence session = %+v, want queue execution session", execution.persistenceSession)
+		}
+		if execution.persistenceSession.SelectedPlatform != "amazon" || execution.persistenceSession.SelectedSlot != "auxiliary" {
+			t.Fatalf("persistence session selection = %+v, want amazon/auxiliary from queue execution", execution.persistenceSession)
+		}
+		if execution.persistenceSession.Queue.Summary == nil || execution.persistenceSession.Queue.Summary.TotalItems != execution.queuePage.Summary.TotalItems {
+			t.Fatalf("persistence session queue = %+v, want queue page summary", execution.persistenceSession.Queue)
+		}
+	})
+}
+
+func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("task_generation_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_generation_service.go) error = %v", err)
+	}
+	source := string(content)
+	start := strings.Index(source, "func (s *taskGenerationService) ExecuteTaskGenerationAction(")
+	end := strings.Index(source, "func (s *taskGenerationService) DispatchTaskGenerationNavigation(")
+	if start == -1 || end == -1 || end <= start {
+		t.Fatalf("task_generation_service.go should contain action execution boundaries")
+	}
+	actionSource := source[start:end]
+
+	required := []string{
+		"execution, err := buildTaskGenerationActionExecutePhase(s).run(",
+		"result.Retry = execution.retryPage",
+		"result.Queue = execution.queuePage",
+		"s.persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)",
+	}
+	for _, needle := range required {
+		if !strings.Contains(actionSource, needle) {
+			t.Fatalf("ExecuteTaskGenerationAction should contain %q", needle)
+		}
+	}
+
+	forbidden := []string{
+		"retryPage, err := s.RetryTaskGenerationTasks(",
+		"queuePage, err := s.GetTaskGenerationQueue(",
+		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromRetryPage(result.Retry), target.QueueQuery)",
+		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromPage(result.Queue), target.QueueQuery)",
+	}
+	for _, needle := range forbidden {
+		if strings.Contains(actionSource, needle) {
+			t.Fatalf("ExecuteTaskGenerationAction should not inline execution branching %q", needle)
+		}
 	}
 }
 
