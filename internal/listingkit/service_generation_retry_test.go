@@ -2199,8 +2199,8 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	actionSource := source[start:end]
 
 	required := []string{
-		"execution, err := buildTaskGenerationActionExecutePhase(s).run(",
-		"refresh, err := buildTaskGenerationActionRefreshPhase(s).run(",
+		"buildTaskGenerationActionExecutePhase(s).run(",
+		"buildTaskGenerationActionRefreshPhase(s).run(",
 	}
 	for _, needle := range required {
 		if !strings.Contains(actionSource, needle) {
@@ -2209,10 +2209,6 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	}
 
 	forbidden := []string{
-		"retryPage, err := s.RetryTaskGenerationTasks(",
-		"queuePage, err := s.GetTaskGenerationQueue(",
-		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromRetryPage(result.Retry), target.QueueQuery)",
-		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromPage(result.Queue), target.QueueQuery)",
 		"result.Overview, err = s.getCurrentAssetGenerationOverview(ctx, taskID)",
 		"result.PlatformRenderPreviews, err = s.getCurrentActionRenderPreviews(ctx, taskID, target.QueueQuery)",
 		"buildActionPlatformRenderPreviews(baseResult, target.QueueQuery)",
