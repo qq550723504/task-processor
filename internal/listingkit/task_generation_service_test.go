@@ -222,6 +222,78 @@ func TestTaskGenerationServiceGetTaskGenerationTasksUsesSingleReadSnapshotHandof
 	}
 }
 
+func TestTaskGenerationTasksReadPagePhaseReturnsStableEmptyShape(t *testing.T) {
+	t.Parallel()
+
+	page := buildTaskGenerationTasksReadPagePhase().run(&taskGenerationTasksReadSnapshot{
+		task: &Task{
+			ID:        "task-generation-read-page-empty-1",
+			UpdatedAt: time.Date(2026, 5, 30, 13, 0, 0, 0, time.UTC),
+		},
+	}, &GenerationTaskQuery{Page: 3, PageSize: 250})
+
+	if page == nil {
+		t.Fatal("page = nil, want generation task page")
+	}
+	if page.TaskID != "task-generation-read-page-empty-1" {
+		t.Fatalf("page.TaskID = %q, want task-generation-read-page-empty-1", page.TaskID)
+	}
+	if page.Page != 3 || page.PageSize != maxGenerationTaskPageSize || page.Total != 0 {
+		t.Fatalf("page meta = %+v, want page=3 page_size=%d total=0", page, maxGenerationTaskPageSize)
+	}
+	if page.Summary == nil || page.Summary.TotalTasks != 0 {
+		t.Fatalf("page.Summary = %+v, want empty summary", page.Summary)
+	}
+	if len(page.Tasks) != 0 {
+		t.Fatalf("page.Tasks = %+v, want empty task slice", page.Tasks)
+	}
+}
+
+func TestTaskGenerationTasksReadPagePhaseUsesFilteredSetForSummaryAndPagedSetForTasks(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &taskGenerationTasksReadSnapshot{
+		task: &Task{
+			ID:        "task-generation-read-page-filtered-summary-1",
+			UpdatedAt: time.Date(2026, 5, 30, 14, 0, 0, 0, time.UTC),
+		},
+		tasks: []assetgeneration.Task{
+			{TaskID: "task-generation-read-page-filtered-summary-1", ID: "shein:shein-main-model", Platform: "shein", Slot: "main", ExecutionStatus: "completed", SatisfiedBy: "fallback_asset"},
+			{TaskID: "task-generation-read-page-filtered-summary-1", ID: "amazon:amazon-lifestyle", Platform: "amazon", Slot: "auxiliary", ExecutionMode: assetgeneration.ExecutionModeRendererBacked, ExecutionStatus: "completed", SatisfiedBy: assetgeneration.ExecutionModeGeneratedAsset},
+			{TaskID: "task-generation-read-page-filtered-summary-1", ID: "amazon:amazon-main-white-bg", Platform: "amazon", Slot: "main", ExecutionStatus: "planned"},
+		},
+	}
+
+	page := buildTaskGenerationTasksReadPagePhase().run(snapshot, &GenerationTaskQuery{
+		Page:      2,
+		PageSize:  1,
+		SortBy:    "platform",
+		SortOrder: "asc",
+	})
+
+	if page == nil {
+		t.Fatal("page = nil, want generation task page")
+	}
+	if page.Total != 3 {
+		t.Fatalf("page.Total = %d, want 3 filtered tasks before pagination", page.Total)
+	}
+	if page.Page != 2 || page.PageSize != 1 {
+		t.Fatalf("page meta = %+v, want page=2 page_size=1", page)
+	}
+	if len(page.Tasks) != 1 || page.Tasks[0].ID != "amazon:amazon-main-white-bg" {
+		t.Fatalf("page.Tasks = %+v, want second task in sorted paged set", page.Tasks)
+	}
+	if page.Summary == nil || page.Summary.TotalTasks != 3 {
+		t.Fatalf("page.Summary = %+v, want summary built from filtered set", page.Summary)
+	}
+	if page.Summary.RendererBackedTasks != 1 {
+		t.Fatalf("page.Summary = %+v, want renderer-backed count from full filtered set", page.Summary)
+	}
+	if len(page.Summary.Platforms) != 2 {
+		t.Fatalf("page.Summary.Platforms = %+v, want platforms from full filtered set", page.Summary.Platforms)
+	}
+}
+
 func TestTaskGenerationServiceRetryTaskGenerationTasksReturnsEmptyPageWithoutSelection(t *testing.T) {
 	t.Parallel()
 

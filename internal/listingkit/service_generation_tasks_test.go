@@ -178,18 +178,20 @@ func TestTaskGenerationTasksServiceBoundaryGuardrails(t *testing.T) {
 	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) GetTaskGenerationTasks(")
 
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationTasksReadSnapshotPhase(s).run(", 1)
+	assertSourceOccurrenceCount(t, source, "buildTaskGenerationTasksReadPagePhase().run(", 1)
 	assertSourceOrderedContains(t, source, []string{
 		"buildTaskGenerationTasksReadSnapshotPhase(s).run(",
-		"filterGenerationTasks(",
-		"sortGenerationTasks(",
-		"paginateGenerationTasks(",
-		"buildGenerationTaskPage(",
+		"buildTaskGenerationTasksReadPagePhase().run(",
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"getCurrentListingKitResult(",
 		"withListingKitResultGenerationAndReview(",
+		"filterGenerationTasks(",
+		"sortGenerationTasks(",
+		"paginateGenerationTasks(",
+		"buildGenerationTaskPage(",
 	})
 }
 
@@ -209,6 +211,25 @@ func TestTaskGenerationTasksReadSnapshotPhaseBoundary(t *testing.T) {
 		"sortGenerationTasks(",
 		"paginateGenerationTasks(",
 		"buildGenerationTaskPage(",
+		"getCurrentListingKitResult(",
+		"withListingKitResultGenerationAndReview(",
+	})
+}
+
+func TestTaskGenerationTasksReadPagePhaseBoundary(t *testing.T) {
+	t.Parallel()
+
+	source := readExactMethodSource(t, "task_generation_tasks_read_page.go", "func (p *taskGenerationTasksReadPagePhase) run(")
+
+	assertSourceContainsAll(t, source, []string{
+		"buildGenerationTaskPage(",
+		"filterGenerationTasks(",
+		"sortGenerationTasks(",
+		"paginateGenerationTasks(",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"repo.GetTask(",
+		"listAssetGenerationTasks(",
 		"getCurrentListingKitResult(",
 		"withListingKitResultGenerationAndReview(",
 	})

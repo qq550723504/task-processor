@@ -62,10 +62,7 @@ func (s *taskGenerationService) GetTaskGenerationTasks(ctx context.Context, task
 	if err != nil {
 		return nil, err
 	}
-	filtered := filterGenerationTasks(snapshot.tasks, query)
-	sorted := sortGenerationTasks(filtered, query)
-	paged, meta := paginateGenerationTasks(sorted, query)
-	return buildGenerationTaskPage(snapshot.task.ID, snapshot.task.UpdatedAt, filtered, paged, meta), nil
+	return buildTaskGenerationTasksReadPagePhase().run(snapshot, query), nil
 }
 
 func (s *taskGenerationService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error) {
