@@ -327,29 +327,23 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	result.Overview = refresh.overview
-	result.PlatformRenderPreviews = refresh.platformRenderPreviews
-	currentResult := refresh.currentResult
-	switch target.InteractionMode {
-	case "retryable":
-		result.ReviewSession = buildGenerationReviewSession(currentResult, generationWorkQueueFromRetryPage(result.Retry), target.QueueQuery)
-	default:
-		result.ReviewSession = buildGenerationReviewSession(currentResult, generationWorkQueueFromPage(result.Queue), target.QueueQuery)
-	}
-	result.ReviewWorkflow = buildGenerationReviewWorkflowResult(target.ActionKey, target)
-	applyGenerationReviewWorkflow(result.ReviewSession, result.ReviewWorkflow)
-	result.ReviewPatch = buildGenerationReviewSessionPatch(previousReviewSession, result.ReviewSession)
-	if result.ReviewPatch != nil {
-		result.ReviewPatch.LastWorkflowResult = result.ReviewWorkflow
-		result.DeltaToken = result.ReviewPatch.DeltaToken
-	}
-	if result.DeltaToken == "" {
-		result.DeltaToken = buildGenerationReviewDeltaToken(result.ReviewSession)
-	}
-	if result.ResponseMode == "patch_only" {
-		result.ReviewSession = nil
-		result.PlatformRenderPreviews = nil
-	}
+	projection := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+		actionKey:             target.ActionKey,
+		target:                target,
+		responseMode:          result.ResponseMode,
+		previousReviewSession: previousReviewSession,
+		currentResult:         baseResult,
+		refresh:               refresh,
+		execution:             execution,
+	})
+	result.Overview = projection.Overview
+	result.Queue = projection.Queue
+	result.Retry = projection.Retry
+	result.ReviewWorkflow = projection.ReviewWorkflow
+	result.ReviewSession = projection.ReviewSession
+	result.ReviewPatch = projection.ReviewPatch
+	result.PlatformRenderPreviews = projection.PlatformRenderPreviews
+	result.DeltaToken = projection.DeltaToken
 	return applyGenerationConditionalStateToActionResult(result), nil
 }
 

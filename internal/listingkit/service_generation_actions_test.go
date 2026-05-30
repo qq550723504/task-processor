@@ -2,6 +2,8 @@ package listingkit
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +35,289 @@ type stubPlatformAdaptWorkflowClient struct {
 func (s *stubPlatformAdaptWorkflowClient) StartPlatformAdaptation(_ context.Context, in PlatformAdaptWorkflowStartInput) error {
 	s.calls = append(s.calls, in)
 	return s.err
+}
+
+func newTaskGenerationActionProjectionResult(taskID, assetRevision, previewRevision, taskRevision string) *ListingKitResult {
+	return &ListingKitResult{
+		TaskID: taskID,
+		AssetRenderPreviews: []AssetRenderPreview{{
+			AssetID:         "asset-preview-1",
+			AssetRevision:   assetRevision,
+			PreviewRevision: previewRevision,
+			TaskRevision:    taskRevision,
+			PreviewFormat:   "svg",
+			PreviewSVG:      "<svg/>",
+			VisualMode:      "selling_point",
+			LayerTypes:      []string{"detail", "text"},
+		}},
+		Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+			Platform: "shein",
+			Main: &common.BundleSlot{
+				Key:           "main",
+				AssetID:       "asset-preview-1",
+				StateLabel:    "ready",
+				TemplateLabel: "SHEIN Main",
+			},
+		}},
+	}
+}
+
+func newTaskGenerationActionProjectionQueue(taskID string, summary *GenerationWorkQueueSummary, state string) *GenerationWorkQueue {
+	return &GenerationWorkQueue{
+		Summary: summary,
+		Items: []GenerationWorkQueueItem{{
+			TaskID:                  taskID,
+			Platform:                "shein",
+			Slot:                    "main",
+			Purpose:                 "main",
+			State:                   state,
+			AssetID:                 "asset-preview-1",
+			ExecutionMode:           assetgeneration.ExecutionModeRendererBacked,
+			RenderPreviewAvailable:  true,
+			RenderPreviewFormat:     "svg",
+			RenderPreviewVisualMode: "selling_point",
+			RenderPreviewLayerTypes: []string{"detail", "text"},
+			PreviewCapabilities:     []string{"detail_preview"},
+			ReviewStatus:            "pending",
+		}},
+	}
+}
+
+func newTaskGenerationActionProjectionTarget(interactionMode string) *AssetGenerationActionTarget {
+	return &AssetGenerationActionTarget{
+		ActionKey:       "approve_section_review",
+		InteractionMode: interactionMode,
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+}
+
+func TestTaskGenerationActionProjectionBuildsReviewSessionAndPatch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("queue_only", func(t *testing.T) {
+		t.Parallel()
+
+		target := newTaskGenerationActionProjectionTarget("queue_only")
+		previousQueue := newTaskGenerationActionProjectionQueue("task-generation-action-projection-queue-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready")
+		previousSession := buildGenerationReviewSession(
+			newTaskGenerationActionProjectionResult("task-generation-action-projection-queue-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+			previousQueue,
+			target.QueueQuery,
+		)
+		currentResult := newTaskGenerationActionProjectionResult("task-generation-action-projection-queue-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+		currentQueue := newTaskGenerationActionProjectionQueue("task-generation-action-projection-queue-1", &GenerationWorkQueueSummary{
+			TotalItems:       1,
+			CompletedItems:   1,
+			PreviewableItems: 1,
+			ApprovedSections: 1,
+		}, "completed")
+
+		result := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+			actionKey:             target.ActionKey,
+			target:                target,
+			responseMode:          "full",
+			previousReviewSession: previousSession,
+			currentResult:         currentResult,
+			refresh: &taskGenerationActionRefreshResult{
+				overview:               &AssetGenerationOverview{},
+				platformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
+				currentResult:          currentResult,
+			},
+			execution: &taskGenerationActionExecution{
+				queuePage: &GenerationQueuePage{
+					Summary: currentQueue.Summary,
+					Items:   currentQueue.Items,
+				},
+			},
+		})
+
+		if result == nil {
+			t.Fatal("projection result = nil, want assembled action result")
+		}
+		if result.ReviewSession == nil {
+			t.Fatalf("projection result = %+v, want review session", result)
+		}
+		if result.ReviewSession.FocusedRenderPreview == nil || result.ReviewSession.FocusedRenderPreview.AssetRevision != "asset-rev-new" || result.ReviewSession.FocusedRenderPreview.PreviewRevision != "preview-rev-new" || result.ReviewSession.FocusedRenderPreview.TaskRevision != "task-rev-new" {
+			t.Fatalf("review session focused preview = %+v, want refreshed current result revisions", result.ReviewSession.FocusedRenderPreview)
+		}
+		if result.ReviewSession.Queue == nil || result.ReviewSession.Queue.Summary == nil || result.ReviewSession.Queue.Summary.CompletedItems != 1 || result.ReviewSession.Queue.Summary.ReadyItems != 0 {
+			t.Fatalf("review session queue = %+v, want queue page-backed queue summary", result.ReviewSession.Queue)
+		}
+		if result.ReviewWorkflow == nil || result.ReviewWorkflow.ActionKey != target.ActionKey || result.ReviewWorkflow.Platform != "shein" || result.ReviewWorkflow.Slot != "main" || result.ReviewWorkflow.Capability != "detail_preview" {
+			t.Fatalf("review workflow = %+v, want resolved target workflow metadata", result.ReviewWorkflow)
+		}
+		if result.ReviewSession.LastWorkflowResult == nil || result.ReviewSession.LastWorkflowResult.ActionKey != target.ActionKey {
+			t.Fatalf("review session workflow = %+v, want workflow applied to session", result.ReviewSession.LastWorkflowResult)
+		}
+		if result.ReviewPatch == nil || result.ReviewPatch.LastWorkflowResult == nil || result.ReviewPatch.LastWorkflowResult.ActionKey != target.ActionKey {
+			t.Fatalf("review patch = %+v, want workflow attached to patch", result.ReviewPatch)
+		}
+		if !result.ReviewPatch.FocusChanged || result.ReviewPatch.FocusedRenderPreview == nil || result.ReviewPatch.FocusedRenderPreview.AssetRevision != "asset-rev-new" {
+			t.Fatalf("review patch = %+v, want refreshed focus patch payload", result.ReviewPatch)
+		}
+		if result.DeltaToken == "" || result.DeltaToken != result.ReviewPatch.DeltaToken {
+			t.Fatalf("delta token = %q, review patch = %+v, want patch delta token fallback", result.DeltaToken, result.ReviewPatch)
+		}
+		if len(result.PlatformRenderPreviews) != 1 || result.PlatformRenderPreviews[0].Platform != "shein" {
+			t.Fatalf("platform render previews = %+v, want refresh previews preserved", result.PlatformRenderPreviews)
+		}
+	})
+
+	t.Run("retryable", func(t *testing.T) {
+		t.Parallel()
+
+		target := newTaskGenerationActionProjectionTarget("retryable")
+		previousQueue := newTaskGenerationActionProjectionQueue("task-generation-action-projection-retry-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready")
+		previousSession := buildGenerationReviewSession(
+			newTaskGenerationActionProjectionResult("task-generation-action-projection-retry-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+			previousQueue,
+			target.QueueQuery,
+		)
+		currentResult := newTaskGenerationActionProjectionResult("task-generation-action-projection-retry-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+
+		result := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+			actionKey:             target.ActionKey,
+			target:                target,
+			responseMode:          "full",
+			previousReviewSession: previousSession,
+			currentResult:         currentResult,
+			refresh: &taskGenerationActionRefreshResult{
+				currentResult: currentResult,
+			},
+			execution: &taskGenerationActionExecution{
+				retryPage: &GenerationTaskPage{
+					MatchedQueue: newTaskGenerationActionProjectionQueue("task-generation-action-projection-retry-1", &GenerationWorkQueueSummary{
+						TotalItems:       1,
+						ReadyItems:       1,
+						PreviewableItems: 1,
+					}, "ready"),
+					ExecutedQueue: newTaskGenerationActionProjectionQueue("task-generation-action-projection-retry-1", &GenerationWorkQueueSummary{
+						TotalItems:       1,
+						CompletedItems:   1,
+						PreviewableItems: 1,
+						ApprovedSections: 1,
+					}, "completed"),
+				},
+			},
+		})
+
+		if result == nil || result.ReviewSession == nil {
+			t.Fatalf("projection result = %+v, want retry review session", result)
+		}
+		if result.ReviewSession.Queue == nil || result.ReviewSession.Queue.Summary == nil || result.ReviewSession.Queue.Summary.CompletedItems != 1 || result.ReviewSession.Queue.Summary.ReadyItems != 0 {
+			t.Fatalf("review session queue = %+v, want retry executed queue source", result.ReviewSession.Queue)
+		}
+	})
+}
+
+func TestTaskGenerationActionProjectionSupportsPatchOnlyResponses(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("review_only")
+	previousSession := buildGenerationReviewSession(
+		newTaskGenerationActionProjectionResult("task-generation-action-projection-patch-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+		newTaskGenerationActionProjectionQueue("task-generation-action-projection-patch-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready"),
+		target.QueueQuery,
+	)
+	currentResult := newTaskGenerationActionProjectionResult("task-generation-action-projection-patch-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+
+	result := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+		actionKey:             target.ActionKey,
+		target:                target,
+		responseMode:          "patch_only",
+		previousReviewSession: previousSession,
+		currentResult:         currentResult,
+		refresh: &taskGenerationActionRefreshResult{
+			platformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
+			currentResult:          currentResult,
+		},
+		execution: &taskGenerationActionExecution{
+			queuePage: &GenerationQueuePage{
+				Summary: newTaskGenerationActionProjectionQueue("task-generation-action-projection-patch-1", &GenerationWorkQueueSummary{
+					TotalItems:       1,
+					CompletedItems:   1,
+					PreviewableItems: 1,
+					ApprovedSections: 1,
+				}, "completed").Summary,
+				Items: newTaskGenerationActionProjectionQueue("task-generation-action-projection-patch-1", &GenerationWorkQueueSummary{
+					TotalItems:       1,
+					CompletedItems:   1,
+					PreviewableItems: 1,
+					ApprovedSections: 1,
+				}, "completed").Items,
+			},
+		},
+	})
+
+	if result == nil {
+		t.Fatal("projection result = nil, want patch-only action result")
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ReviewSession != nil {
+		t.Fatalf("review session = %+v, want patch-only response to omit session", result.ReviewSession)
+	}
+	if len(result.PlatformRenderPreviews) != 0 {
+		t.Fatalf("platform render previews = %+v, want patch-only response to omit previews", result.PlatformRenderPreviews)
+	}
+	if result.ReviewPatch == nil || result.ReviewPatch.LastWorkflowResult == nil || result.ReviewPatch.LastWorkflowResult.ActionKey != target.ActionKey {
+		t.Fatalf("review patch = %+v, want workflow-attached patch payload", result.ReviewPatch)
+	}
+	if result.DeltaToken == "" || result.DeltaToken != result.ReviewPatch.DeltaToken {
+		t.Fatalf("delta token = %q, review patch = %+v, want patch delta token preserved", result.DeltaToken, result.ReviewPatch)
+	}
+}
+
+func TestTaskGenerationActionProjectionServiceDelegatesActionProjection(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("task_generation_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_generation_service.go) error = %v", err)
+	}
+	source := string(content)
+	start := strings.Index(source, "func (s *taskGenerationService) ExecuteTaskGenerationAction(")
+	end := strings.Index(source, "func (s *taskGenerationService) DispatchTaskGenerationNavigation(")
+	if start == -1 || end == -1 || end <= start {
+		t.Fatalf("task_generation_service.go should contain action execution boundaries")
+	}
+	actionSource := source[start:end]
+
+	if !strings.Contains(actionSource, "buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{") {
+		t.Fatalf("ExecuteTaskGenerationAction should delegate result projection to taskGenerationActionProjectionPhase")
+	}
+
+	forbidden := []string{
+		"result.ReviewSession = buildGenerationReviewSession(",
+		"result.ReviewWorkflow = buildGenerationReviewWorkflowResult(",
+		"result.ReviewPatch = buildGenerationReviewSessionPatch(",
+		"result.PlatformRenderPreviews = refresh.platformRenderPreviews",
+	}
+	for _, needle := range forbidden {
+		if strings.Contains(actionSource, needle) {
+			t.Fatalf("ExecuteTaskGenerationAction should not inline projection assembly %q", needle)
+		}
+	}
 }
 
 func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *testing.T) {
