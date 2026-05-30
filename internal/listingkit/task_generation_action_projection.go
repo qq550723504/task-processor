@@ -42,21 +42,6 @@ func (p *taskGenerationActionProjectionPhase) run(input *taskGenerationActionPro
 	}
 
 	session := buildTaskGenerationActionProjectionSessionPhase().run(input)
-	result.ReviewSession = session.reviewSession
-	result.ReviewWorkflow = buildGenerationReviewWorkflowResult(input.actionKey, input.target)
-	applyGenerationReviewWorkflow(result.ReviewSession, result.ReviewWorkflow)
-	result.ReviewPatch = buildGenerationReviewSessionPatch(input.previousReviewSession, result.ReviewSession)
-	if result.ReviewPatch != nil {
-		result.ReviewPatch.LastWorkflowResult = result.ReviewWorkflow
-		result.DeltaToken = result.ReviewPatch.DeltaToken
-	}
-	if result.DeltaToken == "" {
-		result.DeltaToken = buildGenerationReviewDeltaToken(result.ReviewSession)
-	}
-	if result.ResponseMode == "patch_only" {
-		result.ReviewSession = nil
-		result.PlatformRenderPreviews = nil
-	}
 
-	return result
+	return buildTaskGenerationActionProjectionFinalizePhase().run(input, result, session)
 }

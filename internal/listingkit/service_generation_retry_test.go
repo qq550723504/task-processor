@@ -2057,6 +2057,147 @@ func TestTaskGenerationActionProjectionSessionPrefersRefreshedCurrentResult(t *t
 	}
 }
 
+func TestTaskGenerationActionProjectionFinalizeBuildsWorkflowAndPatch(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("queue_only")
+	previousQueue := newTaskGenerationActionProjectionQueue("task-generation-action-finalize-1", &GenerationWorkQueueSummary{
+		TotalItems:            1,
+		ReadyItems:            1,
+		PreviewableItems:      1,
+		ReviewPendingSections: 1,
+	}, "ready")
+	previousSession := buildGenerationReviewSession(
+		newTaskGenerationActionProjectionResult("task-generation-action-finalize-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+		previousQueue,
+		target.QueueQuery,
+	)
+	currentResult := newTaskGenerationActionProjectionResult("task-generation-action-finalize-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+	currentQueue := newTaskGenerationActionProjectionQueue("task-generation-action-finalize-1", &GenerationWorkQueueSummary{
+		TotalItems:       1,
+		CompletedItems:   1,
+		PreviewableItems: 1,
+		ApprovedSections: 1,
+	}, "completed")
+	session := &taskGenerationActionProjectionSessionResult{
+		currentResult: currentResult,
+		reviewQueue:   currentQueue,
+		reviewSession: buildGenerationReviewSession(currentResult, currentQueue, target.QueueQuery),
+	}
+	result := &GenerationActionExecutionResult{
+		ActionKey:              "stale-action",
+		ResponseMode:           "full",
+		PlatformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
+		DeltaToken:             "stale-delta-token",
+	}
+
+	finalized := buildTaskGenerationActionProjectionFinalizePhase().run(&taskGenerationActionProjectionInput{
+		actionKey:             target.ActionKey,
+		target:                target,
+		previousReviewSession: previousSession,
+	}, result, session)
+
+	if finalized != result {
+		t.Fatalf("finalized result = %+v, want in-place mutation of input result", finalized)
+	}
+	if finalized.ReviewWorkflow == nil || finalized.ReviewWorkflow.ActionKey != target.ActionKey || finalized.ReviewWorkflow.Platform != "shein" || finalized.ReviewWorkflow.Slot != "main" || finalized.ReviewWorkflow.Capability != "detail_preview" {
+		t.Fatalf("review workflow = %+v, want action-and-target-derived workflow", finalized.ReviewWorkflow)
+	}
+	if finalized.ReviewSession == nil || finalized.ReviewSession.LastWorkflowResult == nil || finalized.ReviewSession.LastWorkflowResult.ActionKey != target.ActionKey {
+		t.Fatalf("review session = %+v, want workflow applied to session", finalized.ReviewSession)
+	}
+	if len(finalized.ReviewSession.Sections) == 0 {
+		t.Fatalf("review session sections = %+v, want populated review sections", finalized.ReviewSession.Sections)
+	}
+	if finalized.ReviewPatch == nil || finalized.ReviewPatch.LastWorkflowResult == nil || finalized.ReviewPatch.LastWorkflowResult.ActionKey != target.ActionKey {
+		t.Fatalf("review patch = %+v, want workflow attached to patch", finalized.ReviewPatch)
+	}
+	if len(finalized.ReviewPatch.ChangedSections) == 0 {
+		t.Fatalf("changed sections = %+v, want patch generated from updated session", finalized.ReviewPatch.ChangedSections)
+	}
+	if finalized.ReviewPatch.ChangedSections[0].WorkflowState != finalized.ReviewSession.Sections[0].WorkflowState || finalized.ReviewPatch.ChangedSections[0].WorkflowMessage != finalized.ReviewWorkflow.Message {
+		t.Fatalf("changed section = %+v, want workflow-applied section state before patching", finalized.ReviewPatch.ChangedSections[0])
+	}
+	if finalized.DeltaToken == "" || finalized.DeltaToken != finalized.ReviewPatch.DeltaToken || finalized.DeltaToken == "stale-delta-token" {
+		t.Fatalf("delta token = %q, review patch = %+v, want patch delta token to win", finalized.DeltaToken, finalized.ReviewPatch)
+	}
+}
+
+func TestTaskGenerationActionProjectionFinalizePreservesDeltaTokenFallbackOrder(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("queue_only")
+	result := &GenerationActionExecutionResult{
+		ResponseMode: "full",
+		DeltaToken:   "keep-existing-delta",
+	}
+
+	finalized := buildTaskGenerationActionProjectionFinalizePhase().run(&taskGenerationActionProjectionInput{
+		actionKey: target.ActionKey,
+		target:    target,
+	}, result, nil)
+
+	if finalized.ReviewPatch != nil {
+		t.Fatalf("review patch = %+v, want nil without projected session", finalized.ReviewPatch)
+	}
+	if finalized.DeltaToken != "keep-existing-delta" {
+		t.Fatalf("delta token = %q, want existing delta token preserved when finalize has no patch/session fallback", finalized.DeltaToken)
+	}
+}
+
+func TestTaskGenerationActionProjectionFinalizeSupportsPatchOnlyResponses(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("review_only")
+	previousSession := buildGenerationReviewSession(
+		newTaskGenerationActionProjectionResult("task-generation-action-finalize-patch-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+		newTaskGenerationActionProjectionQueue("task-generation-action-finalize-patch-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready"),
+		target.QueueQuery,
+	)
+	currentResult := newTaskGenerationActionProjectionResult("task-generation-action-finalize-patch-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+	currentQueue := newTaskGenerationActionProjectionQueue("task-generation-action-finalize-patch-1", &GenerationWorkQueueSummary{
+		TotalItems:       1,
+		CompletedItems:   1,
+		PreviewableItems: 1,
+		ApprovedSections: 1,
+	}, "completed")
+
+	finalized := buildTaskGenerationActionProjectionFinalizePhase().run(&taskGenerationActionProjectionInput{
+		actionKey:             target.ActionKey,
+		target:                target,
+		responseMode:          "patch_only",
+		previousReviewSession: previousSession,
+	}, &GenerationActionExecutionResult{
+		ResponseMode:           "patch_only",
+		PlatformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
+	}, &taskGenerationActionProjectionSessionResult{
+		currentResult: currentResult,
+		reviewQueue:   currentQueue,
+		reviewSession: buildGenerationReviewSession(currentResult, currentQueue, target.QueueQuery),
+	})
+
+	if finalized == nil {
+		t.Fatal("finalized result = nil, want patch-only finalization result")
+	}
+	if finalized.ReviewSession != nil {
+		t.Fatalf("review session = %+v, want patch_only response to omit session", finalized.ReviewSession)
+	}
+	if len(finalized.PlatformRenderPreviews) != 0 {
+		t.Fatalf("platform render previews = %+v, want patch_only response to omit previews", finalized.PlatformRenderPreviews)
+	}
+	if finalized.ReviewPatch == nil || finalized.ReviewPatch.LastWorkflowResult == nil || finalized.ReviewPatch.LastWorkflowResult.ActionKey != target.ActionKey {
+		t.Fatalf("review patch = %+v, want workflow-attached patch payload", finalized.ReviewPatch)
+	}
+	if finalized.DeltaToken == "" || finalized.DeltaToken != finalized.ReviewPatch.DeltaToken {
+		t.Fatalf("delta token = %q, review patch = %+v, want patch delta token preserved", finalized.DeltaToken, finalized.ReviewPatch)
+	}
+}
+
 func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testing.T) {
 	t.Parallel()
 
