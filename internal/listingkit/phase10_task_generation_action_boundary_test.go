@@ -70,13 +70,15 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 			name: "refresh_phase",
 			path: "task_generation_action_refresh.go",
 			required: []string{
-				"getCurrentListingKitResult(",
-				"buildActionPlatformRenderPreviews(",
+				"buildTaskGenerationActionRefreshExtractPhase(",
 				"PlatformAssetRenderPreviews",
 				"AssetRenderPreviews",
 				"baseResult",
 			},
 			forbidden: []string{
+				"getCurrentListingKitResult(",
+				"overview := currentResult.AssetGenerationOverview",
+				"buildActionPlatformRenderPreviews(currentResult, query)",
 				"RetryTaskGenerationTasks(",
 				"GetTaskGenerationQueue(",
 				"buildGenerationReviewWorkflowResult(",

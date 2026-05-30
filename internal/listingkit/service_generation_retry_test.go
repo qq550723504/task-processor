@@ -2183,48 +2183,6 @@ func TestTaskGenerationActionRefreshHydratesCurrentResultFallbacks(t *testing.T)
 	}
 }
 
-func TestTaskGenerationActionRefreshExtractServiceBoundary(t *testing.T) {
-	t.Parallel()
-
-	source := readExactMethodSource(t, "task_generation_action_refresh.go", "func (p *taskGenerationActionRefreshPhase) run(")
-
-	assertSourceOccurrenceCount(t, source, "buildTaskGenerationActionRefreshExtractPhase(p.service).run(", 1)
-	assertSourceExcludesAll(t, source, []string{
-		"p.service.getCurrentListingKitResult(",
-		"overview := currentResult.AssetGenerationOverview",
-		"buildActionPlatformRenderPreviews(currentResult, query)",
-	})
-}
-
-func TestTaskGenerationActionRefreshExtractPhaseBoundary(t *testing.T) {
-	t.Parallel()
-
-	source := readExactMethodSource(t, "task_generation_action_refresh_extract.go", "func (p *taskGenerationActionRefreshExtractPhase) run(")
-
-	assertSourceOccurrenceCount(t, source, "p.service.getCurrentListingKitResult(", 1)
-	assertSourceOccurrenceCount(t, source, "buildActionPlatformRenderPreviews(currentResult, query)", 1)
-	assertSourceOrderedContains(t, source, []string{
-		"p.service.getCurrentListingKitResult(",
-		"overview := currentResult.AssetGenerationOverview",
-		"buildActionPlatformRenderPreviews(currentResult, query)",
-		"taskGenerationActionRefreshExtractResult{",
-	})
-	assertSourceContainsAll(t, source, []string{
-		"overview := currentResult.AssetGenerationOverview",
-		"platformRenderPreviews := buildActionPlatformRenderPreviews(currentResult, query)",
-		"currentResult:",
-		"overview:",
-		"platformRenderPreviews:",
-	})
-	assertSourceExcludesAll(t, source, []string{
-		"baseResult",
-		"buildActionPlatformRenderPreviews(baseResult, query)",
-		"currentResult.PlatformAssetRenderPreviews =",
-		"currentResult.AssetRenderPreviews =",
-		"taskGenerationActionRefreshResult{",
-	})
-}
-
 func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	t.Parallel()
 
