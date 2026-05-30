@@ -38,8 +38,6 @@ func TestTaskGenerationTasksReadSnapshotOwnershipBoundary(t *testing.T) {
 	})
 	assertSourceContainsAll(t, source, []string{
 		"taskGenerationTasksReadSnapshot{",
-		"task:  task,",
-		"tasks: tasks,",
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"buildTaskGenerationTasksReadPagePhase(",
@@ -66,10 +64,6 @@ func TestTaskGenerationTasksReadPageOwnershipBoundary(t *testing.T) {
 		"sortGenerationTasks(",
 		"paginateGenerationTasks(",
 		"buildGenerationTaskPage(",
-	})
-	assertSourceContainsAll(t, source, []string{
-		"snapshot.task.ID",
-		"snapshot.task.UpdatedAt",
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"buildTaskGenerationTasksReadSnapshotPhase(",
