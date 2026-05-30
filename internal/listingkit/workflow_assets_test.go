@@ -1081,11 +1081,52 @@ func TestPlatformSummaryPhaseFinalizesReviewAndPreviewState(t *testing.T) {
 	}
 }
 
-func TestPlatformSummaryPhaseDoesNotConvertCoverageGuardReasonIntoSheinReviewIssue(t *testing.T) {
+func TestPlatformReviewPhasePreparesSheinReview(t *testing.T) {
 	t.Parallel()
 
 	coverageWarning := "coverage guard warning"
-	task := &Task{ID: "listingkit-task-summary-phase-coverage", Request: &GenerateRequest{Platforms: []string{"shein"}}}
+	final := &ListingKitResult{
+		Shein: &SheinPackage{
+			Inspection: &SheinInspection{
+				NeedsReview: true,
+				Summary:     []string{"inspection review"},
+			},
+			ReviewNotes: []string{coverageWarning},
+			Metadata: map[string]string{
+				sheinVariantImageCoverageStatusKey:  "blocked",
+				sheinVariantImageCoverageMessageKey: coverageWarning,
+			},
+		},
+		Summary: &GenerationSummary{
+			Warnings: []string{"existing warning"},
+		},
+	}
+	snapshot := &StandardProductSnapshot{
+		Summary: &GenerationSummary{
+			Warnings: []string{"snapshot warning"},
+		},
+	}
+
+	buildPlatformReviewPhase().run(final, snapshot)
+
+	if final.Summary == nil || !final.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs review", final.Summary)
+	}
+	if !strings.Contains(strings.Join(final.Summary.Warnings, "\n"), "snapshot warning") {
+		t.Fatalf("summary warnings = %#v, want snapshot warnings merged", final.Summary.Warnings)
+	}
+	if !hasWorkflowStageStatus(final.WorkflowStages, "shein_review", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, want completed shein_review", final.WorkflowStages)
+	}
+	if !hasWorkflowIssue(final.WorkflowIssues, "shein_review", WorkflowIssueSeverityReview, "shein_review_required") {
+		t.Fatalf("workflow issues = %+v, want shein review workflow issue", final.WorkflowIssues)
+	}
+}
+
+func TestPlatformReviewPhaseDoesNotConvertCoverageGuardReasonIntoSheinReviewIssue(t *testing.T) {
+	t.Parallel()
+
+	coverageWarning := "coverage guard warning"
 	final := &ListingKitResult{
 		Shein: &SheinPackage{
 			Inspection: &SheinInspection{
@@ -1105,11 +1146,11 @@ func TestPlatformSummaryPhaseDoesNotConvertCoverageGuardReasonIntoSheinReviewIss
 		ReviewReasons: []string{coverageWarning},
 	}
 
-	result := buildPlatformSummaryPhase().run(task, final, nil)
+	buildPlatformReviewPhase().run(final, nil)
 
-	for _, issue := range result.WorkflowIssues {
+	for _, issue := range final.WorkflowIssues {
 		if issue.Stage == "shein_review" && issue.Severity == WorkflowIssueSeverityReview && issue.Message == coverageWarning {
-			t.Fatalf("workflow issues = %+v, coverage guard warning should not become shein_review issue", result.WorkflowIssues)
+			t.Fatalf("workflow issues = %+v, coverage guard warning should not become shein_review issue", final.WorkflowIssues)
 		}
 	}
 }
