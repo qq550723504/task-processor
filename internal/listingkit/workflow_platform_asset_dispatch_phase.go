@@ -64,12 +64,5 @@ func (p *platformAssetDispatchPhase) run(
 			deferredStage.Complete()
 		}
 	}
-	decorateListingKitResultGeneration(final, persistedGenerationTasks)
-	if p.service.assetRepo != nil && len(persistedGenerationTasks) > 0 {
-		if err := p.service.assetRepo.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
-			appendWarning(final, "asset generation task persistence failed: "+err.Error())
-			newWorkflowRecorder(final).AddIssue(WorkflowIssueSeverityWarning, "asset_generation_platform", "asset_generation_task_persistence_failed", "Asset generation task persistence failed", err.Error())
-		}
-	}
-	return persistedGenerationTasks
+	return buildPlatformAssetDispatchPersistPhase(p.service).run(ctx, task, final, persistedGenerationTasks)
 }

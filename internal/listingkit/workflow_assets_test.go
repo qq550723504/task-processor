@@ -89,6 +89,42 @@ func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgene
 	return &assetgeneration.Result{Tasks: req.Tasks}, nil
 }
 
+type stubWorkflowAssetRepository struct {
+	delegate               *assetrepo.MemRepository
+	saveInventoryErr       error
+	saveGenerationTasksErr error
+	savedTaskID            string
+	savedTasks             []assetgeneration.Task
+}
+
+func newStubWorkflowAssetRepository() *stubWorkflowAssetRepository {
+	return &stubWorkflowAssetRepository{delegate: assetrepo.NewMemRepository()}
+}
+
+func (s *stubWorkflowAssetRepository) SaveInventory(ctx context.Context, inventory *asset.Inventory) error {
+	if s.saveInventoryErr != nil {
+		return s.saveInventoryErr
+	}
+	return s.delegate.SaveInventory(ctx, inventory)
+}
+
+func (s *stubWorkflowAssetRepository) GetInventory(ctx context.Context, ref asset.InventoryRef) (*asset.Inventory, error) {
+	return s.delegate.GetInventory(ctx, ref)
+}
+
+func (s *stubWorkflowAssetRepository) SaveGenerationTasks(ctx context.Context, taskID string, tasks []assetgeneration.Task) error {
+	s.savedTaskID = taskID
+	s.savedTasks = cloneGenerationTasks(tasks)
+	if s.saveGenerationTasksErr != nil {
+		return s.saveGenerationTasksErr
+	}
+	return s.delegate.SaveGenerationTasks(ctx, taskID, tasks)
+}
+
+func (s *stubWorkflowAssetRepository) ListGenerationTasks(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+	return s.delegate.ListGenerationTasks(ctx, taskID)
+}
+
 type stubWorkflowImageService struct {
 	task       *productimage.Task
 	result     *productimage.ImageProcessResult
@@ -411,6 +447,79 @@ func TestApplyPlatformAssetDispatchMutationKeepsGenerationTasksWhenDispatchResul
 	}
 	if got := len(mutation.inventory.Records); got != 1 {
 		t.Fatalf("inventory records = %d, want unchanged count 1", got)
+	}
+}
+
+func TestPlatformAssetDispatchPersistPhaseRunDecoratesAndPersistsGenerationTasks(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newStubWorkflowAssetRepository()
+	phase := buildPlatformAssetDispatchPersistPhase(&service{assetRepo: assetRepository})
+	final := &ListingKitResult{
+		Summary: &GenerationSummary{},
+		Amazon: &AmazonPackage{
+			ImageBundle: &common.PublishImageBundle{
+				PendingGeneration: []assetgeneration.Task{{
+					ID:              "stale-task",
+					Platform:        "amazon",
+					RecipeID:        "hero",
+					ExecutionStatus: "planned",
+				}},
+			},
+		},
+	}
+	tasks := []assetgeneration.Task{{
+		ID:              "persisted-task",
+		Platform:        "amazon",
+		RecipeID:        "hero",
+		ExecutionStatus: "completed",
+		ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+		CanExecute:      true,
+	}}
+
+	got := phase.run(context.Background(), &Task{ID: "task-persist"}, final, tasks)
+
+	if !reflect.DeepEqual(got, tasks) {
+		t.Fatalf("returned generation tasks = %+v, want %+v", got, tasks)
+	}
+	if assetRepository.savedTaskID != "task-persist" {
+		t.Fatalf("saved task id = %q, want task-persist", assetRepository.savedTaskID)
+	}
+	if !reflect.DeepEqual(assetRepository.savedTasks, tasks) {
+		t.Fatalf("saved generation tasks = %+v, want %+v", assetRepository.savedTasks, tasks)
+	}
+	if !reflect.DeepEqual(final.AssetGenerationTasks, tasks) {
+		t.Fatalf("decorated generation tasks = %+v, want %+v", final.AssetGenerationTasks, tasks)
+	}
+	if final.AssetGenerationSummary == nil || final.AssetGenerationSummary.CompletedTasks != 1 {
+		t.Fatalf("generation summary = %+v, want completed task summary", final.AssetGenerationSummary)
+	}
+}
+
+func TestPlatformAssetDispatchPersistPhaseRunAddsWarningIssueWhenPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newStubWorkflowAssetRepository()
+	assetRepository.saveGenerationTasksErr = fmt.Errorf("write failed")
+	phase := buildPlatformAssetDispatchPersistPhase(&service{assetRepo: assetRepository})
+	final := &ListingKitResult{Summary: &GenerationSummary{}}
+	tasks := []assetgeneration.Task{{
+		ID:              "persisted-task",
+		Platform:        "amazon",
+		RecipeID:        "hero",
+		ExecutionStatus: "planned",
+	}}
+
+	phase.run(context.Background(), &Task{ID: "task-persist-error"}, final, tasks)
+
+	if len(final.Summary.Warnings) != 1 || !strings.Contains(final.Summary.Warnings[0], "asset generation task persistence failed: write failed") {
+		t.Fatalf("summary warnings = %+v, want persistence warning", final.Summary.Warnings)
+	}
+	if !hasWorkflowIssue(final.WorkflowIssues, "asset_generation_platform", WorkflowIssueSeverityWarning, "asset_generation_task_persistence_failed") {
+		t.Fatalf("workflow issues = %+v, want persistence warning issue", final.WorkflowIssues)
+	}
+	if !reflect.DeepEqual(final.AssetGenerationTasks, tasks) {
+		t.Fatalf("decorated generation tasks = %+v, want %+v", final.AssetGenerationTasks, tasks)
 	}
 }
 
