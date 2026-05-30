@@ -524,6 +524,64 @@ func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsTasks
 	}
 }
 
+func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsAssetsOnly(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		Shein: &SheinPackage{},
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
+			},
+		},
+		AssetInventorySummary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	recipesByPlatform := resolveRecipesForPlatforms(newDefaultAssetRecipeResolver(), []string{"shein"}, nil)
+	generationTasks := []assetgeneration.Task{
+		{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Assets: []asset.AssetRecord{
+			{
+				ID:       "generated-1",
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "https://example.com/generated-1.jpg",
+				RecipeID: "scene",
+				Lineage:  &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+			},
+		},
+	}
+
+	mutation := applyPlatformAssetDispatchMutation(
+		final,
+		inventory,
+		recipesByPlatform,
+		generationTasks,
+		dispatchResult,
+		newDefaultAssetBundleBuilder(),
+	)
+
+	if got := len(mutation.inventory.Records); got != 2 {
+		t.Fatalf("inventory records = %d, want 2", got)
+	}
+	if mutation.final.Shein == nil || mutation.final.Shein.ImageBundle == nil {
+		t.Fatalf("shein image bundle = %+v, want reshaped bundle when assets return without tasks", mutation.final.Shein)
+	}
+	if mutation.final.Shein.ImageBundle.Main == nil {
+		t.Fatalf("shein image bundle = %+v, want generated asset assigned after reshape", mutation.final.Shein.ImageBundle)
+	}
+	if !reflect.DeepEqual(mutation.generationTasks, generationTasks) {
+		t.Fatalf("generation tasks = %+v, want unchanged %+v", mutation.generationTasks, generationTasks)
+	}
+}
+
 func TestPlatformAssetDispatchInventoryApplyPhaseRunMergesReturnedAssets(t *testing.T) {
 	t.Parallel()
 
@@ -672,7 +730,7 @@ func TestPlatformAssetDispatchBundleApplyPhaseRunReattachesBundlesAndMergesTasks
 	}
 }
 
-func TestPlatformAssetDispatchBundleApplyPhaseRunSkipsWhenNoReturnedTasks(t *testing.T) {
+func TestPlatformAssetDispatchBundleApplyPhaseRunReattachesBundlesWhenNoReturnedTasks(t *testing.T) {
 	t.Parallel()
 
 	existingPending := []assetgeneration.Task{{
@@ -711,10 +769,12 @@ func TestPlatformAssetDispatchBundleApplyPhaseRunSkipsWhenNoReturnedTasks(t *tes
 		t.Fatalf("generation tasks = %+v, want unchanged %+v", gotTasks, generationTasks)
 	}
 	if final.Amazon == nil || final.Amazon.ImageBundle == nil {
-		t.Fatalf("amazon image bundle = %+v, want unchanged existing bundle", final.Amazon)
+		t.Fatalf("amazon image bundle = %+v, want rebuilt bundle even without returned tasks", final.Amazon)
 	}
-	if !reflect.DeepEqual(final.Amazon.ImageBundle.PendingGeneration, existingPending) {
-		t.Fatalf("amazon pending generation = %+v, want unchanged %+v", final.Amazon.ImageBundle.PendingGeneration, existingPending)
+	for _, pending := range final.Amazon.ImageBundle.PendingGeneration {
+		if pending.ID == "stale-task" {
+			t.Fatalf("amazon pending generation = %+v, want stale pending task cleared during rebuild", final.Amazon.ImageBundle.PendingGeneration)
+		}
 	}
 }
 
