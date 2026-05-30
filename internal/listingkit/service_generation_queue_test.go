@@ -218,6 +218,155 @@ func TestTaskGenerationReviewReadsPropagateSnapshotLoadErrors(t *testing.T) {
 	}
 }
 
+func TestTaskGenerationReviewSessionReadPhaseRunReturnsPatchOnlyResponse(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &taskGenerationReviewReadSnapshot{
+		taskID: "task-generation-review-session-read-patch-1",
+		result: newTaskGenerationActionProjectionResult(
+			"task-generation-review-session-read-patch-1",
+			"asset-rev-patch",
+			"preview-rev-patch",
+			"task-rev-patch",
+		),
+		queue: newTaskGenerationActionProjectionQueue(
+			"task-generation-review-session-read-patch-1",
+			&GenerationWorkQueueSummary{
+				TotalItems:       1,
+				ReadyItems:       1,
+				PreviewableItems: 1,
+			},
+			"ready",
+		),
+	}
+
+	response := buildTaskGenerationReviewSessionReadPhase().run(
+		snapshot.taskID,
+		snapshot,
+		&GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+			ResponseMode:      "patch_only",
+		},
+	)
+	if response == nil {
+		t.Fatal("response = nil, want patch_only review session response")
+	}
+	if response.ResponseMode != "patch_only" {
+		t.Fatalf("response.ResponseMode = %q, want patch_only", response.ResponseMode)
+	}
+	if response.Session != nil {
+		t.Fatalf("response.Session = %+v, want patch_only response without full session payload", response.Session)
+	}
+	if response.Patch == nil {
+		t.Fatalf("response.Patch = nil, want patch payload for patch_only response")
+	}
+	if response.DeltaToken == "" || response.Patch.DeltaToken != response.DeltaToken {
+		t.Fatalf("response = %+v, want patch delta token to match response delta token", response)
+	}
+}
+
+func TestTaskGenerationReviewSessionReadPhaseRunNormalizesResponseModeAndShortCircuitsNotModified(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &taskGenerationReviewReadSnapshot{
+		taskID: "task-generation-review-session-read-not-modified-1",
+		result: newTaskGenerationActionProjectionResult(
+			"task-generation-review-session-read-not-modified-1",
+			"asset-rev-not-modified",
+			"preview-rev-not-modified",
+			"task-rev-not-modified",
+		),
+		queue: newTaskGenerationActionProjectionQueue(
+			"task-generation-review-session-read-not-modified-1",
+			&GenerationWorkQueueSummary{
+				TotalItems:       1,
+				ReadyItems:       1,
+				PreviewableItems: 1,
+			},
+			"ready",
+		),
+	}
+	query := &GenerationQueueQuery{
+		Platform:          "shein",
+		Slot:              "main",
+		PreviewCapability: "detail_preview",
+		ResponseMode:      "unexpected_mode",
+	}
+	current := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
+	if current == nil {
+		t.Fatal("current session = nil, want baseline review session for not-modified test")
+	}
+	query.DeltaToken = buildGenerationReviewReadDeltaToken(current)
+
+	response := buildTaskGenerationReviewSessionReadPhase().run(snapshot.taskID, snapshot, query)
+	if response == nil {
+		t.Fatal("response = nil, want not_modified review session response")
+	}
+	if !response.NotModified {
+		t.Fatalf("response = %+v, want not_modified short-circuit", response)
+	}
+	if response.ResponseMode != "full" {
+		t.Fatalf("response.ResponseMode = %q, want normalized full response mode", response.ResponseMode)
+	}
+	if response.Session != nil || response.Patch != nil {
+		t.Fatalf("response = %+v, want not_modified short-circuit before payload shaping", response)
+	}
+	if response.DeltaToken != query.DeltaToken {
+		t.Fatalf("response.DeltaToken = %q, want %q", response.DeltaToken, query.DeltaToken)
+	}
+}
+
+func TestTaskGenerationReviewSessionReadPhaseRunBuildsFullResponseDeltaToken(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &taskGenerationReviewReadSnapshot{
+		taskID: "task-generation-review-session-read-full-1",
+		result: newTaskGenerationActionProjectionResult(
+			"task-generation-review-session-read-full-1",
+			"asset-rev-full",
+			"preview-rev-full",
+			"task-rev-full",
+		),
+		queue: newTaskGenerationActionProjectionQueue(
+			"task-generation-review-session-read-full-1",
+			&GenerationWorkQueueSummary{
+				TotalItems:       1,
+				ReadyItems:       1,
+				PreviewableItems: 1,
+			},
+			"ready",
+		),
+	}
+
+	response := buildTaskGenerationReviewSessionReadPhase().run(
+		snapshot.taskID,
+		snapshot,
+		&GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+			ResponseMode:      "unknown",
+		},
+	)
+	if response == nil {
+		t.Fatal("response = nil, want full review session response")
+	}
+	if response.ResponseMode != "full" {
+		t.Fatalf("response.ResponseMode = %q, want normalized full response mode", response.ResponseMode)
+	}
+	if response.Session == nil {
+		t.Fatalf("response = %+v, want full session payload", response)
+	}
+	if response.Patch != nil {
+		t.Fatalf("response.Patch = %+v, want full response without patch payload", response.Patch)
+	}
+	if response.DeltaToken == "" || response.DeltaToken != buildGenerationReviewReadDeltaToken(response.Session) {
+		t.Fatalf("response = %+v, want full response delta token derived from session", response)
+	}
+}
+
 func TestBuildGenerationWorkQueueBuildsReadyFallbackAndStubbedStates(t *testing.T) {
 	t.Parallel()
 

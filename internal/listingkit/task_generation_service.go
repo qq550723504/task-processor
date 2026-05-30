@@ -132,38 +132,7 @@ func (s *taskGenerationService) GetTaskGenerationReviewSession(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
-	if session == nil {
-		return applyGenerationConditionalStateToReviewSessionResponse(&GenerationReviewSessionResponse{TaskID: taskID}), nil
-	}
-	deltaToken := buildGenerationReviewReadDeltaToken(session)
-	responseMode := normalizeGenerationActionResponseMode("")
-	if query != nil {
-		responseMode = normalizeGenerationActionResponseMode(query.ResponseMode)
-	}
-	if isGenerationReviewReadNotModified(query, deltaToken) {
-		return applyGenerationConditionalStateToReviewSessionResponse(&GenerationReviewSessionResponse{
-			TaskID:       taskID,
-			DeltaToken:   deltaToken,
-			NotModified:  true,
-			ResponseMode: responseMode,
-		}), nil
-	}
-	response := &GenerationReviewSessionResponse{
-		TaskID:       taskID,
-		DeltaToken:   deltaToken,
-		ResponseMode: responseMode,
-	}
-	if responseMode == "patch_only" {
-		baseSession := buildGenerationReviewSession(snapshot.result, snapshot.queue, buildGenerationReviewSessionBaseQuery(query))
-		response.Patch = buildGenerationReviewSessionPatch(baseSession, session)
-		if response.Patch != nil && response.Patch.DeltaToken == "" {
-			response.Patch.DeltaToken = deltaToken
-		}
-		return applyGenerationConditionalStateToReviewSessionResponse(response), nil
-	}
-	response.Session = session
-	return applyGenerationConditionalStateToReviewSessionResponse(response), nil
+	return buildTaskGenerationReviewSessionReadPhase().run(taskID, snapshot, query), nil
 }
 
 func (s *taskGenerationService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error) {
