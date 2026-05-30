@@ -258,10 +258,7 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		return nil, err
 	}
 
-	if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {
-		return nil, err
-	}
-	if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, updatedTasks); err != nil {
+	if err := buildRetryGenerationPersistPhase(s.assetRepo).run(ctx, task.ID, inventory, updatedTasks); err != nil {
 		return nil, err
 	}
 

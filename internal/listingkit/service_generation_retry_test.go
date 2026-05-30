@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -18,6 +19,45 @@ import (
 
 type stubRetryNilDispatchGenerator struct{}
 
+type recordingRetryPersistenceAssetRepo struct {
+	delegate               assetrepo.Repository
+	calls                  []string
+	saveInventoryErr       error
+	saveGenerationTasksErr error
+}
+
+func newRecordingRetryPersistenceAssetRepo() *recordingRetryPersistenceAssetRepo {
+	return &recordingRetryPersistenceAssetRepo{delegate: assetrepo.NewMemRepository()}
+}
+
+func (r *recordingRetryPersistenceAssetRepo) SaveInventory(ctx context.Context, inventory *asset.Inventory) error {
+	r.calls = append(r.calls, "save_inventory")
+	if r.saveInventoryErr != nil {
+		return r.saveInventoryErr
+	}
+	return r.delegate.SaveInventory(ctx, inventory)
+}
+
+func (r *recordingRetryPersistenceAssetRepo) GetInventory(ctx context.Context, ref asset.InventoryRef) (*asset.Inventory, error) {
+	return r.delegate.GetInventory(ctx, ref)
+}
+
+func (r *recordingRetryPersistenceAssetRepo) SaveGenerationTasks(ctx context.Context, taskID string, tasks []assetgeneration.Task) error {
+	r.calls = append(r.calls, "save_generation_tasks")
+	if r.saveGenerationTasksErr != nil {
+		return r.saveGenerationTasksErr
+	}
+	return r.delegate.SaveGenerationTasks(ctx, taskID, tasks)
+}
+
+func (r *recordingRetryPersistenceAssetRepo) ListGenerationTasks(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+	return r.delegate.ListGenerationTasks(ctx, taskID)
+}
+
+func (r *recordingRetryPersistenceAssetRepo) resetCalls() {
+	r.calls = nil
+}
+
 func (s *stubRetryNilDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
 	return &assetgeneration.Result{}, nil
 }
@@ -28,6 +68,96 @@ func (s *stubRetryNilDispatchGenerator) Execute(ctx context.Context, req assetge
 
 func (s *stubRetryNilDispatchGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
 	return nil, nil
+}
+
+func TestRetryGenerationPersistenceSavesInventoryBeforeTasks(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newRecordingRetryPersistenceAssetRepo()
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: "task-generation-retry-persist-order-1"},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: "task-generation-retry-persist-order-1", Kind: asset.KindGalleryImage, Origin: asset.OriginDerived},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, DerivedRecords: 1},
+	}
+	updatedTasks := []assetgeneration.Task{{
+		TaskID:          "task-generation-retry-persist-order-1",
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		ExecutionStatus: "completed",
+	}}
+
+	if err := buildRetryGenerationPersistPhase(assetRepository).run(context.Background(), "task-generation-retry-persist-order-1", inventory, updatedTasks); err != nil {
+		t.Fatalf("retryGenerationPersistPhase.run() error = %v", err)
+	}
+	if !reflect.DeepEqual(assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
+		t.Fatalf("persistence call order = %+v, want inventory before generation tasks", assetRepository.calls)
+	}
+	persistedInventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: "task-generation-retry-persist-order-1"})
+	if err != nil {
+		t.Fatalf("GetInventory() error = %v", err)
+	}
+	if !reflect.DeepEqual(persistedInventory, inventory) {
+		t.Fatalf("persisted inventory = %+v, want %+v", persistedInventory, inventory)
+	}
+	persistedTasks, err := assetRepository.ListGenerationTasks(context.Background(), "task-generation-retry-persist-order-1")
+	if err != nil {
+		t.Fatalf("ListGenerationTasks() error = %v", err)
+	}
+	if !reflect.DeepEqual(persistedTasks, updatedTasks) {
+		t.Fatalf("persisted tasks = %+v, want %+v", persistedTasks, updatedTasks)
+	}
+}
+
+func TestRetryGenerationPersistenceReturnsSaveErrors(t *testing.T) {
+	t.Parallel()
+
+	inventory := &asset.Inventory{Ref: asset.InventoryRef{TaskID: "task-generation-retry-persist-error-1"}}
+	updatedTasks := []assetgeneration.Task{{
+		TaskID:          "task-generation-retry-persist-error-1",
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		ExecutionStatus: "completed",
+	}}
+
+	t.Run("inventory_error", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("save inventory failed")
+		assetRepository := newRecordingRetryPersistenceAssetRepo()
+		assetRepository.saveInventoryErr = wantErr
+
+		err := buildRetryGenerationPersistPhase(assetRepository).run(context.Background(), "task-generation-retry-persist-error-1", inventory, updatedTasks)
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("retryGenerationPersistPhase.run() error = %v, want %v", err, wantErr)
+		}
+		if !reflect.DeepEqual(assetRepository.calls, []string{"save_inventory"}) {
+			t.Fatalf("persistence calls = %+v, want inventory save only", assetRepository.calls)
+		}
+	})
+
+	t.Run("generation_tasks_error", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("save generation tasks failed")
+		assetRepository := newRecordingRetryPersistenceAssetRepo()
+		assetRepository.saveGenerationTasksErr = wantErr
+
+		err := buildRetryGenerationPersistPhase(assetRepository).run(context.Background(), "task-generation-retry-persist-error-1", inventory, updatedTasks)
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("retryGenerationPersistPhase.run() error = %v, want %v", err, wantErr)
+		}
+		if !reflect.DeepEqual(assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
+			t.Fatalf("persistence calls = %+v, want inventory then generation tasks before failing", assetRepository.calls)
+		}
+	})
 }
 
 func TestRetryGenerationMutationApplyMergesTasksAndReplacesRetriedAssets(t *testing.T) {
@@ -1047,7 +1177,7 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	assetRepository := assetrepo.NewMemRepository()
+	assetRepository := newRecordingRetryPersistenceAssetRepo()
 	task := &Task{
 		ID:        "task-generation-retry-nil-dispatch-1",
 		Status:    TaskStatusCompleted,
@@ -1133,6 +1263,7 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 			return cloneGenerationTasks(selectedTasks), nil
 		},
 	})
+	assetRepository.resetCalls()
 
 	page, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{
 		Slots: []string{"auxiliary"},
@@ -1155,6 +1286,9 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	if page.ExecutedQueue.Summary.TotalItems != 0 || len(page.ExecutedQueue.Items) != 0 {
 		t.Fatalf("executed queue = %+v, want empty queue for nil dispatch result", page.ExecutedQueue)
 	}
+	if !reflect.DeepEqual(assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
+		t.Fatalf("persistence calls = %+v, want inventory/tasks save sequence even when dispatch result is nil", assetRepository.calls)
+	}
 
 	updatedInventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: task.ID})
 	if err != nil {
@@ -1170,6 +1304,70 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	}
 	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 2 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 1 || updatedInventory.Summary.RecipeCount != 1 {
 		t.Fatalf("inventory summary = %+v, want unchanged counts", updatedInventory.Summary)
+	}
+}
+
+func TestRetryTaskGenerationTasksEmptySelectionSkipsPersistence(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := newRecordingRetryPersistenceAssetRepo()
+	task := &Task{
+		ID:        "task-generation-retry-empty-selection-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-empty-selection-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := assetRepository.SaveInventory(context.Background(), &asset.Inventory{
+		Ref:     asset.InventoryRef{TaskID: task.ID},
+		Summary: &asset.InventorySummary{},
+	}); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator:      &stubRetryNilDispatchGenerator{},
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+	})
+	assetRepository.resetCalls()
+
+	page, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{})
+	if err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if page == nil {
+		t.Fatalf("page = nil, want empty retry page")
+	}
+	if len(assetRepository.calls) != 0 {
+		t.Fatalf("persistence calls = %+v, want no persistence when selection is empty", assetRepository.calls)
+	}
+	if page.MatchedQueue == nil || page.MatchedQueue.Summary == nil || page.MatchedQueue.Summary.TotalItems != 0 {
+		t.Fatalf("matched queue = %+v, want empty summary", page.MatchedQueue)
+	}
+	if page.ExecutedQueue == nil || page.ExecutedQueue.Summary == nil || page.ExecutedQueue.Summary.TotalItems != 0 {
+		t.Fatalf("executed queue = %+v, want empty summary", page.ExecutedQueue)
 	}
 }
 
