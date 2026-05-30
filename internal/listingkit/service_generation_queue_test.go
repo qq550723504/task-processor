@@ -139,23 +139,63 @@ func TestTaskGenerationQueueReadSnapshotRunUsesSingleCurrentSnapshot(t *testing.
 func TestTaskGenerationQueueReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
 	t.Parallel()
 
-	wantErr := errors.New("snapshot load failed")
-	svc := &taskGenerationService{
-		repo: &stubGenerationRepo{task: &Task{
-			ID:     "task-generation-queue-snapshot-error-1",
-			Result: &ListingKitResult{TaskID: "task-generation-queue-snapshot-error-1"},
-		}},
-		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
-			return nil, wantErr
+	taskListErr := errors.New("snapshot load failed")
+	reviewListErr := errors.New("review snapshot load failed")
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+		taskID  string
+		wantErr error
+	}{
+		{
+			name:    "repo get task",
+			service: &taskGenerationService{repo: &stubGenerationRepo{}},
+			taskID:  "task-generation-queue-snapshot-missing-1",
+			wantErr: ErrTaskNotFound,
 		},
-		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
-			return nil, nil
+		{
+			name: "list asset generation tasks",
+			service: &taskGenerationService{
+				repo: &stubGenerationRepo{task: &Task{
+					ID:     "task-generation-queue-snapshot-error-1",
+					Result: &ListingKitResult{TaskID: "task-generation-queue-snapshot-error-1"},
+				}},
+				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+					return nil, taskListErr
+				},
+				listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+					return nil, nil
+				},
+			},
+			taskID:  "task-generation-queue-snapshot-error-1",
+			wantErr: taskListErr,
+		},
+		{
+			name: "list generation reviews",
+			service: &taskGenerationService{
+				repo: &stubGenerationRepo{task: &Task{
+					ID:     "task-generation-queue-snapshot-error-2",
+					Result: &ListingKitResult{TaskID: "task-generation-queue-snapshot-error-2"},
+				}},
+				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+					return nil, nil
+				},
+				listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+					return nil, reviewListErr
+				},
+			},
+			taskID:  "task-generation-queue-snapshot-error-2",
+			wantErr: reviewListErr,
 		},
 	}
 
-	_, err := buildTaskGenerationQueueReadSnapshotPhase(svc).run(context.Background(), "task-generation-queue-snapshot-error-1")
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("taskGenerationQueueReadSnapshotPhase.run() error = %v, want %v", err, wantErr)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildTaskGenerationQueueReadSnapshotPhase(tc.service).run(context.Background(), tc.taskID)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("taskGenerationQueueReadSnapshotPhase.run() error = %v, want %v", err, tc.wantErr)
+			}
+		})
 	}
 }
 
