@@ -752,6 +752,116 @@ func TestTaskGenerationQueueReadPageRunAttachesReviewSummaryBeforeDeltaTokenBuil
 	}
 }
 
+func TestTaskGenerationQueueReadResponsePhaseFinalizesDeltaTokenAndConditionalState(t *testing.T) {
+	t.Parallel()
+
+	query := &GenerationQueueQuery{Platform: "shein"}
+	page := &GenerationQueuePage{
+		TaskID:    "task-generation-queue-read-response-final-1",
+		Page:      1,
+		PageSize:  10,
+		Total:     1,
+		UpdatedAt: time.Date(2026, 5, 30, 10, 20, 0, 0, time.UTC),
+		Summary: &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			ApprovedSections:      2,
+			DeferredSections:      1,
+			ReviewPendingSections: 3,
+		},
+		Items: []GenerationWorkQueueItem{{
+			TaskID:                 "task-generation-queue-read-response-final-1",
+			Platform:               "shein",
+			Slot:                   "main",
+			State:                  "ready",
+			RenderPreviewAvailable: true,
+		}},
+	}
+
+	response := buildTaskGenerationQueueReadResponsePhase().run(page.TaskID, page, query)
+	if response == nil {
+		t.Fatal("response = nil, want finalized queue response")
+	}
+	if response.DeltaToken == "" {
+		t.Fatalf("response = %+v, want delta token", response)
+	}
+	if response.DeltaToken != buildGenerationQueueDeltaToken(page, query) {
+		t.Fatalf("response.DeltaToken = %q, want queue delta token derived from final page", response.DeltaToken)
+	}
+	if response.NotModified {
+		t.Fatalf("response = %+v, want full response when token does not match", response)
+	}
+	if response.Conditional == nil || response.Conditional.DeltaToken != response.DeltaToken || response.Conditional.NotModified {
+		t.Fatalf("response.Conditional = %+v, want final conditional state applied", response.Conditional)
+	}
+}
+
+func TestTaskGenerationQueueReadResponsePhaseShortCircuitsNotModifiedBeforeFinalPayload(t *testing.T) {
+	t.Parallel()
+
+	page := &GenerationQueuePage{
+		TaskID:    "task-generation-queue-read-response-not-modified-1",
+		Page:      2,
+		PageSize:  5,
+		Total:     4,
+		UpdatedAt: time.Date(2026, 5, 30, 10, 25, 0, 0, time.UTC),
+		Summary: &GenerationWorkQueueSummary{
+			TotalItems:       4,
+			ReadyItems:       4,
+			PreviewableItems: 1,
+		},
+		Items: []GenerationWorkQueueItem{{
+			TaskID:   "task-generation-queue-read-response-not-modified-1",
+			Platform: "shein",
+			Slot:     "main",
+			State:    "ready",
+		}},
+	}
+	query := &GenerationQueueQuery{
+		Platform: "shein",
+		Page:     page.Page,
+		PageSize: page.PageSize,
+	}
+	query.DeltaToken = buildGenerationQueueDeltaToken(page, query)
+
+	response := buildTaskGenerationQueueReadResponsePhase().run(page.TaskID, page, query)
+	if response == nil {
+		t.Fatal("response = nil, want not_modified queue response")
+	}
+	if !response.NotModified {
+		t.Fatalf("response = %+v, want not_modified response", response)
+	}
+	if response.DeltaToken != query.DeltaToken {
+		t.Fatalf("response.DeltaToken = %q, want %q", response.DeltaToken, query.DeltaToken)
+	}
+	if response.Summary != nil || len(response.Items) != 0 {
+		t.Fatalf("response = %+v, want final payload fields omitted after not_modified short-circuit", response)
+	}
+	if response.Conditional == nil || !response.Conditional.NotModified {
+		t.Fatalf("response.Conditional = %+v, want not_modified conditional state", response.Conditional)
+	}
+}
+
+func TestTaskGenerationQueueReadServiceBoundary(t *testing.T) {
+	t.Parallel()
+
+	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) GetTaskGenerationQueue(")
+
+	assertSourceOccurrenceCount(t, source, "buildTaskGenerationQueueReadSnapshotPhase(s).run(", 1)
+	assertSourceOccurrenceCount(t, source, "buildTaskGenerationQueueReadPagePhase().run(", 1)
+	assertSourceOccurrenceCount(t, source, "buildTaskGenerationQueueReadResponsePhase().run(", 1)
+	assertSourceExcludesAll(t, source, []string{
+		"buildGenerationQueueDeltaToken(",
+		"isGenerationReviewReadNotModified(",
+		"applyGenerationConditionalStateToQueuePage(",
+		"buildGenerationQueuePage(",
+		"filterGenerationQueueItems(",
+		"sortGenerationQueueItems(",
+		"paginateGenerationQueueItems(",
+		"attachReviewSummaryToGenerationQueuePage(",
+	})
+}
+
 func TestTaskGenerationReviewReadSnapshotPhaseRunUsesSingleCurrentSnapshot(t *testing.T) {
 	t.Parallel()
 

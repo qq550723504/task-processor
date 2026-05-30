@@ -78,19 +78,7 @@ func (s *taskGenerationService) GetTaskGenerationQueue(ctx context.Context, task
 		return nil, err
 	}
 	page := buildTaskGenerationQueueReadPagePhase().run(snapshot, query)
-	page.DeltaToken = buildGenerationQueueDeltaToken(page, query)
-	if isGenerationReviewReadNotModified(query, page.DeltaToken) {
-		return applyGenerationConditionalStateToQueuePage(&GenerationQueuePage{
-			TaskID:      page.TaskID,
-			DeltaToken:  page.DeltaToken,
-			NotModified: true,
-			Page:        page.Page,
-			PageSize:    page.PageSize,
-			Total:       page.Total,
-			UpdatedAt:   page.UpdatedAt,
-		}), nil
-	}
-	return applyGenerationConditionalStateToQueuePage(page), nil
+	return buildTaskGenerationQueueReadResponsePhase().run(taskID, page, query), nil
 }
 
 func (s *taskGenerationService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error) {
