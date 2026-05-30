@@ -268,6 +268,7 @@ type SheinStudioSessionGalleryItem struct {
 
 type UpsertStudioBatchRequest struct {
 	ID                      string                          `json:"id,omitempty"`
+	ExpectedUpdatedAt       string                          `json:"expected_updated_at,omitempty"`
 	BatchName               string                          `json:"batch_name,omitempty"`
 	Prompt                  string                          `json:"prompt"`
 	StyleCount              string                          `json:"style_count,omitempty"`

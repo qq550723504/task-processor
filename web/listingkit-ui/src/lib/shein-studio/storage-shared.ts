@@ -147,6 +147,19 @@ function normalizeGeneratedDesign(item: SheinStudioGeneratedDesign) {
   } satisfies SheinStudioGeneratedDesign;
 }
 
+export function dedupeGeneratedDesignsByID(
+  designs: SheinStudioGeneratedDesign[],
+): SheinStudioGeneratedDesign[] {
+  const nextByID = new Map<string, SheinStudioGeneratedDesign>();
+  for (const design of designs) {
+    if (!design?.id?.trim()) {
+      continue;
+    }
+    nextByID.set(design.id, normalizeGeneratedDesign(design));
+  }
+  return Array.from(nextByID.values());
+}
+
 export function isCreatedTask(item: unknown): item is SheinStudioCreatedTask {
   const raw = item as
     | (SheinStudioCreatedTask & { design_id?: string })

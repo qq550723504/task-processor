@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/httproute"
+	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
@@ -77,6 +77,7 @@ func (stubStudioSessionRouteHandler) EnsureStudioSession(*gin.Context)         {
 func (stubStudioSessionRouteHandler) GetStudioSession(*gin.Context)            {}
 func (stubStudioSessionRouteHandler) UpdateStudioSession(*gin.Context)         {}
 func (stubStudioSessionRouteHandler) ReplaceStudioSessionDesigns(*gin.Context) {}
+func (stubStudioSessionRouteHandler) AppendStudioSessionDesigns(*gin.Context)  {}
 
 type stubRouteHandler struct{}
 

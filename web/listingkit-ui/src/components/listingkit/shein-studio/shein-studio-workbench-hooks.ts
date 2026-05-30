@@ -62,9 +62,11 @@ type WorkbenchDraftState = {
   regeneratingId: string;
   renderSizeImagesWithSds: boolean;
   groupedSelections: GroupedSDSSelectionEligibility[];
+  persistedUpdatedAt: string;
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   setDraftWarning: (value: string | ((current: string) => string)) => void;
+  setPersistedUpdatedAt: (value: string) => void;
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
@@ -265,7 +267,6 @@ export function useSheinStudioDraftPersistence(
     persistenceEnabled?: boolean;
   },
 ) {
-  const autosaveAbortRef = useRef<AbortController | null>(null);
   const autosaveFingerprintRef = useRef("");
   const activeBatchId = options?.activeBatchId?.trim() || "";
   const persistenceEnabled = options?.persistenceEnabled ?? true;
@@ -274,6 +275,7 @@ export function useSheinStudioDraftPersistence(
   const buildDraftInput = useCallback(
     (overrides?: DraftOverrides) =>
       buildSheinStudioDraftInput({
+        updatedAt: state.persistedUpdatedAt,
         prompt: state.prompt,
         styleCount: state.styleCount,
         variationIntensity: state.variationIntensity,
@@ -317,6 +319,9 @@ export function useSheinStudioDraftPersistence(
         saveLocalSheinStudioDraftSnapshot(draft, {
           batchId: activeBatchId,
         });
+        if (draft?.updatedAt) {
+          state.setPersistedUpdatedAt(draft.updatedAt);
+        }
         state.setDraftWarning((current) => clearDraftSaveWarning(current));
         return draft;
       } catch (error) {
@@ -363,54 +368,11 @@ export function useSheinStudioDraftPersistence(
         return;
       }
 
-      autosaveAbortRef.current?.abort("superseded");
-      const controller = new AbortController();
-      autosaveAbortRef.current = controller;
-
-      const timeout = window.setTimeout(() => {
-        controller.abort("timeout");
-      }, 15000);
-
       saveLocalSheinStudioDraftSnapshot(draftInput, {
         batchId: activeBatchId,
       });
-      const autosavePromise = activeBatchId
-        ? saveSheinStudioBatch(
-            {
-              ...draftInput,
-              id: activeBatchId,
-            },
-            { makeActive: false },
-          )
-        : saveSheinStudioDraftWithOptions(draftInput, {
-            signal: controller.signal,
-            source: "autosave",
-          });
-
-      void autosavePromise
-        .then((draft) => {
-          saveLocalSheinStudioDraftSnapshot(draft, {
-            batchId: activeBatchId,
-          });
-          state.setDraftWarning((current) => clearDraftSaveWarning(current));
-          autosaveFingerprintRef.current = fingerprint;
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) {
-            return;
-          }
-          state.setDraftWarning((current) => appendDraftSaveWarning(current));
-          console.warn(
-            "shein studio draft autosave failed",
-            error instanceof Error ? error.message : error,
-          );
-        })
-        .finally(() => {
-          window.clearTimeout(timeout);
-          if (autosaveAbortRef.current === controller) {
-            autosaveAbortRef.current = null;
-          }
-        });
+      autosaveFingerprintRef.current = fingerprint;
+      state.setDraftWarning((current) => clearDraftSaveWarning(current));
     }, autosaveDelayMs);
 
     return () => {

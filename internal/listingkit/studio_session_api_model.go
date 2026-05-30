@@ -3,6 +3,7 @@ package listingkit
 import "errors"
 
 var ErrStudioSessionNotFound = errors.New("studio session not found")
+var ErrStudioSessionConflict = errors.New("studio session has been updated by another request")
 
 type EnsureStudioSessionRequest struct {
 	UserID    string                `json:"user_id,omitempty"`
@@ -11,6 +12,7 @@ type EnsureStudioSessionRequest struct {
 
 type UpdateStudioSessionRequest struct {
 	Status                  *SheinStudioSessionStatus       `json:"status,omitempty"`
+	ExpectedUpdatedAt       *string                         `json:"expected_updated_at,omitempty"`
 	Prompt                  *string                         `json:"prompt,omitempty"`
 	StyleCount              *string                         `json:"style_count,omitempty"`
 	VariationIntensity      *string                         `json:"variation_intensity,omitempty"`
@@ -32,9 +34,18 @@ type UpdateStudioSessionRequest struct {
 }
 
 type ReplaceStudioSessionDesignsRequest struct {
+	ExpectedUpdatedAt *string                   `json:"expected_updated_at,omitempty"`
 	Status            *SheinStudioSessionStatus `json:"status,omitempty"`
 	ApprovedDesignIDs []string                  `json:"approved_design_ids,omitempty"`
 	Designs           []SheinStudioDesign       `json:"designs,omitempty"`
+}
+
+type AppendStudioSessionDesignsRequest struct {
+	ExpectedUpdatedAt *string                    `json:"expected_updated_at,omitempty"`
+	Status            *SheinStudioSessionStatus  `json:"status,omitempty"`
+	ApprovedDesignIDs []string                   `json:"approved_design_ids,omitempty"`
+	GenerationJobs    []SheinStudioGenerationJob `json:"generation_jobs,omitempty"`
+	Designs           []SheinStudioDesign        `json:"designs,omitempty"`
 }
 
 type StudioSessionGalleryResponse struct {

@@ -16,6 +16,7 @@ import type {
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
 type BuildSheinStudioDraftInputArgs = {
+  updatedAt?: string;
   prompt: string;
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
@@ -42,6 +43,7 @@ export function buildSheinStudioDraftInput(
   args: BuildSheinStudioDraftInputArgs,
 ): SheinStudioSaveInput {
   return {
+    updatedAt: args.updatedAt,
     prompt: args.prompt,
     styleCount: args.styleCount,
     variationIntensity: args.variationIntensity,

@@ -9,6 +9,7 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
+  appendSheinStudioSessionDesigns,
   ensureSheinStudioSession,
   updateSheinStudioSession,
 } from "@/lib/api/shein-studio-sessions";
@@ -66,6 +67,7 @@ type UseSheinStudioDesignActionsParams = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  persistedUpdatedAt: string;
   prompt: string;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   renderSizeImagesWithSds: boolean;
@@ -96,6 +98,7 @@ export function useSheinStudioDesignActions({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  persistedUpdatedAt,
   prompt,
   promptInputRef,
   renderSizeImagesWithSds,
@@ -277,6 +280,7 @@ export function useSheinStudioDesignActions({
 
     try {
       const sessionId = await sessionSyncPromise;
+      let latestPersistedUpdatedAt = persistedUpdatedAt;
       const targets = buildGroupedGenerationTargets({
         activeSelection,
         groupedSelections: groupedSelections
@@ -313,22 +317,47 @@ export function useSheinStudioDesignActions({
       };
 
       const persistProgress = async (
-        nextDesigns: SheinStudioGeneratedDesign[],
+        incomingDesigns: SheinStudioGeneratedDesign[],
         nextSelectedIds: string[],
         jobs: SheinStudioGenerationJob[],
       ) => {
-        await persistDraft(
+        if (!sessionId) {
+          await persistDraft(
+            {
+              designs: accumulatedDesigns,
+              groups: nextGroups,
+              selectedIds: nextSelectedIds,
+              createdTasks: [],
+              generationJobs: jobs,
+            },
+            {
+              source: "generate_progress",
+            },
+          ).catch(() => undefined);
+          return;
+        }
+        const nextStatus = jobs.length > 0 ? "generating" : "reviewing";
+        await appendSheinStudioSessionDesigns(
+          sessionId,
           {
-            designs: nextDesigns,
-            groups: nextGroups,
-            selectedIds: nextSelectedIds,
-            createdTasks: [],
+            expectedUpdatedAt: latestPersistedUpdatedAt,
+            status: nextStatus,
+            approvedDesignIds: nextSelectedIds,
             generationJobs: jobs,
+            designs: incomingDesigns,
           },
           {
-            source: "generate_progress",
+            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
           },
-        ).catch(() => undefined);
+        )
+          .then((detail) => {
+            const updatedAt = detail?.session?.updated_at?.trim();
+            if (updatedAt) {
+              latestPersistedUpdatedAt = updatedAt;
+              workbench.setField("persistedUpdatedAt", updatedAt);
+            }
+          })
+          .catch(() => undefined);
       };
 
       syncGenerationJobs([]);
@@ -394,7 +423,7 @@ export function useSheinStudioDesignActions({
             workbench.setField("createdTasks", []);
             navigateToStep("review");
             await persistProgress(
-              accumulatedDesigns,
+              nextImages,
               accumulatedSelectedIDs,
               nextGenerationJobs.filter((job) => job.status === "running"),
             );

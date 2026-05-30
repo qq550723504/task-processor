@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -92,6 +93,9 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 	}
 	if session == nil {
 		return nil, ErrStudioSessionNotFound
+	}
+	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
+		return nil, err
 	}
 
 	if req != nil {
@@ -182,6 +186,9 @@ func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Conte
 	if session == nil {
 		return nil, ErrStudioSessionNotFound
 	}
+	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
+		return nil, err
+	}
 
 	approvedSet := make(map[string]struct{}, len(req.ApprovedDesignIDs))
 	for _, id := range req.ApprovedDesignIDs {
@@ -223,6 +230,46 @@ func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Conte
 		return nil, err
 	}
 	if err := s.repo.ReplaceDesigns(ctx, sessionID, req.ApprovedDesignIDs, designs); err != nil {
+		return nil, err
+	}
+	return s.loadStudioSessionDetail(ctx, session)
+}
+
+func (s *taskStudioSessionService) AppendStudioSessionDesigns(ctx context.Context, sessionID string, req *AppendStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error) {
+	if s.repo == nil {
+		return nil, fmt.Errorf("studio session repository is not configured")
+	}
+	session, err := s.repo.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, ErrStudioSessionNotFound
+	}
+	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return s.loadStudioSessionDetail(ctx, session)
+	}
+	if req.Status != nil {
+		session.Status = *req.Status
+	}
+	if req.GenerationJobs != nil {
+		session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
+		if len(req.GenerationJobs) > 0 {
+			session.GenerationJobID = strings.TrimSpace(req.GenerationJobs[0].JobID)
+		} else {
+			session.GenerationJobID = ""
+		}
+	}
+	if req.ApprovedDesignIDs != nil {
+		session.ApprovedDesignIDs = slices.Clone(req.ApprovedDesignIDs)
+	}
+	if err := s.repo.UpdateSession(ctx, session); err != nil {
+		return nil, err
+	}
+	if err := s.repo.UpsertDesigns(ctx, sessionID, req.ApprovedDesignIDs, req.Designs); err != nil {
 		return nil, err
 	}
 	return s.loadStudioSessionDetail(ctx, session)
@@ -297,6 +344,9 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 		if session == nil {
 			return nil, ErrStudioSessionNotFound
 		}
+		if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, studioSessionStringPtr(req.ExpectedUpdatedAt)); err != nil {
+			return nil, err
+		}
 	} else {
 		session = &SheinStudioSession{
 			ID:                      uuid.NewString(),
@@ -360,6 +410,53 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 		return nil, err
 	}
 	return s.loadStudioSessionDetail(ctx, session)
+}
+
+func reqExpectedUpdatedAt(req any) *string {
+	switch value := req.(type) {
+	case *UpdateStudioSessionRequest:
+		if value == nil {
+			return nil
+		}
+		return value.ExpectedUpdatedAt
+	case *ReplaceStudioSessionDesignsRequest:
+		if value == nil {
+			return nil
+		}
+		return value.ExpectedUpdatedAt
+	case *AppendStudioSessionDesignsRequest:
+		if value == nil {
+			return nil
+		}
+		return value.ExpectedUpdatedAt
+	default:
+		return nil
+	}
+}
+
+func validateStudioSessionExpectedUpdatedAt(current time.Time, expected *string) error {
+	if expected == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*expected)
+	if trimmed == "" || current.IsZero() {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, trimmed)
+	if err != nil {
+		return fmt.Errorf("invalid expected_updated_at: %w", err)
+	}
+	if !current.UTC().Equal(parsed.UTC()) {
+		return ErrStudioSessionConflict
+	}
+	return nil
+}
+
+func studioSessionStringPtr(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func (s *taskStudioSessionService) nextTenantBatchName(ctx context.Context) (string, error) {

@@ -216,6 +216,7 @@ func AppendStudioSessionRouteDescriptors(routes []httproute.Descriptor, handler 
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: handler.GetStudioSession},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: handler.UpdateStudioSession},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions/:session_id/designs", Module: "listing-kit-studio", Handler: handler.ReplaceStudioSessionDesigns},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions/:session_id/designs/append", Module: "listing-kit-studio", Handler: handler.AppendStudioSessionDesigns},
 	)
 }
 

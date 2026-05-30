@@ -180,6 +180,7 @@ export async function updateSheinStudioSession(
   sessionId: string,
   patch: {
     status?: StudioSessionStatus;
+    expectedUpdatedAt?: string;
     prompt?: string;
     styleCount?: string;
     variationIntensity?: SheinStudioVariationIntensity;
@@ -208,6 +209,7 @@ export async function updateSheinStudioSession(
       method: "PATCH",
       body: {
         status: patch.status,
+        expected_updated_at: patch.expectedUpdatedAt,
         prompt: patch.prompt,
         style_count: patch.styleCount,
         variation_intensity: patch.variationIntensity,
@@ -242,6 +244,7 @@ export async function updateSheinStudioSession(
 export async function replaceSheinStudioSessionDesigns(
   sessionId: string,
   input: {
+    expectedUpdatedAt?: string;
     status?: StudioSessionStatus;
     approvedDesignIds: string[];
     designs: SheinStudioGeneratedDesign[];
@@ -253,7 +256,54 @@ export async function replaceSheinStudioSessionDesigns(
       method: "POST",
       body: {
         status: input.status,
+        expected_updated_at: input.expectedUpdatedAt,
         approved_design_ids: input.approvedDesignIds,
+        designs: input.designs.map((design) => ({
+          id: design.id,
+          image_url: design.imageUrl ?? design.dataUrl,
+          prompt: design.prompt,
+          revised_prompt: design.revisedPrompt,
+          image_model: design.imageModel,
+          transparent_background: design.transparentBackground,
+          variation_intensity: design.variationIntensity,
+          review_note: design.reviewNote,
+          role: design.role,
+          role_label: design.roleLabel,
+          target_group_key: design.targetGroupKey,
+          target_group_label: design.targetGroupLabel,
+          product_image_urls: design.productImageUrls,
+        })),
+      },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    }),
+  );
+}
+
+export async function appendSheinStudioSessionDesigns(
+  sessionId: string,
+  input: {
+    expectedUpdatedAt?: string;
+    status?: StudioSessionStatus;
+    approvedDesignIds: string[];
+    generationJobs?: SheinStudioGenerationJob[];
+    designs: SheinStudioGeneratedDesign[];
+  },
+  options?: StudioSessionRequestOptions,
+) {
+  return parseStudioSessionDetailResponse(
+    await apiRequest<unknown>(`/studio/sessions/${sessionId}/designs/append`, {
+      method: "POST",
+      body: {
+        status: input.status,
+        expected_updated_at: input.expectedUpdatedAt,
+        approved_design_ids: input.approvedDesignIds,
+        generation_jobs: input.generationJobs?.map((job) => ({
+          job_id: job.jobId,
+          target_group_key: job.targetGroupKey,
+          target_group_label: job.targetGroupLabel,
+          status: job.status,
+        })),
         designs: input.designs.map((design) => ({
           id: design.id,
           image_url: design.imageUrl ?? design.dataUrl,
@@ -301,6 +351,7 @@ export async function getSheinStudioSessionBatch(
 export async function upsertSheinStudioSessionBatch(
   input: {
     id?: string;
+    expectedUpdatedAt?: string;
     name?: string;
     prompt: string;
     styleCount: string;
@@ -333,6 +384,7 @@ export async function upsertSheinStudioSessionBatch(
       method: "POST",
       body: {
         id: input.id,
+        expected_updated_at: input.expectedUpdatedAt,
         batch_name: batchName,
         prompt: input.prompt,
         style_count: input.styleCount,

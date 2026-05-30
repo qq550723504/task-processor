@@ -2,8 +2,10 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/tenantctx"
@@ -14,6 +16,8 @@ type studioSessionRepoStub struct {
 	designs           map[string][]SheinStudioDesign
 	countDesignsCalls int
 	listDesignsCalls  int
+	timestampSeed     time.Time
+	timestampTick     int64
 }
 
 func newStudioSessionRepoStub() *studioSessionRepoStub {
@@ -21,6 +25,15 @@ func newStudioSessionRepoStub() *studioSessionRepoStub {
 		sessions: map[string]*SheinStudioSession{},
 		designs:  map[string][]SheinStudioDesign{},
 	}
+}
+
+func (r *studioSessionRepoStub) nextTimestamp() time.Time {
+	if r.timestampSeed.IsZero() {
+		r.timestampSeed = time.Now().UTC()
+	}
+	next := r.timestampSeed.Add(time.Duration(r.timestampTick) * time.Millisecond)
+	r.timestampTick++
+	return next
 }
 
 func (r *studioSessionRepoStub) FindLatestSessionBySelectionKey(_ context.Context, selectionKey string) (*SheinStudioSession, error) {
@@ -39,6 +52,11 @@ func (r *studioSessionRepoStub) CreateSession(ctx context.Context, session *Shei
 	if session.UserID == "" {
 		session.UserID = RequestUserIDFromContext(ctx)
 	}
+	now := r.nextTimestamp()
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = now
+	}
+	session.UpdatedAt = now
 	r.sessions[session.ID] = cloneSession(session)
 	return nil
 }
@@ -58,6 +76,7 @@ func (r *studioSessionRepoStub) UpdateSession(ctx context.Context, session *Shei
 	if session.UserID == "" {
 		session.UserID = RequestUserIDFromContext(ctx)
 	}
+	session.UpdatedAt = r.nextTimestamp()
 	r.sessions[session.ID] = cloneSession(session)
 	return nil
 }
@@ -90,6 +109,50 @@ func (r *studioSessionRepoStub) ReplaceDesigns(_ context.Context, sessionID stri
 	r.designs[sessionID] = next
 	if session, ok := r.sessions[sessionID]; ok {
 		session.ApprovedDesignIDs = slices.Clone(approvedIDs)
+		session.UpdatedAt = r.nextTimestamp()
+	}
+	return nil
+}
+
+func (r *studioSessionRepoStub) UpsertDesigns(_ context.Context, sessionID string, approvedIDs []string, designs []SheinStudioDesign) error {
+	approved := make(map[string]struct{}, len(approvedIDs))
+	for _, id := range approvedIDs {
+		approved[id] = struct{}{}
+	}
+	current := append([]SheinStudioDesign(nil), r.designs[sessionID]...)
+	indexByID := make(map[string]int, len(current))
+	for idx, design := range current {
+		indexByID[design.ID] = idx
+	}
+	for _, design := range designs {
+		_, isApproved := approved[design.ID]
+		nextDesign := SheinStudioDesign{
+			ID:                    design.ID,
+			SessionID:             sessionID,
+			ImageURL:              design.ImageURL,
+			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
+			Prompt:                design.Prompt,
+			RevisedPrompt:         design.RevisedPrompt,
+			ImageModel:            design.ImageModel,
+			TransparentBackground: design.TransparentBackground,
+			VariationIntensity:    design.VariationIntensity,
+			Role:                  design.Role,
+			RoleLabel:             design.RoleLabel,
+			ReviewNote:            design.ReviewNote,
+			SortOrder:             design.SortOrder,
+			Approved:              isApproved,
+		}
+		if idx, ok := indexByID[design.ID]; ok {
+			current[idx] = nextDesign
+			continue
+		}
+		indexByID[design.ID] = len(current)
+		current = append(current, nextDesign)
+	}
+	r.designs[sessionID] = current
+	if session, ok := r.sessions[sessionID]; ok {
+		session.ApprovedDesignIDs = slices.Clone(approvedIDs)
+		session.UpdatedAt = r.nextTimestamp()
 	}
 	return nil
 }
@@ -249,6 +312,50 @@ func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
 	}
 	if len(loaded.Session.ApprovedDesignIDs) != 1 || loaded.Session.ApprovedDesignIDs[0] != "design-1" {
 		t.Fatalf("approved ids = %#v, want [design-1]", loaded.Session.ApprovedDesignIDs)
+	}
+}
+
+func TestStudioSessionServiceAppendDesignsPreservesExistingResults(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	reviewing := SheinStudioSessionStatusReviewing
+	appended, err := svc.AppendStudioSessionDesigns(ctx, detail.Session.ID, &AppendStudioSessionDesignsRequest{
+		Status:            &reviewing,
+		ApprovedDesignIDs: []string{"design-1"},
+		Designs: []SheinStudioDesign{
+			{ID: "design-1", ImageURL: "https://example.com/design-1.png", Prompt: "first"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("append first design: %v", err)
+	}
+	if len(appended.Designs) != 1 || appended.Designs[0].ID != "design-1" {
+		t.Fatalf("first append designs = %#v, want only design-1", appended.Designs)
+	}
+
+	appended, err = svc.AppendStudioSessionDesigns(ctx, detail.Session.ID, &AppendStudioSessionDesignsRequest{
+		Status:            &reviewing,
+		ApprovedDesignIDs: []string{"design-1", "design-2"},
+		Designs: []SheinStudioDesign{
+			{ID: "design-2", ImageURL: "https://example.com/design-2.png", Prompt: "second"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("append second design: %v", err)
+	}
+	if len(appended.Designs) != 2 {
+		t.Fatalf("appended designs len = %d, want 2", len(appended.Designs))
+	}
+	if appended.Session == nil || len(appended.Session.ApprovedDesignIDs) != 2 {
+		t.Fatalf("approved ids = %#v, want [design-1 design-2]", appended.Session)
 	}
 }
 
@@ -604,6 +711,39 @@ func TestStudioSessionServiceAllowsCreatingBatchContainerWithoutPrompt(t *testin
 	}
 	if detail.Session.Status != SheinStudioSessionStatusSelecting {
 		t.Fatalf("status = %q, want selecting for a prompt-less batch container", detail.Session.Status)
+	}
+}
+
+func TestStudioSessionServiceRejectsStaleUpdateStudioSessionWrites(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	firstSeenAt := detail.Session.UpdatedAt.Format(time.RFC3339Nano)
+	prompt1 := "first writer"
+	if _, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Prompt:            &prompt1,
+		ExpectedUpdatedAt: &firstSeenAt,
+	}); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+
+	prompt2 := "stale writer"
+	_, err = svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Prompt:            &prompt2,
+		ExpectedUpdatedAt: &firstSeenAt,
+	})
+	if err == nil {
+		t.Fatal("stale update error = nil, want conflict")
+	}
+	if !errors.Is(err, ErrStudioSessionConflict) {
+		t.Fatalf("stale update error = %v, want ErrStudioSessionConflict", err)
 	}
 }
 

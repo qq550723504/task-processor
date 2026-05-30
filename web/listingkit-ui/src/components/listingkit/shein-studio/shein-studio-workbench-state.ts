@@ -60,6 +60,7 @@ export type SheinStudioWorkbenchState = {
   isCreatingTasks: boolean;
   regeneratingId: string;
   createdTasks: SheinStudioCreatedTask[];
+  persistedUpdatedAt: string;
   galleryRatioCheck: SDSRatioMatch | null;
   savedBatches: SheinStudioSavedBatch[];
   batchQueueMode: SheinStudioBatchQueueMode | null;
@@ -100,6 +101,7 @@ export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
   | "selectedIds"
   | "generationJobs"
   | "createdTasks"
+  | "persistedUpdatedAt"
   | "galleryRatioCheck"
 >>;
 
@@ -165,6 +167,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     isCreatingTasks: false,
     regeneratingId: "",
     createdTasks: [],
+    persistedUpdatedAt: "",
     galleryRatioCheck: null,
     savedBatches: [],
     batchQueueMode: null,
@@ -349,6 +352,10 @@ export function sheinStudioWorkbenchReducer(
         {
           ...state,
           ...action.draft,
+          persistedUpdatedAt:
+            "updatedAt" in action.draft && typeof action.draft.updatedAt === "string"
+              ? action.draft.updatedAt
+              : state.persistedUpdatedAt,
         },
         action.draft.groups ?? state.groups,
         action.draft.activeGroupId ?? state.activeGroupId,
@@ -383,6 +390,7 @@ export function sheinStudioWorkbenchReducer(
           selectedIds: action.batch.selectedIds,
           generationJobs: action.batch.generationJobs ?? [],
           createdTasks: action.batch.createdTasks,
+          persistedUpdatedAt: action.batch.updatedAt,
         },
         action.batch.groups ?? state.groups,
       );

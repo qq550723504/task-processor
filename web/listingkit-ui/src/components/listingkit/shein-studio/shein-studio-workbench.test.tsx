@@ -478,19 +478,7 @@ describe("SheinStudioWorkbench", () => {
     expect(getSheinStudioBatch).toHaveBeenCalledTimes(callCountBeforeEdit);
   });
 
-  it("autosaves prompt edits back into the dedicated batch container", async () => {
-    saveSheinStudioBatch.mockResolvedValue({
-      id: "batch-1",
-      name: "批次1",
-      prompt: "updated prompt",
-      styleCount: "1",
-      sheinStoreId: "869",
-      selection,
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-      updatedAt: "2026-05-26T10:00:00.000Z",
-    });
+  it("keeps dedicated batch prompt edits in local draft without remote autosave", async () => {
     getSheinStudioBatch.mockResolvedValue({
       id: "batch-1",
       name: "批次1",
@@ -512,15 +500,15 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.change(promptInput, { target: { value: "updated prompt" } });
 
     await waitFor(() =>
-      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "batch-1",
+      expect(loadLocalSheinStudioDraftSnapshotDetail()).toMatchObject({
+        batchId: "batch-1",
+        draft: expect.objectContaining({
           prompt: "updated prompt",
         }),
-        { makeActive: false },
-      ),
+      }),
       { timeout: 3000 },
     );
+    expect(saveSheinStudioBatch).not.toHaveBeenCalled();
   });
 
   it("saves the dedicated batch back into the same batch id from the save button", async () => {
@@ -551,6 +539,10 @@ describe("SheinStudioWorkbench", () => {
 
     render(
       <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("updated prompt")).toBeInTheDocument(),
     );
 
     const onSaveBatch = await waitFor(() => {
