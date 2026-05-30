@@ -222,6 +222,204 @@ func TestTaskGenerationServiceGetTaskGenerationTasksUsesSingleReadSnapshotHandof
 	}
 }
 
+func TestTaskGenerationCurrentStateSnapshotUsesCurrentTaskTaskListAndReviews(t *testing.T) {
+	t.Parallel()
+
+	const taskID = "task-generation-current-state-snapshot-1"
+	repo := &sequencedTaskSnapshotsRepo{
+		snapshots: []*Task{
+			{
+				ID:        taskID,
+				UpdatedAt: time.Date(2026, 5, 30, 15, 0, 0, 0, time.UTC),
+				Result:    &ListingKitResult{TaskID: taskID},
+			},
+			{
+				ID:        taskID,
+				UpdatedAt: time.Date(2026, 5, 30, 16, 0, 0, 0, time.UTC),
+				Result:    &ListingKitResult{TaskID: taskID},
+			},
+		},
+	}
+	taskListCalls := 0
+	reviewListCalls := 0
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			taskListCalls++
+			if taskListCalls == 1 {
+				return []assetgeneration.Task{{
+					TaskID:          taskID,
+					ID:              "shein:shein-main-model",
+					Platform:        "shein",
+					Slot:            "main",
+					ExecutionStatus: "completed",
+					ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+				}}, nil
+			}
+			return []assetgeneration.Task{{
+				TaskID:          taskID,
+				ID:              "amazon:amazon-main-white-bg",
+				Platform:        "amazon",
+				Slot:            "main",
+				ExecutionStatus: "planned",
+				ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+			}}, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			reviewListCalls++
+			if reviewListCalls == 1 {
+				return []GenerationReviewRecord{{
+					TaskID:     taskID,
+					Platform:   "shein",
+					Slot:       "main",
+					Capability: "subject_preview",
+					Decision:   GenerationReviewDecisionApprove,
+					Status:     "approved",
+					ReviewedBy: "reviewer-a",
+				}}, nil
+			}
+			return []GenerationReviewRecord{{
+				TaskID:     taskID,
+				Platform:   "amazon",
+				Slot:       "main",
+				Capability: "subject_preview",
+				Decision:   GenerationReviewDecisionDefer,
+				Status:     "deferred",
+				ReviewedBy: "reviewer-b",
+			}}, nil
+		},
+	})
+
+	result, err := generation.getCurrentListingKitResult(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("getCurrentListingKitResult() error = %v", err)
+	}
+	if repo.getCalls != 1 {
+		t.Fatalf("repo.getCalls = %d, want single current task acquisition", repo.getCalls)
+	}
+	if taskListCalls != 1 {
+		t.Fatalf("listAssetGenerationTasks calls = %d, want single persisted generation-task acquisition", taskListCalls)
+	}
+	if reviewListCalls != 1 {
+		t.Fatalf("listGenerationReviews calls = %d, want single persisted review acquisition", reviewListCalls)
+	}
+	if result == nil {
+		t.Fatal("result = nil, want decorated current listing result")
+	}
+	if len(result.AssetGenerationTasks) != 1 || result.AssetGenerationTasks[0].ID != "shein:shein-main-model" {
+		t.Fatalf("result.AssetGenerationTasks = %+v, want first persisted generation task snapshot", result.AssetGenerationTasks)
+	}
+	if len(result.ReviewRecords) != 1 || result.ReviewRecords[0].ReviewedBy != "reviewer-a" {
+		t.Fatalf("result.ReviewRecords = %+v, want first persisted review snapshot", result.ReviewRecords)
+	}
+}
+
+func TestTaskGenerationCurrentStateSnapshotPropagatesLoadErrors(t *testing.T) {
+	t.Parallel()
+
+	taskListErr := errors.New("current generation task snapshot load failed")
+	reviewListErr := errors.New("current generation review snapshot load failed")
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+		taskID  string
+		wantErr error
+	}{
+		{
+			name:    "repo get task",
+			service: &taskGenerationService{repo: &stubGenerationRepo{}},
+			taskID:  "task-generation-current-state-missing-1",
+			wantErr: ErrTaskNotFound,
+		},
+		{
+			name: "list asset generation tasks",
+			service: &taskGenerationService{
+				repo: &stubGenerationRepo{task: &Task{
+					ID:     "task-generation-current-state-error-1",
+					Result: &ListingKitResult{TaskID: "task-generation-current-state-error-1"},
+				}},
+				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+					return nil, taskListErr
+				},
+				listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+					return nil, nil
+				},
+			},
+			taskID:  "task-generation-current-state-error-1",
+			wantErr: taskListErr,
+		},
+		{
+			name: "list generation reviews",
+			service: &taskGenerationService{
+				repo: &stubGenerationRepo{task: &Task{
+					ID:     "task-generation-current-state-error-2",
+					Result: &ListingKitResult{TaskID: "task-generation-current-state-error-2"},
+				}},
+				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+					return nil, nil
+				},
+				listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+					return nil, reviewListErr
+				},
+			},
+			taskID:  "task-generation-current-state-error-2",
+			wantErr: reviewListErr,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.service.getCurrentListingKitResult(context.Background(), tc.taskID)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("getCurrentListingKitResult() error = %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestTaskGenerationCurrentStateSnapshotServiceBoundaryGuardrails(t *testing.T) {
+	t.Parallel()
+
+	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentListingKitResult(")
+
+	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateSnapshotPhase(s).run(", 1)
+	assertSourceContainsAll(t, source, []string{
+		"snapshot, err := buildTaskGenerationCurrentStateSnapshotPhase(s).run(",
+		"return snapshot.result, nil",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"repo.GetTask(",
+		"listAssetGenerationTasks(",
+		"listGenerationReviews(",
+		"withListingKitResultGenerationAndReview(",
+	})
+}
+
+func TestTaskGenerationCurrentStateSnapshotPhaseBoundary(t *testing.T) {
+	t.Parallel()
+
+	source := readExactMethodSource(t, "task_generation_current_state_snapshot.go", "func (p *taskGenerationCurrentStateSnapshotPhase) run(")
+
+	assertSourceContainsAll(t, source, []string{
+		"p.service.repo.GetTask(",
+		"p.service.listAssetGenerationTasks(",
+		"p.service.listGenerationReviews(",
+		"withListingKitResultGenerationAndReview(",
+		"task:    task,",
+		"result:  result,",
+		"tasks:   tasks,",
+		"reviews: reviews,",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"buildGenerationQueuePage(",
+		"buildAssetGenerationOverview(",
+		"buildActionPlatformRenderPreviews(",
+		"getCurrentAssetGenerationQueue(",
+		"getCurrentAssetGenerationOverview(",
+		"getCurrentActionRenderPreviews(",
+	})
+}
+
 func TestTaskGenerationTasksReadPagePhaseReturnsStableEmptyShape(t *testing.T) {
 	t.Parallel()
 

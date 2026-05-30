@@ -340,19 +340,11 @@ func (s *taskGenerationService) getCurrentActionRenderPreviews(ctx context.Conte
 }
 
 func (s *taskGenerationService) getCurrentListingKitResult(ctx context.Context, taskID string) (*ListingKitResult, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
+	snapshot, err := buildTaskGenerationCurrentStateSnapshotPhase(s).run(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	reviews, err := s.listGenerationReviews(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	return withListingKitResultGenerationAndReview(task.Result, tasks, reviews), nil
+	return snapshot.result, nil
 }
 
 func (s *taskGenerationService) dispatchGenerationNavigationPrimary(ctx context.Context, taskID string, target *GenerationReviewNavigationTarget, responseMode string) (*GenerationReviewNavigationDispatchResponse, error) {
