@@ -17,11 +17,10 @@ func TestWorkflowPlatformFinalizePhaseFileDelegatesToFinalizeSubSeams(t *testing
 
 	for _, needle := range []string{
 		"buildPlatformPostprocessPhase(p.service).run(",
+		"buildPlatformReviewPhase().run(final, snapshot)",
 		"buildPlatformAssetDispatchPhase(p.service).run(",
-		"buildPlatformSummaryPhase()",
-		"summaryPhase.prepareReview(final, snapshot)",
+		"buildPlatformSummaryPhase().run(task, final)",
 		"applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)",
-		"return summaryPhase.complete(task, final)",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_finalize_phase.go should contain %q", needle)
@@ -34,7 +33,6 @@ func TestWorkflowPlatformFinalizePhaseFileDelegatesToFinalizeSubSeams(t *testing
 		"applySheinInspectionReviewToSummary(",
 		"s.assetGenerator.Dispatch(",
 		"decorateListingKitResultGeneration(",
-		"syncAssetRenderPreviews(",
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_finalize_phase.go should not contain %q", needle)

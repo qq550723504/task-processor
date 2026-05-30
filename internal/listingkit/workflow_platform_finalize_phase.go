@@ -29,8 +29,7 @@ func (p *platformFinalizePhase) run(
 	sdsOptions *SDSSyncOptions,
 ) *ListingKitResult {
 	buildPlatformPostprocessPhase(p.service).run(ctx, task, final, sdsOptions)
-	summaryPhase := buildPlatformSummaryPhase()
-	summaryPhase.prepareReview(final, snapshot)
+	buildPlatformReviewPhase().run(final, snapshot)
 	applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)
 	persistedGenerationTasks = buildPlatformAssetDispatchPhase(p.service).run(
 		ctx,
@@ -42,5 +41,5 @@ func (p *platformFinalizePhase) run(
 		persistedGenerationTasks,
 		enableAssetGeneration,
 	)
-	return summaryPhase.complete(task, final)
+	return buildPlatformSummaryPhase().run(task, final)
 }

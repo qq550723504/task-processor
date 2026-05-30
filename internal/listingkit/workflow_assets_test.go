@@ -1020,7 +1020,7 @@ func TestRunWorkflowFinalizesSummaryAfterPlatformDispatch(t *testing.T) {
 	}
 }
 
-func TestPlatformSummaryPhaseFinalizesReviewAndPreviewState(t *testing.T) {
+func TestPlatformSummaryPhaseFinalizesCompletionState(t *testing.T) {
 	t.Parallel()
 
 	task := &Task{ID: "listingkit-task-summary-phase", Request: &GenerateRequest{Platforms: []string{"shein"}}}
@@ -1049,6 +1049,47 @@ func TestPlatformSummaryPhaseFinalizesReviewAndPreviewState(t *testing.T) {
 		Summary: &GenerationSummary{
 			Warnings: []string{"existing warning"},
 		},
+		WorkflowIssues: []WorkflowIssue{{
+			Stage:    "asset_generation_platform",
+			Severity: WorkflowIssueSeverityReview,
+			Code:     "manual_review_required",
+			Message:  "manual review",
+		}},
+	}
+
+	result := buildPlatformSummaryPhase().run(task, final)
+
+	if result != final {
+		t.Fatalf("result pointer = %p, want %p", result, final)
+	}
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs review", result.Summary)
+	}
+	if result.Summary.WarningCount < 0 || result.Summary.ReviewCount == 0 || result.Summary.IssueCount == 0 {
+		t.Fatalf("summary = %+v, want finalized counts", result.Summary)
+	}
+	if len(result.PlatformAssetRenderPreviews) == 0 {
+		t.Fatalf("platform previews = %+v, want synced previews", result.PlatformAssetRenderPreviews)
+	}
+	if len(result.WorkflowStages) != 0 {
+		t.Fatalf("workflow stages = %+v, want summary seam not to prepare review stages", result.WorkflowStages)
+	}
+}
+
+func TestPlatformFinalizePhasePreparesReviewBeforeCompletion(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{ID: "listingkit-task-finalize-phase", Request: &GenerateRequest{Platforms: []string{"shein"}}}
+	final := &ListingKitResult{
+		Shein: &SheinPackage{
+			Inspection: &SheinInspection{
+				NeedsReview: true,
+				Summary:     []string{"manual review"},
+			},
+		},
+		Summary: &GenerationSummary{
+			Warnings: []string{"existing warning"},
+		},
 	}
 	snapshot := &StandardProductSnapshot{
 		Summary: &GenerationSummary{
@@ -1056,7 +1097,18 @@ func TestPlatformSummaryPhaseFinalizesReviewAndPreviewState(t *testing.T) {
 		},
 	}
 
-	result := buildPlatformSummaryPhase().run(task, final, snapshot)
+	result := buildPlatformFinalizePhase(&service{}).run(
+		context.Background(),
+		task,
+		final,
+		snapshot,
+		nil,
+		nil,
+		nil,
+		nil,
+		false,
+		nil,
+	)
 
 	if result != final {
 		t.Fatalf("result pointer = %p, want %p", result, final)
@@ -1073,11 +1125,8 @@ func TestPlatformSummaryPhaseFinalizesReviewAndPreviewState(t *testing.T) {
 	if !hasWorkflowIssue(result.WorkflowIssues, "shein_review", WorkflowIssueSeverityReview, "shein_review_required") {
 		t.Fatalf("workflow issues = %+v, want shein review workflow issue", result.WorkflowIssues)
 	}
-	if result.Summary.WarningCount < 0 || result.Summary.ReviewCount == 0 || result.Summary.IssueCount == 0 {
-		t.Fatalf("summary = %+v, want finalized counts", result.Summary)
-	}
-	if len(result.PlatformAssetRenderPreviews) == 0 {
-		t.Fatalf("platform previews = %+v, want synced previews", result.PlatformAssetRenderPreviews)
+	if result.Summary.ReviewCount == 0 || result.Summary.IssueCount == 0 {
+		t.Fatalf("summary = %+v, want finalized counts after review prep", result.Summary)
 	}
 }
 
