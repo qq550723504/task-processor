@@ -128,15 +128,11 @@ func (s *taskGenerationService) GetTaskGenerationQueue(ctx context.Context, task
 }
 
 func (s *taskGenerationService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error) {
-	result, err := s.getCurrentListingKitResult(ctx, taskID)
+	snapshot, err := buildTaskGenerationReviewReadSnapshotPhase(s).run(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	queue, err := s.getCurrentAssetGenerationQueue(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	session := buildGenerationReviewSession(result, queue, query)
+	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
 	if session == nil {
 		return applyGenerationConditionalStateToReviewSessionResponse(&GenerationReviewSessionResponse{TaskID: taskID}), nil
 	}
@@ -159,7 +155,7 @@ func (s *taskGenerationService) GetTaskGenerationReviewSession(ctx context.Conte
 		ResponseMode: responseMode,
 	}
 	if responseMode == "patch_only" {
-		baseSession := buildGenerationReviewSession(result, queue, buildGenerationReviewSessionBaseQuery(query))
+		baseSession := buildGenerationReviewSession(snapshot.result, snapshot.queue, buildGenerationReviewSessionBaseQuery(query))
 		response.Patch = buildGenerationReviewSessionPatch(baseSession, session)
 		if response.Patch != nil && response.Patch.DeltaToken == "" {
 			response.Patch.DeltaToken = deltaToken
@@ -171,15 +167,11 @@ func (s *taskGenerationService) GetTaskGenerationReviewSession(ctx context.Conte
 }
 
 func (s *taskGenerationService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error) {
-	result, err := s.getCurrentListingKitResult(ctx, taskID)
+	snapshot, err := buildTaskGenerationReviewReadSnapshotPhase(s).run(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	queue, err := s.getCurrentAssetGenerationQueue(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	session := buildGenerationReviewSession(result, queue, query)
+	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, query)
 	if session == nil {
 		return applyGenerationConditionalStateToReviewPreviewResponse(&GenerationReviewPreviewResponse{TaskID: taskID}), nil
 	}
@@ -198,7 +190,7 @@ func (s *taskGenerationService) GetTaskGenerationReviewPreview(ctx context.Conte
 		DeltaToken:             deltaToken,
 		Viewer:                 viewer,
 		Preview:                preview,
-		ScenePreset:            buildGenerationScenePresetSummary(result.AssetBundle, focusedPreviewAssetID(preview)),
+		ScenePreset:            buildGenerationScenePresetSummary(snapshot.result.AssetBundle, focusedPreviewAssetID(preview)),
 		ReviewTarget:           target,
 		Toolbar:                toolbar,
 		RevisionStatus:         revisionStatus,
