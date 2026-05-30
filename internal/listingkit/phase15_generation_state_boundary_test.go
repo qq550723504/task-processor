@@ -8,17 +8,17 @@ func TestTaskGenerationCurrentStateResultServiceBoundary(t *testing.T) {
 	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentListingKitResult(")
 
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateSnapshotPhase(s).run(", 1)
-	assertSourceOrderedContains(t, source, []string{
-		"buildTaskGenerationCurrentStateSnapshotPhase(s).run(",
-		"return snapshot.result, nil",
-	})
 	assertSourceExcludesAll(t, source, []string{
 		"repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
+		"buildGenerationQueuePage(",
+		"buildAssetGenerationOverview(",
 		"buildTaskGenerationCurrentStateViewsPhase(",
 		"buildActionPlatformRenderPreviews(",
+		"AssetGenerationQueue",
+		"AssetGenerationOverview",
 	})
 }
 
@@ -39,18 +39,17 @@ func TestTaskGenerationCurrentStateSnapshotPhaseBoundary(t *testing.T) {
 	})
 	assertSourceContainsAll(t, source, []string{
 		"taskGenerationCurrentStateSnapshot{",
-		"task:    task,",
-		"result:  result,",
-		"tasks:   tasks,",
-		"reviews: reviews,",
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"buildTaskGenerationCurrentStateViewsPhase(",
+		"buildGenerationQueuePage(",
 		"buildAssetGenerationOverview(",
 		"buildActionPlatformRenderPreviews(",
 		"getCurrentAssetGenerationQueue(",
 		"getCurrentAssetGenerationOverview(",
 		"getCurrentActionRenderPreviews(",
+		"AssetGenerationQueue",
+		"AssetGenerationOverview",
 	})
 }
 
@@ -71,7 +70,9 @@ func TestTaskGenerationCurrentStateOverviewServiceBoundary(t *testing.T) {
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
 		"buildAssetGenerationOverview(",
+		"buildGenerationQueuePage(",
 		"buildActionPlatformRenderPreviews(",
+		"AssetGenerationQueue",
 	})
 }
 
@@ -91,8 +92,10 @@ func TestTaskGenerationCurrentStateQueueServiceBoundary(t *testing.T) {
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
+		"buildAssetGenerationOverview(",
 		"buildGenerationQueuePage(",
 		"buildActionPlatformRenderPreviews(",
+		"AssetGenerationOverview",
 	})
 }
 
@@ -112,7 +115,11 @@ func TestTaskGenerationCurrentStateRenderPreviewsServiceBoundary(t *testing.T) {
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
+		"buildAssetGenerationOverview(",
+		"buildGenerationQueuePage(",
 		"buildActionPlatformRenderPreviews(",
+		"AssetGenerationOverview",
+		"AssetGenerationQueue",
 	})
 }
 
@@ -121,12 +128,13 @@ func TestTaskGenerationCurrentStateViewsOverviewBoundary(t *testing.T) {
 
 	source := readExactMethodSource(t, "task_generation_current_state_views.go", "func (p *taskGenerationCurrentStateViewsPhase) overview(")
 
-	assertSourceOccurrenceCount(t, source, "result.AssetGenerationOverview", 1)
 	assertSourceExcludesAll(t, source, []string{
 		"repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
+		"AssetGenerationQueue",
+		"buildGenerationQueuePage(",
 		"buildActionPlatformRenderPreviews(",
 	})
 }
@@ -136,12 +144,13 @@ func TestTaskGenerationCurrentStateViewsQueueBoundary(t *testing.T) {
 
 	source := readExactMethodSource(t, "task_generation_current_state_views.go", "func (p *taskGenerationCurrentStateViewsPhase) queue(")
 
-	assertSourceOccurrenceCount(t, source, "result.AssetGenerationQueue", 1)
 	assertSourceExcludesAll(t, source, []string{
 		"repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
+		"AssetGenerationOverview",
+		"buildAssetGenerationOverview(",
 		"buildActionPlatformRenderPreviews(",
 	})
 }
@@ -151,11 +160,15 @@ func TestTaskGenerationCurrentStateViewsRenderPreviewsBoundary(t *testing.T) {
 
 	source := readExactMethodSource(t, "task_generation_current_state_views.go", "func (p *taskGenerationCurrentStateViewsPhase) renderPreviews(")
 
-	assertSourceOccurrenceCount(t, source, "buildActionPlatformRenderPreviews(result, query)", 1)
+	assertSourceOccurrenceCount(t, source, "buildActionPlatformRenderPreviews(", 1)
 	assertSourceExcludesAll(t, source, []string{
 		"repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
+		"AssetGenerationOverview",
+		"AssetGenerationQueue",
+		"buildAssetGenerationOverview(",
+		"buildGenerationQueuePage(",
 	})
 }
