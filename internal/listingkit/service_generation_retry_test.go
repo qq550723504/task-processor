@@ -16,6 +16,20 @@ import (
 	common "task-processor/internal/publishing/common"
 )
 
+type stubRetryNilDispatchGenerator struct{}
+
+func (s *stubRetryNilDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	return &assetgeneration.Result{}, nil
+}
+
+func (s *stubRetryNilDispatchGenerator) Execute(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	return &assetgeneration.Result{}, nil
+}
+
+func (s *stubRetryNilDispatchGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
+	return nil, nil
+}
+
 func TestRetryGenerationMutationApplyMergesTasksAndReplacesRetriedAssets(t *testing.T) {
 	t.Parallel()
 
@@ -1026,6 +1040,136 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 	}
 	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 3 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 2 || updatedInventory.Summary.RecipeCount != 2 {
 		t.Fatalf("inventory summary = %+v, want rebuilt summary counts", updatedInventory.Summary)
+	}
+}
+
+func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	task := &Task{
+		ID:        "task-generation-retry-nil-dispatch-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-nil-dispatch-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			Amazon: &AmazonPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Auxiliary: []common.BundleSlot{{
+						Key:             "auxiliary",
+						Purpose:         "scene",
+						RecipeID:        "amazon-lifestyle",
+						IdealKind:       string(asset.KindSceneImage),
+						StateLabel:      "fallback_in_use",
+						SatisfiedBy:     "fallback_asset",
+						ExecutionStatus: "fallback",
+					}},
+				},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: task.ID, Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/gallery.jpg"},
+			{ID: "scene-stub-safe-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "file:///tmp/scene-stub-safe.jpg", RecipeID: "amazon-lifestyle", Metadata: map[string]string{"execution_mode": assetgeneration.ExecutionModeDeferredStub, "bundle_slot": "auxiliary"}},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 2, DerivedRecords: 1, GeneratedRecords: 1, RecipeCount: 1},
+	}
+	if err := assetRepository.SaveInventory(context.Background(), inventory); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	persistedTasks := []assetgeneration.Task{{
+		TaskID:          task.ID,
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		Purpose:         "scene",
+		Status:          "completed",
+		ExecutionStatus: "completed",
+		ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+		CanExecute:      true,
+		SatisfiedBy:     "fallback_asset",
+		SourceAssetIDs:  []string{"gallery-1"},
+	}}
+	selectedTasks := []assetgeneration.Task{{
+		TaskID:          task.ID,
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		Purpose:         "scene",
+		Status:          "planned",
+		ExecutionStatus: "planned",
+		ExecutionMode:   assetgeneration.PlannedExecutionMode(asset.KindSceneImage),
+		CanExecute:      true,
+		SourceAssetIDs:  []string{"gallery-1"},
+	}}
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator:      &stubRetryNilDispatchGenerator{},
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return cloneGenerationTasks(persistedTasks), nil
+		},
+		listGenerationReviews: func(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			return cloneGenerationTasks(selectedTasks), nil
+		},
+	})
+
+	page, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{
+		Slots: []string{"auxiliary"},
+	})
+	if err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if page == nil {
+		t.Fatalf("page = nil, want safe retry page")
+	}
+	if len(page.Tasks) != 1 || page.Tasks[0].ID != "amazon:amazon-lifestyle" || page.Tasks[0].ExecutionStatus != "completed" {
+		t.Fatalf("page tasks = %+v, want unchanged persisted task", page.Tasks)
+	}
+	if page.MatchedQueue == nil || page.MatchedQueue.Summary == nil || page.MatchedQueue.Summary.TotalItems != 1 {
+		t.Fatalf("matched queue = %+v, want selected target still surfaced", page.MatchedQueue)
+	}
+	if page.ExecutedQueue == nil || page.ExecutedQueue.Summary == nil {
+		t.Fatalf("executed queue = %+v, want empty safe queue", page.ExecutedQueue)
+	}
+	if page.ExecutedQueue.Summary.TotalItems != 0 || len(page.ExecutedQueue.Items) != 0 {
+		t.Fatalf("executed queue = %+v, want empty queue for nil dispatch result", page.ExecutedQueue)
+	}
+
+	updatedInventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("GetInventory() error = %v", err)
+	}
+	wantRecordIDs := []string{"gallery-1", "scene-stub-safe-1"}
+	recordIDs := make([]string, 0, len(updatedInventory.Records))
+	for _, item := range updatedInventory.Records {
+		recordIDs = append(recordIDs, item.ID)
+	}
+	if !reflect.DeepEqual(recordIDs, wantRecordIDs) {
+		t.Fatalf("inventory record ids = %+v, want unchanged %+v", recordIDs, wantRecordIDs)
+	}
+	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 2 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 1 || updatedInventory.Summary.RecipeCount != 1 {
+		t.Fatalf("inventory summary = %+v, want unchanged counts", updatedInventory.Summary)
 	}
 }
 

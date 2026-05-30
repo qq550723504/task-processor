@@ -247,8 +247,12 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 	if err != nil {
 		return nil, err
 	}
+	mutationResult := dispatchResult
+	if dispatchResult == nil {
+		dispatchResult = &assetgeneration.Result{}
+	}
 
-	updatedTasks := buildRetryGenerationMutationPhase().run(inventory, existingTasks, selectedTasks, dispatchResult)
+	updatedTasks := buildRetryGenerationMutationPhase().run(inventory, existingTasks, selectedTasks, mutationResult)
 	reviews, err := s.listGenerationReviews(ctx, task.ID)
 	if err != nil {
 		return nil, err
