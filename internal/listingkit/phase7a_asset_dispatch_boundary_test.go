@@ -64,11 +64,15 @@ func TestWorkflowPlatformAssetDispatchMutationAndPersistFilesOwnTheirSideEffects
 		{
 			file: "workflow_platform_asset_dispatch_apply.go",
 			shouldOwn: []string{
-				"inventory.Records = append(",
-				"rebuildInventorySummary(",
-				"mergeGenerationTasks(",
+				"buildPlatformAssetDispatchInventoryApplyPhase().run(",
+				"buildPlatformAssetDispatchBundleApplyPhase(bundleBuilder).run(",
 			},
 			shouldAvoid: []string{
+				"inventory.Records = append(",
+				"rebuildInventorySummary(",
+				"rebuildBundleWithGeneratedAssets(",
+				"attachPlatformImageBundles(",
+				"mergeGenerationTasks(",
 				"decorateListingKitResultGeneration(",
 				"SaveGenerationTasks(",
 			},

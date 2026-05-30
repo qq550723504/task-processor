@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -522,39 +521,6 @@ func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsTasks
 	}
 	if !reflect.DeepEqual(mutation.generationTasks, wantTasks) {
 		t.Fatalf("generation tasks = %+v, want %+v", mutation.generationTasks, wantTasks)
-	}
-}
-
-func TestWorkflowPlatformAssetDispatchApplyFileDelegatesToMutationSubSeams(t *testing.T) {
-	t.Parallel()
-
-	content, err := os.ReadFile("workflow_platform_asset_dispatch_apply.go")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	source := string(content)
-
-	required := []string{
-		"buildPlatformAssetDispatchInventoryApplyPhase().run(",
-		"buildPlatformAssetDispatchBundleApplyPhase(bundleBuilder).run(",
-	}
-	for _, needle := range required {
-		if !strings.Contains(source, needle) {
-			t.Fatalf("workflow_platform_asset_dispatch_apply.go missing %q", needle)
-		}
-	}
-
-	forbidden := []string{
-		"inventory.Records = append(inventory.Records, dispatchResult.Assets...)",
-		"rebuildInventorySummary(inventory)",
-		"rebuildBundleWithGeneratedAssets(final.AssetBundle, dispatchResult.Assets)",
-		"attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, bundleBuilder)",
-		"mergeGenerationTasks(generationTasks, dispatchResult.Tasks)",
-	}
-	for _, needle := range forbidden {
-		if strings.Contains(source, needle) {
-			t.Fatalf("workflow_platform_asset_dispatch_apply.go still inlines %q", needle)
-		}
 	}
 }
 

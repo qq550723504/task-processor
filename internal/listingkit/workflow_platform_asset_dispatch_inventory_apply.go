@@ -13,17 +13,12 @@ func (p *platformAssetDispatchInventoryApplyPhase) run(
 	inventory *asset.Inventory,
 	dispatchAssets []asset.AssetRecord,
 ) {
-	if p == nil || inventory == nil || len(dispatchAssets) == 0 {
+	if p == nil || len(dispatchAssets) == 0 {
 		return
 	}
 
 	inventory.Records = append(inventory.Records, dispatchAssets...)
 	inventory.Summary = rebuildInventorySummary(inventory)
-
-	if final == nil {
-		return
-	}
-
 	final.AssetBundle = rebuildBundleWithGeneratedAssets(final.AssetBundle, dispatchAssets)
 	final.AssetInventorySummary = inventory.Summary
 }

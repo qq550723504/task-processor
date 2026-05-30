@@ -30,8 +30,6 @@ func applyPlatformAssetDispatchMutation(
 		return mutation
 	}
 	if len(dispatchResult.Assets) > 0 {
-		_ = inventory.Records
-		_ = final.AssetBundle
 		buildPlatformAssetDispatchInventoryApplyPhase().run(final, inventory, dispatchResult.Assets)
 	}
 	mutation.generationTasks = buildPlatformAssetDispatchBundleApplyPhase(bundleBuilder).run(
