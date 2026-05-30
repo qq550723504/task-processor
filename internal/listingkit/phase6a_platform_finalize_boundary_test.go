@@ -27,6 +27,19 @@ func TestWorkflowPlatformFinalizePhaseFileDelegatesToFinalizeSubSeams(t *testing
 		}
 	}
 
+	postprocessIndex := strings.Index(content, "buildPlatformPostprocessPhase(p.service).run(")
+	reviewIndex := strings.Index(content, "buildPlatformReviewPhase().run(final, snapshot)")
+	coverageGuardIndex := strings.Index(content, "applySheinVariantImageCoverageGuard(final, task.Request, final.Shein)")
+	assetDispatchIndex := strings.Index(content, "buildPlatformAssetDispatchPhase(p.service).run(")
+	summaryIndex := strings.Index(content, "buildPlatformSummaryPhase().run(task, final)")
+
+	if !(postprocessIndex < reviewIndex &&
+		reviewIndex < coverageGuardIndex &&
+		coverageGuardIndex < assetDispatchIndex &&
+		assetDispatchIndex < summaryIndex) {
+		t.Fatalf("workflow_platform_finalize_phase.go should keep postprocess -> review prep -> coverage guard -> asset dispatch -> completion order")
+	}
+
 	for _, needle := range []string{
 		"sheinpub.OptimizePackageReviewContent(",
 		"applySDSOfficialImagesToShein(",
