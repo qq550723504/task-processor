@@ -45,17 +45,20 @@ func (p *platformAssetDispatchPhase) run(
 			deferredStage.Degrade("asset_generation_platform_deferred_dispatch_failed", "Deferred platform asset generation dispatch failed", dispatchErr.Error())
 		}
 		if dispatchResult != nil {
-			if len(dispatchResult.Assets) > 0 {
-				inventory.Records = append(inventory.Records, dispatchResult.Assets...)
-				inventory.Summary = rebuildInventorySummary(inventory)
-				final.AssetBundle = rebuildBundleWithGeneratedAssets(final.AssetBundle, dispatchResult.Assets)
-				final.AssetInventorySummary = inventory.Summary
-				if p.service.assetRepo != nil {
-					_ = p.service.assetRepo.SaveInventory(ctx, inventory)
-				}
+			mutation := applyPlatformAssetDispatchMutation(
+				final,
+				inventory,
+				recipesByPlatform,
+				persistedGenerationTasks,
+				dispatchResult,
+				p.service.assetBundleBuilder,
+			)
+			final = mutation.final
+			inventory = mutation.inventory
+			persistedGenerationTasks = mutation.generationTasks
+			if len(dispatchResult.Assets) > 0 && p.service.assetRepo != nil {
+				_ = p.service.assetRepo.SaveInventory(ctx, inventory)
 			}
-			attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, p.service.assetBundleBuilder)
-			persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
 		}
 		if dispatchErr == nil {
 			deferredStage.Complete()

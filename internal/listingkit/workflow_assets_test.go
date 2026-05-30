@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -311,6 +312,105 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	}
 	if !hasCompletedDeferredTask {
 		t.Fatalf("generation tasks = %+v, want completed deferred generation task", generationTasks)
+	}
+}
+
+func TestApplyPlatformAssetDispatchMutationMergesDispatchArtifacts(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
+			},
+		},
+		AssetInventorySummary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	generationTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "planned"},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Assets: []asset.AssetRecord{
+			{
+				ID:       "generated-1",
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "https://example.com/generated-1.jpg",
+				RecipeID: "scene",
+				Lineage:  &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+			},
+		},
+		Tasks: []assetgeneration.Task{
+			{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "completed"},
+			{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+		},
+	}
+
+	mutation := applyPlatformAssetDispatchMutation(
+		final,
+		inventory,
+		nil,
+		generationTasks,
+		dispatchResult,
+		newDefaultAssetBundleBuilder(),
+	)
+
+	if got := len(mutation.inventory.Records); got != 2 {
+		t.Fatalf("inventory records = %d, want 2", got)
+	}
+	if mutation.final.AssetBundle == nil || len(mutation.final.AssetBundle.Assets) != 2 {
+		t.Fatalf("asset bundle = %+v, want generated asset merged", mutation.final.AssetBundle)
+	}
+	if mutation.final.AssetInventorySummary == nil || mutation.final.AssetInventorySummary.GeneratedRecords != 1 {
+		t.Fatalf("asset inventory summary = %+v, want generated record count updated", mutation.final.AssetInventorySummary)
+	}
+
+	wantTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "completed"},
+		{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+	}
+	if !reflect.DeepEqual(mutation.generationTasks, wantTasks) {
+		t.Fatalf("generation tasks = %+v, want %+v", mutation.generationTasks, wantTasks)
+	}
+}
+
+func TestApplyPlatformAssetDispatchMutationKeepsGenerationTasksWhenDispatchResultNil(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		AssetBundle:           &asset.Bundle{},
+		AssetInventorySummary: &asset.InventorySummary{},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	generationTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "planned", Metadata: map[string]string{"k": "v"}},
+	}
+
+	mutation := applyPlatformAssetDispatchMutation(
+		final,
+		inventory,
+		nil,
+		generationTasks,
+		nil,
+		newDefaultAssetBundleBuilder(),
+	)
+
+	if !reflect.DeepEqual(mutation.generationTasks, generationTasks) {
+		t.Fatalf("generation tasks = %+v, want unchanged %+v", mutation.generationTasks, generationTasks)
+	}
+	if got := len(mutation.inventory.Records); got != 1 {
+		t.Fatalf("inventory records = %d, want unchanged count 1", got)
 	}
 }
 
