@@ -264,25 +264,17 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		}
 	}
 
-	rebuiltResult := *task.Result
-	rebuiltResult.AssetBundle = rebuildBundleFromInventory(task.Result.AssetBundle, inventory)
-	rebuiltResult.AssetInventorySummary = inventory.Summary
-	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, task.Result.CanonicalProduct)
-	attachPlatformImageBundles(&rebuiltResult, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: updatedTasks}, s.assetBundleBuilder)
-	decorateListingKitResultGeneration(&rebuiltResult, updatedTasks)
-	syncAssetRenderPreviews(&rebuiltResult)
-	if err := s.repo.SaveTaskResult(ctx, task.ID, &rebuiltResult); err != nil {
+	rebuiltResult, page := buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).run(
+		task,
+		inventory,
+		updatedTasks,
+		selectedTasks,
+		dispatchResult,
+		reviews,
+	)
+	if err := s.repo.SaveTaskResult(ctx, task.ID, rebuiltResult); err != nil {
 		return nil, err
 	}
-	decorateListingKitResultReview(&rebuiltResult, reviews)
-
-	page := buildGenerationTaskPage(task.ID, task.UpdatedAt, updatedTasks, updatedTasks, generationTaskListPage{
-		Page:     defaultGenerationTaskPage,
-		PageSize: defaultGenerationTaskPageSize,
-		Total:    len(updatedTasks),
-	})
-	page.MatchedQueue = buildMatchedGenerationQueue(rebuiltResult.AssetGenerationQueue, selectedTasks)
-	page.ExecutedQueue = buildMatchedGenerationQueue(rebuiltResult.AssetGenerationQueue, dispatchResult.Tasks)
 	return page, nil
 }
 

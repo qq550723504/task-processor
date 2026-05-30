@@ -3,7 +3,9 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -1367,6 +1369,289 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 	}
 	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 3 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 2 || updatedInventory.Summary.RecipeCount != 2 {
 		t.Fatalf("inventory summary = %+v, want rebuilt summary counts", updatedInventory.Summary)
+	}
+}
+
+func TestRetryGenerationResultProjectionRebuildsListingKitResult(t *testing.T) {
+	t.Parallel()
+
+	reviewedAt := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	task := &Task{
+		ID:        "task-generation-retry-projection-1",
+		UpdatedAt: reviewedAt,
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-projection-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			AssetBundle: &asset.Bundle{
+				Assets: []asset.Asset{
+					{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "file:///tmp/gallery.jpg"},
+					{ID: "scene-stub-1", Kind: asset.KindSceneImage, URL: "file:///tmp/scene-stub.jpg", RecipeID: "amazon-lifestyle", Metadata: map[string]string{"bundle_slot": "auxiliary"}},
+				},
+			},
+			AssetInventorySummary: &asset.InventorySummary{TotalRecords: 2, DerivedRecords: 1, GeneratedRecords: 1, RecipeCount: 1},
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "scene-rendered-1",
+				AssetRevision:   "asset-rev-1",
+				PreviewRevision: "preview-rev-1",
+				Kind:            asset.KindSceneImage,
+				Role:            "scene",
+				LayerTypes:      []string{"subject"},
+			}},
+			Amazon: &AmazonPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Auxiliary: []common.BundleSlot{{
+						Key:             "auxiliary",
+						Purpose:         "scene",
+						RecipeID:        "amazon-lifestyle",
+						IdealKind:       string(asset.KindSceneImage),
+						StateLabel:      "fallback_in_use",
+						SatisfiedBy:     "fallback_asset",
+						ExecutionStatus: "fallback",
+						AssetID:         "scene-stub-1",
+					}},
+				},
+			},
+		},
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: task.ID, Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/gallery.jpg"},
+			{
+				ID:       "scene-rendered-1",
+				TaskID:   task.ID,
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "https://cdn.example.com/scene-rendered-1.jpg",
+				RecipeID: "amazon-lifestyle",
+				Metadata: map[string]string{"bundle_slot": "auxiliary", "published_url": "https://cdn.example.com/scene-rendered-1.jpg"},
+			},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 2, DerivedRecords: 1, GeneratedRecords: 1, RecipeCount: 1},
+	}
+	updatedTasks := []assetgeneration.Task{
+		{
+			TaskID:          task.ID,
+			ID:              "amazon:amazon-lifestyle",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			AssetKind:       asset.KindSceneImage,
+			Slot:            "auxiliary",
+			Purpose:         "scene",
+			Status:          "completed",
+			ExecutionStatus: "completed",
+			ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+			CanExecute:      true,
+			SatisfiedBy:     assetgeneration.ExecutionModeGeneratedAsset,
+			SourceAssetIDs:  []string{"gallery-1"},
+		},
+	}
+	selectedTasks := cloneGenerationTasks(updatedTasks)
+	dispatchResult := &assetgeneration.Result{Tasks: cloneGenerationTasks(updatedTasks)}
+	reviews := []GenerationReviewRecord{{
+		TaskID:       task.ID,
+		Platform:     "amazon",
+		Slot:         "auxiliary",
+		Capability:   "subject_preview",
+		Decision:     GenerationReviewDecisionApprove,
+		Status:       "approved",
+		ReviewedAt:   reviewedAt,
+		ReviewedBy:   "reviewer",
+		AssetID:      "scene-rendered-1",
+		TaskRevision: "",
+	}}
+
+	result, page := buildRetryGenerationProjectionPhase(assetrecipe.NewStaticResolver(), assetbundle.NewBuilder()).run(
+		task,
+		inventory,
+		updatedTasks,
+		selectedTasks,
+		dispatchResult,
+		reviews,
+	)
+
+	if result == nil {
+		t.Fatalf("result = nil, want rebuilt listing kit result")
+	}
+	if page == nil {
+		t.Fatalf("page = nil, want generation task page")
+	}
+	if result.AssetBundle == nil || len(result.AssetBundle.Assets) != 2 {
+		t.Fatalf("asset bundle = %+v, want rebuilt bundle with inventory assets", result.AssetBundle)
+	}
+	if result.AssetBundle.Assets[1].ID != "scene-rendered-1" {
+		t.Fatalf("asset bundle assets = %+v, want rendered asset in rebuilt bundle", result.AssetBundle.Assets)
+	}
+	if !reflect.DeepEqual(result.AssetInventorySummary, inventory.Summary) {
+		t.Fatalf("asset inventory summary = %+v, want %+v", result.AssetInventorySummary, inventory.Summary)
+	}
+	if result.Amazon == nil || result.Amazon.ImageBundle == nil || len(result.Amazon.ImageBundle.Auxiliary) != 1 {
+		t.Fatalf("amazon image bundle = %+v, want rebuilt platform bundle", result.Amazon)
+	}
+	auxiliary := result.Amazon.ImageBundle.Auxiliary[0]
+	if auxiliary.AssetID != "scene-rendered-1" || auxiliary.URL != "https://cdn.example.com/scene-rendered-1.jpg" {
+		t.Fatalf("amazon auxiliary slot = %+v, want rendered asset rebound from inventory", auxiliary)
+	}
+	if result.AssetGenerationSummary == nil || result.AssetGenerationSummary.TotalTasks != 1 || result.AssetGenerationSummary.CompletedTasks != 1 {
+		t.Fatalf("asset generation summary = %+v, want completed updated task summary", result.AssetGenerationSummary)
+	}
+	if result.AssetGenerationQueue == nil || result.AssetGenerationQueue.Summary == nil {
+		t.Fatalf("asset generation queue = %+v, want decorated queue", result.AssetGenerationQueue)
+	}
+	if result.AssetGenerationOverview == nil || result.AssetGenerationOverview.PrimaryActionKey == "" {
+		t.Fatalf("asset generation overview = %+v, want decorated overview", result.AssetGenerationOverview)
+	}
+	if len(result.PlatformAssetRenderPreviews) != 1 || len(result.PlatformAssetRenderPreviews[0].Auxiliary) != 1 {
+		t.Fatalf("platform previews = %+v, want synced previews", result.PlatformAssetRenderPreviews)
+	}
+	if result.PlatformAssetRenderPreviews[0].Auxiliary[0].AssetID != "scene-rendered-1" {
+		t.Fatalf("platform preview slot = %+v, want preview synced to rendered asset", result.PlatformAssetRenderPreviews[0].Auxiliary[0])
+	}
+	if result.ReviewSummary == nil || result.ReviewSummary.ApprovedSections != 1 || result.ReviewSummary.ReviewPendingSections != 0 {
+		t.Fatalf("review summary = %+v, want review decoration applied", result.ReviewSummary)
+	}
+	if page.MatchedQueue == nil || page.MatchedQueue.Summary == nil {
+		t.Fatalf("matched queue = %+v, want selected task queue summary", page.MatchedQueue)
+	}
+	if page.ExecutedQueue == nil || page.ExecutedQueue.Summary == nil {
+		t.Fatalf("executed queue = %+v, want dispatch task queue summary", page.ExecutedQueue)
+	}
+	foundMatchedAuxiliary := false
+	for _, item := range page.MatchedQueue.Items {
+		if item.RecipeID == "amazon-lifestyle" && item.Slot == "auxiliary" {
+			foundMatchedAuxiliary = true
+			break
+		}
+	}
+	if !foundMatchedAuxiliary {
+		t.Fatalf("matched queue items = %+v, want auxiliary retry item", page.MatchedQueue.Items)
+	}
+	foundExecutedAuxiliary := false
+	for _, item := range page.ExecutedQueue.Items {
+		if item.RecipeID == "amazon-lifestyle" && item.Slot == "auxiliary" {
+			foundExecutedAuxiliary = true
+			break
+		}
+	}
+	if !foundExecutedAuxiliary {
+		t.Fatalf("executed queue items = %+v, want executed auxiliary item", page.ExecutedQueue.Items)
+	}
+}
+
+func TestRetryGenerationResultProjectionBuildsQueues(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID:        "task-generation-retry-projection-queues-1",
+		UpdatedAt: time.Date(2026, 5, 30, 10, 5, 0, 0, time.UTC),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-projection-queues-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			Amazon:           &AmazonPackage{},
+		},
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: task.ID, Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/gallery.jpg"},
+			{ID: "scene-rendered-queue-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://cdn.example.com/scene-rendered-queue-1.jpg", RecipeID: "amazon-lifestyle", Metadata: map[string]string{"bundle_slot": "auxiliary", "published_url": "https://cdn.example.com/scene-rendered-queue-1.jpg"}},
+			{ID: "gallery-rendered-queue-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://cdn.example.com/gallery-rendered-queue-1.jpg", RecipeID: "amazon-gallery-scene", Metadata: map[string]string{"bundle_slot": "gallery", "published_url": "https://cdn.example.com/gallery-rendered-queue-1.jpg"}},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 3, DerivedRecords: 1, GeneratedRecords: 2, RecipeCount: 2},
+	}
+	updatedTasks := []assetgeneration.Task{
+		{
+			TaskID:          task.ID,
+			ID:              "amazon:amazon-lifestyle",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			AssetKind:       asset.KindSceneImage,
+			Slot:            "auxiliary",
+			Purpose:         "scene",
+			Status:          "completed",
+			ExecutionStatus: "completed",
+			ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+			CanExecute:      true,
+			SatisfiedBy:     assetgeneration.ExecutionModeGeneratedAsset,
+			SourceAssetIDs:  []string{"gallery-1"},
+		},
+		{
+			TaskID:          task.ID,
+			ID:              "amazon:amazon-gallery-scene",
+			Platform:        "amazon",
+			RecipeID:        "amazon-gallery-scene",
+			AssetKind:       asset.KindSceneImage,
+			Slot:            "gallery",
+			Purpose:         "gallery",
+			Status:          "planned",
+			ExecutionStatus: "planned",
+			ExecutionMode:   assetgeneration.PlannedExecutionMode(asset.KindSceneImage),
+			CanExecute:      true,
+			SourceAssetIDs:  []string{"gallery-1"},
+		},
+	}
+	selectedTasks := cloneGenerationTasks(updatedTasks)
+	dispatchResult := &assetgeneration.Result{
+		Tasks: []assetgeneration.Task{updatedTasks[0]},
+	}
+
+	result, page := buildRetryGenerationProjectionPhase(assetrecipe.NewStaticResolver(), assetbundle.NewBuilder()).run(
+		task,
+		inventory,
+		updatedTasks,
+		selectedTasks,
+		dispatchResult,
+		nil,
+	)
+
+	if result == nil || page == nil {
+		t.Fatalf("phase output = (%+v, %+v), want result and page", result, page)
+	}
+	if page.Total != len(updatedTasks) || len(page.Tasks) != len(updatedTasks) {
+		t.Fatalf("page tasks = %+v, want full updated task page", page.Tasks)
+	}
+	if page.MatchedQueue == nil || page.MatchedQueue.Summary == nil {
+		t.Fatalf("matched queue = %+v, want selected tasks represented", page.MatchedQueue)
+	}
+	matchedRecipes := map[string]bool{}
+	for _, item := range page.MatchedQueue.Items {
+		matchedRecipes[item.RecipeID] = true
+	}
+	if !matchedRecipes["amazon-lifestyle"] || !matchedRecipes["amazon-gallery-scene"] {
+		t.Fatalf("matched queue items = %+v, want both selected recipe ids", page.MatchedQueue.Items)
+	}
+	if page.ExecutedQueue == nil || page.ExecutedQueue.Summary == nil {
+		t.Fatalf("executed queue = %+v, want dispatch tasks represented", page.ExecutedQueue)
+	}
+	for _, item := range page.ExecutedQueue.Items {
+		if item.RecipeID != "amazon-lifestyle" {
+			t.Fatalf("executed queue items = %+v, want only dispatched auxiliary recipe ids", page.ExecutedQueue.Items)
+		}
+	}
+	if result.AssetGenerationQueue == nil || result.AssetGenerationQueue.Summary == nil {
+		t.Fatalf("result queue = %+v, want queue from updated tasks", result.AssetGenerationQueue)
+	}
+}
+
+func TestTaskGenerationServiceFileDelegatesRetryProjection(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("task_generation_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, "buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).run(") {
+		t.Fatalf("task_generation_service.go should delegate retry projection through local phase helper")
+	}
+	if !strings.Contains(source, "if err := s.repo.SaveTaskResult(ctx, task.ID, rebuiltResult); err != nil {") {
+		t.Fatalf("task_generation_service.go should keep SaveTaskResult at service call site")
 	}
 }
 
