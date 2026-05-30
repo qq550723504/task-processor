@@ -17,12 +17,13 @@ func buildTaskGenerationActionRefreshPhase(service *taskGenerationService) *task
 }
 
 func (p *taskGenerationActionRefreshPhase) run(ctx context.Context, taskID string, baseResult *ListingKitResult, query *GenerationQueueQuery) (*taskGenerationActionRefreshResult, error) {
-	currentResult, err := p.service.getCurrentListingKitResult(ctx, taskID)
+	refresh, err := buildTaskGenerationActionRefreshExtractPhase(p.service).run(ctx, taskID, query)
 	if err != nil {
 		return nil, err
 	}
-	overview := currentResult.AssetGenerationOverview
-	platformRenderPreviews := buildActionPlatformRenderPreviews(currentResult, query)
+
+	currentResult := refresh.currentResult
+	platformRenderPreviews := refresh.platformRenderPreviews
 	if len(platformRenderPreviews) == 0 {
 		platformRenderPreviews = buildActionPlatformRenderPreviews(baseResult, query)
 	}
@@ -33,7 +34,7 @@ func (p *taskGenerationActionRefreshPhase) run(ctx context.Context, taskID strin
 		currentResult.AssetRenderPreviews = append([]AssetRenderPreview(nil), baseResult.AssetRenderPreviews...)
 	}
 	return &taskGenerationActionRefreshResult{
-		overview:               overview,
+		overview:               refresh.overview,
 		platformRenderPreviews: platformRenderPreviews,
 		currentResult:          currentResult,
 	}, nil
