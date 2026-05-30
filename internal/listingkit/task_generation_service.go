@@ -58,18 +58,14 @@ func newTaskGenerationService(config taskGenerationServiceConfig) *taskGeneratio
 }
 
 func (s *taskGenerationService) GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
+	snapshot, err := buildTaskGenerationTasksReadSnapshotPhase(s).run(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	filtered := filterGenerationTasks(tasks, query)
+	filtered := filterGenerationTasks(snapshot.tasks, query)
 	sorted := sortGenerationTasks(filtered, query)
 	paged, meta := paginateGenerationTasks(sorted, query)
-	return buildGenerationTaskPage(task.ID, task.UpdatedAt, filtered, paged, meta), nil
+	return buildGenerationTaskPage(snapshot.task.ID, snapshot.task.UpdatedAt, filtered, paged, meta), nil
 }
 
 func (s *taskGenerationService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error) {

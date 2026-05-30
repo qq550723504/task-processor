@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -53,6 +54,171 @@ func TestTaskGenerationServiceGetTaskGenerationTasksAppliesFilters(t *testing.T)
 	}
 	if page.Summary == nil || page.Summary.FallbackTasks != 1 {
 		t.Fatalf("summary = %+v, want fallback summary", page.Summary)
+	}
+}
+
+func TestTaskGenerationTasksReadSnapshotRunUsesSingleCurrentSnapshot(t *testing.T) {
+	t.Parallel()
+
+	const taskID = "task-generation-tasks-snapshot-1"
+	updatedAt := time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC)
+	repo := &sequencedTaskSnapshotsRepo{
+		snapshots: []*Task{
+			{
+				ID:        taskID,
+				UpdatedAt: updatedAt,
+				Result:    &ListingKitResult{TaskID: taskID},
+			},
+			{
+				ID:        taskID,
+				UpdatedAt: updatedAt.Add(2 * time.Hour),
+				Result:    &ListingKitResult{TaskID: taskID},
+			},
+		},
+	}
+	listCalls := 0
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			listCalls++
+			if listCalls == 1 {
+				return []assetgeneration.Task{{
+					TaskID:          taskID,
+					ID:              "amazon:amazon-main-white-bg",
+					Platform:        "amazon",
+					ExecutionStatus: "planned",
+				}}, nil
+			}
+			return []assetgeneration.Task{{
+				TaskID:          taskID,
+				ID:              "shein:shein-main-model",
+				Platform:        "shein",
+				ExecutionStatus: "completed",
+			}}, nil
+		},
+	}
+
+	snapshot, err := buildTaskGenerationTasksReadSnapshotPhase(svc).run(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("taskGenerationTasksReadSnapshotPhase.run() error = %v", err)
+	}
+	if snapshot == nil || snapshot.task == nil {
+		t.Fatalf("snapshot = %+v, want hydrated task snapshot", snapshot)
+	}
+	if repo.getCalls != 1 {
+		t.Fatalf("repo.getCalls = %d, want single current snapshot read", repo.getCalls)
+	}
+	if listCalls != 1 {
+		t.Fatalf("listAssetGenerationTasks calls = %d, want single persisted task read", listCalls)
+	}
+	if !snapshot.task.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("snapshot.task.UpdatedAt = %v, want %v", snapshot.task.UpdatedAt, updatedAt)
+	}
+	if len(snapshot.tasks) != 1 || snapshot.tasks[0].ID != "amazon:amazon-main-white-bg" {
+		t.Fatalf("snapshot.tasks = %+v, want first persisted generation task snapshot", snapshot.tasks)
+	}
+}
+
+func TestTaskGenerationTasksReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
+	t.Parallel()
+
+	taskListErr := errors.New("generation task snapshot load failed")
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+		taskID  string
+		wantErr error
+	}{
+		{
+			name:    "repo get task",
+			service: &taskGenerationService{repo: &stubGenerationRepo{}},
+			taskID:  "task-generation-tasks-snapshot-missing-1",
+			wantErr: ErrTaskNotFound,
+		},
+		{
+			name: "list asset generation tasks",
+			service: &taskGenerationService{
+				repo: &stubGenerationRepo{task: &Task{
+					ID:     "task-generation-tasks-snapshot-error-1",
+					Result: &ListingKitResult{TaskID: "task-generation-tasks-snapshot-error-1"},
+				}},
+				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+					return nil, taskListErr
+				},
+			},
+			taskID:  "task-generation-tasks-snapshot-error-1",
+			wantErr: taskListErr,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildTaskGenerationTasksReadSnapshotPhase(tc.service).run(context.Background(), tc.taskID)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("taskGenerationTasksReadSnapshotPhase.run() error = %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestTaskGenerationServiceGetTaskGenerationTasksUsesSingleReadSnapshotHandoff(t *testing.T) {
+	t.Parallel()
+
+	const taskID = "task-generation-service-handoff-1"
+	firstUpdatedAt := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	repo := &sequencedTaskSnapshotsRepo{
+		snapshots: []*Task{
+			{
+				ID:        taskID,
+				UpdatedAt: firstUpdatedAt,
+				Result:    &ListingKitResult{TaskID: taskID},
+			},
+			{
+				ID:        taskID,
+				UpdatedAt: firstUpdatedAt.Add(3 * time.Hour),
+				Result:    &ListingKitResult{TaskID: taskID},
+			},
+		},
+	}
+	listCalls := 0
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			listCalls++
+			if listCalls == 1 {
+				return []assetgeneration.Task{
+					{TaskID: taskID, ID: "shein:shein-main-model", Platform: "shein", Slot: "main", ExecutionStatus: "completed", SatisfiedBy: "fallback_asset"},
+				}, nil
+			}
+			return []assetgeneration.Task{
+				{TaskID: taskID, ID: "amazon:amazon-main-white-bg", Platform: "amazon", Slot: "main", ExecutionStatus: "planned"},
+			}, nil
+		},
+	})
+
+	page, err := generation.GetTaskGenerationTasks(context.Background(), taskID, &GenerationTaskQuery{
+		Platform: "shein",
+	})
+	if err != nil {
+		t.Fatalf("GetTaskGenerationTasks() error = %v", err)
+	}
+	if repo.getCalls != 1 {
+		t.Fatalf("repo.getCalls = %d, want single task snapshot acquisition", repo.getCalls)
+	}
+	if listCalls != 1 {
+		t.Fatalf("listAssetGenerationTasks calls = %d, want single persisted task acquisition", listCalls)
+	}
+	if page == nil {
+		t.Fatal("page = nil, want generation task page")
+	}
+	if page.TaskID != taskID {
+		t.Fatalf("page.TaskID = %q, want %q", page.TaskID, taskID)
+	}
+	if !page.UpdatedAt.Equal(firstUpdatedAt) {
+		t.Fatalf("page.UpdatedAt = %v, want %v", page.UpdatedAt, firstUpdatedAt)
+	}
+	if len(page.Tasks) != 1 || page.Tasks[0].ID != "shein:shein-main-model" {
+		t.Fatalf("page.Tasks = %+v, want first acquired persisted task snapshot", page.Tasks)
 	}
 }
 
