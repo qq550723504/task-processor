@@ -19,6 +19,7 @@ func TestWorkflowPlatformAssetDispatchPhaseFileDelegatesToOrchestrationHelpers(t
 		"p.preAttachBundles(",
 		"collectPlatformGenerationTasks(final)",
 		"p.dispatchAndApply(",
+		"p.persistInventory(",
 		"p.persistHandoff(",
 	} {
 		if !strings.Contains(content, needle) {
@@ -29,9 +30,10 @@ func TestWorkflowPlatformAssetDispatchPhaseFileDelegatesToOrchestrationHelpers(t
 	preAttachIndex := strings.Index(content, "p.preAttachBundles(")
 	collectIndex := strings.Index(content, "collectPlatformGenerationTasks(final)")
 	dispatchIndex := strings.Index(content, "p.dispatchAndApply(")
+	inventoryPersistIndex := strings.Index(content, "p.persistInventory(")
 	persistIndex := strings.Index(content, "p.persistHandoff(")
-	if !(preAttachIndex < collectIndex && collectIndex < dispatchIndex && dispatchIndex < persistIndex) {
-		t.Fatalf("workflow_platform_asset_dispatch_phase.go should keep pre-attach -> collect -> dispatch/apply -> persist handoff order")
+	if !(preAttachIndex < collectIndex && collectIndex < dispatchIndex && dispatchIndex < inventoryPersistIndex && inventoryPersistIndex < persistIndex) {
+		t.Fatalf("workflow_platform_asset_dispatch_phase.go should keep pre-attach -> collect -> dispatch/apply -> inventory persist -> persist handoff order")
 	}
 
 	for _, needle := range []string{
@@ -44,6 +46,10 @@ func TestWorkflowPlatformAssetDispatchPhaseFileDelegatesToOrchestrationHelpers(t
 		if strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_asset_dispatch_phase.go should not contain %q", needle)
 		}
+	}
+
+	if strings.Contains(content, "_ = p.service.assetRepo.SaveInventory(ctx, inventory)") {
+		t.Fatal("workflow_platform_asset_dispatch_phase.go should hand off inventory durability instead of calling SaveInventory inline")
 	}
 }
 

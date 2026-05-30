@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -725,26 +724,6 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 	}
 	if len(final.AssetGenerationTasks) != 1 || final.AssetGenerationTasks[0].ExecutionStatus != "completed" {
 		t.Fatalf("decorated generation tasks = %+v, want completed dispatched task", final.AssetGenerationTasks)
-	}
-}
-
-func TestPlatformAssetDispatchPhaseSourceRoutesInventoryPersistenceThroughHandoff(t *testing.T) {
-	t.Parallel()
-
-	source, err := os.ReadFile("workflow_platform_asset_dispatch_phase.go")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	content := string(source)
-
-	if !strings.Contains(content, "func (p *platformAssetDispatchPhase) persistInventory(") {
-		t.Fatal("expected platform asset dispatch phase to define a persistInventory handoff")
-	}
-	if !strings.Contains(content, "p.persistInventory(ctx, inventory, returnedAssetCount)") {
-		t.Fatal("expected platform asset dispatch phase run() to route inventory persistence through persistInventory")
-	}
-	if strings.Contains(content, "_ = p.service.assetRepo.SaveInventory(ctx, inventory)") {
-		t.Fatal("expected platform asset dispatch phase to stop calling SaveInventory(ctx, inventory) inline")
 	}
 }
 
