@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -47,13 +48,14 @@ func (s *stubWorkflowProductService) ProcessProduct(ctx context.Context, task *p
 }
 
 type stubWorkflowAssetGenerator struct {
-	planResult     *assetgeneration.Result
-	executeErr     error
-	planErr        error
-	dispatchErr    error
-	dispatchResult *assetgeneration.Result
-	dispatchCalls  int
-	dispatchErrAt  map[int]error
+	planResult      *assetgeneration.Result
+	executeErr      error
+	planErr         error
+	dispatchErr     error
+	dispatchResult  *assetgeneration.Result
+	dispatchCalls   int
+	dispatchErrAt   map[int]error
+	lastDispatchReq *assetgeneration.DispatchRequest
 }
 
 func (s *stubWorkflowAssetGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
@@ -75,6 +77,9 @@ func (s *stubWorkflowAssetGenerator) Execute(ctx context.Context, req assetgener
 
 func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
 	s.dispatchCalls++
+	clonedReq := req
+	clonedReq.Tasks = cloneGenerationTasks(req.Tasks)
+	s.lastDispatchReq = &clonedReq
 	if s.dispatchErrAt != nil {
 		if err := s.dispatchErrAt[s.dispatchCalls]; err != nil {
 			return nil, err
@@ -93,6 +98,7 @@ type stubWorkflowAssetRepository struct {
 	delegate               *assetrepo.MemRepository
 	saveInventoryErr       error
 	saveGenerationTasksErr error
+	saveInventoryCalls     int
 	savedTaskID            string
 	savedTasks             []assetgeneration.Task
 }
@@ -102,6 +108,7 @@ func newStubWorkflowAssetRepository() *stubWorkflowAssetRepository {
 }
 
 func (s *stubWorkflowAssetRepository) SaveInventory(ctx context.Context, inventory *asset.Inventory) error {
+	s.saveInventoryCalls++
 	if s.saveInventoryErr != nil {
 		return s.saveInventoryErr
 	}
@@ -520,6 +527,149 @@ func TestPlatformAssetDispatchPersistPhaseRunAddsWarningIssueWhenPersistenceFail
 	}
 	if !reflect.DeepEqual(final.AssetGenerationTasks, tasks) {
 		t.Fatalf("decorated generation tasks = %+v, want %+v", final.AssetGenerationTasks, tasks)
+	}
+}
+
+func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newStubWorkflowAssetRepository()
+	assetGenerator := &stubWorkflowAssetGenerator{
+		dispatchResult: &assetgeneration.Result{
+			Tasks: []assetgeneration.Task{{
+				ID:              "amazon-main",
+				TaskID:          "task-dispatch-phase",
+				Platform:        "amazon",
+				RecipeID:        "amazon-lifestyle",
+				ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+				ExecutionStatus: "completed",
+			}},
+			Assets: []asset.AssetRecord{{
+				ID:       "generated-main",
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "https://cdn.example.com/generated-main.jpg",
+				RecipeID: "amazon-lifestyle",
+			}},
+		},
+	}
+	phase := buildPlatformAssetDispatchPhase(&service{
+		assetGenerator:     assetGenerator,
+		assetRepo:          assetRepository,
+		assetBundleBuilder: newDefaultAssetBundleBuilder(),
+	})
+	final := &ListingKitResult{
+		Summary: &GenerationSummary{},
+		Amazon:  &AmazonPackage{},
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{{
+				ID:   "source-1",
+				Kind: asset.KindSourceImage,
+				URL:  "https://example.com/source-1.jpg",
+			}},
+		},
+		AssetInventorySummary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: "task-dispatch-phase"},
+		Records: []asset.AssetRecord{{
+			ID:     "source-1",
+			Kind:   asset.KindSourceImage,
+			Origin: asset.OriginSource,
+			URL:    "https://example.com/source-1.jpg",
+		}},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	recipesByPlatform := resolveRecipesForPlatforms(newDefaultAssetRecipeResolver(), []string{"amazon"}, nil)
+	generationPlan := &assetgeneration.Result{
+		Tasks: []assetgeneration.Task{{
+			ID:              "amazon-main",
+			TaskID:          "task-dispatch-phase",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			ExecutionStatus: "planned",
+			CanExecute:      true,
+		}},
+	}
+	persistedGenerationTasks := []assetgeneration.Task{{
+		ID:              "amazon-main",
+		TaskID:          "task-dispatch-phase",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		ExecutionStatus: "planned",
+		CanExecute:      true,
+	}}
+
+	got := phase.run(
+		context.Background(),
+		&Task{ID: "task-dispatch-phase"},
+		final,
+		inventory,
+		recipesByPlatform,
+		generationPlan,
+		persistedGenerationTasks,
+		true,
+	)
+
+	if assetGenerator.lastDispatchReq == nil {
+		t.Fatal("expected dispatch request to be captured")
+	}
+	if len(assetGenerator.lastDispatchReq.Tasks) != 1 || assetGenerator.lastDispatchReq.Tasks[0].ID != "amazon-main" {
+		t.Fatalf("dispatch request tasks = %+v, want collected pending platform task", assetGenerator.lastDispatchReq.Tasks)
+	}
+	if !hasWorkflowStageStatus(final.WorkflowStages, "asset_generation_platform", WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, want completed asset_generation_platform", final.WorkflowStages)
+	}
+	if assetRepository.saveInventoryCalls != 1 {
+		t.Fatalf("save inventory calls = %d, want 1", assetRepository.saveInventoryCalls)
+	}
+	savedInventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: "task-dispatch-phase"})
+	if err != nil {
+		t.Fatalf("GetInventory() error = %v", err)
+	}
+	if !hasInventoryURL(savedInventory, "https://cdn.example.com/generated-main.jpg") {
+		t.Fatalf("saved inventory = %+v, want dispatched asset persisted", savedInventory)
+	}
+	if final.AssetInventorySummary == nil || final.AssetInventorySummary.GeneratedRecords != 1 {
+		t.Fatalf("asset inventory summary = %+v, want generated record count updated", final.AssetInventorySummary)
+	}
+	if final.Amazon == nil || final.Amazon.ImageBundle == nil {
+		t.Fatalf("amazon image bundle = %+v, want platform bundle attached", final.Amazon)
+	}
+	for _, pending := range final.Amazon.ImageBundle.PendingGeneration {
+		if pending.RecipeID == "amazon-lifestyle" {
+			t.Fatalf("amazon pending generation = %+v, dispatched lifestyle recipe should no longer be pending", final.Amazon.ImageBundle.PendingGeneration)
+		}
+	}
+	if assetRepository.savedTaskID != "task-dispatch-phase" {
+		t.Fatalf("saved task id = %q, want task-dispatch-phase", assetRepository.savedTaskID)
+	}
+	if !reflect.DeepEqual(got, assetRepository.savedTasks) {
+		t.Fatalf("returned generation tasks = %+v, want persisted generation tasks %+v", got, assetRepository.savedTasks)
+	}
+	if len(final.AssetGenerationTasks) != 1 || final.AssetGenerationTasks[0].ExecutionStatus != "completed" {
+		t.Fatalf("decorated generation tasks = %+v, want completed dispatched task", final.AssetGenerationTasks)
+	}
+}
+
+func TestWorkflowPlatformAssetDispatchPhaseFileUsesOrchestrationHelpers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("workflow_platform_asset_dispatch_phase.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_platform_asset_dispatch_phase.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"p.preAttachBundles(",
+		"collectPlatformGenerationTasks(final)",
+		"p.dispatchAndApply(",
+		"p.persistHandoff(",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("workflow_platform_asset_dispatch_phase.go should contain %q", needle)
+		}
 	}
 }
 
