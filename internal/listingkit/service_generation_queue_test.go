@@ -296,6 +296,126 @@ func TestTaskGenerationQueueReadSnapshotRunUsesSingleReviewedResultHandoff(t *te
 	}
 }
 
+func TestTaskGenerationQueueReadPageRunBuildsEmptyQueueResponseShape(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	page := buildTaskGenerationQueueReadPagePhase().run(&taskGenerationQueueReadSnapshot{
+		task: &Task{
+			ID:        "task-generation-queue-read-page-empty-1",
+			UpdatedAt: updatedAt,
+		},
+	}, &GenerationQueueQuery{
+		Page:     3,
+		PageSize: 7,
+	})
+	if page == nil {
+		t.Fatal("page = nil, want empty queue page")
+	}
+	if page.TaskID != "task-generation-queue-read-page-empty-1" || page.Page != 3 || page.PageSize != 7 || page.Total != 0 || !page.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("page = %+v, want empty queue page metadata preserved", page)
+	}
+	if len(page.Items) != 0 {
+		t.Fatalf("page.Items = %+v, want no queue items", page.Items)
+	}
+	if page.Summary == nil {
+		t.Fatal("page.Summary = nil, want empty summary shape")
+	}
+	if page.Summary.TotalItems != 0 || page.Summary.ReadyItems != 0 || page.Summary.RetryableItems != 0 {
+		t.Fatalf("page.Summary = %+v, want zeroed empty summary", page.Summary)
+	}
+}
+
+func TestTaskGenerationQueueReadPageRunAppliesFilteringSortingAndPaging(t *testing.T) {
+	t.Parallel()
+
+	page := buildTaskGenerationQueueReadPagePhase().run(&taskGenerationQueueReadSnapshot{
+		task: &Task{
+			ID:        "task-generation-queue-read-page-list-1",
+			UpdatedAt: time.Date(2026, 5, 30, 10, 5, 0, 0, time.UTC),
+		},
+		queue: &GenerationWorkQueue{
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "task-generation-queue-read-page-list-1", Platform: "shein", Slot: "main", State: "stubbed", TemplateLabel: "B Template"},
+				{TaskID: "task-generation-queue-read-page-list-1", Platform: "amazon", Slot: "main", State: "ready", TemplateLabel: "A Template"},
+				{TaskID: "task-generation-queue-read-page-list-1", Platform: "amazon", Slot: "gallery", State: "stubbed", TemplateLabel: "C Template"},
+			},
+		},
+	}, &GenerationQueueQuery{
+		State:     "stubbed",
+		SortBy:    "template_label",
+		SortOrder: "asc",
+		Page:      2,
+		PageSize:  1,
+	})
+	if page == nil {
+		t.Fatal("page = nil, want filtered queue page")
+	}
+	if page.Total != 2 || page.Page != 2 || page.PageSize != 1 {
+		t.Fatalf("page = %+v, want filtered total with paging metadata", page)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("page.Items = %+v, want single paged item", page.Items)
+	}
+	if page.Items[0].Platform != "amazon" || page.Items[0].Slot != "gallery" || page.Items[0].TemplateLabel != "C Template" {
+		t.Fatalf("page.Items[0] = %+v, want second filtered item after template sort", page.Items[0])
+	}
+	if page.Summary == nil || page.Summary.TotalItems != 2 || page.Summary.StubbedItems != 2 {
+		t.Fatalf("page.Summary = %+v, want filtered summary before paging", page.Summary)
+	}
+}
+
+func TestTaskGenerationQueueReadPageRunAttachesReviewSummaryBeforeDeltaTokenBuild(t *testing.T) {
+	t.Parallel()
+
+	query := &GenerationQueueQuery{Platform: "shein"}
+	snapshot := &taskGenerationQueueReadSnapshot{
+		task: &Task{
+			ID:        "task-generation-queue-read-page-review-1",
+			UpdatedAt: time.Date(2026, 5, 30, 10, 10, 0, 0, time.UTC),
+		},
+		result: &ListingKitResult{
+			TaskID: "task-generation-queue-read-page-review-1",
+			ReviewSummary: &GenerationReviewSummary{
+				ApprovedSections:      2,
+				DeferredSections:      1,
+				ReviewPendingSections: 3,
+			},
+		},
+		queue: &GenerationWorkQueue{
+			Items: []GenerationWorkQueueItem{{
+				TaskID:                 "task-generation-queue-read-page-review-1",
+				Platform:               "shein",
+				Slot:                   "main",
+				State:                  "ready",
+				RenderPreviewAvailable: true,
+			}},
+		},
+	}
+
+	page := buildTaskGenerationQueueReadPagePhase().run(snapshot, query)
+	if page == nil {
+		t.Fatal("page = nil, want queue page with attached review summary")
+	}
+	if page.Summary == nil || page.Summary.ApprovedSections != 2 || page.Summary.DeferredSections != 1 || page.Summary.ReviewPendingSections != 3 {
+		t.Fatalf("page.Summary = %+v, want attached review summary counts", page.Summary)
+	}
+
+	expectedDeltaToken := buildGenerationQueueDeltaToken(page, query)
+	if expectedDeltaToken == "" {
+		t.Fatal("expectedDeltaToken = empty, want review-aware queue delta token")
+	}
+	withoutReviewSummary := *page
+	withoutReviewSummary.Summary = &GenerationWorkQueueSummary{
+		TotalItems:       page.Summary.TotalItems,
+		ReadyItems:       page.Summary.ReadyItems,
+		PreviewableItems: page.Summary.PreviewableItems,
+	}
+	if expectedDeltaToken == buildGenerationQueueDeltaToken(&withoutReviewSummary, query) {
+		t.Fatalf("delta token = %q, want review summary attached before delta token build", expectedDeltaToken)
+	}
+}
+
 func TestTaskGenerationReviewReadSnapshotPhaseRunUsesSingleCurrentSnapshot(t *testing.T) {
 	t.Parallel()
 

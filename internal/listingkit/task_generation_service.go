@@ -77,38 +77,11 @@ func (s *taskGenerationService) GetTaskGenerationQueue(ctx context.Context, task
 	if err != nil {
 		return nil, err
 	}
-	task := snapshot.task
-	reviewedResult := snapshot.result
-	queue := snapshot.queue
-	if queue == nil {
-		page := buildGenerationQueuePage(task.ID, task.UpdatedAt, nil, nil, generationQueueListPage{
-			Page:     resolveGenerationQueuePage(query),
-			PageSize: resolveGenerationQueuePageSize(query),
-			Total:    0,
-		})
-		page.DeltaToken = buildGenerationQueueDeltaToken(page, query)
-		if isGenerationReviewReadNotModified(query, page.DeltaToken) {
-			return applyGenerationConditionalStateToQueuePage(&GenerationQueuePage{
-				TaskID:      task.ID,
-				DeltaToken:  page.DeltaToken,
-				NotModified: true,
-				Page:        page.Page,
-				PageSize:    page.PageSize,
-				Total:       page.Total,
-				UpdatedAt:   page.UpdatedAt,
-			}), nil
-		}
-		return applyGenerationConditionalStateToQueuePage(page), nil
-	}
-	filtered := filterGenerationQueueItems(queue.Items, query)
-	sorted := sortGenerationQueueItems(filtered, query)
-	paged, meta := paginateGenerationQueueItems(sorted, query)
-	page := buildGenerationQueuePage(task.ID, task.UpdatedAt, filtered, paged, meta)
-	attachReviewSummaryToGenerationQueuePage(page, reviewedResult)
+	page := buildTaskGenerationQueueReadPagePhase().run(snapshot, query)
 	page.DeltaToken = buildGenerationQueueDeltaToken(page, query)
 	if isGenerationReviewReadNotModified(query, page.DeltaToken) {
 		return applyGenerationConditionalStateToQueuePage(&GenerationQueuePage{
-			TaskID:      task.ID,
+			TaskID:      page.TaskID,
 			DeltaToken:  page.DeltaToken,
 			NotModified: true,
 			Page:        page.Page,
