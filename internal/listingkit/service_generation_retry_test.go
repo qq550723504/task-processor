@@ -1639,6 +1639,81 @@ func TestRetryGenerationResultProjectionBuildsQueues(t *testing.T) {
 	}
 }
 
+func TestRetryGenerationResultProjectionHandlesNilTaskRequest(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		ID:        "task-generation-retry-projection-nil-request-1",
+		UpdatedAt: time.Date(2026, 5, 30, 10, 10, 0, 0, time.UTC),
+		Request:   nil,
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-projection-nil-request-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			Amazon: &AmazonPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Auxiliary: []common.BundleSlot{{
+						Key:             "auxiliary",
+						Purpose:         "scene",
+						RecipeID:        "amazon-lifestyle",
+						IdealKind:       string(asset.KindSceneImage),
+						StateLabel:      "fallback_in_use",
+						SatisfiedBy:     "fallback_asset",
+						ExecutionStatus: "fallback",
+						AssetID:         "scene-stub-nil-request-1",
+					}},
+				},
+			},
+		},
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: task.ID, Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/gallery.jpg"},
+			{ID: "scene-rendered-nil-request-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://cdn.example.com/scene-rendered-nil-request-1.jpg", RecipeID: "amazon-lifestyle", Metadata: map[string]string{"bundle_slot": "auxiliary", "published_url": "https://cdn.example.com/scene-rendered-nil-request-1.jpg"}},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 2, DerivedRecords: 1, GeneratedRecords: 1, RecipeCount: 1},
+	}
+	updatedTasks := []assetgeneration.Task{{
+		TaskID:          task.ID,
+		ID:              "amazon:amazon-lifestyle",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		AssetKind:       asset.KindSceneImage,
+		Slot:            "auxiliary",
+		Purpose:         "scene",
+		Status:          "completed",
+		ExecutionStatus: "completed",
+		ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+		CanExecute:      true,
+		SatisfiedBy:     assetgeneration.ExecutionModeGeneratedAsset,
+		SourceAssetIDs:  []string{"gallery-1"},
+	}}
+
+	result, page := buildRetryGenerationProjectionPhase(assetrecipe.NewStaticResolver(), assetbundle.NewBuilder()).run(
+		task,
+		inventory,
+		updatedTasks,
+		cloneGenerationTasks(updatedTasks),
+		&assetgeneration.Result{Tasks: cloneGenerationTasks(updatedTasks)},
+		nil,
+	)
+
+	if result == nil || page == nil {
+		t.Fatalf("phase output = (%+v, %+v), want rebuilt result and page", result, page)
+	}
+	if !reflect.DeepEqual(result.AssetInventorySummary, inventory.Summary) {
+		t.Fatalf("asset inventory summary = %+v, want %+v", result.AssetInventorySummary, inventory.Summary)
+	}
+	if result.Amazon == nil || result.Amazon.ImageBundle == nil || len(result.Amazon.ImageBundle.Auxiliary) != 1 {
+		t.Fatalf("amazon image bundle = %+v, want existing bundle preserved without nil request panic", result.Amazon)
+	}
+	if result.Amazon.ImageBundle.Auxiliary[0].AssetID != "scene-stub-nil-request-1" {
+		t.Fatalf("amazon auxiliary slot = %+v, want original bundle preserved when request is nil", result.Amazon.ImageBundle.Auxiliary[0])
+	}
+}
+
 func TestTaskGenerationServiceFileDelegatesRetryProjection(t *testing.T) {
 	t.Parallel()
 
