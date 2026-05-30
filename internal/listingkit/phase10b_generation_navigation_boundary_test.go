@@ -53,6 +53,7 @@ func TestTaskGenerationNavigationDispatchPrimaryBoundary(t *testing.T) {
 	assertSourceOccurrenceCount(t, source, "GetTaskGenerationReviewSession(", 1)
 	assertSourceOccurrenceCount(t, source, "resolveTaskGenerationNavigationPrimarySessionQuery(", 1)
 	assertSourceExcludesAll(t, source, []string{
+		"DispatchTaskGenerationNavigation(",
 		"executeGenerationNavigationDispatchPlan(",
 		"executeGenerationNavigationDispatchPlanSequential(",
 		"executeGenerationNavigationDispatchPlanParallel(",
@@ -76,6 +77,7 @@ func TestTaskGenerationNavigationDispatchProjectionBoundary(t *testing.T) {
 		"GetTaskGenerationReviewPreview(",
 		"GetTaskGenerationQueue(",
 		"GetTaskGenerationReviewSession(",
+		"DispatchTaskGenerationNavigation(",
 		"dispatchGenerationNavigationPrimary(",
 		"executeGenerationNavigationDispatchPlan(",
 		"executeGenerationNavigationDispatchPlanStep(",
