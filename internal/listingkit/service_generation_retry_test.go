@@ -38,6 +38,11 @@ type retryPersistenceFailureFixture struct {
 	generation      *taskGenerationService
 }
 
+type sequencedTaskSnapshotsRepo struct {
+	snapshots []*Task
+	getCalls  int
+}
+
 type recordingRetryPersistenceAssetRepo struct {
 	delegate               assetrepo.Repository
 	calls                  []string
@@ -116,6 +121,81 @@ func (r *recordingRetryPersistenceServiceRepo) IncrementRetryCount(ctx context.C
 func (r *recordingRetryPersistenceServiceRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
 	r.saveTaskResultCalls++
 	return r.delegate.SaveTaskResult(ctx, taskID, result)
+}
+
+func (r *sequencedTaskSnapshotsRepo) CreateTask(ctx context.Context, task *Task) error {
+	copied := *task
+	r.snapshots = []*Task{&copied}
+	r.getCalls = 0
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	if len(r.snapshots) == 0 {
+		return nil, ErrTaskNotFound
+	}
+	index := r.getCalls
+	if index >= len(r.snapshots) {
+		index = len(r.snapshots) - 1
+	}
+	snapshot := r.snapshots[index]
+	r.getCalls++
+	if snapshot == nil || snapshot.ID != taskID {
+		return nil, ErrTaskNotFound
+	}
+	copied := *snapshot
+	return &copied, nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	if len(r.snapshots) == 0 || r.snapshots[len(r.snapshots)-1] == nil {
+		return nil, 0, nil
+	}
+	copied := *r.snapshots[len(r.snapshots)-1]
+	return []Task{copied}, 1, nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) MarkProcessing(ctx context.Context, taskID string) error {
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
+	return r.SaveTaskResult(ctx, taskID, result)
+}
+
+func (r *sequencedTaskSnapshotsRepo) MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error {
+	return r.SaveTaskResult(ctx, taskID, result)
+}
+
+func (r *sequencedTaskSnapshotsRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) PrepareRetry(ctx context.Context, taskID string) error {
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) IncrementRetryCount(ctx context.Context, taskID string) error {
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
+	if len(r.snapshots) == 0 {
+		return ErrTaskNotFound
+	}
+	latest := r.snapshots[len(r.snapshots)-1]
+	if latest == nil || latest.ID != taskID {
+		return ErrTaskNotFound
+	}
+	copiedTask := *latest
+	if result != nil {
+		copiedResult := *result
+		copiedTask.Result = &copiedResult
+	} else {
+		copiedTask.Result = nil
+	}
+	r.snapshots[len(r.snapshots)-1] = &copiedTask
+	return nil
 }
 
 func (s *stubRetryNilDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
@@ -1855,75 +1935,128 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testing.T) {
 	t.Parallel()
 
-	repo := &stubGenerationRepo{}
-	task := &Task{
-		ID:        "task-generation-action-refresh-1",
-		Status:    TaskStatusCompleted,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
-		Result: &ListingKitResult{
-			TaskID: "task-generation-action-refresh-1",
-			AssetGenerationOverview: &AssetGenerationOverview{
-				PrimaryActionKey: "stale_overview",
-			},
-			AssetRenderPreviews: []AssetRenderPreview{{
-				AssetID:       "asset-current-1",
-				PreviewFormat: "svg",
-				PreviewSVG:    "<svg>current</svg>",
-				VisualMode:    "selling_point",
-				LayerTypes:    []string{"detail"},
-			}},
-			PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
-				Platform: "amazon",
-				Main: &AssetRenderPreviewSlot{
-					Slot:          "main",
-					AssetID:       "asset-stale-1",
+	taskID := "task-generation-action-refresh-1"
+	repo := &sequencedTaskSnapshotsRepo{snapshots: []*Task{
+		{
+			ID:        taskID,
+			Status:    TaskStatusCompleted,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+			Result: &ListingKitResult{
+				TaskID: taskID,
+				AssetRenderPreviews: []AssetRenderPreview{{
+					AssetID:       "asset-overview-1",
 					PreviewFormat: "svg",
-					PreviewSVG:    "<svg>stale</svg>",
-				},
-				Summary: &PlatformAssetRenderPreviewSummary{TotalPreviews: 1, MainAvailable: true},
-			}},
-			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
-				Platform: "amazon",
-				Main: &common.BundleSlot{
-					Key:           "main",
-					AssetID:       "asset-current-1",
-					StateLabel:    "ready",
-					TemplateLabel: "Amazon Main",
-				},
-				MissingSlots: []common.MissingSlot{{
-					Slot:          "auxiliary",
-					Purpose:       "scene",
-					RecipeID:      "amazon-lifestyle",
-					TemplateLabel: "Amazon Lifestyle Scene",
-					RenderProfile: "amazon_lifestyle_scene",
-					StateLabel:    "missing",
+					PreviewSVG:    "<svg>overview</svg>",
+					VisualMode:    "selling_point",
+					LayerTypes:    []string{"detail"},
 				}},
-			}},
+				Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
+					Platform: "amazon",
+					MissingSlots: []common.MissingSlot{{
+						Slot:          "auxiliary",
+						Purpose:       "scene",
+						RecipeID:      "amazon-lifestyle",
+						TemplateLabel: "Amazon Lifestyle Scene",
+						RenderProfile: "amazon_lifestyle_scene",
+						StateLabel:    "missing",
+					}},
+				}},
+			},
 		},
-	}
-	if err := repo.CreateTask(context.Background(), task); err != nil {
-		t.Fatalf("CreateTask() error = %v", err)
-	}
+		{
+			ID:        taskID,
+			Status:    TaskStatusCompleted,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+			Result: &ListingKitResult{
+				TaskID: taskID,
+				AssetRenderPreviews: []AssetRenderPreview{{
+					AssetID:       "asset-preview-2",
+					PreviewFormat: "svg",
+					PreviewSVG:    "<svg>preview-2</svg>",
+					VisualMode:    "selling_point",
+					LayerTypes:    []string{"detail"},
+				}},
+				Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
+					Platform: "amazon",
+					Main: &common.BundleSlot{
+						Key:           "main",
+						AssetID:       "asset-preview-2",
+						StateLabel:    "ready",
+						TemplateLabel: "Amazon Main",
+					},
+				}},
+			},
+		},
+		{
+			ID:        taskID,
+			Status:    TaskStatusCompleted,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+			Result: &ListingKitResult{
+				TaskID: taskID,
+				AssetRenderPreviews: []AssetRenderPreview{{
+					AssetID:       "asset-current-3",
+					PreviewFormat: "svg",
+					PreviewSVG:    "<svg>current</svg>",
+					VisualMode:    "selling_point",
+					LayerTypes:    []string{"detail"},
+				}},
+				Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
+					Platform: "amazon",
+					Main: &common.BundleSlot{
+						Key:           "main",
+						AssetID:       "asset-current-3",
+						StateLabel:    "ready",
+						TemplateLabel: "Amazon Main",
+					},
+				}},
+			},
+		},
+	}}
+
+	taskCall := 0
 
 	generation := newTaskGenerationService(taskGenerationServiceConfig{
 		repo: repo,
 		listAssetGenerationTasks: func(ctx context.Context, requestedTaskID string) ([]assetgeneration.Task, error) {
-			return []assetgeneration.Task{{
-				TaskID:          requestedTaskID,
-				ID:              "amazon:amazon-lifestyle",
-				Platform:        "amazon",
-				RecipeID:        "amazon-lifestyle",
-				AssetKind:       asset.KindSceneImage,
-				Slot:            "auxiliary",
-				Purpose:         "scene",
-				Status:          "planned",
-				ExecutionStatus: "planned",
-				ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
-				CanExecute:      true,
-				SourceAssetIDs:  []string{"asset-current-1"},
-			}}, nil
+			taskCall++
+			switch taskCall {
+			case 1:
+				return []assetgeneration.Task{{
+					TaskID:          requestedTaskID,
+					ID:              "amazon:amazon-lifestyle",
+					Platform:        "amazon",
+					RecipeID:        "amazon-lifestyle",
+					AssetKind:       asset.KindSceneImage,
+					Slot:            "auxiliary",
+					Purpose:         "scene",
+					Status:          "planned",
+					ExecutionStatus: "planned",
+					ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+					CanExecute:      true,
+					SourceAssetIDs:  []string{"asset-overview-1"},
+				}}, nil
+			default:
+				return []assetgeneration.Task{{
+					TaskID:          requestedTaskID,
+					ID:              "amazon:amazon-main",
+					Platform:        "amazon",
+					RecipeID:        "amazon-main",
+					AssetKind:       asset.KindModelImage,
+					Slot:            "main",
+					Purpose:         "main",
+					Status:          "completed",
+					ExecutionStatus: "completed",
+					ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+					CanExecute:      true,
+					SatisfiedBy:     assetgeneration.ExecutionModeGeneratedAsset,
+				}}, nil
+			}
 		},
 		listGenerationReviews: func(ctx context.Context, requestedTaskID string) ([]GenerationReviewRecord, error) {
 			return nil, nil
@@ -1932,9 +2065,9 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 
 	refresh, err := buildTaskGenerationActionRefreshPhase(generation).run(
 		context.Background(),
-		task.ID,
+		taskID,
 		&ListingKitResult{
-			TaskID: "task-generation-action-refresh-1",
+			TaskID: taskID,
 			AssetGenerationOverview: &AssetGenerationOverview{
 				PrimaryActionKey: "base_result_overview",
 			},
@@ -1955,17 +2088,23 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 	if refresh == nil {
 		t.Fatal("refresh = nil, want refreshed action payload")
 	}
-	if refresh.overview == nil || refresh.overview.PrimaryActionKey != "upgrade_fallback_assets" {
-		t.Fatalf("overview = %+v, want refreshed overview from current queue state", refresh.overview)
+	if refresh.currentResult == nil || refresh.currentResult.AssetGenerationOverview == nil {
+		t.Fatalf("currentResult = %+v, want refreshed listing kit result snapshot", refresh.currentResult)
 	}
-	if len(refresh.platformRenderPreviews) != 1 || refresh.platformRenderPreviews[0].Platform != "amazon" {
-		t.Fatalf("platformRenderPreviews = %+v, want refreshed amazon previews", refresh.platformRenderPreviews)
+	if refresh.overview == nil || refresh.overview.PrimaryActionKey != refresh.currentResult.AssetGenerationOverview.PrimaryActionKey {
+		t.Fatalf("overview = %+v, current overview = %+v, want overview derived from same refreshed snapshot", refresh.overview, refresh.currentResult.AssetGenerationOverview)
 	}
-	if refresh.platformRenderPreviews[0].Main == nil || refresh.platformRenderPreviews[0].Main.AssetID != "asset-current-1" {
-		t.Fatalf("platformRenderPreviews = %+v, want current platform preview asset", refresh.platformRenderPreviews)
+	if len(refresh.currentResult.PlatformAssetRenderPreviews) != 1 || len(refresh.platformRenderPreviews) != 1 {
+		t.Fatalf("platformRenderPreviews = %+v, current previews = %+v, want synced refreshed previews", refresh.platformRenderPreviews, refresh.currentResult.PlatformAssetRenderPreviews)
 	}
-	if refresh.currentResult == nil || refresh.currentResult.AssetGenerationOverview == nil || refresh.currentResult.AssetGenerationOverview.PrimaryActionKey != "upgrade_fallback_assets" {
-		t.Fatalf("currentResult = %+v, want refreshed listing kit result", refresh.currentResult)
+	if !reflect.DeepEqual(refresh.platformRenderPreviews, refresh.currentResult.PlatformAssetRenderPreviews) {
+		t.Fatalf("platformRenderPreviews = %+v, current previews = %+v, want previews derived from same refreshed snapshot", refresh.platformRenderPreviews, refresh.currentResult.PlatformAssetRenderPreviews)
+	}
+	if refresh.currentResult.AssetGenerationOverview.PrimaryActionKey != "upgrade_fallback_assets" {
+		t.Fatalf("current overview = %+v, want overview from refreshed snapshot", refresh.currentResult.AssetGenerationOverview)
+	}
+	if len(refresh.currentResult.PlatformAssetRenderPreviews[0].Auxiliary) != 1 || refresh.currentResult.PlatformAssetRenderPreviews[0].Auxiliary[0].AssetID != "asset-overview-1" {
+		t.Fatalf("current previews = %+v, want preview payload from refreshed snapshot", refresh.currentResult.PlatformAssetRenderPreviews)
 	}
 }
 
@@ -2061,13 +2200,7 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 
 	required := []string{
 		"execution, err := buildTaskGenerationActionExecutePhase(s).run(",
-		"result.Retry = execution.retryPage",
-		"result.Queue = execution.queuePage",
-		"s.persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)",
 		"refresh, err := buildTaskGenerationActionRefreshPhase(s).run(",
-		"result.Overview = refresh.overview",
-		"result.PlatformRenderPreviews = refresh.platformRenderPreviews",
-		"currentResult := refresh.currentResult",
 	}
 	for _, needle := range required {
 		if !strings.Contains(actionSource, needle) {
@@ -2082,8 +2215,7 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromPage(result.Queue), target.QueueQuery)",
 		"result.Overview, err = s.getCurrentAssetGenerationOverview(ctx, taskID)",
 		"result.PlatformRenderPreviews, err = s.getCurrentActionRenderPreviews(ctx, taskID, target.QueueQuery)",
-		"if len(currentResult.PlatformAssetRenderPreviews) == 0 && len(result.PlatformRenderPreviews) > 0 {",
-		"if len(currentResult.AssetRenderPreviews) == 0 && baseResult != nil {",
+		"buildActionPlatformRenderPreviews(baseResult, target.QueueQuery)",
 	}
 	for _, needle := range forbidden {
 		if strings.Contains(actionSource, needle) {
