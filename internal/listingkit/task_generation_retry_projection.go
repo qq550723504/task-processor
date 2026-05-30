@@ -37,11 +37,7 @@ func (p *retryGenerationProjectionPhase) run(
 		rebuiltResult.AssetInventorySummary = inventory.Summary
 	}
 
-	var requestedPlatforms []string
-	if task.Request != nil {
-		requestedPlatforms = task.Request.Platforms
-	}
-	recipesByPlatform := resolveRecipesForPlatforms(p.assetRecipeResolver, requestedPlatforms, task.Result.CanonicalProduct)
+	recipesByPlatform := resolveRecipesForPlatforms(p.assetRecipeResolver, previewPlatforms(task), task.Result.CanonicalProduct)
 	attachPlatformImageBundles(&rebuiltResult, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: updatedTasks}, p.assetBundleBuilder)
 	decorateListingKitResultGeneration(&rebuiltResult, updatedTasks)
 	syncAssetRenderPreviews(&rebuiltResult)

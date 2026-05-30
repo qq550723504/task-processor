@@ -1707,10 +1707,10 @@ func TestRetryGenerationResultProjectionHandlesNilTaskRequest(t *testing.T) {
 		t.Fatalf("asset inventory summary = %+v, want %+v", result.AssetInventorySummary, inventory.Summary)
 	}
 	if result.Amazon == nil || result.Amazon.ImageBundle == nil || len(result.Amazon.ImageBundle.Auxiliary) != 1 {
-		t.Fatalf("amazon image bundle = %+v, want existing bundle preserved without nil request panic", result.Amazon)
+		t.Fatalf("amazon image bundle = %+v, want rebuilt bundle from persisted platform state", result.Amazon)
 	}
-	if result.Amazon.ImageBundle.Auxiliary[0].AssetID != "scene-stub-nil-request-1" {
-		t.Fatalf("amazon auxiliary slot = %+v, want original bundle preserved when request is nil", result.Amazon.ImageBundle.Auxiliary[0])
+	if result.Amazon.ImageBundle.Auxiliary[0].AssetID != "scene-rendered-nil-request-1" || result.Amazon.ImageBundle.Auxiliary[0].URL != "https://cdn.example.com/scene-rendered-nil-request-1.jpg" {
+		t.Fatalf("amazon auxiliary slot = %+v, want rebuilt rendered asset when request is nil", result.Amazon.ImageBundle.Auxiliary[0])
 	}
 }
 
