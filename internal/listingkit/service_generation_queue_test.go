@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/reviewstore"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -64,6 +65,152 @@ func TestGetTaskGenerationQueueReturnsNotModifiedWhenDeltaMatches(t *testing.T) 
 	}
 	if second == nil || !second.NotModified || second.DeltaToken != first.DeltaToken || second.Summary != nil || len(second.Items) != 0 {
 		t.Fatalf("second response = %+v, want not_modified queue response", second)
+	}
+}
+
+func TestGetTaskGenerationQueueBuildsEmptyQueueFinalResponseShape(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	svc := &service{
+		repo:      repo,
+		assetRepo: assetRepository,
+	}
+
+	updatedAt := time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC)
+	task := &Task{
+		ID:        "task-generation-queue-empty-final-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: updatedAt,
+		UpdatedAt: updatedAt,
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-queue-empty-final-1"},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	page, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, &GenerationQueueQuery{
+		Platform: "shein",
+		Page:     2,
+		PageSize: 5,
+	})
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() error = %v", err)
+	}
+	if page == nil {
+		t.Fatal("page = nil, want empty queue response")
+	}
+	if page.TaskID != task.ID || page.Page != 2 || page.PageSize != 5 || page.Total != 0 || !page.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("page = %+v, want empty queue response metadata preserved", page)
+	}
+	if page.DeltaToken == "" {
+		t.Fatalf("page = %+v, want final delta token on empty queue response", page)
+	}
+	if page.NotModified {
+		t.Fatalf("page = %+v, want full empty queue response instead of not_modified", page)
+	}
+	if len(page.Items) != 0 {
+		t.Fatalf("page.Items = %+v, want no queue items", page.Items)
+	}
+	if page.Summary == nil || page.Summary.TotalItems != 0 || page.Summary.ReadyItems != 0 || page.Summary.ReviewPendingSections != 0 {
+		t.Fatalf("page.Summary = %+v, want zeroed empty summary on final response", page.Summary)
+	}
+	if page.Conditional == nil || page.Conditional.DeltaToken != page.DeltaToken || page.Conditional.NotModified {
+		t.Fatalf("page.Conditional = %+v, want final conditional decoration", page.Conditional)
+	}
+}
+
+func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitivity(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	svc := &service{
+		repo:       repo,
+		assetRepo:  assetRepository,
+		reviewRepo: reviewstore.NewMemRepository(),
+	}
+
+	updatedAt := time.Date(2026, 5, 30, 11, 5, 0, 0, time.UTC)
+	task := &Task{
+		ID:        "task-generation-queue-review-final-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: updatedAt,
+		UpdatedAt: updatedAt,
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-queue-review-final-1",
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-reviewed-final-1",
+				AssetRevision:   "asset-rev-final-1",
+				PreviewRevision: "preview-rev-final-1",
+				TaskRevision:    "task-rev-final-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:             "main",
+					Purpose:         "main",
+					RecipeID:        "shein-main-model",
+					TemplateLabel:   "SHEIN Main",
+					StateLabel:      "ready",
+					SatisfiedBy:     "exact_asset",
+					ExecutionStatus: "ready",
+					AssetID:         "asset-reviewed-final-1",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := svc.ExecuteTaskGenerationAction(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey: "approve_section_review",
+		Target: &AssetGenerationActionTarget{
+			ActionKey:       "approve_section_review",
+			InteractionMode: "review_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "main",
+				PreviewCapability: "detail_preview",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("ExecuteTaskGenerationAction() error = %v", err)
+	}
+
+	query := &GenerationQueueQuery{Platform: "shein"}
+	page, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, query)
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() error = %v", err)
+	}
+	if page == nil {
+		t.Fatal("page = nil, want final queue response with review summary")
+	}
+	if page.Summary == nil || page.Summary.ApprovedSections != 1 || page.Summary.DeferredSections != 0 || page.Summary.ReviewPendingSections < 1 {
+		t.Fatalf("page.Summary = %+v, want final response to retain review summary fields", page.Summary)
+	}
+	if page.DeltaToken == "" {
+		t.Fatalf("page = %+v, want delta token on final response", page)
+	}
+	if page.Conditional == nil || page.Conditional.DeltaToken != page.DeltaToken {
+		t.Fatalf("page.Conditional = %+v, want final conditional decoration using delta token", page.Conditional)
+	}
+
+	withoutReviewSummary := *page
+	withoutReviewSummary.Summary = &GenerationWorkQueueSummary{
+		TotalItems:       page.Summary.TotalItems,
+		ReadyItems:       page.Summary.ReadyItems,
+		PreviewableItems: page.Summary.PreviewableItems,
+	}
+	if page.DeltaToken == buildGenerationQueueDeltaToken(&withoutReviewSummary, query) {
+		t.Fatalf("page.DeltaToken = %q, want final delta token sensitive to review summary", page.DeltaToken)
 	}
 }
 
