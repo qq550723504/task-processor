@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -453,6 +454,107 @@ func TestApplyPlatformAssetDispatchMutationKeepsGenerationTasksWhenDispatchResul
 	}
 	if got := len(mutation.inventory.Records); got != 1 {
 		t.Fatalf("inventory records = %d, want unchanged count 1", got)
+	}
+}
+
+func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsTasksOnly(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		Amazon: &AmazonPackage{},
+		Shein:  &SheinPackage{},
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
+			},
+		},
+		AssetInventorySummary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	recipesByPlatform := resolveRecipesForPlatforms(newDefaultAssetRecipeResolver(), []string{"amazon", "shein"}, nil)
+	generationTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "planned"},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Tasks: []assetgeneration.Task{
+			{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "completed"},
+			{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+		},
+	}
+
+	mutation := applyPlatformAssetDispatchMutation(
+		final,
+		inventory,
+		recipesByPlatform,
+		generationTasks,
+		dispatchResult,
+		newDefaultAssetBundleBuilder(),
+	)
+
+	if got := len(mutation.inventory.Records); got != 1 {
+		t.Fatalf("inventory records = %d, want unchanged count 1", got)
+	}
+	if mutation.final.AssetInventorySummary == nil || mutation.final.AssetInventorySummary.GeneratedRecords != 0 {
+		t.Fatalf("asset inventory summary = %+v, want unchanged source-only summary", mutation.final.AssetInventorySummary)
+	}
+	if mutation.final.Shein == nil || mutation.final.Shein.ImageBundle == nil {
+		t.Fatalf("shein image bundle = %+v, want shaped bundle from returned tasks", mutation.final.Shein)
+	}
+	hasSheinPending := false
+	for _, pending := range mutation.final.Shein.ImageBundle.PendingGeneration {
+		if pending.ID == "shein:gallery" && pending.ExecutionStatus == "planned" {
+			hasSheinPending = true
+			break
+		}
+	}
+	if !hasSheinPending {
+		t.Fatalf("shein pending generation = %+v, want planned returned task attached", mutation.final.Shein.ImageBundle.PendingGeneration)
+	}
+
+	wantTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "completed"},
+		{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+	}
+	if !reflect.DeepEqual(mutation.generationTasks, wantTasks) {
+		t.Fatalf("generation tasks = %+v, want %+v", mutation.generationTasks, wantTasks)
+	}
+}
+
+func TestWorkflowPlatformAssetDispatchApplyFileDelegatesToMutationSubSeams(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("workflow_platform_asset_dispatch_apply.go")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	source := string(content)
+
+	required := []string{
+		"buildPlatformAssetDispatchInventoryApplyPhase().run(",
+		"buildPlatformAssetDispatchBundleApplyPhase(bundleBuilder).run(",
+	}
+	for _, needle := range required {
+		if !strings.Contains(source, needle) {
+			t.Fatalf("workflow_platform_asset_dispatch_apply.go missing %q", needle)
+		}
+	}
+
+	forbidden := []string{
+		"inventory.Records = append(inventory.Records, dispatchResult.Assets...)",
+		"rebuildInventorySummary(inventory)",
+		"rebuildBundleWithGeneratedAssets(final.AssetBundle, dispatchResult.Assets)",
+		"attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, bundleBuilder)",
+		"mergeGenerationTasks(generationTasks, dispatchResult.Tasks)",
+	}
+	for _, needle := range forbidden {
+		if strings.Contains(source, needle) {
+			t.Fatalf("workflow_platform_asset_dispatch_apply.go still inlines %q", needle)
+		}
 	}
 }
 

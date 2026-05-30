@@ -30,12 +30,16 @@ func applyPlatformAssetDispatchMutation(
 		return mutation
 	}
 	if len(dispatchResult.Assets) > 0 {
-		inventory.Records = append(inventory.Records, dispatchResult.Assets...)
-		inventory.Summary = rebuildInventorySummary(inventory)
-		final.AssetBundle = rebuildBundleWithGeneratedAssets(final.AssetBundle, dispatchResult.Assets)
-		final.AssetInventorySummary = inventory.Summary
+		_ = inventory.Records
+		_ = final.AssetBundle
+		buildPlatformAssetDispatchInventoryApplyPhase().run(final, inventory, dispatchResult.Assets)
 	}
-	attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, bundleBuilder)
-	mutation.generationTasks = mergeGenerationTasks(generationTasks, dispatchResult.Tasks)
+	mutation.generationTasks = buildPlatformAssetDispatchBundleApplyPhase(bundleBuilder).run(
+		final,
+		inventory,
+		recipesByPlatform,
+		generationTasks,
+		dispatchResult.Tasks,
+	)
 	return mutation
 }
