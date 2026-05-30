@@ -145,6 +145,74 @@ func TestRetryGenerationMutationApplyMergesTasksAndReplacesRetriedAssets(t *test
 	}
 }
 
+func TestRetryGenerationMutationApplySkipsInventoryMutationWhenDispatchResultNil(t *testing.T) {
+	t.Parallel()
+
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/source.jpg"},
+			{
+				ID:       "scene-stub-1",
+				TaskID:   "task-retry-mutation-nil-1",
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "file:///tmp/scene-stub.jpg",
+				RecipeID: "amazon-lifestyle",
+				Metadata: map[string]string{"bundle_slot": "auxiliary"},
+			},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 2, DerivedRecords: 1, GeneratedRecords: 1, RecipeCount: 1},
+	}
+	wantRecords := append([]asset.AssetRecord(nil), inventory.Records...)
+	wantSummary := *inventory.Summary
+	existingTasks := []assetgeneration.Task{
+		{
+			ID:              "amazon:amazon-lifestyle",
+			TaskID:          "task-retry-mutation-nil-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			Slot:            "auxiliary",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "planned",
+			Metadata:        map[string]string{"existing": "value"},
+		},
+		{
+			ID:              "amazon:amazon-gallery-scene",
+			TaskID:          "task-retry-mutation-nil-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-gallery-scene",
+			Slot:            "gallery",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "completed",
+			Metadata:        map[string]string{"preserved": "value"},
+		},
+	}
+	selectedTasks := []assetgeneration.Task{{
+		ID:              "amazon:amazon-lifestyle",
+		TaskID:          "task-retry-mutation-nil-1",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		Slot:            "auxiliary",
+		AssetKind:       asset.KindSceneImage,
+		ExecutionStatus: "planned",
+	}}
+
+	got := buildRetryGenerationMutationPhase().run(inventory, existingTasks, selectedTasks, nil)
+
+	if !reflect.DeepEqual(got, existingTasks) {
+		t.Fatalf("mutation tasks = %+v, want unchanged %+v", got, existingTasks)
+	}
+	if !reflect.DeepEqual(inventory.Records, wantRecords) {
+		t.Fatalf("inventory records = %+v, want unchanged %+v", inventory.Records, wantRecords)
+	}
+	if inventory.Summary == nil {
+		t.Fatalf("inventory summary = nil, want unchanged summary")
+	}
+	if !reflect.DeepEqual(*inventory.Summary, wantSummary) {
+		t.Fatalf("inventory summary = %+v, want unchanged %+v", inventory.Summary, &wantSummary)
+	}
+}
+
 func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 	t.Parallel()
 

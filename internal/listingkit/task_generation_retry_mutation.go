@@ -17,20 +17,17 @@ func (p *retryGenerationMutationPhase) run(
 	selectedTasks []assetgeneration.Task,
 	dispatchResult *assetgeneration.Result,
 ) []assetgeneration.Task {
-	dispatchTasks := []assetgeneration.Task(nil)
-	dispatchAssets := []asset.AssetRecord(nil)
-	if dispatchResult != nil {
-		dispatchTasks = dispatchResult.Tasks
-		dispatchAssets = dispatchResult.Assets
+	if dispatchResult == nil {
+		return mergeGenerationTasks(existingTasks, nil)
 	}
 
-	updatedTasks := mergeGenerationTasks(existingTasks, dispatchTasks)
+	updatedTasks := mergeGenerationTasks(existingTasks, dispatchResult.Tasks)
 	if inventory == nil {
 		return updatedTasks
 	}
 
 	retriedTargets := generationTaskTargets(selectedTasks)
-	inventory.Records = replaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchAssets)
+	inventory.Records = replaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchResult.Assets)
 	inventory.Summary = rebuildInventorySummary(inventory)
 	return updatedTasks
 }
