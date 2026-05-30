@@ -778,6 +778,76 @@ func TestPlatformAssetDispatchBundleApplyPhaseRunReattachesBundlesWhenNoReturned
 	}
 }
 
+func TestPlatformAssetDispatchTaskMergePhaseRunMergesReturnedTasks(t *testing.T) {
+	t.Parallel()
+
+	generationTasks := []assetgeneration.Task{
+		{
+			ID:              "amazon:hero",
+			Platform:        "amazon",
+			RecipeID:        "hero",
+			ExecutionStatus: "planned",
+			Metadata:        map[string]string{"existing": "value"},
+		},
+	}
+	dispatchTasks := []assetgeneration.Task{
+		{
+			ID:              "amazon:hero",
+			Platform:        "amazon",
+			RecipeID:        "hero",
+			ExecutionStatus: "completed",
+			Metadata:        map[string]string{"updated": "value"},
+		},
+		{
+			ID:              "shein:gallery",
+			Platform:        "shein",
+			RecipeID:        "gallery",
+			ExecutionStatus: "planned",
+		},
+	}
+
+	got := buildPlatformAssetDispatchTaskMergePhase().run(generationTasks, dispatchTasks)
+
+	want := []assetgeneration.Task{
+		{
+			ID:              "amazon:hero",
+			Platform:        "amazon",
+			RecipeID:        "hero",
+			ExecutionStatus: "completed",
+			Metadata:        map[string]string{"updated": "value"},
+		},
+		{
+			ID:              "shein:gallery",
+			Platform:        "shein",
+			RecipeID:        "gallery",
+			ExecutionStatus: "planned",
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("generation tasks = %+v, want %+v", got, want)
+	}
+}
+
+func TestPlatformAssetDispatchTaskMergePhaseRunSkipsWhenNoReturnedTasks(t *testing.T) {
+	t.Parallel()
+
+	generationTasks := []assetgeneration.Task{
+		{
+			ID:              "amazon:hero",
+			Platform:        "amazon",
+			RecipeID:        "hero",
+			ExecutionStatus: "planned",
+			Metadata:        map[string]string{"existing": "value"},
+		},
+	}
+
+	got := buildPlatformAssetDispatchTaskMergePhase().run(generationTasks, nil)
+
+	if !reflect.DeepEqual(got, generationTasks) {
+		t.Fatalf("generation tasks = %+v, want unchanged %+v", got, generationTasks)
+	}
+}
+
 func TestPlatformAssetDispatchBundleReshapePhaseRunReshapesBundlesWithReturnedTasks(t *testing.T) {
 	t.Parallel()
 
