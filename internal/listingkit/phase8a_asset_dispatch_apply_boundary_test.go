@@ -66,10 +66,12 @@ func TestWorkflowPlatformAssetDispatchMutationSubSeamFilesOwnShapingResponsibili
 		{
 			file: "workflow_platform_asset_dispatch_bundle_apply.go",
 			shouldOwn: []string{
-				"attachPlatformImageBundles(",
-				"mergeGenerationTasks(",
+				"buildPlatformAssetDispatchBundleReshapePhase(p.bundleBuilder).run(",
+				"buildPlatformAssetDispatchTaskMergePhase().run(",
 			},
 			shouldAvoid: []string{
+				"attachPlatformImageBundles(",
+				"mergeGenerationTasks(",
 				"inventory.Records = append(",
 				"rebuildInventorySummary(",
 				"rebuildBundleWithGeneratedAssets(",
