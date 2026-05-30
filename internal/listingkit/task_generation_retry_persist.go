@@ -5,14 +5,18 @@ import (
 
 	asset "task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
-	assetrepo "task-processor/internal/asset/repository"
 )
 
-type retryGenerationPersistPhase struct {
-	assetRepo assetrepo.Repository
+type retryGenerationPersistenceRepository interface {
+	SaveInventory(ctx context.Context, inventory *asset.Inventory) error
+	SaveGenerationTasks(ctx context.Context, taskID string, tasks []assetgeneration.Task) error
 }
 
-func buildRetryGenerationPersistPhase(assetRepo assetrepo.Repository) *retryGenerationPersistPhase {
+type retryGenerationPersistPhase struct {
+	assetRepo retryGenerationPersistenceRepository
+}
+
+func buildRetryGenerationPersistPhase(assetRepo retryGenerationPersistenceRepository) *retryGenerationPersistPhase {
 	return &retryGenerationPersistPhase{assetRepo: assetRepo}
 }
 
