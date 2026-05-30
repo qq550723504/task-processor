@@ -67,6 +67,195 @@ func TestGetTaskGenerationQueueReturnsNotModifiedWhenDeltaMatches(t *testing.T) 
 	}
 }
 
+func TestTaskGenerationQueueReadSnapshotRunUsesSingleCurrentSnapshot(t *testing.T) {
+	t.Parallel()
+
+	const taskID = "task-generation-queue-snapshot-1"
+	repo := &sequencedTaskSnapshotsRepo{
+		snapshots: []*Task{
+			{
+				ID: taskID,
+				Result: &ListingKitResult{
+					TaskID: taskID,
+					Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+						Platform: "shein",
+						Main: &common.BundleSlot{
+							Key:           "main",
+							AssetID:       "asset-first",
+							StateLabel:    "ready",
+							TemplateLabel: "First Snapshot",
+						},
+					}},
+				},
+			},
+			{
+				ID: taskID,
+				Result: &ListingKitResult{
+					TaskID: taskID,
+					Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+						Platform: "shein",
+						Main: &common.BundleSlot{
+							Key:           "main",
+							AssetID:       "asset-second",
+							StateLabel:    "ready",
+							TemplateLabel: "Second Snapshot",
+						},
+					}},
+				},
+			},
+		},
+	}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+
+	snapshot, err := buildTaskGenerationQueueReadSnapshotPhase(svc).run(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("taskGenerationQueueReadSnapshotPhase.run() error = %v", err)
+	}
+	if snapshot == nil || snapshot.task == nil || snapshot.result == nil || snapshot.queue == nil {
+		t.Fatalf("snapshot = %+v, want hydrated task/result/queue snapshot", snapshot)
+	}
+	if repo.getCalls != 1 {
+		t.Fatalf("repo.getCalls = %d, want single current snapshot read", repo.getCalls)
+	}
+	if snapshot.task.ID != taskID {
+		t.Fatalf("snapshot.task = %+v, want task %q", snapshot.task, taskID)
+	}
+	if len(snapshot.queue.Items) != 1 || snapshot.queue.Items[0].AssetID != "asset-first" {
+		t.Fatalf("queue = %+v, want queue from first snapshot", snapshot.queue)
+	}
+	if snapshot.result.AssetGenerationQueue == nil || len(snapshot.result.AssetGenerationQueue.Items) != 1 || snapshot.result.AssetGenerationQueue.Items[0].AssetID != "asset-first" {
+		t.Fatalf("result queue = %+v, want result from same first snapshot", snapshot.result.AssetGenerationQueue)
+	}
+}
+
+func TestTaskGenerationQueueReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("snapshot load failed")
+	svc := &taskGenerationService{
+		repo: &stubGenerationRepo{task: &Task{
+			ID:     "task-generation-queue-snapshot-error-1",
+			Result: &ListingKitResult{TaskID: "task-generation-queue-snapshot-error-1"},
+		}},
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, wantErr
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+
+	_, err := buildTaskGenerationQueueReadSnapshotPhase(svc).run(context.Background(), "task-generation-queue-snapshot-error-1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("taskGenerationQueueReadSnapshotPhase.run() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestTaskGenerationQueueReadSnapshotRunUsesSingleReviewedResultHandoff(t *testing.T) {
+	t.Parallel()
+
+	const taskID = "task-generation-queue-snapshot-handoff-1"
+	taskCalls := 0
+	reviewCalls := 0
+	svc := &taskGenerationService{
+		repo: &stubGenerationRepo{task: &Task{
+			ID: taskID,
+			Result: &ListingKitResult{
+				TaskID: taskID,
+				Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+					Platform: "shein",
+					Main: &common.BundleSlot{
+						Key:             "main",
+						Purpose:         "main",
+						AssetID:         "asset-reviewed",
+						RecipeID:        "shein-main-model",
+						TemplateLabel:   "SHEIN Main",
+						StateLabel:      "ready",
+						SatisfiedBy:     "exact_asset",
+						ExecutionStatus: "ready",
+					},
+				}},
+			},
+		}},
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			taskCalls++
+			if taskCalls == 1 {
+				return []assetgeneration.Task{{
+					ID:              "shein:shein-main-model",
+					Platform:        "shein",
+					RecipeID:        "shein-main-model",
+					Slot:            "main",
+					Purpose:         "main",
+					AssetKind:       asset.KindModelImage,
+					TemplateLabel:   "SHEIN Main",
+					RenderProfile:   "shein_model_editorial",
+					ExecutionStatus: "completed",
+					CanExecute:      true,
+				}}, nil
+			}
+			return []assetgeneration.Task{{
+				ID:              "shein:shein-gallery-model",
+				Platform:        "shein",
+				RecipeID:        "shein-gallery-model",
+				Slot:            "gallery",
+				Purpose:         "detail",
+				AssetKind:       asset.KindModelImage,
+				TemplateLabel:   "SHEIN Gallery",
+				RenderProfile:   "shein_model_detail",
+				ExecutionStatus: "completed",
+				CanExecute:      true,
+			}}, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			reviewCalls++
+			if reviewCalls == 1 {
+				return []GenerationReviewRecord{{
+					Platform:   "shein",
+					Slot:       "main",
+					Capability: "detail_preview",
+					Decision:   GenerationReviewDecisionApprove,
+					AssetID:    "asset-reviewed",
+				}}, nil
+			}
+			return []GenerationReviewRecord{{
+				Platform:   "shein",
+				Slot:       "gallery",
+				Capability: "detail_preview",
+				Decision:   GenerationReviewDecisionDefer,
+				AssetID:    "asset-reviewed-2",
+			}}, nil
+		},
+	}
+
+	snapshot, err := buildTaskGenerationQueueReadSnapshotPhase(svc).run(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("taskGenerationQueueReadSnapshotPhase.run() error = %v", err)
+	}
+	if snapshot == nil || snapshot.result == nil || snapshot.queue == nil {
+		t.Fatalf("snapshot = %+v, want reviewed result + queue handoff", snapshot)
+	}
+	if taskCalls != 1 {
+		t.Fatalf("listAssetGenerationTasks calls = %d, want 1", taskCalls)
+	}
+	if reviewCalls != 1 {
+		t.Fatalf("listGenerationReviews calls = %d, want 1", reviewCalls)
+	}
+	if snapshot.queue != snapshot.result.AssetGenerationQueue {
+		t.Fatalf("queue pointer = %p, result queue pointer = %p, want same handoff", snapshot.queue, snapshot.result.AssetGenerationQueue)
+	}
+	if len(snapshot.queue.Items) != 1 || snapshot.queue.Items[0].Slot != "main" {
+		t.Fatalf("queue = %+v, want first handoff queue only", snapshot.queue)
+	}
+}
+
 func TestTaskGenerationReviewReadSnapshotPhaseRunUsesSingleCurrentSnapshot(t *testing.T) {
 	t.Parallel()
 

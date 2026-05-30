@@ -73,20 +73,13 @@ func (s *taskGenerationService) GetTaskGenerationTasks(ctx context.Context, task
 }
 
 func (s *taskGenerationService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
+	snapshot, err := buildTaskGenerationQueueReadSnapshotPhase(s).run(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	reviews, err := s.listGenerationReviews(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	reviewedResult := withListingKitResultGenerationAndReview(task.Result, tasks, reviews)
-	queue := reviewedResult.AssetGenerationQueue
+	task := snapshot.task
+	reviewedResult := snapshot.result
+	queue := snapshot.queue
 	if queue == nil {
 		page := buildGenerationQueuePage(task.ID, task.UpdatedAt, nil, nil, generationQueueListPage{
 			Page:     resolveGenerationQueuePage(query),
