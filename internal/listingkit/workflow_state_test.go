@@ -1,6 +1,10 @@
 package listingkit
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+)
 
 func TestWorkflowRecorderKeepsStageHistoryAndAggregatesIssues(t *testing.T) {
 	result := &ListingKitResult{Summary: &GenerationSummary{}}
@@ -78,5 +82,45 @@ func TestWorkflowStageHandleReportsItsOwnRunningStatus(t *testing.T) {
 	platformStage.Complete()
 	if platformStage.IsRunning() {
 		t.Fatalf("platform stage = %+v, want not running after completion", result.WorkflowStages[0])
+	}
+}
+
+func TestRefreshSheinTaskResultStateKeepsCoverageWarningButSkipsReviewIssue(t *testing.T) {
+	t.Parallel()
+
+	coverageWarning := "coverage guard warning"
+	result := &ListingKitResult{
+		Shein: &SheinPackage{
+			Inspection: &SheinInspection{
+				NeedsReview: true,
+			},
+			ReviewNotes: []string{coverageWarning},
+			Metadata: map[string]string{
+				sheinVariantImageCoverageStatusKey:  "blocked",
+				sheinVariantImageCoverageMessageKey: coverageWarning,
+			},
+		},
+		Summary: &GenerationSummary{
+			Warnings: []string{coverageWarning},
+		},
+		ReviewReasons: []string{coverageWarning},
+	}
+
+	svc := &service{}
+	svc.refreshSheinTaskResultState(context.Background(), &Task{Result: result}, result)
+
+	if !strings.Contains(strings.Join(result.Summary.Warnings, "\n"), coverageWarning) {
+		t.Fatalf("summary warnings = %#v, want coverage warning retained", result.Summary.Warnings)
+	}
+	if !strings.Contains(strings.Join(result.ReviewReasons, "\n"), coverageWarning) {
+		t.Fatalf("review reasons = %#v, want coverage warning retained", result.ReviewReasons)
+	}
+	if !strings.Contains(strings.Join(result.Shein.ReviewNotes, "\n"), coverageWarning) {
+		t.Fatalf("shein review notes = %#v, want coverage warning retained", result.Shein.ReviewNotes)
+	}
+	for _, issue := range result.WorkflowIssues {
+		if issue.Stage == "shein_review" && issue.Severity == WorkflowIssueSeverityReview && issue.Message == coverageWarning {
+			t.Fatalf("workflow issues = %+v, coverage guard warning should not become shein_review issue after refresh", result.WorkflowIssues)
+		}
 	}
 }

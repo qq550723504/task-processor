@@ -1127,11 +1127,12 @@ func TestPlatformReviewPhaseDoesNotConvertCoverageGuardReasonIntoSheinReviewIssu
 	t.Parallel()
 
 	coverageWarning := "coverage guard warning"
+	inspectionReason := "inspection review"
 	final := &ListingKitResult{
 		Shein: &SheinPackage{
 			Inspection: &SheinInspection{
 				NeedsReview: true,
-				Summary:     []string{"inspection review"},
+				Summary:     []string{inspectionReason},
 			},
 			ReviewNotes: []string{coverageWarning},
 			Metadata: map[string]string{
@@ -1148,11 +1149,28 @@ func TestPlatformReviewPhaseDoesNotConvertCoverageGuardReasonIntoSheinReviewIssu
 
 	buildPlatformReviewPhase().run(final, nil)
 
+	if !strings.Contains(strings.Join(final.Summary.Warnings, "\n"), coverageWarning) {
+		t.Fatalf("summary warnings = %#v, want coverage warning retained", final.Summary.Warnings)
+	}
+	if !strings.Contains(strings.Join(final.ReviewReasons, "\n"), coverageWarning) {
+		t.Fatalf("review reasons = %#v, want coverage warning retained", final.ReviewReasons)
+	}
+	if !strings.Contains(strings.Join(final.Shein.ReviewNotes, "\n"), coverageWarning) {
+		t.Fatalf("shein review notes = %#v, want coverage warning retained", final.Shein.ReviewNotes)
+	}
+	if !hasWorkflowIssue(final.WorkflowIssues, "shein_review", WorkflowIssueSeverityReview, "shein_review_required") {
+		t.Fatalf("workflow issues = %+v, want non-coverage shein review issue", final.WorkflowIssues)
+	}
 	for _, issue := range final.WorkflowIssues {
 		if issue.Stage == "shein_review" && issue.Severity == WorkflowIssueSeverityReview && issue.Message == coverageWarning {
 			t.Fatalf("workflow issues = %+v, coverage guard warning should not become shein_review issue", final.WorkflowIssues)
 		}
+		if issue.Stage == "shein_review" && issue.Severity == WorkflowIssueSeverityReview && issue.Code == "shein_review_required" && issue.Message == inspectionReason {
+			return
+		}
 	}
+
+	t.Fatalf("workflow issues = %+v, want inspection review issue retained", final.WorkflowIssues)
 }
 
 func runWorkflowWithDeferredDispatchFixture(

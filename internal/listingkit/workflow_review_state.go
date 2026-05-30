@@ -42,15 +42,33 @@ func addSheinReviewWorkflowIssues(result *ListingKitResult) {
 			note,
 		)
 	}
-	if result.Summary == nil || !result.Summary.NeedsReview {
-		return
+	for _, reason := range sheinReviewIssueReasons(result) {
+		recorder.AddIssue(WorkflowIssueSeverityReview, "shein_review", "shein_review_required", reason, "")
 	}
+}
+
+func sheinReviewIssueReasons(result *ListingKitResult) []string {
+	if result == nil || result.Summary == nil || !result.Summary.NeedsReview {
+		return nil
+	}
+
+	coverageWarning, coverageBlocked := sheinVariantImageCoverageStatus(result.Shein)
+	coverageWarning = strings.TrimSpace(coverageWarning)
+
+	filtered := make([]string, 0)
 	for _, reason := range reviewReasonsFromResult(result) {
 		if isSheinCookieUnavailableText(reason) {
 			continue
 		}
-		recorder.AddIssue(WorkflowIssueSeverityReview, "shein_review", "shein_review_required", reason, "")
+		if coverageBlocked && coverageWarning != "" && strings.TrimSpace(reason) == coverageWarning {
+			continue
+		}
+		filtered = append(filtered, reason)
 	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func sheinCookieUnavailableReviewNotes(pkg *SheinPackage) []string {

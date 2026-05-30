@@ -89,7 +89,6 @@ func (s *service) refreshSheinTaskResultState(ctx context.Context, task *Task, r
 	applySheinInspectionReviewToSummary(result)
 	addSheinReviewWorkflowIssues(result)
 	newWorkflowRecorder(result).FinalizeSummary()
-	result.ReviewReasons = reviewReasonsFromResult(result)
 }
 
 func cloneListingKitResultForReadState(src *ListingKitResult) *ListingKitResult {
