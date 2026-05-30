@@ -1,4 +1,5 @@
 import {
+  buildConfirmCurrentSheinSaleAttributesRevision,
   buildRefreshCurrentSheinCategoryRevision,
   buildRegenerateSheinAttributesRevision,
   buildRegenerateSheinSaleAttributesRevision,
@@ -122,6 +123,203 @@ describe("shein workspace action builders", () => {
           source: "manual_search",
           status: "resolved",
         },
+      },
+    });
+  });
+
+  it("includes current skc patches when confirming current sale attributes", () => {
+    const revision = buildConfirmCurrentSheinSaleAttributesRevision({
+      editor_context: {
+        sale_attributes: {
+          current: {
+            status: "partial",
+            primary_attribute_id: 27,
+            secondary_attribute_id: 87,
+            skc_attributes: [
+              {
+                scope: "skc",
+                name: "Color",
+                value: "white",
+                attribute_id: 27,
+                attribute_value_id: 739,
+              },
+            ],
+            sku_attributes: [
+              {
+                scope: "sku",
+                name: "Size",
+                value: "60×70.8Inch (152×180cm)",
+                attribute_id: 87,
+                attribute_value_id: 303468379,
+              },
+            ],
+            selection_summary: [
+              "主销售属性使用源维度 Color 映射到 Color",
+              "次销售属性使用源维度 Size 映射到 Size",
+            ],
+            primary_source_dimension: "Color",
+            secondary_source_dimension: "Size",
+            skc_value_assignments: {
+              white: {
+                scope: "skc",
+                name: "Color",
+                value: "white",
+                attribute_id: 27,
+                attribute_value_id: 739,
+              },
+            },
+            sku_value_assignments: {
+              "60×70.8inch (152×180cm)": {
+                scope: "sku",
+                name: "Size",
+                value: "60×70.8Inch (152×180cm)",
+                attribute_id: 87,
+                attribute_value_id: 303468379,
+              },
+            },
+            skc_patches: [
+              {
+                supplier_code: "SKC-1",
+                sale_attribute: {
+                  scope: "skc",
+                  name: "Color",
+                  value: "white",
+                  attribute_id: 27,
+                  attribute_value_id: 739,
+                },
+                sku_patches: [
+                  {
+                    supplier_sku: "SKU-1",
+                    sale_attributes: [
+                      {
+                        scope: "sku",
+                        name: "Size",
+                        value: "60×70.8Inch (152×180cm)",
+                        attribute_id: 87,
+                        attribute_value_id: 303468379,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        revision_skeleton: {
+          shein: {
+            sale_attribute_resolution: {
+              status: "partial",
+              source: "sale_attribute_templates",
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              skc_value_assignments: {
+                white: {
+                  scope: "skc",
+                  name: "Color",
+                  value: "white",
+                  attribute_id: 27,
+                  attribute_value_id: 739,
+                },
+              },
+              sku_value_assignments: {
+                "60×70.8inch (152×180cm)": {
+                  scope: "sku",
+                  name: "Size",
+                  value: "60×70.8Inch (152×180cm)",
+                  attribute_id: 87,
+                  attribute_value_id: 303468379,
+                },
+              },
+            },
+          },
+        },
+      },
+    } as never);
+
+    expect(revision).toEqual({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Confirm current SHEIN sale attributes",
+      shein: {
+        sale_attribute_resolution: {
+          status: "resolved",
+          source: "manual_review",
+          recommend_category_review: false,
+          category_review_reason: "",
+          primary_attribute_id: 27,
+          secondary_attribute_id: 87,
+          primary_source_dimension: "Color",
+          secondary_source_dimension: "Size",
+          skc_attributes: [
+            {
+              scope: "skc",
+              name: "Color",
+              value: "white",
+              attribute_id: 27,
+              attribute_value_id: 739,
+            },
+          ],
+          sku_attributes: [
+            {
+              scope: "sku",
+              name: "Size",
+              value: "60×70.8Inch (152×180cm)",
+              attribute_id: 87,
+              attribute_value_id: 303468379,
+            },
+          ],
+          skc_value_assignments: {
+            white: {
+              scope: "skc",
+              name: "Color",
+              value: "white",
+              attribute_id: 27,
+              attribute_value_id: 739,
+            },
+          },
+          sku_value_assignments: {
+            "60×70.8inch (152×180cm)": {
+              scope: "sku",
+              name: "Size",
+              value: "60×70.8Inch (152×180cm)",
+              attribute_id: 87,
+              attribute_value_id: 303468379,
+            },
+          },
+          selection_summary: [
+            "主销售属性使用源维度 Color 映射到 Color",
+            "次销售属性使用源维度 Size 映射到 Size",
+          ],
+          review_notes: [
+            "SHEIN 销售属性已按当前主规格和其他规格人工确认。",
+          ],
+        },
+        skc_patches: [
+          {
+            supplier_code: "SKC-1",
+            sale_attribute: {
+              scope: "skc",
+              name: "Color",
+              value: "white",
+              attribute_id: 27,
+              attribute_value_id: 739,
+            },
+            sku_patches: [
+              {
+                supplier_sku: "SKU-1",
+                sale_attributes: [
+                  {
+                    scope: "sku",
+                    name: "Size",
+                    value: "60×70.8Inch (152×180cm)",
+                    attribute_id: 87,
+                    attribute_value_id: 303468379,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       },
     });
   });

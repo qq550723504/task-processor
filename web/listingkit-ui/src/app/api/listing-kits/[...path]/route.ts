@@ -75,11 +75,6 @@ async function proxyRequest(
     path,
     request.nextUrl.searchParams.toString(),
   );
-  logRequestInfo("listingkit proxy request started", {
-    requestId,
-    method: request.method,
-    path: proxyPath,
-  });
 
   let verifiedIdentity: VerifiedIdentity | undefined;
   let zitadelToken = "";

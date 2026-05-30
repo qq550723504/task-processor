@@ -629,6 +629,7 @@ func (stubStudioSessionHandler) EnsureStudioSession(*gin.Context)         {}
 func (stubStudioSessionHandler) GetStudioSession(*gin.Context)            {}
 func (stubStudioSessionHandler) UpdateStudioSession(*gin.Context)         {}
 func (stubStudioSessionHandler) ReplaceStudioSessionDesigns(*gin.Context) {}
+func (stubStudioSessionHandler) AppendStudioSessionDesigns(*gin.Context)  {}
 
 func routeKeys(routes []routeDescriptor) []string {
 	keys := make([]string, 0, len(routes))

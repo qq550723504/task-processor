@@ -3,11 +3,14 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
+
+var manualSheinParenContentPattern = regexp.MustCompile(`[(（]([^()（）]+)[)）]`)
 
 func (s *service) resolveManualSheinSaleAttributeValueIDs(
 	ctx context.Context,
@@ -17,6 +20,7 @@ func (s *service) resolveManualSheinSaleAttributeValueIDs(
 	if task == nil || task.Result == nil || task.Result.Shein == nil || req == nil || req.Shein == nil {
 		return nil
 	}
+	backfillManualSheinSaleAttributeAssignments(task.Result.Shein, req.Shein)
 	if !manualSheinSaleAttributesNeedRemoteResolution(req.Shein) {
 		return nil
 	}
@@ -79,6 +83,7 @@ func resolveManualSheinSaleAttributeValueIDs(
 	if pkg == nil || req == nil || api == nil {
 		return nil, nil, nil
 	}
+	backfillManualSheinSaleAttributeAssignments(pkg, req)
 	primaryDimension := ""
 	secondaryDimension := ""
 	if pkg.SaleAttributeResolution != nil {
@@ -126,6 +131,22 @@ func resolveManualSheinSaleAttributeValueIDs(
 
 		for skuIndex := range patch.SKUPatches {
 			skuPatch := &patch.SKUPatches[skuIndex]
+			if len(skuPatch.SaleAttributes) == 0 {
+				secondaryAttributeID := manualSheinSecondaryAttributeID(req)
+				sourceValue := firstNonEmptyNonBlankString(
+					lookupSKUAttributeValue(skuPatch.Attributes, secondaryDimension),
+					lookupSheinSKUSourceValue(pkg, patch.SupplierCode, skuPatch.SupplierSKU, secondaryDimension),
+				)
+				if secondaryAttributeID > 0 && sourceValue != "" {
+					attrName := manualSheinAttributeName(attrByID[secondaryAttributeID], "Size")
+					skuPatch.SaleAttributes = []SheinResolvedSaleAttribute{{
+						Scope:       "sku",
+						Name:        attrName,
+						Value:       sourceValue,
+						AttributeID: secondaryAttributeID,
+					}}
+				}
+			}
 			for attrIndex := range skuPatch.SaleAttributes {
 				if skuPatch.SaleAttributes[attrIndex].AttributeID <= 0 || skuPatch.SaleAttributes[attrIndex].AttributeValueID != nil {
 					continue
@@ -142,11 +163,10 @@ func resolveManualSheinSaleAttributeValueIDs(
 				if !ok {
 					return nil, nil, fmt.Errorf("shein template attribute %d is unavailable", skuPatch.SaleAttributes[attrIndex].AttributeID)
 				}
-				resolved, customRelations, resolveNotes, matched := sheinpub.ResolveSingleSaleAttributeValue(
+				resolved, customRelations, resolveNotes, matched := resolveManualSheinSKUAttributeValueWithVariants(
 					attr,
 					secondaryDimension,
 					sourceValue,
-					"sku",
 					api,
 					categoryID,
 					spuName,
@@ -163,6 +183,78 @@ func resolveManualSheinSaleAttributeValueIDs(
 
 	syncSheinManualSaleAttributeResolution(req)
 	return dedupeCustomAttributeRelations(relations), uniqueStrings(notes), nil
+}
+
+func backfillManualSheinSaleAttributeAssignments(pkg *SheinPackage, req *SheinRevisionInput) {
+	if pkg == nil || req == nil || req.SaleAttributeResolution == nil {
+		return
+	}
+
+	primaryDimension := firstNonEmptyNonBlankString(
+		stringValue(req.SaleAttributeResolution.PrimarySourceDimension),
+		pkgSaleAttributeSourceDimension(pkg, true),
+	)
+	secondaryDimension := firstNonEmptyNonBlankString(
+		stringValue(req.SaleAttributeResolution.SecondarySourceDimension),
+		pkgSaleAttributeSourceDimension(pkg, false),
+	)
+	skcAssignments := firstNonEmptyResolvedSaleAttributeMap(
+		req.SaleAttributeResolution.SKCValueAssignments,
+		pkgSaleAttributeAssignments(pkg, true),
+	)
+	skuAssignments := firstNonEmptyResolvedSaleAttributeMap(
+		req.SaleAttributeResolution.SKUValueAssignments,
+		pkgSaleAttributeAssignments(pkg, false),
+	)
+
+	changed := false
+	for patchIndex := range req.SKCPatches {
+		patch := &req.SKCPatches[patchIndex]
+		if !resolvedSaleAttributeValueReady(patch.SaleAttribute) {
+			sourceValue := firstNonEmptyNonBlankString(
+				manualSheinSaleAttributeValue(patch.SaleAttribute),
+				lookupSheinSKCSourceValue(pkg, patch.SupplierCode, primaryDimension),
+			)
+			if assigned, ok := resolveManualSheinSaleAttributeValueAssignment(skcAssignments, sourceValue); ok {
+				assignedCopy := assigned
+				patch.SaleAttribute = &assignedCopy
+				changed = true
+			}
+		}
+
+		for skuIndex := range patch.SKUPatches {
+			skuPatch := &patch.SKUPatches[skuIndex]
+			if len(skuPatch.SaleAttributes) == 0 {
+				sourceValue := firstNonEmptyNonBlankString(
+					lookupSKUAttributeValue(skuPatch.Attributes, secondaryDimension),
+					lookupSheinSKUSourceValue(pkg, patch.SupplierCode, skuPatch.SupplierSKU, secondaryDimension),
+				)
+				if assigned, ok := resolveManualSheinSaleAttributeValueAssignment(skuAssignments, sourceValue); ok {
+					skuPatch.SaleAttributes = []SheinResolvedSaleAttribute{assigned}
+					changed = true
+				}
+				continue
+			}
+			for attrIndex := range skuPatch.SaleAttributes {
+				if resolvedSaleAttributeValueReadyValue(skuPatch.SaleAttributes[attrIndex]) {
+					continue
+				}
+				sourceValue := firstNonEmptyNonBlankString(
+					skuPatch.SaleAttributes[attrIndex].Value,
+					lookupSKUAttributeValue(skuPatch.Attributes, secondaryDimension),
+					lookupSheinSKUSourceValue(pkg, patch.SupplierCode, skuPatch.SupplierSKU, secondaryDimension),
+				)
+				if assigned, ok := resolveManualSheinSaleAttributeValueAssignment(skuAssignments, sourceValue); ok {
+					skuPatch.SaleAttributes[attrIndex] = assigned
+					changed = true
+				}
+			}
+		}
+	}
+
+	if changed {
+		syncSheinManualSaleAttributeResolution(req)
+	}
 }
 
 func syncSheinManualSaleAttributeResolution(req *SheinRevisionInput) {
@@ -190,15 +282,84 @@ func syncSheinManualSaleAttributeResolution(req *SheinRevisionInput) {
 	}
 }
 
+func pkgSaleAttributeSourceDimension(pkg *SheinPackage, primary bool) string {
+	if pkg == nil || pkg.SaleAttributeResolution == nil {
+		return ""
+	}
+	if primary {
+		return strings.TrimSpace(pkg.SaleAttributeResolution.PrimarySourceDimension)
+	}
+	return strings.TrimSpace(pkg.SaleAttributeResolution.SecondarySourceDimension)
+}
+
+func pkgSaleAttributeAssignments(pkg *SheinPackage, skc bool) map[string]SheinResolvedSaleAttribute {
+	if pkg == nil || pkg.SaleAttributeResolution == nil {
+		return nil
+	}
+	if skc {
+		return pkg.SaleAttributeResolution.SKCValueAssignments
+	}
+	return pkg.SaleAttributeResolution.SKUValueAssignments
+}
+
+func firstNonEmptyResolvedSaleAttributeMap(values ...map[string]SheinResolvedSaleAttribute) map[string]SheinResolvedSaleAttribute {
+	for _, value := range values {
+		if len(value) > 0 {
+			return value
+		}
+	}
+	return nil
+}
+
+func resolveManualSheinSaleAttributeValueAssignment(assignments map[string]SheinResolvedSaleAttribute, sourceValue string) (SheinResolvedSaleAttribute, bool) {
+	if len(assignments) == 0 || strings.TrimSpace(sourceValue) == "" {
+		return SheinResolvedSaleAttribute{}, false
+	}
+	assigned, ok := assignments[normalizeManualSheinSaleAttributeText(sourceValue)]
+	return assigned, ok
+}
+
+func normalizeManualSheinSaleAttributeText(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	replacer := strings.NewReplacer("_", " ", "-", " ", "/", " ")
+	return strings.Join(strings.Fields(replacer.Replace(value)), " ")
+}
+
+func manualSheinSaleAttributeValue(attr *SheinResolvedSaleAttribute) string {
+	if attr == nil {
+		return ""
+	}
+	return strings.TrimSpace(attr.Value)
+}
+
+func resolvedSaleAttributeValueReady(attr *SheinResolvedSaleAttribute) bool {
+	return attr != nil && resolvedSaleAttributeValueReadyValue(*attr)
+}
+
+func resolvedSaleAttributeValueReadyValue(attr SheinResolvedSaleAttribute) bool {
+	return attr.AttributeID > 0 && attr.AttributeValueID != nil && *attr.AttributeValueID > 0
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
 func manualSheinSaleAttributesNeedRemoteResolution(req *SheinRevisionInput) bool {
 	if req == nil {
 		return false
 	}
+	secondaryAttributeID := manualSheinSecondaryAttributeID(req)
 	for _, patch := range req.SKCPatches {
 		if patch.SaleAttribute != nil && patch.SaleAttribute.AttributeID > 0 && patch.SaleAttribute.AttributeValueID == nil {
 			return true
 		}
 		for _, skuPatch := range patch.SKUPatches {
+			if len(skuPatch.SaleAttributes) == 0 && secondaryAttributeID > 0 {
+				return true
+			}
 			for _, attr := range skuPatch.SaleAttributes {
 				if attr.AttributeID > 0 && attr.AttributeValueID == nil {
 					return true
@@ -207,6 +368,96 @@ func manualSheinSaleAttributesNeedRemoteResolution(req *SheinRevisionInput) bool
 		}
 	}
 	return false
+}
+
+func manualSheinSecondaryAttributeID(req *SheinRevisionInput) int {
+	if req == nil || req.SaleAttributeResolution == nil || req.SaleAttributeResolution.SecondaryAttributeID == nil {
+		return 0
+	}
+	return *req.SaleAttributeResolution.SecondaryAttributeID
+}
+
+func manualSheinAttributeName(attr sheinattribute.AttributeInfo, fallback string) string {
+	if strings.TrimSpace(attr.AttributeNameEn) != "" {
+		return strings.TrimSpace(attr.AttributeNameEn)
+	}
+	if strings.TrimSpace(attr.AttributeName) != "" {
+		return strings.TrimSpace(attr.AttributeName)
+	}
+	return fallback
+}
+
+func resolveManualSheinSKUAttributeValueWithVariants(
+	attr sheinattribute.AttributeInfo,
+	sourceDimension string,
+	sourceValue string,
+	api sheinpub.AttributeAPI,
+	categoryID int,
+	spuName string,
+) (SheinResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, bool) {
+	var lastRelations []sheinattribute.CustomAttributeRelation
+	var lastNotes []string
+	for _, candidate := range manualSheinComparableSourceValues(sourceValue) {
+		resolved, relations, notes, matched := sheinpub.ResolveSingleSaleAttributeValue(
+			attr,
+			sourceDimension,
+			candidate,
+			"sku",
+			api,
+			categoryID,
+			spuName,
+		)
+		if matched && resolved.AttributeValueID != nil && *resolved.AttributeValueID > 0 {
+			return resolved, relations, notes, true
+		}
+		lastRelations = relations
+		lastNotes = notes
+	}
+	return SheinResolvedSaleAttribute{}, lastRelations, lastNotes, false
+}
+
+func manualSheinComparableSourceValues(sourceValue string) []string {
+	sourceValue = strings.TrimSpace(sourceValue)
+	if sourceValue == "" {
+		return nil
+	}
+	candidates := []string{sourceValue}
+	if matches := manualSheinParenContentPattern.FindAllStringSubmatch(sourceValue, -1); len(matches) > 0 {
+		outer := strings.TrimSpace(manualSheinParenContentPattern.ReplaceAllString(sourceValue, " "))
+		if outer != "" {
+			candidates = append(candidates, outer)
+		}
+		for _, match := range matches {
+			if len(match) < 2 {
+				continue
+			}
+			inner := strings.TrimSpace(match[1])
+			if inner != "" {
+				candidates = append(candidates, inner)
+			}
+		}
+	}
+	return manualSheinUniqueNonEmptyStrings(candidates)
+}
+
+func manualSheinUniqueNonEmptyStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		key := strings.TrimSpace(value)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, key)
+	}
+	return result
 }
 
 func manualSheinSaleAttributeCategoryID(pkg *SheinPackage, req *SheinRevisionInput) int {

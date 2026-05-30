@@ -308,6 +308,8 @@ func buildSaleAttributePayload(pkg *sheinpub.Package) *sheinpub.InspectionSaleAt
 		payload.SecondaryAttributeID = pkg.SaleAttributeResolution.SecondaryAttributeID
 		payload.PrimarySourceDimension = pkg.SaleAttributeResolution.PrimarySourceDimension
 		payload.SecondarySourceDimension = pkg.SaleAttributeResolution.SecondarySourceDimension
+		payload.SKCValueAssignments = cloneResolvedSaleAttributeMap(pkg.SaleAttributeResolution.SKCValueAssignments)
+		payload.SKUValueAssignments = cloneResolvedSaleAttributeMap(pkg.SaleAttributeResolution.SKUValueAssignments)
 		payload.SourceDimensions = cloneSourceDimensionsForInspection(pkg.SaleAttributeResolution.SourceDimensions)
 		payload.TemplateOptions = cloneTemplateOptionsForInspection(pkg.SaleAttributeResolution.TemplateOptions)
 		payload.SelectionSummary = append([]string(nil), pkg.SaleAttributeResolution.SelectionSummary...)
@@ -347,6 +349,12 @@ func buildSaleAttributePayloadMap(payload *sheinpub.InspectionSaleAttributePaylo
 	}
 	if payload.SecondarySourceDimension != "" {
 		out["secondary_source_dimension"] = payload.SecondarySourceDimension
+	}
+	if len(payload.SKCValueAssignments) > 0 {
+		out["skc_value_assignments"] = cloneResolvedSaleAttributeMap(payload.SKCValueAssignments)
+	}
+	if len(payload.SKUValueAssignments) > 0 {
+		out["sku_value_assignments"] = cloneResolvedSaleAttributeMap(payload.SKUValueAssignments)
 	}
 	if len(payload.SourceDimensions) > 0 {
 		out["source_dimensions"] = cloneSourceDimensionsForInspection(payload.SourceDimensions)

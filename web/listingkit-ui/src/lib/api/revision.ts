@@ -29,6 +29,8 @@ export type ApplyRevisionRequest = {
       category_review_reason?: string;
       primary_attribute_id?: number;
       secondary_attribute_id?: number;
+      primary_source_dimension?: string;
+      secondary_source_dimension?: string;
       skc_attributes?: Array<{
         scope?: string;
         name?: string;
@@ -45,6 +47,28 @@ export type ApplyRevisionRequest = {
         attribute_value_id?: number;
         matched_by?: string;
       }>;
+      skc_value_assignments?: Record<
+        string,
+        {
+          scope?: string;
+          name?: string;
+          value?: string;
+          attribute_id?: number;
+          attribute_value_id?: number;
+          matched_by?: string;
+        }
+      >;
+      sku_value_assignments?: Record<
+        string,
+        {
+          scope?: string;
+          name?: string;
+          value?: string;
+          attribute_id?: number;
+          attribute_value_id?: number;
+          matched_by?: string;
+        }
+      >;
       selection_summary?: string[];
       review_notes?: string[];
     };

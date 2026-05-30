@@ -364,6 +364,8 @@ export type SheinInspectionSaleAttributePayload = {
   secondary_attribute_id?: number;
   primary_source_dimension?: string;
   secondary_source_dimension?: string;
+  skc_value_assignments?: Record<string, SheinResolvedSaleAttribute>;
+  sku_value_assignments?: Record<string, SheinResolvedSaleAttribute>;
   source_dimensions?: SheinSourceVariantDimension[];
   template_options?: SheinSaleAttributeTemplateOption[];
   selection_summary?: string[];
@@ -382,8 +384,12 @@ export type SheinRevisionSaleAttributePatch = {
   category_review_reason?: string;
   primary_attribute_id?: number;
   secondary_attribute_id?: number;
+  primary_source_dimension?: string;
+  secondary_source_dimension?: string;
   skc_attributes?: SheinResolvedSaleAttribute[];
   sku_attributes?: SheinResolvedSaleAttribute[];
+  skc_value_assignments?: Record<string, SheinResolvedSaleAttribute>;
+  sku_value_assignments?: Record<string, SheinResolvedSaleAttribute>;
   selection_summary?: string[];
   review_notes?: string[];
 };
