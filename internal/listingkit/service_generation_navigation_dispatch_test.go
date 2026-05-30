@@ -3,11 +3,205 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
 	common "task-processor/internal/publishing/common"
 )
+
+func TestTaskGenerationNavigationPrimaryRunRoutesDispatchKinds(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &service{repo: repo}
+	task := &Task{
+		ID:        "task-generation-navigation-primary-route-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-primary-route-1",
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-preview-1",
+				AssetRevision:   "asset-rev-1",
+				PreviewRevision: "preview-rev-1",
+				TaskRevision:    "task-rev-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPrimaryPhase(svc.taskGenerationOrDefault())
+
+	t.Run("action", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			DispatchKind: "action",
+			ActionTarget: &AssetGenerationActionTarget{
+				ActionKey:       "approve_section_review",
+				InteractionMode: "review_only",
+				QueueQuery: &GenerationQueueQuery{
+					Platform:          "shein",
+					Slot:              "main",
+					PreviewCapability: "detail_preview",
+				},
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "action" || response.Action == nil {
+			t.Fatalf("run() response = %+v, want action dispatch response", response)
+		}
+		if response.Action.ActionKey != "approve_section_review" || response.Action.ResponseMode != "full" {
+			t.Fatalf("run() action response = %+v, want routed action dispatch", response.Action)
+		}
+	})
+
+	t.Run("preview", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			DispatchKind: "preview",
+			PreviewQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "preview" || response.ReviewPreview == nil {
+			t.Fatalf("run() response = %+v, want preview dispatch response", response)
+		}
+		if response.ReviewPreview.Viewer == nil || response.ReviewPreview.Viewer.Platform != "shein" {
+			t.Fatalf("run() preview response = %+v, want routed preview query", response.ReviewPreview)
+		}
+	})
+
+	t.Run("queue", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "queue" || response.Queue == nil {
+			t.Fatalf("run() response = %+v, want queue dispatch response", response)
+		}
+		if response.Queue.TaskID != task.ID {
+			t.Fatalf("run() queue response = %+v, want task-specific queue response", response.Queue)
+		}
+	})
+
+	t.Run("session_precedence", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			SessionQuery: &GenerationQueueQuery{
+				Platform:          "session-platform",
+				Slot:              "session-slot",
+				PreviewCapability: "session-cap",
+			},
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "queue-platform",
+				Slot:              "queue-slot",
+				PreviewCapability: "queue-cap",
+			},
+			PreviewQuery: &GenerationQueueQuery{
+				Platform:          "preview-platform",
+				Slot:              "preview-slot",
+				PreviewCapability: "preview-cap",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "session" || response.ReviewSession == nil || response.ReviewSession.Session == nil {
+			t.Fatalf("run() response = %+v, want session dispatch response", response)
+		}
+		if response.ReviewSession.ResponseMode != "full" {
+			t.Fatalf("run() session response mode = %q, want full", response.ReviewSession.ResponseMode)
+		}
+		if response.ReviewSession.Session.SelectedPlatform != "session-platform" ||
+			response.ReviewSession.Session.FocusCapability != "session-cap" {
+			t.Fatalf("run() session payload = %+v, want SessionQuery precedence over QueueQuery and PreviewQuery", response.ReviewSession.Session)
+		}
+	})
+}
+
+func TestTaskGenerationNavigationPrimaryServiceDelegatesToPhase(t *testing.T) {
+	t.Parallel()
+
+	source := readNavigationPrimarySource(t, "task_generation_service.go")
+	assertSourceContainsAll(t, source, []string{
+		"buildTaskGenerationNavigationDispatchPrimaryPhase(s).run(ctx, taskID, target, responseMode)",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"switch normalizeGenerationReviewDispatchKind(target)",
+		"ExecuteTaskGenerationAction(ctx, taskID, actionReq)",
+		"GetTaskGenerationReviewPreview(ctx, taskID, cloneGenerationQueueQuery(target.PreviewQuery))",
+		"GetTaskGenerationQueue(ctx, taskID, cloneGenerationQueueQuery(target.QueueQuery))",
+		"GetTaskGenerationReviewSession(ctx, taskID, sessionQuery)",
+	})
+}
+
+func TestTaskGenerationNavigationPrimaryPhaseOwnsPrimaryRouting(t *testing.T) {
+	t.Parallel()
+
+	source := readNavigationPrimarySource(t, "task_generation_navigation_dispatch_primary.go")
+	assertSourceContainsAll(t, source, []string{
+		"type taskGenerationNavigationDispatchPrimaryPhase struct",
+		"buildTaskGenerationNavigationDispatchPrimaryPhase",
+		"switch normalizeGenerationReviewDispatchKind(target)",
+		"ExecuteTaskGenerationAction(ctx, taskID, actionReq)",
+		"GetTaskGenerationReviewPreview(ctx, taskID, cloneGenerationQueueQuery(target.PreviewQuery))",
+		"GetTaskGenerationQueue(ctx, taskID, cloneGenerationQueueQuery(target.QueueQuery))",
+		"GetTaskGenerationReviewSession(ctx, taskID, sessionQuery)",
+		"SessionQuery",
+		"QueueQuery",
+		"PreviewQuery",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"executeGenerationNavigationDispatchPlan",
+		"finalizeGenerationReviewNavigationDispatchResponse",
+		"applyExecutedPlanToDispatchResponse",
+	})
+}
+
+func readNavigationPrimarySource(t *testing.T, path string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return string(content)
+}
 
 func TestTaskGenerationNavigationDispatchEntryRunNormalizesTargetAndPlanMode(t *testing.T) {
 	t.Parallel()
