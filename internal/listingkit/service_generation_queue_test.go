@@ -214,6 +214,76 @@ func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitiv
 	}
 }
 
+func TestGetTaskGenerationQueueFinalResponseIncludesQueueResourceDescriptors(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	svc := &service{
+		repo:      repo,
+		assetRepo: assetRepository,
+	}
+
+	updatedAt := time.Date(2026, 5, 30, 11, 10, 0, 0, time.UTC)
+	task := &Task{
+		ID:        "task-generation-queue-descriptors-final-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: updatedAt,
+		UpdatedAt: updatedAt,
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-queue-descriptors-final-1",
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-descriptor-final-1",
+				AssetRevision:   "asset-rev-descriptor-final-1",
+				PreviewRevision: "preview-rev-descriptor-final-1",
+				TaskRevision:    "task-rev-descriptor-final-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:             "main",
+					Purpose:         "main",
+					RecipeID:        "shein-main-model",
+					TemplateLabel:   "SHEIN Main",
+					StateLabel:      "ready",
+					SatisfiedBy:     "exact_asset",
+					ExecutionStatus: "ready",
+					AssetID:         "asset-descriptor-final-1",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	page, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, &GenerationQueueQuery{Platform: "shein"})
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() error = %v", err)
+	}
+	if page == nil || len(page.Items) != 1 {
+		t.Fatalf("page = %+v, want single queue item response", page)
+	}
+	if len(page.ResourceDescriptors) == 0 {
+		t.Fatalf("page.ResourceDescriptors = %+v, want queue response descriptors from final conditional decoration", page.ResourceDescriptors)
+	}
+	descriptor := page.ResourceDescriptors[0]
+	if descriptor.Role != "queue_item" ||
+		descriptor.Platform != page.Items[0].Platform ||
+		descriptor.Slot != page.Items[0].Slot ||
+		descriptor.Capability != page.Items[0].PreviewCapabilities[0] {
+		t.Fatalf("descriptor = %+v, item = %+v, want descriptor to match final queue item", descriptor, page.Items[0])
+	}
+	if descriptor.Descriptor == nil || descriptor.Descriptor.ResourceKind != "generation_queue" || descriptor.Descriptor.RefreshScope != "collection_read" {
+		t.Fatalf("descriptor metadata = %+v, want queue response descriptor contract", descriptor.Descriptor)
+	}
+}
+
 func TestTaskGenerationQueueReadPageDeferredOnlyReviewSummaryChangeAffectsDeltaToken(t *testing.T) {
 	t.Parallel()
 
