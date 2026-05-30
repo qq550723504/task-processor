@@ -24,12 +24,9 @@ func (p *taskGenerationReviewReadSnapshotPhase) run(ctx context.Context, taskID 
 	if err != nil {
 		return nil, err
 	}
-	snapshot := &taskGenerationReviewReadSnapshot{
+	return &taskGenerationReviewReadSnapshot{
 		taskID: taskID,
 		result: result,
-	}
-	if result != nil {
-		snapshot.queue = result.AssetGenerationQueue
-	}
-	return snapshot, nil
+		queue:  result.AssetGenerationQueue,
+	}, nil
 }

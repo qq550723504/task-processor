@@ -136,7 +136,13 @@ func TestTaskGenerationReviewReadSnapshotPhaseRunUsesSingleCurrentSnapshot(t *te
 func TestTaskGenerationReviewSessionMissingSnapshotUsesCurrentEmptyResponseShape(t *testing.T) {
 	t.Parallel()
 
-	snapshot := &taskGenerationReviewReadSnapshot{taskID: "task-generation-review-session-empty-1"}
+	snapshot, err := buildTaskGenerationReviewReadSnapshotPhase(nil).run(context.Background(), "task-generation-review-session-empty-1")
+	if err != nil {
+		t.Fatalf("taskGenerationReviewReadSnapshotPhase.run() error = %v", err)
+	}
+	if snapshot == nil {
+		t.Fatal("snapshot = nil, want missing snapshot handoff")
+	}
 	session := buildGenerationReviewSession(snapshot.result, snapshot.queue, &GenerationQueueQuery{
 		Platform: "shein",
 		Slot:     "main",
