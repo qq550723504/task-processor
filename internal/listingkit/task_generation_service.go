@@ -323,27 +323,13 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 			return nil, err
 		}
 	}
-	result.Overview, err = s.getCurrentAssetGenerationOverview(ctx, taskID)
+	refresh, err := buildTaskGenerationActionRefreshPhase(s).run(ctx, taskID, baseResult, target.QueueQuery)
 	if err != nil {
 		return nil, err
 	}
-	result.PlatformRenderPreviews, err = s.getCurrentActionRenderPreviews(ctx, taskID, target.QueueQuery)
-	if err != nil {
-		return nil, err
-	}
-	if len(result.PlatformRenderPreviews) == 0 {
-		result.PlatformRenderPreviews = buildActionPlatformRenderPreviews(baseResult, target.QueueQuery)
-	}
-	currentResult, err := s.getCurrentListingKitResult(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if len(currentResult.PlatformAssetRenderPreviews) == 0 && len(result.PlatformRenderPreviews) > 0 {
-		currentResult.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), result.PlatformRenderPreviews...)
-	}
-	if len(currentResult.AssetRenderPreviews) == 0 && baseResult != nil {
-		currentResult.AssetRenderPreviews = append([]AssetRenderPreview(nil), baseResult.AssetRenderPreviews...)
-	}
+	result.Overview = refresh.overview
+	result.PlatformRenderPreviews = refresh.platformRenderPreviews
+	currentResult := refresh.currentResult
 	switch target.InteractionMode {
 	case "retryable":
 		result.ReviewSession = buildGenerationReviewSession(currentResult, generationWorkQueueFromRetryPage(result.Retry), target.QueueQuery)

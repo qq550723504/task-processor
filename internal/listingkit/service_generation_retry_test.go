@@ -1852,6 +1852,198 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	task := &Task{
+		ID:        "task-generation-action-refresh-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-action-refresh-1",
+			AssetGenerationOverview: &AssetGenerationOverview{
+				PrimaryActionKey: "stale_overview",
+			},
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:       "asset-current-1",
+				PreviewFormat: "svg",
+				PreviewSVG:    "<svg>current</svg>",
+				VisualMode:    "selling_point",
+				LayerTypes:    []string{"detail"},
+			}},
+			PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
+				Platform: "amazon",
+				Main: &AssetRenderPreviewSlot{
+					Slot:          "main",
+					AssetID:       "asset-stale-1",
+					PreviewFormat: "svg",
+					PreviewSVG:    "<svg>stale</svg>",
+				},
+				Summary: &PlatformAssetRenderPreviewSummary{TotalPreviews: 1, MainAvailable: true},
+			}},
+			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "amazon",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-current-1",
+					StateLabel:    "ready",
+					TemplateLabel: "Amazon Main",
+				},
+				MissingSlots: []common.MissingSlot{{
+					Slot:          "auxiliary",
+					Purpose:       "scene",
+					RecipeID:      "amazon-lifestyle",
+					TemplateLabel: "Amazon Lifestyle Scene",
+					RenderProfile: "amazon_lifestyle_scene",
+					StateLabel:    "missing",
+				}},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(ctx context.Context, requestedTaskID string) ([]assetgeneration.Task, error) {
+			return []assetgeneration.Task{{
+				TaskID:          requestedTaskID,
+				ID:              "amazon:amazon-lifestyle",
+				Platform:        "amazon",
+				RecipeID:        "amazon-lifestyle",
+				AssetKind:       asset.KindSceneImage,
+				Slot:            "auxiliary",
+				Purpose:         "scene",
+				Status:          "planned",
+				ExecutionStatus: "planned",
+				ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+				CanExecute:      true,
+				SourceAssetIDs:  []string{"asset-current-1"},
+			}}, nil
+		},
+		listGenerationReviews: func(ctx context.Context, requestedTaskID string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	})
+
+	refresh, err := buildTaskGenerationActionRefreshPhase(generation).run(
+		context.Background(),
+		task.ID,
+		&ListingKitResult{
+			TaskID: "task-generation-action-refresh-1",
+			AssetGenerationOverview: &AssetGenerationOverview{
+				PrimaryActionKey: "base_result_overview",
+			},
+			PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
+				Platform: "amazon",
+				Main: &AssetRenderPreviewSlot{
+					Slot:    "main",
+					AssetID: "asset-base-1",
+				},
+				Summary: &PlatformAssetRenderPreviewSummary{TotalPreviews: 1, MainAvailable: true},
+			}},
+		},
+		&GenerationQueueQuery{Platform: "amazon"},
+	)
+	if err != nil {
+		t.Fatalf("taskGenerationActionRefreshPhase.run() error = %v", err)
+	}
+	if refresh == nil {
+		t.Fatal("refresh = nil, want refreshed action payload")
+	}
+	if refresh.overview == nil || refresh.overview.PrimaryActionKey != "upgrade_fallback_assets" {
+		t.Fatalf("overview = %+v, want refreshed overview from current queue state", refresh.overview)
+	}
+	if len(refresh.platformRenderPreviews) != 1 || refresh.platformRenderPreviews[0].Platform != "amazon" {
+		t.Fatalf("platformRenderPreviews = %+v, want refreshed amazon previews", refresh.platformRenderPreviews)
+	}
+	if refresh.platformRenderPreviews[0].Main == nil || refresh.platformRenderPreviews[0].Main.AssetID != "asset-current-1" {
+		t.Fatalf("platformRenderPreviews = %+v, want current platform preview asset", refresh.platformRenderPreviews)
+	}
+	if refresh.currentResult == nil || refresh.currentResult.AssetGenerationOverview == nil || refresh.currentResult.AssetGenerationOverview.PrimaryActionKey != "upgrade_fallback_assets" {
+		t.Fatalf("currentResult = %+v, want refreshed listing kit result", refresh.currentResult)
+	}
+}
+
+func TestTaskGenerationActionRefreshHydratesCurrentResultFallbacks(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	task := &Task{
+		ID:        "task-generation-action-refresh-fallbacks-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-action-refresh-fallbacks-1",
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(ctx context.Context, requestedTaskID string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(ctx context.Context, requestedTaskID string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	})
+
+	baseResult := &ListingKitResult{
+		TaskID: "task-generation-action-refresh-fallbacks-1",
+		AssetRenderPreviews: []AssetRenderPreview{{
+			AssetID:       "asset-fallback-1",
+			PreviewFormat: "svg",
+			PreviewSVG:    "<svg>fallback</svg>",
+			VisualMode:    "selling_point",
+			LayerTypes:    []string{"detail"},
+		}},
+		PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
+			Platform: "amazon",
+			Main: &AssetRenderPreviewSlot{
+				Slot:          "main",
+				AssetID:       "asset-fallback-1",
+				PreviewFormat: "svg",
+				PreviewSVG:    "<svg>fallback</svg>",
+			},
+			Summary: &PlatformAssetRenderPreviewSummary{TotalPreviews: 1, MainAvailable: true},
+		}},
+	}
+
+	refresh, err := buildTaskGenerationActionRefreshPhase(generation).run(
+		context.Background(),
+		task.ID,
+		baseResult,
+		&GenerationQueueQuery{Platform: "amazon"},
+	)
+	if err != nil {
+		t.Fatalf("taskGenerationActionRefreshPhase.run() error = %v", err)
+	}
+	if refresh == nil {
+		t.Fatal("refresh = nil, want fallback hydration payload")
+	}
+	if len(refresh.platformRenderPreviews) != 1 || refresh.platformRenderPreviews[0].Main == nil || refresh.platformRenderPreviews[0].Main.AssetID != "asset-fallback-1" {
+		t.Fatalf("platformRenderPreviews = %+v, want fallback render previews from base result", refresh.platformRenderPreviews)
+	}
+	if refresh.currentResult == nil {
+		t.Fatal("currentResult = nil, want hydrated listing kit result")
+	}
+	if len(refresh.currentResult.PlatformAssetRenderPreviews) != 1 || refresh.currentResult.PlatformAssetRenderPreviews[0].Main == nil || refresh.currentResult.PlatformAssetRenderPreviews[0].Main.AssetID != "asset-fallback-1" {
+		t.Fatalf("currentResult.PlatformAssetRenderPreviews = %+v, want fallback hydration preserved", refresh.currentResult.PlatformAssetRenderPreviews)
+	}
+	if len(refresh.currentResult.AssetRenderPreviews) != 1 || refresh.currentResult.AssetRenderPreviews[0].AssetID != "asset-fallback-1" {
+		t.Fatalf("currentResult.AssetRenderPreviews = %+v, want base asset render previews hydrated", refresh.currentResult.AssetRenderPreviews)
+	}
+}
+
 func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	t.Parallel()
 
@@ -1872,6 +2064,10 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 		"result.Retry = execution.retryPage",
 		"result.Queue = execution.queuePage",
 		"s.persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)",
+		"refresh, err := buildTaskGenerationActionRefreshPhase(s).run(",
+		"result.Overview = refresh.overview",
+		"result.PlatformRenderPreviews = refresh.platformRenderPreviews",
+		"currentResult := refresh.currentResult",
 	}
 	for _, needle := range required {
 		if !strings.Contains(actionSource, needle) {
@@ -1884,6 +2080,10 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 		"queuePage, err := s.GetTaskGenerationQueue(",
 		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromRetryPage(result.Retry), target.QueueQuery)",
 		"persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromPage(result.Queue), target.QueueQuery)",
+		"result.Overview, err = s.getCurrentAssetGenerationOverview(ctx, taskID)",
+		"result.PlatformRenderPreviews, err = s.getCurrentActionRenderPreviews(ctx, taskID, target.QueueQuery)",
+		"if len(currentResult.PlatformAssetRenderPreviews) == 0 && len(result.PlatformRenderPreviews) > 0 {",
+		"if len(currentResult.AssetRenderPreviews) == 0 && baseResult != nil {",
 	}
 	for _, needle := range forbidden {
 		if strings.Contains(actionSource, needle) {
