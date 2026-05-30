@@ -529,6 +529,100 @@ func TestPlatformAssetDispatchPersistPhaseRunAddsWarningIssueWhenPersistenceFail
 	}
 }
 
+func TestPlatformAssetDispatchInventoryPersistPhaseRunPersistsReturnedAssets(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newStubWorkflowAssetRepository()
+	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{assetRepo: assetRepository})
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: "task-inventory-persist"},
+		Records: []asset.AssetRecord{{
+			ID:     "generated-1",
+			Kind:   asset.KindSceneImage,
+			Origin: asset.OriginGenerated,
+			URL:    "https://cdn.example.com/generated-1.jpg",
+		}},
+		Summary: &asset.InventorySummary{TotalRecords: 1, GeneratedRecords: 1},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Assets: []asset.AssetRecord{{
+			ID:     "generated-1",
+			Kind:   asset.KindSceneImage,
+			Origin: asset.OriginGenerated,
+			URL:    "https://cdn.example.com/generated-1.jpg",
+		}},
+	}
+
+	phase.run(context.Background(), inventory, dispatchResult)
+
+	if assetRepository.saveInventoryCalls != 1 {
+		t.Fatalf("save inventory calls = %d, want 1", assetRepository.saveInventoryCalls)
+	}
+	savedInventory, err := assetRepository.GetInventory(context.Background(), inventory.Ref)
+	if err != nil {
+		t.Fatalf("GetInventory() error = %v", err)
+	}
+	if !hasInventoryURL(savedInventory, "https://cdn.example.com/generated-1.jpg") {
+		t.Fatalf("saved inventory = %+v, want returned asset persisted", savedInventory)
+	}
+}
+
+func TestPlatformAssetDispatchInventoryPersistPhaseRunSkipsWhenNoReturnedAssets(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newStubWorkflowAssetRepository()
+	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{assetRepo: assetRepository})
+	inventory := &asset.Inventory{
+		Ref:     asset.InventoryRef{TaskID: "task-inventory-skip"},
+		Records: []asset.AssetRecord{{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"}},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+
+	phase.run(context.Background(), inventory, &assetgeneration.Result{})
+
+	if assetRepository.saveInventoryCalls != 0 {
+		t.Fatalf("save inventory calls = %d, want 0", assetRepository.saveInventoryCalls)
+	}
+	if _, err := assetRepository.GetInventory(context.Background(), inventory.Ref); err == nil {
+		t.Fatal("expected inventory to remain unpersisted when dispatch returns no assets")
+	}
+}
+
+func TestPlatformAssetDispatchInventoryPersistPhaseRunKeepsBestEffortPersistence(t *testing.T) {
+	t.Parallel()
+
+	assetRepository := newStubWorkflowAssetRepository()
+	assetRepository.saveInventoryErr = fmt.Errorf("write failed")
+	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{assetRepo: assetRepository})
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: "task-inventory-best-effort"},
+		Records: []asset.AssetRecord{{
+			ID:     "generated-1",
+			Kind:   asset.KindSceneImage,
+			Origin: asset.OriginGenerated,
+			URL:    "https://cdn.example.com/generated-best-effort.jpg",
+		}},
+		Summary: &asset.InventorySummary{TotalRecords: 1, GeneratedRecords: 1},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Assets: []asset.AssetRecord{{
+			ID:     "generated-1",
+			Kind:   asset.KindSceneImage,
+			Origin: asset.OriginGenerated,
+			URL:    "https://cdn.example.com/generated-best-effort.jpg",
+		}},
+	}
+
+	phase.run(context.Background(), inventory, dispatchResult)
+
+	if assetRepository.saveInventoryCalls != 1 {
+		t.Fatalf("save inventory calls = %d, want 1", assetRepository.saveInventoryCalls)
+	}
+	if _, err := assetRepository.GetInventory(context.Background(), inventory.Ref); err == nil {
+		t.Fatal("expected inventory write failure to remain best-effort and not persist inventory")
+	}
+}
+
 func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence(t *testing.T) {
 	t.Parallel()
 
