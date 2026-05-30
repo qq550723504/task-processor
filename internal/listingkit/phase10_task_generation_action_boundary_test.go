@@ -23,6 +23,7 @@ func TestTaskGenerationActionServiceBoundary(t *testing.T) {
 
 	actionSource := readExecuteTaskGenerationActionSource(t)
 
+	assertSourceOccurrenceCount(t, actionSource, "buildGenerationReviewSession(", 1)
 	assertSourceExcludesAll(t, actionSource, []string{
 		"RetryTaskGenerationTasks(ctx, taskID, cloneRetryGenerationTasksRequest(",
 		"GetTaskGenerationQueue(ctx, taskID, cloneGenerationQueueQuery(",
@@ -30,12 +31,11 @@ func TestTaskGenerationActionServiceBoundary(t *testing.T) {
 		"buildActionPlatformRenderPreviews(",
 		"PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil),",
 		"AssetRenderPreviews = append([]AssetRenderPreview(nil),",
-		"result.ReviewSession = buildGenerationReviewSession(",
-		"result.ReviewWorkflow = buildGenerationReviewWorkflowResult(",
+		"buildGenerationReviewWorkflowResult(",
 		"applyGenerationReviewWorkflow(",
-		"result.ReviewPatch = buildGenerationReviewSessionPatch(",
-		`if result.ResponseMode == "patch_only" {`,
-		"result.DeltaToken = buildGenerationReviewDeltaToken(",
+		"buildGenerationReviewSessionPatch(",
+		`"patch_only"`,
+		"buildGenerationReviewDeltaToken(",
 	})
 }
 
@@ -90,7 +90,7 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 				"buildGenerationReviewWorkflowResult(",
 				"applyGenerationReviewWorkflow(",
 				"buildGenerationReviewSessionPatch(",
-				`if result.ResponseMode == "patch_only" {`,
+				`"patch_only"`,
 			},
 			forbidden: []string{
 				"RetryTaskGenerationTasks(",
@@ -162,5 +162,13 @@ func assertSourceExcludesAll(t *testing.T, source string, forbidden []string) {
 		if strings.Contains(source, needle) {
 			t.Fatalf("source should not contain %q", needle)
 		}
+	}
+}
+
+func assertSourceOccurrenceCount(t *testing.T, source, needle string, want int) {
+	t.Helper()
+
+	if got := strings.Count(source, needle); got != want {
+		t.Fatalf("source should contain %q %d time(s), got %d", needle, want, got)
 	}
 }

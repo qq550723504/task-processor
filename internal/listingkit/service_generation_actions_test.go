@@ -294,12 +294,13 @@ func TestTaskGenerationActionProjectionServiceDelegatesActionProjection(t *testi
 	assertSourceContainsAll(t, actionSource, []string{
 		"buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{",
 	})
+	assertSourceOccurrenceCount(t, actionSource, "buildGenerationReviewSession(", 1)
 	assertSourceExcludesAll(t, actionSource, []string{
-		"result.ReviewSession = buildGenerationReviewSession(",
-		"result.ReviewWorkflow = buildGenerationReviewWorkflowResult(",
+		"buildGenerationReviewWorkflowResult(",
 		"applyGenerationReviewWorkflow(",
-		"result.ReviewPatch = buildGenerationReviewSessionPatch(",
-		`if result.ResponseMode == "patch_only" {`,
+		"buildGenerationReviewSessionPatch(",
+		`"patch_only"`,
+		"buildGenerationReviewDeltaToken(",
 	})
 }
 
