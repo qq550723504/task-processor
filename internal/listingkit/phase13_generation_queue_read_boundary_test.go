@@ -19,6 +19,9 @@ func TestTaskGenerationQueueReadServiceBoundaryGuardrails(t *testing.T) {
 		"buildTaskGenerationQueueReadResponsePhase().run(",
 	})
 	assertSourceExcludesAll(t, source, []string{
+		"repo.GetTask(",
+		"listAssetGenerationTasks(",
+		"listGenerationReviews(",
 		"getCurrentListingKitResult(",
 		"withListingKitResultGenerationAndReview(",
 		"buildGenerationQueuePage(",
@@ -35,16 +38,17 @@ func TestTaskGenerationQueueReadServiceBoundaryGuardrails(t *testing.T) {
 func TestTaskGenerationQueueReadSnapshotPhaseBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readTaskGenerationSourceFile(t, "task_generation_queue_read_snapshot.go")
+	source := readExactMethodSource(t, "task_generation_queue_read_snapshot.go", "func (p *taskGenerationQueueReadSnapshotPhase) run(")
 
 	assertSourceContainsAll(t, source, []string{
 		"p.service.repo.GetTask(",
 		"p.service.listAssetGenerationTasks(",
 		"p.service.listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
-		"queue:  reviewedResult.AssetGenerationQueue",
+		"AssetGenerationQueue",
 	})
 	assertSourceExcludesAll(t, source, []string{
+		"getCurrentListingKitResult(",
 		"buildGenerationQueuePage(",
 		"filterGenerationQueueItems(",
 		"sortGenerationQueueItems(",
@@ -59,7 +63,7 @@ func TestTaskGenerationQueueReadSnapshotPhaseBoundary(t *testing.T) {
 func TestTaskGenerationQueueReadPagePhaseBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readTaskGenerationSourceFile(t, "task_generation_queue_read_page.go")
+	source := readExactMethodSource(t, "task_generation_queue_read_page.go", "func (p *taskGenerationQueueReadPagePhase) run(")
 
 	assertSourceContainsAll(t, source, []string{
 		"buildGenerationQueuePage(",
@@ -71,6 +75,7 @@ func TestTaskGenerationQueueReadPagePhaseBoundary(t *testing.T) {
 		"attachReviewSummaryToGenerationQueuePage(",
 	})
 	assertSourceExcludesAll(t, source, []string{
+		"getCurrentListingKitResult(",
 		"p.service.repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
@@ -84,7 +89,7 @@ func TestTaskGenerationQueueReadPagePhaseBoundary(t *testing.T) {
 func TestTaskGenerationQueueReadResponsePhaseBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readTaskGenerationSourceFile(t, "task_generation_queue_read_response.go")
+	source := readExactMethodSource(t, "task_generation_queue_read_response.go", "func (p *taskGenerationQueueReadResponsePhase) run(")
 
 	assertSourceContainsAll(t, source, []string{
 		"buildGenerationQueueDeltaToken(",
@@ -92,6 +97,7 @@ func TestTaskGenerationQueueReadResponsePhaseBoundary(t *testing.T) {
 		"applyGenerationConditionalStateToQueuePage(",
 	})
 	assertSourceExcludesAll(t, source, []string{
+		"getCurrentListingKitResult(",
 		"p.service.repo.GetTask(",
 		"listAssetGenerationTasks(",
 		"listGenerationReviews(",
