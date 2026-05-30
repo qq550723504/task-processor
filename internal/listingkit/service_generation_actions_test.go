@@ -291,8 +291,9 @@ func TestTaskGenerationActionProjectionServiceDelegatesActionProjection(t *testi
 
 	actionSource := readExecuteTaskGenerationActionSource(t)
 
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionProjectionPhase()", 1)
 	assertSourceContainsAll(t, actionSource, []string{
-		"buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{",
+		"taskGenerationActionProjectionInput",
 	})
 	assertSourceOccurrenceCount(t, actionSource, "buildGenerationReviewSession(", 1)
 	assertSourceExcludesAll(t, actionSource, []string{

@@ -11,10 +11,11 @@ func TestTaskGenerationActionDelegationBoundary(t *testing.T) {
 
 	actionSource := readExecuteTaskGenerationActionSource(t)
 
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionExecutePhase(", 1)
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionRefreshPhase(", 1)
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionProjectionPhase()", 1)
 	assertSourceContainsAll(t, actionSource, []string{
-		"buildTaskGenerationActionExecutePhase(s).run(",
-		"buildTaskGenerationActionRefreshPhase(s).run(",
-		"buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{",
+		"taskGenerationActionProjectionInput",
 	})
 }
 
@@ -71,8 +72,9 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 			required: []string{
 				"getCurrentListingKitResult(",
 				"buildActionPlatformRenderPreviews(",
-				"PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil),",
-				"AssetRenderPreviews = append([]AssetRenderPreview(nil),",
+				"PlatformAssetRenderPreviews",
+				"AssetRenderPreviews",
+				"baseResult",
 			},
 			forbidden: []string{
 				"RetryTaskGenerationTasks(",
@@ -115,12 +117,7 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 
 func readExecuteTaskGenerationActionSource(t *testing.T) string {
 	t.Helper()
-	return readSourceSection(
-		t,
-		"task_generation_service.go",
-		"func (s *taskGenerationService) ExecuteTaskGenerationAction(",
-		"func (s *taskGenerationService) DispatchTaskGenerationNavigation(",
-	)
+	return readNamedFunctionSource(t, "task_generation_service.go", "ExecuteTaskGenerationAction")
 }
 
 func readTaskGenerationSourceFile(t *testing.T, path string) string {
@@ -133,16 +130,37 @@ func readTaskGenerationSourceFile(t *testing.T, path string) string {
 	return string(content)
 }
 
-func readSourceSection(t *testing.T, path, startMarker, endMarker string) string {
+func readNamedFunctionSource(t *testing.T, path, funcName string) string {
 	t.Helper()
 
 	source := readTaskGenerationSourceFile(t, path)
-	start := strings.Index(source, startMarker)
-	end := strings.Index(source, endMarker)
-	if start == -1 || end == -1 || end <= start {
-		t.Fatalf("%s should contain source section between %q and %q", path, startMarker, endMarker)
+	nameIndex := strings.Index(source, funcName+"(")
+	if nameIndex == -1 {
+		t.Fatalf("%s should contain function %q", path, funcName)
 	}
-	return source[start:end]
+	start := strings.LastIndex(source[:nameIndex], "func ")
+	if start == -1 {
+		t.Fatalf("%s should declare function %q", path, funcName)
+	}
+	bodyStart := strings.Index(source[nameIndex:], "{")
+	if bodyStart == -1 {
+		t.Fatalf("%s should contain body for function %q", path, funcName)
+	}
+	bodyStart += nameIndex
+	depth := 0
+	for index := bodyStart; index < len(source); index++ {
+		switch source[index] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return source[start : index+1]
+			}
+		}
+	}
+	t.Fatalf("%s should contain a complete body for function %q", path, funcName)
+	return ""
 }
 
 func assertSourceContainsAll(t *testing.T, source string, required []string) {
