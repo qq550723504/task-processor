@@ -2183,6 +2183,99 @@ func TestTaskGenerationActionRefreshHydratesCurrentResultFallbacks(t *testing.T)
 	}
 }
 
+func TestTaskGenerationActionRefreshHydrationFallsBackToBasePlatformRenderPreviews(t *testing.T) {
+	t.Parallel()
+
+	baseResult := &ListingKitResult{
+		TaskID: "task-generation-action-refresh-hydration-fallback-1",
+		PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
+			Platform: "amazon",
+			Main: &AssetRenderPreviewSlot{
+				Slot:          "main",
+				AssetID:       "asset-base-1",
+				PreviewFormat: "svg",
+				PreviewSVG:    "<svg>base</svg>",
+			},
+			Summary: &PlatformAssetRenderPreviewSummary{TotalPreviews: 1, MainAvailable: true},
+		}},
+	}
+	refresh := &taskGenerationActionRefreshExtractResult{
+		overview: &AssetGenerationOverview{PrimaryActionKey: "refresh"},
+		currentResult: &ListingKitResult{
+			TaskID: "task-generation-action-refresh-hydration-fallback-1",
+		},
+	}
+
+	result := buildTaskGenerationActionRefreshHydrationPhase().run(baseResult, refresh)
+	if result == nil {
+		t.Fatal("result = nil, want hydrated refresh result")
+	}
+	if len(result.platformRenderPreviews) != 1 || result.platformRenderPreviews[0].Main == nil || result.platformRenderPreviews[0].Main.AssetID != "asset-base-1" {
+		t.Fatalf("platformRenderPreviews = %+v, want base platform previews when refreshed state is sparse", result.platformRenderPreviews)
+	}
+}
+
+func TestTaskGenerationActionRefreshHydrationBackfillsCurrentPlatformRenderPreviews(t *testing.T) {
+	t.Parallel()
+
+	baseResult := &ListingKitResult{
+		TaskID: "task-generation-action-refresh-hydration-platform-backfill-1",
+		PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
+			Platform: "amazon",
+			Main: &AssetRenderPreviewSlot{
+				Slot:          "main",
+				AssetID:       "asset-base-platform-1",
+				PreviewFormat: "svg",
+				PreviewSVG:    "<svg>platform</svg>",
+			},
+			Summary: &PlatformAssetRenderPreviewSummary{TotalPreviews: 1, MainAvailable: true},
+		}},
+	}
+	refresh := &taskGenerationActionRefreshExtractResult{
+		overview: &AssetGenerationOverview{PrimaryActionKey: "refresh"},
+		currentResult: &ListingKitResult{
+			TaskID: "task-generation-action-refresh-hydration-platform-backfill-1",
+		},
+	}
+
+	result := buildTaskGenerationActionRefreshHydrationPhase().run(baseResult, refresh)
+	if result == nil || result.currentResult == nil {
+		t.Fatalf("result = %+v, want hydrated current result", result)
+	}
+	if len(result.currentResult.PlatformAssetRenderPreviews) != 1 || result.currentResult.PlatformAssetRenderPreviews[0].Main == nil || result.currentResult.PlatformAssetRenderPreviews[0].Main.AssetID != "asset-base-platform-1" {
+		t.Fatalf("currentResult.PlatformAssetRenderPreviews = %+v, want platform render previews backfilled from hydrated result", result.currentResult.PlatformAssetRenderPreviews)
+	}
+}
+
+func TestTaskGenerationActionRefreshHydrationBackfillsCurrentAssetRenderPreviewsFromBase(t *testing.T) {
+	t.Parallel()
+
+	baseResult := &ListingKitResult{
+		TaskID: "task-generation-action-refresh-hydration-asset-backfill-1",
+		AssetRenderPreviews: []AssetRenderPreview{{
+			AssetID:       "asset-base-render-1",
+			PreviewFormat: "svg",
+			PreviewSVG:    "<svg>asset</svg>",
+			VisualMode:    "selling_point",
+			LayerTypes:    []string{"detail"},
+		}},
+	}
+	refresh := &taskGenerationActionRefreshExtractResult{
+		overview: &AssetGenerationOverview{PrimaryActionKey: "refresh"},
+		currentResult: &ListingKitResult{
+			TaskID: "task-generation-action-refresh-hydration-asset-backfill-1",
+		},
+	}
+
+	result := buildTaskGenerationActionRefreshHydrationPhase().run(baseResult, refresh)
+	if result == nil || result.currentResult == nil {
+		t.Fatalf("result = %+v, want hydrated current result", result)
+	}
+	if len(result.currentResult.AssetRenderPreviews) != 1 || result.currentResult.AssetRenderPreviews[0].AssetID != "asset-base-render-1" {
+		t.Fatalf("currentResult.AssetRenderPreviews = %+v, want base asset render previews backfilled", result.currentResult.AssetRenderPreviews)
+	}
+}
+
 func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	t.Parallel()
 

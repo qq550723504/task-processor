@@ -22,20 +22,7 @@ func (p *taskGenerationActionRefreshPhase) run(ctx context.Context, taskID strin
 		return nil, err
 	}
 
-	currentResult := refresh.currentResult
-	platformRenderPreviews := refresh.platformRenderPreviews
-	if len(platformRenderPreviews) == 0 {
-		platformRenderPreviews = buildActionPlatformRenderPreviews(baseResult, query)
-	}
-	if len(currentResult.PlatformAssetRenderPreviews) == 0 && len(platformRenderPreviews) > 0 {
-		currentResult.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), platformRenderPreviews...)
-	}
-	if len(currentResult.AssetRenderPreviews) == 0 && baseResult != nil {
-		currentResult.AssetRenderPreviews = append([]AssetRenderPreview(nil), baseResult.AssetRenderPreviews...)
-	}
-	return &taskGenerationActionRefreshResult{
-		overview:               refresh.overview,
-		platformRenderPreviews: platformRenderPreviews,
-		currentResult:          currentResult,
-	}, nil
+	hydration := buildTaskGenerationActionRefreshHydrationPhase()
+	hydration.query = query
+	return hydration.run(baseResult, refresh), nil
 }
