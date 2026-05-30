@@ -64,6 +64,7 @@ func TestWorkflowPlatformFinalizeCoverageGuardStaysInFinalizePhase(t *testing.T)
 	}{
 		{file: "workflow_platform_finalize_phase.go", shouldExist: true},
 		{file: "workflow_platform_postprocess_phase.go", shouldExist: false},
+		{file: "workflow_platform_review_phase.go", shouldExist: false},
 		{file: "workflow_platform_summary_phase.go", shouldExist: false},
 	} {
 		src, err := os.ReadFile(tc.file)
