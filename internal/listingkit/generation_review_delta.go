@@ -68,7 +68,7 @@ func buildGenerationQueueDeltaToken(page *GenerationQueuePage, query *Generation
 	summarySig := ""
 	if page.Summary != nil {
 		summarySig = fmt.Sprintf(
-			"%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d",
+			"%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d",
 			page.Summary.TotalItems,
 			page.Summary.ReadyItems,
 			page.Summary.FallbackItems,
@@ -81,6 +81,7 @@ func buildGenerationQueueDeltaToken(page *GenerationQueuePage, query *Generation
 			page.Summary.RetryableItems,
 			page.Summary.PreviewableItems,
 			page.Summary.ApprovedSections,
+			page.Summary.DeferredSections,
 			page.Summary.ReviewPendingSections,
 		)
 	}

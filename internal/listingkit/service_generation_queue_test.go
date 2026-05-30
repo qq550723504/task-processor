@@ -214,6 +214,195 @@ func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitiv
 	}
 }
 
+func TestTaskGenerationQueueReadPageDeferredOnlyReviewSummaryChangeAffectsDeltaToken(t *testing.T) {
+	t.Parallel()
+
+	query := &GenerationQueueQuery{
+		Platform:  "shein",
+		Page:      1,
+		PageSize:  1,
+		SortBy:    "platform",
+		SortOrder: "asc",
+	}
+	base := &GenerationQueuePage{
+		TaskID:    "task-generation-queue-deferred-delta-1",
+		Page:      1,
+		PageSize:  1,
+		Total:     2,
+		UpdatedAt: time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC),
+		Summary: &GenerationWorkQueueSummary{
+			TotalItems:            2,
+			ReadyItems:            2,
+			PreviewableItems:      2,
+			ApprovedSections:      0,
+			DeferredSections:      0,
+			ReviewPendingSections: 2,
+		},
+		Items: []GenerationWorkQueueItem{{
+			TaskID:                 "task-generation-queue-deferred-delta-1",
+			Platform:               "amazon",
+			Slot:                   "main",
+			State:                  "ready",
+			RenderPreviewAvailable: true,
+		}},
+	}
+	withDeferred := *base
+	withDeferred.Summary = &GenerationWorkQueueSummary{
+		TotalItems:            base.Summary.TotalItems,
+		ReadyItems:            base.Summary.ReadyItems,
+		PreviewableItems:      base.Summary.PreviewableItems,
+		ApprovedSections:      base.Summary.ApprovedSections,
+		DeferredSections:      1,
+		ReviewPendingSections: base.Summary.ReviewPendingSections,
+	}
+
+	baseToken := buildGenerationQueueDeltaToken(base, query)
+	deferredToken := buildGenerationQueueDeltaToken(&withDeferred, query)
+	if baseToken == "" || deferredToken == "" {
+		t.Fatalf("tokens = %q / %q, want non-empty queue delta tokens", baseToken, deferredToken)
+	}
+	if baseToken == deferredToken {
+		t.Fatalf("tokens = %q / %q, want deferred-only summary change to alter queue delta token", baseToken, deferredToken)
+	}
+}
+
+func TestGetTaskGenerationQueueDeferredOnlyReviewSummaryChangeInvalidatesOldToken(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	svc := &service{
+		repo:       repo,
+		assetRepo:  assetRepository,
+		reviewRepo: reviewstore.NewMemRepository(),
+	}
+
+	now := time.Date(2026, 5, 30, 12, 5, 0, 0, time.UTC)
+	task := &Task{
+		ID:        "task-generation-queue-deferred-not-modified-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-queue-deferred-not-modified-1",
+			AssetRenderPreviews: []AssetRenderPreview{
+				{
+					AssetID:         "asset-amazon-main-1",
+					AssetRevision:   "asset-rev-amazon-1",
+					PreviewRevision: "preview-rev-amazon-1",
+					TaskRevision:    "task-rev-shared-1",
+					PreviewFormat:   "svg",
+					PreviewSVG:      "<svg/>",
+					VisualMode:      "selling_point",
+					LayerTypes:      []string{"detail", "text"},
+				},
+				{
+					AssetID:         "asset-shein-main-1",
+					AssetRevision:   "asset-rev-shein-1",
+					PreviewRevision: "preview-rev-shein-1",
+					TaskRevision:    "task-rev-shared-1",
+					PreviewFormat:   "svg",
+					PreviewSVG:      "<svg/>",
+					VisualMode:      "selling_point",
+					LayerTypes:      []string{"detail", "text"},
+				},
+			},
+			Amazon: &AmazonPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Platform: "amazon",
+					Main: &common.BundleSlot{
+						Key:             "main",
+						Purpose:         "main",
+						RecipeID:        "amazon-main-white-bg",
+						TemplateLabel:   "Amazon Main",
+						StateLabel:      "ready",
+						SatisfiedBy:     "exact_asset",
+						ExecutionStatus: "ready",
+						AssetID:         "asset-amazon-main-1",
+					},
+				},
+			},
+			Shein: &SheinPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Platform: "shein",
+					Main: &common.BundleSlot{
+						Key:             "main",
+						Purpose:         "main",
+						RecipeID:        "shein-main-model",
+						TemplateLabel:   "SHEIN Main",
+						StateLabel:      "ready",
+						SatisfiedBy:     "exact_asset",
+						ExecutionStatus: "ready",
+						AssetID:         "asset-shein-main-1",
+					},
+				},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	query := &GenerationQueueQuery{
+		Page:      1,
+		PageSize:  1,
+		SortBy:    "platform",
+		SortOrder: "asc",
+	}
+	first, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, query)
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() first call error = %v", err)
+	}
+	if first == nil || first.DeltaToken == "" || len(first.Items) != 1 {
+		t.Fatalf("first = %+v, want first paged queue response with delta token", first)
+	}
+	if first.Items[0].Platform != "amazon" {
+		t.Fatalf("first.Items = %+v, want amazon item on first page before review change", first.Items)
+	}
+
+	if _, err := svc.ExecuteTaskGenerationAction(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey: "defer_section_review",
+		Target: &AssetGenerationActionTarget{
+			ActionKey:       "defer_section_review",
+			InteractionMode: "review_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "main",
+				PreviewCapability: "detail_preview",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("ExecuteTaskGenerationAction() error = %v", err)
+	}
+
+	second, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, &GenerationQueueQuery{
+		Page:       1,
+		PageSize:   1,
+		SortBy:     "platform",
+		SortOrder:  "asc",
+		DeltaToken: first.DeltaToken,
+	})
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() second call error = %v", err)
+	}
+	if second == nil {
+		t.Fatal("second = nil, want updated queue response after deferred-only summary change")
+	}
+	if second.NotModified {
+		t.Fatalf("second = %+v, want old token invalidated by deferred-only summary change", second)
+	}
+	if second.DeltaToken == "" || second.DeltaToken == first.DeltaToken {
+		t.Fatalf("second.DeltaToken = %q, first = %q, want changed final response token", second.DeltaToken, first.DeltaToken)
+	}
+	if second.Summary == nil || second.Summary.DeferredSections != 1 {
+		t.Fatalf("second.Summary = %+v, want deferred review summary reflected in final response", second.Summary)
+	}
+	if len(second.Items) != 1 || second.Items[0].Platform != "amazon" {
+		t.Fatalf("second.Items = %+v, want same paged item while deferred-only summary changed elsewhere", second.Items)
+	}
+}
+
 func TestTaskGenerationQueueReadSnapshotRunUsesSingleCurrentSnapshot(t *testing.T) {
 	t.Parallel()
 
