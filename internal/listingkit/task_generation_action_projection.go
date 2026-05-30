@@ -41,12 +41,8 @@ func (p *taskGenerationActionProjectionPhase) run(input *taskGenerationActionPro
 		result.PlatformRenderPreviews = input.refresh.platformRenderPreviews
 	}
 
-	currentResult := input.currentResult
-	if input.refresh != nil && input.refresh.currentResult != nil {
-		currentResult = input.refresh.currentResult
-	}
-
-	result.ReviewSession = buildGenerationReviewSession(currentResult, input.reviewQueue(), projectionQueueQuery(input.target))
+	session := buildTaskGenerationActionProjectionSessionPhase().run(input)
+	result.ReviewSession = session.reviewSession
 	result.ReviewWorkflow = buildGenerationReviewWorkflowResult(input.actionKey, input.target)
 	applyGenerationReviewWorkflow(result.ReviewSession, result.ReviewWorkflow)
 	result.ReviewPatch = buildGenerationReviewSessionPatch(input.previousReviewSession, result.ReviewSession)
@@ -63,26 +59,4 @@ func (p *taskGenerationActionProjectionPhase) run(input *taskGenerationActionPro
 	}
 
 	return result
-}
-
-func (input *taskGenerationActionProjectionInput) reviewQueue() *GenerationWorkQueue {
-	if input == nil || input.target == nil {
-		return nil
-	}
-	if input.execution == nil {
-		return nil
-	}
-	switch input.target.InteractionMode {
-	case "retryable":
-		return generationWorkQueueFromRetryPage(input.execution.retryPage)
-	default:
-		return generationWorkQueueFromPage(input.execution.queuePage)
-	}
-}
-
-func projectionQueueQuery(target *AssetGenerationActionTarget) *GenerationQueueQuery {
-	if target == nil {
-		return nil
-	}
-	return target.QueueQuery
 }

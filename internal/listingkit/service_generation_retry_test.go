@@ -1932,6 +1932,131 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationActionProjectionSessionUsesRetryQueueForRetryableTargets(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("retryable")
+	currentResult := newTaskGenerationActionProjectionResult("task-generation-action-session-retry-1", "asset-rev-retry", "preview-rev-retry", "task-rev-retry")
+	retryQueue := newTaskGenerationActionProjectionQueue("task-generation-action-session-retry-1", &GenerationWorkQueueSummary{
+		TotalItems:       1,
+		CompletedItems:   1,
+		PreviewableItems: 1,
+		ApprovedSections: 1,
+	}, "completed")
+
+	session := buildTaskGenerationActionProjectionSessionPhase().run(&taskGenerationActionProjectionInput{
+		target:        target,
+		currentResult: currentResult,
+		execution: &taskGenerationActionExecution{
+			retryPage: &GenerationTaskPage{
+				MatchedQueue: newTaskGenerationActionProjectionQueue("task-generation-action-session-retry-1", &GenerationWorkQueueSummary{
+					TotalItems:       1,
+					ReadyItems:       1,
+					PreviewableItems: 1,
+				}, "ready"),
+				ExecutedQueue: retryQueue,
+			},
+		},
+	})
+
+	if session == nil {
+		t.Fatal("session = nil, want retry session result")
+	}
+	if session.currentResult != currentResult {
+		t.Fatalf("currentResult = %+v, want base current result when refresh is unavailable", session.currentResult)
+	}
+	if !reflect.DeepEqual(session.reviewQueue, retryQueue) {
+		t.Fatalf("reviewQueue = %+v, want retry executed queue", session.reviewQueue)
+	}
+
+	wantSession := buildGenerationReviewSession(currentResult, retryQueue, projectionQueueQuery(target))
+	if !reflect.DeepEqual(session.reviewSession, wantSession) {
+		t.Fatalf("reviewSession = %+v, want %+v", session.reviewSession, wantSession)
+	}
+}
+
+func TestTaskGenerationActionProjectionSessionUsesQueuePageForNonRetryableTargets(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("queue_only")
+	currentResult := newTaskGenerationActionProjectionResult("task-generation-action-session-queue-1", "asset-rev-queue", "preview-rev-queue", "task-rev-queue")
+	queue := newTaskGenerationActionProjectionQueue("task-generation-action-session-queue-1", &GenerationWorkQueueSummary{
+		TotalItems:       1,
+		CompletedItems:   1,
+		PreviewableItems: 1,
+		ApprovedSections: 1,
+	}, "completed")
+
+	session := buildTaskGenerationActionProjectionSessionPhase().run(&taskGenerationActionProjectionInput{
+		target:        target,
+		currentResult: currentResult,
+		execution: &taskGenerationActionExecution{
+			queuePage: &GenerationQueuePage{
+				Summary: queue.Summary,
+				Items:   queue.Items,
+			},
+		},
+	})
+
+	if session == nil {
+		t.Fatal("session = nil, want queue-backed session result")
+	}
+
+	wantQueue := generationWorkQueueFromPage(&GenerationQueuePage{
+		Summary: queue.Summary,
+		Items:   queue.Items,
+	})
+	if !reflect.DeepEqual(session.reviewQueue, wantQueue) {
+		t.Fatalf("reviewQueue = %+v, want %+v", session.reviewQueue, wantQueue)
+	}
+
+	wantSession := buildGenerationReviewSession(currentResult, wantQueue, projectionQueueQuery(target))
+	if !reflect.DeepEqual(session.reviewSession, wantSession) {
+		t.Fatalf("reviewSession = %+v, want %+v", session.reviewSession, wantSession)
+	}
+}
+
+func TestTaskGenerationActionProjectionSessionPrefersRefreshedCurrentResult(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("queue_only")
+	baseResult := newTaskGenerationActionProjectionResult("task-generation-action-session-refresh-1", "asset-rev-base", "preview-rev-base", "task-rev-base")
+	refreshedResult := newTaskGenerationActionProjectionResult("task-generation-action-session-refresh-1", "asset-rev-refresh", "preview-rev-refresh", "task-rev-refresh")
+	queue := newTaskGenerationActionProjectionQueue("task-generation-action-session-refresh-1", &GenerationWorkQueueSummary{
+		TotalItems:       1,
+		CompletedItems:   1,
+		PreviewableItems: 1,
+		ApprovedSections: 1,
+	}, "completed")
+
+	session := buildTaskGenerationActionProjectionSessionPhase().run(&taskGenerationActionProjectionInput{
+		target:        target,
+		currentResult: baseResult,
+		refresh: &taskGenerationActionRefreshResult{
+			currentResult: refreshedResult,
+		},
+		execution: &taskGenerationActionExecution{
+			queuePage: &GenerationQueuePage{
+				Summary: queue.Summary,
+				Items:   queue.Items,
+			},
+		},
+	})
+
+	if session == nil {
+		t.Fatal("session = nil, want refreshed session result")
+	}
+	if session.currentResult != refreshedResult {
+		t.Fatalf("currentResult = %+v, want refreshed current result", session.currentResult)
+	}
+	if session.reviewSession == nil || session.reviewSession.FocusedRenderPreview == nil {
+		t.Fatalf("reviewSession = %+v, want focused render preview from refreshed result", session.reviewSession)
+	}
+	if session.reviewSession.FocusedRenderPreview.AssetRevision != "asset-rev-refresh" || session.reviewSession.FocusedRenderPreview.PreviewRevision != "preview-rev-refresh" || session.reviewSession.FocusedRenderPreview.TaskRevision != "task-rev-refresh" {
+		t.Fatalf("focused render preview = %+v, want refreshed revisions", session.reviewSession.FocusedRenderPreview)
+	}
+}
+
 func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testing.T) {
 	t.Parallel()
 
