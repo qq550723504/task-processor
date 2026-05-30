@@ -420,6 +420,100 @@ func TestTaskGenerationCurrentStateSnapshotPhaseBoundary(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationCurrentStateViewsPhaseOverviewReturnsCurrentDecoratedOverview(t *testing.T) {
+	t.Parallel()
+
+	overview := &AssetGenerationOverview{
+		PrimaryAction:    "Review Ready Assets",
+		PrimaryActionKey: "review_ready_assets",
+		PreviewableItems: 2,
+	}
+	result := &ListingKitResult{
+		TaskID:                  "task-generation-current-view-overview-1",
+		AssetGenerationOverview: overview,
+	}
+
+	phase := buildTaskGenerationCurrentStateViewsPhase()
+	got := phase.overview(result)
+	if got != overview {
+		t.Fatalf("overview(result) = %+v, want decorated overview pointer %+v", got, overview)
+	}
+	if phase.overview(nil) != nil {
+		t.Fatal("overview(nil) != nil, want nil-safe current overview handoff")
+	}
+}
+
+func TestTaskGenerationCurrentStateViewsPhaseQueueReturnsCurrentDecoratedQueue(t *testing.T) {
+	t.Parallel()
+
+	queue := &GenerationWorkQueue{
+		Summary: &GenerationWorkQueueSummary{
+			TotalItems:       2,
+			PreviewableItems: 1,
+		},
+		Items: []GenerationWorkQueueItem{
+			{TaskID: "task-generation-current-view-queue-1", Platform: "amazon", Slot: "main"},
+			{TaskID: "task-generation-current-view-queue-1", Platform: "shein", Slot: "gallery"},
+		},
+	}
+	result := &ListingKitResult{
+		TaskID:               "task-generation-current-view-queue-1",
+		AssetGenerationQueue: queue,
+	}
+
+	phase := buildTaskGenerationCurrentStateViewsPhase()
+	got := phase.queue(result)
+	if got != queue {
+		t.Fatalf("queue(result) = %+v, want decorated queue pointer %+v", got, queue)
+	}
+	if phase.queue(nil) != nil {
+		t.Fatal("queue(nil) != nil, want nil-safe current queue handoff")
+	}
+}
+
+func TestTaskGenerationCurrentStateViewsPhaseRenderPreviewsDerivesFromCurrentDecoratedResultAndQuery(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		TaskID: "task-generation-current-view-previews-1",
+		PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{
+			{
+				Platform: "amazon",
+				Main: &AssetRenderPreviewSlot{
+					Slot:          "main",
+					AssetID:       "asset-amazon-1",
+					PreviewFormat: "svg",
+					PreviewSVG:    "<svg>amazon</svg>",
+				},
+			},
+			{
+				Platform: "shein",
+				Main: &AssetRenderPreviewSlot{
+					Slot:          "main",
+					AssetID:       "asset-shein-1",
+					PreviewFormat: "svg",
+					PreviewSVG:    "<svg>shein</svg>",
+				},
+			},
+		},
+	}
+
+	phase := buildTaskGenerationCurrentStateViewsPhase()
+	got := phase.renderPreviews(result, &GenerationQueueQuery{Platform: "shein"})
+	if len(got) != 1 {
+		t.Fatalf("renderPreviews(result, shein query) len = %d, want 1", len(got))
+	}
+	if got[0].Platform != "shein" {
+		t.Fatalf("renderPreviews(result, shein query) platform = %q, want shein", got[0].Platform)
+	}
+	if got[0].Main == nil || got[0].Main.AssetID != "asset-shein-1" {
+		t.Fatalf("renderPreviews(result, shein query) main = %+v, want shein preview from current decorated result", got[0].Main)
+	}
+	if phase.renderPreviews(nil, &GenerationQueueQuery{Platform: "shein"}) != nil {
+		t.Fatal("renderPreviews(nil, query) != nil, want nil-safe current preview handoff")
+	}
+}
+
 func TestTaskGenerationTasksReadPagePhaseReturnsStableEmptyShape(t *testing.T) {
 	t.Parallel()
 

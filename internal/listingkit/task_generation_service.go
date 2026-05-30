@@ -320,7 +320,7 @@ func (s *taskGenerationService) getCurrentAssetGenerationOverview(ctx context.Co
 	if err != nil {
 		return nil, err
 	}
-	return result.AssetGenerationOverview, nil
+	return buildTaskGenerationCurrentStateViewsPhase().overview(result), nil
 }
 
 func (s *taskGenerationService) getCurrentAssetGenerationQueue(ctx context.Context, taskID string) (*GenerationWorkQueue, error) {
@@ -328,7 +328,7 @@ func (s *taskGenerationService) getCurrentAssetGenerationQueue(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	return result.AssetGenerationQueue, nil
+	return buildTaskGenerationCurrentStateViewsPhase().queue(result), nil
 }
 
 func (s *taskGenerationService) getCurrentActionRenderPreviews(ctx context.Context, taskID string, query *GenerationQueueQuery) ([]PlatformAssetRenderPreviews, error) {
@@ -336,7 +336,7 @@ func (s *taskGenerationService) getCurrentActionRenderPreviews(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	return buildActionPlatformRenderPreviews(result, query), nil
+	return buildTaskGenerationCurrentStateViewsPhase().renderPreviews(result, query), nil
 }
 
 func (s *taskGenerationService) getCurrentListingKitResult(ctx context.Context, taskID string) (*ListingKitResult, error) {
