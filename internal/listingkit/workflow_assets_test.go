@@ -534,6 +534,122 @@ func TestPlatformAssetDispatchInventoryApplyPhaseRunSkipsWhenNoReturnedAssets(t 
 	}
 }
 
+func TestPlatformAssetDispatchBundleApplyPhaseRunReattachesBundlesAndMergesTasks(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		Amazon: &AmazonPackage{
+			ImageBundle: &common.PublishImageBundle{
+				PendingGeneration: []assetgeneration.Task{{
+					ID:              "stale-task",
+					Platform:        "amazon",
+					RecipeID:        "stale",
+					ExecutionStatus: "planned",
+				}},
+			},
+		},
+		Shein: &SheinPackage{},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	recipesByPlatform := resolveRecipesForPlatforms(newDefaultAssetRecipeResolver(), []string{"amazon", "shein"}, nil)
+	generationTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "planned"},
+	}
+	dispatchTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "completed"},
+		{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+	}
+
+	gotTasks := buildPlatformAssetDispatchBundleApplyPhase(newDefaultAssetBundleBuilder()).run(
+		final,
+		inventory,
+		recipesByPlatform,
+		generationTasks,
+		dispatchTasks,
+	)
+
+	if final.Amazon == nil || final.Amazon.ImageBundle == nil {
+		t.Fatalf("amazon image bundle = %+v, want rebuilt bundle", final.Amazon)
+	}
+	for _, pending := range final.Amazon.ImageBundle.PendingGeneration {
+		if pending.ID == "amazon:hero" {
+			t.Fatalf("amazon pending generation = %+v, want completed dispatch task removed", final.Amazon.ImageBundle.PendingGeneration)
+		}
+	}
+	if final.Shein == nil || final.Shein.ImageBundle == nil {
+		t.Fatalf("shein image bundle = %+v, want rebuilt bundle", final.Shein)
+	}
+	hasSheinDispatchTask := false
+	for _, pending := range final.Shein.ImageBundle.PendingGeneration {
+		if pending.ID == "shein:gallery" && pending.ExecutionStatus == "planned" {
+			hasSheinDispatchTask = true
+			break
+		}
+	}
+	if !hasSheinDispatchTask {
+		t.Fatalf("shein pending generation = %+v, want planned dispatch task reattached", final.Shein.ImageBundle.PendingGeneration)
+	}
+
+	wantTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "completed"},
+		{ID: "shein:gallery", Platform: "shein", RecipeID: "gallery", ExecutionStatus: "planned"},
+	}
+	if !reflect.DeepEqual(gotTasks, wantTasks) {
+		t.Fatalf("generation tasks = %+v, want %+v", gotTasks, wantTasks)
+	}
+}
+
+func TestPlatformAssetDispatchBundleApplyPhaseRunSkipsWhenNoReturnedTasks(t *testing.T) {
+	t.Parallel()
+
+	existingPending := []assetgeneration.Task{{
+		ID:              "amazon:hero",
+		Platform:        "amazon",
+		RecipeID:        "hero",
+		ExecutionStatus: "planned",
+	}}
+	final := &ListingKitResult{
+		Amazon: &AmazonPackage{
+			ImageBundle: &common.PublishImageBundle{
+				PendingGeneration: cloneGenerationTasks(existingPending),
+			},
+		},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	recipesByPlatform := resolveRecipesForPlatforms(newDefaultAssetRecipeResolver(), []string{"amazon"}, nil)
+	generationTasks := []assetgeneration.Task{
+		{ID: "amazon:hero", Platform: "amazon", RecipeID: "hero", ExecutionStatus: "planned", Metadata: map[string]string{"k": "v"}},
+	}
+
+	gotTasks := buildPlatformAssetDispatchBundleApplyPhase(newDefaultAssetBundleBuilder()).run(
+		final,
+		inventory,
+		recipesByPlatform,
+		generationTasks,
+		nil,
+	)
+
+	if !reflect.DeepEqual(gotTasks, generationTasks) {
+		t.Fatalf("generation tasks = %+v, want unchanged %+v", gotTasks, generationTasks)
+	}
+	if final.Amazon == nil || final.Amazon.ImageBundle == nil {
+		t.Fatalf("amazon image bundle = %+v, want unchanged existing bundle", final.Amazon)
+	}
+	if !reflect.DeepEqual(final.Amazon.ImageBundle.PendingGeneration, existingPending) {
+		t.Fatalf("amazon pending generation = %+v, want unchanged %+v", final.Amazon.ImageBundle.PendingGeneration, existingPending)
+	}
+}
+
 func TestPlatformAssetDispatchPersistPhaseRunDecoratesAndPersistsGenerationTasks(t *testing.T) {
 	t.Parallel()
 
