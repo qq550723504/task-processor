@@ -348,21 +348,17 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 }
 
 func (s *taskGenerationService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error) {
-	if req == nil || req.Target == nil {
-		return nil, fmt.Errorf("%w: missing navigation target", ErrGenerationActionNotFound)
-	}
-	target := cloneGenerationReviewNavigationTarget(req.Target)
-	ApplyGenerationConditionalBaselineToNavigationTarget(target, "")
-
-	responseMode := normalizeGenerationActionResponseMode(req.ResponseMode)
-	planMode := normalizeGenerationNavigationDispatchPlanMode(req.PlanMode)
-	response, err := s.dispatchGenerationNavigationPrimary(ctx, taskID, target, responseMode)
+	dispatchInput, err := buildTaskGenerationNavigationDispatchEntry().run(req)
 	if err != nil {
 		return nil, err
 	}
-	response.PlanMode = planMode
-	if planMode == "execute_plan" {
-		executedPlan, err := s.executeGenerationNavigationDispatchPlan(ctx, taskID, target, responseMode)
+	response, err := s.dispatchGenerationNavigationPrimary(ctx, taskID, dispatchInput.target, dispatchInput.responseMode)
+	if err != nil {
+		return nil, err
+	}
+	response.PlanMode = dispatchInput.planMode
+	if dispatchInput.planMode == "execute_plan" {
+		executedPlan, err := s.executeGenerationNavigationDispatchPlan(ctx, taskID, dispatchInput.target, dispatchInput.responseMode)
 		if err != nil {
 			return nil, err
 		}

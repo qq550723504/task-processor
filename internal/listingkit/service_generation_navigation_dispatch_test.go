@@ -2,11 +2,107 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	common "task-processor/internal/publishing/common"
 )
+
+func TestTaskGenerationNavigationDispatchEntryRunNormalizesTargetAndPlanMode(t *testing.T) {
+	t.Parallel()
+
+	entry := buildTaskGenerationNavigationDispatchEntry()
+	target := &GenerationReviewNavigationTarget{
+		DispatchKind: "session",
+		Conditional: &GenerationConditionalState{
+			DeltaToken: "nav-delta-123",
+		},
+		SessionQuery: &GenerationQueueQuery{
+			Platform: "shein",
+			Slot:     "main",
+		},
+	}
+
+	input, err := entry.run(&GenerationReviewNavigationDispatchRequest{
+		ResponseMode: "patch_only",
+		PlanMode:     " execute_plan ",
+		Target:       target,
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if input == nil {
+		t.Fatalf("run() input = nil, want normalized dispatch input")
+	}
+	if input.target == nil {
+		t.Fatalf("run() target = nil, want cloned target")
+	}
+	if input.target == target {
+		t.Fatalf("run() target = original pointer, want clone")
+	}
+	if input.responseMode != "patch_only" {
+		t.Fatalf("run() responseMode = %q, want patch_only", input.responseMode)
+	}
+	if input.planMode != "execute_plan" {
+		t.Fatalf("run() planMode = %q, want execute_plan", input.planMode)
+	}
+	defaultInput, err := entry.run(&GenerationReviewNavigationDispatchRequest{
+		Target: target,
+	})
+	if err != nil {
+		t.Fatalf("run() default plan mode error = %v", err)
+	}
+	if defaultInput.planMode != "resolve_only" {
+		t.Fatalf("run() default planMode = %q, want resolve_only", defaultInput.planMode)
+	}
+	if target.SessionQuery.IfMatch != "" || target.SessionQuery.DeltaToken != "" {
+		t.Fatalf("original target = %+v, want unchanged source target", target.SessionQuery)
+	}
+	if input.target.SessionQuery.IfMatch != "nav-delta-123" {
+		t.Fatalf("cloned target session query = %+v, want conditional baseline applied", input.target.SessionQuery)
+	}
+	if input.target.Conditional == target.Conditional {
+		t.Fatalf("cloned target conditional = %+v, want cloned conditional state", input.target.Conditional)
+	}
+}
+
+func TestTaskGenerationNavigationDispatchEntryRunRejectsMissingTarget(t *testing.T) {
+	t.Parallel()
+
+	entry := buildTaskGenerationNavigationDispatchEntry()
+
+	tests := []struct {
+		name string
+		req  *GenerationReviewNavigationDispatchRequest
+	}{
+		{
+			name: "nil_request",
+			req:  nil,
+		},
+		{
+			name: "nil_target",
+			req: &GenerationReviewNavigationDispatchRequest{
+				Target: nil,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			input, err := entry.run(tc.req)
+			if !errors.Is(err, ErrGenerationActionNotFound) {
+				t.Fatalf("run() error = %v, want ErrGenerationActionNotFound", err)
+			}
+			if input != nil {
+				t.Fatalf("run() input = %+v, want nil", input)
+			}
+		})
+	}
+}
 
 func TestDispatchTaskGenerationNavigationRoutesSessionTarget(t *testing.T) {
 	t.Parallel()
