@@ -456,6 +456,84 @@ func TestApplyPlatformAssetDispatchMutationKeepsGenerationTasksWhenDispatchResul
 	}
 }
 
+func TestPlatformAssetDispatchInventoryApplyPhaseRunMergesReturnedAssets(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
+			},
+		},
+		AssetInventorySummary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	dispatchAssets := []asset.AssetRecord{
+		{
+			ID:       "generated-1",
+			Kind:     asset.KindSceneImage,
+			Origin:   asset.OriginGenerated,
+			URL:      "https://cdn.example.com/generated-1.jpg",
+			RecipeID: "scene",
+			Lineage:  &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+		},
+	}
+
+	buildPlatformAssetDispatchInventoryApplyPhase().run(final, inventory, dispatchAssets)
+
+	if got := len(inventory.Records); got != 2 {
+		t.Fatalf("inventory records = %d, want 2", got)
+	}
+	if inventory.Summary == nil || inventory.Summary.TotalRecords != 2 || inventory.Summary.GeneratedRecords != 1 {
+		t.Fatalf("inventory summary = %+v, want returned assets reflected", inventory.Summary)
+	}
+	if final.AssetBundle == nil || len(final.AssetBundle.Assets) != 2 {
+		t.Fatalf("asset bundle = %+v, want generated asset merged", final.AssetBundle)
+	}
+	if final.AssetInventorySummary != inventory.Summary {
+		t.Fatalf("asset inventory summary pointer = %+v, want refreshed summary %+v", final.AssetInventorySummary, inventory.Summary)
+	}
+}
+
+func TestPlatformAssetDispatchInventoryApplyPhaseRunSkipsWhenNoReturnedAssets(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
+			},
+		},
+		AssetInventorySummary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
+	}
+
+	buildPlatformAssetDispatchInventoryApplyPhase().run(final, inventory, nil)
+
+	if got := len(inventory.Records); got != 1 {
+		t.Fatalf("inventory records = %d, want unchanged count 1", got)
+	}
+	if inventory.Summary == nil || inventory.Summary.TotalRecords != 1 || inventory.Summary.GeneratedRecords != 0 {
+		t.Fatalf("inventory summary = %+v, want unchanged source-only summary", inventory.Summary)
+	}
+	if final.AssetBundle == nil || len(final.AssetBundle.Assets) != 1 {
+		t.Fatalf("asset bundle = %+v, want unchanged bundle", final.AssetBundle)
+	}
+	if final.AssetInventorySummary == nil || final.AssetInventorySummary.TotalRecords != 1 || final.AssetInventorySummary.GeneratedRecords != 0 {
+		t.Fatalf("asset inventory summary = %+v, want unchanged summary", final.AssetInventorySummary)
+	}
+}
+
 func TestPlatformAssetDispatchPersistPhaseRunDecoratesAndPersistsGenerationTasks(t *testing.T) {
 	t.Parallel()
 
