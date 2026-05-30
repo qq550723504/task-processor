@@ -248,14 +248,11 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		return nil, err
 	}
 
-	updatedTasks := mergeGenerationTasks(existingTasks, dispatchResult.Tasks)
+	updatedTasks := buildRetryGenerationMutationPhase().run(inventory, existingTasks, selectedTasks, dispatchResult)
 	reviews, err := s.listGenerationReviews(ctx, task.ID)
 	if err != nil {
 		return nil, err
 	}
-	retriedTargets := generationTaskTargets(selectedTasks)
-	inventory.Records = replaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchResult.Assets)
-	inventory.Summary = rebuildInventorySummary(inventory)
 
 	if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {
 		return nil, err

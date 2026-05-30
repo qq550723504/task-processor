@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -14,6 +15,135 @@ import (
 	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
+
+func TestRetryGenerationMutationApplyMergesTasksAndReplacesRetriedAssets(t *testing.T) {
+	t.Parallel()
+
+	inventory := &asset.Inventory{
+		Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/source.jpg"},
+			{
+				ID:       "scene-stub-1",
+				TaskID:   "task-retry-mutation-1",
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "file:///tmp/scene-stub.jpg",
+				RecipeID: "amazon-lifestyle",
+				Metadata: map[string]string{"bundle_slot": "auxiliary"},
+			},
+			{
+				ID:       "gallery-stub-1",
+				TaskID:   "task-retry-mutation-1",
+				Kind:     asset.KindSceneImage,
+				Origin:   asset.OriginGenerated,
+				URL:      "file:///tmp/gallery-stub.jpg",
+				RecipeID: "amazon-gallery-scene",
+				Metadata: map[string]string{"bundle_slot": "gallery"},
+			},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 3, DerivedRecords: 1, GeneratedRecords: 2, RecipeCount: 2},
+	}
+	existingTasks := []assetgeneration.Task{
+		{
+			ID:              "amazon:amazon-lifestyle",
+			TaskID:          "task-retry-mutation-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			Slot:            "auxiliary",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "planned",
+			Metadata:        map[string]string{"existing": "value"},
+		},
+		{
+			ID:              "amazon:amazon-gallery-scene",
+			TaskID:          "task-retry-mutation-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-gallery-scene",
+			Slot:            "gallery",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "completed",
+			Metadata:        map[string]string{"preserved": "value"},
+		},
+	}
+	selectedTasks := []assetgeneration.Task{{
+		ID:              "amazon:amazon-lifestyle",
+		TaskID:          "task-retry-mutation-1",
+		Platform:        "amazon",
+		RecipeID:        "amazon-lifestyle",
+		Slot:            "auxiliary",
+		AssetKind:       asset.KindSceneImage,
+		ExecutionStatus: "planned",
+	}}
+	dispatchResult := &assetgeneration.Result{
+		Tasks: []assetgeneration.Task{{
+			ID:              "amazon:amazon-lifestyle",
+			TaskID:          "task-retry-mutation-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			Slot:            "auxiliary",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "completed",
+			ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+			Metadata:        map[string]string{"updated": "value"},
+		}},
+		Assets: []asset.AssetRecord{{
+			ID:       "scene-rendered-1",
+			TaskID:   "task-retry-mutation-1",
+			Kind:     asset.KindSceneImage,
+			Origin:   asset.OriginGenerated,
+			URL:      "file:///tmp/scene-rendered.jpg",
+			RecipeID: "amazon-lifestyle",
+			Metadata: map[string]string{"bundle_slot": "auxiliary"},
+		}},
+	}
+
+	got := buildRetryGenerationMutationPhase().run(inventory, existingTasks, selectedTasks, dispatchResult)
+
+	wantTasks := []assetgeneration.Task{
+		{
+			ID:              "amazon:amazon-lifestyle",
+			TaskID:          "task-retry-mutation-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			Slot:            "auxiliary",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "completed",
+			ExecutionMode:   assetgeneration.ExecutionModeRendererBacked,
+			Metadata:        map[string]string{"updated": "value"},
+		},
+		{
+			ID:              "amazon:amazon-gallery-scene",
+			TaskID:          "task-retry-mutation-1",
+			Platform:        "amazon",
+			RecipeID:        "amazon-gallery-scene",
+			Slot:            "gallery",
+			AssetKind:       asset.KindSceneImage,
+			ExecutionStatus: "completed",
+			Metadata:        map[string]string{"preserved": "value"},
+		},
+	}
+	if !reflect.DeepEqual(got, wantTasks) {
+		t.Fatalf("mutation tasks = %+v, want %+v", got, wantTasks)
+	}
+
+	if len(inventory.Records) != 3 {
+		t.Fatalf("inventory records = %+v, want 3 records after targeted replacement", inventory.Records)
+	}
+	recordIDs := make([]string, 0, len(inventory.Records))
+	for _, record := range inventory.Records {
+		recordIDs = append(recordIDs, record.ID)
+	}
+	wantRecordIDs := []string{"source-1", "gallery-stub-1", "scene-rendered-1"}
+	if !reflect.DeepEqual(recordIDs, wantRecordIDs) {
+		t.Fatalf("inventory record ids = %+v, want %+v", recordIDs, wantRecordIDs)
+	}
+	if inventory.Summary == nil {
+		t.Fatalf("inventory summary = nil, want rebuilt summary")
+	}
+	if inventory.Summary.TotalRecords != 3 || inventory.Summary.DerivedRecords != 1 || inventory.Summary.GeneratedRecords != 2 || inventory.Summary.RecipeCount != 2 {
+		t.Fatalf("inventory summary = %+v, want rebuilt counts", inventory.Summary)
+	}
+}
 
 func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 	t.Parallel()
@@ -682,6 +812,152 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 	}
 	if !foundOther {
 		t.Fatalf("inventory records = %+v, want non-target slot asset preserved", updatedInventory.Records)
+	}
+}
+
+func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	renderer := &stubServiceDeferredRenderer{
+		result: &asset.AssetRecord{
+			ID:       "scene-rendered-merge-1",
+			Kind:     asset.KindSceneImage,
+			Origin:   asset.OriginGenerated,
+			Role:     "scene",
+			URL:      "file:///tmp/scene-rendered-merge.jpg",
+			RecipeID: "amazon-lifestyle",
+			Metadata: map[string]string{"renderer": "service-test"},
+		},
+	}
+	svc := &service{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+			DeferredRenderer: renderer,
+		}),
+	}
+
+	task := &Task{
+		ID:        "task-generation-retry-merge-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-merge-1",
+			Platforms:        []string{"amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			Amazon: &AmazonPackage{
+				ImageBundle: &common.PublishImageBundle{
+					Auxiliary: []common.BundleSlot{{
+						Key:             "auxiliary",
+						Purpose:         "scene",
+						RecipeID:        "amazon-lifestyle",
+						IdealKind:       string(asset.KindSceneImage),
+						StateLabel:      "fallback_in_use",
+						SatisfiedBy:     "fallback_asset",
+						ExecutionStatus: "fallback",
+					}},
+					Gallery: []common.BundleSlot{{
+						Key:             "gallery",
+						Purpose:         "gallery",
+						RecipeID:        "amazon-gallery-scene",
+						IdealKind:       string(asset.KindSceneImage),
+						StateLabel:      "fallback_in_use",
+						SatisfiedBy:     "fallback_asset",
+						ExecutionStatus: "fallback",
+					}},
+				},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	inventory := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{ID: "gallery-1", TaskID: task.ID, Kind: asset.KindGalleryImage, Origin: asset.OriginDerived, URL: "file:///tmp/gallery.jpg"},
+			{ID: "scene-stub-merge-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "file:///tmp/scene-stub-merge.jpg", RecipeID: "amazon-lifestyle", Metadata: map[string]string{"execution_mode": assetgeneration.ExecutionModeDeferredStub, "bundle_slot": "auxiliary"}},
+			{ID: "scene-gallery-stub-1", TaskID: task.ID, Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "file:///tmp/scene-gallery-stub.jpg", RecipeID: "amazon-gallery-scene", Metadata: map[string]string{"execution_mode": assetgeneration.ExecutionModeDeferredStub, "bundle_slot": "gallery"}},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 3, DerivedRecords: 1, GeneratedRecords: 2, RecipeCount: 2},
+	}
+	if err := assetRepository.SaveInventory(context.Background(), inventory); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	persistedTasks := []assetgeneration.Task{
+		{
+			TaskID:          task.ID,
+			ID:              "amazon:amazon-lifestyle",
+			Platform:        "amazon",
+			RecipeID:        "amazon-lifestyle",
+			AssetKind:       asset.KindSceneImage,
+			Slot:            "auxiliary",
+			Purpose:         "scene",
+			Status:          "completed",
+			ExecutionStatus: "completed",
+			ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+			CanExecute:      true,
+			SatisfiedBy:     "fallback_asset",
+			SourceAssetIDs:  []string{"gallery-1"},
+		},
+		{
+			TaskID:          task.ID,
+			ID:              "amazon:amazon-gallery-scene",
+			Platform:        "amazon",
+			RecipeID:        "amazon-gallery-scene",
+			AssetKind:       asset.KindSceneImage,
+			Slot:            "gallery",
+			Purpose:         "gallery",
+			Status:          "completed",
+			ExecutionStatus: "completed",
+			ExecutionMode:   assetgeneration.ExecutionModeDeferredStub,
+			CanExecute:      true,
+			SatisfiedBy:     "fallback_asset",
+			SourceAssetIDs:  []string{"gallery-1"},
+		},
+	}
+	if err := assetRepository.SaveGenerationTasks(context.Background(), task.ID, persistedTasks); err != nil {
+		t.Fatalf("SaveGenerationTasks() error = %v", err)
+	}
+
+	page, err := svc.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{
+		Slots: []string{"auxiliary"},
+	})
+	if err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+
+	if len(page.Tasks) != 2 {
+		t.Fatalf("page tasks = %+v, want merged tasks", page.Tasks)
+	}
+	if page.Tasks[0].ID != "amazon:amazon-lifestyle" || page.Tasks[0].ExecutionMode != assetgeneration.ExecutionModeRendererBacked {
+		t.Fatalf("retried task = %+v, want renderer-backed merged task", page.Tasks[0])
+	}
+	if page.Tasks[1].ID != "amazon:amazon-gallery-scene" || page.Tasks[1].ExecutionMode != assetgeneration.ExecutionModeDeferredStub {
+		t.Fatalf("untouched task = %+v, want untouched persisted task", page.Tasks[1])
+	}
+
+	updatedInventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("GetInventory() error = %v", err)
+	}
+	recordIDs := make([]string, 0, len(updatedInventory.Records))
+	for _, item := range updatedInventory.Records {
+		recordIDs = append(recordIDs, item.ID)
+	}
+	wantRecordIDs := []string{"gallery-1", "scene-gallery-stub-1", "scene-rendered-merge-1"}
+	if !reflect.DeepEqual(recordIDs, wantRecordIDs) {
+		t.Fatalf("inventory record ids = %+v, want %+v", recordIDs, wantRecordIDs)
+	}
+	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 3 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 2 || updatedInventory.Summary.RecipeCount != 2 {
+		t.Fatalf("inventory summary = %+v, want rebuilt summary counts", updatedInventory.Summary)
 	}
 }
 
