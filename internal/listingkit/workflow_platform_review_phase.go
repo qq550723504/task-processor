@@ -19,6 +19,7 @@ func (p *platformReviewPhase) run(
 
 	sheinReviewStage := newWorkflowRecorder(final).Start("shein_review", "")
 	applySheinInspectionReviewToSummary(final)
+	applySheinVariantCoverageReviewToSummary(final)
 	addSheinReviewWorkflowIssues(final)
 	sheinReviewStage.Complete()
 }

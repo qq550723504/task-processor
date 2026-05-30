@@ -8,23 +8,33 @@ const (
 )
 
 func applySheinInspectionReviewToSummary(result *ListingKitResult) {
-	if result == nil || result.Shein == nil || result.Shein.Inspection == nil || !result.Shein.Inspection.NeedsReview {
+	reasons := sheinInspectionReviewReasons(result)
+	if len(reasons) == 0 {
 		return
 	}
 	if result.Summary == nil {
 		result.Summary = &GenerationSummary{}
 	}
 	result.Summary.NeedsReview = true
-
-	reasons := normalizeReviewReasons(result.Shein.Inspection.Summary)
-	if len(reasons) == 0 {
-		reasons = normalizeReviewReasons(result.Shein.ReviewNotes)
-	}
-	if len(reasons) == 0 {
-		reasons = []string{"SHEIN 信息需要人工复核"}
-	}
 	result.Summary.Warnings = uniqueStrings(append(result.Summary.Warnings, reasons...))
 	result.ReviewReasons = uniqueStrings(append(result.ReviewReasons, reasons...))
+}
+
+func applySheinVariantCoverageReviewToSummary(result *ListingKitResult) {
+	coverageWarning, blocked := sheinVariantImageCoverageStatus(result.Shein)
+	coverageWarning = strings.TrimSpace(coverageWarning)
+	if !blocked || coverageWarning == "" {
+		return
+	}
+	if result.Summary == nil {
+		result.Summary = &GenerationSummary{}
+	}
+	if result.Shein != nil {
+		result.Shein.ReviewNotes = uniqueStrings(append(result.Shein.ReviewNotes, coverageWarning))
+	}
+	result.Summary.NeedsReview = true
+	result.Summary.Warnings = uniqueStrings(append(result.Summary.Warnings, coverageWarning))
+	result.ReviewReasons = uniqueStrings(append(result.ReviewReasons, coverageWarning))
 }
 
 func addSheinReviewWorkflowIssues(result *ListingKitResult) {
@@ -47,16 +57,27 @@ func addSheinReviewWorkflowIssues(result *ListingKitResult) {
 	}
 }
 
-func sheinReviewIssueReasons(result *ListingKitResult) []string {
-	if result == nil || result.Summary == nil || !result.Summary.NeedsReview {
+func sheinInspectionReviewReasons(result *ListingKitResult) []string {
+	if result == nil || result.Shein == nil || result.Shein.Inspection == nil || !result.Shein.Inspection.NeedsReview {
 		return nil
 	}
 
+	reasons := normalizeReviewReasons(result.Shein.Inspection.Summary)
+	if len(reasons) == 0 {
+		reasons = normalizeReviewReasons(result.Shein.ReviewNotes)
+	}
+	if len(reasons) == 0 {
+		reasons = []string{"SHEIN 信息需要人工复核"}
+	}
+	return reasons
+}
+
+func sheinReviewIssueReasons(result *ListingKitResult) []string {
 	coverageWarning, coverageBlocked := sheinVariantImageCoverageStatus(result.Shein)
 	coverageWarning = strings.TrimSpace(coverageWarning)
 
 	filtered := make([]string, 0)
-	for _, reason := range reviewReasonsFromResult(result) {
+	for _, reason := range sheinInspectionReviewReasons(result) {
 		if isSheinCookieUnavailableText(reason) {
 			continue
 		}

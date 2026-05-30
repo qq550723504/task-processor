@@ -91,17 +91,28 @@ func TestRefreshSheinTaskResultStateKeepsCoverageWarningButSkipsReviewIssue(t *t
 	coverageWarning := "coverage guard warning"
 	result := &ListingKitResult{
 		Shein: &SheinPackage{
-			Inspection: &SheinInspection{
-				NeedsReview: true,
-			},
+			CategoryID:  10489,
 			ReviewNotes: []string{coverageWarning},
+			CategoryResolution: &SheinCategoryResolution{
+				Status:     "resolved",
+				CategoryID: 10489,
+			},
+			AttributeResolution: &SheinAttributeResolution{
+				Status:        "resolved",
+				ResolvedCount: 3,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolution{
+				Status:             "resolved",
+				PrimaryAttributeID: 11,
+			},
 			Metadata: map[string]string{
 				sheinVariantImageCoverageStatusKey:  "blocked",
 				sheinVariantImageCoverageMessageKey: coverageWarning,
 			},
 		},
 		Summary: &GenerationSummary{
-			Warnings: []string{coverageWarning},
+			NeedsReview: true,
+			Warnings:    []string{coverageWarning},
 		},
 		ReviewReasons: []string{coverageWarning},
 	}
@@ -109,6 +120,9 @@ func TestRefreshSheinTaskResultStateKeepsCoverageWarningButSkipsReviewIssue(t *t
 	svc := &service{}
 	svc.refreshSheinTaskResultState(context.Background(), &Task{Result: result}, result)
 
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs review retained for coverage-only refresh", result.Summary)
+	}
 	if !strings.Contains(strings.Join(result.Summary.Warnings, "\n"), coverageWarning) {
 		t.Fatalf("summary warnings = %#v, want coverage warning retained", result.Summary.Warnings)
 	}
