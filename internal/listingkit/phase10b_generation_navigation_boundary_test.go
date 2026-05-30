@@ -68,7 +68,10 @@ func TestTaskGenerationNavigationDispatchProjectionBoundary(t *testing.T) {
 
 	source := readNamedFunctionSource(t, "task_generation_navigation_dispatch_projection.go", "run")
 
-	assertSourceOccurrenceCount(t, source, "response.PlanMode = planMode", 1)
+	assertSourceContainsAll(t, source, []string{
+		"planMode string",
+		"executedPlan *GenerationNavigationDispatchExecution",
+	})
 	assertSourceOccurrenceCount(t, source, "applyExecutedPlanToDispatchResponse(", 1)
 	assertSourceOccurrenceCount(t, source, "finalizeGenerationReviewNavigationDispatchResponse(", 1)
 	assertSourceExcludesAll(t, source, []string{
@@ -80,6 +83,8 @@ func TestTaskGenerationNavigationDispatchProjectionBoundary(t *testing.T) {
 		"DispatchTaskGenerationNavigation(",
 		"dispatchGenerationNavigationPrimary(",
 		"executeGenerationNavigationDispatchPlan(",
+		"executeGenerationNavigationDispatchPlanSequential(",
+		"executeGenerationNavigationDispatchPlanParallel(",
 		"executeGenerationNavigationDispatchPlanStep(",
 	})
 }
