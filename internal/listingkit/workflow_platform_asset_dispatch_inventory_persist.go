@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
 )
 
 type platformAssetDispatchInventoryPersistPhase struct {
@@ -18,9 +17,9 @@ func buildPlatformAssetDispatchInventoryPersistPhase(s *service) *platformAssetD
 func (p *platformAssetDispatchInventoryPersistPhase) run(
 	ctx context.Context,
 	inventory *asset.Inventory,
-	dispatchResult *assetgeneration.Result,
+	returnedAssetCount int,
 ) {
-	if p == nil || p.service == nil || p.service.assetRepo == nil || inventory == nil || dispatchResult == nil || len(dispatchResult.Assets) == 0 {
+	if p == nil || p.service == nil || p.service.assetRepo == nil || inventory == nil || returnedAssetCount == 0 {
 		return
 	}
 	_ = p.service.assetRepo.SaveInventory(ctx, inventory)

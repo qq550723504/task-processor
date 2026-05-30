@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -544,16 +545,7 @@ func TestPlatformAssetDispatchInventoryPersistPhaseRunPersistsReturnedAssets(t *
 		}},
 		Summary: &asset.InventorySummary{TotalRecords: 1, GeneratedRecords: 1},
 	}
-	dispatchResult := &assetgeneration.Result{
-		Assets: []asset.AssetRecord{{
-			ID:     "generated-1",
-			Kind:   asset.KindSceneImage,
-			Origin: asset.OriginGenerated,
-			URL:    "https://cdn.example.com/generated-1.jpg",
-		}},
-	}
-
-	phase.run(context.Background(), inventory, dispatchResult)
+	phase.run(context.Background(), inventory, 1)
 
 	if assetRepository.saveInventoryCalls != 1 {
 		t.Fatalf("save inventory calls = %d, want 1", assetRepository.saveInventoryCalls)
@@ -578,7 +570,7 @@ func TestPlatformAssetDispatchInventoryPersistPhaseRunSkipsWhenNoReturnedAssets(
 		Summary: &asset.InventorySummary{TotalRecords: 1, SourceRecords: 1},
 	}
 
-	phase.run(context.Background(), inventory, &assetgeneration.Result{})
+	phase.run(context.Background(), inventory, 0)
 
 	if assetRepository.saveInventoryCalls != 0 {
 		t.Fatalf("save inventory calls = %d, want 0", assetRepository.saveInventoryCalls)
@@ -604,16 +596,7 @@ func TestPlatformAssetDispatchInventoryPersistPhaseRunKeepsBestEffortPersistence
 		}},
 		Summary: &asset.InventorySummary{TotalRecords: 1, GeneratedRecords: 1},
 	}
-	dispatchResult := &assetgeneration.Result{
-		Assets: []asset.AssetRecord{{
-			ID:     "generated-1",
-			Kind:   asset.KindSceneImage,
-			Origin: asset.OriginGenerated,
-			URL:    "https://cdn.example.com/generated-best-effort.jpg",
-		}},
-	}
-
-	phase.run(context.Background(), inventory, dispatchResult)
+	phase.run(context.Background(), inventory, 1)
 
 	if assetRepository.saveInventoryCalls != 1 {
 		t.Fatalf("save inventory calls = %d, want 1", assetRepository.saveInventoryCalls)
@@ -742,6 +725,26 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 	}
 	if len(final.AssetGenerationTasks) != 1 || final.AssetGenerationTasks[0].ExecutionStatus != "completed" {
 		t.Fatalf("decorated generation tasks = %+v, want completed dispatched task", final.AssetGenerationTasks)
+	}
+}
+
+func TestPlatformAssetDispatchPhaseSourceRoutesInventoryPersistenceThroughHandoff(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("workflow_platform_asset_dispatch_phase.go")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	content := string(source)
+
+	if !strings.Contains(content, "func (p *platformAssetDispatchPhase) persistInventory(") {
+		t.Fatal("expected platform asset dispatch phase to define a persistInventory handoff")
+	}
+	if !strings.Contains(content, "p.persistInventory(ctx, inventory, returnedAssetCount)") {
+		t.Fatal("expected platform asset dispatch phase run() to route inventory persistence through persistInventory")
+	}
+	if strings.Contains(content, "_ = p.service.assetRepo.SaveInventory(ctx, inventory)") {
+		t.Fatal("expected platform asset dispatch phase to stop calling SaveInventory(ctx, inventory) inline")
 	}
 }
 

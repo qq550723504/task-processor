@@ -31,7 +31,7 @@ func (p *platformAssetDispatchPhase) run(
 	}
 	p.preAttachBundles(final, inventory, recipesByPlatform, generationPlan, enableAssetGeneration)
 	pendingTasks := collectPlatformGenerationTasks(final)
-	final, inventory, persistedGenerationTasks = p.dispatchAndApply(
+	final, inventory, persistedGenerationTasks, returnedAssetCount := p.dispatchAndApply(
 		ctx,
 		task,
 		final,
@@ -41,6 +41,7 @@ func (p *platformAssetDispatchPhase) run(
 		pendingTasks,
 		enableAssetGeneration,
 	)
+	p.persistInventory(ctx, inventory, returnedAssetCount)
 	return p.persistHandoff(ctx, task, final, persistedGenerationTasks)
 }
 
@@ -66,9 +67,9 @@ func (p *platformAssetDispatchPhase) dispatchAndApply(
 	persistedGenerationTasks []assetgeneration.Task,
 	pendingTasks []assetgeneration.Task,
 	enableAssetGeneration bool,
-) (*ListingKitResult, *asset.Inventory, []assetgeneration.Task) {
+) (*ListingKitResult, *asset.Inventory, []assetgeneration.Task, int) {
 	if !enableAssetGeneration || p.service.assetGenerator == nil || len(pendingTasks) == 0 {
-		return final, inventory, persistedGenerationTasks
+		return final, inventory, persistedGenerationTasks, 0
 	}
 	deferredStage := newWorkflowRecorder(final).Start("asset_generation_platform", "")
 	dispatchResult, dispatchErr := p.service.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
@@ -77,10 +78,12 @@ func (p *platformAssetDispatchPhase) dispatchAndApply(
 		Inventory: inventory,
 		Tasks:     pendingTasks,
 	})
+	returnedAssetCount := 0
 	if dispatchErr != nil {
 		deferredStage.Degrade("asset_generation_platform_deferred_dispatch_failed", "Deferred platform asset generation dispatch failed", dispatchErr.Error())
 	}
 	if dispatchResult != nil {
+		returnedAssetCount = len(dispatchResult.Assets)
 		mutation := applyPlatformAssetDispatchMutation(
 			final,
 			inventory,
@@ -92,14 +95,19 @@ func (p *platformAssetDispatchPhase) dispatchAndApply(
 		final = mutation.final
 		inventory = mutation.inventory
 		persistedGenerationTasks = mutation.generationTasks
-		if len(dispatchResult.Assets) > 0 && p.service.assetRepo != nil {
-			_ = p.service.assetRepo.SaveInventory(ctx, inventory)
-		}
 	}
 	if dispatchErr == nil {
 		deferredStage.Complete()
 	}
-	return final, inventory, persistedGenerationTasks
+	return final, inventory, persistedGenerationTasks, returnedAssetCount
+}
+
+func (p *platformAssetDispatchPhase) persistInventory(
+	ctx context.Context,
+	inventory *asset.Inventory,
+	returnedAssetCount int,
+) {
+	buildPlatformAssetDispatchInventoryPersistPhase(p.service).run(ctx, inventory, returnedAssetCount)
 }
 
 func (p *platformAssetDispatchPhase) persistHandoff(
