@@ -14,6 +14,12 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 		t.Fatalf("ReadFile(task_generation_service.go) error = %v", err)
 	}
 	source := string(content)
+	start := strings.Index(source, "func (s *taskGenerationService) RetryTaskGenerationTasks(")
+	end := strings.Index(source, "func (s *taskGenerationService) ExecuteTaskGenerationAction(")
+	if start == -1 || end == -1 || end <= start {
+		t.Fatalf("task_generation_service.go should contain retry generation service boundaries")
+	}
+	retrySource := source[start:end]
 
 	required := []string{
 		"updatedTasks := buildRetryGenerationMutationPhase().run(",
@@ -33,11 +39,15 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 		"rebuildInventorySummary(inventory)",
 		"if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {",
 		"if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, updatedTasks); err != nil {",
+		"rebuildBundleFromInventory(",
 		"decorateListingKitResultGeneration(&rebuiltResult, updatedTasks)",
+		"syncAssetRenderPreviews(&rebuiltResult)",
+		"decorateListingKitResultReview(&rebuiltResult, reviews)",
 		"attachPlatformImageBundles(&rebuiltResult, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: updatedTasks}, s.assetBundleBuilder)",
+		"buildMatchedGenerationQueue(",
 	}
 	for _, needle := range forbidden {
-		if strings.Contains(source, needle) {
+		if strings.Contains(retrySource, needle) {
 			t.Fatalf("task_generation_service.go should not inline retry ownership %q", needle)
 		}
 	}
@@ -87,7 +97,10 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 				"rebuildBundleFromInventory(",
 				"attachPlatformImageBundles(",
 				"decorateListingKitResultGeneration(",
+				"syncAssetRenderPreviews(",
+				"decorateListingKitResultReview(",
 				"buildGenerationTaskPage(",
+				"buildMatchedGenerationQueue(",
 			},
 			shouldAvoid: []string{
 				"SaveInventory(",
