@@ -144,6 +144,9 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 		if req.GenerationJobID != nil {
 			session.GenerationJobID = *req.GenerationJobID
 		}
+		if req.GenerationJobs != nil {
+			session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
+		}
 		if req.GenerationError != nil {
 			session.GenerationError = *req.GenerationError
 		}
@@ -331,6 +334,7 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), req.ApprovedDesignIDs...)
 	session.CreatedTasks = toStudioCreatedTaskList(req.CreatedTasks)
 	session.CreatedTaskIDs = buildCreatedTaskIDs(req.CreatedTasks)
+	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
 	session.SavedAsBatch = true
 	session.BatchName = strings.TrimSpace(req.BatchName)
 	if session.BatchName == "" {

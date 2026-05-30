@@ -1687,6 +1687,65 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
+  it("resumes every in-flight generation job after returning to the page", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationError: "",
+      generationJobId: "job-123",
+      generationJobs: [
+        {
+          jobId: "job-123",
+          targetGroupKey: "primary",
+          targetGroupLabel: "当前商品",
+          status: "running",
+        },
+        {
+          jobId: "job-456",
+          targetGroupKey: "group-1",
+          targetGroupLabel: "分组商品 1",
+          status: "running",
+        },
+      ],
+      sessionStatus: "generating",
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+    resumeSheinStudioDesignGeneration.mockImplementation(async (jobId: string) => ({
+      warnings: [],
+      images: [
+        {
+          id: `design-${jobId}`,
+          imageUrl: `https://example.com/${jobId}.png`,
+        },
+      ],
+    }));
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(resumeSheinStudioDesignGeneration).toHaveBeenCalledWith("job-123"),
+    );
+    await waitFor(() =>
+      expect(resumeSheinStudioDesignGeneration).toHaveBeenCalledWith("job-456"),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
+    );
+  });
+
   it("shows backend generation warnings when only part of the requested styles succeed", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",

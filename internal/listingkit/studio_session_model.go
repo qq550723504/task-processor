@@ -75,6 +75,13 @@ type SheinStudioCreatedTask struct {
 	DesignID string `json:"design_id,omitempty"`
 }
 
+type SheinStudioGenerationJob struct {
+	JobID            string               `json:"job_id,omitempty"`
+	TargetGroupKey   string               `json:"target_group_key,omitempty"`
+	TargetGroupLabel string               `json:"target_group_label,omitempty"`
+	Status           StudioAsyncJobStatus `json:"status,omitempty"`
+}
+
 type SheinStudioGroupedSelection struct {
 	SelectionID        string               `json:"selection_id,omitempty"`
 	Selection          SheinStudioSelection `json:"selection,omitempty"`
@@ -157,6 +164,16 @@ func (value *SheinStudioCreatedTaskList) Scan(input any) error {
 	return unmarshalStudioSessionJSON(input, value)
 }
 
+type SheinStudioGenerationJobList []SheinStudioGenerationJob
+
+func (value SheinStudioGenerationJobList) Value() (driver.Value, error) {
+	return marshalStudioSessionJSON(value)
+}
+
+func (value *SheinStudioGenerationJobList) Scan(input any) error {
+	return unmarshalStudioSessionJSON(input, value)
+}
+
 type SheinStudioGroupedSelectionList []SheinStudioGroupedSelection
 
 func (value SheinStudioGroupedSelectionList) Value() (driver.Value, error) {
@@ -196,6 +213,7 @@ type SheinStudioSession struct {
 	RenderSizeImagesWithSDS bool                              `json:"render_size_images_with_sds"`
 	SheinStoreID            string                            `json:"shein_store_id,omitempty" gorm:"type:varchar(64)"`
 	GenerationJobID         string                            `json:"generation_job_id,omitempty" gorm:"type:varchar(64);index"`
+	GenerationJobs          SheinStudioGenerationJobList      `json:"generation_jobs,omitempty" gorm:"type:text"`
 	GenerationError         string                            `json:"generation_error,omitempty" gorm:"type:text"`
 	ApprovedDesignIDs       SheinStudioStringList             `json:"approved_design_ids,omitempty" gorm:"type:text"`
 	CreatedTaskIDs          SheinStudioStringList             `json:"created_task_ids,omitempty" gorm:"type:text"`
@@ -267,6 +285,7 @@ type UpsertStudioBatchRequest struct {
 	Selection               *SheinStudioSelection           `json:"selection,omitempty"`
 	ApprovedDesignIDs       []string                        `json:"approved_design_ids,omitempty"`
 	CreatedTasks            []SheinStudioCreatedTask        `json:"created_tasks,omitempty"`
+	GenerationJobs          []SheinStudioGenerationJob      `json:"generation_jobs,omitempty"`
 	Designs                 []SheinStudioDesign             `json:"designs,omitempty"`
 }
 
@@ -288,6 +307,7 @@ type SheinStudioBatchListItem struct {
 	GroupedSelections       []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`
 	ApprovedDesignIDs       []string                        `json:"approved_design_ids,omitempty"`
 	CreatedTasks            []SheinStudioCreatedTask        `json:"created_tasks,omitempty"`
+	GenerationJobs          []SheinStudioGenerationJob      `json:"generation_jobs,omitempty"`
 	DesignCount             int                             `json:"design_count"`
 	UpdatedAt               string                          `json:"updated_at,omitempty"`
 }

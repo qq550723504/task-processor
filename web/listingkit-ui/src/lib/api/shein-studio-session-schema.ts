@@ -49,6 +49,15 @@ const groupedSelectionSchema = z
   })
   .passthrough();
 
+const generationJobSchema = z
+  .object({
+    job_id: z.string().optional(),
+    target_group_key: z.string().optional(),
+    target_group_label: z.string().optional(),
+    status: z.enum(["running", "succeeded", "failed"]).optional(),
+  })
+  .passthrough();
+
 const studioSessionSchema = z
   .object({
     id: z.string(),
@@ -70,6 +79,7 @@ const studioSessionSchema = z
     render_size_images_with_sds: z.boolean().optional(),
     shein_store_id: z.string().optional(),
     generation_job_id: z.string().optional(),
+    generation_jobs: z.array(generationJobSchema).optional(),
     generation_error: z.string().optional(),
     approved_design_ids: z.array(z.string()).optional(),
     created_tasks: z.array(createdTaskSchema).optional(),

@@ -88,6 +88,8 @@ func buildStudioSelectionKey(selection *SheinStudioSelection) string {
 
 func deriveBatchStatus(req *UpsertStudioBatchRequest) SheinStudioSessionStatus {
 	switch {
+	case len(req.GenerationJobs) > 0:
+		return SheinStudioSessionStatusGenerating
 	case len(req.CreatedTasks) > 0:
 		return SheinStudioSessionStatusTasksCreated
 	case len(req.Designs) > 0:

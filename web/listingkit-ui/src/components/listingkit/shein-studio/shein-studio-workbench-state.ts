@@ -14,6 +14,7 @@ import type {
   SheinStudioArtworkModel,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
@@ -44,6 +45,7 @@ export type SheinStudioWorkbenchState = {
   renderSizeImagesWithSds: boolean;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
+  generationJobs: SheinStudioGenerationJob[];
   generationError: string;
   generationWarning: string;
   generationWarningAction:
@@ -96,6 +98,7 @@ export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
   | "renderSizeImagesWithSds"
   | "designs"
   | "selectedIds"
+  | "generationJobs"
   | "createdTasks"
   | "galleryRatioCheck"
 >>;
@@ -152,6 +155,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     renderSizeImagesWithSds: true,
     designs: [],
     selectedIds: [],
+    generationJobs: [],
     generationError: "",
     generationWarning: "",
     generationWarningAction: null,
@@ -278,6 +282,7 @@ function syncActiveGroupFromState(
             patch.renderSizeImagesWithSds ?? state.renderSizeImagesWithSds,
           designs: patch.designs ?? state.designs,
           selectedIds: patch.selectedIds ?? state.selectedIds,
+          generationJobs: patch.generationJobs ?? state.generationJobs,
           createdTasks: patch.createdTasks ?? state.createdTasks,
           updatedAt: new Date().toISOString(),
         }
@@ -376,6 +381,7 @@ export function sheinStudioWorkbenchReducer(
           renderSizeImagesWithSds: action.batch.renderSizeImagesWithSds ?? true,
           designs: action.batch.designs,
           selectedIds: action.batch.selectedIds,
+          generationJobs: action.batch.generationJobs ?? [],
           createdTasks: action.batch.createdTasks,
         },
         action.batch.groups ?? state.groups,

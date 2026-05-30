@@ -13,6 +13,7 @@ import type {
   SheinStudioSavedBatch,
   SheinStudioCreatedTask,
   SheinStudioDraft,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
@@ -54,6 +55,12 @@ export type StudioSessionDetailResponse = {
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
     generation_job_id?: string;
+    generation_jobs?: Array<{
+      job_id?: string;
+      target_group_key?: string;
+      target_group_label?: string;
+      status?: "running" | "succeeded" | "failed";
+    }>;
     generation_error?: string;
     approved_design_ids?: string[];
     created_tasks?: SheinStudioCreatedTask[];
@@ -84,6 +91,9 @@ type RawCreatedTask = {
   designId?: string;
   design_id?: string;
 };
+
+type RawStudioGenerationJob =
+  NonNullable<StudioSessionDetailResponse["session"]>["generation_jobs"];
 
 type StudioBatchListResponse = {
   items?: Array<{
@@ -186,6 +196,7 @@ export async function updateSheinStudioSession(
     renderSizeImagesWithSds?: boolean;
     sheinStoreId?: string;
     generationJobId?: string;
+    generationJobs?: SheinStudioGenerationJob[];
     generationError?: string;
     approvedDesignIds?: string[];  
     createdTasks?: SheinStudioCreatedTask[];
@@ -212,6 +223,12 @@ export async function updateSheinStudioSession(
         render_size_images_with_sds: patch.renderSizeImagesWithSds,
         shein_store_id: patch.sheinStoreId,
         generation_job_id: patch.generationJobId,
+        generation_jobs: patch.generationJobs?.map((job) => ({
+          job_id: job.jobId,
+          target_group_key: job.targetGroupKey,
+          target_group_label: job.targetGroupLabel,
+          status: job.status,
+        })),
         generation_error: patch.generationError,
         approved_design_ids: patch.approvedDesignIds,
         created_tasks: patch.createdTasks,
@@ -303,6 +320,7 @@ export async function upsertSheinStudioSessionBatch(
     groupedSelections?: GroupedSDSSelectionEligibility[];
     approvedDesignIds: string[];
     createdTasks: SheinStudioCreatedTask[];
+    generationJobs?: SheinStudioGenerationJob[];
     designs: SheinStudioGeneratedDesign[];
   },
   options?: StudioSessionRequestOptions,
@@ -333,6 +351,12 @@ export async function upsertSheinStudioSessionBatch(
         grouped_selections: input.groupedSelections?.map(groupedSelectionToPayload),
         approved_design_ids: input.approvedDesignIds,
         created_tasks: input.createdTasks,
+        generation_jobs: input.generationJobs?.map((job) => ({
+          job_id: job.jobId,
+          target_group_key: job.targetGroupKey,
+          target_group_label: job.targetGroupLabel,
+          status: job.status,
+        })),
         designs: input.designs.map((design) => ({
           id: design.id,
           image_url: design.imageUrl ?? design.dataUrl,
@@ -381,6 +405,8 @@ export function mapStudioSessionDetailToDraft(
       .map((design) => design.id) ??
     [];
 
+  const generationJobs = normalizeGenerationJobs(detail.session.generation_jobs);
+
   return normalizeDraft({
     prompt: detail.session.prompt ?? "",
     styleCount: detail.session.style_count ?? "1",
@@ -427,6 +453,12 @@ export function mapStudioSessionDetailToDraft(
     ),
     generationError: detail.session.generation_error ?? "",
     generationJobId: detail.session.generation_job_id ?? "",
+    generationJobs:
+      generationJobs.length > 0
+        ? generationJobs
+        : detail.session.generation_job_id
+          ? [{ jobId: detail.session.generation_job_id, status: "running" }]
+          : [],
     sessionStatus: detail.session.status ?? "",
     updatedAt: detail.session.updated_at ?? new Date().toISOString(),
   });
@@ -604,6 +636,36 @@ function normalizeCreatedTasks(
       } satisfies SheinStudioCreatedTask;
     })
     .filter((item): item is SheinStudioCreatedTask => Boolean(item));
+}
+
+function normalizeGenerationJobs(
+  input: RawStudioGenerationJob | undefined,
+): SheinStudioGenerationJob[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input.reduce<SheinStudioGenerationJob[]>((jobs, job) => {
+      const jobId = typeof job?.job_id === "string" ? job.job_id.trim() : "";
+      if (!jobId) {
+        return jobs;
+      }
+      jobs.push({
+        jobId,
+        targetGroupKey:
+          typeof job.target_group_key === "string"
+            ? job.target_group_key
+            : undefined,
+        targetGroupLabel:
+          typeof job.target_group_label === "string"
+            ? job.target_group_label
+            : undefined,
+        status:
+          job.status === "succeeded" || job.status === "failed"
+            ? job.status
+            : "running",
+      } satisfies SheinStudioGenerationJob);
+      return jobs;
+    }, []);
 }
 
 function asStringArray(value: unknown) {

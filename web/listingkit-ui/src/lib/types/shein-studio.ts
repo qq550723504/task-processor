@@ -54,6 +54,18 @@ export type SheinStudioCreatedTask = {
   designId: string;
 };
 
+export type SheinStudioGenerationJobStatus =
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export type SheinStudioGenerationJob = {
+  jobId: string;
+  targetGroupKey?: string;
+  targetGroupLabel?: string;
+  status: SheinStudioGenerationJobStatus;
+};
+
 export type SDSGroupedPromptHistoryEntry = {
   prompt: string;
   groupedImageMode: SheinStudioGroupedImageMode;
@@ -129,6 +141,10 @@ export type SheinStudioSavedBatch = {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
+  generationJobs?: SheinStudioGenerationJob[];
+  generationError?: string;
+  generationJobId?: string;
+  sessionStatus?: string;
   updatedAt: string;
 };
 
@@ -138,6 +154,7 @@ export type SheinStudioDraft = Omit<
 > & {
   generationError?: string;
   generationJobId?: string;
+  generationJobs?: SheinStudioGenerationJob[];
   sessionStatus?: string;
   updatedAt: string;
 };

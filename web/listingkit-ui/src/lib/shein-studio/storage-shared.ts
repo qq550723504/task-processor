@@ -8,6 +8,7 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
   SheinStudioDraft,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
@@ -181,6 +182,52 @@ function normalizeCreatedTasks(input: unknown): SheinStudioCreatedTask[] {
       return { id: raw.id, title: raw.title, designId };
     })
     .filter((item): item is SheinStudioCreatedTask => Boolean(item));
+}
+
+function normalizeGenerationJobs(input: unknown): SheinStudioGenerationJob[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input.reduce<SheinStudioGenerationJob[]>((jobs, item) => {
+    if (!item || typeof item !== "object") {
+      return jobs;
+    }
+    const raw = item as Partial<SheinStudioGenerationJob> & {
+      job_id?: string;
+      target_group_key?: string;
+      target_group_label?: string;
+    };
+    const jobId =
+      typeof raw.jobId === "string"
+        ? raw.jobId.trim()
+        : typeof raw.job_id === "string"
+          ? raw.job_id.trim()
+          : "";
+    if (!jobId) {
+      return jobs;
+    }
+    const status =
+      raw.status === "succeeded" || raw.status === "failed"
+        ? raw.status
+        : "running";
+    jobs.push({
+      jobId,
+      targetGroupKey:
+        typeof raw.targetGroupKey === "string"
+          ? raw.targetGroupKey.trim()
+          : typeof raw.target_group_key === "string"
+            ? raw.target_group_key.trim()
+            : undefined,
+      targetGroupLabel:
+        typeof raw.targetGroupLabel === "string"
+          ? raw.targetGroupLabel.trim()
+          : typeof raw.target_group_label === "string"
+            ? raw.target_group_label.trim()
+            : undefined,
+      status,
+    });
+    return jobs;
+  }, []);
 }
 
 function normalizeProductImagePrompts(input: unknown): SheinStudioProductImagePrompt[] {
@@ -422,6 +469,12 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : [],
     createdTasks: normalizeCreatedTasks(raw.createdTasks),
+    generationError:
+      typeof raw.generationError === "string" ? raw.generationError : "",
+    generationJobId:
+      typeof raw.generationJobId === "string" ? raw.generationJobId : "",
+    generationJobs: normalizeGenerationJobs(raw.generationJobs),
+    sessionStatus: typeof raw.sessionStatus === "string" ? raw.sessionStatus : "",
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   } satisfies SheinStudioDraft;
 }
@@ -462,6 +515,12 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : [],
     createdTasks: normalizeCreatedTasks(raw.createdTasks),
+    generationError:
+      typeof raw.generationError === "string" ? raw.generationError : "",
+    generationJobId:
+      typeof raw.generationJobId === "string" ? raw.generationJobId : "",
+    generationJobs: normalizeGenerationJobs(raw.generationJobs),
+    sessionStatus: typeof raw.sessionStatus === "string" ? raw.sessionStatus : "",
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   } satisfies SheinStudioSavedBatch;
 }

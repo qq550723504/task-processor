@@ -10,10 +10,10 @@ import (
 )
 
 type studioSessionRepoStub struct {
-	sessions           map[string]*SheinStudioSession
-	designs            map[string][]SheinStudioDesign
-	countDesignsCalls  int
-	listDesignsCalls   int
+	sessions          map[string]*SheinStudioSession
+	designs           map[string][]SheinStudioDesign
+	countDesignsCalls int
+	listDesignsCalls  int
 }
 
 func newStudioSessionRepoStub() *studioSessionRepoStub {
@@ -157,6 +157,7 @@ func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 	cloned.ApprovedDesignIDs = append(SheinStudioStringList(nil), session.ApprovedDesignIDs...)
 	cloned.CreatedTaskIDs = append(SheinStudioStringList(nil), session.CreatedTaskIDs...)
 	cloned.CreatedTasks = append(SheinStudioCreatedTaskList(nil), session.CreatedTasks...)
+	cloned.GenerationJobs = append(SheinStudioGenerationJobList(nil), session.GenerationJobs...)
 	cloned.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...)
 	cloned.Selection = session.Selection
 	return &cloned
@@ -290,6 +291,56 @@ func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 	}
 	if len(loaded.Designs) != 0 {
 		t.Fatalf("design count = %d, want 0", len(loaded.Designs))
+	}
+}
+
+func TestStudioSessionServiceTracksMultipleGenerationJobs(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	status := SheinStudioSessionStatusGenerating
+	jobID := "job-primary"
+	jobs := []SheinStudioGenerationJob{
+		{
+			JobID:            "job-primary",
+			TargetGroupKey:   "primary",
+			TargetGroupLabel: "当前商品",
+			Status:           StudioAsyncJobStatusRunning,
+		},
+		{
+			JobID:            "job-group-1",
+			TargetGroupKey:   "group-1",
+			TargetGroupLabel: "分组商品 1",
+			Status:           StudioAsyncJobStatusRunning,
+		},
+	}
+	if _, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Status:          &status,
+		GenerationJobID: &jobID,
+		GenerationJobs:  jobs,
+	}); err != nil {
+		t.Fatalf("update session: %v", err)
+	}
+
+	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if loaded.Session.Status != SheinStudioSessionStatusGenerating {
+		t.Fatalf("status = %q, want generating", loaded.Session.Status)
+	}
+	if len(loaded.Session.GenerationJobs) != 2 {
+		t.Fatalf("generation jobs = %#v, want 2 entries", loaded.Session.GenerationJobs)
+	}
+	if loaded.Session.GenerationJobs[1].TargetGroupKey != "group-1" {
+		t.Fatalf("generation jobs = %#v, want grouped target metadata preserved", loaded.Session.GenerationJobs)
 	}
 }
 

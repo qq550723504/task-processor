@@ -211,6 +211,7 @@ export function mergeSheinStudioDraftState({
     renderSizeImagesWithSds: draft?.renderSizeImagesWithSds ?? true,
     designs,
     selectedIds,
+    generationJobs: draft?.generationJobs ?? [],
     createdTasks,
     hasCustomizedSdsSelection: (draft?.selectedSdsImages?.length ?? 0) > 0,
     importedGalleryDesign: Boolean(galleryDesign),

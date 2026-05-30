@@ -25,6 +25,7 @@ type UpdateStudioSessionRequest struct {
 	RenderSizeImagesWithSDS *bool                           `json:"render_size_images_with_sds,omitempty"`
 	SheinStoreID            *string                         `json:"shein_store_id,omitempty"`
 	GenerationJobID         *string                         `json:"generation_job_id,omitempty"`
+	GenerationJobs          []SheinStudioGenerationJob      `json:"generation_jobs,omitempty"`
 	GenerationError         *string                         `json:"generation_error,omitempty"`
 	ApprovedDesignIDs       []string                        `json:"approved_design_ids,omitempty"`
 	CreatedTasks            []SheinStudioCreatedTask        `json:"created_tasks,omitempty"`

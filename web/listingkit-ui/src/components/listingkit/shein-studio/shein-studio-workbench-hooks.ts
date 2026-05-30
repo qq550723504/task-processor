@@ -13,6 +13,7 @@ import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioDraft,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioGroupedWorkspace,
@@ -33,6 +34,7 @@ type DraftOverrides = Partial<{
   groups: SheinStudioGroupedWorkspace[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
+  generationJobs: SheinStudioGenerationJob[];
 }>;
 
 type DraftSaveOptions = {
@@ -45,6 +47,7 @@ type WorkbenchDraftState = {
   activeSelection?: SDSProductVariantSelection;
   artworkModel: SheinStudioArtworkModel;
   createdTasks: SheinStudioCreatedTask[];
+  generationJobs: SheinStudioGenerationJob[];
   designs: SheinStudioGeneratedDesign[];
   groups: SheinStudioGroupedWorkspace[];
   imageStrategy: SheinStudioImageStrategy;
@@ -290,6 +293,7 @@ export function useSheinStudioDraftPersistence(
         designs: overrides?.designs ?? state.designs,
         selectedIds: overrides?.selectedIds ?? state.selectedIds,
         createdTasks: overrides?.createdTasks ?? state.createdTasks,
+        generationJobs: overrides?.generationJobs ?? state.generationJobs,
       }),
     [state],
   );

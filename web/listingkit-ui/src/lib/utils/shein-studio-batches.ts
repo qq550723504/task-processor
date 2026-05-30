@@ -17,6 +17,7 @@ import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioGroupedWorkspace,
   SheinStudioCreatedTask,
+  SheinStudioGenerationJob,
   SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
@@ -50,6 +51,7 @@ export type SheinStudioSaveInput = {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
+  generationJobs?: SheinStudioGenerationJob[];
 };
 
 type SaveDraftOptions = {
@@ -128,7 +130,9 @@ export async function saveSheinStudioDraftWithOptions(
     }
 
     const status =
-      input.createdTasks.length > 0
+      (input.generationJobs?.length ?? 0) > 0
+        ? "generating"
+        : input.createdTasks.length > 0
         ? "tasks_created"
         : input.designs.length > 0
           ? "reviewing"
@@ -151,6 +155,7 @@ export async function saveSheinStudioDraftWithOptions(
       sheinStoreId: input.sheinStoreId,
       approvedDesignIds: input.selectedIds,
       createdTasks: input.createdTasks,
+      generationJobs: input.generationJobs,
       groups: input.groups,
       groupedSelections: input.groupedSelections,
     }, {
@@ -228,6 +233,7 @@ export async function saveSheinStudioBatch(
       groupedSelections: input.groupedSelections,
       approvedDesignIds: input.selectedIds,
       createdTasks: input.createdTasks,
+      generationJobs: input.generationJobs,
       designs: input.designs,
     }),
   );

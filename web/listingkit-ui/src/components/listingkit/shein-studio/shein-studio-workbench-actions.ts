@@ -28,6 +28,7 @@ import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioGroupedWorkspace,
@@ -43,6 +44,7 @@ type PersistDraft = (
     groups: SheinStudioGroupedWorkspace[];
     selectedIds: string[];
     createdTasks: SheinStudioCreatedTask[];
+    generationJobs: SheinStudioGenerationJob[];
   }>,
   options?: {
     navigationTriggered?: boolean;
@@ -70,6 +72,7 @@ type UseSheinStudioDesignActionsParams = {
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   groupedSelections: GroupedSDSSelectionEligibility[];
+  generationJobs: SheinStudioGenerationJob[];
   activeSelectionBaselineStatus: SDSBaselineStatus;
   activeSelectionBaselineReason: string;
   workbench: Pick<SheinStudioWorkbenchController, "setField">;
@@ -99,6 +102,7 @@ export function useSheinStudioDesignActions({
   selectedIds,
   selectedSdsImages,
   groupedSelections,
+  generationJobs,
   activeSelectionBaselineStatus,
   activeSelectionBaselineReason,
   workbench,
@@ -164,6 +168,36 @@ export function useSheinStudioDesignActions({
     });
   }
 
+  function withTargetMetadata(
+    images: SheinStudioGeneratedDesign[],
+    target: { key: string; label?: string },
+  ) {
+    return images.map((image) => ({
+      ...image,
+      targetGroupKey: target.key,
+      targetGroupLabel: target.label,
+    }));
+  }
+
+  function mergeDesignCollections(
+    currentDesigns: SheinStudioGeneratedDesign[],
+    incomingDesigns: SheinStudioGeneratedDesign[],
+  ) {
+    const nextByID = new Map(currentDesigns.map((design) => [design.id, design]));
+    for (const design of incomingDesigns) {
+      nextByID.set(design.id, design);
+    }
+    return Array.from(nextByID.values());
+  }
+
+  function mergeSelectedIDs(currentIDs: string[], designs: SheinStudioGeneratedDesign[]) {
+    const next = new Set(currentIDs);
+    for (const design of designs) {
+      next.add(design.id);
+    }
+    return Array.from(next);
+  }
+
   async function handleGenerate() {
     if (!activeSelection?.variantId) {
       workbench.setField("generationError", "请先选择 SDS 变体。");
@@ -188,6 +222,7 @@ export function useSheinStudioDesignActions({
     workbench.setField("creatingError", "");
     workbench.setField("creatingMessage", "");
     workbench.setField("createdTasks", []);
+    workbench.setField("generationJobs", []);
     workbench.setField("draftWarning", "");
     workbench.setField("isGenerating", true);
     const nextGroups = buildNextPromptHistoryGroups();
@@ -249,8 +284,57 @@ export function useSheinStudioDesignActions({
           .map((item) => item.selection),
         groupedImageMode,
       });
-      const responses = await Promise.all(
-        targets.map(async (target, index) => {
+      let nextGenerationJobs = generationJobs.filter(
+        (job) => job.status === "running" && job.jobId.trim(),
+      );
+      let accumulatedDesigns: SheinStudioGeneratedDesign[] = [];
+      let accumulatedSelectedIDs: string[] = [];
+      const aggregatedWarnings: string[] = [];
+      const targetErrors: string[] = [];
+
+      const syncGenerationJobs = (jobs: SheinStudioGenerationJob[]) => {
+        nextGenerationJobs = jobs;
+        workbench.setField("generationJobs", jobs);
+        if (!sessionId) {
+          return;
+        }
+        void updateSheinStudioSession(
+          sessionId,
+          {
+            status: "generating",
+            generationJobId: jobs[0]?.jobId ?? "",
+            generationJobs: jobs,
+            generationError: "",
+          },
+          {
+            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+          },
+        ).catch(() => undefined);
+      };
+
+      const persistProgress = async (
+        nextDesigns: SheinStudioGeneratedDesign[],
+        nextSelectedIds: string[],
+        jobs: SheinStudioGenerationJob[],
+      ) => {
+        await persistDraft(
+          {
+            designs: nextDesigns,
+            groups: nextGroups,
+            selectedIds: nextSelectedIds,
+            createdTasks: [],
+            generationJobs: jobs,
+          },
+          {
+            source: "generate_progress",
+          },
+        ).catch(() => undefined);
+      };
+
+      syncGenerationJobs([]);
+
+      const settled = await Promise.allSettled(
+        targets.map(async (target) => {
           const response = await generateSheinStudioDesigns(
             buildSheinStudioGenerateRequest({
               prompt: prompt.trim(),
@@ -266,59 +350,109 @@ export function useSheinStudioDesignActions({
             {
               sessionId,
               onJobStarted: (jobId) => {
-                if (!sessionId || index > 0) {
-                  return;
-                }
-                void updateSheinStudioSession(
-                  sessionId,
-                  {
-                    status: "generating",
-                    generationJobId: jobId,
-                    generationError: "",
-                  },
-                  {
-                    timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-                  },
-                ).catch(() => undefined);
+                const existingIndex = nextGenerationJobs.findIndex(
+                  (job) => job.jobId === jobId,
+                );
+                const nextJob: SheinStudioGenerationJob = {
+                  jobId,
+                  targetGroupKey: target.key,
+                  targetGroupLabel: target.label,
+                  status: "running",
+                };
+                const jobs =
+                  existingIndex >= 0
+                    ? nextGenerationJobs.map((job, index) =>
+                        index === existingIndex ? nextJob : job,
+                      )
+                    : [...nextGenerationJobs, nextJob];
+                syncGenerationJobs(jobs);
               },
             },
           );
-          return {
-            ...response,
-            images: response.images.map((image) => ({
-              ...image,
-              targetGroupKey: target.key,
-              targetGroupLabel: target.label,
-            })),
-          };
+          const nextImages = withTargetMetadata(response.images, target);
+          const targetJobIndex = nextGenerationJobs.findIndex(
+            (job) => job.targetGroupKey === target.key,
+          );
+          if (targetJobIndex >= 0) {
+            const jobs: SheinStudioGenerationJob[] = nextGenerationJobs.map(
+              (job, index) =>
+                index === targetJobIndex
+                  ? { ...job, status: "succeeded" as const }
+                  : job,
+            );
+            syncGenerationJobs(jobs);
+          }
+          if (response.warnings?.length) {
+            aggregatedWarnings.push(...response.warnings);
+          }
+          if (nextImages.length > 0) {
+            accumulatedDesigns = mergeDesignCollections(accumulatedDesigns, nextImages);
+            accumulatedSelectedIDs = mergeSelectedIDs(accumulatedSelectedIDs, nextImages);
+            hasLocalWorkflowStateRef.current = true;
+            workbench.setField("designs", accumulatedDesigns);
+            workbench.setField("selectedIds", accumulatedSelectedIDs);
+            workbench.setField("createdTasks", []);
+            navigateToStep("review");
+            await persistProgress(
+              accumulatedDesigns,
+              accumulatedSelectedIDs,
+              nextGenerationJobs.filter((job) => job.status === "running"),
+            );
+          }
+          return nextImages;
         }),
       );
-      const allImages = responses.flatMap((response) => response.images);
-      if (!allImages.length) {
+
+      for (let index = 0; index < settled.length; index += 1) {
+        const result = settled[index];
+        if (result.status === "fulfilled") {
+          continue;
+        }
+        const target = targets[index];
+        const message = formatSubscriptionApiError(result.reason);
+        targetErrors.push(target.label ? `${target.label}: ${message}` : message);
+        const targetJobIndex = nextGenerationJobs.findIndex(
+          (job) => job.targetGroupKey === target.key,
+        );
+        if (targetJobIndex >= 0) {
+          const jobs: SheinStudioGenerationJob[] = nextGenerationJobs.map(
+            (job, jobIndex) =>
+              jobIndex === targetJobIndex
+                ? { ...job, status: "failed" as const }
+                : job,
+          );
+          syncGenerationJobs(jobs);
+        }
+      }
+
+      if (!accumulatedDesigns.length) {
         throw new Error(
           "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
         );
       }
-      const nextSelectedIds = allImages.map((item) => item.id);
       console.info("[shein-studio] generation succeeded", {
-        designCount: allImages.length,
+        designCount: accumulatedDesigns.length,
         draftSaveStatus: "pending",
         selectionVariantId: activeSelection.variantId,
       });
-      const warnings = responses.flatMap((response) => response.warnings ?? []);
-      if (warnings.length > 0) {
-        workbench.setField("generationWarning", warnings.join(" "));
+      if (aggregatedWarnings.length > 0 || targetErrors.length > 0) {
+        workbench.setField(
+          "generationWarning",
+          [...aggregatedWarnings, ...targetErrors].join(" "),
+        );
       }
       hasLocalWorkflowStateRef.current = true;
-      workbench.setField("designs", allImages);
-      workbench.setField("selectedIds", nextSelectedIds);
+      workbench.setField("designs", accumulatedDesigns);
+      workbench.setField("selectedIds", accumulatedSelectedIDs);
+      workbench.setField("generationJobs", []);
       navigateToStep("review");
       void persistDraft(
         {
-          designs: allImages,
+          designs: accumulatedDesigns,
           groups: nextGroups,
-          selectedIds: nextSelectedIds,
+          selectedIds: accumulatedSelectedIDs,
           createdTasks: [],
+          generationJobs: [],
         },
         {
           navigationTriggered: true,
@@ -329,6 +463,7 @@ export function useSheinStudioDesignActions({
       const message = formatSubscriptionApiError(error);
       workbench.setField("designs", []);
       workbench.setField("selectedIds", []);
+      workbench.setField("generationJobs", []);
       workbench.setField("generationWarning", "");
       void sessionSyncPromise
         .then((sessionId) => {

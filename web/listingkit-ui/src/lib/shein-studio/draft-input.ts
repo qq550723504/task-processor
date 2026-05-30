@@ -5,6 +5,7 @@ import type {
   SheinStudioGroupedWorkspace,
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -34,6 +35,7 @@ type BuildSheinStudioDraftInputArgs = {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
+  generationJobs?: SheinStudioGenerationJob[];
 };
 
 export function buildSheinStudioDraftInput(
@@ -92,5 +94,6 @@ export function buildSheinStudioDraftInput(
     designs: args.designs,
     selectedIds: args.selectedIds,
     createdTasks: args.createdTasks,
+    generationJobs: args.generationJobs,
   };
 }
