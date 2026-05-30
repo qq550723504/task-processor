@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	assetgeneration "task-processor/internal/asset/generation"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -1264,6 +1265,161 @@ func TestTaskGenerationNavigationDispatchProjectionSkipsExecutedPlanForPrimaryOn
 	if got.PanelUpdate.DispatchKind != "queue" || got.PanelUpdate.ResponseMode != "full" {
 		t.Fatalf("run() PanelUpdate = %+v, want normalized primary-only panel update", got.PanelUpdate)
 	}
+}
+
+func TestTaskGenerationNavigationDispatchPlanRunReturnsNilForMissingDispatchPlan(t *testing.T) {
+	t.Parallel()
+
+	phase := buildTaskGenerationNavigationDispatchPlanPhase(&taskGenerationService{})
+
+	t.Run("nil_target", func(t *testing.T) {
+		t.Parallel()
+
+		execution, err := phase.run(context.Background(), "task-generation-navigation-plan-missing-1", nil, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution != nil {
+			t.Fatalf("run() execution = %+v, want nil", execution)
+		}
+	})
+
+	t.Run("nil_descriptor", func(t *testing.T) {
+		t.Parallel()
+
+		execution, err := phase.run(context.Background(), "task-generation-navigation-plan-missing-1", &GenerationReviewNavigationTarget{}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution != nil {
+			t.Fatalf("run() execution = %+v, want nil", execution)
+		}
+	})
+
+	t.Run("nil_dispatch_plan", func(t *testing.T) {
+		t.Parallel()
+
+		execution, err := phase.run(context.Background(), "task-generation-navigation-plan-missing-1", &GenerationReviewNavigationTarget{
+			Descriptor: &GenerationNavigationDescriptor{},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution != nil {
+			t.Fatalf("run() execution = %+v, want nil", execution)
+		}
+	})
+}
+
+func TestTaskGenerationNavigationDispatchPlanRunChoosesExecutionModeAndAppliesRules(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+	task := &Task{
+		ID:        "task-generation-navigation-plan-mode-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-plan-mode-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:        "main",
+					AssetID:    "asset-preview-1",
+					StateLabel: "ready",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPlanPhase(svc)
+
+	t.Run("sequential", func(t *testing.T) {
+		t.Parallel()
+
+		target := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		})
+		target.Descriptor.DispatchPlan = &GenerationNavigationDispatchPlan{
+			Strategy:           "single_read",
+			StopOnFirstSuccess: true,
+			Steps: []GenerationNavigationDispatchStep{
+				{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+				{Kind: "session", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+			},
+		}
+
+		execution, err := phase.run(context.Background(), task.ID, target, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution == nil {
+			t.Fatalf("run() execution = nil, want sequential execution")
+		}
+		if execution.StopReason != "first_success" || len(execution.Steps) != 2 {
+			t.Fatalf("run() execution = %+v, want sequential stop and skipped remainder", execution)
+		}
+		if execution.Steps[0].Status != "completed" || !execution.Steps[0].Winner {
+			t.Fatalf("run() first step = %+v, want completed winner after rules", execution.Steps[0])
+		}
+		if execution.Steps[1].Status != "skipped" {
+			t.Fatalf("run() second step = %+v, want skipped remainder", execution.Steps[1])
+		}
+	})
+
+	t.Run("parallel", func(t *testing.T) {
+		t.Parallel()
+
+		target := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		})
+		target.Descriptor.DispatchPlan = &GenerationNavigationDispatchPlan{
+			Strategy: "fanout_read",
+			Steps: []GenerationNavigationDispatchStep{
+				{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+				{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+			},
+		}
+
+		execution, err := phase.run(context.Background(), task.ID, target, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution == nil {
+			t.Fatalf("run() execution = nil, want parallel execution")
+		}
+		if execution.DedupedSteps != 1 || execution.CompletedSteps != 1 || len(execution.Steps) != 2 {
+			t.Fatalf("run() execution = %+v, want deduped parallel execution", execution)
+		}
+		if execution.Steps[0].Status != "completed" || !execution.Steps[0].Winner {
+			t.Fatalf("run() first step = %+v, want completed winner after rules", execution.Steps[0])
+		}
+		if execution.Steps[1].Status != "deduplicated" {
+			t.Fatalf("run() second step = %+v, want deduplicated parallel step", execution.Steps[1])
+		}
+	})
 }
 
 func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *testing.T) {

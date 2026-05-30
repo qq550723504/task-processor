@@ -477,25 +477,7 @@ func (s *taskGenerationService) dispatchGenerationNavigationPrimary(ctx context.
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlan(ctx context.Context, taskID string, target *GenerationReviewNavigationTarget, responseMode string) (*GenerationNavigationDispatchExecution, error) {
-	if target == nil || target.Descriptor == nil || target.Descriptor.DispatchPlan == nil {
-		return nil, nil
-	}
-	plan := cloneGenerationNavigationDispatchPlan(target.Descriptor.DispatchPlan)
-	if plan == nil {
-		return nil, nil
-	}
-	execution := &GenerationNavigationDispatchExecution{
-		Strategy: plan.Strategy,
-		Steps:    make([]GenerationNavigationDispatchExecutionStep, 0, len(plan.Steps)),
-	}
-	if generationNavigationDispatchPlanRunsInParallel(plan) {
-		s.executeGenerationNavigationDispatchPlanParallel(ctx, taskID, responseMode, plan, execution)
-		applyGenerationNavigationDispatchExecutionRules(plan, execution)
-		return execution, nil
-	}
-	s.executeGenerationNavigationDispatchPlanSequential(ctx, taskID, responseMode, plan, execution)
-	applyGenerationNavigationDispatchExecutionRules(plan, execution)
-	return execution, nil
+	return buildTaskGenerationNavigationDispatchPlanPhase(s).run(ctx, taskID, target, responseMode)
 }
 
 func (s *taskGenerationService) executeGenerationNavigationDispatchPlanSequential(ctx context.Context, taskID string, responseMode string, plan *GenerationNavigationDispatchPlan, execution *GenerationNavigationDispatchExecution) {
