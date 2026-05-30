@@ -45,7 +45,9 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 
 func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 	var composition httpFeatureComposition
+	timer := newStartupTimer(logger)
 
+	done := timer.phase("buildProductModule")
 	productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
 		Logger:        logger,
 		Config:        deps.shared.cfg,
@@ -53,12 +55,14 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		InputParser:   deps.shared.inputParser,
 		Understanding: deps.shared.understanding,
 	})
+	done()
 	if err != nil {
 		return composition, err
 	}
 	deps.attachProductModule(productModule)
 	composition.productModule = productModule
 
+	done = timer.phase("buildImageModule")
 	imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
 		Logger:        logger,
 		Config:        deps.shared.cfg,
@@ -68,32 +72,39 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		Understanding: deps.shared.understanding,
 		ImageWorkDir:  deps.shared.imageWorkDir,
 	})
+	done()
 	if err != nil {
 		return composition, err
 	}
 	deps.attachImageModule(imageModule)
 	composition.imageModule = imageModule
 
+	done = timer.phase("buildAmazonListingModule")
 	amazonListingModule, err := b.buildAmazonListing(amazonlistinghttpapi.RuntimeBuildInput{
 		Logger:         logger,
 		Config:         deps.shared.cfg,
 		ProductService: deps.features.productService,
 		ImageService:   deps.features.imageService,
 	})
+	done()
 	if err != nil {
 		return composition, err
 	}
 	deps.attachAmazonListingModule(amazonListingModule)
 	composition.amazonListingModule = amazonListingModule
 
+	done = timer.phase("buildSheinLoginModule")
 	sheinLoginResult, sheinLoginCloser, err := b.buildSheinLogin(deps)
+	done()
 	if err != nil {
 		return composition, err
 	}
 	deps.addClosers(sheinLoginCloser)
 	composition.sheinLoginResult = sheinLoginResult
 
+	done = timer.phase("buildSDSLoginModule")
 	sdsLoginResult, sdsLoginCloser, err := b.buildSDSLogin(deps)
+	done()
 	if err != nil {
 		return composition, err
 	}
@@ -101,25 +112,36 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	deps.attachSDSLoginResult(sdsLoginResult)
 	composition.sdsLoginResult = sdsLoginResult
 
+	done = timer.phase("buildListingKitModule")
 	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
+	done()
 	if err != nil {
 		return composition, err
 	}
 	deps.attachListingKitModule(listingKitModule)
 	composition.listingKitModule = listingKitModule
+	done = timer.phase("buildPromptModule")
 	composition.promptModule = b.buildPrompt(deps.shared.tenantPromptStore)
+	done()
 
+	done = timer.phase("buildIntermediateRuntimeBundle")
 	runtimeBundle, err := buildRuntimeBundleFromModules(deps.shared.cfg, composition.runtimeModules())
+	done()
 	if err != nil {
 		return composition, err
 	}
 
+	done = timer.phase("buildTaskRPCModule")
 	taskRPCResult, err := b.buildTaskRPC(deps.managementClient(), runtimeBundle.localTaskHealthProvider())
+	done()
 	if err != nil {
 		return composition, err
 	}
 	composition.taskRPCResult = taskRPCResult
+	done = timer.phase("buildSDSModule")
 	composition.sdsModule = b.buildSDS(logger, deps.shared.cfg)
+	done()
+	timer.total("buildHTTPFeatureComposition")
 
 	return composition, nil
 }

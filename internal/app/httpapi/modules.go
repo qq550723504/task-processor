@@ -20,23 +20,37 @@ import (
 var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
+	timer := newStartupTimer(logger)
+
+	done := timer.phase("buildRuntimeDeps")
 	deps, err := buildRuntimeDeps(logger, options.ConfigPath)
+	done()
 	if err != nil {
 		return nil, err
 	}
+
+	done = timer.phase("configureSheinLoginAccount")
 	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
+	done()
 
+	done = timer.phase("buildHTTPFeatureComposition")
 	composition, err := newHTTPFeatureCompositionBuilder().build(logger, deps)
+	done()
 	if err != nil {
 		return nil, err
 	}
 
+	done = timer.phase("buildRuntimeBundle")
 	runtimeBundle, err := composition.buildRuntimeBundle(deps.shared.cfg)
+	done()
 	if err != nil {
 		return nil, err
 	}
 
+	done = timer.phase("buildHTTPServerBundle")
 	server, routes := runtimeBundle.buildServerBundle(options.Port)
+	done()
+	timer.total("buildBootstrap")
 	return &appBootstrap{
 		productHandler: composition.productHandler(),
 		imageHandler:   composition.imageHandler(),
