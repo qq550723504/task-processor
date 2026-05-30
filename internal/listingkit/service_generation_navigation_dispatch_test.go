@@ -1166,6 +1166,106 @@ func TestDispatchTaskGenerationNavigationExecutesDispatchPlanForActionTarget(t *
 	}
 }
 
+func TestTaskGenerationNavigationDispatchProjectionAppliesExecutedPlanAndFinalizes(t *testing.T) {
+	t.Parallel()
+
+	response := &GenerationReviewNavigationDispatchResponse{
+		TaskID:       "task-generation-navigation-projection-1",
+		DispatchKind: "queue",
+		ResponseMode: "full",
+	}
+	executedPlan := &GenerationNavigationDispatchExecution{
+		Strategy:       "fanout_read",
+		CompletedSteps: 3,
+		Steps: []GenerationNavigationDispatchExecutionStep{
+			{
+				Kind:        "queue",
+				Status:      "completed",
+				Queue:       &GenerationQueuePage{DeltaToken: "merged-queue-delta", Summary: &GenerationWorkQueueSummary{}},
+				DeltaToken:  "merged-queue-delta",
+				Executed:    true,
+				Winner:      true,
+				Retryable:   false,
+				Skipped:     false,
+				NoChanges:   false,
+				NotModified: false,
+			},
+			{
+				Kind:          "session",
+				Status:        "completed",
+				ReviewSession: &GenerationReviewSessionResponse{DeltaToken: "merged-session-delta"},
+				DeltaToken:    "merged-session-delta",
+				Executed:      true,
+				Winner:        true,
+			},
+			{
+				Kind:          "preview",
+				Status:        "completed",
+				ReviewPreview: &GenerationReviewPreviewResponse{DeltaToken: "merged-preview-delta"},
+				DeltaToken:    "merged-preview-delta",
+				Executed:      true,
+				Winner:        true,
+			},
+		},
+	}
+
+	got := buildTaskGenerationNavigationDispatchProjectionPhase().run(response, "execute_plan", executedPlan)
+	if got != response {
+		t.Fatalf("run() = %+v, want in-place projection response", got)
+	}
+	if got.PlanMode != "execute_plan" {
+		t.Fatalf("run() PlanMode = %q, want execute_plan", got.PlanMode)
+	}
+	if got.ExecutedPlan != executedPlan {
+		t.Fatalf("run() ExecutedPlan = %+v, want merged executed plan", got.ExecutedPlan)
+	}
+	if got.Queue == nil || got.Queue.DeltaToken != "merged-queue-delta" {
+		t.Fatalf("run() Queue = %+v, want executed-plan queue merge", got.Queue)
+	}
+	if got.ReviewSession == nil || got.ReviewSession.DeltaToken != "merged-session-delta" {
+		t.Fatalf("run() ReviewSession = %+v, want executed-plan session merge", got.ReviewSession)
+	}
+	if got.ReviewPreview == nil || got.ReviewPreview.DeltaToken != "merged-preview-delta" {
+		t.Fatalf("run() ReviewPreview = %+v, want executed-plan preview merge", got.ReviewPreview)
+	}
+	if got.PanelUpdate == nil {
+		t.Fatalf("run() PanelUpdate = nil, want finalized dispatch response")
+	}
+	if got.PanelUpdate.QueueSummary == nil {
+		t.Fatalf("run() PanelUpdate = %+v, want normalized panel update", got.PanelUpdate)
+	}
+	if got.NotModified {
+		t.Fatalf("run() NotModified = true, want live finalized response")
+	}
+}
+
+func TestTaskGenerationNavigationDispatchProjectionSkipsExecutedPlanForPrimaryOnly(t *testing.T) {
+	t.Parallel()
+
+	response := &GenerationReviewNavigationDispatchResponse{
+		TaskID:       "task-generation-navigation-projection-2",
+		DispatchKind: "queue",
+		ResponseMode: "full",
+	}
+
+	got := buildTaskGenerationNavigationDispatchProjectionPhase().run(response, "primary_only", nil)
+	if got != response {
+		t.Fatalf("run() = %+v, want in-place projection response", got)
+	}
+	if got.PlanMode != "primary_only" {
+		t.Fatalf("run() PlanMode = %q, want primary_only", got.PlanMode)
+	}
+	if got.ExecutedPlan != nil {
+		t.Fatalf("run() ExecutedPlan = %+v, want nil for primary-only projection", got.ExecutedPlan)
+	}
+	if got.PanelUpdate == nil {
+		t.Fatalf("run() PanelUpdate = nil, want finalized dispatch response")
+	}
+	if got.PanelUpdate.DispatchKind != "queue" || got.PanelUpdate.ResponseMode != "full" {
+		t.Fatalf("run() PanelUpdate = %+v, want normalized primary-only panel update", got.PanelUpdate)
+	}
+}
+
 func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *testing.T) {
 	t.Parallel()
 

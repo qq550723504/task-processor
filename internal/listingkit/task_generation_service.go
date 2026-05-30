@@ -356,15 +356,15 @@ func (s *taskGenerationService) DispatchTaskGenerationNavigation(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	response.PlanMode = dispatchInput.planMode
+	projection := buildTaskGenerationNavigationDispatchProjectionPhase()
+	var executedPlan *GenerationNavigationDispatchExecution
 	if dispatchInput.planMode == "execute_plan" {
-		executedPlan, err := s.executeGenerationNavigationDispatchPlan(ctx, taskID, dispatchInput.target, dispatchInput.responseMode)
+		executedPlan, err = s.executeGenerationNavigationDispatchPlan(ctx, taskID, dispatchInput.target, dispatchInput.responseMode)
 		if err != nil {
 			return nil, err
 		}
-		applyExecutedPlanToDispatchResponse(response, executedPlan)
 	}
-	return finalizeGenerationReviewNavigationDispatchResponse(response), nil
+	return projection.run(response, dispatchInput.planMode, executedPlan), nil
 }
 
 func (s *taskGenerationService) executeLayerTemporalAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (bool, *GenerationActionExecutionResult, error) {
