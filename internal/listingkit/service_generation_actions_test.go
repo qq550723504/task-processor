@@ -2,8 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -291,33 +289,18 @@ func TestTaskGenerationActionProjectionSupportsPatchOnlyResponses(t *testing.T) 
 func TestTaskGenerationActionProjectionServiceDelegatesActionProjection(t *testing.T) {
 	t.Parallel()
 
-	content, err := os.ReadFile("task_generation_service.go")
-	if err != nil {
-		t.Fatalf("ReadFile(task_generation_service.go) error = %v", err)
-	}
-	source := string(content)
-	start := strings.Index(source, "func (s *taskGenerationService) ExecuteTaskGenerationAction(")
-	end := strings.Index(source, "func (s *taskGenerationService) DispatchTaskGenerationNavigation(")
-	if start == -1 || end == -1 || end <= start {
-		t.Fatalf("task_generation_service.go should contain action execution boundaries")
-	}
-	actionSource := source[start:end]
+	actionSource := readExecuteTaskGenerationActionSource(t)
 
-	if !strings.Contains(actionSource, "buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{") {
-		t.Fatalf("ExecuteTaskGenerationAction should delegate result projection to taskGenerationActionProjectionPhase")
-	}
-
-	forbidden := []string{
+	assertSourceContainsAll(t, actionSource, []string{
+		"buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{",
+	})
+	assertSourceExcludesAll(t, actionSource, []string{
 		"result.ReviewSession = buildGenerationReviewSession(",
 		"result.ReviewWorkflow = buildGenerationReviewWorkflowResult(",
+		"applyGenerationReviewWorkflow(",
 		"result.ReviewPatch = buildGenerationReviewSessionPatch(",
-		"result.PlatformRenderPreviews = refresh.platformRenderPreviews",
-	}
-	for _, needle := range forbidden {
-		if strings.Contains(actionSource, needle) {
-			t.Fatalf("ExecuteTaskGenerationAction should not inline projection assembly %q", needle)
-		}
-	}
+		`if result.ResponseMode == "patch_only" {`,
+	})
 }
 
 func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *testing.T) {
