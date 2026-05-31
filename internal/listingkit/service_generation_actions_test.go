@@ -2,6 +2,8 @@ package listingkit
 
 import (
 	"context"
+	"errors"
+	"go/ast"
 	"reflect"
 	"testing"
 	"time"
@@ -568,6 +570,162 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 	}
 	if result.Audit.ExecutedAt.IsZero() {
 		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestTaskGenerationLayerTemporalStandardServiceDelegatesStandardPhase(t *testing.T) {
+	t.Parallel()
+
+	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
+			return false
+		}
+		star, ok := decl.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			return false
+		}
+		ident, ok := star.X.(*ast.Ident)
+		return ok && ident.Name == "taskGenerationService"
+	})
+
+	assertSourceContainsAll(t, source, []string{
+		"buildTaskGenerationActionTemporalStandardPhase(s).run(ctx, taskID, req)",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"client.StartStandardProduct(",
+		`fmt.Errorf("standard product temporal workflow is not configured")`,
+	})
+}
+
+func TestTaskGenerationLayerTemporalStandardPhaseRejectsUnconfiguredWorkflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+	}{
+		{
+			name: "disabled workflow",
+			service: &taskGenerationService{
+				standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+					return &stubStandardProductWorkflowClient{}, false
+				},
+			},
+		},
+		{
+			name: "nil client",
+			service: &taskGenerationService{
+				standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+					return nil, true
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := buildTaskGenerationActionTemporalStandardPhase(tc.service).run(
+				context.Background(),
+				" task-generation-action-standard-seam-error-1 ",
+				&ExecuteGenerationActionRequest{ActionKey: assetGenerationActionRunStandardProductTemporal},
+			)
+			if err == nil {
+				t.Fatal("taskGenerationActionTemporalStandardPhase.run() error = nil, want unconfigured error")
+			}
+			if err.Error() != "standard product temporal workflow is not configured" {
+				t.Fatalf("taskGenerationActionTemporalStandardPhase.run() error = %v, want exact unconfigured error", err)
+			}
+			if result != nil {
+				t.Fatalf("result = %+v, want nil result when workflow is unconfigured", result)
+			}
+		})
+	}
+}
+
+func TestTaskGenerationLayerTemporalStandardPhaseStartsWorkflowAndShapesResult(t *testing.T) {
+	t.Parallel()
+
+	client := &stubStandardProductWorkflowClient{}
+	service := &taskGenerationService{
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalStandardPhase(service).run(
+		context.Background(),
+		"  task-generation-action-standard-seam-1  ",
+		&ExecuteGenerationActionRequest{
+			ActionKey:     assetGenerationActionRunStandardProductTemporal,
+			ResponseMode:  "",
+			Target:        &AssetGenerationActionTarget{ActionKey: assetGenerationActionRunStandardProductTemporal},
+		},
+	)
+	if err != nil {
+		t.Fatalf("taskGenerationActionTemporalStandardPhase.run() error = %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("standard product temporal calls = %+v, want single workflow start", client.calls)
+	}
+	if client.calls[0].TaskID != "task-generation-action-standard-seam-1" {
+		t.Fatalf("start input task id = %q, want trimmed task id", client.calls[0].TaskID)
+	}
+	if client.calls[0].RequestedAt.IsZero() {
+		t.Fatalf("start input = %+v, want non-zero requested timestamp", client.calls[0])
+	}
+	if result == nil {
+		t.Fatal("result = nil, want shared temporal result seam output")
+	}
+	if result.ActionKey != assetGenerationActionRunStandardProductTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want standard queue_only temporal action result", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunStandardProductTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only standard target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery != nil {
+		t.Fatalf("resolved target = %+v, want standard target without queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want shared temporal result audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestTaskGenerationLayerTemporalStandardPhaseReturnsStartError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("start standard temporal failed")
+	client := &stubStandardProductWorkflowClient{err: wantErr}
+	service := &taskGenerationService{
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalStandardPhase(service).run(
+		context.Background(),
+		"task-generation-action-standard-seam-start-error-1",
+		&ExecuteGenerationActionRequest{
+			ActionKey:    assetGenerationActionRunStandardProductTemporal,
+			ResponseMode: "full",
+		},
+	)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("taskGenerationActionTemporalStandardPhase.run() error = %v, want %v", err, wantErr)
+	}
+	if result != nil {
+		t.Fatalf("result = %+v, want nil result when workflow start fails", result)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("standard product temporal calls = %+v, want single attempted workflow start", client.calls)
 	}
 }
 

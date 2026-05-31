@@ -221,17 +221,8 @@ func (s *taskGenerationService) executeLayerTemporalAction(ctx context.Context, 
 	actionKey := requestedAssetGenerationActionKey(req)
 	switch actionKey {
 	case assetGenerationActionRunStandardProductTemporal:
-		client, enabled := s.standardWorkflow()
-		if !enabled || client == nil {
-			return true, nil, fmt.Errorf("standard product temporal workflow is not configured")
-		}
-		if err := client.StartStandardProduct(ctx, StandardProductWorkflowStartInput{
-			TaskID:      strings.TrimSpace(taskID),
-			RequestedAt: time.Now().UTC(),
-		}); err != nil {
-			return true, nil, err
-		}
-		return true, buildTaskGenerationActionTemporalResultPhase().run(actionKey, req.ResponseMode, nil), nil
+		result, err := buildTaskGenerationActionTemporalStandardPhase(s).run(ctx, taskID, req)
+		return true, result, err
 	case assetGenerationActionRunPlatformAdaptTemporal:
 		client, enabled := s.platformAdaptWorkflow()
 		if !enabled || client == nil {
