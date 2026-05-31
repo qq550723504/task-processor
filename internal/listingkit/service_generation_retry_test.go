@@ -2562,6 +2562,36 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 	}
 }
 
+func TestTaskGenerationActionEntryPhaseOwnsBootstrapFlow(t *testing.T) {
+	t.Parallel()
+
+	entrySource := readTaskGenerationSourceFile(t, "task_generation_action_entry.go")
+
+	assertSourceContainsAll(t, entrySource, []string{
+		"type taskGenerationActionEntryPhase struct",
+		"type taskGenerationActionEntryResult struct",
+		"func buildTaskGenerationActionEntryPhase(service *taskGenerationService) *taskGenerationActionEntryPhase",
+		"func (p *taskGenerationActionEntryPhase) run(",
+		"queue, err := p.service.getCurrentAssetGenerationQueue(ctx, taskID)",
+		"baseResult, err := p.service.getCurrentListingKitResult(ctx, taskID)",
+		"overview := buildAssetGenerationOverview(queue)",
+		"target, source, err := resolveAssetGenerationActionTarget(overview, req)",
+		"target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)",
+		"previousReviewSession := buildGenerationReviewSession(baseResult, queue, target.QueueQuery)",
+		"result := &GenerationActionExecutionResult{",
+		"RequestedActionKey: requestedAssetGenerationActionKey(req)",
+		"ResolvedActionKey:  target.ActionKey",
+		"ResolutionSource:   source",
+		"ExecutionPath:      target.InteractionMode",
+	})
+	assertSourceExcludesAll(t, entrySource, []string{
+		"executeLayerTemporalAction(",
+		"RetryTaskGenerationTasks(",
+		"GetTaskGenerationQueue(",
+		"switch target.InteractionMode {",
+	})
+}
+
 func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	t.Parallel()
 

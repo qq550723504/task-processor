@@ -165,57 +165,33 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 	if handled, result, err := s.executeLayerTemporalAction(ctx, taskID, req); handled {
 		return result, err
 	}
-	queue, err := s.getCurrentAssetGenerationQueue(ctx, taskID)
+	entry, err := buildTaskGenerationActionEntryPhase(s).run(ctx, taskID, req)
 	if err != nil {
 		return nil, err
 	}
-	baseResult, err := s.getCurrentListingKitResult(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	overview := buildAssetGenerationOverview(queue)
-	target, source, err := resolveAssetGenerationActionTarget(overview, req)
-	if err != nil {
-		return nil, err
-	}
-	if target.ExpectedImpact == nil {
-		target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)
-	}
-	previousReviewSession := buildGenerationReviewSession(baseResult, queue, target.QueueQuery)
-	result := &GenerationActionExecutionResult{
-		ActionKey:       target.ActionKey,
-		InteractionMode: target.InteractionMode,
-		ResponseMode:    normalizeGenerationActionResponseMode(req.ResponseMode),
-		ResolvedTarget:  target,
-		Audit: &GenerationActionAudit{
-			RequestedActionKey: requestedAssetGenerationActionKey(req),
-			ResolvedActionKey:  target.ActionKey,
-			ResolutionSource:   source,
-			ExecutionPath:      target.InteractionMode,
-			ExecutedAt:         time.Now().UTC(),
-		},
-	}
-	execution, err := buildTaskGenerationActionExecutePhase(s).run(ctx, taskID, baseResult, target)
+	result := entry.result
+	// buildGenerationReviewSession(...) now lives in taskGenerationActionEntryPhase.
+	execution, err := buildTaskGenerationActionExecutePhase(s).run(ctx, taskID, entry.baseResult, entry.target)
 	if err != nil {
 		return nil, err
 	}
 	result.Retry = execution.retryPage
 	result.Queue = execution.queuePage
-	if isPersistedGenerationReviewAction(target.ActionKey) && s.persistGenerationReviewDecision != nil {
-		if _, err := s.persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target); err != nil {
+	if isPersistedGenerationReviewAction(entry.target.ActionKey) && s.persistGenerationReviewDecision != nil {
+		if _, err := s.persistGenerationReviewDecision(ctx, taskID, entry.target.ActionKey, execution.persistenceSession, entry.target); err != nil {
 			return nil, err
 		}
 	}
-	refresh, err := buildTaskGenerationActionRefreshPhase(s).run(ctx, taskID, baseResult, target.QueueQuery)
+	refresh, err := buildTaskGenerationActionRefreshPhase(s).run(ctx, taskID, entry.baseResult, entry.target.QueueQuery)
 	if err != nil {
 		return nil, err
 	}
 	projection := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
-		actionKey:             target.ActionKey,
-		target:                target,
+		actionKey:             entry.target.ActionKey,
+		target:                entry.target,
 		responseMode:          result.ResponseMode,
-		previousReviewSession: previousReviewSession,
-		currentResult:         baseResult,
+		previousReviewSession: entry.previousReviewSession,
+		currentResult:         entry.baseResult,
 		refresh:               refresh,
 		execution:             execution,
 	})

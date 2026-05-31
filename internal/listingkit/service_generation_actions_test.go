@@ -305,6 +305,29 @@ func TestTaskGenerationActionProjectionServiceDelegatesActionProjection(t *testi
 	})
 }
 
+func TestTaskGenerationActionEntryServiceDelegatesBootstrapPhase(t *testing.T) {
+	t.Parallel()
+
+	actionSource := readExecuteTaskGenerationActionSource(t)
+
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionEntryPhase(s).run(", 1)
+	assertSourceContainsAll(t, actionSource, []string{
+		"entry, err := buildTaskGenerationActionEntryPhase(s).run(ctx, taskID, req)",
+		"entry.baseResult",
+		"entry.target",
+		"entry.previousReviewSession",
+		"entry.result",
+	})
+	assertSourceExcludesAll(t, actionSource, []string{
+		"queue, err := s.getCurrentAssetGenerationQueue(ctx, taskID)",
+		"baseResult, err := s.getCurrentListingKitResult(ctx, taskID)",
+		"overview := buildAssetGenerationOverview(queue)",
+		"target, source, err := resolveAssetGenerationActionTarget(overview, req)",
+		"target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)",
+		"result := &GenerationActionExecutionResult{",
+	})
+}
+
 func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *testing.T) {
 	t.Parallel()
 
