@@ -609,7 +609,7 @@ export function SDSProductBrowser({
                   </div>
                 ) : null}
               </div>
-              <div className="flex flex-col gap-2 sm:min-w-[18rem]">
+              <div className="flex w-full flex-col gap-2 sm:max-w-sm">
                 <Select
                   aria-label="当前接收批次"
                   className="h-11 rounded-2xl border-emerald-300 bg-white px-4"

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  SDSVariantFilters,
   SDSVariantGrid,
   SDSVariantSelectionSummary,
 } from "@/components/listingkit/sds/sds-variant-picker-sections";
@@ -64,6 +65,29 @@ describe("SDSVariantSelectionSummary", () => {
       screen.queryByRole("button", { name: "使用已选变体" }),
     ).not.toBeInTheDocument();
   });
+
+  it("uses stacked summary actions before wider breakpoints", () => {
+    render(
+      <SDSVariantSelectionSummary
+        addSelectedVariantsToCurrentBatch={() => {}}
+        clearFilteredVariants={() => {}}
+        createBatchFromSelectedVariants={() => {}}
+        currentBatchLabel="Retro Cherries"
+        openOtherBatchPicker={() => {}}
+        selectFilteredVariants={() => {}}
+        selectedColorCount={2}
+        selectedSizeCount={3}
+        selectedVariantCount={4}
+        useSelectedVariants={() => {}}
+      />,
+    );
+
+    const summaryBar = screen
+      .getByText("已选 4 个 SKU · 2 个颜色 · 3 个尺码")
+      .parentElement as HTMLDivElement | null;
+    expect(summaryBar).not.toBeNull();
+    expect(summaryBar?.className).toContain("flex-col");
+  });
 });
 
 describe("SDSVariantGrid", () => {
@@ -95,5 +119,25 @@ describe("SDSVariantGrid", () => {
 
     expect(screen.queryByRole("button", { name: "默认变体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "设为默认变体" })).not.toBeInTheDocument();
+  });
+
+  it("uses a mobile-first filter grid", () => {
+    const { container } = render(
+      <SDSVariantFilters
+        colorFilter=""
+        colorOptions={["White"]}
+        filteredCount={1}
+        setColorFilter={() => {}}
+        setSizeFilter={() => {}}
+        sizeFilter=""
+        sizeOptions={["L"]}
+      />,
+    );
+
+    const grid = container.querySelector(".grid.gap-3") as HTMLDivElement | null;
+    expect(grid).not.toBeNull();
+    expect(grid?.className).not.toContain(
+      "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]",
+    );
   });
 });

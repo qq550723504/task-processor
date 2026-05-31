@@ -59,8 +59,8 @@ export function SheinStudioStepTabs({
     <nav
       className={
         compact
-          ? "grid gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm md:grid-cols-4"
-          : "grid gap-3 rounded-[1.75rem] border border-white/70 bg-white/82 p-3 shadow-sm backdrop-blur md:grid-cols-4"
+          ? "grid gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm sm:grid-cols-2 xl:grid-cols-4"
+          : "grid gap-3 rounded-[1.75rem] border border-white/70 bg-white/82 p-3 shadow-sm backdrop-blur sm:grid-cols-2 xl:grid-cols-4"
       }
     >
       {steps.map((step) => {

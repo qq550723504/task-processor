@@ -153,7 +153,7 @@ export function SheinStudioGenerationPanel({
       </div>
 
       <div
-        className={`grid gap-3 rounded-[1.5rem] border px-4 py-4 sm:grid-cols-3 ${
+        className={`grid gap-3 rounded-[1.5rem] border px-4 py-4 sm:grid-cols-2 xl:grid-cols-3 ${
           storeRequiredMessage
             ? "border-amber-200 bg-amber-50/70"
             : "border-zinc-200 bg-zinc-50/80"
@@ -236,8 +236,9 @@ export function SheinStudioGenerationPanel({
       />
 
       {selectionReady ? (
-        <div className="flex flex-wrap gap-3 border-t border-zinc-100 pt-4">
+        <div className="flex flex-col gap-3 border-t border-zinc-100 pt-4 sm:flex-row sm:flex-wrap">
           <Button
+            className="w-full sm:w-auto"
             disabled={
               isGenerating ||
               Boolean(subscriptionBlockedMessage) ||
@@ -247,10 +248,11 @@ export function SheinStudioGenerationPanel({
           >
             {isGenerating ? "生成中..." : "生成款式图"}
           </Button>
-          <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} variant="ghost">
+          <Button className="w-full sm:w-auto" disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} variant="ghost">
             保存批次
           </Button>
           <Button
+            className="w-full sm:w-auto"
             disabled={
               isGenerating ||
               isCreatingTasks ||
@@ -266,8 +268,8 @@ export function SheinStudioGenerationPanel({
           </Button>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-3">
-          <Button disabled type="button">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <Button className="w-full sm:w-auto" disabled type="button">
             先选择商品
           </Button>
         </div>

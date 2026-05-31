@@ -314,6 +314,28 @@ describe("SDSProductBrowser", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the current target batch controls mobile-safe", async () => {
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+      },
+    ]);
+
+    render(<SDSProductBrowser />);
+
+    const select = await screen.findByLabelText("当前接收批次");
+    const controlColumn = select.parentElement as HTMLDivElement | null;
+    expect(controlColumn).not.toBeNull();
+    expect(controlColumn?.className).not.toContain("sm:min-w-[18rem]");
+  });
+
   it("stays on the SDS page while adding multiple products to an existing batch", async () => {
     currentSearchParams = new URLSearchParams("targetBatchId=batch-1");
     listSheinStudioBatches.mockResolvedValue([

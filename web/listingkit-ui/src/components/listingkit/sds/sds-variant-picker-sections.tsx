@@ -90,7 +90,7 @@ export function SDSVariantFilters({
   sizeOptions: string[];
 }) {
   return (
-    <div className="grid gap-3 rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+    <div className="grid gap-3 rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <Select
         className="h-11 rounded-2xl px-4"
         onChange={(event) => setSizeFilter(event.target.value)}
@@ -152,21 +152,22 @@ export function SDSVariantSelectionSummary({
   useSelectedVariants: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+    <div className="flex flex-col gap-3 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
       <div>
         {isTargetingExistingBatch && currentBatchLabel
           ? `已选 ${selectedVariantCount} 个 SKU，将加入批次 ${currentBatchLabel}`
           : `已选 ${selectedVariantCount} 个 SKU · ${selectedColorCount} 个颜色 · ${selectedSizeCount} 个尺码`}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={selectFilteredVariants} variant="secondary" type="button">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <Button className="w-full sm:w-auto" onClick={selectFilteredVariants} variant="secondary" type="button">
           选中当前筛选
         </Button>
-        <Button onClick={clearFilteredVariants} variant="ghost" type="button">
+        <Button className="w-full sm:w-auto" onClick={clearFilteredVariants} variant="ghost" type="button">
           清除当前筛选
         </Button>
         {addSelectedVariantsToCurrentBatch ? (
           <Button
+            className="w-full sm:w-auto"
             disabled={selectedVariantCount === 0 || isSubmittingToBatch}
             onClick={addSelectedVariantsToCurrentBatch}
             type="button"
@@ -181,6 +182,7 @@ export function SDSVariantSelectionSummary({
         ) : null}
         {openOtherBatchPicker ? (
           <Button
+            className="w-full sm:w-auto"
             disabled={selectedVariantCount === 0 || isSubmittingToBatch}
             onClick={openOtherBatchPicker}
             type="button"
@@ -191,6 +193,7 @@ export function SDSVariantSelectionSummary({
         ) : null}
         {createBatchFromSelectedVariants && !isTargetingExistingBatch ? (
           <Button
+            className="w-full sm:w-auto"
             disabled={selectedVariantCount === 0}
             onClick={createBatchFromSelectedVariants}
             type="button"
@@ -201,6 +204,7 @@ export function SDSVariantSelectionSummary({
         ) : null}
         {!isTargetingExistingBatch ? (
           <Button
+            className="w-full sm:w-auto"
             disabled={selectedVariantCount === 0}
             onClick={useSelectedVariants}
             type="button"

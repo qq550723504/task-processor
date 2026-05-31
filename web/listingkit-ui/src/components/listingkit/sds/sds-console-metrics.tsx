@@ -20,7 +20,7 @@ export function SDSConsoleMetrics({
     searchParams.get("prototypeGroupId") ?? initialPrototypeGroupId;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-[1.5rem] border border-zinc-200/80 bg-zinc-950 px-5 py-4 text-white shadow-sm">
         <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400">
           Shipment Area
