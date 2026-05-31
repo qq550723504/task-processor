@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -91,6 +92,54 @@ func newTaskGenerationActionProjectionTarget(interactionMode string) *AssetGener
 			PreviewCapability: "detail_preview",
 		},
 	}
+}
+
+func newTaskGenerationActionEntryReviewFixture(t *testing.T, taskID string) (*Task, *taskGenerationService) {
+	t.Helper()
+
+	repo := &stubGenerationRepo{}
+	task := &Task{
+		ID:        taskID,
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: taskID,
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-preview-1",
+				AssetRevision:   "asset-rev-1",
+				PreviewRevision: "preview-rev-1",
+				TaskRevision:    "task-rev-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	return task, newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	})
 }
 
 func TestTaskGenerationActionProjectionBuildsReviewSessionAndPatch(t *testing.T) {
@@ -326,6 +375,87 @@ func TestTaskGenerationActionEntryServiceDelegatesBootstrapPhase(t *testing.T) {
 		"target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)",
 		"result := &GenerationActionExecutionResult{",
 	})
+}
+
+func TestTaskGenerationActionEntryPhaseBuildsRequestTargetBootstrapState(t *testing.T) {
+	t.Parallel()
+
+	task, generation := newTaskGenerationActionEntryReviewFixture(t, "task-generation-action-entry-request-target-1")
+
+	entry, err := buildTaskGenerationActionEntryPhase(generation).run(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey:    "approve_section_review",
+		ResponseMode: "patch_only",
+		Target: &AssetGenerationActionTarget{
+			ActionKey:       "approve_section_review",
+			InteractionMode: "review_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "main",
+				PreviewCapability: "detail_preview",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("taskGenerationActionEntryPhase.run() error = %v", err)
+	}
+	if entry == nil || entry.result == nil || entry.target == nil {
+		t.Fatalf("entry = %+v, want bootstrap state", entry)
+	}
+	if entry.result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", entry.result.ResponseMode)
+	}
+	if entry.result.ResolvedTarget != entry.target {
+		t.Fatalf("resolved target = %+v, want entry target pointer %+v", entry.result.ResolvedTarget, entry.target)
+	}
+	wantImpact := buildAssetGenerationActionImpact(entry.baseResult.AssetGenerationQueue, entry.target.QueueQuery)
+	if !reflect.DeepEqual(entry.target.ExpectedImpact, wantImpact) {
+		t.Fatalf("expected impact = %+v, want %+v", entry.target.ExpectedImpact, wantImpact)
+	}
+	if entry.result.Audit == nil {
+		t.Fatalf("audit = %+v, want audit payload", entry.result.Audit)
+	}
+	if entry.result.Audit.RequestedActionKey != "approve_section_review" || entry.result.Audit.ResolvedActionKey != "approve_section_review" || entry.result.Audit.ResolutionSource != "request_target" || entry.result.Audit.ExecutionPath != "review_only" {
+		t.Fatalf("audit = %+v, want request_target review_only audit", entry.result.Audit)
+	}
+	if entry.result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", entry.result.Audit)
+	}
+	wantSession := buildGenerationReviewSession(entry.baseResult, entry.baseResult.AssetGenerationQueue, entry.target.QueueQuery)
+	if !reflect.DeepEqual(entry.previousReviewSession, wantSession) {
+		t.Fatalf("previousReviewSession = %+v, want %+v", entry.previousReviewSession, wantSession)
+	}
+}
+
+func TestTaskGenerationActionEntryPhaseBuildsOverviewResolvedBootstrapState(t *testing.T) {
+	t.Parallel()
+
+	task, generation := newTaskGenerationActionQueueFixture(t, "task-generation-action-entry-overview-1")
+
+	entry, err := buildTaskGenerationActionEntryPhase(generation).run(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey: "review_missing_slots",
+	})
+	if err != nil {
+		t.Fatalf("taskGenerationActionEntryPhase.run() error = %v", err)
+	}
+	if entry == nil || entry.result == nil || entry.target == nil {
+		t.Fatalf("entry = %+v, want bootstrap state", entry)
+	}
+	if entry.result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want full", entry.result.ResponseMode)
+	}
+	if entry.target.QueueQuery == nil || entry.target.QueueQuery.QualityGrade != "missing" {
+		t.Fatalf("target = %+v, want overview-resolved missing queue query", entry.target)
+	}
+	if entry.result.Audit == nil {
+		t.Fatalf("audit = %+v, want audit payload", entry.result.Audit)
+	}
+	if entry.result.Audit.RequestedActionKey != "review_missing_slots" || entry.result.Audit.ResolvedActionKey != "review_missing_slots" || entry.result.Audit.ResolutionSource != "overview" || entry.result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want overview queue_only audit", entry.result.Audit)
+	}
+	wantSession := buildGenerationReviewSession(entry.baseResult, entry.baseResult.AssetGenerationQueue, entry.target.QueueQuery)
+	if !reflect.DeepEqual(entry.previousReviewSession, wantSession) {
+		t.Fatalf("previousReviewSession = %+v, want %+v", entry.previousReviewSession, wantSession)
+	}
 }
 
 func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *testing.T) {

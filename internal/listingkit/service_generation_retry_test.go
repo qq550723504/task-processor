@@ -2585,6 +2585,7 @@ func TestTaskGenerationActionEntryPhaseOwnsBootstrapFlow(t *testing.T) {
 		"ExecutionPath:      target.InteractionMode",
 	})
 	assertSourceExcludesAll(t, entrySource, []string{
+		"queue                 *GenerationWorkQueue",
 		"executeLayerTemporalAction(",
 		"RetryTaskGenerationTasks(",
 		"GetTaskGenerationQueue(",

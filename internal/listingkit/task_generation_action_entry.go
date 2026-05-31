@@ -10,7 +10,6 @@ type taskGenerationActionEntryPhase struct {
 }
 
 type taskGenerationActionEntryResult struct {
-	queue                 *GenerationWorkQueue
 	baseResult            *ListingKitResult
 	target                *AssetGenerationActionTarget
 	previousReviewSession *GenerationReviewSession
@@ -58,7 +57,6 @@ func (p *taskGenerationActionEntryPhase) run(
 	}
 
 	return &taskGenerationActionEntryResult{
-		queue:                 queue,
 		baseResult:            baseResult,
 		target:                target,
 		previousReviewSession: previousReviewSession,
