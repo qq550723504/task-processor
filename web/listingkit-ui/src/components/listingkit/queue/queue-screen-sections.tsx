@@ -40,7 +40,7 @@ export function QueueErrorState({ taskId }: { taskId: string }) {
       title="队列暂时无法加载"
       description="当前无法读取生成队列或任务状态。你可以返回工作台继续查看，或回到任务列表稍后重试。"
       action={
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Button asChild variant="outline">
             <Link href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}>
               打开工作台
@@ -73,7 +73,7 @@ export function QueuePendingDataState({ taskId }: { taskId: string }) {
 
 export function QueueTaskNavigation({ taskId }: { taskId: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
           任务导航
@@ -82,7 +82,7 @@ export function QueueTaskNavigation({ taskId }: { taskId: string }) {
           队列用于处理生成/审核项；资料确认和提交请回到工作区。
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Button asChild variant="outline" size="sm">
           <Link href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}>
             打开工作区
@@ -199,15 +199,15 @@ function QueuePagination({
   const end = Math.min(total, page * pageSize);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
+    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div>
         第 {page} / {totalPages} 页 · 显示 {start}-{end} / {total} 条
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
         <Label className="flex items-center gap-2">
           <span>每页</span>
           <Select
-            className="h-9 w-auto rounded-xl px-2 text-sm"
+            className="h-9 w-full rounded-xl px-2 text-sm sm:w-auto"
             value={pageSize}
             onChange={(event) => onChange(1, Number(event.target.value))}
           >
@@ -217,6 +217,7 @@ function QueuePagination({
           </Select>
         </Label>
         <Button
+          className="w-full sm:w-auto"
           variant="outline"
           size="sm"
           disabled={page <= 1}
@@ -226,6 +227,7 @@ function QueuePagination({
           上一页
         </Button>
         <Button
+          className="w-full sm:w-auto"
           variant="outline"
           size="sm"
           disabled={page >= totalPages}

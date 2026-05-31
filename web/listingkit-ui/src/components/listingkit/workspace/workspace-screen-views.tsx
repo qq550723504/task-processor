@@ -64,7 +64,7 @@ export function SheinFinalReviewWorkspaceView({
   timelineProps: SheinSubmissionTimelineProps;
 }) {
   return (
-    <section className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
+    <section className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
       <main className="min-w-0 space-y-4">
         <div className="rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -98,7 +98,7 @@ export function SheinFinalReviewWorkspaceView({
         </div>
       </main>
 
-      <aside className="min-w-0 space-y-4 md:sticky md:top-6 md:self-start">
+      <aside className="min-w-0 space-y-4 xl:sticky xl:top-6 xl:self-start">
         <div id="shein-submit-readiness" className="scroll-mt-6">
           <SheinSubmitReadinessPanel {...readinessProps} compact />
         </div>
@@ -151,7 +151,7 @@ export function WorkspaceReviewView({
   const hasSubmitPreparation = selectedPlatform === "shein";
 
   return (
-    <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       <main className="min-w-0 space-y-4">
         {hasRepairGuidance ? (
           <WorkspaceStageSection
@@ -234,7 +234,7 @@ export function WorkspaceReviewView({
         ) : null}
       </main>
 
-      <aside className="min-w-0 space-y-4 md:sticky md:top-6 md:self-start">
+      <aside className="min-w-0 space-y-4 xl:sticky xl:top-6 xl:self-start">
         <ReviewToolbar {...reviewToolbarProps} />
         <details className="rounded-[1.25rem] border border-zinc-200 bg-white p-4 shadow-sm">
           <summary className="cursor-pointer list-none">

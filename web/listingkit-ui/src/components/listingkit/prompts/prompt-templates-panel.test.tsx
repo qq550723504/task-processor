@@ -231,4 +231,21 @@ describe("PromptTemplatesPanel", () => {
       "prompt-template-variable-filter",
     );
   });
+
+  it("uses a mobile-first stacked catalog and editor layout", () => {
+    const { container } = render(<PromptTemplatesPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /shein.content_optimizer.optimize_title_description_system/,
+      }),
+    );
+
+    expect(container.querySelector(".mt-4.grid.gap-4")).not.toHaveClass(
+      "lg:grid-cols-[minmax(280px,0.9fr)_minmax(360px,1.1fr)]",
+    );
+    expect(container.querySelector(".grid.gap-3")).not.toHaveClass(
+      "md:grid-cols-[1fr_160px_auto]",
+    );
+  });
 });

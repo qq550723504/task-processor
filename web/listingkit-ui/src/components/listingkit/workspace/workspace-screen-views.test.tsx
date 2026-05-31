@@ -56,7 +56,7 @@ vi.mock("@/components/listingkit/workspace/workspace-preview-suggestion", () => 
 
 describe("WorkspaceReviewView", () => {
   it("organizes shein general review into three primary stages", () => {
-    render(
+    const { container } = render(
       <WorkspaceReviewView
         selectedPlatform="shein"
         previewSuggestionProps={{
@@ -106,5 +106,6 @@ describe("WorkspaceReviewView", () => {
 
     expect(screen.getByText("更多诊断")).toBeInTheDocument();
     expect(screen.getByText("工具栏动作")).toBeInTheDocument();
+    expect(container.firstElementChild).not.toHaveClass("lg:grid-cols-[minmax(0,1fr)_21rem]");
   });
 });

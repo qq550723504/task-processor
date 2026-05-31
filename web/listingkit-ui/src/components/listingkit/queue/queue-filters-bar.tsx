@@ -38,7 +38,7 @@ export function QueueFiltersBar({
   return (
     <Card className="p-4">
       <form
-        className="grid gap-4 lg:grid-cols-6"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
         onSubmit={form.handleSubmit((nextValue) => onApply(nextValue))}
       >
         <Label className="space-y-2 text-sm text-zinc-700">
@@ -84,12 +84,12 @@ export function QueueFiltersBar({
             <option value="pending">Pending</option>
           </Select>
         </Label>
-        <div className="flex items-end gap-3">
-          <Label className="flex h-10 items-center gap-2 rounded-md border border-input px-3 text-sm text-foreground">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end xl:col-span-1">
+          <Label className="flex h-10 w-full items-center gap-2 rounded-md border border-input px-3 text-sm text-foreground sm:w-auto">
             <Checkbox aria-label="Has Preview" {...form.register("render_preview_available")} />
             <span>Has Preview</span>
           </Label>
-          <Button className="flex-1" type="submit">
+          <Button className="w-full sm:flex-1" type="submit">
             Apply Filters
           </Button>
         </div>

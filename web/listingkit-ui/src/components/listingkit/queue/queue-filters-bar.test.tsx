@@ -38,4 +38,25 @@ describe("QueueFiltersBar", () => {
       }),
     );
   }, 15000);
+
+  it("uses stacked mobile-safe filter actions", () => {
+    const handleApply = vi.fn();
+
+    const { container } = render(
+      <QueueFiltersBar
+        value={{
+          platform: "",
+          slot: "",
+          quality_grade: "",
+          preview_capability: "",
+          review_status: "",
+          render_preview_available: false,
+        }}
+        onApply={handleApply}
+      />,
+    );
+
+    expect(container.querySelector("form")).not.toHaveClass("lg:grid-cols-6");
+    expect(screen.getByRole("button", { name: "Apply Filters" })).toHaveClass("w-full");
+  });
 });

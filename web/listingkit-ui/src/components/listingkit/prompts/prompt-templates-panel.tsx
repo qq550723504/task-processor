@@ -206,7 +206,7 @@ export function PromptTemplatesPanel() {
         </Button>
       }
     >
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(280px,0.9fr)_minmax(360px,1.1fr)]">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(280px,0.9fr)_minmax(360px,1.1fr)]">
         <div className="min-h-[340px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50/70">
           <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2">
             <span className="text-sm font-semibold text-zinc-900">模板目录</span>
@@ -214,7 +214,7 @@ export function PromptTemplatesPanel() {
               {filteredItems.length} / {items.length} 个
             </span>
           </div>
-          <div className="grid gap-2 border-b border-zinc-200 bg-white px-3 py-3 md:grid-cols-5">
+          <div className="grid gap-2 border-b border-zinc-200 bg-white px-3 py-3 md:grid-cols-2 xl:grid-cols-5">
             <Input
               id="prompt-template-search"
               name="prompt-template-search"
@@ -407,7 +407,7 @@ export function PromptTemplatesPanel() {
                   </div>
                 ) : null}
               </div>
-              <div className="grid gap-3 md:grid-cols-[1fr_160px_auto]">
+              <div className="grid gap-3 lg:grid-cols-[1fr_160px_auto]">
                 <Label className="space-y-1">
                   <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
                     Prompt Key
@@ -454,7 +454,7 @@ export function PromptTemplatesPanel() {
                   onChange={(event) => updateDraft("content", event.target.value)}
                 />
               </Label>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div className="text-xs text-zinc-500">
                   {draft.key
                     ? `保存后会按 ${selectedItem?.supported_scopes?.map((scope) => scope.label).join(" / ") || scopeSummary} 作用域生效`
