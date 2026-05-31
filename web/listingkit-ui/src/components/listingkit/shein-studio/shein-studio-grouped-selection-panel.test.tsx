@@ -6,7 +6,7 @@ import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-
 describe("SheinStudioGroupedSelectionPanel", () => {
   it("shows store name instead of ambiguous site-only labels", () => {
     const onBulkUpdateSelectionStore = vi.fn();
-    render(
+    const { container } = render(
         <SheinStudioGroupedSelectionPanel
         activeSelection={{
           productId: 1,
@@ -137,6 +137,16 @@ describe("SheinStudioGroupedSelectionPanel", () => {
     expect(
       screen.getByText("已把 1 款商品改到 SHEIN US 1 (shein-us-1 / NA / US)。"),
     ).toBeInTheDocument();
+
+    const overviewMetricGrid = container.querySelector(
+      ".grid.gap-2",
+    ) as HTMLDivElement | null;
+    expect(overviewMetricGrid).not.toBeNull();
+    expect(overviewMetricGrid?.className).not.toContain("xl:min-w-[32rem]");
+
+    const bulkStorePanel = screen.getByLabelText("应用到当前筛选").parentElement;
+    expect(bulkStorePanel).not.toBeNull();
+    expect(bulkStorePanel?.className).not.toContain("min-w-[15rem]");
 
     fireEvent.click(screen.getByText("跨店铺 1 款"));
     expect(

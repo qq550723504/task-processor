@@ -52,6 +52,58 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
 }));
 
 describe("SheinStudioBatchDetail", () => {
+  it("uses a mobile-first summary layout for batch details", async () => {
+    getSheinStudioBatch.mockResolvedValueOnce({
+      id: "batch-1",
+      name: "retro cherries",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      selection: {
+        productId: 1,
+        parentProductId: 10,
+        variantId: 2,
+        prototypeGroupId: 3,
+        layerId: "layer-1",
+        productName: "Curtain",
+        variantLabel: "Blue",
+        printableWidth: 1200,
+        printableHeight: 1600,
+        selectedVariantIds: [2, 4],
+      },
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-18T18:30:00.000Z",
+    });
+
+    const { container } = render(<SheinStudioBatchDetail batchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: "retro cherries" }),
+      ).toBeInTheDocument(),
+    );
+
+    const summarySection = screen
+      .getByRole("heading", { level: 1, name: "retro cherries" })
+      .closest("section");
+    expect(summarySection).not.toBeNull();
+    expect(summarySection?.className).not.toContain("lg:grid-cols-[1.15fr_0.85fr]");
+
+    const actionGroup = screen
+      .getByRole("button", { name: "继续选品并加入当前批次" })
+      .parentElement;
+    expect(actionGroup).not.toBeNull();
+    expect(actionGroup?.className).toContain("flex-col");
+
+    const metricsGrid = container.querySelector(
+      ".grid.gap-3",
+    ) as HTMLDivElement | null;
+    expect(metricsGrid).not.toBeNull();
+    expect(metricsGrid?.className).not.toContain("lg:grid-cols-1");
+  });
+
   it("routes back to SDS selection with the current batch activated for adding products", async () => {
     getSheinStudioBatch.mockResolvedValueOnce({
       id: "batch-1",

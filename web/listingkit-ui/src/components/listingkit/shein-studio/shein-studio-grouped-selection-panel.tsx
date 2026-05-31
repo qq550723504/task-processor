@@ -224,7 +224,7 @@ export function SheinStudioGroupedSelectionPanel({
               </div>
               {filteredSelectionIds.length > 0 ? (
                 <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-                  <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-zinc-950">
                         批量改店铺
@@ -233,7 +233,7 @@ export function SheinStudioGroupedSelectionPanel({
                         当前筛选命中 {filteredSelectionIds.length} 款商品，可统一改成同一家店，或改回跟随批次店铺。
                       </div>
                     </div>
-                    <div className="w-full min-w-[15rem] max-w-sm">
+                    <div className="w-full sm:max-w-sm">
                       <label
                         className="mb-1 block text-xs font-medium text-zinc-600"
                         htmlFor="grouped-selection-bulk-store"

@@ -252,13 +252,13 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-6 rounded-[1.75rem] border border-zinc-200/80 bg-white px-6 py-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr]">
+      <section className="grid gap-6 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm sm:px-6 sm:py-6 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
               已保存批次
             </p>
-            <h1 className="mt-2 font-serif text-4xl tracking-[-0.04em] text-zinc-950">
+            <h1 className="mt-2 break-words font-serif text-3xl tracking-[-0.04em] text-zinc-950 sm:text-4xl">
               {currentBatch.name}
             </h1>
             <p className="mt-3 text-sm leading-7 text-zinc-600">
@@ -266,21 +266,22 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link href="/listing-kits/sds">
-              <Button>返回工作室</Button>
+              <Button className="w-full sm:w-auto">返回工作室</Button>
             </Link>
-            <Button onClick={handleContinueSelecting} variant="secondary">
+            <Button className="w-full sm:w-auto" onClick={handleContinueSelecting} variant="secondary">
               继续选品并加入当前批次
             </Button>
             <Button
+              className="w-full sm:w-auto"
               disabled={isCreatingTasks || Boolean(createActionDisabledReason)}
               onClick={handleCreateTasks}
               variant="secondary"
             >
               {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
             </Button>
-            <Button onClick={handleDelete} variant="ghost">
+            <Button className="w-full sm:w-auto" onClick={handleDelete} variant="ghost">
               删除批次
             </Button>
           </div>
@@ -296,7 +297,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
           <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
               商品

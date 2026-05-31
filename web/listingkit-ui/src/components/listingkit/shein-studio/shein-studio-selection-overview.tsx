@@ -32,7 +32,7 @@ export function SheinStudioSelectionOverview({
           </p>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[32rem]">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           <OverviewMetric label="入口变体" value={String(selection?.variantId ?? "未选择")} />
           <OverviewMetric label="印刷区域" value={printableAreaLabel} />
           <OverviewMetric

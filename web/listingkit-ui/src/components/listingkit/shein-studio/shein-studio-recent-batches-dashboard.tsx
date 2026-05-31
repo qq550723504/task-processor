@@ -783,7 +783,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
 
   return (
     <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
             Recent Batches
@@ -795,9 +795,10 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
             先从最近的独立批次继续编辑，再决定是否新建新批次。
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
           {summaries.length > 0 ? (
             <Button
+              className="w-full sm:w-auto"
               onClick={() => onSelectSummary(summaries[0])}
               type="button"
               variant="secondary"
@@ -805,7 +806,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
               继续最近批次
             </Button>
           ) : null}
-          <Button onClick={onCreateBatch} type="button">
+          <Button className="w-full sm:w-auto" onClick={onCreateBatch} type="button">
             {summaries.length === 0 ? "开始新建批次并选品" : "新建批次"}
           </Button>
         </div>
@@ -819,7 +820,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
 
       {selectedCount > 0 ? (
         <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div className="space-y-1">
               <div className="text-sm font-medium text-zinc-900">
                 已选择 {selectedCount} 个批次
@@ -836,6 +837,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
               </div>
             </div>
             <Button
+              className="w-full sm:w-auto"
               onClick={() => {
                 setSelectedSummaryIds([]);
                 setBulkQueueFeedback("");
@@ -894,8 +896,8 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
               ) : null}
             </div>
           ) : null}
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="min-w-[220px] text-sm text-zinc-600">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="w-full text-sm text-zinc-600 sm:max-w-xs">
               <span className="mb-1 block">目标店铺</span>
               <select
                 aria-label="目标店铺"
@@ -912,6 +914,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
               </select>
             </label>
             <Button
+              className="w-full sm:w-auto"
               disabled={!onBulkUpdateStore}
               onClick={applyBulkStoreUpdate}
               type="button"
@@ -920,6 +923,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
             </Button>
             {selectedPersistedBatchIds.length > 0 && onBulkDeleteSummaries ? (
               <Button
+                className="w-full sm:w-auto"
                 onClick={applyBulkDelete}
                 type="button"
                 variant="secondary"
@@ -931,6 +935,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
               <>
                 {selectedBatchesPendingGeneration.length > 0 ? (
                   <Button
+                    className="w-full sm:w-auto"
                     onClick={() =>
                       launchBulkQueue(
                         selectedBatchesPendingGeneration,
@@ -946,6 +951,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                 ) : null}
                 {selectedBatchesPendingTaskCreation.length > 0 ? (
                   <Button
+                    className="w-full sm:w-auto"
                     onClick={() =>
                       launchBulkQueue(
                         selectedBatchesPendingTaskCreation,
@@ -961,6 +967,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                 ) : null}
                 {selectedBatchesWithTasks.length > 0 ? (
                   <Button
+                    className="w-full sm:w-auto"
                     onClick={() =>
                       launchBulkQueue(
                         selectedBatchesWithTasks,
@@ -978,6 +985,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                   <>
                     {selectedRiskyBatchesForGenerate.length > 0 ? (
                       <Button
+                        className="w-full sm:w-auto"
                         onClick={() =>
                           launchRiskRepairQueue(
                             selectedRiskyBatchesForGenerate,
@@ -994,6 +1002,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                     ) : null}
                     {selectedRiskyBatchesForReview.length > 0 ? (
                       <Button
+                        className="w-full sm:w-auto"
                         onClick={() =>
                           launchRiskRepairQueue(
                             selectedRiskyBatchesForReview,
@@ -1010,6 +1019,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                     ) : null}
                     {selectedHealthyBatchesPendingGeneration.length > 0 ? (
                       <Button
+                        className="w-full sm:w-auto"
                         onClick={() =>
                           launchBulkQueue(
                             selectedHealthyBatchesPendingGeneration,
@@ -1025,6 +1035,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                     ) : null}
                     {selectedHealthyBatchesPendingTaskCreation.length > 0 ? (
                       <Button
+                        className="w-full sm:w-auto"
                         onClick={() =>
                           launchBulkQueue(
                             selectedHealthyBatchesPendingTaskCreation,
@@ -1040,6 +1051,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                     ) : null}
                     {selectedHealthyBatchesWithTasks.length > 0 ? (
                       <Button
+                        className="w-full sm:w-auto"
                         onClick={() =>
                           launchBulkQueue(
                             selectedHealthyBatchesWithTasks,
@@ -1068,7 +1080,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
 
       {summaries.length > 0 ? (
         <div className="space-y-3 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-medium text-zinc-900">按状态筛选</p>
               <p className="mt-1 text-xs text-zinc-500">
@@ -1227,7 +1239,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
           当前筛选下还没有匹配的批次。可以切回其他状态继续查看。
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filteredSummaries.map((summary) => {
             const summaryKey = `${summary.source}:${summary.id}`;
             const isSelected = selectedSummaryIds.includes(summaryKey);
@@ -1335,7 +1347,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                       role="button"
                       tabIndex={0}
                     >
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-zinc-950">
                           {summary.title}
@@ -1423,17 +1435,17 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                       </div>
                     ) : null}
                     <dl className="mt-4 space-y-2 text-sm text-zinc-700">
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <dt className="text-zinc-500">商品</dt>
-                        <dd className="text-right">{summary.primaryProductName}</dd>
+                        <dd className="break-words text-left sm:text-right">{summary.primaryProductName}</dd>
                       </div>
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <dt className="text-zinc-500">店铺分发</dt>
-                        <dd className="text-right">{summary.storeSummary}</dd>
+                        <dd className="break-words text-left sm:text-right">{summary.storeSummary}</dd>
                       </div>
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <dt className="text-zinc-500">设计/任务</dt>
-                        <dd className="text-right">
+                        <dd className="text-left sm:text-right">
                           {summary.designCount} 图 / {summary.createdTaskCount} 任务
                         </dd>
                       </div>
