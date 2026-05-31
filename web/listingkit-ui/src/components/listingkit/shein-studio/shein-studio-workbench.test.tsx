@@ -235,9 +235,13 @@ describe("SheinStudioWorkbench", () => {
       status: "ready",
       reason: "",
     });
+    saveSheinStudioBatch.mockReset();
     saveSheinStudioBatch.mockResolvedValue(null);
+    saveSheinStudioDraftWithOptions.mockReset();
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
+    updateSheinStudioSession.mockReset();
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
+    appendSheinStudioSessionDesigns.mockReset();
     appendSheinStudioSessionDesigns.mockResolvedValue({
       session: { id: "session-1", updated_at: "2026-04-29T00:00:01.000Z" },
     });
@@ -1683,6 +1687,8 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
+    expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
+    expect(saveSheinStudioBatch).not.toHaveBeenCalled();
   });
 
   it("resumes every in-flight generation job after returning to the page", async () => {
@@ -1742,6 +1748,8 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
     );
+    expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
+    expect(saveSheinStudioBatch).not.toHaveBeenCalled();
   });
 
   it("shows backend generation warnings when only part of the requested styles succeed", async () => {

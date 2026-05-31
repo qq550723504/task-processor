@@ -125,6 +125,7 @@ describe("createGroupedSheinReviewTasks", () => {
 
     const result = await createGroupedSheinReviewTasks({
       prompt: "Grouped prompt",
+      groupedImageMode: "per_product",
       groups: [
         {
           sheinStoreId: "869",
@@ -138,8 +139,8 @@ describe("createGroupedSheinReviewTasks", () => {
               baselineStatus: "ready",
             },
           ],
-          designs: [baseDesign],
-          selectedIds: [baseDesign.id],
+          designs: [perProductDesign, secondProductDesign],
+          selectedIds: [perProductDesign.id, secondProductDesign.id],
         },
       ],
       createReviewTasks,
@@ -152,8 +153,8 @@ describe("createGroupedSheinReviewTasks", () => {
         prompt: "Grouped prompt",
         sheinStoreId: "869",
         selection: baseSelection,
-        designs: [baseDesign],
-        selectedIds: [baseDesign.id],
+        designs: [perProductDesign],
+        selectedIds: [perProductDesign.id],
       }),
     );
     expect(createReviewTasks).toHaveBeenNthCalledWith(
@@ -162,8 +163,8 @@ describe("createGroupedSheinReviewTasks", () => {
         prompt: "Grouped prompt",
         sheinStoreId: "869",
         selection: secondSelection,
-        designs: [baseDesign],
-        selectedIds: [baseDesign.id],
+        designs: [secondProductDesign],
+        selectedIds: [secondProductDesign.id],
       }),
     );
     expect(result).toEqual([
@@ -179,6 +180,7 @@ describe("createGroupedSheinReviewTasks", () => {
 
     const result = await createGroupedSheinReviewTasks({
       prompt: "Grouped prompt",
+      groupedImageMode: "per_product",
       groups: [
         {
           sheinStoreId: "869",
@@ -195,8 +197,8 @@ describe("createGroupedSheinReviewTasks", () => {
               eligibilityReason: "Duplicate product",
             },
           ],
-          designs: [baseDesign],
-          selectedIds: [baseDesign.id],
+          designs: [perProductDesign, secondProductDesign],
+          selectedIds: [perProductDesign.id, secondProductDesign.id],
         },
       ],
       createReviewTasks,
@@ -206,6 +208,8 @@ describe("createGroupedSheinReviewTasks", () => {
     expect(createReviewTasks).toHaveBeenCalledWith(
       expect.objectContaining({
         selection: baseSelection,
+        designs: [perProductDesign],
+        selectedIds: [perProductDesign.id],
       }),
     );
     expect(result).toEqual([
@@ -347,6 +351,36 @@ describe("createGroupedSheinReviewTasks", () => {
         selectedIds: [perProductDesign.id],
       }),
     );
+    expect(onProgress).toHaveBeenCalledWith(
+      expect.stringContaining("no generated designs matched this product"),
+    );
+  });
+
+  it("skips legacy designs without explicit target metadata instead of treating them as a match", async () => {
+    const createReviewTasks = vi.fn().mockResolvedValue([]);
+    const onProgress = vi.fn();
+
+    await createGroupedSheinReviewTasks({
+      prompt: "Grouped prompt",
+      groupedImageMode: "per_product",
+      onProgress,
+      groups: [
+        {
+          sheinStoreId: "869",
+          selections: [
+            {
+              selection: baseSelection,
+              baselineStatus: "ready",
+            },
+          ],
+          designs: [{ ...perProductDesign, targetGroupKey: undefined, targetGroupLabel: undefined }],
+          selectedIds: [perProductDesign.id],
+        },
+      ],
+      createReviewTasks,
+    });
+
+    expect(createReviewTasks).not.toHaveBeenCalled();
     expect(onProgress).toHaveBeenCalledWith(
       expect.stringContaining("no generated designs matched this product"),
     );

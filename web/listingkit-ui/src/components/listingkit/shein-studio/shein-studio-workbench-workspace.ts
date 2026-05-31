@@ -6,7 +6,10 @@ import {
   evaluateImportedGalleryDesigns,
   mergeSheinStudioDraftState,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import { loadLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import {
+  loadLocalSheinStudioDraftSnapshot,
+  saveLocalSheinStudioDraftSnapshot,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import { resumeSheinStudioDesignGeneration } from "@/lib/api/shein-studio";
 import {
@@ -246,12 +249,16 @@ export function useSheinStudioWorkspaceLoader({
               workbench.setField("selectedIds", nextSelectedIds);
               workbench.setField("createdTasks", []);
               workbench.setField("generationJobs", pendingJobs);
-              await persistDraft({
-                designs: nextDesigns,
-                selectedIds: nextSelectedIds,
-                createdTasks: [],
-                generationJobs: pendingJobs,
-              }).catch(() => undefined);
+              if (effectiveDraft) {
+                saveLocalSheinStudioDraftSnapshot({
+                  ...effectiveDraft,
+                  designs: nextDesigns,
+                  selectedIds: nextSelectedIds,
+                  createdTasks: [],
+                  generationJobs: pendingJobs,
+                  updatedAt: new Date().toISOString(),
+                });
+              }
               if (response.warnings?.length) {
                 warningMessages.push(...response.warnings);
               }

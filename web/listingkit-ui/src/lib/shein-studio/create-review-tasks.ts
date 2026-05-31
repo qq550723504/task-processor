@@ -482,7 +482,9 @@ function selectDesignsForGroupedSelection({
       ? buildGroupedSDSSelectionID(selection)
       : buildSharedBySizeGroupKey(selection);
   const matchedDesigns = selectedDesigns.filter(
-    (design) => resolveDesignTargetKey(design, selection, groupedImageMode) === targetKey,
+    (design) =>
+      design.targetGroupKey?.trim() &&
+      resolveDesignTargetKey(design, selection, groupedImageMode) === targetKey,
   );
 
   if (matchedDesigns.length === 0) {
