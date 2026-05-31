@@ -177,10 +177,8 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 	}
 	result.Retry = execution.retryPage
 	result.Queue = execution.queuePage
-	if isPersistedGenerationReviewAction(entry.target.ActionKey) && s.persistGenerationReviewDecision != nil {
-		if _, err := s.persistGenerationReviewDecision(ctx, taskID, entry.target.ActionKey, execution.persistenceSession, entry.target); err != nil {
-			return nil, err
-		}
+	if err := buildTaskGenerationActionPersistPhase(s).run(ctx, taskID, entry.target, execution); err != nil {
+		return nil, err
 	}
 	refresh, err := buildTaskGenerationActionRefreshPhase(s).run(ctx, taskID, entry.baseResult, entry.target.QueueQuery)
 	if err != nil {

@@ -1850,6 +1850,56 @@ func TestTaskGenerationServiceFileDelegatesRetryProjection(t *testing.T) {
 	}
 }
 
+func TestTaskGenerationActionPersistDelegatesHandoffBeforeRefresh(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("task_generation_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	source := string(content)
+	delegate := "if err := buildTaskGenerationActionPersistPhase(s).run(ctx, taskID, entry.target, execution); err != nil {"
+	refresh := "refresh, err := buildTaskGenerationActionRefreshPhase(s).run(ctx, taskID, entry.baseResult, entry.target.QueueQuery)"
+	if !strings.Contains(source, delegate) {
+		t.Fatalf("task_generation_service.go should delegate action persistence through local phase helper")
+	}
+	delegateIndex := strings.Index(source, delegate)
+	refreshIndex := strings.Index(source, refresh)
+	if delegateIndex == -1 || refreshIndex == -1 || delegateIndex > refreshIndex {
+		t.Fatalf("task_generation_service.go should persist after execution and before refresh")
+	}
+}
+
+func TestTaskGenerationActionPersistPhaseUsesExecutionPersistenceSessionOnlyForPersistedActions(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("task_generation_action_persist.go")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, "isPersistedGenerationReviewAction(target.ActionKey)") {
+		t.Fatalf("task_generation_action_persist.go should gate persistence on persisted review action keys")
+	}
+	if !strings.Contains(source, "execution.persistenceSession") {
+		t.Fatalf("task_generation_action_persist.go should pass execution.persistenceSession into the persistence handoff")
+	}
+	if !strings.Contains(source, "persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)") {
+		t.Fatalf("task_generation_action_persist.go should call persistence handoff with execution session and target")
+	}
+	forbidden := []string{
+		"buildGenerationReviewSession(",
+		"GetTaskGenerationQueue(",
+		"RetryTaskGenerationTasks(",
+		"buildTaskGenerationActionRefreshPhase(",
+	}
+	for _, snippet := range forbidden {
+		if strings.Contains(source, snippet) {
+			t.Fatalf("task_generation_action_persist.go should not take on execution or refresh concerns; found %q", snippet)
+		}
+	}
+}
+
 func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 	t.Parallel()
 
