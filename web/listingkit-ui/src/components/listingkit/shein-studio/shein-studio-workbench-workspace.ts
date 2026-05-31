@@ -202,6 +202,7 @@ export function useSheinStudioWorkspaceLoader({
             : null,
         );
         workbench.setField("creatingError", "");
+        workbench.setField("creatingWarning", "");
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");
         workbench.setField("draftWarning", "");

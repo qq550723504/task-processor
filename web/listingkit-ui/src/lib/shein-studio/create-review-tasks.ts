@@ -54,6 +54,18 @@ type CreateGroupedSheinReviewTasksInput = {
   createReviewTasks?: (input: CreateSheinReviewTasksInput) => Promise<SheinStudioCreatedTask[]>;
 };
 
+export type GroupedSheinTaskCreationWarning = {
+  selectionId: string;
+  label: string;
+  reason: "missing_design_match";
+  message: string;
+};
+
+export type GroupedSheinTaskCreationResult = {
+  created: SheinStudioCreatedTask[];
+  warnings: GroupedSheinTaskCreationWarning[];
+};
+
 export function parsePositiveInt(input: string) {
   const parsed = Number.parseInt(input.trim(), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -416,9 +428,10 @@ export async function createSheinReviewTasks(input: {
 
 export async function createGroupedSheinReviewTasks(
   input: CreateGroupedSheinReviewTasksInput,
-) {
+): Promise<GroupedSheinTaskCreationResult> {
   const createReviewTasks = input.createReviewTasks ?? createSheinReviewTasks;
   const created: SheinStudioCreatedTask[] = [];
+  const warnings: GroupedSheinTaskCreationWarning[] = [];
 
   for (const group of input.groups) {
     for (const item of group.selections) {
@@ -440,7 +453,7 @@ export async function createGroupedSheinReviewTasks(
         selection: item.selection,
       });
       if (selectionDesigns.selectedIds.length === 0) {
-        onGroupedSelectionDesignMismatch(input.onProgress, item.selection);
+        warnings.push(onGroupedSelectionDesignMismatch(input.onProgress, item.selection));
         continue;
       }
 
@@ -462,7 +475,10 @@ export async function createGroupedSheinReviewTasks(
     }
   }
 
-  return created;
+  return {
+    created,
+    warnings,
+  };
 }
 
 function selectDesignsForGroupedSelection({
@@ -503,13 +519,18 @@ function selectDesignsForGroupedSelection({
 function onGroupedSelectionDesignMismatch(
   onProgress: ((message: string) => void) | undefined,
   selection: SDSProductVariantSelection,
-) {
+): GroupedSheinTaskCreationWarning {
   const label =
     selection.variantLabel?.trim() ||
     selection.productName?.trim() ||
     selection.variantId?.toString() ||
     "当前商品";
-  onProgress?.(
-    `Skipped ${label}: no generated designs matched this product, so no SHEIN task was created for it.`,
-  );
+  const message = `Skipped ${label}: no generated designs matched this product, so no SHEIN task was created for it.`;
+  onProgress?.(message);
+  return {
+    selectionId: buildGroupedSDSSelectionID(selection),
+    label,
+    reason: "missing_design_match",
+    message,
+  };
 }

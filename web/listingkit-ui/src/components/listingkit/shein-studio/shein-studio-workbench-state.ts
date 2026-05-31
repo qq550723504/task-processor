@@ -56,6 +56,7 @@ export type SheinStudioWorkbenchState = {
     | null;
   creatingError: string;
   creatingMessage: string;
+  creatingWarning: string;
   isGenerating: boolean;
   isCreatingTasks: boolean;
   regeneratingId: string;
@@ -163,6 +164,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     generationWarningAction: null,
     creatingError: "",
     creatingMessage: "",
+    creatingWarning: "",
     isGenerating: false,
     isCreatingTasks: false,
     regeneratingId: "",

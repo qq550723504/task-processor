@@ -158,6 +158,9 @@ export function SheinStudioWorkbench({
         setWorkbenchField("createdTasks", value),
       setCreatingError: (value: SheinStudioWorkbenchStateUpdater<"creatingError">) =>
         setWorkbenchField("creatingError", value),
+      setCreatingWarning: (
+        value: SheinStudioWorkbenchStateUpdater<"creatingWarning">,
+      ) => setWorkbenchField("creatingWarning", value),
       setCreatingMessage: (
         value: SheinStudioWorkbenchStateUpdater<"creatingMessage">,
       ) => setWorkbenchField("creatingMessage", value),
@@ -252,6 +255,7 @@ export function SheinStudioWorkbench({
     artworkModel,
     createdTasks,
     creatingError,
+    creatingWarning,
     creatingMessage,
     designs,
     draftWarning,
@@ -1585,6 +1589,7 @@ export function SheinStudioWorkbench({
         <>
           <SheinStudioWorkbenchAlerts
             draftWarning={draftWarning}
+            creatingWarning={creatingWarning}
             generationWarning={generationWarning}
             generationWarningAction={
               generationWarningAction

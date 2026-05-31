@@ -167,10 +167,13 @@ describe("createGroupedSheinReviewTasks", () => {
         selectedIds: [secondProductDesign.id],
       }),
     );
-    expect(result).toEqual([
-      { id: "task-1", title: "Style 1", designId: baseDesign.id },
-      { id: "task-1", title: "Style 1", designId: baseDesign.id },
-    ]);
+    expect(result).toEqual({
+      created: [
+        { id: "task-1", title: "Style 1", designId: baseDesign.id },
+        { id: "task-1", title: "Style 1", designId: baseDesign.id },
+      ],
+      warnings: [],
+    });
   });
 
   it("skips grouped selections that are marked ineligible", async () => {
@@ -212,9 +215,10 @@ describe("createGroupedSheinReviewTasks", () => {
         selectedIds: [perProductDesign.id],
       }),
     );
-    expect(result).toEqual([
-      { id: "task-1", title: "Style 1", designId: baseDesign.id },
-    ]);
+    expect(result).toEqual({
+      created: [{ id: "task-1", title: "Style 1", designId: baseDesign.id }],
+      warnings: [],
+    });
   });
 
   it("reuses the same designs for selections with the same printable size", async () => {
@@ -319,7 +323,7 @@ describe("createGroupedSheinReviewTasks", () => {
     const createReviewTasks = vi.fn().mockResolvedValue([]);
     const onProgress = vi.fn();
 
-    await createGroupedSheinReviewTasks({
+    const result = await createGroupedSheinReviewTasks({
       prompt: "Grouped prompt",
       groupedImageMode: "per_product",
       onProgress,
@@ -354,13 +358,19 @@ describe("createGroupedSheinReviewTasks", () => {
     expect(onProgress).toHaveBeenCalledWith(
       expect.stringContaining("no generated designs matched this product"),
     );
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        label: "Black / L",
+        reason: "missing_design_match",
+      }),
+    ]);
   });
 
   it("skips legacy designs without explicit target metadata instead of treating them as a match", async () => {
     const createReviewTasks = vi.fn().mockResolvedValue([]);
     const onProgress = vi.fn();
 
-    await createGroupedSheinReviewTasks({
+    const result = await createGroupedSheinReviewTasks({
       prompt: "Grouped prompt",
       groupedImageMode: "per_product",
       onProgress,
@@ -384,5 +394,11 @@ describe("createGroupedSheinReviewTasks", () => {
     expect(onProgress).toHaveBeenCalledWith(
       expect.stringContaining("no generated designs matched this product"),
     );
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        label: "Black / M",
+        reason: "missing_design_match",
+      }),
+    ]);
   });
 });

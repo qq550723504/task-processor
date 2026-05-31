@@ -135,6 +135,7 @@ export function useSheinStudioDesignActions({
     setCreatedTasks: (value) => workbench.setField("createdTasks", value),
     setCreatingError: (value) => workbench.setField("creatingError", value),
     setCreatingMessage: (value) => workbench.setField("creatingMessage", value),
+    setCreatingWarning: (value) => workbench.setField("creatingWarning", value),
     setGalleryRatioCheck: (value) =>
       workbench.setField("galleryRatioCheck", value),
     setIsCreatingTasks: (value) => workbench.setField("isCreatingTasks", value),
@@ -223,6 +224,7 @@ export function useSheinStudioDesignActions({
     workbench.setField("generationError", "");
     workbench.setField("generationWarning", "");
     workbench.setField("creatingError", "");
+    workbench.setField("creatingWarning", "");
     workbench.setField("creatingMessage", "");
     workbench.setField("createdTasks", []);
     workbench.setField("generationJobs", []);
