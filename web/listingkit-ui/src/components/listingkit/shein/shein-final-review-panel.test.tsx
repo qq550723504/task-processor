@@ -221,7 +221,7 @@ describe("SheinFinalReviewPanel", () => {
   });
 
   it("enables save draft and publish after confirmed ready review", () => {
-    render(
+    const { container } = render(
       <SheinFinalReviewPanel
         shein={{
           submit_readiness: { ready: true },
@@ -242,6 +242,9 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("可以保存到 SHEIN 草稿箱，也可以正式发布。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toHaveClass("w-full");
+    expect(container.querySelector(".overflow-x-auto")).not.toBeNull();
   });
 
   it("submits publish with auto-saved final draft payload", async () => {

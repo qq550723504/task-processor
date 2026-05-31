@@ -77,7 +77,7 @@ export function SheinSourceProductPanel({
     <Card className="border-zinc-200 bg-white p-5">
       <details open={!defaultCollapsed}>
         <summary className="cursor-pointer list-none">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
                 SDS 来源商品
@@ -92,7 +92,7 @@ export function SheinSourceProductPanel({
           </div>
         </summary>
 
-        <dl className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <dl className="mt-4 grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
           <Field label={presentSourceLabel("SDS SKU")} value={source.sku} />
           <Field label={presentSourceLabel("Category")} value={joinPath(source.category_path)} />
           <Field label={presentSourceLabel("Material")} value={material} />

@@ -68,10 +68,10 @@ function StatusPill({
           : "border-zinc-200 bg-white text-zinc-900"
       }`}
     >
-      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
         {label}
       </span>
-      <span className="ml-2 text-sm font-semibold">{value}</span>
+      <span className="mt-1 block text-sm font-semibold sm:mt-0 sm:inline sm:pl-2">{value}</span>
     </span>
   );
 }
@@ -291,7 +291,7 @@ export function TaskCreateForm({
                 {pageCopy.description}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 sm:grid-cols-3">
               <StatusPill label="来源" value={sourceModeLabel} />
               <StatusPill
                 label="平台"
@@ -307,7 +307,7 @@ export function TaskCreateForm({
           </div>
         </div>
 
-        <div className="grid gap-6 px-6 py-6 sm:px-8 xl:grid-cols-[minmax(0,1.35fr)_360px]">
+        <div className="grid gap-6 px-6 py-6 sm:px-8 2xl:grid-cols-[minmax(0,1.35fr)_360px]">
           <div className="space-y-6">
             <section className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
               <TaskSourceTabs

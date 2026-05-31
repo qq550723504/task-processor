@@ -53,7 +53,7 @@ describe("TaskCreateForm", () => {
   });
 
   it("defaults advanced settings to collapsed and reveals them on demand", () => {
-    render(<TaskCreateForm />);
+    const { container } = render(<TaskCreateForm />);
 
     expect(screen.queryByText("SDS 同步设置")).not.toBeInTheDocument();
     expect(screen.queryByText("场景生成设置")).not.toBeInTheDocument();
@@ -66,6 +66,10 @@ describe("TaskCreateForm", () => {
     expect(screen.queryByText("SDS 同步设置")).not.toBeInTheDocument();
     expect(screen.getByText("场景生成设置")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收起高级设置" })).toBeInTheDocument();
+    expect(container.querySelector(".sm\\:grid-cols-3")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "收起高级设置" })).toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "创建任务" })).toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "返回首页" })).toHaveClass("w-full");
   });
 
   it("submits the minimal request and routes to status", async () => {

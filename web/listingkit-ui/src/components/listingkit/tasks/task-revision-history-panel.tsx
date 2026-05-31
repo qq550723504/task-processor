@@ -205,7 +205,7 @@ export function TaskRevisionHistoryPanel({
           <Button
             type="button"
             variant="secondary"
-            className="h-9"
+            className="h-9 w-full sm:w-auto"
             onClick={() => setIsExpanded((current) => !current)}
           >
             {isExpanded ? "收起历史" : `展开历史（${items.length}）`}
@@ -213,7 +213,7 @@ export function TaskRevisionHistoryPanel({
         </div>
 
         {isExpanded ? (
-          <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2 pb-1">
                 {[
