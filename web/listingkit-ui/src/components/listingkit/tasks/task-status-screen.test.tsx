@@ -137,7 +137,7 @@ describe("TaskStatusScreen", () => {
   });
 
   it("keeps processing tasks on the status page", () => {
-    render(
+    const { container } = render(
       <TaskStatusScreen
         taskId="task_123"
         task={{
@@ -157,6 +157,7 @@ describe("TaskStatusScreen", () => {
     expect(screen.getAllByText("最近更新").length).toBeGreaterThan(0);
     expect(screen.getByText("任务处理中")).toBeInTheDocument();
     expect(screen.getByText("正在生成图片")).toBeInTheDocument();
+    expect(container.querySelector(".sm\\:grid-cols-2")).not.toBeNull();
     expect(
       screen.queryByRole("button", { name: "打开工作台" }),
     ).not.toBeInTheDocument();
@@ -343,6 +344,8 @@ describe("TaskStatusScreen", () => {
         },
       },
     });
+    expect(screen.getByRole("button", { name: "运行标准商品层" })).toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "运行平台适配层" })).toHaveClass("w-full");
   });
 
   it("can retry the SDS design sync child task from the status screen", () => {

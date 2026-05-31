@@ -106,7 +106,7 @@ export function TaskStatusPanel({
   return (
     <Card className="border-zinc-200 bg-white/90 p-5">
       <div className="space-y-4">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <Icon className={`mt-0.5 h-5 w-5 ${tone.iconClassName}`} />
             <div className="space-y-1">
@@ -129,7 +129,7 @@ export function TaskStatusPanel({
         </div>
 
         {taskIdentifier || createdAt || updatedAt ? (
-          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:grid-cols-3">
+          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 sm:grid-cols-2 xl:grid-cols-3">
             {taskIdentifier ? (
               <div className="space-y-1">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
@@ -159,7 +159,7 @@ export function TaskStatusPanel({
 
         {storeResolution?.store_id ? (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                   店铺解析

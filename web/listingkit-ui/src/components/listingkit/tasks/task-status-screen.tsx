@@ -173,7 +173,7 @@ export function TaskStatusScreen({
               ) : null}
             </div>
           ) : null}
-          <div className="grid gap-3 pt-2 md:grid-cols-3">
+          <div className="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                 任务 ID
@@ -217,8 +217,9 @@ export function TaskStatusScreen({
               标准商品层和平台适配层现在可以分别手动触发。标准层会产出稳定的标准商品快照，平台层会基于这个快照继续做 SHEIN 等平台适配。
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Button
+              className="w-full sm:w-auto"
               onClick={handleRunStandardProductTemporal}
               type="button"
               variant="secondary"
@@ -227,6 +228,7 @@ export function TaskStatusScreen({
               运行标准商品层
             </Button>
             <Button
+              className="w-full sm:w-auto"
               onClick={handleRunPlatformAdaptTemporal}
               type="button"
               variant="secondary"

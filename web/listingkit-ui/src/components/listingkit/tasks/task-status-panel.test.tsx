@@ -153,7 +153,7 @@ describe("TaskStatusPanel", () => {
   });
 
   it("renders task diagnostics for in-flight tasks", () => {
-    render(
+    const { container } = render(
       <TaskStatusPanel
         task={{
           task_id: "task-123",
@@ -185,5 +185,6 @@ describe("TaskStatusPanel", () => {
     expect(screen.getByText("命中规则：国家规则")).toBeInTheDocument();
     expect(screen.getByText("Profile #17")).toBeInTheDocument();
     expect(screen.getByText(/固化时间：/)).toBeInTheDocument();
+    expect(container.querySelector(".sm\\:grid-cols-2")).not.toBeNull();
   });
 });
