@@ -493,8 +493,23 @@ func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *tes
 	if result == nil || result.ActionKey != assetGenerationActionRunStandardProductTemporal {
 		t.Fatalf("result = %+v, want standard temporal action result", result)
 	}
-	if result.Audit == nil || result.Audit.ResolutionSource != "layer_temporal" {
-		t.Fatalf("audit = %+v, want layer_temporal audit", result.Audit)
+	if result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only interaction mode", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunStandardProductTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only standard temporal target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery != nil {
+		t.Fatalf("resolved target = %+v, want standard temporal target without queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
 	}
 }
 
@@ -536,8 +551,85 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 	if result == nil || result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal {
 		t.Fatalf("result = %+v, want platform temporal action result", result)
 	}
+	if result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only interaction mode", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
 	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
 		t.Fatalf("resolved target = %+v, want amazon queue query", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only platform temporal target", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestTaskGenerationActionTemporalResultPhaseShapesStandardTemporalResult(t *testing.T) {
+	t.Parallel()
+
+	result := buildTaskGenerationActionTemporalResultPhase().run(
+		assetGenerationActionRunStandardProductTemporal,
+		"",
+		nil,
+	)
+	if result == nil {
+		t.Fatal("result = nil, want queue_only temporal result")
+	}
+	if result.ActionKey != assetGenerationActionRunStandardProductTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want standard queue_only action result", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunStandardProductTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only standard target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery != nil {
+		t.Fatalf("resolved target = %+v, want standard target without queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestTaskGenerationActionTemporalResultPhaseShapesPlatformTemporalResult(t *testing.T) {
+	t.Parallel()
+
+	result := buildTaskGenerationActionTemporalResultPhase().run(
+		assetGenerationActionRunPlatformAdaptTemporal,
+		"patch_only",
+		&GenerationQueueQuery{Platform: "amazon"},
+	)
+	if result == nil {
+		t.Fatal("result = nil, want queue_only temporal result")
+	}
+	if result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want platform queue_only action result", result)
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only platform target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
+		t.Fatalf("resolved target = %+v, want amazon queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
 	}
 }
 

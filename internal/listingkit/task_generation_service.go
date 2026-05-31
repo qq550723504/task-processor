@@ -231,22 +231,7 @@ func (s *taskGenerationService) executeLayerTemporalAction(ctx context.Context, 
 		}); err != nil {
 			return true, nil, err
 		}
-		return true, &GenerationActionExecutionResult{
-			ActionKey:       actionKey,
-			InteractionMode: "queue_only",
-			ResponseMode:    normalizeGenerationActionResponseMode(req.ResponseMode),
-			ResolvedTarget: &AssetGenerationActionTarget{
-				ActionKey:       actionKey,
-				InteractionMode: "queue_only",
-			},
-			Audit: &GenerationActionAudit{
-				RequestedActionKey: actionKey,
-				ResolvedActionKey:  actionKey,
-				ResolutionSource:   "layer_temporal",
-				ExecutionPath:      "queue_only",
-				ExecutedAt:         time.Now().UTC(),
-			},
-		}, nil
+		return true, buildTaskGenerationActionTemporalResultPhase().run(actionKey, req.ResponseMode, nil), nil
 	case assetGenerationActionRunPlatformAdaptTemporal:
 		client, enabled := s.platformAdaptWorkflow()
 		if !enabled || client == nil {
@@ -260,23 +245,11 @@ func (s *taskGenerationService) executeLayerTemporalAction(ctx context.Context, 
 		}); err != nil {
 			return true, nil, err
 		}
-		return true, &GenerationActionExecutionResult{
-			ActionKey:       actionKey,
-			InteractionMode: "queue_only",
-			ResponseMode:    normalizeGenerationActionResponseMode(req.ResponseMode),
-			ResolvedTarget: &AssetGenerationActionTarget{
-				ActionKey:       actionKey,
-				InteractionMode: "queue_only",
-				QueueQuery:      &GenerationQueueQuery{Platform: platform},
-			},
-			Audit: &GenerationActionAudit{
-				RequestedActionKey: actionKey,
-				ResolvedActionKey:  actionKey,
-				ResolutionSource:   "layer_temporal",
-				ExecutionPath:      "queue_only",
-				ExecutedAt:         time.Now().UTC(),
-			},
-		}, nil
+		return true, buildTaskGenerationActionTemporalResultPhase().run(
+			actionKey,
+			req.ResponseMode,
+			&GenerationQueueQuery{Platform: platform},
+		), nil
 	default:
 		return false, nil, nil
 	}
