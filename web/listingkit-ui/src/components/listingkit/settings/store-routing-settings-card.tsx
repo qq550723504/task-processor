@@ -66,7 +66,7 @@ export function StoreRoutingSettingsCard() {
         </Button>
       }
     >
-      <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+      <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
         <Label className="space-y-1">
           <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
             默认选店策略
@@ -107,7 +107,7 @@ export function StoreRoutingSettingsCard() {
         </Label>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <Label className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground">
           <Checkbox
             checked={form.allow_manual_override}

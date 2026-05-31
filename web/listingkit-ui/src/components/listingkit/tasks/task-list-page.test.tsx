@@ -220,6 +220,28 @@ describe("TaskListPage", () => {
     );
   });
 
+  it("uses mobile-first full-width controls for the hero actions and filters", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 0,
+        items: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByRole("button", { name: "刷新" })).toHaveClass("w-full");
+    expect(screen.getAllByRole("link", { name: "新建 POD 批次" })[0]).toHaveClass("w-full");
+    for (const combobox of screen.getAllByRole("combobox")) {
+      expect(combobox).toHaveClass("w-full");
+    }
+  });
+
   it("renders shein overview, work queue, and action queue when present", () => {
     mocks.useListingKitTasks.mockReturnValue({
       data: {

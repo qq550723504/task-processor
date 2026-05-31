@@ -222,7 +222,7 @@ export function ListingKitHomeTaskCard({
     <Link
       href={taskWorkspaceHref(task)}
       aria-label={`继续处理 ${title}`}
-      className="grid gap-4 rounded-2xl border border-slate-200 bg-white/92 px-4 py-4 transition-colors hover:border-slate-300 hover:bg-white lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+      className="grid gap-4 rounded-2xl border border-slate-200 bg-white/92 px-4 py-4 transition-colors hover:border-slate-300 hover:bg-white xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
     >
       <div className="min-w-0 space-y-2.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -230,8 +230,10 @@ export function ListingKitHomeTaskCard({
           {updatedAt ? <span className="tracking-[0.08em] text-slate-400">{updatedAt}</span> : null}
         </div>
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-slate-950">{title}</h3>
-          <p className="mt-1 truncate text-sm text-slate-500">
+          <h3 className="line-clamp-2 break-words text-sm font-semibold text-slate-950">
+            {title}
+          </h3>
+          <p className="mt-1 line-clamp-2 break-all text-sm text-slate-500">
             {task.variant_label || task.task_id}
           </p>
         </div>
@@ -246,14 +248,14 @@ export function ListingKitHomeTaskCard({
           ))}
         </div>
       </div>
-      <div className="flex min-w-[136px] items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3 lg:justify-end lg:bg-transparent lg:px-0 lg:py-0">
-        <div className="min-w-0 lg:max-w-[160px]">
+      <div className="flex w-full min-w-0 flex-col items-start gap-3 rounded-xl bg-slate-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between xl:w-auto xl:justify-end xl:bg-transparent xl:px-0 xl:py-0">
+        <div className="min-w-0 xl:max-w-[160px]">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             下一步
           </div>
-          <div className="truncate text-sm font-medium text-slate-700">{nextAction}</div>
+          <div className="line-clamp-2 text-sm font-medium text-slate-700">{nextAction}</div>
         </div>
-        <span className="inline-flex h-9 min-w-[88px] items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900">
+        <span className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 sm:min-w-[88px] sm:w-auto">
           进入
         </span>
       </div>

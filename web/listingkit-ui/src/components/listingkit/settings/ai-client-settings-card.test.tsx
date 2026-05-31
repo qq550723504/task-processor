@@ -144,4 +144,23 @@ describe("AIClientSettingsCard", () => {
 
     expect(screen.getByText("当前登录用户配置")).toBeInTheDocument();
   });
+
+  it("renders AI client choices as mobile-safe full-width buttons", () => {
+    render(<AIClientSettingsCard />);
+
+    const optionButtons = screen.getAllByRole("button");
+    const defaultClientButton = optionButtons.find((button) =>
+      button.textContent?.startsWith("通用文案"),
+    );
+    const nanoClientButton = optionButtons.find((button) =>
+      button.textContent?.startsWith("Nano Banana"),
+    );
+    const gptImageClientButton = optionButtons.find((button) =>
+      button.textContent?.startsWith("GPT Image 2"),
+    );
+
+    expect(defaultClientButton).toHaveClass("w-full");
+    expect(nanoClientButton).toHaveClass("w-full");
+    expect(gptImageClientButton).not.toHaveClass("min-w-[160px]");
+  });
 });

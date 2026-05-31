@@ -24,7 +24,7 @@ export function ListingKitSettingsSection({
       id={id}
       className="scroll-mt-24 rounded-[1.5rem] border border-white/70 bg-white/86 p-4 shadow-sm"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
             {eyebrow}
@@ -32,7 +32,11 @@ export function ListingKitSettingsSection({
           <h2 className="mt-1 text-lg font-semibold text-zinc-950">{title}</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-600">{description}</p>
         </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+        {actions ? (
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+            {actions}
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4">{children}</div>

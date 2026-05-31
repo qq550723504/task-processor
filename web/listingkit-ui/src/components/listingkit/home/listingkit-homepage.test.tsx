@@ -66,4 +66,13 @@ describe("Home", () => {
 
     expect(container.querySelector(".max-w-7xl")).not.toBeInTheDocument();
   });
+
+  it("stacks homepage primary actions and recent-task action rails on narrow layouts", () => {
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: "开始生成商品资料" })).toHaveClass("w-full");
+    expect(screen.getByRole("link", { name: "查看标准商品" })).toHaveClass("w-full");
+    expect(screen.getByRole("link", { name: "继续最近任务" })).toHaveClass("w-full");
+    expect(screen.getByText("进入").closest("div")).toHaveClass("w-full");
+  });
 });

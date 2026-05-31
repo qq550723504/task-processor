@@ -60,7 +60,7 @@ export type FilterKey =
 
 export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
   return (
-    <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur lg:grid-cols-[1fr_auto] lg:items-end">
+    <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/78 p-5 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur sm:p-6 xl:grid-cols-[1fr_auto] xl:items-end">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
           任务总览
@@ -72,12 +72,12 @@ export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
           查看最近生成、审核和提交到 SHEIN 的任务。这里直接读取后端任务仓储，不再靠你手动记 task id。
         </p>
       </div>
-      <div className="flex flex-wrap gap-3">
-        <Button variant="secondary" onClick={onRefresh}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <Button className="w-full sm:w-auto" variant="secondary" onClick={onRefresh}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
-        <Link href="/listing-kits/sds" className={primaryLinkClass}>
+        <Link href="/listing-kits/sds" className={`${primaryLinkClass} w-full sm:w-auto`}>
           <Plus className="mr-2 h-4 w-4" />
           新建 POD 批次
         </Link>
@@ -320,9 +320,9 @@ export function TaskListFilters({
 
   return (
     <Card className="border-white/70 bg-white/82 p-4">
-      <div className="flex flex-wrap gap-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         <Select
-          className="h-11 w-auto rounded-2xl px-4 text-sm"
+          className="h-11 w-full rounded-2xl px-4 text-sm"
           value={status}
           onChange={(event) => updateFilter("status", event.target.value)}
         >
@@ -333,7 +333,7 @@ export function TaskListFilters({
           ))}
         </Select>
         <Select
-          className="h-11 w-auto rounded-2xl px-4 text-sm"
+          className="h-11 w-full rounded-2xl px-4 text-sm"
           value={sheinWorkflowStatus}
           onChange={(event) =>
             updateFilter("shein_workflow_status", event.target.value)
@@ -346,7 +346,7 @@ export function TaskListFilters({
             ))}
         </Select>
         <Select
-          className="h-11 w-auto rounded-2xl px-4 text-sm"
+          className="h-11 w-full rounded-2xl px-4 text-sm"
           value={sheinWorkQueue}
           onChange={(event) => updateFilter("shein_work_queue", event.target.value)}
         >
@@ -357,7 +357,7 @@ export function TaskListFilters({
           ))}
         </Select>
         <Select
-          className="h-11 w-auto rounded-2xl px-4 text-sm"
+          className="h-11 w-full rounded-2xl px-4 text-sm"
           value={sheinActionQueue}
           onChange={(event) => updateFilter("shein_action_queue", event.target.value)}
         >
@@ -368,7 +368,7 @@ export function TaskListFilters({
           ))}
         </Select>
         <Select
-          className="h-11 w-auto rounded-2xl px-4 text-sm"
+          className="h-11 w-full rounded-2xl px-4 text-sm"
           value={platform}
           onChange={(event) => updateFilter("platform", event.target.value)}
         >
@@ -380,7 +380,7 @@ export function TaskListFilters({
         </Select>
         {blockerOptions.length > 1 ? (
           <Select
-            className="h-11 w-auto rounded-2xl px-4 text-sm"
+            className="h-11 w-full rounded-2xl px-4 text-sm"
             value={sheinBlockerKey}
             onChange={(event) => updateFilter("shein_blocker_key", event.target.value)}
           >
@@ -393,7 +393,7 @@ export function TaskListFilters({
         ) : null}
         {warningOptions.length > 1 ? (
           <Select
-            className="h-11 w-auto rounded-2xl px-4 text-sm"
+            className="h-11 w-full rounded-2xl px-4 text-sm"
             value={sheinWarningKey}
             onChange={(event) => updateFilter("shein_warning_key", event.target.value)}
           >
@@ -404,7 +404,7 @@ export function TaskListFilters({
             ))}
           </Select>
         ) : null}
-        <div className="ml-auto flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 md:col-span-2 xl:col-span-4 2xl:col-span-6 xl:justify-end">
           <Boxes className="h-4 w-4" />
           {total} 个任务
         </div>
@@ -562,15 +562,16 @@ export function TaskListContent({
       ))}
       {totalPages > 1 ? (
         <Card className="border-white/70 bg-white/82 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-zinc-500">
               第 {page} / {totalPages} 页
               <span className="ml-2 text-zinc-400">
                 {startItem}-{endItem} / {total}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
               <Button
+                className="w-full sm:w-auto"
                 variant="secondary"
                 disabled={page <= 1}
                 onClick={() => updatePage(page - 1)}
@@ -578,6 +579,7 @@ export function TaskListContent({
                 上一页
               </Button>
               <Button
+                className="w-full sm:w-auto"
                 variant="secondary"
                 disabled={page >= totalPages}
                 onClick={() => updatePage(page + 1)}
@@ -616,7 +618,7 @@ function TaskRow({
 
   return (
     <Card className="group border-white/70 bg-white/88 p-5 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
-      <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+      <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge
@@ -700,7 +702,7 @@ function TaskRow({
               </Badge>
             ))}
           </div>
-          <h2 className="mt-3 truncate text-xl font-semibold tracking-tight text-zinc-950">
+          <h2 className="mt-3 line-clamp-2 break-words text-xl font-semibold tracking-tight text-zinc-950">
             {taskTitle(task)}
           </h2>
           <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
@@ -735,7 +737,7 @@ function TaskRow({
             </p>
           ) : null}
           {task.variant_label ? (
-            <p className="mt-1 truncate text-sm text-zinc-500">
+            <p className="mt-1 line-clamp-2 break-all text-sm text-zinc-500">
               {task.variant_label}
             </p>
           ) : null}
@@ -790,8 +792,8 @@ function TaskRow({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
+          <div className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 sm:w-auto">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
               创建于 {formatDate(task.created_at)}
@@ -810,11 +812,11 @@ function TaskRow({
           </div>
           <Link
             href={`/listing-kits/${task.task_id}/status`}
-            className={secondaryLinkClass}
+            className={`${secondaryLinkClass} w-full sm:w-auto`}
           >
             状态
           </Link>
-          <Link href={workspaceHref} className={primaryLinkClass}>
+          <Link href={workspaceHref} className={`${primaryLinkClass} w-full sm:w-auto`}>
             工作台
             <ArrowRight className="ml-2 h-4 w-4 transition group-hover:translate-x-0.5" />
           </Link>

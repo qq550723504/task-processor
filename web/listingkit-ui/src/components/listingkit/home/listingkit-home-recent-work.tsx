@@ -171,7 +171,7 @@ export function ListingKitHomeRecentWork({
       <section
         role="status"
         aria-label="最近任务加载中"
-        className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]"
+        className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"
       >
         <Skeleton className="h-44 rounded-2xl border border-slate-200 bg-white/80" />
         <div className="grid gap-4">
@@ -241,7 +241,7 @@ export function ListingKitHomeRecentWork({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
         {continueTask ? (
           <div className="rounded-2xl border border-slate-900/10 bg-gradient-to-br from-slate-900 to-slate-950 p-7 text-white shadow-[0_20px_60px_rgba(15,23,42,0.35)]">
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-blue-300">
@@ -326,16 +326,16 @@ export function ListingKitHomeRecentWork({
                 </div>
               </div>
             ) : null}
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
                 href={taskWorkspaceHref(continueTask)}
-                className="inline-flex h-12 items-center justify-center rounded-xl bg-white px-7 text-sm font-semibold text-slate-900 transition-all hover:scale-105 hover:bg-slate-100 shadow-lg"
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-white px-7 text-sm font-semibold text-slate-900 shadow-lg transition-all hover:scale-105 hover:bg-slate-100 sm:w-auto"
               >
                 继续最近任务
               </Link>
               <Link
                 href={continueTaskListHref(continueTask)}
-                className="inline-flex h-12 items-center justify-center rounded-xl border border-white/20 px-7 text-sm font-semibold text-white transition-all hover:scale-105 hover:bg-white/10"
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-white/20 px-7 text-sm font-semibold text-white transition-all hover:scale-105 hover:bg-white/10 sm:w-auto"
               >
                 查看同队列
               </Link>
@@ -344,7 +344,7 @@ export function ListingKitHomeRecentWork({
         ) : null}
 
         <div className="rounded-2xl border border-slate-200 bg-white/88 p-3 shadow-[0_14px_36px_rgba(39,39,42,0.05)]">
-          <div className="flex items-center justify-between px-2 py-2">
+          <div className="flex flex-col gap-2 px-2 py-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
               最近任务
             </p>
