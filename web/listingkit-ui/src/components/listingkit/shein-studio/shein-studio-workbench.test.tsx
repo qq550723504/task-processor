@@ -27,6 +27,7 @@ const saveSheinStudioBatch = vi.fn();
 const saveSheinStudioDraftWithOptions = vi.fn();
 const setActiveSheinStudioBatchId = vi.fn();
 const updateSheinStudioSession = vi.fn();
+const appendSheinStudioSessionDesigns = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const push = vi.fn();
 let lastGenerationPanelProps: Record<string, unknown> | null = null;
@@ -133,6 +134,8 @@ vi.mock("@/lib/api/shein-studio", () => ({
 vi.mock("@/lib/api/shein-studio-sessions", () => ({
   ensureSheinStudioSession: (...args: unknown[]) => ensureSheinStudioSession(...args),
   updateSheinStudioSession: (...args: unknown[]) => updateSheinStudioSession(...args),
+  appendSheinStudioSessionDesigns: (...args: unknown[]) =>
+    appendSheinStudioSessionDesigns(...args),
 }));
 
 vi.mock("@/lib/shein-studio/create-review-tasks", async () => {
@@ -235,6 +238,9 @@ describe("SheinStudioWorkbench", () => {
     saveSheinStudioBatch.mockResolvedValue(null);
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
+    appendSheinStudioSessionDesigns.mockResolvedValue({
+      session: { id: "session-1", updated_at: "2026-04-29T00:00:01.000Z" },
+    });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
     push.mockReset();
   });
@@ -1545,10 +1551,10 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
     expect(
-      screen.getByText(
+      screen.queryByText(
         "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it("does not block generation when studio session sync fails", async () => {
@@ -1925,6 +1931,46 @@ describe("SheinStudioWorkbench", () => {
         "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("does not surface a draft-save warning after successful generation when the studio session append path succeeds", async () => {
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "ai_generated",
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+    generateSheinStudioDesigns.mockResolvedValue({
+      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText(
+        "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("imports a gallery handoff into review after SDS selection is available", async () => {

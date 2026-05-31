@@ -310,4 +310,45 @@ describe("createGroupedSheinReviewTasks", () => {
       }),
     );
   });
+
+  it("skips a grouped selection when no designs match its target instead of reusing every approved design", async () => {
+    const createReviewTasks = vi.fn().mockResolvedValue([]);
+    const onProgress = vi.fn();
+
+    await createGroupedSheinReviewTasks({
+      prompt: "Grouped prompt",
+      groupedImageMode: "per_product",
+      onProgress,
+      groups: [
+        {
+          sheinStoreId: "869",
+          selections: [
+            {
+              selection: baseSelection,
+              baselineStatus: "ready",
+            },
+            {
+              selection: secondSelection,
+              baselineStatus: "ready",
+            },
+          ],
+          designs: [perProductDesign],
+          selectedIds: [perProductDesign.id],
+        },
+      ],
+      createReviewTasks,
+    });
+
+    expect(createReviewTasks).toHaveBeenCalledTimes(1);
+    expect(createReviewTasks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: baseSelection,
+        designs: [perProductDesign],
+        selectedIds: [perProductDesign.id],
+      }),
+    );
+    expect(onProgress).toHaveBeenCalledWith(
+      expect.stringContaining("no generated designs matched this product"),
+    );
+  });
 });

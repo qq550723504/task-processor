@@ -439,6 +439,10 @@ export async function createGroupedSheinReviewTasks(
         selectedIds: group.selectedIds,
         selection: item.selection,
       });
+      if (selectionDesigns.selectedIds.length === 0) {
+        onGroupedSelectionDesignMismatch(input.onProgress, item.selection);
+        continue;
+      }
 
       const tasks = await createReviewTasks({
         prompt: input.prompt,
@@ -483,8 +487,8 @@ function selectDesignsForGroupedSelection({
 
   if (matchedDesigns.length === 0) {
     return {
-      designs,
-      selectedIds,
+      designs: [],
+      selectedIds: [],
     };
   }
 
@@ -492,4 +496,18 @@ function selectDesignsForGroupedSelection({
     designs: matchedDesigns,
     selectedIds: matchedDesigns.map((design) => design.id),
   };
+}
+
+function onGroupedSelectionDesignMismatch(
+  onProgress: ((message: string) => void) | undefined,
+  selection: SDSProductVariantSelection,
+) {
+  const label =
+    selection.variantLabel?.trim() ||
+    selection.productName?.trim() ||
+    selection.variantId?.toString() ||
+    "当前商品";
+  onProgress?.(
+    `Skipped ${label}: no generated designs matched this product, so no SHEIN task was created for it.`,
+  );
 }

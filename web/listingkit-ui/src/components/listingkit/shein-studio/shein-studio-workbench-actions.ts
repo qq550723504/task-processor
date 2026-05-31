@@ -475,19 +475,21 @@ export function useSheinStudioDesignActions({
       workbench.setField("selectedIds", accumulatedSelectedIDs);
       workbench.setField("generationJobs", []);
       navigateToStep("review");
-      void persistDraft(
-        {
-          designs: accumulatedDesigns,
-          groups: nextGroups,
-          selectedIds: accumulatedSelectedIDs,
-          createdTasks: [],
-          generationJobs: [],
-        },
-        {
-          navigationTriggered: true,
-          source: "generate_success",
-        },
-      ).catch(() => undefined);
+      if (!sessionId) {
+        void persistDraft(
+          {
+            designs: accumulatedDesigns,
+            groups: nextGroups,
+            selectedIds: accumulatedSelectedIDs,
+            createdTasks: [],
+            generationJobs: [],
+          },
+          {
+            navigationTriggered: true,
+            source: "generate_success",
+          },
+        ).catch(() => undefined);
+      }
     } catch (error) {
       const message = formatSubscriptionApiError(error);
       workbench.setField("designs", []);
