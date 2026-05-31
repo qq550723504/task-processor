@@ -141,7 +141,7 @@ export function ImageSubmitSummary({
         </div>
         {imageBlocked && onSelectImages ? (
           <Button
-            className="h-8 px-3 text-xs"
+            className="h-8 w-full px-3 text-xs sm:w-auto"
             variant="secondary"
             onClick={onSelectImages}
           >

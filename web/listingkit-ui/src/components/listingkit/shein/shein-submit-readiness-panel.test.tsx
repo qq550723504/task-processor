@@ -242,7 +242,7 @@ describe("SheinSubmitReadinessPanel", () => {
   it("renders ready state without blocker lists", () => {
     const onSubmit = vi.fn();
     const onSaveDraft = vi.fn();
-    render(
+    const { container } = render(
       <SheinSubmitReadinessPanel
         readiness={{
           status: "ready",
@@ -284,6 +284,8 @@ describe("SheinSubmitReadinessPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "已发布到 SHEIN" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toHaveClass("w-full");
+    expect(container.querySelector(".sm\\:w-auto")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
     expect(screen.queryByText("阻断项")).not.toBeInTheDocument();
   });

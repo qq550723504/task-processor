@@ -154,7 +154,7 @@ function SheinAttributeReviewContent({
           {onRegenerateAttributes ? (
             <div className="mt-3">
               <Button
-                className="h-9"
+                className="h-9 w-full sm:w-auto"
                 disabled={isApplying}
                 onClick={() => onRegenerateAttributes()}
                 variant="secondary"
@@ -208,7 +208,7 @@ function SheinAttributeReviewContent({
               ))}
             </div>
             <Button
-              className="h-9"
+              className="h-9 w-full sm:w-auto"
               disabled={!canConfirm || isApplying}
               onClick={() => onConfirmAttributes?.(selectedAttributes)}
               variant="secondary"
@@ -248,7 +248,7 @@ function SheinAttributeReviewContent({
             </div>
             {requiredCandidates.length === 0 ? (
               <Button
-                className="h-9"
+                className="h-9 w-full sm:w-auto"
                 disabled={!canConfirm || isApplying}
                 onClick={() => onConfirmAttributes?.(selectedAttributes)}
                 variant="secondary"
@@ -284,7 +284,7 @@ function SheinAttributeReviewContent({
             </div>
             {requiredCandidates.length === 0 && importantCandidates.length === 0 ? (
               <Button
-                className="mt-3 h-9"
+                className="mt-3 h-9 w-full sm:w-auto"
                 disabled={!canConfirm || isApplying}
                 onClick={() => onConfirmAttributes?.(selectedAttributes)}
                 variant="secondary"
@@ -305,7 +305,7 @@ function SheinAttributeReviewContent({
                 这些属性已进入当前 SHEIN 资料。人工确认的同类解析会用于后续缓存命中。
               </p>
             </div>
-            <div className="grid gap-2 lg:grid-cols-2">
+            <div className="grid gap-2 xl:grid-cols-2">
               {resolvedAttributes.map((attribute) => (
                 <AttributeRow
                   key={`${attribute.attribute_id ?? attribute.name}-${attribute.value}`}
@@ -341,7 +341,7 @@ function SheinAttributeReviewContent({
                 当前只能看到 SDS 来源属性，无法选择真实 SHEIN attribute_id。内部测试可先按当前 SDS 属性确认，正式发布前仍建议重新获取模板后复核。
               </p>
             </div>
-            <div className="grid gap-2 lg:grid-cols-2">
+            <div className="grid gap-2 xl:grid-cols-2">
               {fallbackPendingAttributes.map((attribute) => (
                 <AttributeRow
                   key={`${attribute.name ?? ""}-${attribute.value ?? ""}`}
@@ -351,7 +351,7 @@ function SheinAttributeReviewContent({
               ))}
             </div>
             <Button
-              className="h-9"
+              className="h-9 w-full sm:w-auto"
               disabled={!canConfirmFallback || isApplying}
               onClick={() => onConfirmFallbackAttributes?.()}
               variant="secondary"

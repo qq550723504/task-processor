@@ -156,6 +156,7 @@ describe("SheinSaleAttributeReviewCard", () => {
     await user.click(screen.getByRole("button", { name: "直接确认当前结果" }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "直接确认当前结果" })).toHaveClass("w-full");
   });
 
   it("offers regeneration instead of confirm when value ids are missing", async () => {
@@ -257,6 +258,41 @@ describe("SheinSaleAttributeReviewCard", () => {
     );
 
     expect(screen.getByRole("button", { name: "重新生成中..." })).toBeDisabled();
+  });
+
+  it("uses delayed wide-screen grids for manual sale attribute editing", () => {
+    const { container } = render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              template_options: [
+                {
+                  attribute_id: 27,
+                  name: "Color",
+                  attribute_value_list: [{ attribute_value_id: 112, value: "White" }],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  skc_name: "White",
+                  attributes: { Color: "White" },
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={vi.fn()}
+      />,
+    );
+
+    expect(
+      Array.from(container.querySelectorAll("div")).some((element) =>
+        String(element.className).includes("2xl:grid-cols"),
+      ),
+    ).toBe(true);
   });
 
   it("allows manually filling sale attribute value ids", async () => {

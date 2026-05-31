@@ -24,7 +24,7 @@ export function SubmitActionCard({
 }) {
   return (
     <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
             发布操作
@@ -37,10 +37,10 @@ export function SubmitActionCard({
           </p>
         </div>
         {canRunSubmitActions && (onSaveDraft || onSubmit) ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {onSaveDraft ? (
               <Button
-                className="h-8 px-3 text-xs"
+                className="h-8 w-full px-3 text-xs sm:w-auto"
                 disabled={isSubmitting}
                 variant="secondary"
                 onClick={onSaveDraft}
@@ -50,7 +50,7 @@ export function SubmitActionCard({
             ) : null}
             {onSubmit ? (
               <Button
-                className="h-8 px-3 text-xs"
+                className="h-8 w-full px-3 text-xs sm:w-auto"
                 disabled={isSubmitting || isPublished}
                 onClick={onSubmit}
               >
@@ -81,7 +81,7 @@ export function PrimaryActionCard({
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
             下一步处理
@@ -92,7 +92,7 @@ export function PrimaryActionCard({
         </div>
         {canRunPrimary && onRunPrimaryAction ? (
           <Button
-            className="h-8 px-3 text-xs"
+            className="h-8 w-full px-3 text-xs sm:w-auto"
             variant="secondary"
             onClick={() => onRunPrimaryAction(primaryActionKey)}
           >

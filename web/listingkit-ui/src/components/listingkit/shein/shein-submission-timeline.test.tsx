@@ -112,6 +112,7 @@ describe("SheinSubmissionTimeline", () => {
     screen.getByRole("button", { name: "刷新状态" }).click();
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "刷新状态" })).toHaveClass("w-full");
   });
 
   it("renders nothing without events", () => {
