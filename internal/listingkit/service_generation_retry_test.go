@@ -1850,56 +1850,6 @@ func TestTaskGenerationServiceFileDelegatesRetryProjection(t *testing.T) {
 	}
 }
 
-func TestTaskGenerationActionPersistDelegatesHandoffBeforeRefresh(t *testing.T) {
-	t.Parallel()
-
-	content, err := os.ReadFile("task_generation_service.go")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	source := string(content)
-	delegate := "if err := buildTaskGenerationActionPersistPhase(s).run(ctx, taskID, entry.target, execution); err != nil {"
-	refresh := "refresh, err := buildTaskGenerationActionRefreshPhase(s).run(ctx, taskID, entry.baseResult, entry.target.QueueQuery)"
-	if !strings.Contains(source, delegate) {
-		t.Fatalf("task_generation_service.go should delegate action persistence through local phase helper")
-	}
-	delegateIndex := strings.Index(source, delegate)
-	refreshIndex := strings.Index(source, refresh)
-	if delegateIndex == -1 || refreshIndex == -1 || delegateIndex > refreshIndex {
-		t.Fatalf("task_generation_service.go should persist after execution and before refresh")
-	}
-}
-
-func TestTaskGenerationActionPersistPhaseUsesExecutionPersistenceSessionOnlyForPersistedActions(t *testing.T) {
-	t.Parallel()
-
-	content, err := os.ReadFile("task_generation_action_persist.go")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	source := string(content)
-	if !strings.Contains(source, "isPersistedGenerationReviewAction(target.ActionKey)") {
-		t.Fatalf("task_generation_action_persist.go should gate persistence on persisted review action keys")
-	}
-	if !strings.Contains(source, "execution.persistenceSession") {
-		t.Fatalf("task_generation_action_persist.go should pass execution.persistenceSession into the persistence handoff")
-	}
-	if !strings.Contains(source, "persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)") {
-		t.Fatalf("task_generation_action_persist.go should call persistence handoff with execution session and target")
-	}
-	forbidden := []string{
-		"buildGenerationReviewSession(",
-		"GetTaskGenerationQueue(",
-		"RetryTaskGenerationTasks(",
-		"buildTaskGenerationActionRefreshPhase(",
-	}
-	for _, snippet := range forbidden {
-		if strings.Contains(source, snippet) {
-			t.Fatalf("task_generation_action_persist.go should not take on execution or refresh concerns; found %q", snippet)
-		}
-	}
-}
-
 func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 	t.Parallel()
 
@@ -2743,59 +2693,6 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 			t.Fatalf("ExecuteTaskGenerationAction should not inline execution branching %q", needle)
 		}
 	}
-}
-
-func TestTaskGenerationActionFinalizeServiceDelegatesFinalizePhase(t *testing.T) {
-	t.Parallel()
-
-	actionSource := readExecuteTaskGenerationActionSource(t)
-
-	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionFinalizePhase()", 1)
-	assertSourceContainsAll(t, actionSource, []string{
-		"result = buildTaskGenerationActionFinalizePhase().run(result, projection)",
-	})
-	assertSourceExcludesAll(t, actionSource, []string{
-		"result.Overview = projection.Overview",
-		"result.Queue = projection.Queue",
-		"result.Retry = projection.Retry",
-		"result.ReviewWorkflow = projection.ReviewWorkflow",
-		"result.ReviewSession = projection.ReviewSession",
-		"result.ReviewPatch = projection.ReviewPatch",
-		"result.PlatformRenderPreviews = projection.PlatformRenderPreviews",
-		"result.DeltaToken = projection.DeltaToken",
-		"return applyGenerationConditionalStateToActionResult(result), nil",
-	})
-}
-
-func TestTaskGenerationActionEntryPhaseOwnsBootstrapFlow(t *testing.T) {
-	t.Parallel()
-
-	entrySource := readTaskGenerationSourceFile(t, "task_generation_action_entry.go")
-
-	assertSourceContainsAll(t, entrySource, []string{
-		"type taskGenerationActionEntryPhase struct",
-		"type taskGenerationActionEntryResult struct",
-		"func buildTaskGenerationActionEntryPhase(service *taskGenerationService) *taskGenerationActionEntryPhase",
-		"func (p *taskGenerationActionEntryPhase) run(",
-		"queue, err := p.service.getCurrentAssetGenerationQueue(ctx, taskID)",
-		"baseResult, err := p.service.getCurrentListingKitResult(ctx, taskID)",
-		"overview := buildAssetGenerationOverview(queue)",
-		"target, source, err := resolveAssetGenerationActionTarget(overview, req)",
-		"target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)",
-		"previousReviewSession := buildGenerationReviewSession(baseResult, queue, target.QueueQuery)",
-		"result := &GenerationActionExecutionResult{",
-		"RequestedActionKey: requestedAssetGenerationActionKey(req)",
-		"ResolvedActionKey:  target.ActionKey",
-		"ResolutionSource:   source",
-		"ExecutionPath:      target.InteractionMode",
-	})
-	assertSourceExcludesAll(t, entrySource, []string{
-		"queue                 *GenerationWorkQueue",
-		"executeLayerTemporalAction(",
-		"RetryTaskGenerationTasks(",
-		"GetTaskGenerationQueue(",
-		"switch target.InteractionMode {",
-	})
 }
 
 func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {

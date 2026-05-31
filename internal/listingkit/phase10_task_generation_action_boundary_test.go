@@ -218,3 +218,75 @@ func assertSourceOccurrenceCount(t *testing.T, source, needle string, want int) 
 		t.Fatalf("source should contain %q %d time(s), got %d", needle, want, got)
 	}
 }
+
+func readNamedFunctionCallNames(t *testing.T, path, funcName string) []string {
+	t.Helper()
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, path, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("ParseFile(%s) error = %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok || funcDecl.Name == nil || funcDecl.Name.Name != funcName {
+			continue
+		}
+		var names []string
+		ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if name := calledFunctionName(call.Fun); name != "" {
+				names = append(names, name)
+			}
+			return true
+		})
+		return names
+	}
+
+	t.Fatalf("%s should contain function %q", path, funcName)
+	return nil
+}
+
+func calledFunctionName(expr ast.Expr) string {
+	switch typed := expr.(type) {
+	case *ast.Ident:
+		return typed.Name
+	case *ast.SelectorExpr:
+		return typed.Sel.Name
+	default:
+		return ""
+	}
+}
+
+func assertFunctionCallsContainAll(t *testing.T, callNames []string, required []string) {
+	t.Helper()
+
+	for _, want := range required {
+		found := false
+		for _, got := range callNames {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("function calls should contain %q; got %v", want, callNames)
+		}
+	}
+}
+
+func assertFunctionCallsExcludeAll(t *testing.T, callNames []string, forbidden []string) {
+	t.Helper()
+
+	for _, want := range forbidden {
+		for _, got := range callNames {
+			if got == want {
+				t.Fatalf("function calls should not contain %q; got %v", want, callNames)
+			}
+		}
+	}
+}
