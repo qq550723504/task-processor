@@ -177,7 +177,7 @@ export function SheinStudioPageShell({
         <section
           className={
             compact
-              ? "grid gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(28rem,auto)] lg:items-center"
+              ? "grid gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] xl:items-center"
               : "grid gap-5 rounded-[2rem] border border-white/70 bg-white/72 px-5 py-5 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur md:grid-cols-[1.25fr_0.75fr] lg:px-6"
           }
         >
@@ -228,7 +228,7 @@ export function SheinStudioPageShell({
           <div
             className={
               compact
-                ? "grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[430px]"
+                ? "grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3"
                 : "grid gap-3 sm:grid-cols-3 md:grid-cols-1"
             }
           >
