@@ -2241,6 +2241,139 @@ func TestTaskGenerationActionProjectionFinalizeSupportsPatchOnlyResponses(t *tes
 	}
 }
 
+func TestTaskGenerationActionFinalizeCopiesProjectionAndAppliesConditionalState(t *testing.T) {
+	t.Parallel()
+
+	resolvedTarget := newTaskGenerationActionProjectionTarget("queue_only")
+	resolvedTarget.NavigationTarget = &GenerationReviewNavigationTarget{DispatchKind: "review_session"}
+	result := &GenerationActionExecutionResult{
+		ActionKey:       "approve_section_review",
+		InteractionMode: "queue_only",
+		ResponseMode:    "full",
+		ResolvedTarget:  resolvedTarget,
+		Audit: &GenerationActionAudit{
+			RequestedActionKey: "approve_section_review",
+			ResolvedActionKey:  "approve_section_review",
+			ResolutionSource:   "request_target",
+			ExecutionPath:      "queue_only",
+		},
+		Overview:   &AssetGenerationOverview{PrimaryActionKey: "stale-overview"},
+		DeltaToken: "stale-delta-token",
+	}
+
+	projection := &GenerationActionExecutionResult{
+		Overview: &AssetGenerationOverview{PrimaryActionKey: "review_ready_assets"},
+		Queue: &GenerationQueuePage{
+			TaskID:     "task-generation-action-finalize-copyback-1",
+			DeltaToken: "queue-delta-token",
+			Summary:    &GenerationWorkQueueSummary{TotalItems: 1, PreviewableItems: 1},
+		},
+		Retry: &GenerationTaskPage{
+			TaskID: "task-generation-action-finalize-copyback-1",
+			Total:  1,
+		},
+		ReviewWorkflow: &GenerationReviewWorkflowResult{
+			ActionKey:  "approve_section_review",
+			Status:     "applied",
+			Platform:   "shein",
+			Slot:       "main",
+			Capability: "detail_preview",
+		},
+		ReviewSession: &GenerationReviewSession{
+			SelectedPlatform: "shein",
+			SelectedSlot:     "main",
+		},
+		ReviewPatch: &GenerationReviewSessionPatch{
+			DeltaToken: "projection-delta-token",
+		},
+		PlatformRenderPreviews: []PlatformAssetRenderPreviews{{
+			Platform: "shein",
+			Main:     &AssetRenderPreviewSlot{AssetID: "asset-preview-1"},
+		}},
+		DeltaToken: "projection-delta-token",
+	}
+
+	finalized := buildTaskGenerationActionFinalizePhase().run(result, projection)
+
+	if finalized != result {
+		t.Fatalf("finalized result = %+v, want in-place mutation of input result", finalized)
+	}
+	if finalized.Overview != projection.Overview || finalized.Queue != projection.Queue || finalized.Retry != projection.Retry {
+		t.Fatalf("finalized = %+v, want projection overview/queue/retry copied back", finalized)
+	}
+	if finalized.ReviewWorkflow != projection.ReviewWorkflow || finalized.ReviewSession != projection.ReviewSession || finalized.ReviewPatch != projection.ReviewPatch {
+		t.Fatalf("finalized = %+v, want projection review payload copied back", finalized)
+	}
+	if !reflect.DeepEqual(finalized.PlatformRenderPreviews, projection.PlatformRenderPreviews) {
+		t.Fatalf("platform render previews = %+v, want projection previews %+v", finalized.PlatformRenderPreviews, projection.PlatformRenderPreviews)
+	}
+	if finalized.DeltaToken != projection.DeltaToken {
+		t.Fatalf("delta token = %q, want projection delta token %q", finalized.DeltaToken, projection.DeltaToken)
+	}
+	if finalized.Conditional == nil || finalized.Conditional.DeltaToken != projection.DeltaToken {
+		t.Fatalf("conditional = %+v, want conditional state from copied-back delta token", finalized.Conditional)
+	}
+	if finalized.ResolvedTarget == nil || finalized.ResolvedTarget.NavigationTarget == nil || finalized.ResolvedTarget.NavigationTarget.Conditional == nil {
+		t.Fatalf("resolved target = %+v, want conditional state applied to preserved navigation target", finalized.ResolvedTarget)
+	}
+	if finalized.ResolvedTarget.NavigationTarget.Conditional.DeltaToken != projection.DeltaToken {
+		t.Fatalf("navigation conditional = %+v, want projection delta token", finalized.ResolvedTarget.NavigationTarget.Conditional)
+	}
+}
+
+func TestTaskGenerationActionFinalizePreservesEarlierOutwardFields(t *testing.T) {
+	t.Parallel()
+
+	resolvedTarget := newTaskGenerationActionProjectionTarget("retryable")
+	audit := &GenerationActionAudit{
+		RequestedActionKey: "generate_missing_assets",
+		ResolvedActionKey:  "generate_missing_assets",
+		ResolutionSource:   "request_target",
+		ExecutionPath:      "retryable",
+	}
+	result := &GenerationActionExecutionResult{
+		ActionKey:       "generate_missing_assets",
+		InteractionMode: "retryable",
+		ResponseMode:    "patch_only",
+		ResolvedTarget:  resolvedTarget,
+		Audit:           audit,
+	}
+	projection := &GenerationActionExecutionResult{
+		ActionKey:       "projected-action",
+		InteractionMode: "queue_only",
+		ResponseMode:    "full",
+		ResolvedTarget: &AssetGenerationActionTarget{
+			ActionKey:       "projected-action",
+			InteractionMode: "queue_only",
+		},
+		Audit: &GenerationActionAudit{
+			RequestedActionKey: "projected-action",
+			ResolvedActionKey:  "projected-action",
+			ResolutionSource:   "projection",
+			ExecutionPath:      "queue_only",
+		},
+		DeltaToken: "projection-delta-token",
+	}
+
+	finalized := buildTaskGenerationActionFinalizePhase().run(result, projection)
+
+	if finalized.ActionKey != result.ActionKey {
+		t.Fatalf("action key = %q, want preserved original %q", finalized.ActionKey, result.ActionKey)
+	}
+	if finalized.InteractionMode != result.InteractionMode {
+		t.Fatalf("interaction mode = %q, want preserved original %q", finalized.InteractionMode, result.InteractionMode)
+	}
+	if finalized.ResponseMode != result.ResponseMode {
+		t.Fatalf("response mode = %q, want preserved original %q", finalized.ResponseMode, result.ResponseMode)
+	}
+	if finalized.ResolvedTarget != resolvedTarget {
+		t.Fatalf("resolved target = %+v, want preserved original target %+v", finalized.ResolvedTarget, resolvedTarget)
+	}
+	if finalized.Audit != audit {
+		t.Fatalf("audit = %+v, want preserved original audit %+v", finalized.Audit, audit)
+	}
+}
+
 func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testing.T) {
 	t.Parallel()
 
@@ -2610,6 +2743,28 @@ func TestTaskGenerationServiceFileDelegatesActionExecution(t *testing.T) {
 			t.Fatalf("ExecuteTaskGenerationAction should not inline execution branching %q", needle)
 		}
 	}
+}
+
+func TestTaskGenerationActionFinalizeServiceDelegatesFinalizePhase(t *testing.T) {
+	t.Parallel()
+
+	actionSource := readExecuteTaskGenerationActionSource(t)
+
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionFinalizePhase()", 1)
+	assertSourceContainsAll(t, actionSource, []string{
+		"result = buildTaskGenerationActionFinalizePhase().run(result, projection)",
+	})
+	assertSourceExcludesAll(t, actionSource, []string{
+		"result.Overview = projection.Overview",
+		"result.Queue = projection.Queue",
+		"result.Retry = projection.Retry",
+		"result.ReviewWorkflow = projection.ReviewWorkflow",
+		"result.ReviewSession = projection.ReviewSession",
+		"result.ReviewPatch = projection.ReviewPatch",
+		"result.PlatformRenderPreviews = projection.PlatformRenderPreviews",
+		"result.DeltaToken = projection.DeltaToken",
+		"return applyGenerationConditionalStateToActionResult(result), nil",
+	})
 }
 
 func TestTaskGenerationActionEntryPhaseOwnsBootstrapFlow(t *testing.T) {

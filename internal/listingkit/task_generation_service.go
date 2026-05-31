@@ -193,15 +193,8 @@ func (s *taskGenerationService) ExecuteTaskGenerationAction(ctx context.Context,
 		refresh:               refresh,
 		execution:             execution,
 	})
-	result.Overview = projection.Overview
-	result.Queue = projection.Queue
-	result.Retry = projection.Retry
-	result.ReviewWorkflow = projection.ReviewWorkflow
-	result.ReviewSession = projection.ReviewSession
-	result.ReviewPatch = projection.ReviewPatch
-	result.PlatformRenderPreviews = projection.PlatformRenderPreviews
-	result.DeltaToken = projection.DeltaToken
-	return applyGenerationConditionalStateToActionResult(result), nil
+	result = buildTaskGenerationActionFinalizePhase().run(result, projection)
+	return result, nil
 }
 
 func (s *taskGenerationService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error) {
