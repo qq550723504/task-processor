@@ -27,7 +27,7 @@ import type {
 
 export function StyleGalleryHero() {
   return (
-    <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/80 p-6 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur lg:grid-cols-[1fr_auto] lg:items-end">
+    <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/80 p-5 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur sm:p-6 xl:grid-cols-[1fr_auto] xl:items-end">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-sky-700">
           ListingKit 款式图库
@@ -39,14 +39,14 @@ export function StyleGalleryHero() {
           只展示 AI 生成的原始款式图，不混入 SDS mockup、平台草稿图或上架资料图。上架资料仍会在任务工作台中使用官方 mockup。
         </p>
       </div>
-      <div className="flex flex-wrap gap-3">
-        <Button variant="secondary" onClick={() => window.location.reload()}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <Button className="w-full sm:w-auto" variant="secondary" onClick={() => window.location.reload()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
         <Link
           href="/listing-kits/sds"
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+          className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 sm:w-auto"
         >
           从 POD 生成
         </Link>
@@ -61,7 +61,7 @@ export function StyleGalleryMetrics({
   gallery: StyleGalleryResponse;
 }) {
   return (
-    <section className="grid gap-3 md:grid-cols-4">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard label="总数" value={gallery.total} />
       <MetricCard label="已保存 AI 图" value={gallery.summary.studioSaved} />
       <MetricCard
@@ -106,7 +106,7 @@ export function StyleGalleryDimensionFilters({
   visibleCount: number;
 }) {
   return (
-    <section className="grid gap-3 rounded-[1.25rem] border border-white/70 bg-white/82 p-4 shadow-sm md:grid-cols-[minmax(12rem,0.8fr)_minmax(10rem,0.45fr)_minmax(10rem,0.45fr)_auto] md:items-end">
+    <section className="grid gap-3 rounded-[1.25rem] border border-white/70 bg-white/82 p-4 shadow-sm lg:grid-cols-[minmax(12rem,0.8fr)_minmax(10rem,0.45fr)_minmax(10rem,0.45fr)_auto] lg:items-end">
       <Label className="space-y-1.5 text-sm">
         <span className="block text-xs font-semibold text-zinc-600">
           尺寸筛选
@@ -156,7 +156,7 @@ export function StyleGalleryDimensionFilters({
           onChange={(event) => setMinHeight(event.target.value)}
         />
       </Label>
-      <p className="text-sm text-zinc-500 md:pb-2">
+      <p className="text-sm text-zinc-500 lg:pb-2">
         显示 {visibleCount} / {itemCount}
       </p>
     </section>
@@ -308,11 +308,9 @@ function GalleryCard({
             {item.productName || item.prompt || item.fileName || item.id}
           </p>
         </div>
-        <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+        <div className="flex flex-col gap-2 text-xs text-zinc-500 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <span>{formatDate(item.updatedAt ?? item.createdAt)}</span>
-          {dimensions.label ? (
-            <span className="shrink-0">{dimensions.label}</span>
-          ) : null}
+          {dimensions.label ? <span className="shrink-0">{dimensions.label}</span> : null}
           {item.taskId ? (
             <Link
               href={`/listing-kits/${item.taskId}/workspace?platform=shein`}

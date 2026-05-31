@@ -54,7 +54,7 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
         返回标准商品列表
       </Link>
 
-      <section className="grid gap-5 border-b border-zinc-200 pb-6 lg:grid-cols-[1fr_320px]">
+      <section className="grid gap-5 border-b border-zinc-200 pb-6 xl:grid-cols-[1fr_320px]">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-teal-700">
             标准商品详情
@@ -67,7 +67,7 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
           </p>
         </div>
         <Card className="p-4">
-          <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="grid gap-3 text-center sm:grid-cols-3">
             <Metric label="图片" value={detail.data.summary.imageCount} />
             <Metric label="变体" value={detail.data.summary.variantCount} />
             <Metric label="需审核字段" value={detail.data.reviewFieldCount} />
@@ -75,7 +75,7 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
         </Card>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <Card className="overflow-hidden">
           <CanonicalImages product={product} />
           <div className="p-4 text-sm text-zinc-600">
@@ -138,7 +138,7 @@ function CanonicalImages({ product }: { product: CanonicalProduct }) {
           <span className="text-xs text-zinc-500">{images.length} 张</span>
         </div>
         {images.length > 0 ? (
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {images.map((image, index) => (
               <a
                 key={`${image.url}-${index}`}
@@ -235,8 +235,8 @@ function CanonicalVariants({ product }: { product: CanonicalProduct }) {
   return (
     <Card className="p-5">
       <h2 className="text-base font-semibold text-zinc-950">变体</h2>
-      <div className="mt-4 overflow-hidden rounded-lg border border-zinc-200">
-        <Table>
+      <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200">
+        <Table className="min-w-[32rem]">
           <TableHeader className="bg-zinc-50">
             <TableRow className="text-xs uppercase tracking-[0.14em] hover:bg-transparent">
               <TableHead className="px-3 py-2">SKU</TableHead>
@@ -273,7 +273,7 @@ function CanonicalFieldTraces({
         {traces.length === 0 ? (
           <p className="text-sm text-zinc-500">暂无字段追踪</p>
         ) : traces.map(({ field, trace }) => (
-          <div key={field} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
+          <div key={field} className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-medium text-zinc-900">{field}</div>
               {trace.review_reason ? <div className="mt-1 text-xs text-zinc-500">{trace.review_reason}</div> : null}

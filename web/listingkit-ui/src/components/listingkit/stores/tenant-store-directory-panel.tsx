@@ -163,16 +163,16 @@ export function TenantStoreDirectoryPanel() {
   }
 
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h2 className="text-base font-semibold text-zinc-950">店铺主数据</h2>
             <p className="text-sm text-zinc-500">
               共 {total} 个店铺。这里新增的是当前租户自己的店铺账号，后面的发布配置会直接复用这些店铺。
             </p>
           </div>
-          <form className="flex flex-wrap gap-2" onSubmit={(event) => event.preventDefault()}>
+          <form className="grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-end" onSubmit={(event) => event.preventDefault()}>
             <Label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
               平台
               <Select value={platform} onChange={(event) => setPlatform(event.target.value)}>
@@ -186,11 +186,11 @@ export function TenantStoreDirectoryPanel() {
               <Input
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                className="h-9 w-52"
+                className="h-9 w-full xl:w-52"
                 placeholder="搜索店铺"
               />
             </Label>
-            <Button type="button" onClick={() => void storeQuery.refetch()} className="mt-5" variant="secondary">
+            <Button type="button" onClick={() => void storeQuery.refetch()} className="w-full sm:col-span-2 xl:mt-0 xl:w-auto" variant="secondary">
               {loading ? <RefreshCw className="size-4 animate-spin" /> : <Search className="size-4" />}
               查询
             </Button>
@@ -329,7 +329,7 @@ export function TenantStoreDirectoryPanel() {
             title="店铺属性"
             description="平台、地区和店铺类型会影响后续选店与发布配置。"
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <StoreSelect
                 label="平台"
                 value={form.platform}

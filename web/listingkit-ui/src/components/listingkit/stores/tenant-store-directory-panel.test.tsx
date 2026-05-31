@@ -189,6 +189,15 @@ describe("TenantStoreDirectoryPanel", () => {
 
     expect(within(form).queryByLabelText("店铺 ID")).toBeNull();
   });
+
+  it("uses stacked mobile-safe search controls", async () => {
+    renderWithQueryClient(<TenantStoreDirectoryPanel />);
+
+    await screen.findByText("店铺主数据");
+
+    expect(screen.getAllByLabelText("店铺名称")[0]).not.toHaveClass("w-52");
+    expect(screen.getByRole("button", { name: "查询" })).toHaveClass("w-full");
+  });
 });
 
 function renderWithQueryClient(ui: React.ReactElement) {
