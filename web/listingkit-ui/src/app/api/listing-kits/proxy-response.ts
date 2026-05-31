@@ -4,11 +4,15 @@ export const PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_REVISION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS = 60_000;
+export const PROXY_STUDIO_UPSTREAM_TIMEOUT_MS = 60_000;
 
 export function resolveListingKitProxyTimeoutMs(
   method: string,
   path: string[],
 ) {
+  if (path[0] === "studio") {
+    return PROXY_STUDIO_UPSTREAM_TIMEOUT_MS;
+  }
   if (
     method.toUpperCase() === "POST" &&
     path.length === 3 &&
@@ -52,6 +56,22 @@ export function resolveListingKitProxyTimeoutMs(
     return PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS;
   }
   return PROXY_UPSTREAM_TIMEOUT_MS;
+}
+
+export function buildListingKitProxyFailureMessage(
+  error: unknown,
+  {
+    timeoutMs,
+    timedOut,
+  }: {
+    timeoutMs: number;
+    timedOut: boolean;
+  },
+) {
+  if (timedOut) {
+    return `ListingKit upstream request timed out after ${timeoutMs}ms`;
+  }
+  return error instanceof Error ? error.message : "ListingKit upstream request failed";
 }
 
 export function shouldProxyListingKitResponseAsBinary(

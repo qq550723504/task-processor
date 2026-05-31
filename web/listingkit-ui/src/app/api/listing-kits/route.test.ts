@@ -14,6 +14,8 @@ import {
   PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS,
   PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
+  PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
+  buildListingKitProxyFailureMessage,
   resolveListingKitProxyTimeoutMs,
   shouldProxyListingKitResponseAsBinary,
 } from "@/app/api/listing-kits/proxy-response";
@@ -63,6 +65,44 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     expect(resolveListingKitProxyTimeoutMs("GET", ["admin", "product-data"])).toBe(
       PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
     );
+  });
+
+  it("extends the timeout for studio batch generation routes", () => {
+    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "async-jobs"])).toBe(
+      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
+    );
+    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batch-runs"])).toBe(
+      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
+    );
+    expect(
+      resolveListingKitProxyTimeoutMs("GET", ["studio", "batch-runs", "run-1"]),
+    ).toBe(PROXY_STUDIO_UPSTREAM_TIMEOUT_MS);
+    expect(
+      resolveListingKitProxyTimeoutMs("POST", ["studio", "sessions", "session-1", "designs", "append"]),
+    ).toBe(PROXY_STUDIO_UPSTREAM_TIMEOUT_MS);
+    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batches"])).toBe(
+      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
+    );
+  });
+});
+
+describe("buildListingKitProxyFailureMessage", () => {
+  it("returns a deterministic timeout message when the proxy abort controller fired", () => {
+    expect(
+      buildListingKitProxyFailureMessage(new Error("This operation was aborted"), {
+        timeoutMs: 60_000,
+        timedOut: true,
+      }),
+    ).toBe("ListingKit upstream request timed out after 60000ms");
+  });
+
+  it("preserves the upstream error message when the request did not time out", () => {
+    expect(
+      buildListingKitProxyFailureMessage(new Error("upstream connection reset"), {
+        timeoutMs: 60_000,
+        timedOut: false,
+      }),
+    ).toBe("upstream connection reset");
   });
 });
 
@@ -125,6 +165,29 @@ describe("buildListingKitUpstreamHeaders", () => {
 
     expect(headers.get("visit-tenant-id")).toBeNull();
     expect(headers.get("login-user")).toBeNull();
+  });
+
+  it("forwards shein studio trace headers to the upstream request", () => {
+    const request = new Request("http://localhost/api/listing-kits/studio/async-jobs", {
+      headers: {
+        accept: "application/json",
+        "x-listingkit-batch-run-id": "run-1",
+        "x-listingkit-batch-id": "batch-1",
+        "x-listingkit-studio-session-id": "session-1",
+        "x-listingkit-queue-mode": "generate",
+        "x-listingkit-queue-index": "2",
+        "x-listingkit-queue-total": "5",
+      },
+    });
+
+    const headers = buildListingKitUpstreamHeaders(request.headers);
+
+    expect(headers.get("X-ListingKit-Batch-Run-Id")).toBe("run-1");
+    expect(headers.get("X-ListingKit-Batch-Id")).toBe("batch-1");
+    expect(headers.get("X-ListingKit-Studio-Session-Id")).toBe("session-1");
+    expect(headers.get("X-ListingKit-Queue-Mode")).toBe("generate");
+    expect(headers.get("X-ListingKit-Queue-Index")).toBe("2");
+    expect(headers.get("X-ListingKit-Queue-Total")).toBe("5");
   });
 });
 

@@ -10,6 +10,10 @@ import {
   parseJsonResponse,
   ResponseJsonParseError,
 } from "@/lib/api/response-json";
+import {
+  buildListingKitTraceHeaders,
+  isListingKitStudioPath,
+} from "@/lib/listingkit/request-trace";
 import type { ConditionalState, QueueQuery } from "@/lib/types/listingkit";
 
 const API_BASE =
@@ -49,10 +53,16 @@ export class ApiError extends Error {
   }
 }
 
-function buildHeaders(conditional?: ConditionalState | null) {
-  const headers = new Headers({
-    Accept: "application/json",
-  });
+function buildHeaders(
+  path: string,
+  conditional?: ConditionalState | null,
+  source?: HeadersInit,
+) {
+  const headers = isListingKitStudioPath(path)
+    ? buildListingKitTraceHeaders(source)
+    : new Headers(source);
+
+  headers.set("Accept", "application/json");
 
   if (conditional?.etag) {
     headers.set("If-None-Match", conditional.etag);
@@ -73,7 +83,7 @@ export async function apiRequest<T>(
   { method = "GET", query, body, conditional, timeoutMs, signal }: RequestOptions = {},
 ): Promise<T> {
   const url = buildApiUrl(path, query);
-  const headers = buildHeaders(conditional);
+  const headers = buildHeaders(path, conditional);
   const controller = timeoutMs && !signal ? new AbortController() : undefined;
   const activeSignal = signal ?? controller?.signal;
   const timeout =
@@ -169,9 +179,7 @@ export async function apiAsyncRequest<T>(
       const response = await fetchWithRetry(
         buildApiUrl(`/studio/async-jobs/${encodeURIComponent(startedJobId)}`),
         {
-          headers: new Headers({
-            Accept: "application/json",
-          }),
+          headers: buildHeaders(`/studio/async-jobs/${encodeURIComponent(startedJobId)}`),
           cache: "no-store",
         },
         { retries: 1, retryDelayMs: 1200 },
@@ -264,9 +272,7 @@ export async function apiResumeAsyncJob<T>(
       const response = await fetchWithRetry(
         buildApiUrl(`/studio/async-jobs/${encodeURIComponent(jobId)}`),
         {
-          headers: new Headers({
-            Accept: "application/json",
-          }),
+          headers: buildHeaders(`/studio/async-jobs/${encodeURIComponent(jobId)}`),
           cache: "no-store",
         },
         { retries: 1, retryDelayMs: 1200 },
@@ -367,10 +373,13 @@ async function startBackendAsyncJob<T>(path: string, body: unknown, sessionId?: 
     buildApiUrl("/studio/async-jobs"),
     {
       method: "POST",
-      headers: new Headers({
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      }),
+      headers: buildHeaders(
+        "/studio/async-jobs",
+        null,
+        new Headers({
+          "Content-Type": "application/json",
+        }),
+      ),
       body: JSON.stringify({ path, body, session_id: sessionId?.trim() || undefined }),
     },
     { retries: 0 },

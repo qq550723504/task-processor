@@ -19,6 +19,7 @@ type handler struct {
 	generationTaskService      listingkit.GenerationTaskService
 	childTaskRetryService      childTaskRetryService
 	studioMediaService         listingkit.StudioMediaService
+	studioBatchRunService      studioBatchRunHandlerService
 	studioSessionService       studioSessionAsyncJobService
 	uploadedImageDeleteService uploadedImageDeleteService
 	storeAdminService          listingkit.StoreAdminService
@@ -79,6 +80,13 @@ type sdsBaselineWarmService interface {
 
 type studioSessionAsyncJobService interface {
 	UpdateStudioSession(ctx context.Context, sessionID string, req *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error)
+}
+
+type studioBatchRunHandlerService interface {
+	CreateStudioBatchRun(ctx context.Context, req *listingkit.CreateStudioBatchRunRequest) (*listingkit.StudioBatchRunRecord, []listingkit.StudioBatchRunItemRecord, error)
+	GetStudioBatchRun(ctx context.Context, runID string) (*listingkit.StudioBatchRunRecord, error)
+	ListStudioBatchRunItems(ctx context.Context, runID string) ([]listingkit.StudioBatchRunItemRecord, error)
+	CancelStudioBatchRun(ctx context.Context, runID string) error
 }
 
 type HandlerOption func(*handler)
@@ -161,11 +169,18 @@ func WithStudioAsyncJobRepository(repo listingkit.StudioAsyncJobRepository) Hand
 	})
 }
 
+func WithStudioBatchRunService(service studioBatchRunHandlerService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.studioBatchRunService = service
+	})
+}
+
 func newHandlerWithDefaults(service HandlerService, studioAsyncJobs *studioAsyncJobStore) *handler {
 	return &handler{
 		taskLifecycleService:  service,
 		generationTaskService: service,
 		studioMediaService:    service,
+		studioBatchRunService: nil,
 		storeAdminService:     service,
 		studioAsyncJobs:       studioAsyncJobs,
 	}
@@ -177,6 +192,9 @@ func (h *handler) attachOptionalServices(service HandlerService) {
 	}
 	if sessionService, ok := service.(studioSessionAsyncJobService); ok {
 		h.studioSessionService = sessionService
+	}
+	if batchRunService, ok := service.(studioBatchRunHandlerService); ok {
+		h.studioBatchRunService = batchRunService
 	}
 	if warmService, ok := service.(sdsBaselineWarmService); ok {
 		h.sdsBaselineWarmService = warmService

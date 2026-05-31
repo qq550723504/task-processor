@@ -14,6 +14,7 @@ import (
 type builtRepositories struct {
 	taskRepository                 listingkit.Repository
 	studioAsyncJobRepository       listingkit.StudioAsyncJobRepository
+	studioBatchRunRepository       listingkit.StudioBatchRunRepository
 	storeRepository                listingadmin.StoreRepository
 	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
 	importTaskRepository           listingadmin.ImportTaskRepository
@@ -38,6 +39,7 @@ type builtRepositories struct {
 type builtCoreRepositories struct {
 	taskRepository           listingkit.Repository
 	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
+	studioBatchRunRepository listingkit.StudioBatchRunRepository
 }
 
 type coreTaskRepositories struct {
@@ -46,6 +48,7 @@ type coreTaskRepositories struct {
 
 type coreAsyncRepositories struct {
 	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
+	studioBatchRunRepository listingkit.StudioBatchRunRepository
 }
 
 type builtLateCoreRepositories struct {
@@ -119,6 +122,7 @@ func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*buil
 	return &builtCoreRepositories{
 		taskRepository:           taskRepos.taskRepository,
 		studioAsyncJobRepository: asyncRepos.studioAsyncJobRepository,
+		studioBatchRunRepository: asyncRepos.studioBatchRunRepository,
 	}, nil
 }
 
@@ -137,8 +141,13 @@ func buildCoreAsyncRepositories(input BuildServiceInput, closers *closerStack) (
 	if err != nil {
 		return nil, err
 	}
+	studioBatchRunRepository, err := buildWithClosers(input.Repositories.Core.StudioBatchRun, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
 	return &coreAsyncRepositories{
 		studioAsyncJobRepository: studioAsyncJobRepository,
+		studioBatchRunRepository: studioBatchRunRepository,
 	}, nil
 }
 
@@ -320,6 +329,7 @@ func applyCoreRepositories(repos *builtRepositories, core *builtCoreRepositories
 	}
 	repos.taskRepository = core.taskRepository
 	repos.studioAsyncJobRepository = core.studioAsyncJobRepository
+	repos.studioBatchRunRepository = core.studioBatchRunRepository
 }
 
 func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCoreRepositories) {

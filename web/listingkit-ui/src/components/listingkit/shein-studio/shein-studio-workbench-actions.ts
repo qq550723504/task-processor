@@ -20,6 +20,11 @@ import {
 } from "@/lib/shein-studio/grouped-image-mode";
 import { parsePositiveInt } from "@/lib/shein-studio/create-review-tasks";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
+import {
+  beginListingKitTraceRun,
+  logListingKitTraceEvent,
+  writeListingKitTraceContext,
+} from "@/lib/listingkit/request-trace";
 import type {
   GroupedSDSSelectionEligibility,
   SDSBaselineStatus,
@@ -28,6 +33,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
+  SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
@@ -83,6 +89,12 @@ type UseSheinStudioDesignActionsParams = {
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
+  batchTraceContext: {
+    batchId?: string;
+    queueMode?: SheinStudioBatchQueueMode | null;
+    queueIndex?: number;
+    queueTotal?: number;
+  };
 };
 
 export function useSheinStudioDesignActions({
@@ -114,6 +126,7 @@ export function useSheinStudioDesignActions({
   transparentBackground,
   variationIntensity,
   hasLocalWorkflowStateRef,
+  batchTraceContext,
 }: UseSheinStudioDesignActionsParams) {
   const { handleCreateTasks } = useSheinStudioTaskCreationAction({
     activeSelection,
@@ -230,6 +243,18 @@ export function useSheinStudioDesignActions({
     workbench.setField("generationJobs", []);
     workbench.setField("draftWarning", "");
     workbench.setField("isGenerating", true);
+    const traceContext = beginListingKitTraceRun({
+      batchId: batchTraceContext.batchId,
+      queueMode: batchTraceContext.queueMode ?? undefined,
+      queueIndex: batchTraceContext.queueIndex,
+      queueTotal: batchTraceContext.queueTotal,
+    });
+    logListingKitTraceEvent("info", "studio generation started", {
+      promptLength: prompt.trim().length,
+      selectionVariantId: activeSelection.variantId,
+      styleCount,
+      traceContext,
+    });
     const nextGroups = buildNextPromptHistoryGroups();
     if (nextGroups !== groups) {
       workbench.setField("groups", nextGroups);
@@ -244,6 +269,10 @@ export function useSheinStudioDesignActions({
         if (!sessionId) {
           return "";
         }
+        writeListingKitTraceContext({ sessionId });
+        logListingKitTraceEvent("info", "studio generation session synced", {
+          sessionId,
+        });
         await updateSheinStudioSession(
           sessionId,
           {
@@ -272,10 +301,9 @@ export function useSheinStudioDesignActions({
         );
         return sessionId;
       } catch (error) {
-        console.warn(
-          "shein studio generation session sync failed",
-          error instanceof Error ? error.message : error,
-        );
+        logListingKitTraceEvent("warn", "studio generation session sync failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         return "";
       }
     })();
@@ -396,6 +424,11 @@ export function useSheinStudioDesignActions({
                         index === existingIndex ? nextJob : job,
                       )
                     : [...nextGenerationJobs, nextJob];
+                logListingKitTraceEvent("info", "studio async job started", {
+                  jobId,
+                  targetGroupKey: target.key,
+                  targetGroupLabel: target.label,
+                });
                 syncGenerationJobs(jobs);
               },
             },
@@ -466,6 +499,11 @@ export function useSheinStudioDesignActions({
         draftSaveStatus: "pending",
         selectionVariantId: activeSelection.variantId,
       });
+      logListingKitTraceEvent("info", "studio generation completed", {
+        designCount: accumulatedDesigns.length,
+        warningCount: aggregatedWarnings.length,
+        errorCount: targetErrors.length,
+      });
       if (aggregatedWarnings.length > 0 || targetErrors.length > 0) {
         workbench.setField(
           "generationWarning",
@@ -494,6 +532,9 @@ export function useSheinStudioDesignActions({
       }
     } catch (error) {
       const message = formatSubscriptionApiError(error);
+      logListingKitTraceEvent("warn", "studio generation failed", {
+        error: message,
+      });
       workbench.setField("designs", []);
       workbench.setField("selectedIds", []);
       workbench.setField("generationJobs", []);
@@ -538,6 +579,16 @@ export function useSheinStudioDesignActions({
 
     workbench.setField("generationError", "");
     workbench.setField("regeneratingId", designId);
+    beginListingKitTraceRun({
+      batchId: batchTraceContext.batchId,
+      queueMode: batchTraceContext.queueMode ?? undefined,
+      queueIndex: batchTraceContext.queueIndex,
+      queueTotal: batchTraceContext.queueTotal,
+    });
+    logListingKitTraceEvent("info", "studio regenerate started", {
+      designId,
+      selectionVariantId: activeSelection.variantId,
+    });
     const nextGroups = buildNextPromptHistoryGroups();
     if (nextGroups !== groups) {
       workbench.setField("groups", nextGroups);
@@ -604,6 +655,9 @@ export function useSheinStudioDesignActions({
         ? selectedIds
         : [...selectedIds, designId];
       workbench.setField("selectedIds", nextSelectedIds);
+      logListingKitTraceEvent("info", "studio regenerate completed", {
+        designId,
+      });
       void persistDraft(
         {
           designs: nextDesigns,
@@ -615,7 +669,12 @@ export function useSheinStudioDesignActions({
         },
       ).catch(() => undefined);
     } catch (error) {
-      workbench.setField("generationError", formatSubscriptionApiError(error));
+      const message = formatSubscriptionApiError(error);
+      logListingKitTraceEvent("warn", "studio regenerate failed", {
+        designId,
+        error: message,
+      });
+      workbench.setField("generationError", message);
     } finally {
       workbench.setField("regeneratingId", "");
     }

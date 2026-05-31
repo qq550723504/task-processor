@@ -18,7 +18,9 @@ func (s *service) initializeTaskCollaborators() {
 	s.taskGeneration = s.taskGenerationOrDefault()
 	s.taskRevision = s.taskRevisionOrDefault()
 	s.taskStudioSession = s.taskStudioSessionOrDefault()
+	s.taskStudioBatchRun = s.taskStudioBatchRunOrDefault()
 	s.taskStudioMedia = s.taskStudioMediaOrDefault()
+	s.initializeStudioBatchRunRecovery()
 }
 
 func (s *service) initializeSubmitCollaborators() {

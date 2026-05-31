@@ -37,6 +37,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				StudioAsyncJob: func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
 					return nil, nil, nil
 				},
+				StudioBatchRun: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				Subscription: func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
 					return nil, nil, nil
 				},
@@ -1250,6 +1253,9 @@ func buildSuccessfulServiceInputFixture() BuildServiceInput {
 	}
 	input.Repositories.Core.StudioAsyncJob = func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
 		return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	}
+	input.Repositories.Core.StudioBatchRun = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
+		return listingkit.NewMemStudioBatchRunRepository(), nil, nil
 	}
 	input.Repositories.Core.Subscription = func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
 		return listingsubscription.NewMemRepository(), nil, nil

@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+
+	corelogger "task-processor/internal/core/logger"
 )
 
 type taskStudioSessionServiceConfig struct {
@@ -18,6 +21,8 @@ type taskStudioSessionServiceConfig struct {
 type taskStudioSessionService struct {
 	repo StudioSessionRepository
 }
+
+var studioSessionLogger = corelogger.GetGlobalLogger("listingkit.studio.session")
 
 func newTaskStudioSessionService(config taskStudioSessionServiceConfig) *taskStudioSessionService {
 	return &taskStudioSessionService{repo: config.repo}
@@ -172,7 +177,15 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 	if err := s.repo.UpdateSession(ctx, session); err != nil {
 		return nil, err
 	}
-	return s.loadStudioSessionDetail(ctx, session)
+	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+		"session_id":            session.ID,
+		"status":                session.Status,
+		"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
+		"generation_jobs_count": len(session.GenerationJobs),
+		"approved_design_count": len(session.ApprovedDesignIDs),
+		"created_task_count":    len(session.CreatedTasks),
+	})).Info("studio session updated")
+	return studioSessionDetailWithoutDesigns(session), nil
 }
 
 func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error) {
@@ -250,7 +263,7 @@ func (s *taskStudioSessionService) AppendStudioSessionDesigns(ctx context.Contex
 		return nil, err
 	}
 	if req == nil {
-		return s.loadStudioSessionDetail(ctx, session)
+		return studioSessionDetailWithoutDesigns(session), nil
 	}
 	if req.Status != nil {
 		session.Status = *req.Status
@@ -272,7 +285,14 @@ func (s *taskStudioSessionService) AppendStudioSessionDesigns(ctx context.Contex
 	if err := s.repo.UpsertDesigns(ctx, sessionID, req.ApprovedDesignIDs, req.Designs); err != nil {
 		return nil, err
 	}
-	return s.loadStudioSessionDetail(ctx, session)
+	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+		"session_id":            session.ID,
+		"status":                session.Status,
+		"incoming_design_count": len(req.Designs),
+		"generation_jobs_count": len(session.GenerationJobs),
+		"approved_design_count": len(session.ApprovedDesignIDs),
+	})).Info("studio session appended designs")
+	return studioSessionDetailWithoutDesigns(session), nil
 }
 
 func (s *taskStudioSessionService) ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error) {
@@ -409,6 +429,18 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	if err := s.repo.ReplaceDesigns(ctx, session.ID, req.ApprovedDesignIDs, req.Designs); err != nil {
 		return nil, err
 	}
+	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+		"session_id":              session.ID,
+		"batch_name":              session.BatchName,
+		"is_create":               isCreate,
+		"status":                  session.Status,
+		"design_count":            len(req.Designs),
+		"approved_design_count":   len(req.ApprovedDesignIDs),
+		"created_task_count":      len(req.CreatedTasks),
+		"generation_jobs_count":   len(req.GenerationJobs),
+		"grouped_selection_count": len(req.GroupedSelections),
+		"shein_store_id":          session.SheinStoreID,
+	})).Info("studio batch upserted")
 	return s.loadStudioSessionDetail(ctx, session)
 }
 
@@ -509,4 +541,24 @@ func (s *taskStudioSessionService) loadStudioSessionDetail(ctx context.Context, 
 		Session: session,
 		Designs: designs,
 	}, nil
+}
+
+func studioSessionDetailWithoutDesigns(session *SheinStudioSession) *SheinStudioSessionDetail {
+	return &SheinStudioSessionDetail{
+		Session: session,
+		Designs: []SheinStudioDesign{},
+	}
+}
+
+func studioSessionLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {
+	if fields == nil {
+		fields = logrus.Fields{}
+	}
+	for key, value := range RequestTraceFromContext(ctx).LogFields() {
+		if value == "" || value == 0 {
+			continue
+		}
+		fields[key] = value
+	}
+	return fields
 }

@@ -60,6 +60,10 @@ import {
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
+import {
+  clearListingKitTraceContext,
+  writeListingKitTraceContext,
+} from "@/lib/listingkit/request-trace";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { getCurrentSubscription } from "@/lib/api/subscription";
@@ -476,6 +480,7 @@ export function SheinStudioWorkbench({
     () => savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null,
     [currentQueuedBatchId, savedBatches],
   );
+  const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
   const currentDedicatedBatch = useMemo(
     () =>
       initialBatchId
@@ -836,6 +841,24 @@ export function SheinStudioWorkbench({
     setSelectedSdsImages,
   ]);
 
+  useEffect(() => {
+    writeListingKitTraceContext({
+      batchId: traceBatchId || undefined,
+      queueMode: batchQueueMode ?? undefined,
+      queueIndex: batchQueueMode ? queuedBatchIndex + 1 : undefined,
+      queueTotal: batchQueueMode ? queuedBatchIds.length : undefined,
+    });
+  }, [
+    batchQueueMode,
+    queuedBatchIds.length,
+    queuedBatchIndex,
+    traceBatchId,
+  ]);
+
+  useEffect(() => () => {
+    clearListingKitTraceContext();
+  }, []);
+
   const { handleCreateTasks, handleGenerate, handleRegenerate } =
     useSheinStudioDesignActions({
       activeGroupId,
@@ -866,6 +889,12 @@ export function SheinStudioWorkbench({
       transparentBackground,
       variationIntensity,
       hasLocalWorkflowStateRef,
+      batchTraceContext: {
+        batchId: traceBatchId || undefined,
+        queueMode: batchQueueMode,
+        queueIndex: batchQueueMode ? queuedBatchIndex + 1 : undefined,
+        queueTotal: batchQueueMode ? queuedBatchIds.length : undefined,
+      },
     });
 
   const { handleDeleteBatch, handleLoadBatch, handleSaveBatch } =

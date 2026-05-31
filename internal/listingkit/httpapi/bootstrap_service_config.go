@@ -26,6 +26,7 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 	return listingkit.ServiceCoreDependencies{
 		Repository:                     in.repositories.taskRepository,
 		StudioSessionRepository:        in.repositories.studioSessionRepository,
+		StudioBatchRunRepository:       in.repositories.studioBatchRunRepository,
 		ProductService:                 in.input.ProductService,
 		ImageService:                   in.input.ImageService,
 		SDSSyncService:                 in.input.SDSSyncService,

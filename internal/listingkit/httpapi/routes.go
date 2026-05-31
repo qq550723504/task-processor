@@ -174,6 +174,13 @@ type StudioGenerationRouteHandler interface {
 	GetStudioAsyncJob(c *gin.Context)
 }
 
+type studioBatchRunRouteHandler interface {
+	CreateStudioBatchRun(c *gin.Context)
+	GetStudioBatchRun(c *gin.Context)
+	ListStudioBatchRunItems(c *gin.Context)
+	CancelStudioBatchRun(c *gin.Context)
+}
+
 type RouteHandler interface {
 	TaskRouteHandler
 	SettingsRouteHandler
@@ -345,11 +352,21 @@ func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler AdminRou
 }
 
 func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler StudioGenerationRouteHandler) []httproute.Descriptor {
-	return append(routes,
+	routes = append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: handler.GenerateStudioDesigns},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: handler.GenerateStudioProductImages},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/async-jobs", Module: "listing-kit", Handler: handler.StartStudioAsyncJob},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/async-jobs/:job_id", Module: "listing-kit", Handler: handler.GetStudioAsyncJob},
+	)
+	batchRuns, ok := handler.(studioBatchRunRouteHandler)
+	if !ok {
+		return routes
+	}
+	return append(routes,
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs", Module: "listing-kit", Handler: batchRuns.CreateStudioBatchRun},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id", Module: "listing-kit", Handler: batchRuns.GetStudioBatchRun},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/items", Module: "listing-kit", Handler: batchRuns.ListStudioBatchRunItems},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/cancel", Module: "listing-kit", Handler: batchRuns.CancelStudioBatchRun},
 	)
 }
 

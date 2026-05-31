@@ -26,6 +26,7 @@ type service struct {
 	taskGeneration                 *taskGenerationService
 	taskRevision                   *taskRevisionService
 	taskStudioSession              *taskStudioSessionService
+	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
@@ -36,6 +37,7 @@ type service struct {
 	taskDirectSubmission           *taskDirectSubmissionService
 	taskTemporalSubmissionAdapter  *taskTemporalSubmissionAdapter
 	studioSessionRepo              StudioSessionRepository
+	studioBatchRunRepo             StudioBatchRunRepository
 	productSvc                     ProductService
 	imageSvc                       ImageService
 	sdsSyncSvc                     sdsusecase.Service
@@ -81,6 +83,7 @@ type service struct {
 type ServiceCoreDependencies struct {
 	Repository                     Repository
 	StudioSessionRepository        StudioSessionRepository
+	StudioBatchRunRepository       StudioBatchRunRepository
 	ProductService                 ProductService
 	ImageService                   ImageService
 	SDSSyncService                 sdsusecase.Service
@@ -157,6 +160,7 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 	return &service{
 		repo:                           config.Core.Repository,
 		studioSessionRepo:              config.Core.StudioSessionRepository,
+		studioBatchRunRepo:             config.Core.StudioBatchRunRepository,
 		productSvc:                     config.Core.ProductService,
 		imageSvc:                       config.Core.ImageService,
 		sdsSyncSvc:                     config.Core.SDSSyncService,

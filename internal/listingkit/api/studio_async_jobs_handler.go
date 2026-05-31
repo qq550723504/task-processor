@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 
+	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
 )
@@ -129,6 +131,10 @@ func newStudioAsyncJobID() string {
 	return hex.EncodeToString(data[:])
 }
 
+var studioAsyncJobLogger = corelogger.GetGlobalLogger("listingkit.studio.async")
+
+var executeStudioDesignBatch = listingkit.ExecuteStudioDesignBatch
+
 func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	var req startStudioAsyncJobRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -157,6 +163,13 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "async_job_create_failed", "message": err.Error()})
 		return
 	}
+	studioAsyncJobLogger.WithFields(studioAsyncLogFields(reqCtx, logrus.Fields{
+		"job_id":       job.ID,
+		"path":         req.Path,
+		"session_id":   strings.TrimSpace(req.SessionID),
+		"body_bytes":   len(req.Body),
+		"usage_metric": metric,
+	})).Info("studio async job accepted")
 	ctx := detachedRequestContext(c)
 	baseURL := requestBaseURL(c)
 	sessionID := strings.TrimSpace(req.SessionID)
@@ -178,6 +191,14 @@ func (h *handler) GetStudioAsyncJob(c *gin.Context) {
 }
 
 func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string) {
+	startedAt := time.Now()
+	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+		"job_id":       jobID,
+		"path":         path,
+		"session_id":   strings.TrimSpace(sessionID),
+		"body_bytes":   len(body),
+		"usage_metric": usageMetric,
+	})).Info("studio async job started")
 	var result any
 	var err error
 	status := http.StatusInternalServerError
@@ -190,10 +211,18 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			status = http.StatusBadRequest
 			break
 		}
-		response, callErr := h.studioMediaService.GenerateStudioDesigns(ctx, &req)
+		execution, callErr := executeStudioDesignBatch(ctx, h.studioMediaService, listingkit.StudioBatchGenerateExecutionInput{
+			Request:   &req,
+			SessionID: sessionID,
+		})
 		if callErr != nil {
 			err = callErr
 			break
+		}
+		var response *listingkit.StudioDesignResponse
+		if execution != nil {
+			response = execution.Response
+			sessionID = execution.SessionID
 		}
 		if response != nil {
 			for idx := range response.Images {
@@ -232,6 +261,14 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		if path == "/studio/designs" {
 			h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusFailed, jobID, err.Error())
 		}
+		studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+			"job_id":       jobID,
+			"path":         path,
+			"session_id":   strings.TrimSpace(sessionID),
+			"duration_ms":  time.Since(startedAt).Milliseconds(),
+			"status_code":  status,
+			"usage_metric": usageMetric,
+		})).WithError(err).Warn("studio async job failed")
 		h.studioAsyncJobs.fail(ctx, jobID, err, status)
 		return
 	}
@@ -239,6 +276,14 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
 	}
 	h.studioAsyncJobs.succeed(ctx, jobID, result)
+	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+		"job_id":       jobID,
+		"path":         path,
+		"session_id":   strings.TrimSpace(sessionID),
+		"duration_ms":  time.Since(startedAt).Milliseconds(),
+		"status_code":  http.StatusOK,
+		"usage_metric": usageMetric,
+	})).Info("studio async job succeeded")
 }
 
 func (h *handler) syncStudioDesignAsyncJobSession(
@@ -267,6 +312,19 @@ func (h *handler) syncStudioDesignAsyncJobSession(
 		GenerationJobID: &trimmedJobID,
 		GenerationError: &trimmedErr,
 	})
+}
+
+func studioAsyncLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {
+	if fields == nil {
+		fields = logrus.Fields{}
+	}
+	for key, value := range listingkit.RequestTraceFromContext(ctx).LogFields() {
+		if value == "" || value == 0 {
+			continue
+		}
+		fields[key] = value
+	}
+	return fields
 }
 
 func requestBaseURL(c *gin.Context) string {

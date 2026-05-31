@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { SheinStudioBatchRunProgress } from "@/components/listingkit/shein-studio/shein-studio-batch-run-progress";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
+import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
 import {
   clearLocalSheinStudioDraftSnapshot,
   loadLocalSheinStudioDraftSnapshotDetail,
@@ -102,6 +104,16 @@ function getRecentBatchErrorMessage(error: unknown) {
   return "最近批次这次没有成功加载出来，请重试；如果持续失败，再检查登录态或后端服务。";
 }
 
+function getBatchRunStartErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.status === 404) {
+    return "这轮批量生成里有批次已经不存在了。请先刷新最近批次列表，再重新选择。";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "这轮批量生成没有成功启动，请稍后重试。";
+}
+
 export function SdsHomepageEntry() {
   const router = useRouter();
   const [localDraftSnapshotDetail, setLocalDraftSnapshotDetail] = useState(
@@ -111,6 +123,8 @@ export function SdsHomepageEntry() {
   const [summariesError, setSummariesError] = useState("");
   const [isLoadingSummaries, setIsLoadingSummaries] = useState(true);
   const [showAllBatches, setShowAllBatches] = useState(false);
+  const [activeBatchRunId, setActiveBatchRunId] = useState("");
+  const [batchRunError, setBatchRunError] = useState("");
   const fullDashboardHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const refreshSummaries = useCallback(async () => {
@@ -194,6 +208,27 @@ export function SdsHomepageEntry() {
       recommendedRisk.reasonCode
     : "";
   const featuredSummaries = summaries.slice(0, 3);
+
+  async function handleOpenBatchQueue(input: {
+    batchIds: string[];
+    mode: "generate" | "create_tasks";
+  }) {
+    if (input.batchIds.length === 0) {
+      return;
+    }
+    if (input.mode !== "generate") {
+      router.push(`/listing-kits/sds/batches/${input.batchIds[0]}`);
+      return;
+    }
+
+    setBatchRunError("");
+    try {
+      const response = await startSheinStudioBatchRun(input.batchIds);
+      setActiveBatchRunId(response.run.id);
+    } catch (error) {
+      setBatchRunError(getBatchRunStartErrorMessage(error));
+    }
+  }
 
   function handleCreateNew() {
     router.push("/listing-kits/sds/new");
@@ -322,6 +357,22 @@ export function SdsHomepageEntry() {
     [refreshSummaries],
   );
 
+  if (activeBatchRunId) {
+    return (
+      <div className="flex-1 overflow-hidden bg-zinc-50">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 lg:px-6">
+          <SheinStudioBatchRunProgress
+            onBack={() => {
+              setActiveBatchRunId("");
+              void refreshSummaries();
+            }}
+            runId={activeBatchRunId}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 overflow-hidden bg-zinc-50">
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 lg:px-6">
@@ -367,6 +418,11 @@ export function SdsHomepageEntry() {
         </section>
 
         <section className="space-y-3" id="sds-recent-batches">
+          {batchRunError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900 shadow-sm">
+              {batchRunError}
+            </div>
+          ) : null}
           {summariesError ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
@@ -498,6 +554,9 @@ export function SdsHomepageEntry() {
                 onCreateBatch={handleCreateNew}
                 onDeleteSummary={handleDeleteSummary}
                 onDuplicateSummary={handleDuplicateSummary}
+                onOpenBatchQueue={(input) => {
+                  void handleOpenBatchQueue(input);
+                }}
                 onRenameSummary={handleRenameSummary}
                 onSelectSummary={handleOpenSummary}
                 onSelectSummaryAction={(summary, action) =>

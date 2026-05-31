@@ -337,8 +337,11 @@ func TestStudioSessionServiceAppendDesignsPreservesExistingResults(t *testing.T)
 	if err != nil {
 		t.Fatalf("append first design: %v", err)
 	}
-	if len(appended.Designs) != 1 || appended.Designs[0].ID != "design-1" {
-		t.Fatalf("first append designs = %#v, want only design-1", appended.Designs)
+	if appended.Session == nil || appended.Session.Status != reviewing {
+		t.Fatalf("first append session = %#v, want reviewing status", appended.Session)
+	}
+	if len(appended.Designs) != 0 {
+		t.Fatalf("first append designs = %#v, want empty lightweight response", appended.Designs)
 	}
 
 	appended, err = svc.AppendStudioSessionDesigns(ctx, detail.Session.ID, &AppendStudioSessionDesignsRequest{
@@ -351,11 +354,95 @@ func TestStudioSessionServiceAppendDesignsPreservesExistingResults(t *testing.T)
 	if err != nil {
 		t.Fatalf("append second design: %v", err)
 	}
-	if len(appended.Designs) != 2 {
-		t.Fatalf("appended designs len = %d, want 2", len(appended.Designs))
-	}
 	if appended.Session == nil || len(appended.Session.ApprovedDesignIDs) != 2 {
 		t.Fatalf("approved ids = %#v, want [design-1 design-2]", appended.Session)
+	}
+	if len(appended.Designs) != 0 {
+		t.Fatalf("second append designs = %#v, want empty lightweight response", appended.Designs)
+	}
+
+	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if len(loaded.Designs) != 2 {
+		t.Fatalf("persisted designs len = %d, want 2", len(loaded.Designs))
+	}
+}
+
+func TestStudioSessionServiceUpdateDoesNotReloadDesignsForMetadataOnlyWrites(t *testing.T) {
+	svc := newStudioSessionTestService()
+	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	reviewing := SheinStudioSessionStatusReviewing
+	prompt := "retro cherries"
+	updated, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Status: &reviewing,
+		Prompt: &prompt,
+	})
+	if err != nil {
+		t.Fatalf("update session: %v", err)
+	}
+
+	if repo.listDesignsCalls != 0 {
+		t.Fatalf("list designs calls = %d, want 0 for metadata-only update", repo.listDesignsCalls)
+	}
+	if updated.Session == nil || updated.Session.Prompt != prompt {
+		t.Fatalf("updated session = %#v, want prompt %q", updated.Session, prompt)
+	}
+	if len(updated.Designs) != 0 {
+		t.Fatalf("updated designs = %#v, want empty result without reload", updated.Designs)
+	}
+}
+
+func TestStudioSessionServiceAppendDoesNotReloadExistingDesigns(t *testing.T) {
+	svc := newStudioSessionTestService()
+	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	reviewing := SheinStudioSessionStatusReviewing
+	appended, err := svc.AppendStudioSessionDesigns(ctx, detail.Session.ID, &AppendStudioSessionDesignsRequest{
+		Status:            &reviewing,
+		ApprovedDesignIDs: []string{"design-1"},
+		Designs: []SheinStudioDesign{
+			{ID: "design-1", ImageURL: "https://example.com/design-1.png", Prompt: "first"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("append design: %v", err)
+	}
+
+	if repo.listDesignsCalls != 0 {
+		t.Fatalf("list designs calls = %d, want 0 for append progress write", repo.listDesignsCalls)
+	}
+	if appended.Session == nil || len(appended.Session.ApprovedDesignIDs) != 1 {
+		t.Fatalf("approved ids = %#v, want [design-1]", appended.Session)
+	}
+	if len(appended.Designs) != 0 {
+		t.Fatalf("appended designs = %#v, want empty result without full reload", appended.Designs)
+	}
+
+	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if len(loaded.Designs) != 1 || loaded.Designs[0].ID != "design-1" {
+		t.Fatalf("loaded designs = %#v, want persisted design-1", loaded.Designs)
 	}
 }
 

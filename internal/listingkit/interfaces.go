@@ -137,6 +137,7 @@ type WorkflowClientConfigurer interface {
 type Service interface {
 	TaskLifecycleService
 	GenerationTaskService
+	StudioBatchRunService
 	StudioMediaService
 	StoreAdminService
 	InternalListingKitService

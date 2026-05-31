@@ -157,6 +157,7 @@ type AdminRepositoryBuilders struct {
 type CoreRepositoryBuilders struct {
 	Task                 func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error)
 	StudioAsyncJob       func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
+	StudioBatchRun       func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
 	Subscription         func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
 	Asset                func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
 	Review               func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
@@ -197,6 +198,8 @@ func (b CoreRepositoryBuilders) Validate() error {
 		return fmt.Errorf("core repository builder task is required")
 	case b.StudioAsyncJob == nil:
 		return fmt.Errorf("core repository builder studio async job is required")
+	case b.StudioBatchRun == nil:
+		return fmt.Errorf("core repository builder studio batch run is required")
 	case b.Subscription == nil:
 		return fmt.Errorf("core repository builder subscription is required")
 	case b.Asset == nil:
