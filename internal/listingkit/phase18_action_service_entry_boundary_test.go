@@ -15,16 +15,16 @@ func TestTaskGenerationActionServiceEntryBoundary(t *testing.T) {
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationActionRefreshPhase(s).run(", 1)
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationActionProjectionPhase().run(", 1)
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationActionFinalizePhase().run(", 1)
-	assertSourceOrderedContains(t, source, []string{
-		"executeLayerTemporalAction(ctx, taskID, req)",
-		"buildTaskGenerationActionEntryPhase(s).run(",
-		"buildTaskGenerationActionExecutePhase(s).run(",
-		"buildTaskGenerationActionPersistPhase(s).run(",
-		"buildTaskGenerationActionRefreshPhase(s).run(",
-		"buildTaskGenerationActionProjectionPhase().run(",
-		"buildTaskGenerationActionFinalizePhase().run(",
-	})
 	assertFunctionCallsContainAll(t, callNames, []string{
+		"executeLayerTemporalAction",
+		"buildTaskGenerationActionEntryPhase",
+		"buildTaskGenerationActionExecutePhase",
+		"buildTaskGenerationActionPersistPhase",
+		"buildTaskGenerationActionRefreshPhase",
+		"buildTaskGenerationActionProjectionPhase",
+		"buildTaskGenerationActionFinalizePhase",
+	})
+	assertFunctionCallsAppearInOrder(t, callNames, []string{
 		"executeLayerTemporalAction",
 		"buildTaskGenerationActionEntryPhase",
 		"buildTaskGenerationActionExecutePhase",
@@ -68,6 +68,15 @@ func TestTaskGenerationActionPhaseOwnershipServiceEntryBoundary(t *testing.T) {
 			"buildTaskGenerationActionRefreshPhase(s).run(",
 			"buildTaskGenerationActionProjectionPhase().run(",
 			"buildTaskGenerationActionFinalizePhase().run(",
+		})
+		assertFunctionCallsAppearInOrder(t, callNames, []string{
+			"executeLayerTemporalAction",
+			"buildTaskGenerationActionEntryPhase",
+			"buildTaskGenerationActionExecutePhase",
+			"buildTaskGenerationActionPersistPhase",
+			"buildTaskGenerationActionRefreshPhase",
+			"buildTaskGenerationActionProjectionPhase",
+			"buildTaskGenerationActionFinalizePhase",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"getCurrentAssetGenerationQueue",

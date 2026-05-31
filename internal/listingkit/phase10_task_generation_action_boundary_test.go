@@ -290,3 +290,21 @@ func assertFunctionCallsExcludeAll(t *testing.T, callNames []string, forbidden [
 		}
 	}
 }
+
+func assertFunctionCallsAppearInOrder(t *testing.T, callNames []string, expected []string) {
+	t.Helper()
+
+	next := 0
+	for _, got := range callNames {
+		if next >= len(expected) {
+			break
+		}
+		if got == expected[next] {
+			next++
+		}
+	}
+
+	if next != len(expected) {
+		t.Fatalf("function calls should contain ordered subsequence %v; got %v", expected, callNames)
+	}
+}
