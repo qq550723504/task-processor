@@ -4,6 +4,25 @@ import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplica
 
 describe("buildDuplicatedSheinStudioBatchInput", () => {
   it("preserves selections and prompt settings while clearing workflow progress", () => {
+    const primarySelection = {
+      productId: 456,
+      parentProductId: 456,
+      variantId: 123,
+      prototypeGroupId: 901,
+      layerId: "layer-primary",
+      productName: "Primary",
+      variantLabel: "Primary / Default",
+    };
+    const groupedSelection = {
+      productId: 457,
+      parentProductId: 457,
+      variantId: 124,
+      prototypeGroupId: 902,
+      layerId: "layer-grouped",
+      productName: "Grouped",
+      variantLabel: "Grouped / Default",
+    };
+
     const duplicated = buildDuplicatedSheinStudioBatchInput({
       id: "batch-1",
       name: "Batch One",
@@ -20,21 +39,23 @@ describe("buildDuplicatedSheinStudioBatchInput", () => {
       groupedImageMode: "shared_by_size",
       selectedSdsImages: [{ imageUrl: "https://example.com/1.png" }],
       renderSizeImagesWithSds: true,
-      selection: { variantId: 123, productId: 456, title: "Primary" },
+      selection: primarySelection,
       groupedSelections: [
         {
-          id: "grouped-1",
+          selectionId: "grouped-1",
+          baselineStatus: "ready",
+          baselineReason: "",
           sheinStoreId: "869",
           eligible: true,
           eligibilityReason: "",
-          selection: { variantId: 124, productId: 457, title: "Grouped" },
+          selection: groupedSelection,
         },
       ],
       groups: [
         {
           id: "group-1",
           name: "Group 1",
-          primarySelection: { variantId: 123, productId: 456, title: "Primary" },
+          primarySelection,
           groupedSelections: [],
           sheinStoreId: "869",
           currentPrompt: "retro cherries",

@@ -7,7 +7,7 @@ describe("enqueueSheinStudioSave", () => {
     resetSheinStudioSaveQueueForTest();
 
     const steps: string[] = [];
-    let releaseFirst = () => undefined;
+    let releaseFirst: () => void = () => {};
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });

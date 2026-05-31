@@ -31,6 +31,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AppUpdateBanner,
+  resolveAppUpdatePollIntervalMs,
+} from "@/components/listingkit/shared/app-update-banner";
+import {
   type ZitadelClientIdentity,
   useZitadelIdentity,
 } from "@/components/providers/zitadel-auth-gate";
@@ -105,6 +109,9 @@ const MENU_ROLES = {
 
 const ZITADEL_CONSOLE_URL =
   process.env.NEXT_PUBLIC_ZITADEL_CONSOLE_URL?.trim() || "";
+const APP_UPDATE_POLL_INTERVAL_MS = resolveAppUpdatePollIntervalMs(
+  process.env.NEXT_PUBLIC_LISTINGKIT_UPDATE_POLL_INTERVAL_MS,
+);
 
 const OPERATIONS_NAV_ITEMS = [
   {
@@ -507,6 +514,7 @@ export function ListingKitAppShell({
 
       <SidebarInset>
         <div className={APP_RAIL_CLASS}>
+          <AppUpdateBanner pollIntervalMs={APP_UPDATE_POLL_INTERVAL_MS} />
           <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border py-3">
             <div className="flex min-w-0 items-center gap-3">
               <SidebarTrigger className="md:hidden" />

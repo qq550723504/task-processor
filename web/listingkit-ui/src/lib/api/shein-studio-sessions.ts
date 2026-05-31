@@ -63,7 +63,7 @@ export type StudioSessionDetailResponse = {
     }>;
     generation_error?: string;
     approved_design_ids?: string[];
-    created_tasks?: SheinStudioCreatedTask[];
+    created_tasks?: RawCreatedTask[];
     updated_at?: string;
   };
   designs?: Array<{
@@ -115,7 +115,7 @@ type StudioBatchListResponse = {
     groups?: Array<Record<string, unknown>>;
     grouped_selections?: Array<Record<string, unknown>>;
     approved_design_ids?: string[];
-    created_tasks?: SheinStudioCreatedTask[];
+    created_tasks?: RawCreatedTask[];
     design_count?: number;
     updated_at?: string;
   }>;
