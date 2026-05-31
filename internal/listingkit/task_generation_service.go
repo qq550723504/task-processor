@@ -3,8 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	asset "task-processor/internal/asset"
 	assetbundle "task-processor/internal/asset/bundle"
@@ -224,23 +222,8 @@ func (s *taskGenerationService) executeLayerTemporalAction(ctx context.Context, 
 		result, err := buildTaskGenerationActionTemporalStandardPhase(s).run(ctx, taskID, req)
 		return true, result, err
 	case assetGenerationActionRunPlatformAdaptTemporal:
-		client, enabled := s.platformAdaptWorkflow()
-		if !enabled || client == nil {
-			return true, nil, fmt.Errorf("platform adaptation temporal workflow is not configured")
-		}
-		platform := resolveLayerTemporalPlatform(req)
-		if err := client.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
-			TaskID:      strings.TrimSpace(taskID),
-			Platform:    platform,
-			RequestedAt: time.Now().UTC(),
-		}); err != nil {
-			return true, nil, err
-		}
-		return true, buildTaskGenerationActionTemporalResultPhase().run(
-			actionKey,
-			req.ResponseMode,
-			&GenerationQueueQuery{Platform: platform},
-		), nil
+		result, err := buildTaskGenerationActionTemporalPlatformPhase(s).run(ctx, taskID, req)
+		return true, result, err
 	default:
 		return false, nil, nil
 	}

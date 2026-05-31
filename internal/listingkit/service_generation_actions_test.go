@@ -597,6 +597,31 @@ func TestTaskGenerationLayerTemporalStandardServiceDelegatesStandardPhase(t *tes
 	})
 }
 
+func TestTaskGenerationLayerTemporalPlatformServiceDelegatesPlatformPhase(t *testing.T) {
+	t.Parallel()
+
+	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
+			return false
+		}
+		star, ok := decl.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			return false
+		}
+		ident, ok := star.X.(*ast.Ident)
+		return ok && ident.Name == "taskGenerationService"
+	})
+
+	assertSourceContainsAll(t, source, []string{
+		"buildTaskGenerationActionTemporalPlatformPhase(s).run(ctx, taskID, req)",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"client.StartPlatformAdaptation(",
+		`fmt.Errorf("platform adaptation temporal workflow is not configured")`,
+		"resolveLayerTemporalPlatform(req)",
+	})
+}
+
 func TestTaskGenerationLayerTemporalStandardPhaseRejectsUnconfiguredWorkflow(t *testing.T) {
 	t.Parallel()
 
@@ -642,6 +667,153 @@ func TestTaskGenerationLayerTemporalStandardPhaseRejectsUnconfiguredWorkflow(t *
 				t.Fatalf("result = %+v, want nil result when workflow is unconfigured", result)
 			}
 		})
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseRejectsUnconfiguredWorkflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+	}{
+		{
+			name: "disabled workflow",
+			service: &taskGenerationService{
+				platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+					return &stubPlatformAdaptWorkflowClient{}, false
+				},
+			},
+		},
+		{
+			name: "nil client",
+			service: &taskGenerationService{
+				platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+					return nil, true
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := buildTaskGenerationActionTemporalPlatformPhase(tt.service).run(context.Background(), "task-generation-action-platform-phase-unconfigured-1", &ExecuteGenerationActionRequest{
+				ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+			})
+			if err == nil || err.Error() != "platform adaptation temporal workflow is not configured" {
+				t.Fatalf("run() error = %v, want unconfigured workflow error", err)
+			}
+			if result != nil {
+				t.Fatalf("result = %+v, want nil when workflow is unavailable", result)
+			}
+		})
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseStartsWorkflowAndDelegatesResult(t *testing.T) {
+	t.Parallel()
+
+	client := &stubPlatformAdaptWorkflowClient{}
+	service := &taskGenerationService{
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalPlatformPhase(service).run(context.Background(), "  task-generation-action-platform-phase-1  ", &ExecuteGenerationActionRequest{
+		ActionKey:    assetGenerationActionRunPlatformAdaptTemporal,
+		ResponseMode: "patch_only",
+		Target: &AssetGenerationActionTarget{
+			NavigationTarget: &GenerationReviewNavigationTarget{
+				SessionQuery: &GenerationQueueQuery{
+					Platform: " AMAZON ",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("platform adapt temporal calls = %+v, want single call", client.calls)
+	}
+	if client.calls[0].TaskID != "task-generation-action-platform-phase-1" {
+		t.Fatalf("workflow call = %+v, want trimmed task id", client.calls[0])
+	}
+	if client.calls[0].Platform != "amazon" {
+		t.Fatalf("workflow call = %+v, want normalized platform", client.calls[0])
+	}
+	if client.calls[0].RequestedAt.IsZero() {
+		t.Fatalf("workflow call = %+v, want requested timestamp", client.calls[0])
+	}
+	if result == nil {
+		t.Fatal("result = nil, want temporal result seam response")
+	}
+	if result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only platform temporal result", result)
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
+		t.Fatalf("resolved target = %+v, want normalized amazon queue query", result.ResolvedTarget)
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseDefaultsToSheinWithoutPlatformInput(t *testing.T) {
+	t.Parallel()
+
+	client := &stubPlatformAdaptWorkflowClient{}
+	service := &taskGenerationService{
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalPlatformPhase(service).run(context.Background(), "task-generation-action-platform-phase-default-1", &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("platform adapt temporal calls = %+v, want single call", client.calls)
+	}
+	if client.calls[0].Platform != "shein" {
+		t.Fatalf("workflow call = %+v, want default shein platform", client.calls[0])
+	}
+	if result == nil || result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "shein" {
+		t.Fatalf("result = %+v, want default shein queue query", result)
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhasePropagatesWorkflowStartError(t *testing.T) {
+	t.Parallel()
+
+	client := &stubPlatformAdaptWorkflowClient{err: errors.New("start platform adaptation failed")}
+	service := &taskGenerationService{
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalPlatformPhase(service).run(context.Background(), "task-generation-action-platform-phase-error-1", &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+		Target: &AssetGenerationActionTarget{
+			QueueQuery: &GenerationQueueQuery{Platform: "amazon"},
+		},
+	})
+	if err == nil || err.Error() != "start platform adaptation failed" {
+		t.Fatalf("run() error = %v, want propagated workflow start error", err)
+	}
+	if result != nil {
+		t.Fatalf("result = %+v, want nil when workflow start fails", result)
+	}
+	if len(client.calls) != 1 || client.calls[0].Platform != "amazon" {
+		t.Fatalf("platform adapt temporal calls = %+v, want single amazon call before error", client.calls)
 	}
 }
 
