@@ -213,7 +213,7 @@ export function PlatformSubscriptionPlansPage() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-3 border-b border-zinc-200 pb-4 md:flex-row md:items-end md:justify-between">
+      <section className="flex flex-col gap-3 border-b border-zinc-200 pb-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-sm font-medium text-zinc-500">租户订阅管理</p>
           <h1 className="mt-1 text-2xl font-semibold text-zinc-950">
@@ -230,7 +230,7 @@ export function PlatformSubscriptionPlansPage() {
             setModuleSortOrder("0");
             setModuleLimits("{}");
           }}
-          className="h-9 gap-2 px-3"
+          className="h-9 w-full gap-2 px-3 sm:w-auto"
         >
           <Plus className="size-4" />
           新建套餐
@@ -243,9 +243,10 @@ export function PlatformSubscriptionPlansPage() {
         </Alert>
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_420px]">
         <Card className="overflow-hidden p-0">
-          <div className="grid grid-cols-[1fr_96px_88px_190px] border-b border-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-500">
+          <div className="overflow-x-auto">
+          <div className="grid min-w-[40rem] grid-cols-[1fr_96px_88px_190px] border-b border-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-500">
             <span>套餐</span>
             <span>状态</span>
             <span>模块数</span>
@@ -254,7 +255,7 @@ export function PlatformSubscriptionPlansPage() {
           {plans.map((bundle) => (
             <div
               key={bundle.plan.code}
-              className="grid grid-cols-[1fr_96px_88px_190px] items-center gap-3 border-b border-zinc-100 px-4 py-3 last:border-b-0"
+              className="grid min-w-[40rem] grid-cols-[1fr_96px_88px_190px] items-center gap-3 border-b border-zinc-100 px-4 py-3 last:border-b-0"
             >
               <div className="min-w-0">
                 <p className="font-medium text-zinc-950">{bundle.plan.name}</p>
@@ -295,6 +296,7 @@ export function PlatformSubscriptionPlansPage() {
               </div>
             </div>
           ))}
+          </div>
         </Card>
 
         <div className="space-y-4">

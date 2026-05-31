@@ -52,7 +52,7 @@ export function SubscriptionPage() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <CardTitle className="text-2xl">当前租户订阅</CardTitle>
             <CardDescription className="mt-1">
@@ -66,6 +66,7 @@ export function SubscriptionPage() {
             type="button"
             onClick={() => void query.refetch()}
             variant="secondary"
+            className="w-full sm:w-auto"
           >
             <RefreshCw className={`size-4 ${query.isFetching ? "animate-spin" : ""}`} />
             刷新
@@ -81,7 +82,8 @@ export function SubscriptionPage() {
       </Card>
 
       <Card className="overflow-hidden p-0">
-        <Table className="min-w-full">
+        <div className="overflow-x-auto">
+        <Table className="min-w-[44rem]">
             <TableHeader className="bg-zinc-50">
               <TableRow className="text-xs uppercase tracking-[0.2em] hover:bg-transparent">
                 <TableHead>模块</TableHead>
@@ -133,6 +135,7 @@ export function SubscriptionPage() {
               )}
             </TableBody>
           </Table>
+        </div>
       </Card>
     </div>
   );

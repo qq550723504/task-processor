@@ -378,6 +378,22 @@ describe("PlatformSubscriptionPage", () => {
     expect(screen.getByText("高级操作：用量调整")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存用量" })).toBeDisabled();
   });
+
+  it("uses mobile-first tenant search and tenant list layouts", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    await screen.findByText("目标租户");
+
+    expect(screen.getByPlaceholderText("搜索或输入租户 ID")).not.toHaveClass("min-w-[260px]");
+    expect(screen.getByRole("button", { name: "查询" })).toHaveClass("w-full");
+    expect(screen.getAllByRole("button", { name: "刷新" })[0]).toHaveClass("w-full");
+  });
 });
 
 function renderWithQueryClient(ui: ReactElement) {

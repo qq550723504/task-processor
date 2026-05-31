@@ -127,6 +127,15 @@ describe("SubscriptionPage", () => {
     expect(screen.queryByRole("button", { name: "保存配置" })).not.toBeInTheDocument();
     expect(mockedUpdateSubscriptionEntitlement).not.toHaveBeenCalled();
   });
+
+  it("keeps the subscription table inside a horizontal-scroll wrapper", async () => {
+    const { container } = renderWithQueryClient(<SubscriptionPage />);
+
+    await screen.findByText("Studio");
+
+    expect(container.querySelector(".overflow-x-auto")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新" })).toHaveClass("w-full");
+  });
 });
 
 function renderWithQueryClient(ui: React.ReactElement) {
