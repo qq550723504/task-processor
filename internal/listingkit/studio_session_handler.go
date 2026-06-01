@@ -11,7 +11,6 @@ type StudioSessionHandlerService interface {
 	GetStudioSession(ctx context.Context, sessionID string) (*SheinStudioSessionDetail, error)
 	UpdateStudioSession(ctx context.Context, sessionID string, req *UpdateStudioSessionRequest) (*SheinStudioSessionDetail, error)
 	ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error)
-	AppendStudioSessionDesigns(ctx context.Context, sessionID string, req *AppendStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error)
 	ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error)
 	ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error)
 	GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error)

@@ -51,10 +51,6 @@ func (s *stubStudioBatchActionService) ReplaceStudioSessionDesigns(context.Conte
 	return nil, nil
 }
 
-func (s *stubStudioBatchActionService) AppendStudioSessionDesigns(context.Context, string, *listingkit.AppendStudioSessionDesignsRequest) (*listingkit.SheinStudioSessionDetail, error) {
-	return nil, nil
-}
-
 func (s *stubStudioBatchActionService) ListStudioSessionGallery(context.Context, int) (*listingkit.StudioSessionGalleryResponse, error) {
 	return nil, nil
 }

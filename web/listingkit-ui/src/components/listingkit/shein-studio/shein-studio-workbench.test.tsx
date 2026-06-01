@@ -2571,8 +2571,42 @@ describe("SheinStudioWorkbench", () => {
       createdTasks: [],
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    generateSheinStudioDesigns.mockResolvedValue({
-      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      updatedAt: "2026-05-26T10:04:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:04:00.000Z",
+              updatedAt: "2026-05-26T10:05:00.000Z",
+            },
+          ],
+        },
+      ],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
@@ -2592,7 +2626,7 @@ describe("SheinStudioWorkbench", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not block generation when studio session sync fails", async () => {
+  it("creates a brand-new homepage batch before generation and skips legacy session sync", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
       styleCount: "1",
@@ -2611,9 +2645,45 @@ describe("SheinStudioWorkbench", () => {
       createdTasks: [],
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    ensureSheinStudioSession.mockRejectedValue(new Error("ListingKit API request failed: 408"));
-    generateSheinStudioDesigns.mockResolvedValue({
-      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      id: "batch-new",
+      name: "新批次",
+      updatedAt: "2026-05-26T10:04:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        id: "batch-new",
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-new",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-new",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:04:00.000Z",
+              updatedAt: "2026-05-26T10:05:00.000Z",
+            },
+          ],
+        },
+      ],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
@@ -2626,7 +2696,13 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
-    expect(screen.queryByText("ListingKit API request failed: 408")).not.toBeInTheDocument();
+    expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+      expect.not.objectContaining({ id: expect.anything() }),
+      undefined,
+    );
+    expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-new");
+    expect(ensureSheinStudioSession).not.toHaveBeenCalled();
+    expect(updateSheinStudioSession).not.toHaveBeenCalled();
   });
 
   it("guards against leaving the page while style generation is running", async () => {
@@ -2783,7 +2859,7 @@ describe("SheinStudioWorkbench", () => {
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
   });
 
-  it("shows backend generation warnings when only part of the requested styles succeed", async () => {
+  it("does not use legacy session sync when an unsaved homepage workspace generates through batch APIs", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
       styleCount: "1",
@@ -2802,12 +2878,44 @@ describe("SheinStudioWorkbench", () => {
       createdTasks: [],
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    generateSheinStudioDesigns.mockResolvedValue({
-      warnings: [
-        "款式变体提示词生成失败，已回退为基础提示词重复生成。",
-        "请求生成 3 款，实际仅成功 1 款，另外 2 款生成失败。 首个失败原因：upstream rate limited",
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      id: "batch-unsaved",
+      updatedAt: "2026-05-26T10:04:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        id: "batch-unsaved",
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-unsaved",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-unsaved",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:04:00.000Z",
+              updatedAt: "2026-05-26T10:05:00.000Z",
+            },
+          ],
+        },
       ],
-      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
@@ -2819,11 +2927,8 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
-    expect(
-      screen.getByText(
-        /款式变体提示词生成失败，已回退为基础提示词重复生成。 请求生成 3 款，实际仅成功 1 款，另外 2 款生成失败。/,
-      ),
-    ).toBeInTheDocument();
+    expect(ensureSheinStudioSession).not.toHaveBeenCalled();
+    expect(updateSheinStudioSession).not.toHaveBeenCalled();
   });
 
   it("keeps generated designs when parent step changes to review", async () => {
@@ -2845,8 +2950,42 @@ describe("SheinStudioWorkbench", () => {
       createdTasks: [],
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    generateSheinStudioDesigns.mockResolvedValue({
-      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      updatedAt: "2026-05-26T10:04:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:04:00.000Z",
+              updatedAt: "2026-05-26T10:05:00.000Z",
+            },
+          ],
+        },
+      ],
     });
 
     const rendered = render(
@@ -2909,8 +3048,17 @@ describe("SheinStudioWorkbench", () => {
       createdTasks: [],
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    generateSheinStudioDesigns.mockResolvedValue({
-      images: [],
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      updatedAt: "2026-05-26T10:04:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
@@ -2972,7 +3120,7 @@ describe("SheinStudioWorkbench", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not surface a draft-save warning after successful generation when the studio session append path succeeds", async () => {
+  it("does not surface a draft-save warning after successful batch generation", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
       styleCount: "1",
@@ -2991,8 +3139,42 @@ describe("SheinStudioWorkbench", () => {
       createdTasks: [],
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    generateSheinStudioDesigns.mockResolvedValue({
-      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      updatedAt: "2026-05-26T10:04:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:04:00.000Z",
+              updatedAt: "2026-05-26T10:05:00.000Z",
+            },
+          ],
+        },
+      ],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);

@@ -41,6 +41,8 @@ func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
 	keys := routeKeys(reg.Routes())
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions/:session_id/designs")
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions/:session_id/designs/append")
 }
 
 func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {

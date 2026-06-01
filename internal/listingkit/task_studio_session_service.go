@@ -251,53 +251,6 @@ func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Conte
 	return s.loadStudioSessionDetail(ctx, session)
 }
 
-func (s *taskStudioSessionService) AppendStudioSessionDesigns(ctx context.Context, sessionID string, req *AppendStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio session repository is not configured")
-	}
-	session, err := s.repo.GetSession(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if session == nil {
-		return nil, ErrStudioSessionNotFound
-	}
-	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
-		return nil, err
-	}
-	if req == nil {
-		return studioSessionDetailWithoutDesigns(session), nil
-	}
-	if req.Status != nil {
-		session.Status = *req.Status
-	}
-	if req.GenerationJobs != nil {
-		session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
-		if len(req.GenerationJobs) > 0 {
-			session.GenerationJobID = strings.TrimSpace(req.GenerationJobs[0].JobID)
-		} else {
-			session.GenerationJobID = ""
-		}
-	}
-	if req.ApprovedDesignIDs != nil {
-		session.ApprovedDesignIDs = slices.Clone(req.ApprovedDesignIDs)
-	}
-	if err := s.repo.UpdateSession(ctx, session); err != nil {
-		return nil, err
-	}
-	if err := s.repo.UpsertDesigns(ctx, sessionID, req.ApprovedDesignIDs, req.Designs); err != nil {
-		return nil, err
-	}
-	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
-		"session_id":            session.ID,
-		"status":                session.Status,
-		"incoming_design_count": len(req.Designs),
-		"generation_jobs_count": len(session.GenerationJobs),
-		"approved_design_count": len(session.ApprovedDesignIDs),
-	})).Info("studio session appended designs")
-	return studioSessionDetailWithoutDesigns(session), nil
-}
-
 func (s *taskStudioSessionService) ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error) {
 	if s.repo == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
@@ -456,11 +409,6 @@ func reqExpectedUpdatedAt(req any) *string {
 		}
 		return value.ExpectedUpdatedAt
 	case *ReplaceStudioSessionDesignsRequest:
-		if value == nil {
-			return nil
-		}
-		return value.ExpectedUpdatedAt
-	case *AppendStudioSessionDesignsRequest:
 		if value == nil {
 			return nil
 		}

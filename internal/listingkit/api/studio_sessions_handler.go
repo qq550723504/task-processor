@@ -176,26 +176,6 @@ func (h *studioSessionHandler) CreateStudioBatchTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *studioSessionHandler) AppendStudioSessionDesigns(c *gin.Context) {
-	var req listingkit.AppendStudioSessionDesignsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
-		return
-	}
-	detail, err := h.service.AppendStudioSessionDesigns(requestContext(c), c.Param("session_id"), &req)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
-			status = http.StatusNotFound
-		} else if errors.Is(err, listingkit.ErrStudioSessionConflict) {
-			status = http.StatusConflict
-		}
-		c.JSON(status, gin.H{"error": "studio_session_designs_append_failed", "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, detail)
-}
-
 func (h *studioSessionHandler) UpsertStudioBatch(c *gin.Context) {
 	var req listingkit.UpsertStudioBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

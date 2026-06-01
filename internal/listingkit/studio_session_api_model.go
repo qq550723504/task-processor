@@ -41,14 +41,6 @@ type ReplaceStudioSessionDesignsRequest struct {
 	Designs           []SheinStudioDesign       `json:"designs,omitempty"`
 }
 
-type AppendStudioSessionDesignsRequest struct {
-	ExpectedUpdatedAt *string                    `json:"expected_updated_at,omitempty"`
-	Status            *SheinStudioSessionStatus  `json:"status,omitempty"`
-	ApprovedDesignIDs []string                   `json:"approved_design_ids,omitempty"`
-	GenerationJobs    []SheinStudioGenerationJob `json:"generation_jobs,omitempty"`
-	Designs           []SheinStudioDesign        `json:"designs,omitempty"`
-}
-
 type RetryStudioBatchItemsRequest struct {
 	ItemIDs []string `json:"item_ids,omitempty"`
 }

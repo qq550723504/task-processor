@@ -1050,15 +1050,15 @@ export function SheinStudioWorkbench({
       activeSelectionBaselineStatus: activeSelectionBaseline.status,
       activeSelectionBaselineReason,
       workbench: workbenchController,
-      batchGenerationContext: activeBatchId
+      batchGenerationContext: activeSelection?.variantId
         ? {
             ensureBatch: async () => {
               const saved = await saveSheinStudioBatch(
                 {
                   ...buildDraftInput(),
-                  id: activeBatchId,
+                  ...(activeBatchId ? { id: activeBatchId } : {}),
                 },
-                { makeActive: false },
+                activeBatchId ? { makeActive: false } : undefined,
               );
               if (!saved) {
                 return null;

@@ -279,54 +279,6 @@ export function useSheinStudioDesignActions({
       workbench.setField("groups", nextGroups);
     }
 
-    const sessionSyncPromise = (async () => {
-      try {
-        const sessionDetail = await ensureSheinStudioSession(activeSelection, {
-          timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-        });
-        const sessionId = sessionDetail?.session?.id ?? "";
-        if (!sessionId) {
-          return "";
-        }
-        writeListingKitTraceContext({ sessionId });
-        logListingKitTraceEvent("info", "studio generation session synced", {
-          sessionId,
-        });
-        await updateSheinStudioSession(
-          sessionId,
-          {
-            status: "generating",
-            prompt: prompt.trim(),
-            styleCount,
-            variationIntensity,
-            productImageCount,
-            productImagePrompt,
-            productImagePrompts,
-            artworkModel,
-            imageStrategy,
-            groupedImageMode,
-            selectedSdsImages,
-            groups: nextGroups,
-            transparentBackground,
-            renderSizeImagesWithSds,
-            sheinStoreId,
-            generationError: "",
-            approvedDesignIds: [],
-            createdTasks: [],
-          },
-          {
-            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-          },
-        );
-        return sessionId;
-      } catch (error) {
-        logListingKitTraceEvent("warn", "studio generation session sync failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return "";
-      }
-    })();
-
     try {
       if (batchGenerationContext) {
         const savedBatch = await batchGenerationContext.ensureBatch();
@@ -362,6 +314,54 @@ export function useSheinStudioDesignActions({
         navigateToStep("review");
         return;
       }
+
+      const sessionSyncPromise = (async () => {
+        try {
+          const sessionDetail = await ensureSheinStudioSession(activeSelection, {
+            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+          });
+          const sessionId = sessionDetail?.session?.id ?? "";
+          if (!sessionId) {
+            return "";
+          }
+          writeListingKitTraceContext({ sessionId });
+          logListingKitTraceEvent("info", "studio generation session synced", {
+            sessionId,
+          });
+          await updateSheinStudioSession(
+            sessionId,
+            {
+              status: "generating",
+              prompt: prompt.trim(),
+              styleCount,
+              variationIntensity,
+              productImageCount,
+              productImagePrompt,
+              productImagePrompts,
+              artworkModel,
+              imageStrategy,
+              groupedImageMode,
+              selectedSdsImages,
+              groups: nextGroups,
+              transparentBackground,
+              renderSizeImagesWithSds,
+              sheinStoreId,
+              generationError: "",
+              approvedDesignIds: [],
+              createdTasks: [],
+            },
+            {
+              timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+            },
+          );
+          return sessionId;
+        } catch (error) {
+          logListingKitTraceEvent("warn", "studio generation session sync failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return "";
+        }
+      })();
 
       const sessionId = await sessionSyncPromise;
       const targets = buildGroupedGenerationTargets({
@@ -570,23 +570,6 @@ export function useSheinStudioDesignActions({
       workbench.setField("selectedIds", []);
       workbench.setField("generationJobs", []);
       workbench.setField("generationWarning", "");
-      void sessionSyncPromise
-        .then((sessionId) => {
-          if (!sessionId) {
-            return;
-          }
-          return updateSheinStudioSession(
-            sessionId,
-            {
-              status: "failed",
-              generationError: message,
-            },
-            {
-              timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-            },
-          );
-        })
-        .catch(() => undefined);
       workbench.setField("generationError", message);
     } finally {
       workbench.setField("isGenerating", false);
