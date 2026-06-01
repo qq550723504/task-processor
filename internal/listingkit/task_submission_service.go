@@ -8,7 +8,10 @@ import (
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
+
+	"github.com/sirupsen/logrus"
 )
 
 type taskSubmissionServiceConfig struct {
@@ -20,8 +23,9 @@ type taskSubmissionServiceConfig struct {
 	submitSheinTaskDirect           func(context.Context, string, *Task, *SubmitTaskRequest, sheinDirectSubmitOptions) (*ListingKitPreview, error)
 	buildTaskPreview                func(context.Context, *Task, string) (*ListingKitPreview, error)
 	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
+	buildSheinSubmitOtherAPI        func(context.Context, *Task) (sheinother.OtherAPI, error)
 	mutateTaskResult                func(context.Context, string, TaskResultMutation) (*Task, error)
-	resolveRemoteStatus             func(sheinproduct.ProductAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatus             func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
 type taskSubmissionService struct {
@@ -33,8 +37,9 @@ type taskSubmissionService struct {
 	submitSheinTaskDirect           func(context.Context, string, *Task, *SubmitTaskRequest, sheinDirectSubmitOptions) (*ListingKitPreview, error)
 	buildTaskPreview                func(context.Context, *Task, string) (*ListingKitPreview, error)
 	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
+	buildSheinSubmitOtherAPI        func(context.Context, *Task) (sheinother.OtherAPI, error)
 	mutateTaskResult                func(context.Context, string, TaskResultMutation) (*Task, error)
-	resolveRemoteStatus             func(sheinproduct.ProductAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatus             func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
 func newTaskSubmissionService(config taskSubmissionServiceConfig) *taskSubmissionService {
@@ -47,6 +52,7 @@ func newTaskSubmissionService(config taskSubmissionServiceConfig) *taskSubmissio
 		submitSheinTaskDirect:           config.submitSheinTaskDirect,
 		buildTaskPreview:                config.buildTaskPreview,
 		buildSheinSubmitProductAPI:      config.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:        config.buildSheinSubmitOtherAPI,
 		mutateTaskResult:                config.mutateTaskResult,
 		resolveRemoteStatus:             config.resolveRemoteStatus,
 	}
@@ -64,6 +70,14 @@ func (s *taskSubmissionService) SubmitTask(ctx context.Context, taskID string, r
 	if useWorkflow && requestID == "" {
 		requestID = derivedSheinSubmitRequestID(taskID, action, startedAt)
 	}
+	logrus.WithFields(logrus.Fields{
+		"task_id":         strings.TrimSpace(taskID),
+		"platform":        platform,
+		"action":          action,
+		"request_id":      requestID,
+		"use_workflow":    useWorkflow,
+		"confirmed_final": req != nil && req.ConfirmedFinal,
+	}).Info("listingkit shein submit requested")
 	if s.lockSubmit != nil {
 		unlockSubmit := s.lockSubmit(taskID + ":" + action)
 		defer unlockSubmit()
@@ -134,6 +148,10 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	if err != nil {
 		return nil, err
 	}
+	var otherAPI sheinother.OtherAPI
+	if s.buildSheinSubmitOtherAPI != nil {
+		otherAPI, _ = s.buildSheinSubmitOtherAPI(ctx, task)
+	}
 	requestID := strings.TrimSpace(record.RequestID)
 	startedAt := time.Now()
 	lookupCodes := collectSheinRemoteLookupCodes(pkg, supplierCode)
@@ -142,7 +160,7 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	if defaultConfirmed {
 		fallbackMessage = "SHEIN accepted publish request; remote record not yet visible"
 	}
-	confirmation, remoteErr := s.resolveSheinSubmitRemoteStatus(productAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
+	confirmation, remoteErr := s.resolveSheinSubmitRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
 	task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
 		if task.Result == nil {
 			return fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
@@ -179,9 +197,9 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	return s.buildTaskPreview(ctx, task, "shein")
 }
 
-func (s *taskSubmissionService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+func (s *taskSubmissionService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	if s.resolveRemoteStatus == nil {
 		return nil, errors.New("submit remote status resolution is not configured")
 	}
-	return s.resolveRemoteStatus(productAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
+	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }

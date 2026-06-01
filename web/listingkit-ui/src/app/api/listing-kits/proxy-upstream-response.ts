@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { shouldProxyListingKitResponseAsBinary } from "@/app/api/listing-kits/proxy-response";
-import { logRequestInfo, logRequestWarn } from "@/lib/server/request-log";
+import {
+  logRequestInfo,
+  logRequestWarn,
+  type RequestLogFields,
+} from "@/lib/server/request-log";
 
 type ProxyResponseInput = {
   durationMs: number;
@@ -9,6 +13,7 @@ type ProxyResponseInput = {
   path: string;
   requestId: string;
   routePath: string[];
+  traceFields?: RequestLogFields;
   upstream: Response;
 };
 
@@ -18,6 +23,7 @@ export async function buildListingKitProxyResponse({
   path,
   requestId,
   routePath,
+  traceFields,
   upstream,
 }: ProxyResponseInput) {
   const responseHeaders = buildProxyResponseHeaders(upstream);
@@ -29,6 +35,7 @@ export async function buildListingKitProxyResponse({
       path,
       requestId,
       status: upstream.status,
+      traceFields,
       upstreamOk: upstream.ok,
     });
     return new NextResponse(null, {
@@ -56,6 +63,7 @@ export async function buildListingKitProxyResponse({
       path,
       requestId,
       status: upstream.status,
+      traceFields,
       upstreamOk: upstream.ok,
       upstreamBodyPreview,
     });
@@ -73,6 +81,7 @@ export async function buildListingKitProxyResponse({
       status: 502,
       durationMs,
       error: message,
+      ...traceFields,
     });
     return NextResponse.json(
       {
@@ -105,6 +114,7 @@ function logListingKitProxyResponse({
   path,
   requestId,
   status,
+  traceFields,
   upstreamOk,
   upstreamBodyPreview,
 }: {
@@ -113,6 +123,7 @@ function logListingKitProxyResponse({
   path: string;
   requestId: string;
   status: number;
+  traceFields?: RequestLogFields;
   upstreamOk: boolean;
   upstreamBodyPreview?: string;
 }) {
@@ -123,6 +134,7 @@ function logListingKitProxyResponse({
     status,
     durationMs,
     upstreamBodyPreview,
+    ...traceFields,
   };
   if (!upstreamOk || durationMs > 5_000) {
     logRequestWarn("listingkit proxy response", logFields);

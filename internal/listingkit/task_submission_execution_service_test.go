@@ -57,6 +57,8 @@ func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t 
 		action     string
 		api        stubSheinProductAPI
 		wantCalled string
+		wantCode   string
+		wantMsg    string
 	}{
 		{
 			name:   "publish",
@@ -65,6 +67,8 @@ func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t 
 				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "publish ok"},
 			},
 			wantCalled: "publish",
+			wantCode:   "0",
+			wantMsg:    "publish ok",
 		},
 		{
 			name:   "save draft",
@@ -73,6 +77,8 @@ func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t 
 				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "draft ok"},
 			},
 			wantCalled: "save_draft",
+			wantCode:   "0",
+			wantMsg:    "draft ok",
 		},
 	}
 
@@ -91,8 +97,11 @@ func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t 
 			if err != nil {
 				t.Fatalf("executeSheinSubmitRemote() error = %v", err)
 			}
-			if response == nil || !response.Success {
-				t.Fatalf("executeSheinSubmitRemote() response = %+v, want success summary", response)
+			if response == nil {
+				t.Fatal("executeSheinSubmitRemote() response = nil, want summary")
+			}
+			if response.Code != tc.wantCode || response.Message != tc.wantMsg {
+				t.Fatalf("executeSheinSubmitRemote() response = %+v, want code=%q msg=%q", response, tc.wantCode, tc.wantMsg)
 			}
 			if called != tc.wantCalled {
 				t.Fatalf("called api method = %q, want %q", called, tc.wantCalled)

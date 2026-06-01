@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	sdshttpapi "task-processor/internal/sds/httpapi"
 )
 
 func buildCoreRouteDescriptors() []routeDescriptor {
@@ -69,13 +71,5 @@ func appendSDSCatalogRouteDescriptors(routes []routeDescriptor, handlers ...sdsC
 	if len(handlers) > 0 {
 		handler = handlers[0]
 	}
-	if handler == nil {
-		return routes
-	}
-	return append(routes,
-		routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/products", Module: "sds", Handler: handler.ListSDSProducts},
-		routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/products/:product_id", Module: "sds", Handler: handler.GetSDSProduct},
-		routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/categories", Module: "sds", Handler: handler.ListSDSCategories},
-		routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/shipment-areas", Module: "sds", Handler: handler.ListSDSShipmentAreas},
-	)
+	return sdshttpapi.AppendRouteDescriptors(routes, handler)
 }

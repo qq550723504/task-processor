@@ -118,6 +118,47 @@ describe("apiAsyncRequest", () => {
     );
   });
 
+  it("adds shein studio trace headers to async studio requests", async () => {
+    window.sessionStorage.setItem(
+      "listingkit:shein-studio:trace-context",
+      JSON.stringify({
+        batchRunId: "run-1",
+        batchId: "batch-1",
+        sessionId: "session-1",
+        queueMode: "generate",
+        queueIndex: 2,
+        queueTotal: 5,
+      }),
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "backend unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiAsyncRequest<{ images: Array<{ id: string }> }>("/studio/designs", {
+        body: { prompt: "flag" },
+        timeoutMs: 20_000,
+      }),
+    ).rejects.toMatchObject({
+      message: "backend unavailable",
+      status: 503,
+    });
+
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get("X-ListingKit-Batch-Run-Id")).toBe("run-1");
+    expect(headers.get("X-ListingKit-Batch-Id")).toBe("batch-1");
+    expect(headers.get("X-ListingKit-Studio-Session-Id")).toBe("session-1");
+    expect(headers.get("X-ListingKit-Queue-Mode")).toBe("generate");
+    expect(headers.get("X-ListingKit-Queue-Index")).toBe("2");
+    expect(headers.get("X-ListingKit-Queue-Total")).toBe("5");
+  });
+
   it("fails immediately when async job status becomes failed", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

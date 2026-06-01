@@ -60,6 +60,7 @@ logs
 .trae
 .new
 .update-marker
+.understand-anything
 .gocache/
 .local/
 tmp/*

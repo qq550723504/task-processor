@@ -5,6 +5,7 @@ import type {
   SheinStudioGroupedWorkspace,
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
+  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -15,6 +16,7 @@ import type {
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
 type BuildSheinStudioDraftInputArgs = {
+  updatedAt?: string;
   prompt: string;
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
@@ -34,12 +36,14 @@ type BuildSheinStudioDraftInputArgs = {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
+  generationJobs?: SheinStudioGenerationJob[];
 };
 
 export function buildSheinStudioDraftInput(
   args: BuildSheinStudioDraftInputArgs,
 ): SheinStudioSaveInput {
   return {
+    updatedAt: args.updatedAt,
     prompt: args.prompt,
     styleCount: args.styleCount,
     variationIntensity: args.variationIntensity,
@@ -92,5 +96,6 @@ export function buildSheinStudioDraftInput(
     designs: args.designs,
     selectedIds: args.selectedIds,
     createdTasks: args.createdTasks,
+    generationJobs: args.generationJobs,
   };
 }

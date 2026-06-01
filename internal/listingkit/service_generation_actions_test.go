@@ -2,6 +2,11 @@ package listingkit
 
 import (
 	"context"
+	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"reflect"
 	"testing"
 	"time"
 
@@ -33,6 +38,428 @@ type stubPlatformAdaptWorkflowClient struct {
 func (s *stubPlatformAdaptWorkflowClient) StartPlatformAdaptation(_ context.Context, in PlatformAdaptWorkflowStartInput) error {
 	s.calls = append(s.calls, in)
 	return s.err
+}
+
+func newTaskGenerationActionProjectionResult(taskID, assetRevision, previewRevision, taskRevision string) *ListingKitResult {
+	return &ListingKitResult{
+		TaskID: taskID,
+		AssetRenderPreviews: []AssetRenderPreview{{
+			AssetID:         "asset-preview-1",
+			AssetRevision:   assetRevision,
+			PreviewRevision: previewRevision,
+			TaskRevision:    taskRevision,
+			PreviewFormat:   "svg",
+			PreviewSVG:      "<svg/>",
+			VisualMode:      "selling_point",
+			LayerTypes:      []string{"detail", "text"},
+		}},
+		Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+			Platform: "shein",
+			Main: &common.BundleSlot{
+				Key:           "main",
+				AssetID:       "asset-preview-1",
+				StateLabel:    "ready",
+				TemplateLabel: "SHEIN Main",
+			},
+		}},
+	}
+}
+
+func newTaskGenerationActionProjectionQueue(taskID string, summary *GenerationWorkQueueSummary, state string) *GenerationWorkQueue {
+	return &GenerationWorkQueue{
+		Summary: summary,
+		Items: []GenerationWorkQueueItem{{
+			TaskID:                  taskID,
+			Platform:                "shein",
+			Slot:                    "main",
+			Purpose:                 "main",
+			State:                   state,
+			AssetID:                 "asset-preview-1",
+			ExecutionMode:           assetgeneration.ExecutionModeRendererBacked,
+			RenderPreviewAvailable:  true,
+			RenderPreviewFormat:     "svg",
+			RenderPreviewVisualMode: "selling_point",
+			RenderPreviewLayerTypes: []string{"detail", "text"},
+			PreviewCapabilities:     []string{"detail_preview"},
+			ReviewStatus:            "pending",
+		}},
+	}
+}
+
+func newTaskGenerationActionProjectionTarget(interactionMode string) *AssetGenerationActionTarget {
+	return &AssetGenerationActionTarget{
+		ActionKey:       "approve_section_review",
+		InteractionMode: interactionMode,
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+}
+
+func newTaskGenerationActionEntryReviewFixture(t *testing.T, taskID string) (*Task, *taskGenerationService) {
+	t.Helper()
+
+	repo := &stubGenerationRepo{}
+	task := &Task{
+		ID:        taskID,
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: taskID,
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-preview-1",
+				AssetRevision:   "asset-rev-1",
+				PreviewRevision: "preview-rev-1",
+				TaskRevision:    "task-rev-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	return task, newTaskGenerationService(taskGenerationServiceConfig{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	})
+}
+
+func TestTaskGenerationActionProjectionBuildsReviewSessionAndPatch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("queue_only", func(t *testing.T) {
+		t.Parallel()
+
+		target := newTaskGenerationActionProjectionTarget("queue_only")
+		previousQueue := newTaskGenerationActionProjectionQueue("task-generation-action-projection-queue-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready")
+		previousSession := buildGenerationReviewSession(
+			newTaskGenerationActionProjectionResult("task-generation-action-projection-queue-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+			previousQueue,
+			target.QueueQuery,
+		)
+		currentResult := newTaskGenerationActionProjectionResult("task-generation-action-projection-queue-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+		currentQueue := newTaskGenerationActionProjectionQueue("task-generation-action-projection-queue-1", &GenerationWorkQueueSummary{
+			TotalItems:       1,
+			CompletedItems:   1,
+			PreviewableItems: 1,
+			ApprovedSections: 1,
+		}, "completed")
+
+		result := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+			actionKey:             target.ActionKey,
+			target:                target,
+			responseMode:          "full",
+			previousReviewSession: previousSession,
+			currentResult:         currentResult,
+			refresh: &taskGenerationActionRefreshResult{
+				overview:               &AssetGenerationOverview{},
+				platformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
+				currentResult:          currentResult,
+			},
+			execution: &taskGenerationActionExecution{
+				queuePage: &GenerationQueuePage{
+					Summary: currentQueue.Summary,
+					Items:   currentQueue.Items,
+				},
+			},
+		})
+
+		if result == nil {
+			t.Fatal("projection result = nil, want assembled action result")
+		}
+		if result.ReviewSession == nil {
+			t.Fatalf("projection result = %+v, want review session", result)
+		}
+		if result.ReviewSession.FocusedRenderPreview == nil || result.ReviewSession.FocusedRenderPreview.AssetRevision != "asset-rev-new" || result.ReviewSession.FocusedRenderPreview.PreviewRevision != "preview-rev-new" || result.ReviewSession.FocusedRenderPreview.TaskRevision != "task-rev-new" {
+			t.Fatalf("review session focused preview = %+v, want refreshed current result revisions", result.ReviewSession.FocusedRenderPreview)
+		}
+		if result.ReviewSession.Queue == nil || result.ReviewSession.Queue.Summary == nil || result.ReviewSession.Queue.Summary.CompletedItems != 1 || result.ReviewSession.Queue.Summary.ReadyItems != 0 {
+			t.Fatalf("review session queue = %+v, want queue page-backed queue summary", result.ReviewSession.Queue)
+		}
+		if result.ReviewWorkflow == nil || result.ReviewWorkflow.ActionKey != target.ActionKey || result.ReviewWorkflow.Platform != "shein" || result.ReviewWorkflow.Slot != "main" || result.ReviewWorkflow.Capability != "detail_preview" {
+			t.Fatalf("review workflow = %+v, want resolved target workflow metadata", result.ReviewWorkflow)
+		}
+		if result.ReviewSession.LastWorkflowResult == nil || result.ReviewSession.LastWorkflowResult.ActionKey != target.ActionKey {
+			t.Fatalf("review session workflow = %+v, want workflow applied to session", result.ReviewSession.LastWorkflowResult)
+		}
+		if result.ReviewPatch == nil || result.ReviewPatch.LastWorkflowResult == nil || result.ReviewPatch.LastWorkflowResult.ActionKey != target.ActionKey {
+			t.Fatalf("review patch = %+v, want workflow attached to patch", result.ReviewPatch)
+		}
+		if !result.ReviewPatch.FocusChanged || result.ReviewPatch.FocusedRenderPreview == nil || result.ReviewPatch.FocusedRenderPreview.AssetRevision != "asset-rev-new" {
+			t.Fatalf("review patch = %+v, want refreshed focus patch payload", result.ReviewPatch)
+		}
+		if result.DeltaToken == "" || result.DeltaToken != result.ReviewPatch.DeltaToken {
+			t.Fatalf("delta token = %q, review patch = %+v, want patch delta token fallback", result.DeltaToken, result.ReviewPatch)
+		}
+		if len(result.PlatformRenderPreviews) != 1 || result.PlatformRenderPreviews[0].Platform != "shein" {
+			t.Fatalf("platform render previews = %+v, want refresh previews preserved", result.PlatformRenderPreviews)
+		}
+	})
+
+	t.Run("retryable", func(t *testing.T) {
+		t.Parallel()
+
+		target := newTaskGenerationActionProjectionTarget("retryable")
+		previousQueue := newTaskGenerationActionProjectionQueue("task-generation-action-projection-retry-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready")
+		previousSession := buildGenerationReviewSession(
+			newTaskGenerationActionProjectionResult("task-generation-action-projection-retry-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+			previousQueue,
+			target.QueueQuery,
+		)
+		currentResult := newTaskGenerationActionProjectionResult("task-generation-action-projection-retry-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+
+		result := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+			actionKey:             target.ActionKey,
+			target:                target,
+			responseMode:          "full",
+			previousReviewSession: previousSession,
+			currentResult:         currentResult,
+			refresh: &taskGenerationActionRefreshResult{
+				currentResult: currentResult,
+			},
+			execution: &taskGenerationActionExecution{
+				retryPage: &GenerationTaskPage{
+					MatchedQueue: newTaskGenerationActionProjectionQueue("task-generation-action-projection-retry-1", &GenerationWorkQueueSummary{
+						TotalItems:       1,
+						ReadyItems:       1,
+						PreviewableItems: 1,
+					}, "ready"),
+					ExecutedQueue: newTaskGenerationActionProjectionQueue("task-generation-action-projection-retry-1", &GenerationWorkQueueSummary{
+						TotalItems:       1,
+						CompletedItems:   1,
+						PreviewableItems: 1,
+						ApprovedSections: 1,
+					}, "completed"),
+				},
+			},
+		})
+
+		if result == nil || result.ReviewSession == nil {
+			t.Fatalf("projection result = %+v, want retry review session", result)
+		}
+		if result.ReviewSession.Queue == nil || result.ReviewSession.Queue.Summary == nil || result.ReviewSession.Queue.Summary.CompletedItems != 1 || result.ReviewSession.Queue.Summary.ReadyItems != 0 {
+			t.Fatalf("review session queue = %+v, want retry executed queue source", result.ReviewSession.Queue)
+		}
+	})
+}
+
+func TestTaskGenerationActionProjectionSupportsPatchOnlyResponses(t *testing.T) {
+	t.Parallel()
+
+	target := newTaskGenerationActionProjectionTarget("review_only")
+	previousSession := buildGenerationReviewSession(
+		newTaskGenerationActionProjectionResult("task-generation-action-projection-patch-1", "asset-rev-old", "preview-rev-old", "task-rev-old"),
+		newTaskGenerationActionProjectionQueue("task-generation-action-projection-patch-1", &GenerationWorkQueueSummary{
+			TotalItems:            1,
+			ReadyItems:            1,
+			PreviewableItems:      1,
+			ReviewPendingSections: 1,
+		}, "ready"),
+		target.QueueQuery,
+	)
+	currentResult := newTaskGenerationActionProjectionResult("task-generation-action-projection-patch-1", "asset-rev-new", "preview-rev-new", "task-rev-new")
+
+	result := buildTaskGenerationActionProjectionPhase().run(&taskGenerationActionProjectionInput{
+		actionKey:             target.ActionKey,
+		target:                target,
+		responseMode:          "patch_only",
+		previousReviewSession: previousSession,
+		currentResult:         currentResult,
+		refresh: &taskGenerationActionRefreshResult{
+			platformRenderPreviews: []PlatformAssetRenderPreviews{{Platform: "shein", Main: &AssetRenderPreviewSlot{AssetID: "asset-preview-1"}}},
+			currentResult:          currentResult,
+		},
+		execution: &taskGenerationActionExecution{
+			queuePage: &GenerationQueuePage{
+				Summary: newTaskGenerationActionProjectionQueue("task-generation-action-projection-patch-1", &GenerationWorkQueueSummary{
+					TotalItems:       1,
+					CompletedItems:   1,
+					PreviewableItems: 1,
+					ApprovedSections: 1,
+				}, "completed").Summary,
+				Items: newTaskGenerationActionProjectionQueue("task-generation-action-projection-patch-1", &GenerationWorkQueueSummary{
+					TotalItems:       1,
+					CompletedItems:   1,
+					PreviewableItems: 1,
+					ApprovedSections: 1,
+				}, "completed").Items,
+			},
+		},
+	})
+
+	if result == nil {
+		t.Fatal("projection result = nil, want patch-only action result")
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ReviewSession != nil {
+		t.Fatalf("review session = %+v, want patch-only response to omit session", result.ReviewSession)
+	}
+	if len(result.PlatformRenderPreviews) != 0 {
+		t.Fatalf("platform render previews = %+v, want patch-only response to omit previews", result.PlatformRenderPreviews)
+	}
+	if result.ReviewPatch == nil || result.ReviewPatch.LastWorkflowResult == nil || result.ReviewPatch.LastWorkflowResult.ActionKey != target.ActionKey {
+		t.Fatalf("review patch = %+v, want workflow-attached patch payload", result.ReviewPatch)
+	}
+	if result.DeltaToken == "" || result.DeltaToken != result.ReviewPatch.DeltaToken {
+		t.Fatalf("delta token = %q, review patch = %+v, want patch delta token preserved", result.DeltaToken, result.ReviewPatch)
+	}
+}
+
+func TestTaskGenerationActionProjectionServiceDelegatesActionProjection(t *testing.T) {
+	t.Parallel()
+
+	actionSource := readExecuteTaskGenerationActionSource(t)
+
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionProjectionPhase()", 1)
+	assertSourceContainsAll(t, actionSource, []string{
+		"taskGenerationActionProjectionInput",
+	})
+	assertSourceOccurrenceCount(t, actionSource, "buildGenerationReviewSession(", 1)
+	assertSourceExcludesAll(t, actionSource, []string{
+		"buildGenerationReviewWorkflowResult(",
+		"applyGenerationReviewWorkflow(",
+		"buildGenerationReviewSessionPatch(",
+		`"patch_only"`,
+		"buildGenerationReviewDeltaToken(",
+	})
+}
+
+func TestTaskGenerationActionEntryServiceDelegatesBootstrapPhase(t *testing.T) {
+	t.Parallel()
+
+	actionSource := readExecuteTaskGenerationActionSource(t)
+
+	assertSourceOccurrenceCount(t, actionSource, "buildTaskGenerationActionEntryPhase(s).run(", 1)
+	assertSourceContainsAll(t, actionSource, []string{
+		"entry, err := buildTaskGenerationActionEntryPhase(s).run(ctx, taskID, req)",
+		"entry.baseResult",
+		"entry.target",
+		"entry.previousReviewSession",
+		"entry.result",
+	})
+	assertSourceExcludesAll(t, actionSource, []string{
+		"queue, err := s.getCurrentAssetGenerationQueue(ctx, taskID)",
+		"baseResult, err := s.getCurrentListingKitResult(ctx, taskID)",
+		"overview := buildAssetGenerationOverview(queue)",
+		"target, source, err := resolveAssetGenerationActionTarget(overview, req)",
+		"target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)",
+		"result := &GenerationActionExecutionResult{",
+	})
+}
+
+func TestTaskGenerationActionEntryPhaseBuildsRequestTargetBootstrapState(t *testing.T) {
+	t.Parallel()
+
+	task, generation := newTaskGenerationActionEntryReviewFixture(t, "task-generation-action-entry-request-target-1")
+
+	entry, err := buildTaskGenerationActionEntryPhase(generation).run(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey:    "approve_section_review",
+		ResponseMode: "patch_only",
+		Target: &AssetGenerationActionTarget{
+			ActionKey:       "approve_section_review",
+			InteractionMode: "review_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "main",
+				PreviewCapability: "detail_preview",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("taskGenerationActionEntryPhase.run() error = %v", err)
+	}
+	if entry == nil || entry.result == nil || entry.target == nil {
+		t.Fatalf("entry = %+v, want bootstrap state", entry)
+	}
+	if entry.result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", entry.result.ResponseMode)
+	}
+	if entry.result.ResolvedTarget != entry.target {
+		t.Fatalf("resolved target = %+v, want entry target pointer %+v", entry.result.ResolvedTarget, entry.target)
+	}
+	wantImpact := buildAssetGenerationActionImpact(entry.baseResult.AssetGenerationQueue, entry.target.QueueQuery)
+	if !reflect.DeepEqual(entry.target.ExpectedImpact, wantImpact) {
+		t.Fatalf("expected impact = %+v, want %+v", entry.target.ExpectedImpact, wantImpact)
+	}
+	if entry.result.Audit == nil {
+		t.Fatalf("audit = %+v, want audit payload", entry.result.Audit)
+	}
+	if entry.result.Audit.RequestedActionKey != "approve_section_review" || entry.result.Audit.ResolvedActionKey != "approve_section_review" || entry.result.Audit.ResolutionSource != "request_target" || entry.result.Audit.ExecutionPath != "review_only" {
+		t.Fatalf("audit = %+v, want request_target review_only audit", entry.result.Audit)
+	}
+	if entry.result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", entry.result.Audit)
+	}
+	wantSession := buildGenerationReviewSession(entry.baseResult, entry.baseResult.AssetGenerationQueue, entry.target.QueueQuery)
+	if !reflect.DeepEqual(entry.previousReviewSession, wantSession) {
+		t.Fatalf("previousReviewSession = %+v, want %+v", entry.previousReviewSession, wantSession)
+	}
+}
+
+func TestTaskGenerationActionEntryPhaseBuildsOverviewResolvedBootstrapState(t *testing.T) {
+	t.Parallel()
+
+	task, generation := newTaskGenerationActionQueueFixture(t, "task-generation-action-entry-overview-1")
+
+	entry, err := buildTaskGenerationActionEntryPhase(generation).run(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey: "review_missing_slots",
+	})
+	if err != nil {
+		t.Fatalf("taskGenerationActionEntryPhase.run() error = %v", err)
+	}
+	if entry == nil || entry.result == nil || entry.target == nil {
+		t.Fatalf("entry = %+v, want bootstrap state", entry)
+	}
+	if entry.result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want full", entry.result.ResponseMode)
+	}
+	if entry.target.QueueQuery == nil || entry.target.QueueQuery.QualityGrade != "missing" {
+		t.Fatalf("target = %+v, want overview-resolved missing queue query", entry.target)
+	}
+	if entry.result.Audit == nil {
+		t.Fatalf("audit = %+v, want audit payload", entry.result.Audit)
+	}
+	if entry.result.Audit.RequestedActionKey != "review_missing_slots" || entry.result.Audit.ResolvedActionKey != "review_missing_slots" || entry.result.Audit.ResolutionSource != "overview" || entry.result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want overview queue_only audit", entry.result.Audit)
+	}
+	wantSession := buildGenerationReviewSession(entry.baseResult, entry.baseResult.AssetGenerationQueue, entry.target.QueueQuery)
+	if !reflect.DeepEqual(entry.previousReviewSession, wantSession) {
+		t.Fatalf("previousReviewSession = %+v, want %+v", entry.previousReviewSession, wantSession)
+	}
 }
 
 func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *testing.T) {
@@ -70,8 +497,23 @@ func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *tes
 	if result == nil || result.ActionKey != assetGenerationActionRunStandardProductTemporal {
 		t.Fatalf("result = %+v, want standard temporal action result", result)
 	}
-	if result.Audit == nil || result.Audit.ResolutionSource != "layer_temporal" {
-		t.Fatalf("audit = %+v, want layer_temporal audit", result.Audit)
+	if result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only interaction mode", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunStandardProductTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only standard temporal target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery != nil {
+		t.Fatalf("resolved target = %+v, want standard temporal target without queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
 	}
 }
 
@@ -113,8 +555,525 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 	if result == nil || result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal {
 		t.Fatalf("result = %+v, want platform temporal action result", result)
 	}
+	if result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only interaction mode", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
 	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
 		t.Fatalf("resolved target = %+v, want amazon queue query", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only platform temporal target", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParsedPlatformFromNavigation(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	client := &stubPlatformAdaptWorkflowClient{}
+	svc := &service{
+		repo:                         repo,
+		platformAdaptWorkflowClient:  client,
+		platformAdaptWorkflowEnabled: true,
+	}
+
+	task := &Task{
+		ID:        "task-generation-action-platform-temporal-navigation-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-action-platform-temporal-navigation-1"},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ExecuteTaskGenerationAction(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey:    assetGenerationActionRunPlatformAdaptTemporal,
+		ResponseMode: "patch_only",
+		Target: &AssetGenerationActionTarget{
+			NavigationTarget: &GenerationReviewNavigationTarget{
+				Descriptor: &GenerationNavigationDescriptor{
+					FollowUpReads: []GenerationNavigationFollowUpRead{
+						{Query: &GenerationQueueQuery{Platform: "  WALMART  "}},
+					},
+				},
+				ActionTarget: &AssetGenerationActionTarget{
+					NavigationTarget: &GenerationReviewNavigationTarget{
+						SessionQuery: &GenerationQueueQuery{Platform: "temu"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTaskGenerationAction() error = %v", err)
+	}
+	if len(client.calls) != 1 || client.calls[0].TaskID != task.ID || client.calls[0].Platform != "walmart" {
+		t.Fatalf("platform adapt temporal calls = %+v, want single walmart call for parsed request platform", client.calls)
+	}
+	if result == nil || result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only platform temporal action result", result)
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "walmart" {
+		t.Fatalf("resolved target = %+v, want shared temporal result seam to receive parsed walmart queue query", result.ResolvedTarget)
+	}
+}
+
+func TestTaskGenerationLayerTemporalStandardServiceDelegatesStandardPhase(t *testing.T) {
+	t.Parallel()
+
+	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
+			return false
+		}
+		star, ok := decl.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			return false
+		}
+		ident, ok := star.X.(*ast.Ident)
+		return ok && ident.Name == "taskGenerationService"
+	})
+
+	assertSourceContainsAll(t, source, []string{
+		"buildTaskGenerationActionTemporalStandardPhase(s).run(ctx, taskID, req)",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"client.StartStandardProduct(",
+		`fmt.Errorf("standard product temporal workflow is not configured")`,
+	})
+}
+
+func TestTaskGenerationLayerTemporalPlatformServiceDelegatesPlatformPhase(t *testing.T) {
+	t.Parallel()
+
+	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
+			return false
+		}
+		star, ok := decl.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			return false
+		}
+		ident, ok := star.X.(*ast.Ident)
+		return ok && ident.Name == "taskGenerationService"
+	})
+
+	assertSourceContainsAll(t, source, []string{
+		"buildTaskGenerationActionTemporalPlatformPhase(s).run(ctx, taskID, req)",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"client.StartPlatformAdaptation(",
+		`fmt.Errorf("platform adaptation temporal workflow is not configured")`,
+		"resolveLayerTemporalPlatform(req)",
+	})
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseUsesLocalPlatformParsingHome(t *testing.T) {
+	t.Parallel()
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, "task_generation_action_temporal_platform.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("ParseFile(task_generation_action_temporal_platform.go) error = %v", err)
+	}
+
+	var callNames []string
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		if funcDecl.Name == nil || funcDecl.Name.Name != "run" || funcDecl.Recv == nil || len(funcDecl.Recv.List) != 1 {
+			continue
+		}
+		star, ok := funcDecl.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		ident, ok := star.X.(*ast.Ident)
+		if !ok || ident.Name != "taskGenerationActionTemporalPlatformPhase" {
+			continue
+		}
+
+		ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if name := calledFunctionName(call.Fun); name != "" {
+				callNames = append(callNames, name)
+			}
+			return true
+		})
+		break
+	}
+
+	if len(callNames) == 0 {
+		t.Fatal("task_generation_action_temporal_platform.go should contain method taskGenerationActionTemporalPlatformPhase.run with named calls")
+	}
+
+	assertFunctionCallsContainAll(t, callNames, []string{
+		"resolveTemporalRequestPlatform",
+		"StartPlatformAdaptation",
+		"buildTaskGenerationActionTemporalResultPhase",
+	})
+	assertFunctionCallsExcludeAll(t, callNames, []string{
+		"resolveLayerTemporalPlatform",
+	})
+}
+
+func TestTaskGenerationLayerTemporalStandardPhaseRejectsUnconfiguredWorkflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+	}{
+		{
+			name: "disabled workflow",
+			service: &taskGenerationService{
+				standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+					return &stubStandardProductWorkflowClient{}, false
+				},
+			},
+		},
+		{
+			name: "nil client",
+			service: &taskGenerationService{
+				standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+					return nil, true
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := buildTaskGenerationActionTemporalStandardPhase(tc.service).run(
+				context.Background(),
+				" task-generation-action-standard-seam-error-1 ",
+				&ExecuteGenerationActionRequest{ActionKey: assetGenerationActionRunStandardProductTemporal},
+			)
+			if err == nil {
+				t.Fatal("taskGenerationActionTemporalStandardPhase.run() error = nil, want unconfigured error")
+			}
+			if err.Error() != "standard product temporal workflow is not configured" {
+				t.Fatalf("taskGenerationActionTemporalStandardPhase.run() error = %v, want exact unconfigured error", err)
+			}
+			if result != nil {
+				t.Fatalf("result = %+v, want nil result when workflow is unconfigured", result)
+			}
+		})
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseRejectsUnconfiguredWorkflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		service *taskGenerationService
+	}{
+		{
+			name: "disabled workflow",
+			service: &taskGenerationService{
+				platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+					return &stubPlatformAdaptWorkflowClient{}, false
+				},
+			},
+		},
+		{
+			name: "nil client",
+			service: &taskGenerationService{
+				platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+					return nil, true
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := buildTaskGenerationActionTemporalPlatformPhase(tt.service).run(context.Background(), "task-generation-action-platform-phase-unconfigured-1", &ExecuteGenerationActionRequest{
+				ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+			})
+			if err == nil || err.Error() != "platform adaptation temporal workflow is not configured" {
+				t.Fatalf("run() error = %v, want unconfigured workflow error", err)
+			}
+			if result != nil {
+				t.Fatalf("result = %+v, want nil when workflow is unavailable", result)
+			}
+		})
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseStartsWorkflowAndDelegatesResult(t *testing.T) {
+	t.Parallel()
+
+	client := &stubPlatformAdaptWorkflowClient{}
+	service := &taskGenerationService{
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalPlatformPhase(service).run(context.Background(), "  task-generation-action-platform-phase-1  ", &ExecuteGenerationActionRequest{
+		ActionKey:    assetGenerationActionRunPlatformAdaptTemporal,
+		ResponseMode: "patch_only",
+		Target: &AssetGenerationActionTarget{
+			NavigationTarget: &GenerationReviewNavigationTarget{
+				SessionQuery: &GenerationQueueQuery{
+					Platform: " AMAZON ",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("platform adapt temporal calls = %+v, want single call", client.calls)
+	}
+	if client.calls[0].TaskID != "task-generation-action-platform-phase-1" {
+		t.Fatalf("workflow call = %+v, want trimmed task id", client.calls[0])
+	}
+	if client.calls[0].Platform != "amazon" {
+		t.Fatalf("workflow call = %+v, want normalized platform", client.calls[0])
+	}
+	if client.calls[0].RequestedAt.IsZero() {
+		t.Fatalf("workflow call = %+v, want requested timestamp", client.calls[0])
+	}
+	if result == nil {
+		t.Fatal("result = nil, want temporal result seam response")
+	}
+	if result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only platform temporal result", result)
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
+		t.Fatalf("resolved target = %+v, want normalized amazon queue query", result.ResolvedTarget)
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseDefaultsToSheinWithoutPlatformInput(t *testing.T) {
+	t.Parallel()
+
+	client := &stubPlatformAdaptWorkflowClient{}
+	service := &taskGenerationService{
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalPlatformPhase(service).run(context.Background(), "task-generation-action-platform-phase-default-1", &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("platform adapt temporal calls = %+v, want single call", client.calls)
+	}
+	if client.calls[0].Platform != "shein" {
+		t.Fatalf("workflow call = %+v, want default shein platform", client.calls[0])
+	}
+	if result == nil || result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "shein" {
+		t.Fatalf("result = %+v, want default shein queue query", result)
+	}
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhasePropagatesWorkflowStartError(t *testing.T) {
+	t.Parallel()
+
+	client := &stubPlatformAdaptWorkflowClient{err: errors.New("start platform adaptation failed")}
+	service := &taskGenerationService{
+		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalPlatformPhase(service).run(context.Background(), "task-generation-action-platform-phase-error-1", &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionRunPlatformAdaptTemporal,
+		Target: &AssetGenerationActionTarget{
+			QueueQuery: &GenerationQueueQuery{Platform: "amazon"},
+		},
+	})
+	if err == nil || err.Error() != "start platform adaptation failed" {
+		t.Fatalf("run() error = %v, want propagated workflow start error", err)
+	}
+	if result != nil {
+		t.Fatalf("result = %+v, want nil when workflow start fails", result)
+	}
+	if len(client.calls) != 1 || client.calls[0].Platform != "amazon" {
+		t.Fatalf("platform adapt temporal calls = %+v, want single amazon call before error", client.calls)
+	}
+}
+
+func TestTaskGenerationLayerTemporalStandardPhaseStartsWorkflowAndShapesResult(t *testing.T) {
+	t.Parallel()
+
+	client := &stubStandardProductWorkflowClient{}
+	service := &taskGenerationService{
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalStandardPhase(service).run(
+		context.Background(),
+		"  task-generation-action-standard-seam-1  ",
+		&ExecuteGenerationActionRequest{
+			ActionKey:     assetGenerationActionRunStandardProductTemporal,
+			ResponseMode:  "",
+			Target:        &AssetGenerationActionTarget{ActionKey: assetGenerationActionRunStandardProductTemporal},
+		},
+	)
+	if err != nil {
+		t.Fatalf("taskGenerationActionTemporalStandardPhase.run() error = %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("standard product temporal calls = %+v, want single workflow start", client.calls)
+	}
+	if client.calls[0].TaskID != "task-generation-action-standard-seam-1" {
+		t.Fatalf("start input task id = %q, want trimmed task id", client.calls[0].TaskID)
+	}
+	if client.calls[0].RequestedAt.IsZero() {
+		t.Fatalf("start input = %+v, want non-zero requested timestamp", client.calls[0])
+	}
+	if result == nil {
+		t.Fatal("result = nil, want shared temporal result seam output")
+	}
+	if result.ActionKey != assetGenerationActionRunStandardProductTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want standard queue_only temporal action result", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunStandardProductTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only standard target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery != nil {
+		t.Fatalf("resolved target = %+v, want standard target without queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want shared temporal result audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestTaskGenerationLayerTemporalStandardPhaseReturnsStartError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("start standard temporal failed")
+	client := &stubStandardProductWorkflowClient{err: wantErr}
+	service := &taskGenerationService{
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return client, true
+		},
+	}
+
+	result, err := buildTaskGenerationActionTemporalStandardPhase(service).run(
+		context.Background(),
+		"task-generation-action-standard-seam-start-error-1",
+		&ExecuteGenerationActionRequest{
+			ActionKey:    assetGenerationActionRunStandardProductTemporal,
+			ResponseMode: "full",
+		},
+	)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("taskGenerationActionTemporalStandardPhase.run() error = %v, want %v", err, wantErr)
+	}
+	if result != nil {
+		t.Fatalf("result = %+v, want nil result when workflow start fails", result)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("standard product temporal calls = %+v, want single attempted workflow start", client.calls)
+	}
+}
+
+func TestTaskGenerationActionTemporalResultPhaseShapesStandardTemporalResult(t *testing.T) {
+	t.Parallel()
+
+	result := buildTaskGenerationActionTemporalResultPhase().run(
+		assetGenerationActionRunStandardProductTemporal,
+		"",
+		nil,
+	)
+	if result == nil {
+		t.Fatal("result = nil, want queue_only temporal result")
+	}
+	if result.ActionKey != assetGenerationActionRunStandardProductTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want standard queue_only action result", result)
+	}
+	if result.ResponseMode != "full" {
+		t.Fatalf("response mode = %q, want normalized full mode", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunStandardProductTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only standard target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery != nil {
+		t.Fatalf("resolved target = %+v, want standard target without queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunStandardProductTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
+	}
+}
+
+func TestTaskGenerationActionTemporalResultPhaseShapesPlatformTemporalResult(t *testing.T) {
+	t.Parallel()
+
+	result := buildTaskGenerationActionTemporalResultPhase().run(
+		assetGenerationActionRunPlatformAdaptTemporal,
+		"patch_only",
+		&GenerationQueueQuery{Platform: "amazon"},
+	)
+	if result == nil {
+		t.Fatal("result = nil, want queue_only temporal result")
+	}
+	if result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want platform queue_only action result", result)
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.ResolvedTarget.InteractionMode != "queue_only" {
+		t.Fatalf("resolved target = %+v, want queue_only platform target", result.ResolvedTarget)
+	}
+	if result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "amazon" {
+		t.Fatalf("resolved target = %+v, want amazon queue query", result.ResolvedTarget)
+	}
+	if result.Audit == nil || result.Audit.RequestedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolvedActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.Audit.ResolutionSource != "layer_temporal" || result.Audit.ExecutionPath != "queue_only" {
+		t.Fatalf("audit = %+v, want queue_only layer_temporal audit", result.Audit)
+	}
+	if result.Audit.ExecutedAt.IsZero() {
+		t.Fatalf("audit = %+v, want executed timestamp", result.Audit)
 	}
 }
 

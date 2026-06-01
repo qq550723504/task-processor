@@ -135,3 +135,65 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 		t.Fatalf("settings = %+v, want snapshot-backed settings", settings)
 	}
 }
+
+func TestApplySubmitSettingsProfileOverlaysProfileFields(t *testing.T) {
+	t.Parallel()
+
+	settings := applySubmitSettingsProfile(SheinSettings{
+		DefaultStoreID:    700,
+		Site:              "US",
+		WarehouseCode:     "WH-US-1",
+		DefaultStock:      100,
+		DefaultSubmitMode: "publish",
+	}, &ListingKitStoreProfile{
+		StoreID:           902,
+		Site:              "GB",
+		WarehouseCode:     "WH-GB-1",
+		DefaultStock:      66,
+		DefaultSubmitMode: "save_draft",
+	})
+
+	if settings.DefaultStoreID != 902 {
+		t.Fatalf("default store id = %d, want 902", settings.DefaultStoreID)
+	}
+	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-1" || settings.DefaultStock != 66 || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("settings = %+v, want profile-backed settings", settings)
+	}
+}
+
+func TestApplySubmitSettingsTaskRequestPrefersCountry(t *testing.T) {
+	t.Parallel()
+
+	settings := applySubmitSettingsTaskRequest(SheinSettings{
+		Site:          "GB",
+		WarehouseCode: "WH-GB-1",
+	}, &Task{
+		Request: &GenerateRequest{
+			Country: "us",
+		},
+	})
+
+	if settings.Site != "US" {
+		t.Fatalf("site = %q, want US", settings.Site)
+	}
+	if settings.WarehouseCode != "WH-GB-1" {
+		t.Fatalf("warehouse code = %q, want original warehouse", settings.WarehouseCode)
+	}
+}
+
+func TestApplySubmitWarehouseOverrideUsesNonEmptyWarehouseCode(t *testing.T) {
+	t.Parallel()
+
+	settings := applySubmitWarehouseOverride(SheinSettings{
+		Site:          "US",
+		WarehouseCode: "WH-US-1",
+	}, "WH-US-9")
+	if settings.WarehouseCode != "WH-US-9" {
+		t.Fatalf("warehouse code = %q, want WH-US-9", settings.WarehouseCode)
+	}
+
+	settings = applySubmitWarehouseOverride(settings, "")
+	if settings.WarehouseCode != "WH-US-9" {
+		t.Fatalf("warehouse code = %q, want preserved WH-US-9", settings.WarehouseCode)
+	}
+}

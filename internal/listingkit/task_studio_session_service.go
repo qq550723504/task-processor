@@ -6,8 +6,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+
+	corelogger "task-processor/internal/core/logger"
 )
 
 type taskStudioSessionServiceConfig struct {
@@ -17,6 +21,8 @@ type taskStudioSessionServiceConfig struct {
 type taskStudioSessionService struct {
 	repo StudioSessionRepository
 }
+
+var studioSessionLogger = corelogger.GetGlobalLogger("listingkit.studio.session")
 
 func newTaskStudioSessionService(config taskStudioSessionServiceConfig) *taskStudioSessionService {
 	return &taskStudioSessionService{repo: config.repo}
@@ -93,6 +99,9 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 	if session == nil {
 		return nil, ErrStudioSessionNotFound
 	}
+	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
+		return nil, err
+	}
 
 	if req != nil {
 		if req.Status != nil {
@@ -122,6 +131,9 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 		if req.ImageStrategy != nil {
 			session.ImageStrategy = *req.ImageStrategy
 		}
+		if req.GroupedImageMode != nil {
+			session.GroupedImageMode = *req.GroupedImageMode
+		}
 		if req.SelectedSDSImages != nil {
 			selected := make(SheinStudioSelectedSDSImageList, 0, len(req.SelectedSDSImages))
 			for _, item := range req.SelectedSDSImages {
@@ -144,6 +156,9 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 		if req.GenerationJobID != nil {
 			session.GenerationJobID = *req.GenerationJobID
 		}
+		if req.GenerationJobs != nil {
+			session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
+		}
 		if req.GenerationError != nil {
 			session.GenerationError = *req.GenerationError
 		}
@@ -165,7 +180,15 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 	if err := s.repo.UpdateSession(ctx, session); err != nil {
 		return nil, err
 	}
-	return s.loadStudioSessionDetail(ctx, session)
+	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+		"session_id":            session.ID,
+		"status":                session.Status,
+		"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
+		"generation_jobs_count": len(session.GenerationJobs),
+		"approved_design_count": len(session.ApprovedDesignIDs),
+		"created_task_count":    len(session.CreatedTasks),
+	})).Info("studio session updated")
+	return studioSessionDetailWithoutDesigns(session), nil
 }
 
 func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error) {
@@ -178,6 +201,9 @@ func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Conte
 	}
 	if session == nil {
 		return nil, ErrStudioSessionNotFound
+	}
+	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
+		return nil, err
 	}
 
 	approvedSet := make(map[string]struct{}, len(req.ApprovedDesignIDs))
@@ -294,6 +320,9 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 		if session == nil {
 			return nil, ErrStudioSessionNotFound
 		}
+		if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, studioSessionStringPtr(req.ExpectedUpdatedAt)); err != nil {
+			return nil, err
+		}
 	} else {
 		session = &SheinStudioSession{
 			ID:                      uuid.NewString(),
@@ -323,6 +352,7 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	session.ProductImagePrompts = toStudioProductImagePromptList(req.ProductImagePrompts)
 	session.ArtworkModel = req.ArtworkModel
 	session.ImageStrategy = req.ImageStrategy
+	session.GroupedImageMode = req.GroupedImageMode
 	session.SelectedSDSImages = toStudioSelectedSDSImageList(req.SelectedSDSImages)
 	session.GroupedSelections = toStudioGroupedSelectionList(req.GroupedSelections)
 	session.TransparentBackground = req.TransparentBackground
@@ -331,6 +361,7 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), req.ApprovedDesignIDs...)
 	session.CreatedTasks = toStudioCreatedTaskList(req.CreatedTasks)
 	session.CreatedTaskIDs = buildCreatedTaskIDs(req.CreatedTasks)
+	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
 	session.SavedAsBatch = true
 	session.BatchName = strings.TrimSpace(req.BatchName)
 	if session.BatchName == "" {
@@ -355,7 +386,61 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	if err := s.repo.ReplaceDesigns(ctx, session.ID, req.ApprovedDesignIDs, req.Designs); err != nil {
 		return nil, err
 	}
+	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+		"session_id":              session.ID,
+		"batch_name":              session.BatchName,
+		"is_create":               isCreate,
+		"status":                  session.Status,
+		"design_count":            len(req.Designs),
+		"approved_design_count":   len(req.ApprovedDesignIDs),
+		"created_task_count":      len(req.CreatedTasks),
+		"generation_jobs_count":   len(req.GenerationJobs),
+		"grouped_selection_count": len(req.GroupedSelections),
+		"shein_store_id":          session.SheinStoreID,
+	})).Info("studio batch upserted")
 	return s.loadStudioSessionDetail(ctx, session)
+}
+
+func reqExpectedUpdatedAt(req any) *string {
+	switch value := req.(type) {
+	case *UpdateStudioSessionRequest:
+		if value == nil {
+			return nil
+		}
+		return value.ExpectedUpdatedAt
+	case *ReplaceStudioSessionDesignsRequest:
+		if value == nil {
+			return nil
+		}
+		return value.ExpectedUpdatedAt
+	default:
+		return nil
+	}
+}
+
+func validateStudioSessionExpectedUpdatedAt(current time.Time, expected *string) error {
+	if expected == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*expected)
+	if trimmed == "" || current.IsZero() {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, trimmed)
+	if err != nil {
+		return fmt.Errorf("invalid expected_updated_at: %w", err)
+	}
+	if !current.UTC().Equal(parsed.UTC()) {
+		return ErrStudioSessionConflict
+	}
+	return nil
+}
+
+func studioSessionStringPtr(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func (s *taskStudioSessionService) nextTenantBatchName(ctx context.Context) (string, error) {
@@ -408,4 +493,24 @@ func (s *taskStudioSessionService) loadStudioSessionDetail(ctx context.Context, 
 		Session: session,
 		Designs: designs,
 	}, nil
+}
+
+func studioSessionDetailWithoutDesigns(session *SheinStudioSession) *SheinStudioSessionDetail {
+	return &SheinStudioSessionDetail{
+		Session: session,
+		Designs: []SheinStudioDesign{},
+	}
+}
+
+func studioSessionLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {
+	if fields == nil {
+		fields = logrus.Fields{}
+	}
+	for key, value := range RequestTraceFromContext(ctx).LogFields() {
+		if value == "" || value == 0 {
+			continue
+		}
+		fields[key] = value
+	}
+	return fields
 }

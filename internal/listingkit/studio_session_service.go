@@ -15,6 +15,11 @@ type StudioSessionService interface {
 	ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error)
 	ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error)
 	GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error)
+	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
+	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
+	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*SheinStudioSessionDetail, error)
 	DeleteStudioBatch(ctx context.Context, batchID string) error
 }
@@ -88,6 +93,8 @@ func buildStudioSelectionKey(selection *SheinStudioSelection) string {
 
 func deriveBatchStatus(req *UpsertStudioBatchRequest) SheinStudioSessionStatus {
 	switch {
+	case len(req.GenerationJobs) > 0:
+		return SheinStudioSessionStatusGenerating
 	case len(req.CreatedTasks) > 0:
 		return SheinStudioSessionStatusTasksCreated
 	case len(req.Designs) > 0:
@@ -113,6 +120,7 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		ProductImagePrompts:     []SheinStudioProductImagePrompt(session.ProductImagePrompts),
 		ArtworkModel:            session.ArtworkModel,
 		ImageStrategy:           session.ImageStrategy,
+		GroupedImageMode:        session.GroupedImageMode,
 		TransparentBackground:   session.TransparentBackground,
 		RenderSizeImagesWithSDS: session.RenderSizeImagesWithSDS,
 		SheinStoreID:            session.SheinStoreID,

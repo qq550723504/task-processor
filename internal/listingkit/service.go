@@ -16,8 +16,8 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
-	"task-processor/internal/sdslogin"
 	sdsusecase "task-processor/internal/sds/usecase"
+	"task-processor/internal/sdslogin"
 )
 
 type service struct {
@@ -26,6 +26,8 @@ type service struct {
 	taskGeneration                 *taskGenerationService
 	taskRevision                   *taskRevisionService
 	taskStudioSession              *taskStudioSessionService
+	taskStudioBatch                *taskStudioBatchService
+	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
@@ -36,6 +38,8 @@ type service struct {
 	taskDirectSubmission           *taskDirectSubmissionService
 	taskTemporalSubmissionAdapter  *taskTemporalSubmissionAdapter
 	studioSessionRepo              StudioSessionRepository
+	studioBatchRepo                StudioBatchRepository
+	studioBatchRunRepo             StudioBatchRunRepository
 	productSvc                     ProductService
 	imageSvc                       ImageService
 	sdsSyncSvc                     sdsusecase.Service
@@ -81,6 +85,8 @@ type service struct {
 type ServiceCoreDependencies struct {
 	Repository                     Repository
 	StudioSessionRepository        StudioSessionRepository
+	StudioBatchRepository          StudioBatchRepository
+	StudioBatchRunRepository       StudioBatchRunRepository
 	ProductService                 ProductService
 	ImageService                   ImageService
 	SDSSyncService                 sdsusecase.Service
@@ -157,6 +163,8 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 	return &service{
 		repo:                           config.Core.Repository,
 		studioSessionRepo:              config.Core.StudioSessionRepository,
+		studioBatchRepo:                config.Core.StudioBatchRepository,
+		studioBatchRunRepo:             config.Core.StudioBatchRunRepository,
 		productSvc:                     config.Core.ProductService,
 		imageSvc:                       config.Core.ImageService,
 		sdsSyncSvc:                     config.Core.SDSSyncService,
@@ -199,53 +207,6 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		sheinSubmitLocks: newSubmitLockManager(),
 		sheinSettings:    defaultSettings,
 	}
-}
-
-func (s *service) initializeCollaborators() {
-	if s == nil {
-		return
-	}
-	s.initializeTaskCollaborators()
-	s.initializeAdminCollaborators()
-	s.initializeSubmitCollaborators()
-	s.initializeTemporalCollaborators()
-}
-
-func (s *service) initializeTaskCollaborators() {
-	if s == nil {
-		return
-	}
-	s.taskLifecycle = s.taskLifecycleOrDefault()
-	s.taskGeneration = s.taskGenerationOrDefault()
-	s.taskRevision = s.taskRevisionOrDefault()
-	s.taskStudioSession = s.taskStudioSessionOrDefault()
-	s.taskStudioMedia = s.taskStudioMediaOrDefault()
-}
-
-func (s *service) initializeSubmitCollaborators() {
-	if s == nil {
-		return
-	}
-	s.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
-	s.taskSubmission = s.taskSubmissionOrDefault()
-	s.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
-	s.taskSubmissionState = s.taskSubmissionStateOrDefault()
-	s.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
-}
-
-func (s *service) initializeAdminCollaborators() {
-	if s == nil {
-		return
-	}
-	s.settingsAdmin = s.settingsAdminOrDefault()
-	s.sheinAdmin = s.sheinAdminOrDefault()
-}
-
-func (s *service) initializeTemporalCollaborators() {
-	if s == nil {
-		return
-	}
-	s.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
 }
 
 func (config *ServiceConfig) applyDefaults() {

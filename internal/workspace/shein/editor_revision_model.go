@@ -58,17 +58,21 @@ type AttributeResolutionPatch struct {
 }
 
 type SaleAttributeResolutionPatch struct {
-	Status                  *string                                  `json:"status,omitempty"`
-	Source                  *string                                  `json:"source,omitempty"`
-	RecommendCategoryReview *bool                                    `json:"recommend_category_review,omitempty"`
-	CategoryReviewReason    *string                                  `json:"category_review_reason,omitempty"`
-	PrimaryAttributeID      *int                                     `json:"primary_attribute_id,omitempty"`
-	SecondaryAttributeID    *int                                     `json:"secondary_attribute_id,omitempty"`
-	SKCAttributes           []sheinpub.ResolvedSaleAttribute         `json:"skc_attributes,omitempty"`
-	SKUAttributes           []sheinpub.ResolvedSaleAttribute         `json:"sku_attributes,omitempty"`
-	CustomAttributeRelation []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
-	SelectionSummary        []string                                 `json:"selection_summary,omitempty"`
-	ReviewNotes             []string                                 `json:"review_notes,omitempty"`
+	Status                   *string                                   `json:"status,omitempty"`
+	Source                   *string                                   `json:"source,omitempty"`
+	RecommendCategoryReview  *bool                                     `json:"recommend_category_review,omitempty"`
+	CategoryReviewReason     *string                                   `json:"category_review_reason,omitempty"`
+	PrimaryAttributeID       *int                                      `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID     *int                                      `json:"secondary_attribute_id,omitempty"`
+	PrimarySourceDimension   *string                                   `json:"primary_source_dimension,omitempty"`
+	SecondarySourceDimension *string                                   `json:"secondary_source_dimension,omitempty"`
+	SKCAttributes            []sheinpub.ResolvedSaleAttribute          `json:"skc_attributes,omitempty"`
+	SKUAttributes            []sheinpub.ResolvedSaleAttribute          `json:"sku_attributes,omitempty"`
+	SKCValueAssignments      map[string]sheinpub.ResolvedSaleAttribute `json:"skc_value_assignments,omitempty"`
+	SKUValueAssignments      map[string]sheinpub.ResolvedSaleAttribute `json:"sku_value_assignments,omitempty"`
+	CustomAttributeRelation  []sheinattribute.CustomAttributeRelation  `json:"custom_attribute_relation,omitempty"`
+	SelectionSummary         []string                                  `json:"selection_summary,omitempty"`
+	ReviewNotes              []string                                  `json:"review_notes,omitempty"`
 }
 
 type SKCRevisionPatch struct {

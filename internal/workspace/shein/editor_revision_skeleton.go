@@ -83,8 +83,12 @@ func cloneSalePatch(src *SaleAttributeResolutionPatch) *SaleAttributeResolutionP
 		return nil
 	}
 	out := *src
+	out.PrimarySourceDimension = cloneStringPointer(src.PrimarySourceDimension)
+	out.SecondarySourceDimension = cloneStringPointer(src.SecondarySourceDimension)
 	out.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), src.SKCAttributes...)
 	out.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), src.SKUAttributes...)
+	out.SKCValueAssignments = cloneResolvedSaleAttributeMap(src.SKCValueAssignments)
+	out.SKUValueAssignments = cloneResolvedSaleAttributeMap(src.SKUValueAssignments)
 	out.CustomAttributeRelation = append(out.CustomAttributeRelation[:0:0], src.CustomAttributeRelation...)
 	out.SelectionSummary = append([]string(nil), src.SelectionSummary...)
 	out.ReviewNotes = append([]string(nil), src.ReviewNotes...)
@@ -137,6 +141,17 @@ func cloneSKUPatches(items []SKURevisionPatch) []SKURevisionPatch {
 		patch.SitePriceList = append([]sheinpub.SitePrice(nil), item.SitePriceList...)
 		patch.StockInfoList = append([]sheinpub.StockInfo(nil), item.StockInfoList...)
 		out = append(out, patch)
+	}
+	return out
+}
+
+func cloneResolvedSaleAttributeMap(src map[string]sheinpub.ResolvedSaleAttribute) map[string]sheinpub.ResolvedSaleAttribute {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]sheinpub.ResolvedSaleAttribute, len(src))
+	for key, value := range src {
+		out[key] = value
 	}
 	return out
 }

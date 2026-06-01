@@ -421,6 +421,59 @@ func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMiss
 	}
 }
 
+func TestRunStandardProductWorkflowReusesCanonicalCacheBeforeProductEnrich(t *testing.T) {
+	t.Parallel()
+
+	repo := newCanonicalProductCacheTestRepo()
+
+	task := &Task{
+		ID: "task-canonical-cache-hit",
+		Request: &GenerateRequest{
+			ProductURL: "https://example.com/product/123",
+			Platforms:  []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+			},
+		},
+	}
+	cachedProduct := &canonical.Product{
+		Title:  "Cached Canonical Product",
+		Images: []canonical.Image{{URL: "https://example.com/cached.jpg", Role: "primary"}},
+	}
+	if err := repo.SaveCanonicalProductCache(context.Background(), canonicalProductFingerprintForTask(task), cachedProduct, "source-task-1"); err != nil {
+		t.Fatalf("SaveCanonicalProductCache: %v", err)
+	}
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "unexpected-product-task"},
+		product: &productenrich.ProductJSON{
+			Title: "Unexpected Product",
+		},
+	}
+	svc := &service{
+		repo:                repo,
+		productSvc:          productSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if productSvc.lastReq != nil {
+		t.Fatalf("product enrich request = %+v, want skipped when canonical cache is hit", productSvc.lastReq)
+	}
+	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "Cached Canonical Product" {
+		t.Fatalf("canonical product = %+v, want cached canonical product", state.result.CanonicalProduct)
+	}
+	if len(state.result.ChildTasks) == 0 || state.result.ChildTasks[0].Kind != "product_enrich" || state.result.ChildTasks[0].Status != string(productenrich.TaskStatusCompleted) {
+		t.Fatalf("child tasks = %+v, want completed product_enrich cache hit", state.result.ChildTasks)
+	}
+}
+
 func TestRunStandardProductWorkflowReappliesSDSMetadataWithoutDroppingProcessedAssets(t *testing.T) {
 	t.Parallel()
 

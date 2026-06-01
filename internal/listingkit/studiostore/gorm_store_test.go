@@ -128,3 +128,120 @@ func TestGormRepositoryReplaceDesignsAssignsSessionIDForBatchGallery(t *testing.
 		t.Fatalf("gallery item = %#v, want linked session/design", items[0])
 	}
 }
+
+func TestGormRepositoryReplaceDesignsDedupesDuplicateIDs(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SheinStudioSession{}, &listingkit.SheinStudioDesign{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := NewGormRepository(db)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	session := &listingkit.SheinStudioSession{
+		ID:           "batch-dedup",
+		TenantID:     "tenant-a",
+		UserID:       "user-a",
+		SelectionKey: "selection-a",
+		Status:       listingkit.SheinStudioSessionStatusReviewing,
+		SavedAsBatch: true,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := repo.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	err = repo.ReplaceDesigns(ctx, session.ID, []string{"design-1"}, []listingkit.SheinStudioDesign{
+		{
+			ID:        "design-1",
+			SessionID: session.ID,
+			ImageURL:  "https://oss.example.com/design-1-a.png",
+			Prompt:    "original prompt",
+		},
+		{
+			ID:        "design-1",
+			SessionID: session.ID,
+			ImageURL:  "https://oss.example.com/design-1-b.png",
+			Prompt:    "updated prompt",
+		},
+	})
+	if err != nil {
+		t.Fatalf("replace designs: %v", err)
+	}
+
+	designs, err := repo.ListSessionDesigns(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list session designs: %v", err)
+	}
+	if len(designs) != 1 {
+		t.Fatalf("design count = %d, want 1", len(designs))
+	}
+	if designs[0].ImageURL != "https://oss.example.com/design-1-b.png" {
+		t.Fatalf("image url = %q, want latest duplicate value", designs[0].ImageURL)
+	}
+	if designs[0].Prompt != "updated prompt" {
+		t.Fatalf("prompt = %q, want latest duplicate value", designs[0].Prompt)
+	}
+}
+
+func TestGormRepositoryUpsertDesignsPreservesExistingSessionDesigns(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SheinStudioSession{}, &listingkit.SheinStudioDesign{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := NewGormRepository(db)
+	baseCtx := listingkit.WithTenantID(context.Background(), "tenant-upsert-designs")
+	ctx := openaiclient.WithIdentity(baseCtx, openaiclient.Identity{
+		TenantID: "tenant-upsert-designs",
+		UserID:   "user-upsert-designs",
+	})
+
+	session := &listingkit.SheinStudioSession{
+		ID:           "session-upsert-designs",
+		UserID:       "user-upsert-designs",
+		SelectionKey: "selection-upsert-designs",
+		Status:       listingkit.SheinStudioSessionStatusReviewing,
+		Selection:    listingkit.SheinStudioSelectionSnapshot{VariantID: 3003},
+	}
+	if err := repo.CreateSession(baseCtx, session); err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if err := repo.ReplaceDesigns(baseCtx, session.ID, []string{"design-1"}, []listingkit.SheinStudioDesign{
+		{
+			ID:       "design-1",
+			ImageURL: "https://example.com/design-1.png",
+			Prompt:   "first",
+		},
+	}); err != nil {
+		t.Fatalf("ReplaceDesigns() seed error = %v", err)
+	}
+
+	if err := repo.UpsertDesigns(ctx, session.ID, []string{"design-1", "design-2"}, []listingkit.SheinStudioDesign{
+		{
+			ID:       "design-2",
+			ImageURL: "https://example.com/design-2.png",
+			Prompt:   "second",
+		},
+	}); err != nil {
+		t.Fatalf("UpsertDesigns() error = %v", err)
+	}
+
+	designs, err := repo.ListSessionDesigns(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("ListSessionDesigns() error = %v", err)
+	}
+	if len(designs) != 2 {
+		t.Fatalf("design count = %d, want 2", len(designs))
+	}
+}

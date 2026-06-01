@@ -2,11 +2,546 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	assetgeneration "task-processor/internal/asset/generation"
 	common "task-processor/internal/publishing/common"
 )
+
+func TestTaskGenerationNavigationPrimaryRunRoutesDispatchKinds(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &service{repo: repo}
+	task := &Task{
+		ID:        "task-generation-navigation-primary-route-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-primary-route-1",
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-preview-1",
+				AssetRevision:   "asset-rev-1",
+				PreviewRevision: "preview-rev-1",
+				TaskRevision:    "task-rev-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPrimaryPhase(svc.taskGenerationOrDefault())
+
+	t.Run("action", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			DispatchKind: "action",
+			ActionTarget: &AssetGenerationActionTarget{
+				ActionKey:       "approve_section_review",
+				InteractionMode: "review_only",
+				QueueQuery: &GenerationQueueQuery{
+					Platform:          "shein",
+					Slot:              "main",
+					PreviewCapability: "detail_preview",
+				},
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "action" || response.Action == nil {
+			t.Fatalf("run() response = %+v, want action dispatch response", response)
+		}
+		if response.Action.ActionKey != "approve_section_review" || response.Action.ResponseMode != "full" {
+			t.Fatalf("run() action response = %+v, want routed action dispatch", response.Action)
+		}
+	})
+
+	t.Run("implicit_action", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			ActionTarget: &AssetGenerationActionTarget{
+				ActionKey:       "approve_section_review",
+				InteractionMode: "review_only",
+				QueueQuery: &GenerationQueueQuery{
+					Platform:          "shein",
+					Slot:              "main",
+					PreviewCapability: "detail_preview",
+				},
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "action" || response.Action == nil {
+			t.Fatalf("run() response = %+v, want implicit action dispatch response", response)
+		}
+		if response.Action.ResponseMode != "full" {
+			t.Fatalf("run() action response = %+v, want response mode passthrough", response.Action)
+		}
+	})
+
+	t.Run("preview", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			DispatchKind: "preview",
+			PreviewQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "preview" || response.ReviewPreview == nil {
+			t.Fatalf("run() response = %+v, want preview dispatch response", response)
+		}
+		if response.ReviewPreview.Viewer == nil || response.ReviewPreview.Viewer.Platform != "shein" {
+			t.Fatalf("run() preview response = %+v, want routed preview query", response.ReviewPreview)
+		}
+	})
+
+	t.Run("implicit_preview", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			PreviewQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+				AssetID:  "asset-preview-1",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "preview" || response.ReviewPreview == nil {
+			t.Fatalf("run() response = %+v, want implicit preview dispatch response", response)
+		}
+	})
+
+	t.Run("queue", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "queue" || response.Queue == nil {
+			t.Fatalf("run() response = %+v, want queue dispatch response", response)
+		}
+		if response.Queue.TaskID != task.ID {
+			t.Fatalf("run() queue response = %+v, want task-specific queue response", response.Queue)
+		}
+	})
+
+	t.Run("implicit_queue", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "queue" || response.Queue == nil {
+			t.Fatalf("run() response = %+v, want implicit queue dispatch response", response)
+		}
+	})
+
+	t.Run("session_precedence", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			SessionQuery: &GenerationQueueQuery{
+				Platform:          "session-platform",
+				Slot:              "session-slot",
+				PreviewCapability: "session-cap",
+			},
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "queue-platform",
+				Slot:              "queue-slot",
+				PreviewCapability: "queue-cap",
+			},
+			PreviewQuery: &GenerationQueueQuery{
+				Platform:          "preview-platform",
+				Slot:              "preview-slot",
+				PreviewCapability: "preview-cap",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "session" || response.ReviewSession == nil || response.ReviewSession.Session == nil {
+			t.Fatalf("run() response = %+v, want session dispatch response", response)
+		}
+		if response.ReviewSession.ResponseMode != "full" {
+			t.Fatalf("run() session response mode = %q, want full", response.ReviewSession.ResponseMode)
+		}
+		if response.ReviewSession.Session.SelectedPlatform != "session-platform" ||
+			response.ReviewSession.Session.FocusCapability != "session-cap" {
+			t.Fatalf("run() session payload = %+v, want SessionQuery precedence over QueueQuery and PreviewQuery", response.ReviewSession.Session)
+		}
+	})
+
+	t.Run("implicit_session", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			SessionQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "session" || response.ReviewSession == nil || response.ReviewSession.Session == nil {
+			t.Fatalf("run() response = %+v, want implicit session dispatch response", response)
+		}
+		if response.ReviewSession.ResponseMode != "full" {
+			t.Fatalf("run() session response = %+v, want response mode passthrough", response.ReviewSession)
+		}
+	})
+}
+
+func TestTaskGenerationNavigationPrimaryServiceDelegatesToPhase(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &service{repo: repo}
+	task := &Task{
+		ID:        "task-generation-navigation-service-guard-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-service-guard-1",
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	response, err := svc.DispatchTaskGenerationNavigation(context.Background(), task.ID, &GenerationReviewNavigationDispatchRequest{
+		ResponseMode: "patch_only",
+		Target: &GenerationReviewNavigationTarget{
+			ActionTarget: &AssetGenerationActionTarget{
+				ActionKey:       "approve_section_review",
+				InteractionMode: "review_only",
+				QueueQuery: &GenerationQueueQuery{
+					Platform: "shein",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DispatchTaskGenerationNavigation() error = %v", err)
+	}
+	if response == nil || response.DispatchKind != "action" || response.Action == nil {
+		t.Fatalf("response = %+v, want action dispatch from service wrapper", response)
+	}
+	if response.Action.ResponseMode != "patch_only" {
+		t.Fatalf("response = %+v, want response mode passthrough", response.Action)
+	}
+}
+
+func TestTaskGenerationNavigationPrimaryPhaseOwnsPrimaryRouting(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &service{repo: repo}
+	task := &Task{
+		ID:        "task-generation-navigation-primary-guard-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-primary-guard-1",
+			AssetRenderPreviews: []AssetRenderPreview{{
+				AssetID:         "asset-preview-1",
+				AssetRevision:   "asset-rev-1",
+				PreviewRevision: "preview-rev-1",
+				TaskRevision:    "task-rev-1",
+				PreviewFormat:   "svg",
+				PreviewSVG:      "<svg/>",
+				VisualMode:      "selling_point",
+				LayerTypes:      []string{"detail", "text"},
+			}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPrimaryPhase(svc.taskGenerationOrDefault())
+
+	t.Run("implicit_action", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			ActionTarget: &AssetGenerationActionTarget{
+				ActionKey:       "approve_section_review",
+				InteractionMode: "review_only",
+				QueueQuery: &GenerationQueueQuery{
+					Platform:          "shein",
+					Slot:              "main",
+					PreviewCapability: "detail_preview",
+				},
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "action" || response.Action == nil {
+			t.Fatalf("run() response = %+v, want implicit action dispatch response", response)
+		}
+		if response.Action.ResponseMode != "full" {
+			t.Fatalf("run() action response = %+v, want response mode passthrough", response.Action)
+		}
+	})
+
+	t.Run("implicit_preview", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			PreviewQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+				AssetID:  "asset-preview-1",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "preview" || response.ReviewPreview == nil {
+			t.Fatalf("run() response = %+v, want implicit preview dispatch response", response)
+		}
+	})
+
+	t.Run("implicit_queue", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "queue" || response.Queue == nil {
+			t.Fatalf("run() response = %+v, want implicit queue dispatch response", response)
+		}
+	})
+
+	t.Run("implicit_session", func(t *testing.T) {
+		t.Parallel()
+
+		response, err := phase.run(context.Background(), task.ID, &GenerationReviewNavigationTarget{
+			SessionQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if response == nil || response.DispatchKind != "session" || response.ReviewSession == nil || response.ReviewSession.Session == nil {
+			t.Fatalf("run() response = %+v, want implicit session dispatch response", response)
+		}
+		if response.ReviewSession.ResponseMode != "full" {
+			t.Fatalf("run() session response = %+v, want response mode passthrough", response.ReviewSession)
+		}
+	})
+}
+
+func TestTaskGenerationNavigationDispatchEntryRunNormalizesTargetAndPlanMode(t *testing.T) {
+	t.Parallel()
+
+	entry := buildTaskGenerationNavigationDispatchEntry()
+	target := &GenerationReviewNavigationTarget{
+		DispatchKind: "session",
+		Conditional: &GenerationConditionalState{
+			DeltaToken: "nav-delta-123",
+		},
+		SessionQuery: &GenerationQueueQuery{
+			Platform: "shein",
+			Slot:     "main",
+		},
+	}
+
+	input, err := entry.run(&GenerationReviewNavigationDispatchRequest{
+		ResponseMode: "patch_only",
+		PlanMode:     " execute_plan ",
+		Target:       target,
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if input == nil {
+		t.Fatalf("run() input = nil, want normalized dispatch input")
+	}
+	if input.target == nil {
+		t.Fatalf("run() target = nil, want cloned target")
+	}
+	if input.target == target {
+		t.Fatalf("run() target = original pointer, want clone")
+	}
+	if input.responseMode != "patch_only" {
+		t.Fatalf("run() responseMode = %q, want patch_only", input.responseMode)
+	}
+	if input.planMode != "execute_plan" {
+		t.Fatalf("run() planMode = %q, want execute_plan", input.planMode)
+	}
+	defaultInput, err := entry.run(&GenerationReviewNavigationDispatchRequest{
+		Target: target,
+	})
+	if err != nil {
+		t.Fatalf("run() default plan mode error = %v", err)
+	}
+	if defaultInput.planMode != "primary_only" {
+		t.Fatalf("run() default planMode = %q, want primary_only", defaultInput.planMode)
+	}
+	if target.SessionQuery.IfMatch != "" || target.SessionQuery.DeltaToken != "" {
+		t.Fatalf("original target = %+v, want unchanged source target", target.SessionQuery)
+	}
+	if input.target.SessionQuery.IfMatch != "nav-delta-123" {
+		t.Fatalf("cloned target session query = %+v, want conditional baseline applied", input.target.SessionQuery)
+	}
+	if input.target.Conditional == target.Conditional {
+		t.Fatalf("cloned target conditional = %+v, want cloned conditional state", input.target.Conditional)
+	}
+}
+
+func TestTaskGenerationNavigationDispatchEntryRunRejectsMissingTarget(t *testing.T) {
+	t.Parallel()
+
+	entry := buildTaskGenerationNavigationDispatchEntry()
+
+	tests := []struct {
+		name string
+		req  *GenerationReviewNavigationDispatchRequest
+	}{
+		{
+			name: "nil_request",
+			req:  nil,
+		},
+		{
+			name: "nil_target",
+			req: &GenerationReviewNavigationDispatchRequest{
+				Target: nil,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			input, err := entry.run(tc.req)
+			if !errors.Is(err, ErrGenerationActionNotFound) {
+				t.Fatalf("run() error = %v, want ErrGenerationActionNotFound", err)
+			}
+			if input != nil {
+				t.Fatalf("run() input = %+v, want nil", input)
+			}
+		})
+	}
+}
+
+func TestDispatchTaskGenerationNavigationDefaultsPlanModeToPrimaryOnly(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &service{repo: repo}
+	task := &Task{
+		ID:        "task-generation-navigation-default-plan-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-default-plan-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:           "main",
+					AssetID:       "asset-preview-1",
+					StateLabel:    "ready",
+					TemplateLabel: "SHEIN Main",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	response, err := svc.DispatchTaskGenerationNavigation(context.Background(), task.ID, &GenerationReviewNavigationDispatchRequest{
+		Target: &GenerationReviewNavigationTarget{
+			DispatchKind: "session",
+			SessionQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DispatchTaskGenerationNavigation() error = %v", err)
+	}
+	if response == nil {
+		t.Fatalf("response = nil, want dispatch response")
+	}
+	if response.PlanMode != "primary_only" {
+		t.Fatalf("response.PlanMode = %q, want primary_only", response.PlanMode)
+	}
+	if response.ExecutedPlan != nil {
+		t.Fatalf("response.ExecutedPlan = %+v, want nil for default primary-only dispatch", response.ExecutedPlan)
+	}
+}
 
 func TestDispatchTaskGenerationNavigationRoutesSessionTarget(t *testing.T) {
 	t.Parallel()
@@ -632,6 +1167,261 @@ func TestDispatchTaskGenerationNavigationExecutesDispatchPlanForActionTarget(t *
 	}
 }
 
+func TestTaskGenerationNavigationDispatchProjectionAppliesExecutedPlanAndFinalizes(t *testing.T) {
+	t.Parallel()
+
+	response := &GenerationReviewNavigationDispatchResponse{
+		TaskID:       "task-generation-navigation-projection-1",
+		DispatchKind: "queue",
+		ResponseMode: "full",
+	}
+	executedPlan := &GenerationNavigationDispatchExecution{
+		Strategy:       "fanout_read",
+		CompletedSteps: 3,
+		Steps: []GenerationNavigationDispatchExecutionStep{
+			{
+				Kind:        "queue",
+				Status:      "completed",
+				Queue:       &GenerationQueuePage{DeltaToken: "merged-queue-delta", Summary: &GenerationWorkQueueSummary{}},
+				DeltaToken:  "merged-queue-delta",
+				Executed:    true,
+				Winner:      true,
+				Retryable:   false,
+				Skipped:     false,
+				NoChanges:   false,
+				NotModified: false,
+			},
+			{
+				Kind:          "session",
+				Status:        "completed",
+				ReviewSession: &GenerationReviewSessionResponse{DeltaToken: "merged-session-delta"},
+				DeltaToken:    "merged-session-delta",
+				Executed:      true,
+				Winner:        true,
+			},
+			{
+				Kind:          "preview",
+				Status:        "completed",
+				ReviewPreview: &GenerationReviewPreviewResponse{DeltaToken: "merged-preview-delta"},
+				DeltaToken:    "merged-preview-delta",
+				Executed:      true,
+				Winner:        true,
+			},
+		},
+	}
+
+	got := buildTaskGenerationNavigationDispatchProjectionPhase().run(response, "execute_plan", executedPlan)
+	if got != response {
+		t.Fatalf("run() = %+v, want in-place projection response", got)
+	}
+	if got.PlanMode != "execute_plan" {
+		t.Fatalf("run() PlanMode = %q, want execute_plan", got.PlanMode)
+	}
+	if got.ExecutedPlan != executedPlan {
+		t.Fatalf("run() ExecutedPlan = %+v, want merged executed plan", got.ExecutedPlan)
+	}
+	if got.Queue == nil || got.Queue.DeltaToken != "merged-queue-delta" {
+		t.Fatalf("run() Queue = %+v, want executed-plan queue merge", got.Queue)
+	}
+	if got.ReviewSession == nil || got.ReviewSession.DeltaToken != "merged-session-delta" {
+		t.Fatalf("run() ReviewSession = %+v, want executed-plan session merge", got.ReviewSession)
+	}
+	if got.ReviewPreview == nil || got.ReviewPreview.DeltaToken != "merged-preview-delta" {
+		t.Fatalf("run() ReviewPreview = %+v, want executed-plan preview merge", got.ReviewPreview)
+	}
+	if got.PanelUpdate == nil {
+		t.Fatalf("run() PanelUpdate = nil, want finalized dispatch response")
+	}
+	if got.PanelUpdate.QueueSummary == nil {
+		t.Fatalf("run() PanelUpdate = %+v, want normalized panel update", got.PanelUpdate)
+	}
+	if got.NotModified {
+		t.Fatalf("run() NotModified = true, want live finalized response")
+	}
+}
+
+func TestTaskGenerationNavigationDispatchProjectionSkipsExecutedPlanForPrimaryOnly(t *testing.T) {
+	t.Parallel()
+
+	response := &GenerationReviewNavigationDispatchResponse{
+		TaskID:       "task-generation-navigation-projection-2",
+		DispatchKind: "queue",
+		ResponseMode: "full",
+	}
+
+	got := buildTaskGenerationNavigationDispatchProjectionPhase().run(response, "primary_only", nil)
+	if got != response {
+		t.Fatalf("run() = %+v, want in-place projection response", got)
+	}
+	if got.PlanMode != "primary_only" {
+		t.Fatalf("run() PlanMode = %q, want primary_only", got.PlanMode)
+	}
+	if got.ExecutedPlan != nil {
+		t.Fatalf("run() ExecutedPlan = %+v, want nil for primary-only projection", got.ExecutedPlan)
+	}
+	if got.PanelUpdate == nil {
+		t.Fatalf("run() PanelUpdate = nil, want finalized dispatch response")
+	}
+	if got.PanelUpdate.DispatchKind != "queue" || got.PanelUpdate.ResponseMode != "full" {
+		t.Fatalf("run() PanelUpdate = %+v, want normalized primary-only panel update", got.PanelUpdate)
+	}
+}
+
+func TestTaskGenerationNavigationDispatchPlanRunReturnsNilForMissingDispatchPlan(t *testing.T) {
+	t.Parallel()
+
+	phase := buildTaskGenerationNavigationDispatchPlanPhase(&taskGenerationService{})
+
+	t.Run("nil_target", func(t *testing.T) {
+		t.Parallel()
+
+		execution, err := phase.run(context.Background(), "task-generation-navigation-plan-missing-1", nil, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution != nil {
+			t.Fatalf("run() execution = %+v, want nil", execution)
+		}
+	})
+
+	t.Run("nil_descriptor", func(t *testing.T) {
+		t.Parallel()
+
+		execution, err := phase.run(context.Background(), "task-generation-navigation-plan-missing-1", &GenerationReviewNavigationTarget{}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution != nil {
+			t.Fatalf("run() execution = %+v, want nil", execution)
+		}
+	})
+
+	t.Run("nil_dispatch_plan", func(t *testing.T) {
+		t.Parallel()
+
+		execution, err := phase.run(context.Background(), "task-generation-navigation-plan-missing-1", &GenerationReviewNavigationTarget{
+			Descriptor: &GenerationNavigationDescriptor{},
+		}, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution != nil {
+			t.Fatalf("run() execution = %+v, want nil", execution)
+		}
+	})
+}
+
+func TestTaskGenerationNavigationDispatchPlanRunChoosesExecutionModeAndAppliesRules(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+	task := &Task{
+		ID:        "task-generation-navigation-plan-mode-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-plan-mode-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:        "main",
+					AssetID:    "asset-preview-1",
+					StateLabel: "ready",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPlanPhase(svc)
+
+	t.Run("sequential", func(t *testing.T) {
+		t.Parallel()
+
+		target := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		})
+		target.Descriptor.DispatchPlan = &GenerationNavigationDispatchPlan{
+			Strategy:           "single_read",
+			StopOnFirstSuccess: true,
+			Steps: []GenerationNavigationDispatchStep{
+				{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+				{Kind: "session", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+			},
+		}
+
+		execution, err := phase.run(context.Background(), task.ID, target, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution == nil {
+			t.Fatalf("run() execution = nil, want sequential execution")
+		}
+		if execution.StopReason != "first_success" || len(execution.Steps) != 2 {
+			t.Fatalf("run() execution = %+v, want sequential stop and skipped remainder", execution)
+		}
+		if execution.Steps[0].Status != "completed" || !execution.Steps[0].Winner {
+			t.Fatalf("run() first step = %+v, want completed winner after rules", execution.Steps[0])
+		}
+		if execution.Steps[1].Status != "skipped" {
+			t.Fatalf("run() second step = %+v, want skipped remainder", execution.Steps[1])
+		}
+	})
+
+	t.Run("parallel", func(t *testing.T) {
+		t.Parallel()
+
+		target := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "shein",
+				Slot:     "main",
+			},
+		})
+		target.Descriptor.DispatchPlan = &GenerationNavigationDispatchPlan{
+			Strategy: "fanout_read",
+			Steps: []GenerationNavigationDispatchStep{
+				{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+				{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+			},
+		}
+
+		execution, err := phase.run(context.Background(), task.ID, target, "full")
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+		if execution == nil {
+			t.Fatalf("run() execution = nil, want parallel execution")
+		}
+		if execution.DedupedSteps != 1 || execution.CompletedSteps != 1 || len(execution.Steps) != 2 {
+			t.Fatalf("run() execution = %+v, want deduped parallel execution", execution)
+		}
+		if execution.Steps[0].Status != "completed" || !execution.Steps[0].Winner {
+			t.Fatalf("run() first step = %+v, want completed winner after rules", execution.Steps[0])
+		}
+		if execution.Steps[1].Status != "deduplicated" {
+			t.Fatalf("run() second step = %+v, want deduplicated parallel step", execution.Steps[1])
+		}
+	})
+}
+
 func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *testing.T) {
 	t.Parallel()
 
@@ -691,5 +1481,309 @@ func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *te
 		if step.Status == "deduplicated" && (step.Retryable || step.RetryHint != "no_retry") {
 			t.Fatalf("execution step = %+v, want deduplicated step to be non-retryable", step)
 		}
+	}
+}
+
+func TestTaskGenerationNavigationDispatchParallelPhaseDeduplicatesAndReplaysSourceState(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+	task := &Task{
+		ID:        "task-generation-navigation-plan-parallel-seam-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-plan-parallel-seam-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:        "main",
+					AssetID:    "asset-preview-1",
+					StateLabel: "ready",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	first, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, &GenerationQueueQuery{
+		Platform: "shein",
+		Slot:     "main",
+	})
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() error = %v", err)
+	}
+	if first == nil || first.DeltaToken == "" {
+		t.Fatalf("first queue = %+v, want delta token for replay test", first)
+	}
+
+	target := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+		DispatchKind: "queue",
+		QueueQuery: &GenerationQueueQuery{
+			Platform: "shein",
+			Slot:     "main",
+			IfMatch:  first.DeltaToken,
+		},
+	})
+	target.Descriptor.DispatchPlan = &GenerationNavigationDispatchPlan{
+		Strategy:       "fanout_read",
+		MaxParallelism: 0,
+		Steps: []GenerationNavigationDispatchStep{
+			{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+			{Kind: "queue", ResponseMode: "full", Query: cloneGenerationQueueQuery(target.QueueQuery)},
+		},
+	}
+
+	phase := buildTaskGenerationNavigationDispatchPlanParallelPhase(svc)
+	execution := &GenerationNavigationDispatchExecution{}
+	phase.run(context.Background(), task.ID, "full", target.Descriptor.DispatchPlan, execution)
+	if execution == nil {
+		t.Fatalf("run() execution = nil, want parallel execution")
+	}
+	if execution.DedupedSteps != 1 || execution.CompletedSteps != 1 || execution.FailedSteps != 0 {
+		t.Fatalf("run() execution = %+v, want one source step and one deduplicated step", execution)
+	}
+	if len(execution.Steps) != 2 {
+		t.Fatalf("run() execution steps = %+v, want two replayed steps", execution.Steps)
+	}
+	if execution.Steps[0].Status != "not_modified" || !execution.Steps[0].Executed {
+		t.Fatalf("run() source step = %+v, want executed not_modified source", execution.Steps[0])
+	}
+	if execution.Steps[1].Status != "deduplicated" || execution.Steps[1].DeduplicatedFrom != 0 {
+		t.Fatalf("run() deduplicated step = %+v, want replay from first source step", execution.Steps[1])
+	}
+	if execution.Steps[1].DeltaToken != execution.Steps[0].DeltaToken ||
+		execution.Steps[1].NotModified != execution.Steps[0].NotModified ||
+		execution.Steps[1].NoChanges != execution.Steps[0].NoChanges {
+		t.Fatalf("run() deduplicated step = %+v, want replayed source state from %+v", execution.Steps[1], execution.Steps[0])
+	}
+}
+
+func TestTaskGenerationNavigationDispatchStepExecutionRunBuildsStepResults(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+	task := &Task{
+		ID:        "task-generation-navigation-step-seam-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-step-seam-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:        "main",
+					AssetID:    "asset-preview-1",
+					StateLabel: "ready",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	queueQuery := &GenerationQueueQuery{
+		Platform: "shein",
+		Slot:     "main",
+	}
+	queuePage, err := svc.GetTaskGenerationQueue(context.Background(), task.ID, queueQuery)
+	if err != nil {
+		t.Fatalf("GetTaskGenerationQueue() error = %v", err)
+	}
+	if queuePage == nil {
+		t.Fatalf("GetTaskGenerationQueue() page = nil")
+	}
+
+	previewQuery := cloneGenerationQueueQuery(queueQuery)
+	previewQuery.AssetID = "asset-preview-1"
+	sessionQuery := cloneGenerationQueueQuery(queueQuery)
+	sessionQuery.ResponseMode = "patch_only"
+
+	phase := buildTaskGenerationNavigationDispatchStepExecutionPhase(svc)
+
+	t.Run("queue", func(t *testing.T) {
+		t.Parallel()
+
+		stepResult := phase.run(context.Background(), task.ID, GenerationNavigationDispatchStep{
+			Kind:         "queue",
+			ResponseMode: "full",
+			Query:        cloneGenerationQueueQuery(queueQuery),
+		}, "full")
+		if stepResult == nil {
+			t.Fatalf("run() stepResult = nil")
+		}
+		if stepResult.Kind != "queue" || stepResult.Status != "completed" || !stepResult.Executed {
+			t.Fatalf("run() stepResult = %+v, want executed completed queue result", stepResult)
+		}
+		if stepResult.Queue == nil || stepResult.Queue.DeltaToken == "" {
+			t.Fatalf("run() stepResult = %+v, want queue payload with delta token", stepResult)
+		}
+		if stepResult.DeltaToken != stepResult.Queue.DeltaToken {
+			t.Fatalf("run() delta token = %q, want queue delta token %q", stepResult.DeltaToken, stepResult.Queue.DeltaToken)
+		}
+	})
+
+	t.Run("preview", func(t *testing.T) {
+		t.Parallel()
+
+		stepResult := phase.run(context.Background(), task.ID, GenerationNavigationDispatchStep{
+			Kind:         "preview",
+			ResponseMode: "full",
+			Query:        cloneGenerationQueueQuery(previewQuery),
+		}, "full")
+		if stepResult == nil {
+			t.Fatalf("run() stepResult = nil")
+		}
+		if stepResult.Kind != "preview" || stepResult.Status != "completed" || !stepResult.Executed {
+			t.Fatalf("run() stepResult = %+v, want executed completed preview result", stepResult)
+		}
+		if stepResult.ReviewPreview == nil || stepResult.ReviewPreview.DeltaToken == "" {
+			t.Fatalf("run() stepResult = %+v, want preview payload with delta token", stepResult)
+		}
+		if stepResult.DeltaToken != stepResult.ReviewPreview.DeltaToken {
+			t.Fatalf("run() delta token = %q, want preview delta token %q", stepResult.DeltaToken, stepResult.ReviewPreview.DeltaToken)
+		}
+	})
+
+	t.Run("session_patch_only", func(t *testing.T) {
+		t.Parallel()
+
+		stepResult := phase.run(context.Background(), task.ID, GenerationNavigationDispatchStep{
+			Kind:         "session",
+			ResponseMode: "",
+			Query:        cloneGenerationQueueQuery(sessionQuery),
+		}, "patch_only")
+		if stepResult == nil {
+			t.Fatalf("run() stepResult = nil")
+		}
+		if stepResult.Kind != "session" || stepResult.Status != "completed" || !stepResult.Executed {
+			t.Fatalf("run() stepResult = %+v, want executed completed session result", stepResult)
+		}
+		if stepResult.ResponseMode != "patch_only" {
+			t.Fatalf("run() response mode = %q, want patch_only", stepResult.ResponseMode)
+		}
+		if stepResult.ReviewSession == nil || stepResult.ReviewSession.ResponseMode != "patch_only" || stepResult.ReviewSession.Patch == nil {
+			t.Fatalf("run() stepResult = %+v, want patch_only session response with patch payload", stepResult)
+		}
+	})
+}
+
+func TestTaskGenerationNavigationDispatchStepExecutionRunSequentialBackfillsSkippedSteps(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	svc := &taskGenerationService{
+		repo: repo,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+	}
+	task := &Task{
+		ID:        "task-generation-navigation-step-sequential-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID: "task-generation-navigation-step-sequential-1",
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Main: &common.BundleSlot{
+					Key:        "main",
+					AssetID:    "asset-preview-1",
+					StateLabel: "ready",
+				},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	plan := &GenerationNavigationDispatchPlan{
+		StopOnFirstSuccess: true,
+		Steps: []GenerationNavigationDispatchStep{
+			{
+				Kind:         "queue",
+				ResponseMode: "full",
+				Query: &GenerationQueueQuery{
+					Platform: "shein",
+					Slot:     "main",
+				},
+			},
+			{
+				Kind:         "session",
+				ResponseMode: "patch_only",
+				Query: &GenerationQueueQuery{
+					Platform: "shein",
+					Slot:     "main",
+				},
+			},
+			{
+				Kind:         "preview",
+				ResponseMode: "full",
+				Query: &GenerationQueueQuery{
+					Platform: "shein",
+					Slot:     "main",
+					AssetID:  "asset-preview-1",
+				},
+			},
+		},
+	}
+	execution := &GenerationNavigationDispatchExecution{}
+
+	buildTaskGenerationNavigationDispatchStepExecutionPhase(svc).runSequential(
+		context.Background(),
+		task.ID,
+		"full",
+		plan,
+		execution,
+	)
+
+	if execution.StopReason != "first_success" {
+		t.Fatalf("runSequential() stop reason = %q, want first_success", execution.StopReason)
+	}
+	if len(execution.Steps) != 3 {
+		t.Fatalf("runSequential() steps = %+v, want source step plus skipped backfill", execution.Steps)
+	}
+	if execution.CompletedSteps != 1 || !execution.Partial {
+		t.Fatalf("runSequential() execution = %+v, want one completed step and partial backfill", execution)
+	}
+	if execution.Steps[0].Status != "completed" || !execution.Steps[0].Executed {
+		t.Fatalf("runSequential() first step = %+v, want executed completed step", execution.Steps[0])
+	}
+	if execution.Steps[1].Status != "skipped" || execution.Steps[1].Error != "first_success" {
+		t.Fatalf("runSequential() second step = %+v, want skipped backfill with first_success", execution.Steps[1])
+	}
+	if execution.Steps[2].Status != "skipped" || execution.Steps[2].Error != "first_success" {
+		t.Fatalf("runSequential() third step = %+v, want skipped backfill with first_success", execution.Steps[2])
 	}
 }

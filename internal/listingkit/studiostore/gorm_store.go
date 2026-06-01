@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/tenantctx"
@@ -70,22 +71,42 @@ func (r *GormRepository) DeleteSession(ctx context.Context, sessionID string) er
 
 func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []listingkit.SheinStudioDesign) error {
 	tenantID := tenantctx.TenantIDFromContext(ctx)
-	for i := range designs {
-		if strings.TrimSpace(designs[i].SessionID) == "" {
-			designs[i].SessionID = sessionID
-		}
-		if designs[i].TenantID == "" {
-			designs[i].TenantID = tenantID
-		}
-	}
+	designs = normalizeStudioDesignBatch(sessionID, tenantID, designs)
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := applySessionAccessScope(tx, ctx, "tenant_id", "").Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
-			return err
-		}
 		if len(designs) > 0 {
-			if err := tx.Create(&designs).Error; err != nil {
+			designIDs := make([]string, 0, len(designs))
+			for _, design := range designs {
+				designIDs = append(designIDs, design.ID)
+			}
+			if err := applySessionAccessScope(tx, ctx, "tenant_id", "").
+				Where("session_id = ? AND id NOT IN ?", sessionID, designIDs).
+				Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
 				return err
 			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "id"}},
+				DoUpdates: clause.Assignments(map[string]any{
+					"tenant_id":              clause.Expr{SQL: "excluded.tenant_id"},
+					"session_id":             clause.Expr{SQL: "excluded.session_id"},
+					"image_url":              clause.Expr{SQL: "excluded.image_url"},
+					"product_image_urls":     clause.Expr{SQL: "excluded.product_image_urls"},
+					"prompt":                 clause.Expr{SQL: "excluded.prompt"},
+					"revised_prompt":         clause.Expr{SQL: "excluded.revised_prompt"},
+					"image_model":            clause.Expr{SQL: "excluded.image_model"},
+					"transparent_background": clause.Expr{SQL: "excluded.transparent_background"},
+					"variation_intensity":    clause.Expr{SQL: "excluded.variation_intensity"},
+					"role":                   clause.Expr{SQL: "excluded.role"},
+					"role_label":             clause.Expr{SQL: "excluded.role_label"},
+					"review_note":            clause.Expr{SQL: "excluded.review_note"},
+					"sort_order":             clause.Expr{SQL: "excluded.sort_order"},
+					"approved":               clause.Expr{SQL: "excluded.approved"},
+					"updated_at":             clause.Expr{SQL: "excluded.updated_at"},
+				}),
+			}).Create(&designs).Error; err != nil {
+				return err
+			}
+		} else if err := applySessionAccessScope(tx, ctx, "tenant_id", "").Where("session_id = ?", sessionID).Delete(&listingkit.SheinStudioDesign{}).Error; err != nil {
+			return err
 		}
 		return tx.Model(&listingkit.SheinStudioSession{}).
 			Scopes(func(db *gorm.DB) *gorm.DB { return applySessionAccessScope(db, ctx, "tenant_id", "user_id") }).
@@ -95,6 +116,73 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 				"updated_at":          gorm.Expr("CURRENT_TIMESTAMP"),
 			}).Error
 	})
+}
+
+func (r *GormRepository) UpsertDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []listingkit.SheinStudioDesign) error {
+	tenantID := tenantctx.TenantIDFromContext(ctx)
+	designs = normalizeStudioDesignBatch(sessionID, tenantID, designs)
+	if len(designs) == 0 {
+		return nil
+	}
+	approved := make(map[string]struct{}, len(approvedIDs))
+	for _, id := range approvedIDs {
+		approved[id] = struct{}{}
+	}
+	for idx := range designs {
+		_, designs[idx].Approved = approved[designs[idx].ID]
+	}
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"tenant_id":              clause.Expr{SQL: "excluded.tenant_id"},
+			"session_id":             clause.Expr{SQL: "excluded.session_id"},
+			"image_url":              clause.Expr{SQL: "excluded.image_url"},
+			"product_image_urls":     clause.Expr{SQL: "excluded.product_image_urls"},
+			"prompt":                 clause.Expr{SQL: "excluded.prompt"},
+			"revised_prompt":         clause.Expr{SQL: "excluded.revised_prompt"},
+			"image_model":            clause.Expr{SQL: "excluded.image_model"},
+			"transparent_background": clause.Expr{SQL: "excluded.transparent_background"},
+			"variation_intensity":    clause.Expr{SQL: "excluded.variation_intensity"},
+			"role":                   clause.Expr{SQL: "excluded.role"},
+			"role_label":             clause.Expr{SQL: "excluded.role_label"},
+			"review_note":            clause.Expr{SQL: "excluded.review_note"},
+			"sort_order":             clause.Expr{SQL: "excluded.sort_order"},
+			"approved":               clause.Expr{SQL: "excluded.approved"},
+			"updated_at":             clause.Expr{SQL: "excluded.updated_at"},
+		}),
+	}).Create(&designs).Error
+}
+
+func normalizeStudioDesignBatch(
+	sessionID string,
+	tenantID string,
+	designs []listingkit.SheinStudioDesign,
+) []listingkit.SheinStudioDesign {
+	if len(designs) == 0 {
+		return nil
+	}
+
+	normalized := make([]listingkit.SheinStudioDesign, 0, len(designs))
+	indexByID := make(map[string]int, len(designs))
+	for _, design := range designs {
+		design.ID = strings.TrimSpace(design.ID)
+		if design.ID == "" {
+			continue
+		}
+		if strings.TrimSpace(design.SessionID) == "" {
+			design.SessionID = sessionID
+		}
+		if design.TenantID == "" {
+			design.TenantID = tenantID
+		}
+		if idx, exists := indexByID[design.ID]; exists {
+			normalized[idx] = design
+			continue
+		}
+		indexByID[design.ID] = len(normalized)
+		normalized = append(normalized, design)
+	}
+	return normalized
 }
 
 func (r *GormRepository) ListSessionDesigns(ctx context.Context, sessionID string) ([]listingkit.SheinStudioDesign, error) {

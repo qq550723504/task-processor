@@ -42,23 +42,7 @@ func (s *service) settingsAdminOrDefault() *settingsAdminService {
 	if s.settingsAdmin != nil {
 		return s.settingsAdmin
 	}
-	s.settingsAdmin = newSettingsAdminService(settingsAdminServiceConfig{
-		storeProfileRepo:     s.storeProfileRepo,
-		routingSettingsRepo:  s.routingSettingsRepo,
-		aiCredentialStore:    s.aiCredentialStore,
-		currentSheinSettings: s.currentSheinSubmitSettings,
-		mutateSheinSettings: func(mutate func(*SheinSettings)) SheinSettings {
-			s.sheinSettingsMu.Lock()
-			defer s.sheinSettingsMu.Unlock()
-			settings := s.sheinSettings
-			if mutate != nil {
-				mutate(&settings)
-			}
-			s.sheinSettings = settings
-			return settings
-		},
-		listStoreOptions: s.listSheinStoreOptions,
-	})
+	s.settingsAdmin = newSettingsAdminService(buildSettingsAdminServiceConfig(s))
 	return s.settingsAdmin
 }
 

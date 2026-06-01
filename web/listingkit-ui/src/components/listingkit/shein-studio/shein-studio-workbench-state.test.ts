@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applySheinStudioWorkbenchBatch,
   applySheinStudioWorkbenchDraft,
+  applySheinStudioWorkbenchHydratedBatch,
   buildInitialSheinStudioWorkbenchState,
   selectSheinStudioWorkbenchGroup,
   setSheinStudioWorkbenchField,
@@ -315,6 +316,92 @@ describe("sheinStudioWorkbenchReducer", () => {
     expect(next.imageStrategy).toBe(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
     expect(next.groupedImageMode).toBe(DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE);
     expect(next.groupedSelections).toHaveLength(1);
+  });
+
+  it("projects hydrated batch detail into itemized review state", () => {
+    const initial = buildInitialSheinStudioWorkbenchState();
+    const next = sheinStudioWorkbenchReducer(
+      initial,
+      applySheinStudioWorkbenchHydratedBatch({
+        savedBatch: {
+          id: "batch-1",
+          name: "Batch 1",
+          prompt: "batch prompt",
+          styleCount: "4",
+          sheinStoreId: "88",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          groupedSelections: [],
+          groups: [],
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-15T00:00:00.000Z",
+        },
+        detail: {
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            prompt: "batch prompt",
+            styleCount: "4",
+            sheinStoreId: 88,
+            createdAt: "2026-05-15T00:00:00.000Z",
+            updatedAt: "2026-05-15T00:05:00.000Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1200x1200",
+                targetGroupLabel: "1200 x 1200",
+                status: "review_ready",
+                selectionCount: 1,
+                createdAt: "2026-05-15T00:00:00.000Z",
+                updatedAt: "2026-05-15T00:05:00.000Z",
+              },
+              designs: [
+                {
+                  id: "design-1",
+                  batchId: "batch-1",
+                  itemId: "item-1",
+                  sourceAttemptId: "attempt-1",
+                  targetGroupKey: "size:1200x1200",
+                  targetGroupLabel: "1200 x 1200",
+                  imageUrl: "https://example.com/1.png",
+                  reviewStatus: "approved",
+                  createdAt: "2026-05-15T00:01:00.000Z",
+                  updatedAt: "2026-05-15T00:05:00.000Z",
+                },
+                {
+                  id: "design-2",
+                  batchId: "batch-1",
+                  itemId: "item-1",
+                  sourceAttemptId: "attempt-2",
+                  targetGroupKey: "size:1200x1200",
+                  imageUrl: "https://example.com/2.png",
+                  reviewStatus: "unreviewed",
+                  createdAt: "2026-05-15T00:02:00.000Z",
+                  updatedAt: "2026-05-15T00:05:00.000Z",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(next.itemizedBatchDetail?.batch.id).toBe("batch-1");
+    expect(next.designs).toHaveLength(2);
+    expect(next.selectedIds).toEqual(["design-1"]);
+    expect(next.persistedUpdatedAt).toBe("2026-05-15T00:05:00.000Z");
   });
 
   it("selects a saved group and projects it into the current editor state", () => {

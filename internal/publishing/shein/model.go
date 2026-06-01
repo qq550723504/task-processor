@@ -407,25 +407,27 @@ type InspectionAttributePayload struct {
 }
 
 type InspectionSaleAttributePayload struct {
-	Platform                 string                        `json:"platform,omitempty"`
-	Target                   string                        `json:"target,omitempty"`
-	Status                   string                        `json:"status,omitempty"`
-	Source                   string                        `json:"source,omitempty"`
-	RecommendCategoryReview  bool                          `json:"recommend_category_review,omitempty"`
-	CategoryReviewReason     string                        `json:"category_review_reason,omitempty"`
-	PrimaryAttributeID       int                           `json:"primary_attribute_id,omitempty"`
-	SecondaryAttributeID     int                           `json:"secondary_attribute_id,omitempty"`
-	PrimarySourceDimension   string                        `json:"primary_source_dimension,omitempty"`
-	SecondarySourceDimension string                        `json:"secondary_source_dimension,omitempty"`
-	SourceDimensions         []SourceVariantDimension      `json:"source_dimensions,omitempty"`
-	TemplateOptions          []SaleAttributeTemplateOption `json:"template_options,omitempty"`
-	SelectionSummary         []string                      `json:"selection_summary,omitempty"`
-	SKCAttributes            []ResolvedSaleAttribute       `json:"skc_attributes,omitempty"`
-	SKUAttributes            []ResolvedSaleAttribute       `json:"sku_attributes,omitempty"`
-	CandidateCount           int                           `json:"candidate_count,omitempty"`
-	Candidates               []SaleAttributeCandidateInfo  `json:"candidates,omitempty"`
-	SKCPatches               []InspectionSKCPatchPayload   `json:"skc_patches,omitempty"`
-	ReviewNotes              []string                      `json:"review_notes,omitempty"`
+	Platform                 string                           `json:"platform,omitempty"`
+	Target                   string                           `json:"target,omitempty"`
+	Status                   string                           `json:"status,omitempty"`
+	Source                   string                           `json:"source,omitempty"`
+	RecommendCategoryReview  bool                             `json:"recommend_category_review,omitempty"`
+	CategoryReviewReason     string                           `json:"category_review_reason,omitempty"`
+	PrimaryAttributeID       int                              `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID     int                              `json:"secondary_attribute_id,omitempty"`
+	PrimarySourceDimension   string                           `json:"primary_source_dimension,omitempty"`
+	SecondarySourceDimension string                           `json:"secondary_source_dimension,omitempty"`
+	SKCValueAssignments      map[string]ResolvedSaleAttribute `json:"skc_value_assignments,omitempty"`
+	SKUValueAssignments      map[string]ResolvedSaleAttribute `json:"sku_value_assignments,omitempty"`
+	SourceDimensions         []SourceVariantDimension         `json:"source_dimensions,omitempty"`
+	TemplateOptions          []SaleAttributeTemplateOption    `json:"template_options,omitempty"`
+	SelectionSummary         []string                         `json:"selection_summary,omitempty"`
+	SKCAttributes            []ResolvedSaleAttribute          `json:"skc_attributes,omitempty"`
+	SKUAttributes            []ResolvedSaleAttribute          `json:"sku_attributes,omitempty"`
+	CandidateCount           int                              `json:"candidate_count,omitempty"`
+	Candidates               []SaleAttributeCandidateInfo     `json:"candidates,omitempty"`
+	SKCPatches               []InspectionSKCPatchPayload      `json:"skc_patches,omitempty"`
+	ReviewNotes              []string                         `json:"review_notes,omitempty"`
 }
 
 type InspectionSKCPatchPayload struct {

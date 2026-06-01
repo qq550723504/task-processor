@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
+import { LISTINGKIT_TRACE_HEADER_NAMES } from "@/lib/listingkit/request-trace";
 import {
   authorizeZitadelIdentity,
   fetchZitadelDiscovery,
@@ -168,6 +169,9 @@ export function buildListingKitUpstreamHeaders(
   copyHeader(requestHeaders, headers, "if-none-match", "If-None-Match");
   copyHeader(requestHeaders, headers, "content-type", "Content-Type");
   copyHeader(requestHeaders, headers, "authorization", "Authorization");
+  for (const headerName of Object.values(LISTINGKIT_TRACE_HEADER_NAMES)) {
+    copyHeader(requestHeaders, headers, headerName, headerName);
+  }
 
   const tenantID = stringifyIdentityValue(
     verifiedIdentity?.tenantId ?? requestHeaders.get("tenant-id"),

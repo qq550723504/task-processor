@@ -7,7 +7,10 @@ import {
 import { buildListingKitMockResponse } from "@/app/api/listing-kits/mock-responses";
 import { selectListingKitMockPayload } from "@/app/api/listing-kits/proxy-mock";
 import { readProxyRequestBody } from "@/app/api/listing-kits/proxy-request-body";
-import { resolveListingKitProxyTimeoutMs } from "@/app/api/listing-kits/proxy-response";
+import {
+  buildListingKitProxyFailureMessage,
+  resolveListingKitProxyTimeoutMs,
+} from "@/app/api/listing-kits/proxy-response";
 import { buildListingKitProxyResponse } from "@/app/api/listing-kits/proxy-upstream-response";
 import {
   buildListingKitUpstreamHeaders,
@@ -19,6 +22,7 @@ import {
   logRequestWarn,
   newRequestLogId,
 } from "@/lib/server/request-log";
+import { buildListingKitTraceLogFields } from "@/lib/listingkit/request-trace";
 export const dynamic = "force-dynamic";
 const PROXY_BODY_READ_TIMEOUT_MS = 15_000;
 
@@ -30,6 +34,7 @@ async function proxyRequest(
   const startedAt = Date.now();
   const { path } = await params;
   const proxyPath = `/${path.join("/")}`;
+  const traceFields = buildListingKitTraceLogFields(request.headers);
   const mock = await buildListingKitMockResponse(request, path);
   if (mock) {
     if (request.method === "POST" && path.length === 1 && path[0] === "generate") {
@@ -39,6 +44,7 @@ async function proxyRequest(
         path: proxyPath,
         status: 200,
         durationMs: Date.now() - startedAt,
+        ...traceFields,
       });
       return NextResponse.json(mock.createTask, {
         headers: {
@@ -59,6 +65,7 @@ async function proxyRequest(
       path: proxyPath,
       status: 200,
       durationMs: Date.now() - startedAt,
+      ...traceFields,
     });
     return NextResponse.json(payload, {
       headers: {
@@ -75,11 +82,6 @@ async function proxyRequest(
     path,
     request.nextUrl.searchParams.toString(),
   );
-  logRequestInfo("listingkit proxy request started", {
-    requestId,
-    method: request.method,
-    path: proxyPath,
-  });
 
   let verifiedIdentity: VerifiedIdentity | undefined;
   let zitadelToken = "";
@@ -109,6 +111,7 @@ async function proxyRequest(
         status,
         durationMs: Date.now() - startedAt,
         error: message,
+        ...traceFields,
       },
     );
     return auth.response;
@@ -126,15 +129,24 @@ async function proxyRequest(
   }
 
   let upstream: Response;
+  const upstreamTimeoutMs = resolveListingKitProxyTimeoutMs(
+    request.method,
+    path,
+  );
+  if (path[0] === "studio") {
+    logRequestInfo("listingkit upstream request started", {
+      requestId,
+      method: request.method,
+      path: proxyPath,
+      timeoutMs: upstreamTimeoutMs,
+      ...traceFields,
+    });
+  }
   try {
     const body =
       request.method === "GET" || request.method === "HEAD"
         ? undefined
         : await readProxyRequestBody(request, PROXY_BODY_READ_TIMEOUT_MS);
-    const upstreamTimeoutMs = resolveListingKitProxyTimeoutMs(
-      request.method,
-      path,
-    );
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
     try {
@@ -149,8 +161,10 @@ async function proxyRequest(
       clearTimeout(timeout);
     }
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "ListingKit upstream request failed";
+    const message = buildListingKitProxyFailureMessage(error, {
+      timeoutMs: upstreamTimeoutMs,
+      timedOut: error instanceof Error && error.name === "AbortError",
+    });
     logRequestWarn("listingkit upstream request failed", {
       requestId,
       method: request.method,
@@ -158,7 +172,8 @@ async function proxyRequest(
       status: 504,
       durationMs: Date.now() - startedAt,
       error: message,
-      timeoutMs: resolveListingKitProxyTimeoutMs(request.method, path),
+      timeoutMs: upstreamTimeoutMs,
+      ...traceFields,
     });
     return NextResponse.json(
       {
@@ -175,6 +190,7 @@ async function proxyRequest(
     method: request.method,
     path: proxyPath,
     routePath: path,
+    traceFields,
     upstream,
   });
   return response;

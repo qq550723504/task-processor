@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -34,6 +35,9 @@ func buildServiceInputFixture() BuildServiceInput {
 					return nil, nil, nil
 				},
 				StudioAsyncJob: func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
+					return nil, nil, nil
+				},
+				StudioBatchRun: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
 					return nil, nil, nil
 				},
 				Subscription: func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
@@ -137,6 +141,77 @@ func buildServiceInputFixture() BuildServiceInput {
 			ConfigureZitadelAuth:        func(config.ListingKitZitadelConfig) {},
 			ConfigureAuthorization:      func([]string, []string) error { return nil },
 		},
+	}
+}
+
+func TestBootstrapFileDoesNotOwnRepositoryAssemblyHelpers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+	content := string(src)
+	for _, needle := range []string{
+		"type builtRepositories struct",
+		"func buildCoreRepositories(",
+		"func buildLateCoreRepositories(",
+		"func buildAdminRepositories(",
+		"func assembleRepositories(",
+		"func buildRepositories(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("bootstrap.go should not contain %q", needle)
+		}
+	}
+}
+
+func TestBootstrapFileDoesNotOwnServiceOrRuntimeAssemblyHelpers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+	content := string(src)
+	for _, needle := range []string{
+		"type buildListingKitServiceConfigInput struct",
+		"func buildListingKitServiceConfig(",
+		"func buildListingKitCoreDependencies(",
+		"func buildListingKitAssetDependencies(",
+		"func buildListingKitSheinDependencies(",
+		"func buildListingKitWorkflowDependencies(",
+		"type serviceRuntimeModules struct",
+		"func buildServiceRuntimeModules(",
+		"func assembleServiceRuntime(",
+		"func buildServiceRuntime(",
+		"func assembleModuleRuntime(",
+		"func createModuleRuntime(",
+		"func buildModuleRuntime(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("bootstrap.go should not contain %q", needle)
+		}
+	}
+}
+
+func TestBootstrapFileDelegatesToExtractedAssemblers(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+	content := string(src)
+	for _, needle := range []string{
+		"buildListingKitServiceConfig(buildListingKitServiceConfigInput{",
+		"buildModuleRuntime(input, bundle)",
+		"buildRepositories(input, closers)",
+		"buildServiceRuntime(input, repositories, closers)",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("bootstrap.go should delegate through %q", needle)
+		}
 	}
 }
 
@@ -1178,6 +1253,9 @@ func buildSuccessfulServiceInputFixture() BuildServiceInput {
 	}
 	input.Repositories.Core.StudioAsyncJob = func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
 		return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	}
+	input.Repositories.Core.StudioBatchRun = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
+		return listingkit.NewMemStudioBatchRunRepository(), nil, nil
 	}
 	input.Repositories.Core.Subscription = func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
 		return listingsubscription.NewMemRepository(), nil, nil

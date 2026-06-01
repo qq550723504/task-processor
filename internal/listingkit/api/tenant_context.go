@@ -14,14 +14,16 @@ func requestContext(c *gin.Context, candidates ...string) context.Context {
 	tenantID := requestTenantID(c, candidates...)
 	ctx := listingkit.WithTenantID(c.Request.Context(), tenantID)
 	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
-	return listingkit.WithRequestRoles(ctx, requestRoles(c))
+	ctx = listingkit.WithRequestRoles(ctx, requestRoles(c))
+	return listingkit.WithRequestTrace(ctx, requestTrace(c))
 }
 
 func detachedRequestContext(c *gin.Context, candidates ...string) context.Context {
 	tenantID := requestTenantID(c, candidates...)
 	ctx := listingkit.WithTenantID(context.Background(), tenantID)
 	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
-	return listingkit.WithRequestRoles(ctx, requestRoles(c))
+	ctx = listingkit.WithRequestRoles(ctx, requestRoles(c))
+	return listingkit.WithRequestTrace(ctx, requestTrace(c))
 }
 
 func requestTenantID(c *gin.Context, candidates ...string) string {
@@ -73,4 +75,18 @@ func requestRoles(c *gin.Context) []string {
 		}
 	}
 	return roles
+}
+
+func requestTrace(c *gin.Context) listingkit.RequestTrace {
+	if c == nil {
+		return listingkit.RequestTrace{}
+	}
+	return listingkit.ParseRequestTrace(
+		c.GetHeader("X-ListingKit-Batch-Run-Id"),
+		c.GetHeader("X-ListingKit-Batch-Id"),
+		c.GetHeader("X-ListingKit-Studio-Session-Id"),
+		c.GetHeader("X-ListingKit-Queue-Mode"),
+		c.GetHeader("X-ListingKit-Queue-Index"),
+		c.GetHeader("X-ListingKit-Queue-Total"),
+	)
 }

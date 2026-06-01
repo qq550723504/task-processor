@@ -243,11 +243,23 @@ func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinS
 	if patch.SecondaryAttributeID != nil {
 		pkg.SaleAttributeResolution.SecondaryAttributeID = *patch.SecondaryAttributeID
 	}
+	if patch.PrimarySourceDimension != nil {
+		pkg.SaleAttributeResolution.PrimarySourceDimension = strings.TrimSpace(*patch.PrimarySourceDimension)
+	}
+	if patch.SecondarySourceDimension != nil {
+		pkg.SaleAttributeResolution.SecondarySourceDimension = strings.TrimSpace(*patch.SecondarySourceDimension)
+	}
 	if patch.SKCAttributes != nil {
 		pkg.SaleAttributeResolution.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKCAttributes...)
 	}
 	if patch.SKUAttributes != nil {
 		pkg.SaleAttributeResolution.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKUAttributes...)
+	}
+	if patch.SKCValueAssignments != nil {
+		pkg.SaleAttributeResolution.SKCValueAssignments = cloneSheinResolvedSaleAttributeMap(patch.SKCValueAssignments)
+	}
+	if patch.SKUValueAssignments != nil {
+		pkg.SaleAttributeResolution.SKUValueAssignments = cloneSheinResolvedSaleAttributeMap(patch.SKUValueAssignments)
 	}
 	if patch.CustomAttributeRelation != nil {
 		pkg.SaleAttributeResolution.CustomAttributeRelation = append([]sheinattribute.CustomAttributeRelation(nil), patch.CustomAttributeRelation...)
@@ -258,6 +270,17 @@ func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinS
 	if patch.ReviewNotes != nil {
 		pkg.SaleAttributeResolution.ReviewNotes = uniqueStrings(append([]string(nil), patch.ReviewNotes...))
 	}
+}
+
+func cloneSheinResolvedSaleAttributeMap(src map[string]sheinpub.ResolvedSaleAttribute) map[string]sheinpub.ResolvedSaleAttribute {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]sheinpub.ResolvedSaleAttribute, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
 }
 
 func applySheinSKCRevisionPatches(pkg *sheinpub.Package, patches []SheinSKCRevisionPatch) {

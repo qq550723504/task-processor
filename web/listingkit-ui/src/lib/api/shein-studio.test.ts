@@ -689,6 +689,100 @@ describe("shein studio design metadata", () => {
     });
   });
 
+  it("maps generation jobs from session detail into the draft", () => {
+    const draft = mapStudioSessionDetailToDraft({
+      session: {
+        id: "session-1",
+        prompt: "retro cherries",
+        status: "generating",
+        generation_job_id: "job-primary",
+        generation_jobs: [
+          {
+            job_id: "job-primary",
+            target_group_key: "primary",
+            target_group_label: "当前商品",
+            status: "running",
+          },
+          {
+            job_id: "job-group-1",
+            target_group_key: "group-1",
+            target_group_label: "分组商品 1",
+            status: "running",
+          },
+        ],
+        updated_at: "2026-05-30T00:00:00Z",
+      },
+      designs: [],
+    });
+
+    expect(draft).toMatchObject({
+      generationJobId: "job-primary",
+      sessionStatus: "generating",
+      generationJobs: [
+        {
+          jobId: "job-primary",
+          targetGroupKey: "primary",
+          targetGroupLabel: "当前商品",
+          status: "running",
+        },
+        {
+          jobId: "job-group-1",
+          targetGroupKey: "group-1",
+          targetGroupLabel: "分组商品 1",
+          status: "running",
+        },
+      ],
+    });
+  });
+
+  it("sends generation jobs when updating a studio session", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      session: { id: "session-1" },
+      designs: [],
+    });
+
+    await updateSheinStudioSession("session-1", {
+      generationJobId: "job-primary",
+      generationJobs: [
+        {
+          jobId: "job-primary",
+          targetGroupKey: "primary",
+          targetGroupLabel: "当前商品",
+          status: "running",
+        },
+        {
+          jobId: "job-group-1",
+          targetGroupKey: "group-1",
+          targetGroupLabel: "分组商品 1",
+          status: "running",
+        },
+      ],
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/sessions/session-1",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          generation_job_id: "job-primary",
+          generation_jobs: [
+            {
+              job_id: "job-primary",
+              target_group_key: "primary",
+              target_group_label: "当前商品",
+              status: "running",
+            },
+            {
+              job_id: "job-group-1",
+              target_group_key: "group-1",
+              target_group_label: "分组商品 1",
+              status: "running",
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
   it("normalizes legacy created tasks that use design_id or omit design ids", () => {
     const batch = mapStudioSessionDetailToBatch({
       session: {

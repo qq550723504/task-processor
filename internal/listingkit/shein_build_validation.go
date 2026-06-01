@@ -84,35 +84,52 @@ func sheinSaleAttributeStatusResolved(pkg *SheinPackage) bool {
 }
 
 func sheinSaleAttributesReadyForSubmit(pkg *SheinPackage) bool {
+	return len(sheinSaleAttributesReadinessFailureReasons(pkg)) == 0
+}
+
+func sheinSaleAttributesReadinessFailureReasons(pkg *SheinPackage) []string {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if !sheinSaleAttributeStatusResolved(pkg) || sheinSaleAttributeReviewPending(pkg) {
-		return false
+	var reasons []string
+	if !sheinSaleAttributeStatusResolved(pkg) {
+		reasons = append(reasons, "sale attribute status is not resolved or primary attribute id is missing")
+	}
+	if sheinSaleAttributeReviewPending(pkg) {
+		reasons = append(reasons, "sale attribute category review is still pending")
 	}
 	if pkg == nil || pkg.DraftPayload == nil || len(pkg.DraftPayload.SKCList) == 0 {
-		return false
+		reasons = append(reasons, "draft payload skc_list is empty")
+		return uniqueStrings(reasons)
 	}
-	requireSKUAttributes := len(pkg.SaleAttributeResolution.SKUAttributes) > 0
+	requireSKUAttributes := pkg.SaleAttributeResolution != nil && len(pkg.SaleAttributeResolution.SKUAttributes) > 0
 	for _, skc := range pkg.DraftPayload.SKCList {
 		if !sheinResolvedSaleAttributeReady(skc.SaleAttribute) {
-			return false
+			reasons = append(reasons, fmt.Sprintf("skc %q is missing a resolved sale attribute value id", skc.SupplierCode))
 		}
 		if requireSKUAttributes {
 			if len(skc.SKUList) == 0 {
-				return false
+				reasons = append(reasons, fmt.Sprintf("skc %q is missing sku_list while sku sale attributes are required", skc.SupplierCode))
+				continue
 			}
 			for _, sku := range skc.SKUList {
 				if len(sku.SaleAttributes) == 0 {
-					return false
+					reasons = append(reasons, fmt.Sprintf("sku %q is missing sale_attributes", sku.SupplierSKU))
+					continue
 				}
 				for _, attr := range sku.SaleAttributes {
 					if !sheinResolvedSaleAttributeValueReady(attr) {
-						return false
+						reasons = append(reasons, fmt.Sprintf(
+							"sku %q has unresolved sale attribute %q (attribute_id=%d, attribute_value_id=%v)",
+							sku.SupplierSKU,
+							attr.Name,
+							attr.AttributeID,
+							attr.AttributeValueID,
+						))
 					}
 				}
 			}
 		}
 	}
-	return true
+	return uniqueStrings(reasons)
 }
 
 func sheinResolvedSaleAttributeReady(attr *SheinResolvedSaleAttribute) bool {

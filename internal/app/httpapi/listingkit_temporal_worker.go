@@ -9,7 +9,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
+	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	sheinclient "task-processor/internal/shein/client"
 )
 
 // RunListingKitTemporalWorker boots the minimum ListingKit dependencies required
@@ -19,29 +21,39 @@ func RunListingKitTemporalWorker(logger *logrus.Logger, options Options) error {
 	if err != nil {
 		return fmt.Errorf("build runtime deps: %w", err)
 	}
-	defer closeResources(logger, deps.closers)
+	defer closeResources(logger, deps.shared.closers)
 
-	configureSheinLoginService(deps.cfg)
+	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
 
-	if _, err := buildProductModule(logger, deps); err != nil {
-		return fmt.Errorf("build product module: %w", err)
-	}
-	if _, err := buildImageModule(logger, deps); err != nil {
-		return fmt.Errorf("build image module: %w", err)
-	}
-
-	bundle, err := listingkithttpapi.BuildService(newListingKitBuildServiceInput(logger, deps))
+	_, err = newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
+		includeImage: true,
+	})
 	if err != nil {
-		return fmt.Errorf("build listing kit service: %w", err)
+		return fmt.Errorf("build listingkit runtime prerequisites: %w", err)
 	}
-	deps.closers = append(deps.closers, bundle.Closers...)
 
-	workerCloser, err := appruntime.StartListingKitSheinPublishTemporalWorker(bundle.TemporalWorkerService, logger)
+	temporalRuntime, err := listingkithttpapi.BuildTemporalRuntime(listingkithttpapi.TemporalRuntimeBuildInput{
+		Logger:  logger,
+		Runtime: newListingKitRuntimeBuildInput(logger, deps).Runtime,
+	})
 	if err != nil {
-		return fmt.Errorf("start listing kit temporal worker: %w", err)
+		return fmt.Errorf("build listing kit temporal runtime: %w", err)
 	}
-	if workerCloser != nil {
-		defer closeResources(logger, []func() error{workerCloser})
+	if temporalRuntime == nil {
+		return fmt.Errorf("listing kit temporal runtime is unavailable")
+	}
+	deps.addClosers(temporalRuntime.Closers...)
+
+	bundle, err := appruntime.BuildTemporalRuntimeBundleFromModules(deps.shared.cfg, []kernelmodule.Module{temporalRuntime.Module})
+	if err != nil {
+		return fmt.Errorf("build temporal runtime bundle: %w", err)
+	}
+	workerClosers, err := bundle.Start()
+	if err != nil {
+		return fmt.Errorf("start temporal runtime bundle: %w", err)
+	}
+	if len(workerClosers) > 0 {
+		defer closeResources(logger, workerClosers)
 	}
 
 	sigChan := options.ShutdownSignal

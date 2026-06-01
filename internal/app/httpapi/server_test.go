@@ -3,12 +3,23 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
+
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	"task-processor/internal/core/config"
+	kernelmodule "task-processor/internal/kernel/module"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
 )
 
 func init() {
@@ -856,8 +867,9 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubAmazonListingHandler{}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, handler, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		amazonListing: handler,
+	})
 
 	tests := []struct {
 		name     string
@@ -969,8 +981,9 @@ func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubProductHandler{}
-	router := gin.New()
-	RegisterRoutes(router, handler, nil, nil, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		product: handler,
+	})
 
 	// generate endpoint
 	generatePayload := map[string]any{"text": "test"}
@@ -1003,8 +1016,9 @@ func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubImageHandler{}
-	router := gin.New()
-	RegisterRoutes(router, nil, handler, nil, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		image: handler,
+	})
 
 	// process endpoint
 	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
@@ -1053,8 +1067,10 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 
 	handler := &stubListingKitHandler{}
 	promptHandler := &stubPromptTemplateHandler{}
-	router := gin.New()
-	RegisterRoutesWithPrompt(router, nil, nil, nil, handler, promptHandler, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		listingKit:     handler,
+		promptTemplate: promptHandler,
+	})
 
 	body, _ := json.Marshal(map[string]any{
 		"text":      "test",
@@ -1748,8 +1764,7 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 	t.Parallel()
 
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, nil)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{})
 
 	tests := []struct {
 		method string
@@ -1776,7 +1791,10 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, &stubSheinLoginHandler{}, nil, nil)
+	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
+		sheinLogin: &stubSheinLoginHandler{},
+	})
+	require.NoError(t, err)
 
 	index := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
@@ -1794,7 +1812,10 @@ func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 func TestBuildRouteDescriptorsWithSDSLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes := buildRouteDescriptorsWithShein(nil, nil, nil, nil, nil, nil, nil, &stubSDSLoginHandler{}, nil)
+	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
+		sdsLogin: &stubSDSLoginHandler{},
+	})
+	require.NoError(t, err)
 
 	index := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
@@ -1813,8 +1834,9 @@ func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubTaskRPCHandler{}
-	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil, handler)
+	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
+		taskRPC: handler,
+	})
 
 	tests := []struct {
 		name     string
@@ -1892,13 +1914,16 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 	t.Parallel()
 
 	router := gin.New()
-	productHandler := &stubProductHandler{}
-	imageHandler := &stubImageHandler{}
-	amazonHandler := &stubAmazonListingHandler{}
-	listingKitHandler := &stubListingKitHandler{}
-	taskRPCHandler := &stubTaskRPCHandler{}
+	handlers := httpModuleHandlers{
+		product:       &stubProductHandler{},
+		image:         &stubImageHandler{},
+		amazonListing: &stubAmazonListingHandler{},
+		listingKit:    &stubListingKitHandler{},
+		taskRPC:       &stubTaskRPCHandler{},
+	}
 
-	routes := buildRouteDescriptors(productHandler, imageHandler, amazonHandler, listingKitHandler, nil, taskRPCHandler)
+	routes, err := buildRegisteredRoutes(nil, handlers)
+	require.NoError(t, err)
 	mountRoutes(router, routes)
 
 	registered := router.Routes()
@@ -1917,4 +1942,264 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 			t.Fatalf("expected mounted route %s", key)
 		}
 	}
+}
+
+func TestBuildRegisteredRoutesMatchesLegacyRouteDescriptors(t *testing.T) {
+	t.Parallel()
+
+	handlers := httpModuleHandlers{
+		product:        &stubProductHandler{},
+		image:          &stubImageHandler{},
+		amazonListing:  &stubAmazonListingHandler{},
+		listingKit:     &stubListingKitHandler{},
+		promptTemplate: &stubPromptTemplateHandler{},
+		studioSession:  &stubStudioSessionHandler{},
+		sheinLogin:     &stubSheinLoginHandler{},
+		sdsLogin:       &stubSDSLoginHandler{},
+		taskRPC:        &stubTaskRPCHandler{},
+		sdsCatalog:     &stubSDSCatalogRouteHandler{},
+	}
+
+	legacy := buildLegacyRouteDescriptorsWithShein(
+		handlers.product,
+		handlers.image,
+		handlers.amazonListing,
+		handlers.listingKit,
+		handlers.promptTemplate,
+		handlers.studioSession,
+		handlers.sheinLogin,
+		handlers.sdsLogin,
+		handlers.taskRPC,
+		handlers.sdsCatalog,
+	)
+
+	registered, err := buildRegisteredRoutes(nil, handlers)
+	if err != nil {
+		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
+	}
+
+	if got, want := routePaths(registered), routePaths(legacy); !equalStringSlices(got, want) {
+		t.Fatalf("registered routes mismatch\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestBuildHTTPServerBundleFromHandlersMountsRegisteredRoutes(t *testing.T) {
+	t.Parallel()
+
+	handlers := httpModuleHandlers{
+		product:        &stubProductHandler{},
+		image:          &stubImageHandler{},
+		amazonListing:  &stubAmazonListingHandler{},
+		listingKit:     &stubListingKitHandler{},
+		promptTemplate: &stubPromptTemplateHandler{},
+		studioSession:  &stubStudioSessionHandler{},
+		sheinLogin:     &stubSheinLoginHandler{},
+		sdsLogin:       &stubSDSLoginHandler{},
+		taskRPC:        &stubTaskRPCHandler{},
+		sdsCatalog:     &stubSDSCatalogRouteHandler{},
+	}
+
+	server, routes, err := buildHTTPServerBundleFromHandlers(18080, nil, handlers)
+	if err != nil {
+		t.Fatalf("buildHTTPServerBundleFromHandlers returned error: %v", err)
+	}
+
+	expectedRoutes, err := buildRegisteredRoutes(nil, handlers)
+	if err != nil {
+		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
+	}
+	if got, want := routePaths(routes), routePaths(expectedRoutes); !equalStringSlices(got, want) {
+		t.Fatalf("mounted routes mismatch\n got: %v\nwant: %v", got, want)
+	}
+
+	router, ok := server.Handler.(*gin.Engine)
+	if !ok {
+		t.Fatalf("server handler type = %T, want *gin.Engine", server.Handler)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/sds/categories = %d, want 200", resp.Code)
+	}
+}
+
+func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
+	t.Parallel()
+
+	server, routes, err := buildHTTPServerBundleFromModules(18080, nil, []kernelmodule.Module{
+		httpModule{
+			name: "broken",
+			register: func(*kernelmodule.Registry) error {
+				return errors.New("boom")
+			},
+		},
+	})
+
+	if server != nil {
+		t.Fatalf("server = %#v, want nil", server)
+	}
+	if routes != nil {
+		t.Fatalf("routes = %#v, want nil", routes)
+	}
+	if err == nil || err.Error() != "register module broken: boom" {
+		t.Fatalf("err = %v, want register module broken: boom", err)
+	}
+}
+
+func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+
+	bootstrap, err := buildBootstrap(logger, Options{
+		ConfigPath: "../../../config/config-test.yaml",
+		Port:       18080,
+	})
+	if err != nil {
+		t.Fatalf("buildBootstrap returned error: %v", err)
+	}
+	if bootstrap.server == nil {
+		t.Fatal("expected bootstrap server")
+	}
+	if len(bootstrap.routes) == 0 {
+		t.Fatal("expected bootstrap routes")
+	}
+	if !containsRoute(bootstrap.routes, http.MethodGet, "/health") {
+		t.Fatal("expected bootstrap routes to include GET /health")
+	}
+	if !containsRoute(bootstrap.routes, http.MethodGet, "/api/v1/sds/categories") {
+		t.Fatal("expected bootstrap routes to include GET /api/v1/sds/categories")
+	}
+	if containsRoute(bootstrap.routes, http.MethodGet, "/shein-login") {
+		t.Fatal("did not expect legacy shein-login HTML route")
+	}
+
+	router, ok := bootstrap.server.Handler.(*gin.Engine)
+	if !ok {
+		t.Fatalf("server handler type = %T, want *gin.Engine", bootstrap.server.Handler)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /health = %d, want 200", resp.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code == http.StatusNotFound {
+		t.Fatal("expected SDS catalog categories endpoint to be mounted")
+	}
+}
+
+func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("expected panic for multiple SDS catalog handlers")
+		}
+		message, ok := recovered.(string)
+		if !ok {
+			t.Fatalf("panic type = %T, want string", recovered)
+		}
+		if !strings.Contains(message, "expected at most 1 SDS catalog handler") {
+			t.Fatalf("panic message = %q, want multiple SDS catalog handler error", message)
+		}
+	}()
+
+	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
+}
+
+func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
+	routes := buildCoreRouteDescriptors()
+	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
+	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
+	routes = listingkithttpapi.AppendRouteDescriptors(routes, listingKitHandler)
+	routes = promptmgmtapi.AppendRouteDescriptors(routes, promptTemplateHandler)
+	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
+	routes = appendSDSCatalogRouteDescriptors(routes, sdsCatalogHandlers...)
+	routes = appendTaskRPCRouteDescriptors(routes, taskRPCHandler)
+	routes = appendSheinLoginRouteDescriptors(routes, sheinLoginHandler)
+	routes = appendSDSLoginRouteDescriptors(routes, sdsLoginHandler)
+	return routes
+}
+
+func mustBuildTestRouterFromHandlers(t *testing.T, handlers httpModuleHandlers) *gin.Engine {
+	t.Helper()
+
+	server, _, err := buildHTTPServerBundleFromHandlers(0, nil, handlers)
+	require.NoError(t, err)
+
+	router, ok := server.Handler.(*gin.Engine)
+	require.True(t, ok)
+	return router
+}
+
+func singleSDSCatalogHandler(sdsCatalogHandlers ...sdsCatalogRouteHandler) sdsCatalogRouteHandler {
+	if len(sdsCatalogHandlers) == 0 {
+		return nil
+	}
+	if len(sdsCatalogHandlers) == 1 {
+		return sdsCatalogHandlers[0]
+	}
+	panic(fmt.Sprintf("expected at most 1 SDS catalog handler, got %d", len(sdsCatalogHandlers)))
+}
+
+func buildHTTPServerBundleFromHandlers(port int, cfg *config.Config, handlers httpModuleHandlers) (*http.Server, []routeDescriptor, error) {
+	return buildHTTPServerBundleFromModules(port, cfg, buildHTTPModules(handlers))
+}
+
+func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]routeDescriptor, error) {
+	return buildRegisteredRoutesForModules(cfg, buildHTTPModules(handlers))
+}
+
+func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
+	return []kernelmodule.Module{
+		newCoreHTTPModule(),
+		newProductHTTPModule(handlers, nil, nil),
+		newAmazonListingHTTPModule(handlers, nil),
+		newListingKitHTTPModule(handlers, nil),
+		newPromptTemplateHTTPModule(handlers),
+		newListingKitStudioHTTPModule(handlers, nil),
+		newSDSCatalogHTTPModule(handlers),
+		newTaskRPCHTTPModule(handlers),
+		newSheinLoginHTTPModule(handlers),
+		newSDSLoginHTTPModule(handlers),
+	}
+}
+
+func routePaths(routes []routeDescriptor) []string {
+	out := make([]string, 0, len(routes))
+	for _, route := range routes {
+		out = append(out, route.Method+" "+route.Path)
+	}
+	return out
+}
+
+func equalStringSlices(got []string, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func containsRoute(routes []routeDescriptor, method string, path string) bool {
+	for _, route := range routes {
+		if route.Method == method && route.Path == path {
+			return true
+		}
+	}
+	return false
 }

@@ -75,6 +75,13 @@ type SheinStudioCreatedTask struct {
 	DesignID string `json:"design_id,omitempty"`
 }
 
+type SheinStudioGenerationJob struct {
+	JobID            string               `json:"job_id,omitempty"`
+	TargetGroupKey   string               `json:"target_group_key,omitempty"`
+	TargetGroupLabel string               `json:"target_group_label,omitempty"`
+	Status           StudioAsyncJobStatus `json:"status,omitempty"`
+}
+
 type SheinStudioGroupedSelection struct {
 	SelectionID        string               `json:"selection_id,omitempty"`
 	Selection          SheinStudioSelection `json:"selection,omitempty"`
@@ -157,6 +164,16 @@ func (value *SheinStudioCreatedTaskList) Scan(input any) error {
 	return unmarshalStudioSessionJSON(input, value)
 }
 
+type SheinStudioGenerationJobList []SheinStudioGenerationJob
+
+func (value SheinStudioGenerationJobList) Value() (driver.Value, error) {
+	return marshalStudioSessionJSON(value)
+}
+
+func (value *SheinStudioGenerationJobList) Scan(input any) error {
+	return unmarshalStudioSessionJSON(input, value)
+}
+
 type SheinStudioGroupedSelectionList []SheinStudioGroupedSelection
 
 func (value SheinStudioGroupedSelectionList) Value() (driver.Value, error) {
@@ -190,12 +207,14 @@ type SheinStudioSession struct {
 	ProductImagePrompts     SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`
 	ArtworkModel            string                            `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
 	ImageStrategy           string                            `json:"image_strategy,omitempty" gorm:"type:varchar(32)"`
+	GroupedImageMode        string                            `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
 	SelectedSDSImages       SheinStudioSelectedSDSImageList   `json:"selected_sds_images,omitempty" gorm:"type:text"`
 	GroupedSelections       SheinStudioGroupedSelectionList   `json:"grouped_selections,omitempty" gorm:"type:text"`
 	TransparentBackground   bool                              `json:"transparent_background"`
 	RenderSizeImagesWithSDS bool                              `json:"render_size_images_with_sds"`
 	SheinStoreID            string                            `json:"shein_store_id,omitempty" gorm:"type:varchar(64)"`
 	GenerationJobID         string                            `json:"generation_job_id,omitempty" gorm:"type:varchar(64);index"`
+	GenerationJobs          SheinStudioGenerationJobList      `json:"generation_jobs,omitempty" gorm:"type:text"`
 	GenerationError         string                            `json:"generation_error,omitempty" gorm:"type:text"`
 	ApprovedDesignIDs       SheinStudioStringList             `json:"approved_design_ids,omitempty" gorm:"type:text"`
 	CreatedTaskIDs          SheinStudioStringList             `json:"created_task_ids,omitempty" gorm:"type:text"`
@@ -250,6 +269,7 @@ type SheinStudioSessionGalleryItem struct {
 
 type UpsertStudioBatchRequest struct {
 	ID                      string                          `json:"id,omitempty"`
+	ExpectedUpdatedAt       string                          `json:"expected_updated_at,omitempty"`
 	BatchName               string                          `json:"batch_name,omitempty"`
 	Prompt                  string                          `json:"prompt"`
 	StyleCount              string                          `json:"style_count,omitempty"`
@@ -259,6 +279,7 @@ type UpsertStudioBatchRequest struct {
 	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
 	ArtworkModel            string                          `json:"artwork_model,omitempty"`
 	ImageStrategy           string                          `json:"image_strategy,omitempty"`
+	GroupedImageMode        string                          `json:"grouped_image_mode,omitempty"`
 	SelectedSDSImages       []SheinStudioSelectedSDSImage   `json:"selected_sds_images,omitempty"`
 	GroupedSelections       []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`
 	TransparentBackground   bool                            `json:"transparent_background,omitempty"`
@@ -267,6 +288,7 @@ type UpsertStudioBatchRequest struct {
 	Selection               *SheinStudioSelection           `json:"selection,omitempty"`
 	ApprovedDesignIDs       []string                        `json:"approved_design_ids,omitempty"`
 	CreatedTasks            []SheinStudioCreatedTask        `json:"created_tasks,omitempty"`
+	GenerationJobs          []SheinStudioGenerationJob      `json:"generation_jobs,omitempty"`
 	Designs                 []SheinStudioDesign             `json:"designs,omitempty"`
 }
 
@@ -281,6 +303,7 @@ type SheinStudioBatchListItem struct {
 	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
 	ArtworkModel            string                          `json:"artwork_model,omitempty"`
 	ImageStrategy           string                          `json:"image_strategy,omitempty"`
+	GroupedImageMode        string                          `json:"grouped_image_mode,omitempty"`
 	TransparentBackground   bool                            `json:"transparent_background,omitempty"`
 	RenderSizeImagesWithSDS bool                            `json:"render_size_images_with_sds,omitempty"`
 	SheinStoreID            string                          `json:"shein_store_id,omitempty"`
@@ -288,6 +311,7 @@ type SheinStudioBatchListItem struct {
 	GroupedSelections       []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`
 	ApprovedDesignIDs       []string                        `json:"approved_design_ids,omitempty"`
 	CreatedTasks            []SheinStudioCreatedTask        `json:"created_tasks,omitempty"`
+	GenerationJobs          []SheinStudioGenerationJob      `json:"generation_jobs,omitempty"`
 	DesignCount             int                             `json:"design_count"`
 	UpdatedAt               string                          `json:"updated_at,omitempty"`
 }

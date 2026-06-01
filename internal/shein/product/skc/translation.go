@@ -16,6 +16,8 @@ import (
 	"task-processor/internal/shein/submitprep"
 )
 
+const sheinSKCTitleMaxLength = 150
+
 type SKCTranslationHandler struct {
 	runtime      *SKCRuntimeInput
 	openaiClient openaiClient.ChatCompleter
@@ -154,8 +156,8 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 				langContent := &(*multiLanguageNameList)[englishIndexes[i]]
 				cleanedName := strings.TrimSpace(optimizedContent)
 				if len(cleanedName) >= 10 {
-					if len(cleanedName) > 800 {
-						cleanedName = h.truncateContent(cleanedName, 800)
+					if len(cleanedName) > sheinSKCTitleMaxLength {
+						cleanedName = h.truncateContent(cleanedName, sheinSKCTitleMaxLength)
 					}
 					langContent.Name = cleanedName
 				}
@@ -179,8 +181,8 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 		if len(cleanedName) < 10 {
 			continue
 		}
-		if len(cleanedName) > 800 {
-			cleanedName = h.truncateContent(cleanedName, 800)
+		if len(cleanedName) > sheinSKCTitleMaxLength {
+			cleanedName = h.truncateContent(cleanedName, sheinSKCTitleMaxLength)
 		}
 		langContent.Name = cleanedName
 	}
@@ -193,7 +195,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
 	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, `You are an e-commerce content optimization expert. Optimize product titles for SHEIN listings.
 Requirements:
-1. Output must be English and 10-800 characters long.
+1. Output must be English and 10-150 characters long.
 2. Highlight major product features and selling points.
 3. Keep wording concise and attractive.
 4. Avoid brand names and sensitive words.

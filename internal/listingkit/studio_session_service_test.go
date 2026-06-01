@@ -2,18 +2,22 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/tenantctx"
 )
 
 type studioSessionRepoStub struct {
-	sessions           map[string]*SheinStudioSession
-	designs            map[string][]SheinStudioDesign
-	countDesignsCalls  int
-	listDesignsCalls   int
+	sessions          map[string]*SheinStudioSession
+	designs           map[string][]SheinStudioDesign
+	countDesignsCalls int
+	listDesignsCalls  int
+	timestampSeed     time.Time
+	timestampTick     int64
 }
 
 func newStudioSessionRepoStub() *studioSessionRepoStub {
@@ -21,6 +25,15 @@ func newStudioSessionRepoStub() *studioSessionRepoStub {
 		sessions: map[string]*SheinStudioSession{},
 		designs:  map[string][]SheinStudioDesign{},
 	}
+}
+
+func (r *studioSessionRepoStub) nextTimestamp() time.Time {
+	if r.timestampSeed.IsZero() {
+		r.timestampSeed = time.Now().UTC()
+	}
+	next := r.timestampSeed.Add(time.Duration(r.timestampTick) * time.Millisecond)
+	r.timestampTick++
+	return next
 }
 
 func (r *studioSessionRepoStub) FindLatestSessionBySelectionKey(_ context.Context, selectionKey string) (*SheinStudioSession, error) {
@@ -39,6 +52,11 @@ func (r *studioSessionRepoStub) CreateSession(ctx context.Context, session *Shei
 	if session.UserID == "" {
 		session.UserID = RequestUserIDFromContext(ctx)
 	}
+	now := r.nextTimestamp()
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = now
+	}
+	session.UpdatedAt = now
 	r.sessions[session.ID] = cloneSession(session)
 	return nil
 }
@@ -58,6 +76,7 @@ func (r *studioSessionRepoStub) UpdateSession(ctx context.Context, session *Shei
 	if session.UserID == "" {
 		session.UserID = RequestUserIDFromContext(ctx)
 	}
+	session.UpdatedAt = r.nextTimestamp()
 	r.sessions[session.ID] = cloneSession(session)
 	return nil
 }
@@ -90,6 +109,50 @@ func (r *studioSessionRepoStub) ReplaceDesigns(_ context.Context, sessionID stri
 	r.designs[sessionID] = next
 	if session, ok := r.sessions[sessionID]; ok {
 		session.ApprovedDesignIDs = slices.Clone(approvedIDs)
+		session.UpdatedAt = r.nextTimestamp()
+	}
+	return nil
+}
+
+func (r *studioSessionRepoStub) UpsertDesigns(_ context.Context, sessionID string, approvedIDs []string, designs []SheinStudioDesign) error {
+	approved := make(map[string]struct{}, len(approvedIDs))
+	for _, id := range approvedIDs {
+		approved[id] = struct{}{}
+	}
+	current := append([]SheinStudioDesign(nil), r.designs[sessionID]...)
+	indexByID := make(map[string]int, len(current))
+	for idx, design := range current {
+		indexByID[design.ID] = idx
+	}
+	for _, design := range designs {
+		_, isApproved := approved[design.ID]
+		nextDesign := SheinStudioDesign{
+			ID:                    design.ID,
+			SessionID:             sessionID,
+			ImageURL:              design.ImageURL,
+			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
+			Prompt:                design.Prompt,
+			RevisedPrompt:         design.RevisedPrompt,
+			ImageModel:            design.ImageModel,
+			TransparentBackground: design.TransparentBackground,
+			VariationIntensity:    design.VariationIntensity,
+			Role:                  design.Role,
+			RoleLabel:             design.RoleLabel,
+			ReviewNote:            design.ReviewNote,
+			SortOrder:             design.SortOrder,
+			Approved:              isApproved,
+		}
+		if idx, ok := indexByID[design.ID]; ok {
+			current[idx] = nextDesign
+			continue
+		}
+		indexByID[design.ID] = len(current)
+		current = append(current, nextDesign)
+	}
+	r.designs[sessionID] = current
+	if session, ok := r.sessions[sessionID]; ok {
+		session.ApprovedDesignIDs = slices.Clone(approvedIDs)
+		session.UpdatedAt = r.nextTimestamp()
 	}
 	return nil
 }
@@ -157,6 +220,7 @@ func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 	cloned.ApprovedDesignIDs = append(SheinStudioStringList(nil), session.ApprovedDesignIDs...)
 	cloned.CreatedTaskIDs = append(SheinStudioStringList(nil), session.CreatedTaskIDs...)
 	cloned.CreatedTasks = append(SheinStudioCreatedTaskList(nil), session.CreatedTasks...)
+	cloned.GenerationJobs = append(SheinStudioGenerationJobList(nil), session.GenerationJobs...)
 	cloned.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...)
 	cloned.Selection = session.Selection
 	return &cloned
@@ -251,6 +315,39 @@ func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
 	}
 }
 
+func TestStudioSessionServiceUpdateDoesNotReloadDesignsForMetadataOnlyWrites(t *testing.T) {
+	svc := newStudioSessionTestService()
+	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	reviewing := SheinStudioSessionStatusReviewing
+	prompt := "retro cherries"
+	updated, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Status: &reviewing,
+		Prompt: &prompt,
+	})
+	if err != nil {
+		t.Fatalf("update session: %v", err)
+	}
+
+	if repo.listDesignsCalls != 0 {
+		t.Fatalf("list designs calls = %d, want 0 for metadata-only update", repo.listDesignsCalls)
+	}
+	if updated.Session == nil || updated.Session.Prompt != prompt {
+		t.Fatalf("updated session = %#v, want prompt %q", updated.Session, prompt)
+	}
+	if len(updated.Designs) != 0 {
+		t.Fatalf("updated designs = %#v, want empty result without reload", updated.Designs)
+	}
+}
+
 func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 	svc := newStudioSessionTestService()
 	ctx := context.Background()
@@ -290,6 +387,56 @@ func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 	}
 	if len(loaded.Designs) != 0 {
 		t.Fatalf("design count = %d, want 0", len(loaded.Designs))
+	}
+}
+
+func TestStudioSessionServiceTracksMultipleGenerationJobs(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	status := SheinStudioSessionStatusGenerating
+	jobID := "job-primary"
+	jobs := []SheinStudioGenerationJob{
+		{
+			JobID:            "job-primary",
+			TargetGroupKey:   "primary",
+			TargetGroupLabel: "当前商品",
+			Status:           StudioAsyncJobStatusRunning,
+		},
+		{
+			JobID:            "job-group-1",
+			TargetGroupKey:   "group-1",
+			TargetGroupLabel: "分组商品 1",
+			Status:           StudioAsyncJobStatusRunning,
+		},
+	}
+	if _, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Status:          &status,
+		GenerationJobID: &jobID,
+		GenerationJobs:  jobs,
+	}); err != nil {
+		t.Fatalf("update session: %v", err)
+	}
+
+	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if loaded.Session.Status != SheinStudioSessionStatusGenerating {
+		t.Fatalf("status = %q, want generating", loaded.Session.Status)
+	}
+	if len(loaded.Session.GenerationJobs) != 2 {
+		t.Fatalf("generation jobs = %#v, want 2 entries", loaded.Session.GenerationJobs)
+	}
+	if loaded.Session.GenerationJobs[1].TargetGroupKey != "group-1" {
+		t.Fatalf("generation jobs = %#v, want grouped target metadata preserved", loaded.Session.GenerationJobs)
 	}
 }
 
@@ -553,6 +700,39 @@ func TestStudioSessionServiceAllowsCreatingBatchContainerWithoutPrompt(t *testin
 	}
 	if detail.Session.Status != SheinStudioSessionStatusSelecting {
 		t.Fatalf("status = %q, want selecting for a prompt-less batch container", detail.Session.Status)
+	}
+}
+
+func TestStudioSessionServiceRejectsStaleUpdateStudioSessionWrites(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	firstSeenAt := detail.Session.UpdatedAt.Format(time.RFC3339Nano)
+	prompt1 := "first writer"
+	if _, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Prompt:            &prompt1,
+		ExpectedUpdatedAt: &firstSeenAt,
+	}); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+
+	prompt2 := "stale writer"
+	_, err = svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
+		Prompt:            &prompt2,
+		ExpectedUpdatedAt: &firstSeenAt,
+	})
+	if err == nil {
+		t.Fatal("stale update error = nil, want conflict")
+	}
+	if !errors.Is(err, ErrStudioSessionConflict) {
+		t.Fatalf("stale update error = %v, want ErrStudioSessionConflict", err)
 	}
 }
 

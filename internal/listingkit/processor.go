@@ -15,6 +15,7 @@ type Processor struct {
 	service       processorService
 	repo          Repository
 	taskSubmitter TaskSubmitter
+	stateMachine  *ProcessorStateMachine
 	logger        *logrus.Logger
 	maxRetries    int
 }
@@ -36,7 +37,14 @@ func NewProcessor(service processorService, repo Repository, logger *logrus.Logg
 	if maxRetries <= 0 {
 		maxRetries = 2
 	}
-	return &Processor{service: service, repo: repo, logger: logger, maxRetries: maxRetries}, nil
+	return &Processor{
+		service:       service,
+		repo:          repo,
+		taskSubmitter: nil,
+		stateMachine:  NewProcessorStateMachine(maxRetries),
+		logger:        logger,
+		maxRetries:    maxRetries,
+	}, nil
 }
 
 func (p *Processor) SetTaskSubmitter(submitter TaskSubmitter) { p.taskSubmitter = submitter }
@@ -48,7 +56,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	if err != nil {
 		return err
 	}
-	if task.Status != TaskStatusPending {
+	if err := p.stateMachine.CanProcess(task); err != nil {
 		return nil
 	}
 	ctx = WithTenantID(ctx, task.TenantID)
@@ -61,7 +69,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		if errors.Is(err, ErrTaskNotPending) {
 			return nil
 		}
-		if task.RetryCount < p.maxRetries {
+		if p.stateMachine.ShouldRetry(task) {
 			_ = p.repo.IncrementRetryCount(ctx, task.ID)
 			_ = p.repo.PrepareRetry(ctx, task.ID)
 			if p.taskSubmitter != nil {

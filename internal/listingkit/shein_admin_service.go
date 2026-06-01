@@ -53,17 +53,7 @@ func (s *service) sheinAdminOrDefault() *sheinAdminService {
 	if s.sheinAdmin != nil {
 		return s.sheinAdmin
 	}
-	s.sheinAdmin = newSheinAdminService(sheinAdminServiceConfig{
-		repo:                  s.repo,
-		mutateTaskResult:      s.mutateTaskResult,
-		currentPricingRule:    s.currentSheinPricingRule,
-		newSheinAPIClient:     s.newSheinAPIClient,
-		buildTaskPreview:      s.buildTaskPreview,
-		categoryResolver:      s.sheinCategoryResolver,
-		attributeResolver:     s.sheinAttributeResolver,
-		saleAttributeResolver: s.sheinSaleAttributeResolver,
-		clearPricingCache:     s.clearSheinPricingCache,
-	})
+	s.sheinAdmin = newSheinAdminService(buildSheinAdminServiceConfig(s))
 	return s.sheinAdmin
 }
 

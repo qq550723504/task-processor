@@ -54,6 +54,20 @@ func BuildListingKitStudioAsyncJobRepository(cfg *config.Config, logger *logrus.
 	})
 }
 
+func BuildListingKitStudioBatchRunRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStudioBatchRunRepository, func(logger *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit studio batch run repository for studio batch run APIs")
+		return listingkit.NewMemStudioBatchRunRepository(), nil, nil
+	})
+}
+
+func BuildListingKitStudioBatchRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStudioBatchRepository, func(logger *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit studio batch repository")
+		return listingkit.NewMemStudioBatchRepository(), nil, nil
+	})
+}
+
 func BuildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminStoreRepository, func(logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit store admin API disabled")
@@ -326,6 +340,40 @@ func newDBListingKitStudioAsyncJobRepository(cfg *config.DatabaseConfig, logger 
 		return nil, nil, fmt.Errorf("listingkit studio async job auto-migrate failed: %w", err)
 	}
 	repo := listingkit.NewGormStudioAsyncJobRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitStudioBatchRunRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StudioBatchRunRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingkit.AutoMigrateStudioBatchRunRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit studio batch run auto-migrate failed: %w", err)
+	}
+	repo := listingkit.NewGormStudioBatchRunRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitStudioBatchRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StudioBatchRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingkit.AutoMigrateStudioBatchRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit studio batch auto-migrate failed: %w", err)
+	}
+	repo := listingkit.NewGormStudioBatchRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

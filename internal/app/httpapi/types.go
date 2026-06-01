@@ -7,18 +7,26 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
+	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/prompt"
-	sdsusecase "task-processor/internal/sds/usecase"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
+	sdshttpapi "task-processor/internal/sds/httpapi"
+	"task-processor/internal/sdslogin"
+	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	"task-processor/internal/sheinlogin"
+	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -29,63 +37,169 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg                        *config.Config
-	closers                    []func() error
-	openaiMgr                  *openaiclient.Manager
-	aiCredentialStore          *openaiclient.GormCredentialResolver
-	tenantPromptStore          prompt.TenantPromptStore
-	llmMgr                     productenrich.LLMManager
-	inputParser                productenrich.InputParser
-	understanding              productenrich.ProductUnderstanding
-	imageWorkDir               string
-	shared                     *appbootstrap.SharedResources
-	productService             productenrich.ProductService
-	imageService               productimage.Service
-	sdsSyncService             sdsusecase.Service
-	sdsLoginStatusProvider     listingkit.SDSLoginStatusProvider
-	sdsBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
-	imageSubjectExtractor      productimage.SubjectExtractor
-	imageWhiteBgRenderer       productimage.WhiteBackgroundRenderer
-	imageSceneRenderer         productimage.SceneRenderer
-	listingKitSheinCookieStore *sheinlogin.RedisStore
+	shared   *sharedRuntimeDeps
+	features *featureRuntimeState
+}
+
+type sharedRuntimeDeps struct {
+	cfg               *config.Config
+	closers           []func() error
+	openaiMgr         *openaiclient.Manager
+	aiCredentialStore *openaiclient.GormCredentialResolver
+	tenantPromptStore prompt.TenantPromptStore
+	llmMgr            productenrich.LLMManager
+	inputParser       productenrich.InputParser
+	understanding     productenrich.ProductUnderstanding
+	imageWorkDir      string
+	sharedResources   *appbootstrap.SharedResources
+}
+
+type featureRuntimeState struct {
+	productService         productenrich.ProductService
+	imageService           productimage.Service
+	sdsLoginStatusProvider listingkit.SDSLoginStatusProvider
+	imageSubjectExtractor  productimage.SubjectExtractor
+	imageWhiteBgRenderer   productimage.WhiteBackgroundRenderer
+	imageSceneRenderer     productimage.SceneRenderer
+	listingKitSupport      *listingKitSupport
+}
+
+type listingKitSupport struct {
+	sdsBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
+	sheinCookieStore          *sheinlogin.RedisStore
 }
 
 type appBootstrap struct {
-	productHandler        productenrich.ProductHandler
-	imageHandler          productimage.Handler
-	amazonListingHandler  amazonlisting.Handler
-	listingKitHandler     listingkithttpapi.RouteHandler
-	promptTemplateHandler promptTemplateRouteHandler
-	studioSessionHandler  listingkit.StudioSessionHandler
-	sdsCatalogHandler     sdsCatalogRouteHandler
-	sheinLoginHandler     sheinLoginRouteHandler
-	sdsLoginHandler       sdsLoginRouteHandler
-	taskRPCHandler        taskrpcapi.Handler
-	server                *http.Server
-	routes                []routeDescriptor
-	pools                 []worker.WorkerPool
-	closers               []func() error
+	productHandler productenrich.ProductHandler
+	imageHandler   productimage.Handler
+	server         *http.Server
+	routes         []routeDescriptor
+	pools          []worker.WorkerPool
+	closers        []func() error
 }
 
-type productModule struct {
-	handler productenrich.ProductHandler
-	pool    worker.WorkerPool
+type httpFeatureComposition struct {
+	productModule       *productenrichhttpapi.Module
+	imageModule         *productimagehttpapi.Module
+	amazonListingModule *amazonlistinghttpapi.Module
+	listingKitModule    *listingkithttpapi.Module
+	promptModule        *promptmgmtapi.BuildResult
+	sdsModule           *sdshttpapi.BuildResult
+	taskRPCResult       *taskrpcapi.BuildResult
+	sheinLoginResult    *sheinloginbootstrap.BuildResult
+	sdsLoginResult      *sdsloginbootstrap.BuildResult
 }
 
-type imageModule struct {
-	handler productimage.Handler
-	pool    worker.WorkerPool
+func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
+	return []kernelmodule.Module{
+		newCoreHTTPModule(),
+		newProductHTTPModule(httpModuleHandlers{
+			product: c.productHandler(),
+			image:   c.imageHandler(),
+		}, c.productModule, c.imageModule),
+		newAmazonListingHTTPModule(httpModuleHandlers{
+			amazonListing: c.amazonListingHandler(),
+		}, c.amazonListingModule),
+		newListingKitHTTPModule(httpModuleHandlers{
+			listingKit: c.listingKitHandler(),
+		}, c.listingKitModule),
+		c.promptHTTPModule(),
+		newListingKitStudioHTTPModule(httpModuleHandlers{
+			studioSession: c.studioSessionHandler(),
+		}, c.listingKitModule),
+		c.sdsHTTPModule(),
+		c.sheinLoginHTTPModule(),
+		c.sdsLoginHTTPModule(),
+	}
 }
 
-type amazonListingModule struct {
-	handler amazonlisting.Handler
-	pool    worker.WorkerPool
+func (c httpFeatureComposition) routeModules() []kernelmodule.Module {
+	modules := c.runtimeModules()
+	modules = append(modules, c.taskRPCHTTPModule())
+	return modules
 }
 
-type listingKitModule struct {
-	handler              listingkithttpapi.RouteHandler
-	studioSessionHandler listingkit.StudioSessionHandler
-	pool                 worker.WorkerPool
+func (c httpFeatureComposition) buildRuntimeBundle(cfg *config.Config) (runtimeBundle, error) {
+	return buildRuntimeBundleFromModules(cfg, c.routeModules())
+}
+
+func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) (*http.Server, []routeDescriptor, error) {
+	bundle, err := c.buildRuntimeBundle(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	server, routes := bundle.buildServerBundle(port)
+	return server, routes, nil
+}
+
+func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
+	if c.productModule == nil {
+		return nil
+	}
+	return c.productModule.Handler
+}
+
+func (c httpFeatureComposition) imageHandler() productimage.Handler {
+	if c.imageModule == nil {
+		return nil
+	}
+	return c.imageModule.Handler
+}
+
+func (c httpFeatureComposition) amazonListingHandler() amazonlisting.Handler {
+	if c.amazonListingModule == nil {
+		return nil
+	}
+	return c.amazonListingModule.Handler
+}
+
+func (c httpFeatureComposition) listingKitHandler() listingKitRouteHandler {
+	if c.listingKitModule == nil {
+		return nil
+	}
+	return c.listingKitModule.Handler
+}
+
+func (c httpFeatureComposition) studioSessionHandler() studioSessionRouteHandler {
+	if c.listingKitModule == nil {
+		return nil
+	}
+	return c.listingKitModule.StudioSessionHandler
+}
+
+func (c httpFeatureComposition) promptHTTPModule() kernelmodule.Module {
+	if c.promptModule == nil {
+		return nil
+	}
+	return c.promptModule.Module
+}
+
+func (c httpFeatureComposition) sdsHTTPModule() kernelmodule.Module {
+	if c.sdsModule == nil {
+		return nil
+	}
+	return c.sdsModule.Module
+}
+
+func (c httpFeatureComposition) taskRPCHTTPModule() kernelmodule.Module {
+	if c.taskRPCResult == nil {
+		return nil
+	}
+	return c.taskRPCResult.Module
+}
+
+func (c httpFeatureComposition) sheinLoginHTTPModule() kernelmodule.Module {
+	if c.sheinLoginResult == nil {
+		return nil
+	}
+	return c.sheinLoginResult.Module
+}
+
+func (c httpFeatureComposition) sdsLoginHTTPModule() kernelmodule.Module {
+	if c.sdsLoginResult == nil {
+		return nil
+	}
+	return c.sdsLoginResult.Module
 }
 
 type productRouteHandler = productenrich.ProductHandler
@@ -95,20 +209,9 @@ type listingKitRouteHandler = listingkithttpapi.RouteHandler
 type studioSessionRouteHandler = listingkit.StudioSessionHandler
 type taskRPCRouteHandler = taskrpcapi.Handler
 
-type promptTemplateRouteHandler interface {
-	ListPromptTemplateCatalog(c *gin.Context)
-	GetPromptTemplateSchema(c *gin.Context)
-	ListPromptTemplates(c *gin.Context)
-	UpsertPromptTemplate(c *gin.Context)
-	SetPromptTemplateStatus(c *gin.Context)
-}
+type promptTemplateRouteHandler = promptmgmtapi.HTTPRouteHandler
 
-type sdsCatalogRouteHandler interface {
-	ListSDSProducts(c *gin.Context)
-	GetSDSProduct(c *gin.Context)
-	ListSDSCategories(c *gin.Context)
-	ListSDSShipmentAreas(c *gin.Context)
-}
+type sdsCatalogRouteHandler = sdshttpapi.HTTPRouteHandler
 
 type sheinLoginRouteHandler interface {
 	Health(c *gin.Context)
@@ -123,13 +226,6 @@ type sheinLoginRouteHandler interface {
 	ClearLastFailure(c *gin.Context)
 }
 
-type sdsLoginRouteHandler interface {
-	Health(c *gin.Context)
-	Status(c *gin.Context)
-	Login(c *gin.Context)
-	ManualLogin(c *gin.Context)
-	GetAuthState(c *gin.Context)
-	ClearState(c *gin.Context)
-}
+type sdsLoginRouteHandler = sdslogin.HTTPRouteHandler
 
 type routeDescriptor = httproute.Descriptor

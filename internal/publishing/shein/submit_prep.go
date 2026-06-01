@@ -7,10 +7,15 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
-	sheincontent "task-processor/internal/shein/content"
 	sheinproduct "task-processor/internal/shein/api/product"
-	"task-processor/internal/shein/submitprep"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
+	sheincontent "task-processor/internal/shein/content"
+	"task-processor/internal/shein/submitprep"
+)
+
+const (
+	sheinSubmitTitleMaxLength       = 150
+	sheinSubmitDescriptionMaxLength = 5000
 )
 
 func PrepareSubmitProductContent(ctx context.Context, product *sheinproduct.Product, region string, aiClient openaiclient.ChatCompleter, translateAPI sheintranslateapi.TranslateAPI) error {
@@ -130,7 +135,7 @@ Requirements:
 1. Output title and description in natural English only.
 2. Optimize for e-commerce conversion, search relevance, and attribute clarity instead of being minimal.
 3. Use the provided product images to identify visual motifs, style, room or use context, print or pattern cues, and other concrete shopper-relevant details that are visible.
-4. Title should usually be 110-220 characters when the source supports it, with high-intent product keywords, material or construction terms, style cues, use-case context, and shopper-friendly wording.
+4. Title must stay within 150 characters, while still using high-intent product keywords, material or construction terms, style cues, use-case context, and shopper-friendly wording whenever the source supports it.
 5. Description should usually be 220-900 characters when the source supports it, with 3-5 compact sentences covering what the product is, key material or build details, visual style, common use scenarios, and why a shopper would choose it.
 6. Keep claims concrete and product-focused. Avoid fluff, repetition, keyword stuffing, brand names, emojis, medical claims, absolute guarantees, or platform policy-risk claims.
 7. Preserve the core product type and major factual details from the source.
@@ -241,8 +246,8 @@ func applySubmitContent(product *sheinproduct.Product, title, description string
 	if product == nil {
 		return
 	}
-	title = truncateSubmitTitle(strings.TrimSpace(title), 800)
-	description = truncateSubmitDescription(strings.TrimSpace(description), 5000)
+	title = truncateSubmitTitle(strings.TrimSpace(title), sheinSubmitTitleMaxLength)
+	description = truncateSubmitDescription(strings.TrimSpace(description), sheinSubmitDescriptionMaxLength)
 	product.MultiLanguageNameList = []sheinproduct.LanguageContent{{
 		Language: "en",
 		Name:     title,
@@ -277,21 +282,21 @@ func buildSubmitSKCTitle(title, suffix string) string {
 	title = strings.TrimSpace(title)
 	suffix = strings.TrimSpace(suffix)
 	if title == "" {
-		return truncateSubmitTitle(suffix, 200)
+		return truncateSubmitTitle(suffix, sheinSubmitTitleMaxLength)
 	}
 	if suffix == "" {
-		return truncateSubmitTitle(title, 200)
+		return truncateSubmitTitle(title, sheinSubmitTitleMaxLength)
 	}
 	if strings.Contains(strings.ToLower(title), strings.ToLower(suffix)) {
-		return truncateSubmitTitle(title, 200)
+		return truncateSubmitTitle(title, sheinSubmitTitleMaxLength)
 	}
-	return truncateSubmitTitle(title+" - "+suffix, 200)
+	return truncateSubmitTitle(title+" - "+suffix, sheinSubmitTitleMaxLength)
 }
 
 func strengthenSubmitTitle(title, sourceTitle, sourceDescription string) string {
 	title = strings.TrimSpace(title)
 	if len(title) >= 90 {
-		return truncateSubmitTitle(title, 800)
+		return truncateSubmitTitle(title, sheinSubmitTitleMaxLength)
 	}
 	extra := firstSubmitSentence(sourceDescription)
 	if extra == "" {
@@ -302,22 +307,22 @@ func strengthenSubmitTitle(title, sourceTitle, sourceDescription string) string 
 		extra = ""
 	}
 	if extra == "" || strings.Contains(strings.ToLower(title), strings.ToLower(extra)) {
-		return truncateSubmitTitle(title, 800)
+		return truncateSubmitTitle(title, sheinSubmitTitleMaxLength)
 	}
-	return truncateSubmitTitle(title+" - "+extra, 800)
+	return truncateSubmitTitle(title+" - "+extra, sheinSubmitTitleMaxLength)
 }
 
 func strengthenSubmitDescription(description, sourceDescription string) string {
 	description = strings.TrimSpace(description)
 	if len(description) >= 220 {
-		return truncateSubmitDescription(description, 5000)
+		return truncateSubmitDescription(description, sheinSubmitDescriptionMaxLength)
 	}
 	extra := strings.TrimSpace(sourceDescription)
 	if submitprep.TextNeedsTranslation(extra, "en") {
 		extra = ""
 	}
 	if extra == "" || strings.Contains(strings.ToLower(description), strings.ToLower(extra)) {
-		return truncateSubmitDescription(description, 5000)
+		return truncateSubmitDescription(description, sheinSubmitDescriptionMaxLength)
 	}
 	joined := description
 	if joined != "" && !strings.HasSuffix(joined, ".") {
@@ -327,7 +332,7 @@ func strengthenSubmitDescription(description, sourceDescription string) string {
 		joined += " "
 	}
 	joined += extra
-	return truncateSubmitDescription(strings.TrimSpace(joined), 5000)
+	return truncateSubmitDescription(strings.TrimSpace(joined), sheinSubmitDescriptionMaxLength)
 }
 
 func firstSubmitSentence(text string) string {

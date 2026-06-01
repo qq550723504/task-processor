@@ -54,6 +54,18 @@ type CreateGroupedSheinReviewTasksInput = {
   createReviewTasks?: (input: CreateSheinReviewTasksInput) => Promise<SheinStudioCreatedTask[]>;
 };
 
+export type GroupedSheinTaskCreationWarning = {
+  selectionId: string;
+  label: string;
+  reason: "missing_design_match";
+  message: string;
+};
+
+export type GroupedSheinTaskCreationResult = {
+  created: SheinStudioCreatedTask[];
+  warnings: GroupedSheinTaskCreationWarning[];
+};
+
 export function parsePositiveInt(input: string) {
   const parsed = Number.parseInt(input.trim(), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -416,9 +428,10 @@ export async function createSheinReviewTasks(input: {
 
 export async function createGroupedSheinReviewTasks(
   input: CreateGroupedSheinReviewTasksInput,
-) {
+): Promise<GroupedSheinTaskCreationResult> {
   const createReviewTasks = input.createReviewTasks ?? createSheinReviewTasks;
   const created: SheinStudioCreatedTask[] = [];
+  const warnings: GroupedSheinTaskCreationWarning[] = [];
 
   for (const group of input.groups) {
     for (const item of group.selections) {
@@ -439,6 +452,10 @@ export async function createGroupedSheinReviewTasks(
         selectedIds: group.selectedIds,
         selection: item.selection,
       });
+      if (selectionDesigns.selectedIds.length === 0) {
+        warnings.push(onGroupedSelectionDesignMismatch(input.onProgress, item.selection));
+        continue;
+      }
 
       const tasks = await createReviewTasks({
         prompt: input.prompt,
@@ -458,7 +475,10 @@ export async function createGroupedSheinReviewTasks(
     }
   }
 
-  return created;
+  return {
+    created,
+    warnings,
+  };
 }
 
 function selectDesignsForGroupedSelection({
@@ -478,18 +498,39 @@ function selectDesignsForGroupedSelection({
       ? buildGroupedSDSSelectionID(selection)
       : buildSharedBySizeGroupKey(selection);
   const matchedDesigns = selectedDesigns.filter(
-    (design) => resolveDesignTargetKey(design, selection, groupedImageMode) === targetKey,
+    (design) =>
+      design.targetGroupKey?.trim() &&
+      resolveDesignTargetKey(design, selection, groupedImageMode) === targetKey,
   );
 
   if (matchedDesigns.length === 0) {
     return {
-      designs,
-      selectedIds,
+      designs: [],
+      selectedIds: [],
     };
   }
 
   return {
     designs: matchedDesigns,
     selectedIds: matchedDesigns.map((design) => design.id),
+  };
+}
+
+function onGroupedSelectionDesignMismatch(
+  onProgress: ((message: string) => void) | undefined,
+  selection: SDSProductVariantSelection,
+): GroupedSheinTaskCreationWarning {
+  const label =
+    selection.variantLabel?.trim() ||
+    selection.productName?.trim() ||
+    selection.variantId?.toString() ||
+    "当前商品";
+  const message = `Skipped ${label}: no generated designs matched this product, so no SHEIN task was created for it.`;
+  onProgress?.(message);
+  return {
+    selectionId: buildGroupedSDSSelectionID(selection),
+    label,
+    reason: "missing_design_match",
+    message,
   };
 }

@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
+	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
 )
@@ -72,7 +73,12 @@ func TestBuildSDSSyncServiceReturnsServiceWithoutAuthState(t *testing.T) {
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
-		imageService: &stubHTTPAPIImageService{},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{},
+		},
+		features: &featureRuntimeState{
+			imageService: &stubHTTPAPIImageService{},
+		},
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)
@@ -114,7 +120,12 @@ func TestBuildSDSSyncServiceReturnsNilOnFactoryError(t *testing.T) {
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
-		imageService: &stubHTTPAPIImageService{},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{},
+		},
+		features: &featureRuntimeState{
+			imageService: &stubHTTPAPIImageService{},
+		},
 	})
 	if svc != nil {
 		t.Fatalf("buildSDSSyncService() = %v, want nil", svc)
@@ -133,7 +144,12 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 	}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
-		imageService: &stubHTTPAPIImageService{},
+		shared: &sharedRuntimeDeps{
+			cfg: &config.Config{},
+		},
+		features: &featureRuntimeState{
+			imageService: &stubHTTPAPIImageService{},
+		},
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)
@@ -159,7 +175,7 @@ func TestBuildSDSClientConfigUsesLoginServiceFromConfig(t *testing.T) {
 		},
 	}
 
-	clientCfg := buildSDSClientConfig(cfg)
+	clientCfg := sdshttpapi.BuildClientConfig(cfg)
 	if clientCfg.AuthBootstrap.LoginServiceBaseURL != "http://login:8000" {
 		t.Fatalf("base URL = %q", clientCfg.AuthBootstrap.LoginServiceBaseURL)
 	}
@@ -210,7 +226,7 @@ func TestBuildSDSClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 		},
 	}
 
-	clientCfg := buildSDSClientConfig(cfg)
+	clientCfg := sdshttpapi.BuildClientConfig(cfg)
 	if clientCfg.AuthBootstrap.StaticAccessToken != "access-token" {
 		t.Fatalf("access token = %q", clientCfg.AuthBootstrap.StaticAccessToken)
 	}

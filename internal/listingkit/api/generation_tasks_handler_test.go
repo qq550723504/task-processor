@@ -47,12 +47,15 @@ type stubGenerationTaskService struct {
 	reviewSessionQuery      *listingkit.GenerationQueueQuery
 	reviewPreviewQuery      *listingkit.GenerationQueueQuery
 	uploadImagesReq         *listingkit.UploadImagesRequest
+	studioDesignCtx         context.Context
 	studioDesignReq         *listingkit.StudioDesignRequest
+	studioProductImageCtx   context.Context
 	studioProductImageReq   *listingkit.StudioProductImageRequest
 	aiSettingsReq           *listingkit.AIClientSettings
 	upsertStoreProfileReq   *listingkit.ListingKitStoreProfile
 	updateStoreRoutingReq   *listingkit.ListingKitStoreRoutingSettings
 	baselineReadinessQuery  *listingkit.SDSBaselineReadinessQuery
+	updatedStudioSessionCtx context.Context
 	updatedStudioSessionID  string
 	updatedStudioSessionReq *listingkit.UpdateStudioSessionRequest
 }
@@ -150,6 +153,7 @@ func (s *stubGenerationTaskService) SubmitTask(ctx context.Context, taskID strin
 }
 
 func (s *stubGenerationTaskService) UpdateStudioSession(ctx context.Context, sessionID string, req *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error) {
+	s.updatedStudioSessionCtx = ctx
 	s.updatedStudioSessionID = sessionID
 	s.updatedStudioSessionReq = req
 	return &listingkit.SheinStudioSessionDetail{

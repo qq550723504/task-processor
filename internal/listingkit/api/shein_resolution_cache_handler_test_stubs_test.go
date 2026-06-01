@@ -11,11 +11,13 @@ func (s *stubGenerationTaskService) ClearSheinResolutionCache(ctx context.Contex
 }
 
 func (s *stubGenerationTaskService) GenerateStudioDesigns(ctx context.Context, req *listingkit.StudioDesignRequest) (*listingkit.StudioDesignResponse, error) {
+	s.studioDesignCtx = ctx
 	s.studioDesignReq = req
 	return s.studioDesigns, s.err
 }
 
 func (s *stubGenerationTaskService) GenerateStudioProductImages(ctx context.Context, req *listingkit.StudioProductImageRequest) (*listingkit.StudioProductImageResponse, error) {
+	s.studioProductImageCtx = ctx
 	s.studioProductImageReq = req
 	return s.studioProductImages, s.err
 }

@@ -9,6 +9,7 @@ import (
 
 	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -16,18 +17,20 @@ type taskSubmissionRecoveryServiceConfig struct {
 	repo                        Repository
 	buildTaskPreview            func(context.Context, *Task, string) (*ListingKitPreview, error)
 	buildSheinSubmitProductAPI  func(context.Context, *Task) (sheinproduct.ProductAPI, error)
+	buildSheinSubmitOtherAPI    func(context.Context, *Task) (sheinother.OtherAPI, error)
 	rememberSheinSubmitted      func(*Task, string)
 	persistSuccessfulSubmission func(context.Context, string, *Task, string) error
-	resolveRemoteStatusCallback func(sheinproduct.ProductAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatusCallback func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
 type taskSubmissionRecoveryService struct {
 	repo                        Repository
 	buildTaskPreview            func(context.Context, *Task, string) (*ListingKitPreview, error)
 	buildSheinSubmitProductAPI  func(context.Context, *Task) (sheinproduct.ProductAPI, error)
+	buildSheinSubmitOtherAPI    func(context.Context, *Task) (sheinother.OtherAPI, error)
 	rememberSheinSubmitted      func(*Task, string)
 	persistSuccessfulSubmission func(context.Context, string, *Task, string) error
-	resolveRemoteStatusCallback func(sheinproduct.ProductAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatusCallback func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
 func newTaskSubmissionRecoveryService(config taskSubmissionRecoveryServiceConfig) *taskSubmissionRecoveryService {
@@ -35,6 +38,7 @@ func newTaskSubmissionRecoveryService(config taskSubmissionRecoveryServiceConfig
 		repo:                        config.repo,
 		buildTaskPreview:            config.buildTaskPreview,
 		buildSheinSubmitProductAPI:  config.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:    config.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:      config.rememberSheinSubmitted,
 		persistSuccessfulSubmission: config.persistSuccessfulSubmission,
 		resolveRemoteStatusCallback: config.resolveRemoteStatusCallback,
@@ -153,7 +157,7 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	}
 	advanceSheinSubmitPhase(pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote)
 	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(task.ID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, now, "远端可能已收到，正在刷新诊断状态", nil))
-	event, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, task.ID, pkg, productAPI, action, requestID, record.SupplierCode, now)
+	event, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, task, task.ID, pkg, productAPI, action, requestID, record.SupplierCode, now)
 	if event != nil {
 		appendSheinSubmissionEvent(pkg, *event)
 	}
@@ -184,7 +188,7 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	return s.buildTaskPreview(ctx, task, "shein")
 }
 
-func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
+func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx context.Context, task *Task, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
 	lookupCodes := collectSheinRemoteLookupCodes(pkg, supplierCode)
 	defaultConfirmed := action == "publish" && sheinRemotePublishAccepted(pkg, action)
 	fallbackMessage := "refreshing SHEIN remote record"
@@ -202,7 +206,11 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 		setSheinSubmitRemoteRecord(pkg, action, requestID, remoteStatus, nil, now, detail)
 		return ptrSheinSubmissionEvent(buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, remoteStatus, requestID, startedAt, detail, nil)), nil
 	}
-	confirmation, err := s.resolveRemoteStatus(productAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
+	var otherAPI sheinother.OtherAPI
+	if s.buildSheinSubmitOtherAPI != nil && task != nil {
+		otherAPI, _ = s.buildSheinSubmitOtherAPI(ctx, task)
+	}
+	confirmation, err := s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
 	setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
 	return confirmation.event, err
 }
@@ -255,11 +263,11 @@ func (s *taskSubmissionRecoveryService) clearSheinSubmitLeaseAfterStartFailure(c
 	return err
 }
 
-func (s *taskSubmissionRecoveryService) resolveRemoteStatus(productAPI sheinproduct.ProductAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+func (s *taskSubmissionRecoveryService) resolveRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	if s.resolveRemoteStatusCallback == nil {
 		return nil, errors.New("submit remote status resolution is not configured")
 	}
-	return s.resolveRemoteStatusCallback(productAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
+	return s.resolveRemoteStatusCallback(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }
 
 type sheinRemoteConfirmation struct {
@@ -270,6 +278,6 @@ type sheinRemoteConfirmation struct {
 	event        *sheinpub.SubmissionEvent
 }
 
-func (s *taskSubmissionRecoveryService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
-	return s.resolveRemoteStatus(productAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
+func (s *taskSubmissionRecoveryService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }

@@ -307,6 +307,121 @@ func TestApplyListingKitRevisionAppliesSaleAttributeResolutionWithoutSKCPatches(
 	}
 }
 
+func TestApplyListingKitRevisionUsesValueAssignmentsToFillAllSaleAttributeSKUs(t *testing.T) {
+	t.Parallel()
+
+	skcValueID := 739
+	skuMValueID := 2002
+	skuLValueID := 2003
+	status := "resolved"
+	source := "manual_review"
+	primaryAttributeID := 27
+	secondaryAttributeID := 87
+	primarySourceDimension := "Color"
+	secondarySourceDimension := "Size"
+
+	result := &ListingKitResult{
+		Platforms: []string{"shein"},
+		Shein: &SheinPackage{
+			SkcList: []SheinSKCPackage{{
+				SupplierCode: "SKC-1",
+				Attributes:   map[string]string{"Color": "white"},
+				SKUs: []PlatformVariant{
+					{SKU: "SKU-1", Attributes: map[string]string{"Size": "M"}},
+					{SKU: "MG8014086001", Attributes: map[string]string{"Size": "L"}},
+				},
+			}},
+			RequestDraft: &SheinRequestDraft{
+				SKCList: []SheinSKCRequestDraft{{
+					SupplierCode: "SKC-1",
+					SKUList: []SheinSKUDraft{
+						{SupplierSKU: "SKU-1", Attributes: map[string]string{"Size": "M"}},
+						{SupplierSKU: "MG8014086001", Attributes: map[string]string{"Size": "L"}},
+					},
+				}},
+			},
+		},
+	}
+
+	err := applyListingKitRevision(result, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				Status:                   &status,
+				Source:                   &source,
+				PrimaryAttributeID:       &primaryAttributeID,
+				SecondaryAttributeID:     &secondaryAttributeID,
+				PrimarySourceDimension:   &primarySourceDimension,
+				SecondarySourceDimension: &secondarySourceDimension,
+				SKCAttributes: []SheinResolvedSaleAttribute{{
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "white",
+					AttributeID:      primaryAttributeID,
+					AttributeValueID: &skcValueID,
+					MatchedBy:        "manual_review",
+				}},
+				SKUAttributes: []SheinResolvedSaleAttribute{{
+					Scope:            "sku",
+					Name:             "Size",
+					Value:            "M",
+					AttributeID:      secondaryAttributeID,
+					AttributeValueID: &skuMValueID,
+					MatchedBy:        "manual_review",
+				}},
+				SKCValueAssignments: map[string]SheinResolvedSaleAttribute{
+					"white": {
+						Scope:            "skc",
+						Name:             "Color",
+						Value:            "white",
+						AttributeID:      primaryAttributeID,
+						AttributeValueID: &skcValueID,
+						MatchedBy:        "manual_review",
+					},
+				},
+				SKUValueAssignments: map[string]SheinResolvedSaleAttribute{
+					"m": {
+						Scope:            "sku",
+						Name:             "Size",
+						Value:            "M",
+						AttributeID:      secondaryAttributeID,
+						AttributeValueID: &skuMValueID,
+						MatchedBy:        "manual_review",
+					},
+					"l": {
+						Scope:            "sku",
+						Name:             "Size",
+						Value:            "L",
+						AttributeID:      secondaryAttributeID,
+						AttributeValueID: &skuLValueID,
+						MatchedBy:        "manual_review",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply sale attribute resolution revision with assignments: %v", err)
+	}
+
+	if len(result.Shein.RequestDraft.SKCList) != 1 || len(result.Shein.RequestDraft.SKCList[0].SKUList) != 2 {
+		t.Fatalf("request draft skus = %+v", result.Shein.RequestDraft)
+	}
+	for _, sku := range result.Shein.RequestDraft.SKCList[0].SKUList {
+		if len(sku.SaleAttributes) != 1 || sku.SaleAttributes[0].AttributeID != secondaryAttributeID {
+			t.Fatalf("sku %s sale attributes = %+v", sku.SupplierSKU, sku.SaleAttributes)
+		}
+		if sku.SupplierSKU == "MG8014086001" {
+			if got := sku.SaleAttributes[0].AttributeValueID; got == nil || *got != skuLValueID {
+				t.Fatalf("sku %s sale attribute value id = %+v", sku.SupplierSKU, sku.SaleAttributes)
+			}
+		}
+	}
+	if result.Shein.SaleAttributeResolution == nil || result.Shein.SaleAttributeResolution.Status != "resolved" {
+		t.Fatalf("sale attribute resolution = %+v", result.Shein.SaleAttributeResolution)
+	}
+}
+
 func TestApplyListingKitRevisionPatchesSheinCategoryAndAttributeResolution(t *testing.T) {
 	t.Parallel()
 

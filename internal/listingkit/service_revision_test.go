@@ -1603,3 +1603,204 @@ func TestResolveManualSheinSaleAttributeValueIDsCreatesCustomValueIDs(t *testing
 		t.Fatalf("sale attribute resolution sku attrs = %+v", req.SaleAttributeResolution.SKUAttributes)
 	}
 }
+
+func TestResolveManualSheinSaleAttributeValueIDsBackfillsMissingSKUSaleAttributesFromAssignments(t *testing.T) {
+	t.Parallel()
+
+	sizeMValueID := 9101
+	sizeLValueID := 9102
+	pkg := &SheinPackage{
+		SpuName:    "Curtain Set",
+		CategoryID: 12143,
+		SkcList: []sheinpub.SKCPackage{{
+			SupplierCode: "SKC-1",
+			Attributes:   map[string]string{"Color": "white"},
+			SKUs: []common.Variant{
+				{
+					SKU:        "SKU-1",
+					Attributes: map[string]string{"Size": `60×70.8Inch (152×180cm)`},
+				},
+				{
+					SKU:        "MG8014086001",
+					Attributes: map[string]string{"Size": `70.8×70.8Inch (180×180cm)`},
+				},
+			},
+		}},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			PrimarySourceDimension:   "Color",
+			SecondarySourceDimension: "Size",
+		},
+	}
+	req := &SheinRevisionInput{
+		SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+			Status:                   stringPtr("resolved"),
+			PrimaryAttributeID:       intPtr(27),
+			SecondaryAttributeID:     intPtr(87),
+			PrimarySourceDimension:   stringPtr("Color"),
+			SecondarySourceDimension: stringPtr("Size"),
+			SKUValueAssignments: map[string]SheinResolvedSaleAttribute{
+				`60×70.8inch (152×180cm)`: {
+					Scope:            "sku",
+					Name:             "Size",
+					Value:            `60×70.8Inch (152×180cm)`,
+					AttributeID:      87,
+					AttributeValueID: &sizeMValueID,
+					MatchedBy:        "manual_review",
+				},
+				`70.8×70.8inch (180×180cm)`: {
+					Scope:            "sku",
+					Name:             "Size",
+					Value:            `70.8×70.8Inch (180×180cm)`,
+					AttributeID:      87,
+					AttributeValueID: &sizeLValueID,
+					MatchedBy:        "manual_review",
+				},
+			},
+		},
+		SKCPatches: []SheinSKCRevisionPatch{{
+			SupplierCode: "SKC-1",
+			SKUPatches: []SheinSKURevisionPatch{
+				{
+					SupplierSKU: "SKU-1",
+					Attributes:  map[string]string{"Size": `60×70.8Inch (152×180cm)`},
+					SaleAttributes: []SheinResolvedSaleAttribute{{
+						Scope:            "sku",
+						Name:             "Size",
+						Value:            `60×70.8Inch (152×180cm)`,
+						AttributeID:      87,
+						AttributeValueID: &sizeMValueID,
+						MatchedBy:        "manual_review",
+					}},
+				},
+				{
+					SupplierSKU:    "MG8014086001",
+					Attributes:     map[string]string{"Size": `70.8×70.8Inch (180×180cm)`},
+					SaleAttributes: nil,
+				},
+			},
+		}},
+	}
+
+	_, _, err := resolveManualSheinSaleAttributeValueIDs(
+		pkg,
+		req,
+		stubManualSaleAttributeAPI{},
+		12143,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("resolve manual shein sale attributes: %v", err)
+	}
+
+	missingSKU := req.SKCPatches[0].SKUPatches[1]
+	if len(missingSKU.SaleAttributes) != 1 {
+		t.Fatalf("missing sku sale attributes = %+v, want one backfilled attribute", missingSKU.SaleAttributes)
+	}
+	if got := missingSKU.SaleAttributes[0].AttributeValueID; got == nil || *got != sizeLValueID {
+		t.Fatalf("missing sku sale attributes = %+v, want value id %d", missingSKU.SaleAttributes, sizeLValueID)
+	}
+	if len(req.SaleAttributeResolution.SKUAttributes) != 2 {
+		t.Fatalf("sale attribute resolution sku attrs = %+v, want two synced sku attributes", req.SaleAttributeResolution.SKUAttributes)
+	}
+}
+
+func TestResolveManualSheinSaleAttributeValueIDsResolvesMissingSKUSaleAttributesWhenAssignmentsAreMissing(t *testing.T) {
+	t.Parallel()
+
+	sizeMValueID := 9101
+	pkg := &SheinPackage{
+		SpuName:    "Curtain Set",
+		CategoryID: 12143,
+		SkcList: []sheinpub.SKCPackage{{
+			SupplierCode: "SKC-1",
+			Attributes:   map[string]string{"Color": "white"},
+			SKUs: []common.Variant{
+				{
+					SKU:        "SKU-1",
+					Attributes: map[string]string{"Size": `60×70.8Inch (152×180cm)`},
+				},
+				{
+					SKU:        "MG8014086001",
+					Attributes: map[string]string{"Size": `70.8×70.8Inch (180×180cm)`},
+				},
+			},
+		}},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			PrimarySourceDimension:   "Color",
+			SecondarySourceDimension: "Size",
+		},
+	}
+	req := &SheinRevisionInput{
+		SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+			Status:                   stringPtr("resolved"),
+			PrimaryAttributeID:       intPtr(27),
+			SecondaryAttributeID:     intPtr(87),
+			PrimarySourceDimension:   stringPtr("Color"),
+			SecondarySourceDimension: stringPtr("Size"),
+			SKUValueAssignments: map[string]SheinResolvedSaleAttribute{
+				`60×70.8inch (152×180cm)`: {
+					Scope:            "sku",
+					Name:             "Size",
+					Value:            `60×70.8Inch (152×180cm)`,
+					AttributeID:      87,
+					AttributeValueID: &sizeMValueID,
+					MatchedBy:        "manual_review",
+				},
+			},
+		},
+		SKCPatches: []SheinSKCRevisionPatch{{
+			SupplierCode: "SKC-1",
+			SKUPatches: []SheinSKURevisionPatch{
+				{
+					SupplierSKU: "SKU-1",
+					Attributes:  map[string]string{"Size": `60×70.8Inch (152×180cm)`},
+					SaleAttributes: []SheinResolvedSaleAttribute{{
+						Scope:            "sku",
+						Name:             "Size",
+						Value:            `60×70.8Inch (152×180cm)`,
+						AttributeID:      87,
+						AttributeValueID: &sizeMValueID,
+						MatchedBy:        "manual_review",
+					}},
+				},
+				{
+					SupplierSKU:    "MG8014086001",
+					Attributes:     map[string]string{"Size": `70.8×70.8Inch (180×180cm)`},
+					SaleAttributes: nil,
+				},
+			},
+		}},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeInfos: []sheinattribute.AttributeInfo{
+				{AttributeID: 87, AttributeName: "尺码", AttributeNameEn: "Size", AttributeInputNum: 1},
+			},
+		}},
+	}
+
+	_, notes, err := resolveManualSheinSaleAttributeValueIDs(
+		pkg,
+		req,
+		stubManualSaleAttributeAPI{templates: templates},
+		12143,
+		flattenSheinAttributeTemplatesByID(templates),
+	)
+	if err != nil {
+		t.Fatalf("resolve manual shein sale attributes: %v", err)
+	}
+
+	missingSKU := req.SKCPatches[0].SKUPatches[1]
+	if len(missingSKU.SaleAttributes) != 1 {
+		t.Fatalf("missing sku sale attributes = %+v, want one remotely resolved attribute", missingSKU.SaleAttributes)
+	}
+	if got := missingSKU.SaleAttributes[0].AttributeValueID; got == nil || *got != 9001 {
+		t.Fatalf("missing sku sale attributes = %+v, want remotely resolved value id 9001", missingSKU.SaleAttributes)
+	}
+	if len(req.SaleAttributeResolution.SKUAttributes) != 2 {
+		t.Fatalf("sale attribute resolution sku attrs = %+v, want two synced sku attributes", req.SaleAttributeResolution.SKUAttributes)
+	}
+	if len(notes) == 0 {
+		t.Fatalf("notes = %+v, want remote resolution notes", notes)
+	}
+}

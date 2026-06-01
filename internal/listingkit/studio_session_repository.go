@@ -9,6 +9,7 @@ type StudioSessionRepository interface {
 	UpdateSession(ctx context.Context, session *SheinStudioSession) error
 	DeleteSession(ctx context.Context, sessionID string) error
 	ReplaceDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []SheinStudioDesign) error
+	UpsertDesigns(ctx context.Context, sessionID string, approvedIDs []string, designs []SheinStudioDesign) error
 	ListSessionDesigns(ctx context.Context, sessionID string) ([]SheinStudioDesign, error)
 	CountSessionDesignsBySessionIDs(ctx context.Context, sessionIDs []string) (map[string]int, error)
 	ListGalleryItems(ctx context.Context, limit int) ([]SheinStudioSessionGalleryItem, error)

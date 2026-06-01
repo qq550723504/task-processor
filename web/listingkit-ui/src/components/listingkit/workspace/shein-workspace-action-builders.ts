@@ -268,6 +268,9 @@ export function buildConfirmCurrentSheinSaleAttributesRevision(
   sheinPreview?: SheinPreviewPayload,
 ): ApplyRevisionRequest | null {
   const current = sheinPreview?.editor_context?.sale_attributes?.current;
+  const suggestedResolution =
+    sheinPreview?.editor_context?.revision_skeleton?.shein
+      ?.sale_attribute_resolution;
   if (!current?.primary_attribute_id) {
     return null;
   }
@@ -278,6 +281,12 @@ export function buildConfirmCurrentSheinSaleAttributesRevision(
     reason: "Confirm current SHEIN sale attributes",
     shein: {
       sale_attribute_resolution: {
+        ...(suggestedResolution ?? {
+          primary_source_dimension: current.primary_source_dimension,
+          secondary_source_dimension: current.secondary_source_dimension,
+          skc_value_assignments: current.skc_value_assignments,
+          sku_value_assignments: current.sku_value_assignments,
+        }),
         status: "resolved",
         source: "manual_review",
         recommend_category_review: false,
@@ -291,6 +300,7 @@ export function buildConfirmCurrentSheinSaleAttributesRevision(
           "SHEIN 销售属性已按当前主规格和其他规格人工确认。",
         ],
       },
+      skc_patches: current.skc_patches ?? [],
     },
   };
 }

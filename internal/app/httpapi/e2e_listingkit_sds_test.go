@@ -84,11 +84,14 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &runtimeDeps{
-		cfg:           cfg,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: understanding,
-		imageWorkDir:  cfg.ProductImage.WorkDir,
+		shared: &sharedRuntimeDeps{
+			cfg:           cfg,
+			llmMgr:        llmMgr,
+			inputParser:   inputParser,
+			understanding: understanding,
+			imageWorkDir:  cfg.ProductImage.WorkDir,
+		},
+		features: &featureRuntimeState{},
 	}
 
 	previousFactory := newSDSSyncServiceForHTTPAPI
@@ -99,17 +102,16 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		return &stubE2ESDSSyncService{}, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 
-	productModule, err := buildProductModule(logger, deps)
-	require.NoError(t, err)
-	imageModule, err := buildImageModule(logger, deps)
-	require.NoError(t, err)
-	listingKitModule, err := buildListingKitModule(logger, deps)
+	features, err := newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
+		includeImage:      true,
+		includeListingKit: true,
+	})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.pool, imageModule.pool, listingKitModule.pool}
+	pools := []worker.WorkerPool{features.productModule.Pool, features.imageModule.Pool, features.listingKitModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -119,12 +121,17 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		for _, pool := range pools {
 			pool.Stop(stopCtx)
 		}
-		for i := len(deps.closers) - 1; i >= 0; i-- {
-			require.NoError(t, deps.closers[i]())
+		for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.shared.closers[i]())
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, nil, listingKitModule.handler, nil)
+	routerServer, _, err := httpFeatureComposition{
+		productModule:    features.productModule,
+		imageModule:      features.imageModule,
+		listingKitModule: features.listingKitModule,
+	}.buildServerBundle(0, nil)
+	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")

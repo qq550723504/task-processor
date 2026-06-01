@@ -223,6 +223,45 @@ describe("/listing-kits/sds page", () => {
     ).toBeInTheDocument();
   });
 
+  it("still shows the full-dashboard entry when only two recent batches exist", async () => {
+    buildRecentBatchSummaries.mockReturnValueOnce([
+      {
+        id: "batch-2",
+        title: "Batch Two",
+        source: "batch",
+        primaryProductName: "Product Two",
+        createdTaskCount: 1,
+        designCount: 2,
+        productCount: 2,
+        storeSummary: "US",
+        updatedAt: "2026-05-27T01:21:00.000Z",
+        alerts: [],
+      },
+      {
+        id: "batch-1",
+        title: "Batch One",
+        source: "batch",
+        primaryProductName: "Product One",
+        createdTaskCount: 0,
+        designCount: 0,
+        productCount: 1,
+        storeSummary: "US",
+        updatedAt: "2026-05-27T01:20:00.000Z",
+        alerts: [],
+      },
+    ]);
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Two")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: "查看全部批次" }),
+    ).toBeInTheDocument();
+  });
+
   it("navigates to the dedicated new-batch route from the homepage CTA", () => {
     render(<ListingKitSDSPage />);
 
@@ -432,6 +471,93 @@ describe("/listing-kits/sds page", () => {
     await waitFor(() => {
       expect(deleteSheinStudioBatch).toHaveBeenCalledWith("batch-4");
     });
+  });
+
+  it("duplicates a batch into a fresh generate-ready copy while preserving products", async () => {
+    getSheinStudioBatch.mockResolvedValueOnce({
+      id: "batch-4",
+      name: "Batch Four",
+      prompt: "prompt",
+      styleCount: "2",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "scene",
+      productImagePrompts: [],
+      artworkModel: "nano",
+      transparentBackground: false,
+      sheinStoreId: "869",
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [{ imageUrl: "https://example.com/a.png" }],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 123,
+      selection: { variantId: 123, productId: 456, title: "Primary" },
+      groupedSelections: [
+        {
+          id: "grouped-1",
+          sheinStoreId: "869",
+          eligible: true,
+          eligibilityReason: "",
+          selection: { variantId: 124, productId: 457, title: "Grouped" },
+        },
+      ],
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          primarySelection: { variantId: 123, productId: 456, title: "Primary" },
+          groupedSelections: [],
+          sheinStoreId: "869",
+          currentPrompt: "prompt",
+          promptHistory: [],
+          designs: [{ id: "design-1", imageUrl: "https://example.com/d.png" }],
+          selectedIds: ["design-1"],
+          createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+          updatedAt: "2026-05-27T01:23:00.000Z",
+        },
+      ],
+      designs: [{ id: "design-1", imageUrl: "https://example.com/d.png" }],
+      selectedIds: ["design-1"],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      updatedAt: "2026-05-27T01:23:00.000Z",
+    });
+
+    render(<ListingKitSDSPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Batch Four")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部批次" }));
+    fireEvent.click(screen.getByRole("button", { name: "复制-batch-4" }));
+
+    await waitFor(() => {
+      expect(getSheinStudioBatch).toHaveBeenCalledWith("batch-4");
+    });
+    expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: undefined,
+        name: "Batch Four 副本",
+        selection: expect.objectContaining({ variantId: 123 }),
+        groupedSelections: [
+          expect.objectContaining({
+            selection: expect.objectContaining({ variantId: 124 }),
+          }),
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        groups: [
+          expect.objectContaining({
+            primarySelection: expect.objectContaining({ variantId: 123 }),
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+          }),
+        ],
+      }),
+      { makeActive: false },
+    );
   });
 
   it("treats missing batches as benign during bulk delete and still refreshes", async () => {

@@ -9,31 +9,49 @@ import { SheinBatchTaskTracker } from "@/components/listingkit/shein-studio/shei
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  approveSheinStudioBatchDesigns,
+  createSheinStudioBatchTasks,
+} from "@/lib/api/shein-studio-batches";
 import { ApiError } from "@/lib/api/client";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { buildGroupedGenerationTargets } from "@/lib/shein-studio/grouped-image-mode";
-import { createSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
-import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioBatchDetail as SheinStudioItemizedBatchDetail,
+  SheinStudioSavedBatch,
+} from "@/lib/types/shein-studio";
 import {
   deleteSheinStudioBatch,
-  getSheinStudioBatch,
+  flattenSheinStudioBatchDetailDesigns,
+  getApprovedSheinStudioBatchDesignIDs,
+  getSheinStudioHydratedBatch,
   saveSheinStudioBatch,
   setActiveSheinStudioBatchId,
+  updateSheinStudioBatchDetailReviewNote,
 } from "@/lib/utils/shein-studio-batches";
 
 export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
   const router = useRouter();
   const [batch, setBatch] = useState<SheinStudioSavedBatch | null>(null);
+  const [detail, setDetail] = useState<SheinStudioItemizedBatchDetail | null>(null);
   const [isLoadingBatch, setIsLoadingBatch] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
+  const currentDesigns = useMemo(
+    () => (detail ? flattenSheinStudioBatchDetailDesigns(detail) : []),
+    [detail],
+  );
+  const currentSelectedIDs = useMemo(
+    () => (detail ? getApprovedSheinStudioBatchDesignIDs(detail) : []),
+    [detail],
+  );
 
   const approvedCount = useMemo(
-    () => batch?.selectedIds.length ?? 0,
-    [batch?.selectedIds.length],
+    () => currentSelectedIDs.length,
+    [currentSelectedIDs.length],
   );
   const createActionDisabledReason = !batch?.selection?.variantId
     ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要商品模板。"
@@ -48,14 +66,16 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       setIsLoadingBatch(true);
       setLoadError("");
       try {
-        const nextBatch = await getSheinStudioBatch(batchId);
+        const nextBatch = await getSheinStudioHydratedBatch(batchId);
         if (!cancelled) {
-          setBatch(nextBatch);
+          setBatch(nextBatch.savedBatch);
+          setDetail(nextBatch.detail);
         }
       } catch (error) {
         if (!cancelled) {
           if (error instanceof ApiError && error.status === 404) {
             setBatch(null);
+            setDetail(null);
             return;
           }
           setLoadError(formatSubscriptionApiError(error));
@@ -90,7 +110,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     );
   }
 
-  if (!batch) {
+  if (!batch || !detail) {
     return (
       <section className="rounded-[1.75rem] border border-zinc-200/80 bg-white px-6 py-8 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
@@ -128,6 +148,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
   }
 
   const currentBatch = batch;
+  const currentDetail = detail;
 
   const studioHref = (() => {
     const params = new URLSearchParams();
@@ -159,11 +180,18 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     return query ? `/listing-kits/sds?${query}` : "/listing-kits/sds";
   })();
 
-  async function updateBatch(next: Partial<SheinStudioSavedBatch>) {
+  async function updateBatchContext(
+    next: Partial<SheinStudioSavedBatch>,
+    nextDetail: SheinStudioItemizedBatchDetail = currentDetail,
+  ) {
     const saved = await saveSheinStudioBatch({
       id: currentBatch.id,
-      prompt: next.prompt ?? currentBatch.prompt,
-      styleCount: next.styleCount ?? currentBatch.styleCount,
+      updatedAt: currentBatch.updatedAt,
+      name: next.name ?? currentBatch.name,
+      prompt: next.prompt ?? nextDetail.batch.prompt,
+      styleCount: next.styleCount ?? nextDetail.batch.styleCount,
+      variationIntensity:
+        next.variationIntensity ?? currentBatch.variationIntensity,
       productImageCount: next.productImageCount ?? currentBatch.productImageCount,
       productImagePrompt: next.productImagePrompt ?? currentBatch.productImagePrompt,
       productImagePrompts:
@@ -171,20 +199,44 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       artworkModel: next.artworkModel ?? currentBatch.artworkModel,
       transparentBackground:
         next.transparentBackground ?? currentBatch.transparentBackground,
-      sheinStoreId: next.sheinStoreId ?? currentBatch.sheinStoreId,
+      sheinStoreId:
+        next.sheinStoreId ??
+        currentBatch.sheinStoreId ??
+        (nextDetail.batch.sheinStoreId > 0
+          ? String(nextDetail.batch.sheinStoreId)
+          : ""),
       imageStrategy: next.imageStrategy ?? currentBatch.imageStrategy,
       groupedImageMode: next.groupedImageMode ?? currentBatch.groupedImageMode,
+      selectedSdsImages: next.selectedSdsImages ?? currentBatch.selectedSdsImages,
       renderSizeImagesWithSds:
         next.renderSizeImagesWithSds ?? currentBatch.renderSizeImagesWithSds,
       selection: next.selection ?? currentBatch.selection,
       groupedSelections: next.groupedSelections ?? currentBatch.groupedSelections,
-      designs: next.designs ?? currentBatch.designs,
-      selectedIds: next.selectedIds ?? currentBatch.selectedIds,
+      groups: next.groups ?? currentBatch.groups,
+      designs: next.designs ?? flattenSheinStudioBatchDetailDesigns(nextDetail),
+      selectedIds:
+        next.selectedIds ?? getApprovedSheinStudioBatchDesignIDs(nextDetail),
       createdTasks: next.createdTasks ?? currentBatch.createdTasks,
+      generationJobs: next.generationJobs ?? currentBatch.generationJobs,
     });
     if (saved) {
       setBatch(saved);
+      return;
     }
+    setBatch((previous) =>
+      previous
+        ? {
+            ...previous,
+            ...next,
+            prompt: next.prompt ?? nextDetail.batch.prompt,
+            styleCount: next.styleCount ?? nextDetail.batch.styleCount,
+            designs: next.designs ?? flattenSheinStudioBatchDetailDesigns(nextDetail),
+            selectedIds:
+              next.selectedIds ?? getApprovedSheinStudioBatchDesignIDs(nextDetail),
+            updatedAt: nextDetail.batch.updatedAt,
+          }
+        : previous,
+    );
   }
 
   async function handleDelete() {
@@ -198,21 +250,37 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
   }
 
   function handleToggle(designId: string) {
-    const nextSelected = currentBatch.selectedIds.includes(designId)
-      ? currentBatch.selectedIds.filter((item) => item !== designId)
-      : [...currentBatch.selectedIds, designId];
+    const nextSelected = currentSelectedIDs.includes(designId)
+      ? currentSelectedIDs.filter((item) => item !== designId)
+      : [...currentSelectedIDs, designId];
 
-    void updateBatch({ selectedIds: nextSelected });
     setActionMessage("");
     setActionError("");
+    void (async () => {
+      try {
+        const nextDetail = await approveSheinStudioBatchDesigns(
+          currentBatch.id,
+          nextSelected,
+        );
+        setDetail(nextDetail);
+        await updateBatchContext({ selectedIds: nextSelected }, nextDetail);
+      } catch (error) {
+        setActionError(formatSubscriptionApiError(error));
+      }
+    })();
   }
 
   function handleNoteChange(designId: string, note: string) {
-    void updateBatch({
-      designs: currentBatch.designs.map((design) =>
-        design.id === designId ? { ...design, reviewNote: note } : design,
-      ),
-    });
+    const nextDetail = updateSheinStudioBatchDetailReviewNote(
+      currentDetail,
+      designId,
+      note,
+    );
+    setDetail(nextDetail);
+    void updateBatchContext(
+      { designs: flattenSheinStudioBatchDetailDesigns(nextDetail) },
+      nextDetail,
+    );
   }
 
   const selectionByTargetGroupKey = new Map(
@@ -231,17 +299,23 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     setIsCreatingTasks(true);
 
     try {
-      const createdTasks = await createSheinReviewTasks({
-        prompt: currentBatch.prompt,
-        sheinStoreId: currentBatch.sheinStoreId,
-        selection: currentBatch.selection,
-        designs: currentBatch.designs,
-        selectedIds: currentBatch.selectedIds,
-        onProgress: setActionMessage,
+      const result = await createSheinStudioBatchTasks(
+        currentBatch.id,
+        currentSelectedIDs,
+      );
+      setDetail({
+        batch: result.batch,
+        items: result.items,
       });
-      await updateBatch({ createdTasks });
+      await updateBatchContext(
+        { createdTasks: result.createdTasks },
+        {
+          batch: result.batch,
+          items: result.items,
+        },
+      );
       setActionMessage(
-        `已生成 ${createdTasks.length} 个 SHEIN 资料任务。`,
+        `已生成 ${result.createdTasks.length} 个 SHEIN 资料任务。`,
       );
     } catch (error) {
       setActionError(formatSubscriptionApiError(error));
@@ -310,7 +384,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
               款式
             </div>
             <div className="mt-2 text-lg font-semibold text-zinc-950">
-              共 {currentBatch.designs.length} 个 / 已批准 {approvedCount} 个
+              共 {currentDesigns.length} 个 / 已批准 {approvedCount} 个
             </div>
           </div>
           <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
@@ -340,7 +414,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
 
       <SheinDesignPreviewGrid
         canRegenerate={false}
-        designs={currentBatch.designs}
+        designs={currentDesigns}
         imageStrategy={currentBatch.imageStrategy ?? "sds_official"}
         onNoteChange={handleNoteChange}
         onRegenerate={() => {}}
@@ -351,7 +425,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         isCreatingTasks={isCreatingTasks}
         createActionLabel="为这个批次生成 SHEIN 资料"
         renderSizeImagesWithSds={currentBatch.renderSizeImagesWithSds ?? true}
-        selectedIds={currentBatch.selectedIds}
+        selectedIds={currentSelectedIDs}
         selection={currentBatch.selection}
         selectionByTargetGroupKey={selectionByTargetGroupKey}
       />

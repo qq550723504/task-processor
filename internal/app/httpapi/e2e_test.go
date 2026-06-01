@@ -18,13 +18,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/amazonlisting"
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
@@ -44,24 +47,49 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &runtimeDeps{
-		cfg:           cfg,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: understanding,
-		imageWorkDir:  cfg.ProductImage.WorkDir,
+		shared: &sharedRuntimeDeps{
+			cfg:           cfg,
+			llmMgr:        llmMgr,
+			inputParser:   inputParser,
+			understanding: understanding,
+			imageWorkDir:  cfg.ProductImage.WorkDir,
+		},
+		features: &featureRuntimeState{},
 	}
 
-	productModule, err := buildProductModule(logger, deps)
+	productModule, err := productenrichhttpapi.BuildRuntimeModule(productenrichhttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+	})
 	require.NoError(t, err)
-	imageModule, err := buildImageModule(logger, deps)
+	deps.attachProductModule(productModule)
+	imageModule, err := productimagehttpapi.BuildRuntimeModule(productimagehttpapi.RuntimeBuildInput{
+		Logger:        logger,
+		Config:        deps.shared.cfg,
+		LLMManager:    deps.shared.llmMgr,
+		OpenAIManager: deps.shared.openaiMgr,
+		InputParser:   deps.shared.inputParser,
+		Understanding: deps.shared.understanding,
+		ImageWorkDir:  deps.shared.imageWorkDir,
+	})
 	require.NoError(t, err)
-	amazonModule, err := buildAmazonListingModule(logger, deps)
+	deps.attachImageModule(imageModule)
+	amazonModule, err := amazonlistinghttpapi.BuildRuntimeModule(amazonlistinghttpapi.RuntimeBuildInput{
+		Logger:         logger,
+		Config:         deps.shared.cfg,
+		ProductService: deps.features.productService,
+		ImageService:   deps.features.imageService,
+	})
 	require.NoError(t, err)
+	deps.attachAmazonListingModule(amazonModule)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.pool, imageModule.pool, amazonModule.pool}
+	pools := []worker.WorkerPool{productModule.Pool, imageModule.Pool, amazonModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -71,12 +99,17 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		for _, pool := range pools {
 			pool.Stop(stopCtx)
 		}
-		for i := len(deps.closers) - 1; i >= 0; i-- {
-			require.NoError(t, deps.closers[i]())
+		for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.shared.closers[i]())
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, amazonModule.handler, nil, nil)
+	routerServer, _, err := httpFeatureComposition{
+		productModule:       productModule,
+		imageModule:         imageModule,
+		amazonListingModule: amazonModule,
+	}.buildServerBundle(0, nil)
+	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 
@@ -166,22 +199,25 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &runtimeDeps{
-		cfg:           cfg,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: understanding,
-		imageWorkDir:  cfg.ProductImage.WorkDir,
+		shared: &sharedRuntimeDeps{
+			cfg:           cfg,
+			llmMgr:        llmMgr,
+			inputParser:   inputParser,
+			understanding: understanding,
+			imageWorkDir:  cfg.ProductImage.WorkDir,
+		},
+		features: &featureRuntimeState{},
 	}
 
-	productModule, err := buildProductModule(logger, deps)
-	require.NoError(t, err)
-	listingKitModule, err := buildListingKitModule(logger, deps)
+	features, err := newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
+		includeListingKit: true,
+	})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pools := []worker.WorkerPool{productModule.pool, listingKitModule.pool}
+	pools := []worker.WorkerPool{features.productModule.Pool, features.listingKitModule.Pool}
 	for _, pool := range pools {
 		pool.Start(ctx)
 	}
@@ -191,12 +227,16 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		for _, pool := range pools {
 			pool.Stop(stopCtx)
 		}
-		for i := len(deps.closers) - 1; i >= 0; i-- {
-			require.NoError(t, deps.closers[i]())
+		for i := len(deps.shared.closers) - 1; i >= 0; i-- {
+			require.NoError(t, deps.shared.closers[i]())
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, nil, nil, listingKitModule.handler, nil)
+	routerServer, _, err := httpFeatureComposition{
+		productModule:    features.productModule,
+		listingKitModule: features.listingKitModule,
+	}.buildServerBundle(0, nil)
+	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")

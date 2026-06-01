@@ -15,16 +15,7 @@ func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
 	if s.taskDirectSubmission != nil {
 		return s.taskDirectSubmission
 	}
-	s.taskDirectSubmission = newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{
-		normalizeSheinSubmitPackage:     s.normalizeSheinSubmitPackage,
-		validateSheinPublishFreshness:   s.validateSheinPublishFreshness,
-		failSheinDirectSubmit:           s.failSheinDirectSubmit,
-		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
-		persistSheinDirectSubmitPhase:   s.persistSheinDirectSubmitPhase,
-		prepareSheinDirectSubmitProduct: s.prepareSheinDirectSubmitProduct,
-		completeSheinDirectRemoteSubmit: s.completeSheinDirectRemoteSubmit,
-		buildTaskPreview:                s.buildTaskPreview,
-	})
+	s.taskDirectSubmission = newTaskDirectSubmissionService(buildTaskDirectSubmissionServiceConfig(s))
 	return s.taskDirectSubmission
 }
 

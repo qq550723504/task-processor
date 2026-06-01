@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
 )
@@ -62,6 +63,8 @@ func (h *studioSessionHandler) UpdateStudioSession(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
 			status = http.StatusNotFound
+		} else if errors.Is(err, listingkit.ErrStudioSessionConflict) {
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "studio_session_update_failed", "message": err.Error()})
 		return
@@ -80,6 +83,8 @@ func (h *studioSessionHandler) ReplaceStudioSessionDesigns(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
 			status = http.StatusNotFound
+		} else if errors.Is(err, listingkit.ErrStudioSessionConflict) {
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "studio_session_designs_failed", "message": err.Error()})
 		return
@@ -120,6 +125,57 @@ func (h *studioSessionHandler) GetStudioBatch(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
+func (h *studioSessionHandler) StartStudioBatchGeneration(c *gin.Context) {
+	detail, err := h.service.StartStudioBatchGeneration(requestContext(c), c.Param("batch_id"))
+	if err != nil {
+		writeStudioBatchActionError(c, "studio_batch_generate_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *studioSessionHandler) RetryStudioBatchItems(c *gin.Context) {
+	var req listingkit.RetryStudioBatchItemsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	detail, err := h.service.RetryStudioBatchItems(requestContext(c), c.Param("batch_id"), &req)
+	if err != nil {
+		writeStudioBatchActionError(c, "studio_batch_retry_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *studioSessionHandler) ApproveStudioBatchDesigns(c *gin.Context) {
+	var req listingkit.ApproveStudioBatchDesignsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	detail, err := h.service.ApproveStudioBatchDesigns(requestContext(c), c.Param("batch_id"), &req)
+	if err != nil {
+		writeStudioBatchActionError(c, "studio_batch_approve_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *studioSessionHandler) CreateStudioBatchTasks(c *gin.Context) {
+	var req listingkit.CreateStudioBatchTasksRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	result, err := h.service.CreateStudioBatchTasks(requestContext(c), c.Param("batch_id"), &req)
+	if err != nil {
+		writeStudioBatchActionError(c, "studio_batch_tasks_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *studioSessionHandler) UpsertStudioBatch(c *gin.Context) {
 	var req listingkit.UpsertStudioBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -131,6 +187,8 @@ func (h *studioSessionHandler) UpsertStudioBatch(c *gin.Context) {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
 			status = http.StatusNotFound
+		} else if errors.Is(err, listingkit.ErrStudioSessionConflict) {
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "studio_batch_save_failed", "message": err.Error()})
 		return
@@ -148,4 +206,17 @@ func (h *studioSessionHandler) DeleteStudioBatch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func writeStudioBatchActionError(c *gin.Context, errorCode string, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, listingkit.ErrStudioSessionNotFound), errors.Is(err, gorm.ErrRecordNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, listingkit.ErrStudioSessionConflict):
+		status = http.StatusConflict
+	case errors.Is(err, listingkit.ErrStudioBatchActionValidation):
+		status = http.StatusBadRequest
+	}
+	c.JSON(status, gin.H{"error": errorCode, "message": err.Error()})
 }

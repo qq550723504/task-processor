@@ -163,8 +163,18 @@ func BuildSaleAttributeResolutionPatch(pkg *sheinpub.Package) *SaleAttributeReso
 		secondaryAttributeID := pkg.SaleAttributeResolution.SecondaryAttributeID
 		patch.SecondaryAttributeID = &secondaryAttributeID
 	}
+	if pkg.SaleAttributeResolution.PrimarySourceDimension != "" {
+		primarySourceDimension := pkg.SaleAttributeResolution.PrimarySourceDimension
+		patch.PrimarySourceDimension = &primarySourceDimension
+	}
+	if pkg.SaleAttributeResolution.SecondarySourceDimension != "" {
+		secondarySourceDimension := pkg.SaleAttributeResolution.SecondarySourceDimension
+		patch.SecondarySourceDimension = &secondarySourceDimension
+	}
 	patch.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), pkg.SaleAttributeResolution.SKCAttributes...)
 	patch.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), pkg.SaleAttributeResolution.SKUAttributes...)
+	patch.SKCValueAssignments = cloneResolvedSaleAttributeMap(pkg.SaleAttributeResolution.SKCValueAssignments)
+	patch.SKUValueAssignments = cloneResolvedSaleAttributeMap(pkg.SaleAttributeResolution.SKUValueAssignments)
 	patch.CustomAttributeRelation = append(patch.CustomAttributeRelation, pkg.SaleAttributeResolution.CustomAttributeRelation...)
 	patch.SelectionSummary = append([]string(nil), pkg.SaleAttributeResolution.SelectionSummary...)
 	patch.ReviewNotes = append([]string(nil), pkg.SaleAttributeResolution.ReviewNotes...)
