@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getSheinStudioBatch,
+  getSheinStudioHydratedBatch,
   listSheinStudioBatches,
   loadSheinStudioDraft,
   saveSheinStudioBatch,
@@ -622,6 +623,26 @@ describe("shein studio storage api", () => {
       ],
       updatedAt: "2026-06-01T10:05:00Z",
     });
+  });
+
+  it("surfaces a hydration error when saved batch context cannot be loaded", async () => {
+    listSheinStudioSessionBatches.mockRejectedValueOnce(new Error("list failed"));
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "review_ready",
+        prompt: "botanical",
+        styleCount: "3",
+        sheinStoreId: 7,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+
+    await expect(getSheinStudioHydratedBatch("batch-1")).rejects.toThrow(
+      "list failed",
+    );
   });
 
   it("saves draft through server api", async () => {

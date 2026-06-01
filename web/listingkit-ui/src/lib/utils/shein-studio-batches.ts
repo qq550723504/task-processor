@@ -243,11 +243,11 @@ export async function getSheinStudioHydratedBatch(
   batchID: string,
 ): Promise<SheinStudioHydratedBatch> {
   const detail = await getSheinStudioBatchDetail(batchID);
-  let savedBatch: SheinStudioSavedBatch | undefined;
-  try {
-    savedBatch = (await listSheinStudioBatches()).find((item) => item.id === batchID);
-  } catch {
-    savedBatch = undefined;
+  const savedBatch = (await listSheinStudioBatches()).find(
+    (item) => item.id === batchID,
+  );
+  if (!savedBatch) {
+    throw new Error(`Saved batch context unavailable for ${batchID}.`);
   }
   return {
     savedBatch: normalizeBatch(

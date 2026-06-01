@@ -354,6 +354,8 @@ export function SheinStudioWorkbench({
   const selectedRecentBatchHydrationRequestsRef = useRef(
     new Map<string, Promise<SheinStudioWorkbenchHydratedBatch | null>>(),
   );
+  const recentBatchOpenRequestVersionRef = useRef(0);
+  const batchQueueRequestVersionRef = useRef(0);
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -1203,6 +1205,8 @@ export function SheinStudioWorkbench({
       summary: (typeof recentBatchSummaries)[number],
       action?: "generate" | "review" | "tasks",
     ) => {
+      const requestVersion = recentBatchOpenRequestVersionRef.current + 1;
+      recentBatchOpenRequestVersionRef.current = requestVersion;
       const targetStep = stepForRecentBatchAction(action);
       if (summary.source === "local_draft" && localDraftSnapshot) {
         const draftState = mergeSheinStudioDraftState({
@@ -1241,9 +1245,18 @@ export function SheinStudioWorkbench({
       void (async () => {
         try {
           const hydratedBatch = await getSheinStudioHydratedBatch(summary.id);
+          if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
+            return;
+          }
           handleLoadHydratedBatch(hydratedBatch);
         } catch {
+          if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
+            return;
+          }
           handleLoadBatch(batch);
+        }
+        if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
+          return;
         }
         setEffectiveStep(targetStep);
       })();
@@ -1265,6 +1278,7 @@ export function SheinStudioWorkbench({
       overrides?: Partial<SheinStudioSavedBatch>,
     ) => ({
       id: overrides?.id ?? batch.id,
+      updatedAt: overrides?.updatedAt ?? batch.updatedAt,
       name: overrides?.name ?? batch.name,
       prompt: overrides?.prompt ?? batch.prompt,
       styleCount: overrides?.styleCount ?? batch.styleCount,
@@ -1293,6 +1307,7 @@ export function SheinStudioWorkbench({
       designs: overrides?.designs ?? batch.designs,
       selectedIds: overrides?.selectedIds ?? batch.selectedIds,
       createdTasks: overrides?.createdTasks ?? batch.createdTasks,
+      generationJobs: overrides?.generationJobs ?? batch.generationJobs,
     }),
     [],
   );
@@ -1308,6 +1323,34 @@ export function SheinStudioWorkbench({
   const refreshSavedBatches = useCallback(async () => {
     workbenchController.setField("savedBatches", await listSheinStudioBatches());
   }, [workbenchController]);
+
+  const resolveRecentBatchForMutation = useCallback(
+    async (batchId: string) => {
+      const savedBatch = savedBatches.find((item) => item.id === batchId);
+      if (!savedBatch) {
+        return null;
+      }
+      const cachedHydratedBatch = selectedRecentBatchHydrations[batchId];
+      if (
+        cachedHydratedBatch &&
+        Date.parse(cachedHydratedBatch.savedBatch.updatedAt) >=
+          Date.parse(savedBatch.updatedAt)
+      ) {
+        return cachedHydratedBatch.savedBatch;
+      }
+      try {
+        const hydratedBatch = await getSheinStudioHydratedBatch(batchId);
+        setSelectedRecentBatchHydrations((current) => ({
+          ...current,
+          [batchId]: hydratedBatch,
+        }));
+        return hydratedBatch.savedBatch;
+      } catch {
+        return savedBatch;
+      }
+    },
+    [savedBatches, selectedRecentBatchHydrations],
+  );
 
   useEffect(() => {
     if (!isEditingCurrentBatchName) {
@@ -1360,7 +1403,7 @@ export function SheinStudioWorkbench({
       if (summary.source !== "batch") {
         return;
       }
-      const batch = savedBatches.find((item) => item.id === summary.id);
+      const batch = await resolveRecentBatchForMutation(summary.id);
       if (!batch) {
         return;
       }
@@ -1370,7 +1413,7 @@ export function SheinStudioWorkbench({
       );
       await refreshSavedBatches();
     },
-    [buildSaveInputFromBatch, refreshSavedBatches, recentBatchSummaries, savedBatches],
+    [buildSaveInputFromBatch, refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
   const handleDuplicateRecentBatchSummary = useCallback(
@@ -1378,7 +1421,7 @@ export function SheinStudioWorkbench({
       if (summary.source !== "batch") {
         return;
       }
-      const batch = savedBatches.find((item) => item.id === summary.id);
+      const batch = await resolveRecentBatchForMutation(summary.id);
       if (!batch) {
         return;
       }
@@ -1388,7 +1431,7 @@ export function SheinStudioWorkbench({
       );
       await refreshSavedBatches();
     },
-    [buildSaveInputFromBatch, refreshSavedBatches, recentBatchSummaries, savedBatches],
+    [refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
   const handleDeleteRecentBatchSummary = useCallback(
@@ -1431,7 +1474,9 @@ export function SheinStudioWorkbench({
 
   const handleBulkUpdateRecentBatchStore = useCallback(
     async (summaryIds: string[], storeId: string) => {
-      const targets = savedBatches.filter((batch) => summaryIds.includes(batch.id));
+      const targets = (
+        await Promise.all(summaryIds.map((summaryId) => resolveRecentBatchForMutation(summaryId)))
+      ).filter((batch): batch is SheinStudioSavedBatch => batch != null);
       if (targets.length === 0) {
         return;
       }
@@ -1459,7 +1504,7 @@ export function SheinStudioWorkbench({
       );
       await refreshSavedBatches();
     },
-    [buildSaveInputFromBatch, refreshSavedBatches, savedBatches],
+    [buildSaveInputFromBatch, refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
   const clearBatchQueue = useCallback(() => {
@@ -1492,14 +1537,27 @@ export function SheinStudioWorkbench({
       options?: {
         keepResumeState?: boolean;
         hydratedBatches?: Record<string, SheinStudioWorkbenchHydratedBatch>;
+        requestVersion?: number;
       },
     ) => {
       for (let nextIndex = index; nextIndex < batchIds.length; nextIndex += 1) {
+        if (
+          options?.requestVersion != null &&
+          batchQueueRequestVersionRef.current !== options.requestVersion
+        ) {
+          return false;
+        }
         const batchId = batchIds[nextIndex];
         const hydratedBatch =
           options?.hydratedBatches?.[batchId] ??
           selectedRecentBatchHydrations[batchId] ??
           (await hydrateRecentBatchSelection([batchId]))[batchId];
+        if (
+          options?.requestVersion != null &&
+          batchQueueRequestVersionRef.current !== options.requestVersion
+        ) {
+          return false;
+        }
         const batch =
           hydratedBatch?.savedBatch ??
           savedBatches.find((item) => item.id === batchId);
@@ -1545,6 +1603,9 @@ export function SheinStudioWorkbench({
       mode: SheinStudioBatchQueueMode;
       startIndex?: number;
     }) => {
+      const requestVersion = batchQueueRequestVersionRef.current + 1;
+      batchQueueRequestVersionRef.current = requestVersion;
+      recentBatchOpenRequestVersionRef.current += 1;
       const validBatchIds = input.batchIds.filter((batchId) =>
         savedBatches.some((item) => item.id === batchId),
       );
@@ -1563,8 +1624,12 @@ export function SheinStudioWorkbench({
       setQueuedBatchIndex(startIndex);
       setQueueResumeState(null);
       const hydratedBatches = await hydrateRecentBatchSelection(validBatchIds);
+      if (batchQueueRequestVersionRef.current !== requestVersion) {
+        return;
+      }
       await loadQueuedBatch(validBatchIds, startIndex, input.mode, {
         hydratedBatches,
+        requestVersion,
       });
     },
     [
@@ -1597,6 +1662,7 @@ export function SheinStudioWorkbench({
       });
       setQueueMessage("");
     }
+    batchQueueRequestVersionRef.current += 1;
     clearBatchQueue();
   }, [
     batchQueueMode,
@@ -1627,7 +1693,9 @@ export function SheinStudioWorkbench({
     if (!batchQueueMode) {
       return;
     }
-    void loadQueuedBatch(queuedBatchIds, queuedBatchIndex + 1, batchQueueMode);
+    void loadQueuedBatch(queuedBatchIds, queuedBatchIndex + 1, batchQueueMode, {
+      requestVersion: batchQueueRequestVersionRef.current,
+    });
   }, [batchQueueMode, loadQueuedBatch, queuedBatchIds, queuedBatchIndex]);
 
   useEffect(() => {
