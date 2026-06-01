@@ -37,6 +37,7 @@ type service struct {
 	taskDirectSubmission           *taskDirectSubmissionService
 	taskTemporalSubmissionAdapter  *taskTemporalSubmissionAdapter
 	studioSessionRepo              StudioSessionRepository
+	studioBatchRepo                StudioBatchRepository
 	studioBatchRunRepo             StudioBatchRunRepository
 	productSvc                     ProductService
 	imageSvc                       ImageService
@@ -83,6 +84,7 @@ type service struct {
 type ServiceCoreDependencies struct {
 	Repository                     Repository
 	StudioSessionRepository        StudioSessionRepository
+	StudioBatchRepository          StudioBatchRepository
 	StudioBatchRunRepository       StudioBatchRunRepository
 	ProductService                 ProductService
 	ImageService                   ImageService
@@ -160,6 +162,7 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 	return &service{
 		repo:                           config.Core.Repository,
 		studioSessionRepo:              config.Core.StudioSessionRepository,
+		studioBatchRepo:                config.Core.StudioBatchRepository,
 		studioBatchRunRepo:             config.Core.StudioBatchRunRepository,
 		productSvc:                     config.Core.ProductService,
 		imageSvc:                       config.Core.ImageService,
