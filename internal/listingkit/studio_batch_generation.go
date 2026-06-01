@@ -56,8 +56,15 @@ func (g *studioBatchGenerationService) RunPendingStudioBatchItems(ctx context.Co
 		if item.Status != StudioBatchItemStatusPending {
 			continue
 		}
+		claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusPending, StudioBatchItemStatusGenerating, g.now())
+		if err != nil {
+			return err
+		}
+		if !claimed || claimedItem == nil {
+			continue
+		}
 		attemptNo := len(detail.AttemptsByItem[item.ID]) + 1
-		if err := g.runItemAttempt(ctx, detail.Batch, item, attemptNo); err != nil {
+		if err := g.runItemAttempt(ctx, detail.Batch, *claimedItem, attemptNo); err != nil {
 			return err
 		}
 	}
@@ -79,25 +86,102 @@ func (g *studioBatchGenerationService) RecoverStudioBatchMaterialization(ctx con
 	}
 
 	for _, item := range detail.Items {
-		if item.Status != StudioBatchItemStatusAwaitingMaterialization {
-			continue
-		}
 		attempts := detail.AttemptsByItem[item.ID]
-		attempt := latestRecoverableStudioBatchAttempt(attempts)
-		if attempt == nil || strings.TrimSpace(attempt.ResultPayload) == "" {
-			continue
-		}
-
-		var response StudioDesignResponse
-		if err := json.Unmarshal([]byte(attempt.ResultPayload), &response); err != nil {
-			return err
-		}
-		if err := g.materializeAttempt(ctx, detail.Batch, item, attempt, &response); err != nil {
-			return err
+		switch item.Status {
+		case StudioBatchItemStatusAwaitingMaterialization:
+			if err := g.recoverAwaitingMaterializationItem(ctx, detail.Batch, item, attempts); err != nil {
+				return err
+			}
+		case StudioBatchItemStatusGenerating:
+			if err := g.recoverGeneratingItem(ctx, detail.Batch, item, attempts); err != nil {
+				return err
+			}
 		}
 	}
 
 	return g.refreshBatchStatus(ctx, detail.Batch.ID)
+}
+
+func (g *studioBatchGenerationService) recoverAwaitingMaterializationItem(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempts []StudioGenerationAttemptRecord) error {
+	attempt := latestRecoverableStudioBatchAttempt(attempts)
+	if attempt == nil {
+		return g.failItemAndAttempt(ctx, item, nil, "materialization recovery missing generation attempt")
+	}
+	if strings.TrimSpace(attempt.ResultPayload) == "" {
+		return g.failItemAndAttempt(ctx, item, attempt, "generation result payload missing")
+	}
+
+	claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusAwaitingMaterialization, StudioBatchItemStatusGenerating, g.now())
+	if err != nil {
+		return err
+	}
+	if !claimed || claimedItem == nil {
+		return nil
+	}
+
+	var response StudioDesignResponse
+	if err := json.Unmarshal([]byte(attempt.ResultPayload), &response); err != nil {
+		return g.failItemAndAttempt(ctx, *claimedItem, attempt, "generation result payload invalid")
+	}
+	return g.materializeAttempt(ctx, batch, *claimedItem, attempt, &response)
+}
+
+func (g *studioBatchGenerationService) recoverGeneratingItem(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempts []StudioGenerationAttemptRecord) error {
+	attempt := latestStudioBatchAttempt(attempts)
+	if attempt == nil {
+		return g.failItemAndAttempt(ctx, item, nil, "generation interrupted before attempt persisted")
+	}
+
+	switch attempt.Status {
+	case StudioGenerationAttemptStatusSucceeded, StudioGenerationAttemptStatusMaterialized:
+		if strings.TrimSpace(attempt.ResultPayload) == "" {
+			return g.failItemAndAttempt(ctx, item, attempt, "generation result payload missing")
+		}
+		claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, g.now())
+		if err != nil {
+			return err
+		}
+		if !claimed || claimedItem == nil {
+			return nil
+		}
+		var response StudioDesignResponse
+		if err := json.Unmarshal([]byte(attempt.ResultPayload), &response); err != nil {
+			return g.failItemAndAttempt(ctx, *claimedItem, attempt, "generation result payload invalid")
+		}
+		return g.recoverAwaitingMaterializationItem(ctx, batch, *claimedItem, attempts)
+	case StudioGenerationAttemptStatusRunning, StudioGenerationAttemptStatusQueued:
+		return g.failItemAndAttempt(ctx, item, attempt, "generation interrupted before result persisted")
+	default:
+		return g.failItemAndAttempt(ctx, item, attempt, firstNonEmpty(strings.TrimSpace(attempt.ErrorMessage), "generation failed"))
+	}
+}
+
+func latestStudioBatchAttempt(attempts []StudioGenerationAttemptRecord) *StudioGenerationAttemptRecord {
+	if len(attempts) == 0 {
+		return nil
+	}
+	cloned := attempts[len(attempts)-1]
+	return &cloned
+}
+
+func (g *studioBatchGenerationService) failItemAndAttempt(ctx context.Context, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, message string) error {
+	now := g.now()
+	if attempt != nil {
+		attempt.Status = StudioGenerationAttemptStatusFailed
+		attempt.ErrorMessage = message
+		if attempt.FinishedAt == nil {
+			attempt.FinishedAt = timePtr(now)
+		}
+		attempt.UpdatedAt = now
+		if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
+			return err
+		}
+	}
+
+	item.Status = StudioBatchItemStatusFailed
+	item.LastError = message
+	item.UpdatedAt = now
+	return g.repo.UpdateStudioBatchItem(ctx, &item)
 }
 
 func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attemptNo int) error {
@@ -119,13 +203,6 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 		UpdatedAt:      now,
 	}
 	if err := g.repo.CreateStudioGenerationAttempt(ctx, attempt); err != nil {
-		return err
-	}
-
-	item.Status = StudioBatchItemStatusGenerating
-	item.LastError = ""
-	item.UpdatedAt = now
-	if err := g.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
 		return err
 	}
 
@@ -163,14 +240,15 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 		return err
 	}
 
-	item.Status = StudioBatchItemStatusAwaitingMaterialization
-	item.LastError = ""
-	item.UpdatedAt = finishedAt
-	if err := g.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
+	claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, finishedAt)
+	if err != nil {
 		return err
 	}
+	if !claimed || claimedItem == nil {
+		return nil
+	}
 
-	return g.materializeAttempt(ctx, batch, item, attempt, execution.Response)
+	return g.materializeAttempt(ctx, batch, *claimedItem, attempt, execution.Response)
 }
 
 func (g *studioBatchGenerationService) materializeAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, response *StudioDesignResponse) error {

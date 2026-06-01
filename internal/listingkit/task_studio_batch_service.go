@@ -121,12 +121,6 @@ func normalizeStudioBatchDesignIDs(ids []string) []string {
 }
 
 func (s *taskStudioBatchService) ensureStudioBatchGenerationGraph(ctx context.Context, batchID string) error {
-	if _, err := s.repo.GetStudioBatch(ctx, batchID); err == nil {
-		return s.ensureExpandedStudioBatchItems(ctx, batchID)
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-
 	if s.studioSessionRepo == nil {
 		return fmt.Errorf("studio session repository is not configured")
 	}
@@ -138,7 +132,25 @@ func (s *taskStudioBatchService) ensureStudioBatchGenerationGraph(ctx context.Co
 		return ErrStudioSessionNotFound
 	}
 
+	_, existingErr := s.repo.GetStudioBatch(ctx, batchID)
+	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+		return existingErr
+	}
+
 	now := s.currentTime().UTC()
+	batch := buildStudioBatchRecordFromSessionDraft(session, now)
+	items := expandStudioBatchItems(batch)
+	for index := range items {
+		items[index].CreatedAt = now.Add(time.Duration(index) * time.Second)
+		items[index].UpdatedAt = items[index].CreatedAt
+	}
+	if errors.Is(existingErr, gorm.ErrRecordNotFound) {
+		return s.repo.CreateStudioBatchGraph(ctx, batch, items, nil, nil)
+	}
+	return s.repo.ReplaceStudioBatchGenerationGraph(ctx, batch, items)
+}
+
+func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now time.Time) *StudioBatchRecord {
 	batch := &StudioBatchRecord{
 		ID:                    session.ID,
 		Status:                StudioBatchStatusGenerating,
@@ -163,47 +175,5 @@ func (s *taskStudioBatchService) ensureStudioBatchGenerationGraph(ctx context.Co
 	if batch.GroupedImageMode == "" {
 		batch.GroupedImageMode = "shared_by_size"
 	}
-
-	items := expandStudioBatchItems(batch)
-	for index := range items {
-		items[index].CreatedAt = now.Add(time.Duration(index) * time.Second)
-		items[index].UpdatedAt = items[index].CreatedAt
-	}
-	return s.repo.CreateStudioBatchGraph(ctx, batch, items, nil, nil)
-}
-
-func (s *taskStudioBatchService) ensureExpandedStudioBatchItems(ctx context.Context, batchID string) error {
-	detail, err := s.repo.GetStudioBatchDetail(ctx, batchID)
-	if err != nil {
-		return err
-	}
-	if detail == nil || detail.Batch == nil {
-		return nil
-	}
-	if len(detail.Items) > 0 {
-		batch := *detail.Batch
-		if batch.Status == StudioBatchStatusDraft {
-			batch.Status = StudioBatchStatusGenerating
-			batch.UpdatedAt = s.currentTime().UTC()
-			return s.repo.UpdateStudioBatch(ctx, &batch)
-		}
-		return nil
-	}
-
-	items := expandStudioBatchItems(detail.Batch)
-	now := s.currentTime().UTC()
-	for index := range items {
-		items[index].CreatedAt = now.Add(time.Duration(index) * time.Second)
-		items[index].UpdatedAt = items[index].CreatedAt
-	}
-	if len(items) > 0 {
-		if err := s.repo.CreateStudioBatchItems(ctx, batchID, items); err != nil {
-			return err
-		}
-	}
-
-	batch := *detail.Batch
-	batch.Status = StudioBatchStatusGenerating
-	batch.UpdatedAt = now
-	return s.repo.UpdateStudioBatch(ctx, &batch)
+	return batch
 }

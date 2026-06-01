@@ -17,8 +17,10 @@ var ErrStudioBatchOwnershipConflict = errors.New("studio batch update conflicts 
 
 type StudioBatchRepository interface {
 	CreateStudioBatchGraph(ctx context.Context, batch *StudioBatchRecord, items []StudioBatchItemRecord, attempts []StudioGenerationAttemptRecord, designs []StudioMaterializedDesignRecord) error
+	ReplaceStudioBatchGenerationGraph(ctx context.Context, batch *StudioBatchRecord, items []StudioBatchItemRecord) error
 	CreateStudioBatchItems(ctx context.Context, batchID string, items []StudioBatchItemRecord) error
 	CreateStudioGenerationAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord) error
+	ClaimStudioBatchItem(ctx context.Context, itemID string, fromStatus StudioBatchItemStatus, toStatus StudioBatchItemStatus, updatedAt time.Time) (*StudioBatchItemRecord, bool, error)
 	GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchRecord, error)
 	GetStudioBatchItem(ctx context.Context, itemID string) (*StudioBatchItemRecord, error)
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetailGraph, error)
@@ -74,6 +76,51 @@ func (r *MemStudioBatchRepository) CreateStudioBatchGraph(ctx context.Context, b
 	return nil
 }
 
+func (r *MemStudioBatchRepository) ReplaceStudioBatchGenerationGraph(ctx context.Context, batch *StudioBatchRecord, items []StudioBatchItemRecord) error {
+	if batch == nil {
+		return nil
+	}
+
+	batchRow, itemRows, _, _, err := prepareStudioBatchGraph(ctx, batch, items, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	existing, ok := r.batches[batchRow.ID]
+	if ok && !matchesStudioBatchScope(ctx, existing.TenantID, existing.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+
+	r.batches[batchRow.ID] = batchRow
+	itemIDs := make(map[string]struct{}, len(itemRows))
+	for _, row := range itemRows {
+		itemIDs[row.ID] = struct{}{}
+		r.items[row.ID] = row
+	}
+
+	for itemID, item := range r.items {
+		if item.BatchID == batchRow.ID {
+			if _, keep := itemIDs[itemID]; !keep {
+				delete(r.items, itemID)
+			}
+		}
+	}
+	for attemptID, attempt := range r.attempts {
+		if attempt.BatchID == batchRow.ID {
+			delete(r.attempts, attemptID)
+		}
+	}
+	for designID, design := range r.designs {
+		if design.BatchID == batchRow.ID {
+			delete(r.designs, designID)
+		}
+	}
+	return nil
+}
+
 func (r *MemStudioBatchRepository) CreateStudioBatchItems(ctx context.Context, batchID string, items []StudioBatchItemRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -112,6 +159,27 @@ func (r *MemStudioBatchRepository) CreateStudioGenerationAttempt(ctx context.Con
 	row.UserID = item.UserID
 	r.attempts[row.ID] = row
 	return nil
+}
+
+func (r *MemStudioBatchRepository) ClaimStudioBatchItem(ctx context.Context, itemID string, fromStatus StudioBatchItemStatus, toStatus StudioBatchItemStatus, updatedAt time.Time) (*StudioBatchItemRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	item, ok := r.items[itemID]
+	if !ok || !matchesStudioBatchScope(ctx, item.TenantID, item.UserID) {
+		return nil, false, gorm.ErrRecordNotFound
+	}
+	if item.Status != fromStatus {
+		cloned := item
+		return &cloned, false, nil
+	}
+
+	item.Status = toStatus
+	item.LastError = ""
+	item.UpdatedAt = updatedAt
+	r.items[itemID] = item
+	cloned := item
+	return &cloned, true, nil
 }
 
 func (r *MemStudioBatchRepository) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchRecord, error) {
@@ -469,6 +537,70 @@ func (r *GormStudioBatchRepository) CreateStudioBatchGraph(ctx context.Context, 
 	})
 }
 
+func (r *GormStudioBatchRepository) ReplaceStudioBatchGenerationGraph(ctx context.Context, batch *StudioBatchRecord, items []StudioBatchItemRecord) error {
+	if batch == nil {
+		return nil
+	}
+
+	batchRow, itemRows, _, _, err := prepareStudioBatchGraph(ctx, batch, items, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing StudioBatchRecord
+		findErr := applyStudioBatchAccessScope(tx, ctx).Where("id = ?", batchRow.ID).First(&existing).Error
+		switch {
+		case errors.Is(findErr, gorm.ErrRecordNotFound):
+			if err := tx.Create(&batchRow).Error; err != nil {
+				return err
+			}
+		case findErr != nil:
+			return findErr
+		default:
+			if err := applyStudioBatchAccessScope(tx, ctx).
+				Model(&StudioBatchRecord{}).
+				Where("id = ?", batchRow.ID).
+				Updates(map[string]any{
+					"status":                 batchRow.Status,
+					"prompt":                 batchRow.Prompt,
+					"grouped_image_mode":     batchRow.GroupedImageMode,
+					"selection":              batchRow.Selection,
+					"grouped_selections":     batchRow.GroupedSelections,
+					"style_count":            batchRow.StyleCount,
+					"variation_intensity":    batchRow.VariationIntensity,
+					"artwork_model":          batchRow.ArtworkModel,
+					"selected_sds_images":    batchRow.SelectedSDSImages,
+					"transparent_background": batchRow.TransparentBackground,
+					"shein_store_id":         batchRow.SheinStoreID,
+					"updated_at":             batchRow.UpdatedAt,
+				}).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := applyStudioBatchAccessScope(tx, ctx).
+			Where("batch_id = ?", batchRow.ID).
+			Delete(&StudioGenerationAttemptRecord{}).Error; err != nil {
+			return err
+		}
+		if err := applyStudioBatchAccessScope(tx, ctx).
+			Where("batch_id = ?", batchRow.ID).
+			Delete(&StudioMaterializedDesignRecord{}).Error; err != nil {
+			return err
+		}
+		if err := applyStudioBatchAccessScope(tx, ctx).
+			Where("batch_id = ?", batchRow.ID).
+			Delete(&StudioBatchItemRecord{}).Error; err != nil {
+			return err
+		}
+		if len(itemRows) == 0 {
+			return nil
+		}
+		return tx.Create(&itemRows).Error
+	})
+}
+
 func (r *GormStudioBatchRepository) CreateStudioBatchItems(ctx context.Context, batchID string, items []StudioBatchItemRecord) error {
 	batch, err := r.GetStudioBatch(ctx, batchID)
 	if err != nil {
@@ -503,6 +635,32 @@ func (r *GormStudioBatchRepository) CreateStudioGenerationAttempt(ctx context.Co
 	row.TenantID = item.TenantID
 	row.UserID = item.UserID
 	return r.db.WithContext(ctx).Create(&row).Error
+}
+
+func (r *GormStudioBatchRepository) ClaimStudioBatchItem(ctx context.Context, itemID string, fromStatus StudioBatchItemStatus, toStatus StudioBatchItemStatus, updatedAt time.Time) (*StudioBatchItemRecord, bool, error) {
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchItemRecord{}).
+		Where("id = ? AND status = ?", itemID, fromStatus).
+		Updates(map[string]any{
+			"status":     toStatus,
+			"last_error": "",
+			"updated_at": updatedAt,
+		})
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		item, err := r.GetStudioBatchItem(ctx, itemID)
+		if err != nil {
+			return nil, false, err
+		}
+		return item, false, nil
+	}
+	item, err := r.GetStudioBatchItem(ctx, itemID)
+	if err != nil {
+		return nil, false, err
+	}
+	return item, true, nil
 }
 
 func (r *GormStudioBatchRepository) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchRecord, error) {
