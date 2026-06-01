@@ -25,7 +25,7 @@ func (p *taskGenerationActionTemporalPlatformPhase) run(
 		return nil, fmt.Errorf("platform adaptation temporal workflow is not configured")
 	}
 
-	platform := resolveLayerTemporalPlatform(req)
+	platform := resolveTemporalRequestPlatform(req)
 	if err := client.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
 		TaskID:      strings.TrimSpace(taskID),
 		Platform:    platform,
