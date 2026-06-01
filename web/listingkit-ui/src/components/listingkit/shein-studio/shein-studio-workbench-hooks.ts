@@ -41,6 +41,7 @@ type DraftSaveOptions = {
   navigationTriggered?: boolean;
   source?: string;
   signal?: AbortSignal;
+  warnOnFailure?: boolean;
 };
 
 type WorkbenchDraftState = {
@@ -328,7 +329,9 @@ export function useSheinStudioDraftPersistence(
         if (options?.signal?.aborted) {
           return null;
         }
-        state.setDraftWarning((current) => appendDraftSaveWarning(current));
+        if (options?.warnOnFailure !== false) {
+          state.setDraftWarning((current) => appendDraftSaveWarning(current));
+        }
         throw error;
       }
     },

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   approveSheinStudioBatchDesigns,
   createSheinStudioBatchTasks,
+  generateSheinStudioBatch,
   getSheinStudioBatchDetail,
   parseSheinStudioBatchDetailResponse,
 } from "@/lib/api/shein-studio-batches";
@@ -231,6 +232,68 @@ describe("shein studio batches API", () => {
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: "POST",
       body: JSON.stringify({ design_ids: ["design-1", "design-2"] }),
+    });
+  });
+
+  it("starts itemized batch generation from the batch endpoint", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            prompt: "botanical",
+            style_count: "3",
+            shein_store_id: 7,
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:06:00Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batch_id: "batch-1",
+                target_group_key: "size:1200x1200",
+                status: "review_ready",
+                selection_count: 1,
+                created_at: "2026-06-01T10:00:00Z",
+                updated_at: "2026-06-01T10:06:00Z",
+              },
+              designs: [
+                {
+                  id: "design-1",
+                  batch_id: "batch-1",
+                  item_id: "item-1",
+                  source_attempt_id: "attempt-1",
+                  target_group_key: "size:1200x1200",
+                  image_url: "https://cdn.example.com/design-1.png",
+                  review_status: "approved",
+                  created_at: "2026-06-01T10:01:00Z",
+                  updated_at: "2026-06-01T10:06:00Z",
+                },
+              ],
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateSheinStudioBatch("batch-1")).resolves.toMatchObject({
+      batch: { id: "batch-1", status: "review_ready" },
+      items: [{ item: { id: "item-1" }, designs: [{ id: "design-1" }] }],
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/batches/batch-1/generate",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({}),
     });
   });
 

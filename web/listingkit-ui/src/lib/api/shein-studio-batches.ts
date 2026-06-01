@@ -247,6 +247,19 @@ export async function approveSheinStudioBatchDesigns(
   return parseSheinStudioBatchDetailResponse(payload);
 }
 
+export async function generateSheinStudioBatch(
+  batchId: string,
+): Promise<SheinStudioBatchDetail> {
+  const payload = await apiRequest<unknown>(
+    `/studio/batches/${batchId}/generate`,
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+  return parseSheinStudioBatchDetailResponse(payload);
+}
+
 export async function createSheinStudioBatchTasks(
   batchId: string,
   designIds: string[],

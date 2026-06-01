@@ -280,52 +280,6 @@ export async function replaceSheinStudioSessionDesigns(
   );
 }
 
-export async function appendSheinStudioSessionDesigns(
-  sessionId: string,
-  input: {
-    expectedUpdatedAt?: string;
-    status?: StudioSessionStatus;
-    approvedDesignIds: string[];
-    generationJobs?: SheinStudioGenerationJob[];
-    designs: SheinStudioGeneratedDesign[];
-  },
-  options?: StudioSessionRequestOptions,
-) {
-  return parseStudioSessionDetailResponse(
-    await apiRequest<unknown>(`/studio/sessions/${sessionId}/designs/append`, {
-      method: "POST",
-      body: {
-        status: input.status,
-        expected_updated_at: input.expectedUpdatedAt,
-        approved_design_ids: input.approvedDesignIds,
-        generation_jobs: input.generationJobs?.map((job) => ({
-          job_id: job.jobId,
-          target_group_key: job.targetGroupKey,
-          target_group_label: job.targetGroupLabel,
-          status: job.status,
-        })),
-        designs: input.designs.map((design) => ({
-          id: design.id,
-          image_url: design.imageUrl ?? design.dataUrl,
-          prompt: design.prompt,
-          revised_prompt: design.revisedPrompt,
-          image_model: design.imageModel,
-          transparent_background: design.transparentBackground,
-          variation_intensity: design.variationIntensity,
-          review_note: design.reviewNote,
-          role: design.role,
-          role_label: design.roleLabel,
-          target_group_key: design.targetGroupKey,
-          target_group_label: design.targetGroupLabel,
-          product_image_urls: design.productImageUrls,
-        })),
-      },
-      signal: options?.signal,
-      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-    }),
-  );
-}
-
 export async function listSheinStudioSessionBatches(options?: StudioSessionRequestOptions) {
   const payload = await apiRequest<unknown>("/studio/batches", {
     signal: options?.signal,
