@@ -107,7 +107,7 @@ func TestTaskGenerationLayerTemporalPhaseOwnershipBoundary(t *testing.T) {
 			path: "task_generation_action_temporal_platform.go",
 			required: []string{
 				"platformAdaptWorkflow()",
-				"resolveLayerTemporalPlatform(req)",
+				"resolveTemporalRequestPlatform(req)",
 				"client.StartPlatformAdaptation(",
 				"PlatformAdaptWorkflowStartInput{",
 				"buildTaskGenerationActionTemporalResultPhase().run(",
@@ -118,6 +118,7 @@ func TestTaskGenerationLayerTemporalPhaseOwnershipBoundary(t *testing.T) {
 				"StandardProductWorkflowStartInput{",
 				"GenerationActionExecutionResult{",
 				"GenerationActionAudit{",
+				"resolveLayerTemporalPlatform(req)",
 			},
 		},
 		{
