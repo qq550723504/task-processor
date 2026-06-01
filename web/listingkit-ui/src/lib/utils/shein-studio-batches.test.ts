@@ -459,6 +459,80 @@ describe("shein studio storage api", () => {
   });
 
   it("maps itemized batch detail back into the saved batch shape", async () => {
+    listSheinStudioSessionBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "botanical legacy",
+        prompt: "legacy prompt",
+        styleCount: "5",
+        sheinStoreId: "store-9",
+        selectionVariantId: 100,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 100,
+          prototypeGroupId: 200,
+          layerId: "layer-1",
+          productName: "tee",
+          variantLabel: "M / black",
+        },
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "store-9",
+            eligible: true,
+          },
+        ],
+        groups: [
+          {
+            id: "group-1",
+            name: "Group 1",
+            currentPrompt: "prompt a",
+            promptHistory: [],
+            primarySelection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 100,
+              prototypeGroupId: 200,
+              layerId: "layer-1",
+              productName: "tee",
+              variantLabel: "M / black",
+            },
+            groupedSelections: [],
+            sheinStoreId: "store-9",
+            imageStrategy: "sds_official",
+            groupedImageMode: "shared_by_size",
+            selectedSdsImages: [],
+            renderSizeImagesWithSds: true,
+            productImageCount: "5",
+            productImagePrompt: "",
+            productImagePrompts: [],
+            artworkModel: "",
+            transparentBackground: false,
+            variationIntensity: "medium",
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-06-01T10:00:00Z",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [{ id: "task-0", title: "Existing Task", designId: "design-0" }],
+        updatedAt: "2026-06-01T10:04:00Z",
+      },
+    ]);
     getSheinStudioBatchDetail.mockResolvedValue({
       batch: {
         id: "batch-1",
@@ -513,10 +587,22 @@ describe("shein studio storage api", () => {
 
     await expect(getSheinStudioBatch("batch-1")).resolves.toMatchObject({
       id: "batch-1",
-      name: "botanical",
+      name: "botanical legacy",
       prompt: "botanical",
       styleCount: "3",
-      sheinStoreId: "7",
+      sheinStoreId: "store-9",
+      selection: expect.objectContaining({
+        variantId: 100,
+        productName: "tee",
+      }),
+      groupedSelections: [
+        expect.objectContaining({
+          selectionId: "1:200:101:layer-2:101",
+          sheinStoreId: "store-9",
+        }),
+      ],
+      groups: [expect.objectContaining({ id: "group-1", name: "Group 1" })],
+      createdTasks: [{ id: "task-0", title: "Existing Task", designId: "design-0" }],
       sessionStatus: "review_ready",
       selectedIds: ["design-1"],
       designs: [

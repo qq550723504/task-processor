@@ -70,6 +70,11 @@ type SaveBatchOptions = {
   makeActive?: boolean;
 };
 
+export type SheinStudioHydratedBatch = {
+  savedBatch: SheinStudioSavedBatch;
+  detail: SheinStudioBatchDetail;
+};
+
 function buildSheinStudioSaveQueueKey(input: SheinStudioSaveInput) {
   const batchID = input.id?.trim();
   if (batchID) {
@@ -231,7 +236,25 @@ export async function listSheinStudioBatches() {
 }
 
 export async function getSheinStudioBatch(batchID: string) {
-  return normalizeBatch(mapBatchDetailToSavedBatch(await getSheinStudioBatchDetail(batchID)));
+  return (await getSheinStudioHydratedBatch(batchID)).savedBatch;
+}
+
+export async function getSheinStudioHydratedBatch(
+  batchID: string,
+): Promise<SheinStudioHydratedBatch> {
+  const detail = await getSheinStudioBatchDetail(batchID);
+  let savedBatch: SheinStudioSavedBatch | undefined;
+  try {
+    savedBatch = (await listSheinStudioBatches()).find((item) => item.id === batchID);
+  } catch {
+    savedBatch = undefined;
+  }
+  return {
+    savedBatch: normalizeBatch(
+      mergeBatchDetailWithSavedBatchContext(detail, savedBatch),
+    )!,
+    detail,
+  };
 }
 
 export async function saveSheinStudioBatch(
@@ -280,10 +303,10 @@ export async function deleteSheinStudioBatch(batchID: string) {
   }
 }
 
-function mapBatchDetailToSavedBatch(
+export function flattenSheinStudioBatchDetailDesigns(
   detail: SheinStudioBatchDetail,
-): SheinStudioSavedBatch {
-  const designs = detail.items.flatMap((entry) =>
+): SheinStudioGeneratedDesign[] {
+  return detail.items.flatMap((entry) =>
     entry.designs.map(
       (design) =>
         ({
@@ -299,22 +322,69 @@ function mapBatchDetailToSavedBatch(
         }) satisfies SheinStudioGeneratedDesign,
     ),
   );
+}
 
+export function getApprovedSheinStudioBatchDesignIDs(
+  detail: SheinStudioBatchDetail,
+) {
+  return detail.items.flatMap((entry) =>
+    entry.designs
+      .filter((design) => design.reviewStatus === "approved")
+      .map((design) => design.id),
+  );
+}
+
+export function updateSheinStudioBatchDetailReviewNote(
+  detail: SheinStudioBatchDetail,
+  designID: string,
+  note: string,
+): SheinStudioBatchDetail {
+  return {
+    ...detail,
+    items: detail.items.map((entry) => ({
+      ...entry,
+      designs: entry.designs.map((design) =>
+        design.id === designID ? { ...design, reviewNote: note } : design,
+      ),
+    })),
+  };
+}
+
+function mergeBatchDetailWithSavedBatchContext(
+  detail: SheinStudioBatchDetail,
+  savedBatch?: SheinStudioSavedBatch,
+): SheinStudioSavedBatch {
+  const designs = flattenSheinStudioBatchDetailDesigns(detail);
+  const selectedIDs = getApprovedSheinStudioBatchDesignIDs(detail);
+  const detailStoreID =
+    detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "";
   return {
     id: detail.batch.id,
-    name: deriveBatchName(detail.batch.prompt),
+    name: savedBatch?.name ?? deriveBatchName(detail.batch.prompt),
     prompt: detail.batch.prompt,
     styleCount: detail.batch.styleCount,
-    sheinStoreId:
-      detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "",
+    variationIntensity: savedBatch?.variationIntensity,
+    productImageCount: savedBatch?.productImageCount,
+    productImagePrompt: savedBatch?.productImagePrompt,
+    productImagePrompts: savedBatch?.productImagePrompts,
+    artworkModel: savedBatch?.artworkModel,
+    transparentBackground: savedBatch?.transparentBackground,
+    sheinStoreId: savedBatch?.sheinStoreId || detailStoreID,
+    imageStrategy: savedBatch?.imageStrategy,
+    groupedImageMode: savedBatch?.groupedImageMode,
+    selectedSdsImages: savedBatch?.selectedSdsImages,
+    renderSizeImagesWithSds: savedBatch?.renderSizeImagesWithSds,
+    selectionVariantId:
+      savedBatch?.selectionVariantId ?? savedBatch?.selection?.variantId,
+    selection: savedBatch?.selection,
+    groupedSelections: savedBatch?.groupedSelections ?? [],
+    groups: savedBatch?.groups ?? [],
     designs,
-    selectedIds: detail.items.flatMap((entry) =>
-      entry.designs
-        .filter((design) => design.reviewStatus === "approved")
-        .map((design) => design.id),
-    ),
-    createdTasks: [],
-    generationJobs: [],
+    selectedIds: selectedIDs,
+    createdTasks: savedBatch?.createdTasks ?? [],
+    generationJobs: savedBatch?.generationJobs ?? [],
+    generationError: savedBatch?.generationError,
+    generationJobId: savedBatch?.generationJobId,
     sessionStatus: detail.batch.status,
     updatedAt: detail.batch.updatedAt,
   };
