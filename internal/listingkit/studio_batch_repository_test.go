@@ -501,6 +501,111 @@ func TestGormStudioBatchRepositoryRejectsOwnershipCorruptionOnUpdates(t *testing
 	}
 }
 
+func TestMemStudioBatchRepositoryReplaceDesignReviewsIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			SortOrder:       0,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "design-2",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-2.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusRejected,
+			SortOrder:       1,
+			CreatedAt:       now.Add(time.Second),
+			UpdatedAt:       now.Add(time.Second),
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	if err := repo.ReplaceStudioMaterializedDesignReviews(ctx, "batch-1", []string{"design-2", "missing-design"}, now.Add(2*time.Second)); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("ReplaceStudioMaterializedDesignReviews() error = %v, want record not found", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.DesignsByItem["item-1"][0].ReviewStatus; got != StudioMaterializedDesignReviewStatusApproved {
+		t.Fatalf("design-1 review status = %q, want approved", got)
+	}
+	if got := detail.DesignsByItem["item-1"][1].ReviewStatus; got != StudioMaterializedDesignReviewStatusRejected {
+		t.Fatalf("design-2 review status = %q, want rejected", got)
+	}
+}
+
+func TestGormStudioBatchRepositoryReplaceDesignReviewsIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	db := openStudioBatchSQLiteForTest(t)
+	if err := AutoMigrateStudioBatchRepository(db); err != nil {
+		t.Fatalf("AutoMigrateStudioBatchRepository() error = %v", err)
+	}
+
+	repo := NewGormStudioBatchRepository(db)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			SortOrder:       0,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "design-2",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-2.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusRejected,
+			SortOrder:       1,
+			CreatedAt:       now.Add(time.Second),
+			UpdatedAt:       now.Add(time.Second),
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	if err := repo.ReplaceStudioMaterializedDesignReviews(ctx, "batch-1", []string{"design-2", "missing-design"}, now.Add(2*time.Second)); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("ReplaceStudioMaterializedDesignReviews() error = %v, want record not found", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.DesignsByItem["item-1"][0].ReviewStatus; got != StudioMaterializedDesignReviewStatusApproved {
+		t.Fatalf("design-1 review status = %q, want approved", got)
+	}
+	if got := detail.DesignsByItem["item-1"][1].ReviewStatus; got != StudioMaterializedDesignReviewStatusRejected {
+		t.Fatalf("design-2 review status = %q, want rejected", got)
+	}
+}
+
 func openStudioBatchSQLiteForTest(t *testing.T) *gorm.DB {
 	t.Helper()
 

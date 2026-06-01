@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"time"
 
 	"task-processor/internal/listingkit/tenantctx"
 
@@ -20,6 +21,7 @@ type StudioBatchRepository interface {
 	GetStudioBatchItem(ctx context.Context, itemID string) (*StudioBatchItemRecord, error)
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetailGraph, error)
 	ListStudioMaterializedDesignsByIDs(ctx context.Context, batchID string, designIDs []string) ([]StudioMaterializedDesignRecord, error)
+	ReplaceStudioMaterializedDesignReviews(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error
 	UpdateStudioBatch(ctx context.Context, batch *StudioBatchRecord) error
 	UpdateStudioBatchItem(ctx context.Context, item *StudioBatchItemRecord) error
 	UpdateStudioGenerationAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord) error
@@ -124,6 +126,41 @@ func (r *MemStudioBatchRepository) ListStudioMaterializedDesignsByIDs(ctx contex
 	}
 	sortStudioMaterializedDesigns(records)
 	return records, nil
+}
+
+func (r *MemStudioBatchRepository) ReplaceStudioMaterializedDesignReviews(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	batch, ok := r.batches[batchID]
+	if !ok || !matchesStudioBatchScope(ctx, batch.TenantID, batch.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+
+	approvedSet := make(map[string]struct{}, len(designIDs))
+	for _, designID := range designIDs {
+		approvedSet[designID] = struct{}{}
+	}
+	for _, designID := range designIDs {
+		row, ok := r.designs[designID]
+		if !ok || row.BatchID != batchID || !matchesStudioBatchScope(ctx, row.TenantID, row.UserID) {
+			return gorm.ErrRecordNotFound
+		}
+	}
+
+	for designID, row := range r.designs {
+		if row.BatchID != batchID || !matchesStudioBatchScope(ctx, row.TenantID, row.UserID) {
+			continue
+		}
+		if _, ok := approvedSet[designID]; ok {
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusApproved
+		} else {
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusUnreviewed
+		}
+		row.UpdatedAt = updatedAt
+		r.designs[designID] = row
+	}
+	return nil
 }
 
 func (r *MemStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch *StudioBatchRecord) error {
@@ -446,6 +483,52 @@ func (r *GormStudioBatchRepository) ListStudioMaterializedDesignsByIDs(ctx conte
 		return nil, err
 	}
 	return designs, nil
+}
+
+func (r *GormStudioBatchRepository) ReplaceStudioMaterializedDesignReviews(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error {
+	if _, err := r.GetStudioBatch(ctx, batchID); err != nil {
+		return err
+	}
+
+	approvedIDs := append([]string(nil), designIDs...)
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(approvedIDs) > 0 {
+			var count int64
+			if err := applyStudioBatchAccessScope(tx, ctx).
+				Model(&StudioMaterializedDesignRecord{}).
+				Where("batch_id = ? AND id IN ?", batchID, approvedIDs).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count != int64(len(approvedIDs)) {
+				return gorm.ErrRecordNotFound
+			}
+		}
+
+		resetResult := applyStudioBatchAccessScope(tx, ctx).
+			Model(&StudioMaterializedDesignRecord{}).
+			Where("batch_id = ?", batchID).
+			Updates(map[string]any{
+				"review_status": StudioMaterializedDesignReviewStatusUnreviewed,
+				"updated_at":    updatedAt,
+			})
+		if resetResult.Error != nil {
+			return resetResult.Error
+		}
+
+		if len(approvedIDs) == 0 {
+			return nil
+		}
+
+		approveResult := applyStudioBatchAccessScope(tx, ctx).
+			Model(&StudioMaterializedDesignRecord{}).
+			Where("batch_id = ? AND id IN ?", batchID, approvedIDs).
+			Updates(map[string]any{
+				"review_status": StudioMaterializedDesignReviewStatusApproved,
+				"updated_at":    updatedAt,
+			})
+		return approveResult.Error
+	})
 }
 
 func (r *GormStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch *StudioBatchRecord) error {
