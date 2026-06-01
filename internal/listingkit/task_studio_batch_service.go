@@ -99,6 +99,104 @@ func (s *taskStudioBatchService) ApproveStudioBatchDesigns(ctx context.Context, 
 	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
 }
 
+func (s *taskStudioBatchService) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
+	if s.repo == nil {
+		return nil, fmt.Errorf("studio batch repository is not configured")
+	}
+	if s.generator == nil {
+		return nil, fmt.Errorf("studio batch generator is not configured")
+	}
+
+	normalizedBatchID := strings.TrimSpace(batchID)
+	detail, err := s.repo.GetStudioBatchDetail(ctx, normalizedBatchID)
+	if err != nil {
+		return nil, err
+	}
+
+	itemIDs := normalizeStudioBatchItemIDs(nil)
+	if req != nil {
+		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
+	}
+	if len(itemIDs) == 0 {
+		return nil, fmt.Errorf("item_ids is required")
+	}
+
+	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.Items))
+	for _, item := range detail.Items {
+		itemsByID[item.ID] = item
+	}
+	now := s.currentTime().UTC()
+	for _, itemID := range itemIDs {
+		item, ok := itemsByID[itemID]
+		if !ok {
+			return nil, gorm.ErrRecordNotFound
+		}
+		item.Status = StudioBatchItemStatusPending
+		item.LastError = ""
+		item.UpdatedAt = now
+		if err := s.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.continueStudioBatchGeneration(ctx, normalizedBatchID)
+}
+
+func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
+	if s.repo == nil {
+		return nil, fmt.Errorf("studio batch repository is not configured")
+	}
+
+	normalizedBatchID := strings.TrimSpace(batchID)
+	designIDs := normalizeStudioBatchDesignIDs(nil)
+	if req != nil {
+		designIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
+	}
+	if len(designIDs) == 0 {
+		return nil, fmt.Errorf("design_ids is required")
+	}
+
+	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, normalizedBatchID, designIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(designs) != len(designIDs) {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	createdTasks := make([]SheinStudioCreatedTask, 0, len(designs))
+	for _, design := range designs {
+		if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
+			return nil, fmt.Errorf("design %s is not approved", design.ID)
+		}
+		createdTasks = append(createdTasks, SheinStudioCreatedTask{
+			ID:       fmt.Sprintf("%s:task:%s", normalizedBatchID, design.ID),
+			Title:    firstNonEmpty(strings.TrimSpace(design.TargetGroupLabel), strings.TrimSpace(design.ID)),
+			DesignID: design.ID,
+		})
+	}
+
+	batch, err := s.repo.GetStudioBatch(ctx, normalizedBatchID)
+	if err != nil {
+		return nil, err
+	}
+	batch.Status = StudioBatchStatusTasksCreated
+	batch.UpdatedAt = s.currentTime().UTC()
+	if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
+		return nil, err
+	}
+
+	detail, err := s.GetStudioBatchDetail(ctx, normalizedBatchID)
+	if err != nil {
+		return nil, err
+	}
+	return &CreateStudioBatchTasksResult{
+		Batch:        detail.Batch,
+		Items:        detail.Items,
+		CreatedTasks: createdTasks,
+	}, nil
+}
+
 func projectStudioBatchDetail(detail *StudioBatchDetailGraph) *StudioBatchDetail {
 	if detail == nil {
 		return &StudioBatchDetail{}
@@ -120,6 +218,26 @@ func projectStudioBatchDetail(detail *StudioBatchDetailGraph) *StudioBatchDetail
 }
 
 func normalizeStudioBatchDesignIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		normalized := strings.TrimSpace(id)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+func normalizeStudioBatchItemIDs(ids []string) []string {
 	if len(ids) == 0 {
 		return nil
 	}

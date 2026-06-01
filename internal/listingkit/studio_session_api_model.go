@@ -49,6 +49,14 @@ type AppendStudioSessionDesignsRequest struct {
 	Designs           []SheinStudioDesign        `json:"designs,omitempty"`
 }
 
+type RetryStudioBatchItemsRequest struct {
+	ItemIDs []string `json:"item_ids,omitempty"`
+}
+
+type CreateStudioBatchTasksRequest struct {
+	DesignIDs []string `json:"design_ids,omitempty"`
+}
+
 type StudioSessionGalleryResponse struct {
 	Items []SheinStudioSessionGalleryItem `json:"items,omitempty"`
 	Total int                             `json:"total"`

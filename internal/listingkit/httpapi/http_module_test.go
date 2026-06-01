@@ -68,16 +68,18 @@ func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
 
 type stubStudioSessionRouteHandler struct{}
 
-func (stubStudioSessionRouteHandler) ListStudioSessionGallery(*gin.Context)    {}
-func (stubStudioSessionRouteHandler) ListStudioBatches(*gin.Context)           {}
-func (stubStudioSessionRouteHandler) GetStudioBatch(*gin.Context)              {}
-func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)           {}
-func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)           {}
-func (stubStudioSessionRouteHandler) EnsureStudioSession(*gin.Context)         {}
-func (stubStudioSessionRouteHandler) GetStudioSession(*gin.Context)            {}
-func (stubStudioSessionRouteHandler) UpdateStudioSession(*gin.Context)         {}
-func (stubStudioSessionRouteHandler) ReplaceStudioSessionDesigns(*gin.Context) {}
-func (stubStudioSessionRouteHandler) AppendStudioSessionDesigns(*gin.Context)  {}
+func (stubStudioSessionRouteHandler) ListStudioSessionGallery(*gin.Context)   {}
+func (stubStudioSessionRouteHandler) ListStudioBatches(*gin.Context)          {}
+func (stubStudioSessionRouteHandler) GetStudioBatch(*gin.Context)             {}
+func (stubStudioSessionRouteHandler) StartStudioBatchGeneration(*gin.Context) {}
+func (stubStudioSessionRouteHandler) RetryStudioBatchItems(*gin.Context)      {}
+func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)  {}
+func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)     {}
+func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)          {}
+func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)          {}
+func (stubStudioSessionRouteHandler) EnsureStudioSession(*gin.Context)        {}
+func (stubStudioSessionRouteHandler) GetStudioSession(*gin.Context)           {}
+func (stubStudioSessionRouteHandler) UpdateStudioSession(*gin.Context)        {}
 
 type stubRouteHandler struct{}
 

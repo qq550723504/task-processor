@@ -620,16 +620,18 @@ func (stubSDSCatalogRouteHandler) ListSDSShipmentAreas(*gin.Context) {}
 
 type stubStudioSessionHandler struct{}
 
-func (stubStudioSessionHandler) ListStudioSessionGallery(*gin.Context)    {}
-func (stubStudioSessionHandler) ListStudioBatches(*gin.Context)           {}
-func (stubStudioSessionHandler) GetStudioBatch(*gin.Context)              {}
-func (stubStudioSessionHandler) UpsertStudioBatch(*gin.Context)           {}
-func (stubStudioSessionHandler) DeleteStudioBatch(*gin.Context)           {}
-func (stubStudioSessionHandler) EnsureStudioSession(*gin.Context)         {}
-func (stubStudioSessionHandler) GetStudioSession(*gin.Context)            {}
-func (stubStudioSessionHandler) UpdateStudioSession(*gin.Context)         {}
-func (stubStudioSessionHandler) ReplaceStudioSessionDesigns(*gin.Context) {}
-func (stubStudioSessionHandler) AppendStudioSessionDesigns(*gin.Context)  {}
+func (stubStudioSessionHandler) ListStudioSessionGallery(*gin.Context)   {}
+func (stubStudioSessionHandler) ListStudioBatches(*gin.Context)          {}
+func (stubStudioSessionHandler) GetStudioBatch(*gin.Context)             {}
+func (stubStudioSessionHandler) StartStudioBatchGeneration(*gin.Context) {}
+func (stubStudioSessionHandler) RetryStudioBatchItems(*gin.Context)      {}
+func (stubStudioSessionHandler) ApproveStudioBatchDesigns(*gin.Context)  {}
+func (stubStudioSessionHandler) CreateStudioBatchTasks(*gin.Context)     {}
+func (stubStudioSessionHandler) UpsertStudioBatch(*gin.Context)          {}
+func (stubStudioSessionHandler) DeleteStudioBatch(*gin.Context)          {}
+func (stubStudioSessionHandler) EnsureStudioSession(*gin.Context)        {}
+func (stubStudioSessionHandler) GetStudioSession(*gin.Context)           {}
+func (stubStudioSessionHandler) UpdateStudioSession(*gin.Context)        {}
 
 func routeKeys(routes []routeDescriptor) []string {
 	keys := make([]string, 0, len(routes))

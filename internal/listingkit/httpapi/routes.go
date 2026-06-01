@@ -218,12 +218,14 @@ func AppendStudioSessionRouteDescriptors(routes []httproute.Descriptor, handler 
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batches", Module: "listing-kit-studio", Handler: handler.ListStudioBatches},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batches/:batch_id", Module: "listing-kit-studio", Handler: handler.GetStudioBatch},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches", Module: "listing-kit-studio", Handler: handler.UpsertStudioBatch},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches/:batch_id/generate", Module: "listing-kit-studio", Handler: handler.StartStudioBatchGeneration},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches/:batch_id/items/retry", Module: "listing-kit-studio", Handler: handler.RetryStudioBatchItems},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches/:batch_id/design-approvals", Module: "listing-kit-studio", Handler: handler.ApproveStudioBatchDesigns},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches/:batch_id/tasks", Module: "listing-kit-studio", Handler: handler.CreateStudioBatchTasks},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/studio/batches/:batch_id", Module: "listing-kit-studio", Handler: handler.DeleteStudioBatch},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions", Module: "listing-kit-studio", Handler: handler.EnsureStudioSession},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: handler.GetStudioSession},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: handler.UpdateStudioSession},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions/:session_id/designs", Module: "listing-kit-studio", Handler: handler.ReplaceStudioSessionDesigns},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions/:session_id/designs/append", Module: "listing-kit-studio", Handler: handler.AppendStudioSessionDesigns},
 	)
 }
 
