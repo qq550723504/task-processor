@@ -231,7 +231,7 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 	if s == nil {
 		return fmt.Errorf("listingkit service is not configured")
 	}
-	detail, err := s.taskStudioBatchOrDefault().StartStudioBatchGeneration(ctx, strings.TrimSpace(batchID))
+	detail, err := s.taskStudioBatchOrDefault().ResumeStudioBatchGeneration(ctx, strings.TrimSpace(batchID))
 	if err != nil {
 		return err
 	}

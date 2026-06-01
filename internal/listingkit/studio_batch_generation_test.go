@@ -265,6 +265,93 @@ func TestStartStudioBatchGenerationRerunRefreshesLatestSessionDraftInput(t *test
 	}
 }
 
+func TestResumeStudioBatchGenerationPreservesExistingAttemptsAndDesigns(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchGenerationSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Status:           SheinStudioSessionStatusSelecting,
+			Prompt:           "new prompt that should not overwrite resume",
+			StyleCount:       "1",
+			ArtworkModel:     "gpt-image-1",
+			GroupedImageMode: "shared_by_size",
+			Selection:        SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+		},
+	}
+	service := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo:        repo,
+			execute:     stubStudioBatchExecutionByItem(map[string]*StudioDesignResponse{}),
+			currentTime: func() time.Time { return time.Date(2026, 6, 1, 8, 30, 0, 0, time.UTC) },
+		}),
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	resultPayload, err := json.Marshal(testStudioDesignResponse("design-1", "https://cdn.example.com/design-1.png"))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusReviewReady,
+			Prompt:           "persisted prompt",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusReviewReady,
+			SelectionCount:   1,
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:            "attempt-1",
+			ItemID:        "item-1",
+			AttemptNo:     1,
+			Status:        StudioGenerationAttemptStatusMaterialized,
+			ResultPayload: string(resultPayload),
+		}},
+		designs: []StudioMaterializedDesignRecord{{
+			ID:               "design-1",
+			BatchID:          "batch-1",
+			ItemID:           "item-1",
+			SourceAttemptID:  "attempt-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			ImageURL:         "https://cdn.example.com/design-1.png",
+		}},
+	})
+
+	detail, err := service.ResumeStudioBatchGeneration(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("ResumeStudioBatchGeneration() error = %v", err)
+	}
+
+	if detail.Batch == nil || detail.Batch.Prompt != "persisted prompt" {
+		t.Fatalf("detail.Batch = %+v, want existing persisted batch to remain intact", detail.Batch)
+	}
+	if len(detail.Items) != 1 {
+		t.Fatalf("len(detail.Items) = %d, want 1 existing item", len(detail.Items))
+	}
+	if len(detail.Items[0].Attempts) != 1 {
+		t.Fatalf("len(detail.Items[0].Attempts) = %d, want preserved attempt", len(detail.Items[0].Attempts))
+	}
+	if len(detail.Items[0].Designs) != 1 {
+		t.Fatalf("len(detail.Items[0].Designs) = %d, want preserved design", len(detail.Items[0].Designs))
+	}
+	if detail.Items[0].Designs[0].SourceAttemptID != "attempt-1" {
+		t.Fatalf("design source attempt = %q, want attempt-1", detail.Items[0].Designs[0].SourceAttemptID)
+	}
+}
+
 func TestRunPendingStudioBatchItemsClaimsPendingItemBeforeAttemptCreation(t *testing.T) {
 	t.Parallel()
 

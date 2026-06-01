@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -212,6 +213,101 @@ func TestStudioBatchRunExecutorTreatsGenerationErrorClearFailureAsSuccessAfterDe
 	}
 	if len(detail.DesignsByItem["batch-1:item:1"]) != 1 {
 		t.Fatalf("designs = %+v, want 1 materialized design", detail.DesignsByItem)
+	}
+}
+
+func TestExecuteStudioBatchRunItemResumesExistingGraphWithoutWipingMaterializedDesigns(t *testing.T) {
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Prompt:           "new prompt that should not overwrite resume",
+			StyleCount:       "1",
+			GroupedImageMode: "shared_by_size",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:          101,
+				ParentProductID:    7001,
+				VariantID:          101,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				SelectedVariantIDs: []int64{101},
+			},
+		},
+	}
+	svc := &service{
+		studioSessionRepo: sessionRepo,
+		studioBatchRepo:   repo,
+	}
+	svc.taskStudioBatch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo:        repo,
+			execute:     stubStudioBatchExecutionByItem(map[string]*StudioDesignResponse{}),
+			currentTime: func() time.Time { return time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC) },
+		}),
+	})
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	resultPayload, err := json.Marshal(testStudioDesignResponse("design-1", "https://example.com/design.png"))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusReviewReady,
+			Prompt:           "persisted prompt",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusReviewReady,
+			SelectionCount:   1,
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:            "attempt-1",
+			ItemID:        "item-1",
+			AttemptNo:     1,
+			Status:        StudioGenerationAttemptStatusMaterialized,
+			ResultPayload: string(resultPayload),
+		}},
+		designs: []StudioMaterializedDesignRecord{{
+			ID:               "design-1",
+			BatchID:          "batch-1",
+			ItemID:           "item-1",
+			SourceAttemptID:  "attempt-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			ImageURL:         "https://example.com/design.png",
+		}},
+	})
+
+	if err := svc.executeStudioBatchRunItem(ctx, "batch-1"); err != nil {
+		t.Fatalf("executeStudioBatchRunItem() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.Prompt != "persisted prompt" {
+		t.Fatalf("detail.Batch = %+v, want existing graph preserved on resume", detail.Batch)
+	}
+	if len(detail.AttemptsByItem["item-1"]) != 1 {
+		t.Fatalf("attempts = %+v, want preserved attempt graph", detail.AttemptsByItem)
+	}
+	if len(detail.DesignsByItem["item-1"]) != 1 {
+		t.Fatalf("designs = %+v, want preserved materialized design graph", detail.DesignsByItem)
 	}
 }
 

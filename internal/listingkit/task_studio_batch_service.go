@@ -36,16 +36,35 @@ func (s *taskStudioBatchService) StartStudioBatchGeneration(ctx context.Context,
 	}
 
 	normalizedBatchID := strings.TrimSpace(batchID)
-	if err := s.ensureStudioBatchGenerationGraph(ctx, normalizedBatchID); err != nil {
+	if err := s.refreshStudioBatchGenerationGraph(ctx, normalizedBatchID); err != nil {
 		return nil, err
 	}
-	if err := s.generator.RunPendingStudioBatchItems(ctx, normalizedBatchID); err != nil {
+	return s.continueStudioBatchGeneration(ctx, normalizedBatchID)
+}
+
+func (s *taskStudioBatchService) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
+	if s.repo == nil {
+		return nil, fmt.Errorf("studio batch repository is not configured")
+	}
+	if s.generator == nil {
+		return nil, fmt.Errorf("studio batch generator is not configured")
+	}
+
+	normalizedBatchID := strings.TrimSpace(batchID)
+	if err := s.ensureStudioBatchGenerationGraphForResume(ctx, normalizedBatchID); err != nil {
 		return nil, err
 	}
-	if err := s.generator.RecoverStudioBatchMaterialization(ctx, normalizedBatchID); err != nil {
+	return s.continueStudioBatchGeneration(ctx, normalizedBatchID)
+}
+
+func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
+	if err := s.generator.RunPendingStudioBatchItems(ctx, batchID); err != nil {
 		return nil, err
 	}
-	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
+	if err := s.generator.RecoverStudioBatchMaterialization(ctx, batchID); err != nil {
+		return nil, err
+	}
+	return s.GetStudioBatchDetail(ctx, batchID)
 }
 
 func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
@@ -120,7 +139,7 @@ func normalizeStudioBatchDesignIDs(ids []string) []string {
 	return result
 }
 
-func (s *taskStudioBatchService) ensureStudioBatchGenerationGraph(ctx context.Context, batchID string) error {
+func (s *taskStudioBatchService) refreshStudioBatchGenerationGraph(ctx context.Context, batchID string) error {
 	if s.studioSessionRepo == nil {
 		return fmt.Errorf("studio session repository is not configured")
 	}
@@ -148,6 +167,22 @@ func (s *taskStudioBatchService) ensureStudioBatchGenerationGraph(ctx context.Co
 		return s.repo.CreateStudioBatchGraph(ctx, batch, items, nil, nil)
 	}
 	return s.repo.ReplaceStudioBatchGenerationGraph(ctx, batch, items)
+}
+
+func (s *taskStudioBatchService) ensureStudioBatchGenerationGraphForResume(ctx context.Context, batchID string) error {
+	if s.repo == nil {
+		return fmt.Errorf("studio batch repository is not configured")
+	}
+
+	_, err := s.repo.GetStudioBatch(ctx, batchID)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return s.refreshStudioBatchGenerationGraph(ctx, batchID)
+	default:
+		return err
+	}
 }
 
 func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now time.Time) *StudioBatchRecord {
