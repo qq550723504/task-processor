@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -236,18 +235,8 @@ func writeStudioBatchActionError(c *gin.Context, errorCode string, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, listingkit.ErrStudioSessionConflict):
 		status = http.StatusConflict
-	case isStudioBatchActionValidationError(err):
+	case errors.Is(err, listingkit.ErrStudioBatchActionValidation):
 		status = http.StatusBadRequest
 	}
 	c.JSON(status, gin.H{"error": errorCode, "message": err.Error()})
-}
-
-func isStudioBatchActionValidationError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "item_ids is required") ||
-		strings.Contains(message, "design_ids is required") ||
-		strings.Contains(message, "is not approved")
 }

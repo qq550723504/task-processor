@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -159,6 +160,59 @@ func TestStudioBatchApproveDesignsHandlerBindsIDs(t *testing.T) {
 	}
 	if svc.approveReq == nil || len(svc.approveReq.DesignIDs) != 1 || svc.approveReq.DesignIDs[0] != "design-1" {
 		t.Fatalf("approve req = %+v, want bound design id", svc.approveReq)
+	}
+}
+
+func TestStudioBatchRetryItemsHandlerBindsIDs(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		retryResult: &listingkit.StudioBatchDetail{
+			Batch: &listingkit.StudioBatchRecord{ID: "batch-1"},
+		},
+	}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/items/retry", h.RetryStudioBatchItems)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/items/retry", strings.NewReader(`{"item_ids":["item-1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if svc.retryBatchID != "batch-1" {
+		t.Fatalf("retry batch id = %q, want batch-1", svc.retryBatchID)
+	}
+	if svc.retryReq == nil || len(svc.retryReq.ItemIDs) != 1 || svc.retryReq.ItemIDs[0] != "item-1" {
+		t.Fatalf("retry req = %+v, want bound item id", svc.retryReq)
+	}
+}
+
+func TestStudioBatchRetryItemsHandlerReturnsBadRequestForValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		retryErr: listingkit.NewStudioBatchActionValidationError("item item-1 is not retryable"),
+	}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/items/retry", h.RetryStudioBatchItems)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/items/retry", strings.NewReader(`{"item_ids":["item-1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
+	}
+	if !errors.Is(svc.retryErr, listingkit.ErrStudioBatchActionValidation) {
+		t.Fatalf("retry err = %v, want validation sentinel", svc.retryErr)
 	}
 }
 

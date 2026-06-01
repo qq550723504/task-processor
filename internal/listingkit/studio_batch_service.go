@@ -2,7 +2,29 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 )
+
+var ErrStudioBatchActionValidation = errors.New("studio batch action validation failed")
+
+type studioBatchActionValidationError struct {
+	message string
+}
+
+func (e *studioBatchActionValidationError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.message
+}
+
+func (e *studioBatchActionValidationError) Unwrap() error {
+	return ErrStudioBatchActionValidation
+}
+
+func NewStudioBatchActionValidationError(message string) error {
+	return &studioBatchActionValidationError{message: message}
+}
 
 type StudioBatchService interface {
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error)

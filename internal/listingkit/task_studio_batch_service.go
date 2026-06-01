@@ -118,19 +118,27 @@ func (s *taskStudioBatchService) RetryStudioBatchItems(ctx context.Context, batc
 		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
 	}
 	if len(itemIDs) == 0 {
-		return nil, fmt.Errorf("item_ids is required")
+		return nil, NewStudioBatchActionValidationError("item_ids is required")
 	}
 
 	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.Items))
 	for _, item := range detail.Items {
 		itemsByID[item.ID] = item
 	}
-	now := s.currentTime().UTC()
+	itemsToRetry := make([]StudioBatchItemRecord, 0, len(itemIDs))
 	for _, itemID := range itemIDs {
 		item, ok := itemsByID[itemID]
 		if !ok {
-			return nil, gorm.ErrRecordNotFound
+			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("unknown item_id: %s", itemID))
 		}
+		if !isStudioBatchItemRetryable(item.Status) {
+			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("item %s is not retryable from status %s", itemID, item.Status))
+		}
+		itemsToRetry = append(itemsToRetry, item)
+	}
+
+	now := s.currentTime().UTC()
+	for _, item := range itemsToRetry {
 		item.Status = StudioBatchItemStatusPending
 		item.LastError = ""
 		item.UpdatedAt = now
@@ -153,7 +161,7 @@ func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, bat
 		designIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
 	}
 	if len(designIDs) == 0 {
-		return nil, fmt.Errorf("design_ids is required")
+		return nil, NewStudioBatchActionValidationError("design_ids is required")
 	}
 
 	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, normalizedBatchID, designIDs)
@@ -167,7 +175,7 @@ func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, bat
 	createdTasks := make([]SheinStudioCreatedTask, 0, len(designs))
 	for _, design := range designs {
 		if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
-			return nil, fmt.Errorf("design %s is not approved", design.ID)
+			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not approved", design.ID))
 		}
 		createdTasks = append(createdTasks, SheinStudioCreatedTask{
 			ID:       fmt.Sprintf("%s:task:%s", normalizedBatchID, design.ID),
@@ -255,6 +263,15 @@ func normalizeStudioBatchItemIDs(ids []string) []string {
 		result = append(result, normalized)
 	}
 	return result
+}
+
+func isStudioBatchItemRetryable(status StudioBatchItemStatus) bool {
+	switch status {
+	case StudioBatchItemStatusReviewReady, StudioBatchItemStatusFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *taskStudioBatchService) refreshStudioBatchGenerationGraph(ctx context.Context, batchID string) error {
