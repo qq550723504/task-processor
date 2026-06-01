@@ -21,6 +21,7 @@ type UpdateStudioSessionRequest struct {
 	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
 	ArtworkModel            *string                         `json:"artwork_model,omitempty"`
 	ImageStrategy           *string                         `json:"image_strategy,omitempty"`
+	GroupedImageMode        *string                         `json:"grouped_image_mode,omitempty"`
 	SelectedSDSImages       []SheinStudioSelectedSDSImage   `json:"selected_sds_images,omitempty"`
 	GroupedSelections       []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`
 	TransparentBackground   *bool                           `json:"transparent_background,omitempty"`

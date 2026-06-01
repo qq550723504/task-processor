@@ -154,37 +154,64 @@ func TestStudioBatchRunExecutorCancelsRunningAndPendingItemsWhenCancelRequestedB
 }
 
 func TestStudioBatchRunExecutorTreatsGenerationErrorClearFailureAsSuccessAfterDesignPersistence(t *testing.T) {
-	svc := &service{
-		studioSessionRepo: &studioBatchRunExecutorSessionRepoStub{
-			session: &SheinStudioSession{
-				ID:           "batch-1",
-				SavedAsBatch: true,
-				Prompt:       "retro cherries",
-				StyleCount:   "1",
-			},
-		},
-		taskStudioSession: &taskStudioSessionService{
-			repo: &studioBatchRunExecutorSessionRepoStub{
-				session: &SheinStudioSession{
-					ID:           "batch-1",
-					SavedAsBatch: true,
-					Prompt:       "retro cherries",
-					StyleCount:   "1",
-				},
-				failUpdateAfterReplace: true,
-			},
-		},
-		taskStudioMedia: &taskStudioMediaService{
-			imageGenerator: &studioBatchRunExecutorImageGeneratorStub{},
-			uploadImages: func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error) {
-				return &UploadImagesResponse{ImageURLs: []string{"https://example.com/design.png"}}, nil
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Prompt:           "retro cherries",
+			StyleCount:       "1",
+			GroupedImageMode: "per_product",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:          101,
+				ParentProductID:    7001,
+				VariantID:          101,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				SelectedVariantIDs: []int64{101},
+				MockupImageURL:     "https://example.com/mockup.png",
 			},
 		},
 	}
+	svc := &service{
+		studioSessionRepo: sessionRepo,
+		studioBatchRepo:   repo,
+	}
+	svc.taskStudioBatch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				return &StudioBatchGenerateExecutionOutput{
+					Response:  testStudioDesignResponse("design-1", "https://example.com/design.png"),
+					BatchID:   input.BatchID,
+					ItemID:    input.ItemID,
+					AttemptID: input.AttemptID,
+				}, nil
+			},
+		}),
+	})
 
-	err := svc.executeStudioBatchRunItem(context.Background(), "batch-1")
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	err := svc.executeStudioBatchRunItem(ctx, "batch-1")
 	if err != nil {
-		t.Fatalf("executeStudioBatchRunItem() error = %v, want nil after designs persisted", err)
+		t.Fatalf("executeStudioBatchRunItem() error = %v, want nil after itemized designs persisted", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.Status != StudioBatchStatusReviewReady {
+		t.Fatalf("detail.Batch = %+v, want review_ready batch", detail.Batch)
+	}
+	if len(detail.DesignsByItem["batch-1:item:1"]) != 1 {
+		t.Fatalf("designs = %+v, want 1 materialized design", detail.DesignsByItem)
 	}
 }
 

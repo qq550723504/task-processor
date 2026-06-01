@@ -25,7 +25,9 @@ type ApproveStudioBatchDesignsRequest struct {
 }
 
 type taskStudioBatchServiceConfig struct {
-	repo StudioBatchRepository
+	repo              StudioBatchRepository
+	studioSessionRepo StudioSessionRepository
+	generator         studioBatchGenerator
 }
 
 func (s *service) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
@@ -49,6 +51,13 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 		return taskStudioBatchServiceConfig{}
 	}
 	return taskStudioBatchServiceConfig{
-		repo: s.studioBatchRepo,
+		repo:              s.studioBatchRepo,
+		studioSessionRepo: s.studioSessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: s.studioBatchRepo,
+			execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				return ExecuteStudioDesignBatch(ctx, s, input)
+			},
+		}),
 	}
 }

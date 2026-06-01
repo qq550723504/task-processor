@@ -207,6 +207,7 @@ type SheinStudioSession struct {
 	ProductImagePrompts     SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`
 	ArtworkModel            string                            `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
 	ImageStrategy           string                            `json:"image_strategy,omitempty" gorm:"type:varchar(32)"`
+	GroupedImageMode        string                            `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
 	SelectedSDSImages       SheinStudioSelectedSDSImageList   `json:"selected_sds_images,omitempty" gorm:"type:text"`
 	GroupedSelections       SheinStudioGroupedSelectionList   `json:"grouped_selections,omitempty" gorm:"type:text"`
 	TransparentBackground   bool                              `json:"transparent_background"`
@@ -278,6 +279,7 @@ type UpsertStudioBatchRequest struct {
 	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
 	ArtworkModel            string                          `json:"artwork_model,omitempty"`
 	ImageStrategy           string                          `json:"image_strategy,omitempty"`
+	GroupedImageMode        string                          `json:"grouped_image_mode,omitempty"`
 	SelectedSDSImages       []SheinStudioSelectedSDSImage   `json:"selected_sds_images,omitempty"`
 	GroupedSelections       []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`
 	TransparentBackground   bool                            `json:"transparent_background,omitempty"`
@@ -301,6 +303,7 @@ type SheinStudioBatchListItem struct {
 	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
 	ArtworkModel            string                          `json:"artwork_model,omitempty"`
 	ImageStrategy           string                          `json:"image_strategy,omitempty"`
+	GroupedImageMode        string                          `json:"grouped_image_mode,omitempty"`
 	TransparentBackground   bool                            `json:"transparent_background,omitempty"`
 	RenderSizeImagesWithSDS bool                            `json:"render_size_images_with_sds,omitempty"`
 	SheinStoreID            string                          `json:"shein_store_id,omitempty"`

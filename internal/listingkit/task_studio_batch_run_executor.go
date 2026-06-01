@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -229,56 +228,32 @@ func (e *taskStudioBatchRunExecutor) currentTime() time.Time {
 }
 
 func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string) error {
-	if s == nil || s.studioSessionRepo == nil {
-		return fmt.Errorf("studio session repository is not configured")
+	if s == nil {
+		return fmt.Errorf("listingkit service is not configured")
 	}
-	session, err := s.studioSessionRepo.GetSession(ctx, strings.TrimSpace(batchID))
+	detail, err := s.taskStudioBatchOrDefault().StartStudioBatchGeneration(ctx, strings.TrimSpace(batchID))
 	if err != nil {
 		return err
 	}
-	if session == nil || !session.SavedAsBatch {
+	if detail == nil || detail.Batch == nil {
 		return ErrStudioSessionNotFound
 	}
-
-	generating := SheinStudioSessionStatusGenerating
-	if _, err := s.taskStudioSessionOrDefault().UpdateStudioSession(ctx, session.ID, &UpdateStudioSessionRequest{
-		Status: &generating,
-	}); err != nil {
-		return err
-	}
-
-	execution, err := ExecuteStudioDesignBatch(ctx, s, StudioBatchGenerateExecutionInput{
-		Request:   buildStudioBatchRunDesignRequest(session),
-		SessionID: session.ID,
-	})
-	if err != nil {
-		failed := SheinStudioSessionStatusFailed
-		generationError := err.Error()
-		if _, updateErr := s.taskStudioSessionOrDefault().UpdateStudioSession(ctx, session.ID, &UpdateStudioSessionRequest{
-			Status:          &failed,
-			GenerationError: &generationError,
-		}); updateErr != nil {
-			return errors.Join(err, updateErr)
-		}
-		return err
-	}
-
-	generated := SheinStudioSessionStatusGenerated
-	if _, err := s.taskStudioSessionOrDefault().ReplaceStudioSessionDesigns(ctx, session.ID, &ReplaceStudioSessionDesignsRequest{
-		Status:  &generated,
-		Designs: buildStudioBatchRunDesigns(execution),
-	}); err != nil {
-		return err
-	}
-
-	clearGenerationError := ""
-	_, err = s.taskStudioSessionOrDefault().UpdateStudioSession(ctx, session.ID, &UpdateStudioSessionRequest{
-		GenerationError: &clearGenerationError,
-	})
-	if err != nil {
+	if detail.Batch.Status == StudioBatchStatusReviewReady {
 		return nil
 	}
-	return nil
+	return studioBatchRunDetailError(detail)
+}
+
+func studioBatchRunDetailError(detail *StudioBatchDetail) error {
+	if detail == nil || detail.Batch == nil {
+		return ErrStudioSessionNotFound
+	}
+	for _, item := range detail.Items {
+		if item.Item.LastError != "" {
+			return fmt.Errorf("%s", item.Item.LastError)
+		}
+	}
+	return fmt.Errorf("studio batch %s generation finished with status %s", detail.Batch.ID, detail.Batch.Status)
 }
 
 func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesignRequest {

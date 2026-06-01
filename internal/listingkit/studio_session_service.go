@@ -122,6 +122,7 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		ProductImagePrompts:     []SheinStudioProductImagePrompt(session.ProductImagePrompts),
 		ArtworkModel:            session.ArtworkModel,
 		ImageStrategy:           session.ImageStrategy,
+		GroupedImageMode:        session.GroupedImageMode,
 		TransparentBackground:   session.TransparentBackground,
 		RenderSizeImagesWithSDS: session.RenderSizeImagesWithSDS,
 		SheinStoreID:            session.SheinStoreID,

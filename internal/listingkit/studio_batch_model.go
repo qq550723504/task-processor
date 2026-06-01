@@ -44,15 +44,22 @@ const (
 )
 
 type StudioBatchRecord struct {
-	ID               string            `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	TenantID         string            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID           string            `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	Status           StudioBatchStatus `json:"status" gorm:"type:varchar(32);index;not null"`
-	Prompt           string            `json:"prompt,omitempty" gorm:"type:text"`
-	GroupedImageMode string            `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
-	SheinStoreID     int64             `json:"shein_store_id,omitempty" gorm:"index"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	ID                    string                          `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID              string                          `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID                string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	Status                StudioBatchStatus               `json:"status" gorm:"type:varchar(32);index;not null"`
+	Prompt                string                          `json:"prompt,omitempty" gorm:"type:text"`
+	GroupedImageMode      string                          `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
+	Selection             SheinStudioSelectionSnapshot    `json:"selection,omitempty" gorm:"type:text"`
+	GroupedSelections     SheinStudioGroupedSelectionList `json:"grouped_selections,omitempty" gorm:"type:text"`
+	StyleCount            string                          `json:"style_count,omitempty" gorm:"type:varchar(32)"`
+	VariationIntensity    string                          `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
+	ArtworkModel          string                          `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
+	SelectedSDSImages     SheinStudioSelectedSDSImageList `json:"selected_sds_images,omitempty" gorm:"type:text"`
+	TransparentBackground bool                            `json:"transparent_background"`
+	SheinStoreID          int64                           `json:"shein_store_id,omitempty" gorm:"index"`
+	CreatedAt             time.Time                       `json:"created_at"`
+	UpdatedAt             time.Time                       `json:"updated_at"`
 }
 
 func (StudioBatchRecord) TableName() string {
@@ -66,6 +73,7 @@ type StudioBatchItemRecord struct {
 	UserID           string                `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	TargetGroupKey   string                `json:"target_group_key,omitempty" gorm:"type:varchar(255);index:idx_listingkit_studio_batch_items_batch_group,priority:2"`
 	TargetGroupLabel string                `json:"target_group_label,omitempty" gorm:"type:varchar(255)"`
+	SelectionIDs     SheinStudioStringList `json:"selection_ids,omitempty" gorm:"type:text"`
 	GroupMode        string                `json:"group_mode,omitempty" gorm:"type:varchar(32)"`
 	Status           StudioBatchItemStatus `json:"status" gorm:"type:varchar(32);index;not null"`
 	SelectionCount   int                   `json:"selection_count" gorm:"not null;default:0"`
@@ -88,7 +96,10 @@ type StudioGenerationAttemptRecord struct {
 	Status         StudioGenerationAttemptStatus `json:"status" gorm:"type:varchar(32);index;not null"`
 	UpstreamJobID  string                        `json:"upstream_job_id,omitempty" gorm:"type:varchar(64);index"`
 	RequestPayload string                        `json:"request_payload,omitempty" gorm:"type:text"`
+	ResultPayload  string                        `json:"result_payload,omitempty" gorm:"type:text"`
 	ErrorMessage   string                        `json:"error_message,omitempty" gorm:"type:text"`
+	StartedAt      *time.Time                    `json:"started_at,omitempty"`
+	FinishedAt     *time.Time                    `json:"finished_at,omitempty"`
 	CreatedAt      time.Time                     `json:"created_at"`
 	UpdatedAt      time.Time                     `json:"updated_at"`
 }

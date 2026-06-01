@@ -17,10 +17,13 @@ var ErrStudioBatchOwnershipConflict = errors.New("studio batch update conflicts 
 
 type StudioBatchRepository interface {
 	CreateStudioBatchGraph(ctx context.Context, batch *StudioBatchRecord, items []StudioBatchItemRecord, attempts []StudioGenerationAttemptRecord, designs []StudioMaterializedDesignRecord) error
+	CreateStudioBatchItems(ctx context.Context, batchID string, items []StudioBatchItemRecord) error
+	CreateStudioGenerationAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord) error
 	GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchRecord, error)
 	GetStudioBatchItem(ctx context.Context, itemID string) (*StudioBatchItemRecord, error)
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetailGraph, error)
 	ListStudioMaterializedDesignsByIDs(ctx context.Context, batchID string, designIDs []string) ([]StudioMaterializedDesignRecord, error)
+	ReplaceStudioItemMaterializedDesigns(ctx context.Context, itemID string, designs []StudioMaterializedDesignRecord) error
 	ReplaceStudioMaterializedDesignReviews(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error
 	UpdateStudioBatch(ctx context.Context, batch *StudioBatchRecord) error
 	UpdateStudioBatchItem(ctx context.Context, item *StudioBatchItemRecord) error
@@ -68,6 +71,46 @@ func (r *MemStudioBatchRepository) CreateStudioBatchGraph(ctx context.Context, b
 	for _, row := range designRows {
 		r.designs[row.ID] = row
 	}
+	return nil
+}
+
+func (r *MemStudioBatchRepository) CreateStudioBatchItems(ctx context.Context, batchID string, items []StudioBatchItemRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	batch, ok := r.batches[batchID]
+	if !ok || !matchesStudioBatchScope(ctx, batch.TenantID, batch.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+
+	for _, item := range items {
+		row := item
+		row.BatchID = batch.ID
+		row.TenantID = batch.TenantID
+		row.UserID = batch.UserID
+		r.items[row.ID] = row
+	}
+	return nil
+}
+
+func (r *MemStudioBatchRepository) CreateStudioGenerationAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord) error {
+	if attempt == nil {
+		return nil
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	item, ok := r.items[attempt.ItemID]
+	if !ok || !matchesStudioBatchScope(ctx, item.TenantID, item.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+
+	row := *attempt
+	row.BatchID = item.BatchID
+	row.TenantID = item.TenantID
+	row.UserID = item.UserID
+	r.attempts[row.ID] = row
 	return nil
 }
 
@@ -126,6 +169,40 @@ func (r *MemStudioBatchRepository) ListStudioMaterializedDesignsByIDs(ctx contex
 	}
 	sortStudioMaterializedDesigns(records)
 	return records, nil
+}
+
+func (r *MemStudioBatchRepository) ReplaceStudioItemMaterializedDesigns(ctx context.Context, itemID string, designs []StudioMaterializedDesignRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	item, ok := r.items[itemID]
+	if !ok || !matchesStudioBatchScope(ctx, item.TenantID, item.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+
+	for designID, row := range r.designs {
+		if row.ItemID == itemID && matchesStudioBatchScope(ctx, row.TenantID, row.UserID) {
+			delete(r.designs, designID)
+		}
+	}
+	for _, design := range designs {
+		row := design
+		row.BatchID = item.BatchID
+		row.ItemID = item.ID
+		row.TenantID = item.TenantID
+		row.UserID = item.UserID
+		if row.TargetGroupKey == "" {
+			row.TargetGroupKey = item.TargetGroupKey
+		}
+		if row.TargetGroupLabel == "" {
+			row.TargetGroupLabel = item.TargetGroupLabel
+		}
+		if row.ReviewStatus == "" {
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusUnreviewed
+		}
+		r.designs[row.ID] = row
+	}
+	return nil
 }
 
 func (r *MemStudioBatchRepository) ReplaceStudioMaterializedDesignReviews(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error {
@@ -392,6 +469,42 @@ func (r *GormStudioBatchRepository) CreateStudioBatchGraph(ctx context.Context, 
 	})
 }
 
+func (r *GormStudioBatchRepository) CreateStudioBatchItems(ctx context.Context, batchID string, items []StudioBatchItemRecord) error {
+	batch, err := r.GetStudioBatch(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return nil
+	}
+
+	rows := make([]StudioBatchItemRecord, 0, len(items))
+	for _, item := range items {
+		row := item
+		row.BatchID = batch.ID
+		row.TenantID = batch.TenantID
+		row.UserID = batch.UserID
+		rows = append(rows, row)
+	}
+	return r.db.WithContext(ctx).Create(&rows).Error
+}
+
+func (r *GormStudioBatchRepository) CreateStudioGenerationAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord) error {
+	if attempt == nil {
+		return nil
+	}
+
+	item, err := r.GetStudioBatchItem(ctx, attempt.ItemID)
+	if err != nil {
+		return err
+	}
+	row := *attempt
+	row.BatchID = item.BatchID
+	row.TenantID = item.TenantID
+	row.UserID = item.UserID
+	return r.db.WithContext(ctx).Create(&row).Error
+}
+
 func (r *GormStudioBatchRepository) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchRecord, error) {
 	var record StudioBatchRecord
 	err := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
@@ -485,6 +598,44 @@ func (r *GormStudioBatchRepository) ListStudioMaterializedDesignsByIDs(ctx conte
 	return designs, nil
 }
 
+func (r *GormStudioBatchRepository) ReplaceStudioItemMaterializedDesigns(ctx context.Context, itemID string, designs []StudioMaterializedDesignRecord) error {
+	item, err := r.GetStudioBatchItem(ctx, itemID)
+	if err != nil {
+		return err
+	}
+
+	rows := make([]StudioMaterializedDesignRecord, 0, len(designs))
+	for _, design := range designs {
+		row := design
+		row.BatchID = item.BatchID
+		row.ItemID = item.ID
+		row.TenantID = item.TenantID
+		row.UserID = item.UserID
+		if row.TargetGroupKey == "" {
+			row.TargetGroupKey = item.TargetGroupKey
+		}
+		if row.TargetGroupLabel == "" {
+			row.TargetGroupLabel = item.TargetGroupLabel
+		}
+		if row.ReviewStatus == "" {
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusUnreviewed
+		}
+		rows = append(rows, row)
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := applyStudioBatchAccessScope(tx, ctx).
+			Where("item_id = ?", itemID).
+			Delete(&StudioMaterializedDesignRecord{}).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
 func (r *GormStudioBatchRepository) ReplaceStudioMaterializedDesignReviews(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error {
 	if _, err := r.GetStudioBatch(ctx, batchID); err != nil {
 		return err
@@ -542,11 +693,18 @@ func (r *GormStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch
 		Model(&StudioBatchRecord{}).
 		Where("id = ?", row.ID).
 		Updates(map[string]any{
-			"status":             row.Status,
-			"prompt":             row.Prompt,
-			"grouped_image_mode": row.GroupedImageMode,
-			"shein_store_id":     row.SheinStoreID,
-			"updated_at":         row.UpdatedAt,
+			"status":                 row.Status,
+			"prompt":                 row.Prompt,
+			"grouped_image_mode":     row.GroupedImageMode,
+			"selection":              row.Selection,
+			"grouped_selections":     row.GroupedSelections,
+			"style_count":            row.StyleCount,
+			"variation_intensity":    row.VariationIntensity,
+			"artwork_model":          row.ArtworkModel,
+			"selected_sds_images":    row.SelectedSDSImages,
+			"transparent_background": row.TransparentBackground,
+			"shein_store_id":         row.SheinStoreID,
+			"updated_at":             row.UpdatedAt,
 		})
 	if result.Error != nil {
 		return result.Error
@@ -577,6 +735,7 @@ func (r *GormStudioBatchRepository) UpdateStudioBatchItem(ctx context.Context, i
 		Updates(map[string]any{
 			"target_group_key":   row.TargetGroupKey,
 			"target_group_label": row.TargetGroupLabel,
+			"selection_ids":      row.SelectionIDs,
 			"group_mode":         row.GroupMode,
 			"status":             row.Status,
 			"selection_count":    row.SelectionCount,
@@ -619,7 +778,10 @@ func (r *GormStudioBatchRepository) UpdateStudioGenerationAttempt(ctx context.Co
 			"status":          row.Status,
 			"upstream_job_id": row.UpstreamJobID,
 			"request_payload": row.RequestPayload,
+			"result_payload":  row.ResultPayload,
 			"error_message":   row.ErrorMessage,
+			"started_at":      row.StartedAt,
+			"finished_at":     row.FinishedAt,
 			"updated_at":      row.UpdatedAt,
 		})
 	if result.Error != nil {

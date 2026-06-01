@@ -131,6 +131,9 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 		if req.ImageStrategy != nil {
 			session.ImageStrategy = *req.ImageStrategy
 		}
+		if req.GroupedImageMode != nil {
+			session.GroupedImageMode = *req.GroupedImageMode
+		}
 		if req.SelectedSDSImages != nil {
 			selected := make(SheinStudioSelectedSDSImageList, 0, len(req.SelectedSDSImages))
 			for _, item := range req.SelectedSDSImages {
@@ -396,6 +399,7 @@ func (s *taskStudioSessionService) UpsertStudioBatch(ctx context.Context, req *U
 	session.ProductImagePrompts = toStudioProductImagePromptList(req.ProductImagePrompts)
 	session.ArtworkModel = req.ArtworkModel
 	session.ImageStrategy = req.ImageStrategy
+	session.GroupedImageMode = req.GroupedImageMode
 	session.SelectedSDSImages = toStudioSelectedSDSImageList(req.SelectedSDSImages)
 	session.GroupedSelections = toStudioGroupedSelectionList(req.GroupedSelections)
 	session.TransparentBackground = req.TransparentBackground
