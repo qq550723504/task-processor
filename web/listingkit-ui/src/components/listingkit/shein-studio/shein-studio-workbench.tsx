@@ -347,6 +347,10 @@ export function SheinStudioWorkbench({
     startIndex: number;
     total: number;
   } | null>(null);
+  const [selectedRecentBatchHydrations, setSelectedRecentBatchHydrations] = useState<
+    Record<string, SheinStudioWorkbenchHydratedBatch>
+  >({});
+  const selectedRecentBatchHydrationRequestsRef = useRef(new Set<string>());
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -448,14 +452,27 @@ export function SheinStudioWorkbench({
     [activeGroupId, groups],
   );
   const localDraftSnapshot = localDraftSnapshotDetail?.draft ?? null;
-  const recentBatchSummaries = useMemo(
-    () =>
-      buildRecentBatchSummaries(savedBatches, {
-        draft: localDraftSnapshot,
-        draftBatchId: localDraftSnapshotDetail?.batchId,
-      }),
-    [localDraftSnapshot, localDraftSnapshotDetail?.batchId, savedBatches],
-  );
+  const recentBatchSummaries = useMemo(() => {
+    const baseSummaries = buildRecentBatchSummaries(savedBatches, {
+      draft: localDraftSnapshot,
+      draftBatchId: localDraftSnapshotDetail?.batchId,
+    });
+    return baseSummaries.map((summary) => {
+      if (summary.source !== "batch") {
+        return summary;
+      }
+      const hydratedBatch = selectedRecentBatchHydrations[summary.id];
+      if (!hydratedBatch) {
+        return summary;
+      }
+      return buildRecentBatchSummaries([hydratedBatch.savedBatch])[0] ?? summary;
+    });
+  }, [
+    localDraftSnapshot,
+    localDraftSnapshotDetail?.batchId,
+    savedBatches,
+    selectedRecentBatchHydrations,
+  ]);
   const validRecentBatchSummaryKeys = useMemo(
     () =>
       new Set(
@@ -478,6 +495,14 @@ export function SheinStudioWorkbench({
       });
     },
     [validRecentBatchSummaryKeys],
+  );
+  const selectedPersistedRecentBatchIds = useMemo(
+    () =>
+      selectedRecentBatchSummaryIds.flatMap((key) => {
+        const [source, id] = key.split(":");
+        return source === "batch" && id ? [id] : [];
+      }),
+    [selectedRecentBatchSummaryIds],
   );
   const currentQueuedBatchId = batchQueueMode
     ? queuedBatchIds[queuedBatchIndex] ?? ""
@@ -565,6 +590,60 @@ export function SheinStudioWorkbench({
     }
     return "当前批次还没有可用设计，已回到生成区继续处理。";
   }, [batchQueueMode, effectiveStep]);
+  useEffect(() => {
+    let cancelled = false;
+    const pendingBatchIds = selectedPersistedRecentBatchIds.filter((batchId) => {
+      const batch = savedBatches.find((item) => item.id === batchId);
+      if (!batch) {
+        return false;
+      }
+      const hydratedBatch = selectedRecentBatchHydrations[batchId];
+      return !hydratedBatch || hydratedBatch.savedBatch.updatedAt !== batch.updatedAt;
+    });
+    if (pendingBatchIds.length === 0) {
+      return;
+    }
+
+    void Promise.all(
+      pendingBatchIds.map(async (batchId) => {
+        if (selectedRecentBatchHydrationRequestsRef.current.has(batchId)) {
+          return null;
+        }
+        selectedRecentBatchHydrationRequestsRef.current.add(batchId);
+        try {
+          const hydratedBatch = await getSheinStudioHydratedBatch(batchId);
+          return hydratedBatch ? ([batchId, hydratedBatch] as const) : null;
+        } catch {
+          return null;
+        } finally {
+          selectedRecentBatchHydrationRequestsRef.current.delete(batchId);
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+      const hydratedEntries = entries.filter(
+        (entry): entry is readonly [string, SheinStudioWorkbenchHydratedBatch] =>
+          entry != null,
+      );
+      if (hydratedEntries.length === 0) {
+        return;
+      }
+      setSelectedRecentBatchHydrations((current) => ({
+        ...current,
+        ...Object.fromEntries(hydratedEntries),
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    savedBatches,
+    selectedPersistedRecentBatchIds,
+    selectedRecentBatchHydrations,
+  ]);
   const queueCompletionMessage = useCallback(
     (mode: SheinStudioBatchQueueMode, batchCount: number) => {
       const actionLabel =
@@ -1406,11 +1485,19 @@ export function SheinStudioWorkbench({
       options?: { keepResumeState?: boolean },
     ) => {
       for (let nextIndex = index; nextIndex < batchIds.length; nextIndex += 1) {
-        const batch = savedBatches.find((item) => item.id === batchIds[nextIndex]);
+        const batchId = batchIds[nextIndex];
+        const hydratedBatch = selectedRecentBatchHydrations[batchId];
+        const batch =
+          hydratedBatch?.savedBatch ??
+          savedBatches.find((item) => item.id === batchId);
         if (!batch) {
           continue;
         }
-        handleLoadBatch(batch);
+        if (hydratedBatch) {
+          handleLoadHydratedBatch(hydratedBatch);
+        } else {
+          handleLoadBatch(batch);
+        }
         setQueuedBatchIndex(nextIndex);
         setEffectiveStep(stepForQueuedBatch(batch, mode));
         setQueueMessage("");
@@ -1426,8 +1513,10 @@ export function SheinStudioWorkbench({
     [
       clearBatchQueue,
       handleLoadBatch,
+      handleLoadHydratedBatch,
       queueCompletionMessage,
       savedBatches,
+      selectedRecentBatchHydrations,
       setEffectiveStep,
       setQueueMessage,
       setQueuedBatchIndex,

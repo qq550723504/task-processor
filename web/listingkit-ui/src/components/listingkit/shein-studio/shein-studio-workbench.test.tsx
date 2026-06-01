@@ -275,7 +275,9 @@ describe("SheinStudioWorkbench", () => {
       reason: "",
     });
     hydrateSDSVariantSelection.mockResolvedValue(selection);
+    getSheinStudioBatch.mockReset();
     getSheinStudioBatch.mockResolvedValue(null);
+    getSheinStudioHydratedBatch.mockReset();
     getSheinStudioHydratedBatch.mockResolvedValue(null);
     listSheinStudioBatches.mockResolvedValue([]);
     loadSheinStudioDraft.mockResolvedValue(null);
@@ -1320,21 +1322,62 @@ describe("SheinStudioWorkbench", () => {
         styleCount: "1",
         sheinStoreId: "869",
         selection,
-        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
-        selectedIds: ["design-1"],
+        designs: [],
+        selectedIds: [],
         createdTasks: [],
         updatedAt: "2026-05-26T10:00:00.000Z",
       },
     ]);
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
+          designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+          selectedIds: ["design-1"],
+        },
+        {
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1000x1000",
+                status: "review_ready",
+                selectionCount: 1,
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:00:00.000Z",
+              },
+              designs: [
+                {
+                  id: "design-1",
+                  batchId: "batch-1",
+                  itemId: "item-1",
+                  sourceAttemptId: "attempt-1",
+                  targetGroupKey: "size:1000x1000",
+                  imageUrl: "https://example.com/design.png",
+                  reviewStatus: "approved",
+                  createdAt: "2026-05-26T09:59:30.000Z",
+                  updatedAt: "2026-05-26T10:00:00.000Z",
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    );
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
+    expect(getSheinStudioHydratedBatch).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量去创建任务 1 个" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "批量去创建任务 1 个" }),
+    );
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
+    expect(getSheinStudioHydratedBatch).toHaveBeenCalledWith("batch-1");
     expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
     expect(
       screen.getByText("已定位到审核区，可直接创建任务或调整款式。"),
