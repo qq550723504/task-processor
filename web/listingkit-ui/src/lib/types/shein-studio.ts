@@ -148,6 +148,71 @@ export type SheinStudioSavedBatch = {
   updatedAt: string;
 };
 
+export type SheinStudioBatchStatus =
+  | "pending"
+  | "generating"
+  | "partially_materialized"
+  | "review_ready"
+  | "partially_failed"
+  | "failed"
+  | "tasks_created";
+
+export type SheinStudioBatchItemStatus =
+  | "pending"
+  | "generating"
+  | "awaiting_materialization"
+  | "review_ready"
+  | "failed";
+
+export type SheinStudioBatchRecord = {
+  id: string;
+  status: SheinStudioBatchStatus;
+  prompt: string;
+  styleCount: string;
+  sheinStoreId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SheinStudioMaterializedDesign = {
+  id: string;
+  batchId: string;
+  itemId: string;
+  sourceAttemptId: string;
+  targetGroupKey: string;
+  targetGroupLabel?: string;
+  imageUrl: string;
+  approved: boolean;
+  reviewNote?: string;
+  role?: string;
+  roleLabel?: string;
+  productImageUrls?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SheinStudioBatchItem = {
+  id: string;
+  batchId: string;
+  targetGroupKey: string;
+  targetGroupLabel?: string;
+  status: SheinStudioBatchItemStatus;
+  selectionCount: number;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SheinStudioItemizedBatchItem = {
+  item: SheinStudioBatchItem;
+  designs: SheinStudioMaterializedDesign[];
+};
+
+export type SheinStudioBatchDetail = {
+  batch: SheinStudioBatchRecord;
+  items: SheinStudioItemizedBatchItem[];
+};
+
 export type SheinStudioDraft = Omit<
   SheinStudioSavedBatch,
   "id" | "name" | "updatedAt"

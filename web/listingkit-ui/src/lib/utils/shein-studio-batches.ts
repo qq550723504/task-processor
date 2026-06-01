@@ -3,13 +3,13 @@ import {
   deleteSheinStudioSessionBatch,
   ensureSheinStudioSession,
   getCachedStudioSessionId,
-  getSheinStudioSessionBatch,
   listSheinStudioSessionBatches,
   mapStudioSessionDetailToDraft,
   replaceSheinStudioSessionDesigns,
   upsertSheinStudioSessionBatch,
   updateSheinStudioSession,
 } from "@/lib/api/shein-studio-sessions";
+import { getSheinStudioBatchDetail } from "@/lib/api/shein-studio-batches";
 import {
   normalizeBatch,
   dedupeGeneratedDesignsByID,
@@ -23,9 +23,11 @@ import type {
   SheinStudioGenerationJob,
   SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
+  SheinStudioBatchDetail,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
@@ -229,7 +231,7 @@ export async function listSheinStudioBatches() {
 }
 
 export async function getSheinStudioBatch(batchID: string) {
-  return normalizeBatch(await getSheinStudioSessionBatch(batchID));
+  return normalizeBatch(mapBatchDetailToSavedBatch(await getSheinStudioBatchDetail(batchID)));
 }
 
 export async function saveSheinStudioBatch(
@@ -276,4 +278,49 @@ export async function deleteSheinStudioBatch(batchID: string) {
   if (getActiveSheinStudioBatchId() === batchID) {
     setActiveSheinStudioBatchId("");
   }
+}
+
+function mapBatchDetailToSavedBatch(
+  detail: SheinStudioBatchDetail,
+): SheinStudioSavedBatch {
+  const designs = detail.items.flatMap((entry) =>
+    entry.designs.map(
+      (design) =>
+        ({
+          id: design.id,
+          imageUrl: design.imageUrl,
+          prompt: detail.batch.prompt,
+          reviewNote: design.reviewNote,
+          role: design.role,
+          roleLabel: design.roleLabel,
+          targetGroupKey: design.targetGroupKey,
+          targetGroupLabel: design.targetGroupLabel,
+          productImageUrls: design.productImageUrls,
+        }) satisfies SheinStudioGeneratedDesign,
+    ),
+  );
+
+  return {
+    id: detail.batch.id,
+    name: deriveBatchName(detail.batch.prompt),
+    prompt: detail.batch.prompt,
+    styleCount: detail.batch.styleCount,
+    sheinStoreId: detail.batch.sheinStoreId,
+    designs,
+    selectedIds: detail.items.flatMap((entry) =>
+      entry.designs.filter((design) => design.approved).map((design) => design.id),
+    ),
+    createdTasks: [],
+    generationJobs: [],
+    sessionStatus: detail.batch.status,
+    updatedAt: detail.batch.updatedAt,
+  };
+}
+
+function deriveBatchName(prompt: string) {
+  const trimmed = prompt.trim();
+  if (!trimmed) {
+    return "未命名批次";
+  }
+  return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
 }
