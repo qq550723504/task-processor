@@ -149,13 +149,18 @@ export type SheinStudioSavedBatch = {
 };
 
 export type SheinStudioBatchStatus =
-  | "pending"
+  | "draft"
   | "generating"
   | "partially_materialized"
   | "review_ready"
   | "partially_failed"
   | "failed"
   | "tasks_created";
+
+export type SheinStudioMaterializedDesignReviewStatus =
+  | "unreviewed"
+  | "approved"
+  | "rejected";
 
 export type SheinStudioBatchItemStatus =
   | "pending"
@@ -169,7 +174,7 @@ export type SheinStudioBatchRecord = {
   status: SheinStudioBatchStatus;
   prompt: string;
   styleCount: string;
-  sheinStoreId: string;
+  sheinStoreId: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -182,7 +187,7 @@ export type SheinStudioMaterializedDesign = {
   targetGroupKey: string;
   targetGroupLabel?: string;
   imageUrl: string;
-  approved: boolean;
+  reviewStatus: SheinStudioMaterializedDesignReviewStatus;
   reviewNote?: string;
   role?: string;
   roleLabel?: string;

@@ -305,10 +305,13 @@ function mapBatchDetailToSavedBatch(
     name: deriveBatchName(detail.batch.prompt),
     prompt: detail.batch.prompt,
     styleCount: detail.batch.styleCount,
-    sheinStoreId: detail.batch.sheinStoreId,
+    sheinStoreId:
+      detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "",
     designs,
     selectedIds: detail.items.flatMap((entry) =>
-      entry.designs.filter((design) => design.approved).map((design) => design.id),
+      entry.designs
+        .filter((design) => design.reviewStatus === "approved")
+        .map((design) => design.id),
     ),
     createdTasks: [],
     generationJobs: [],

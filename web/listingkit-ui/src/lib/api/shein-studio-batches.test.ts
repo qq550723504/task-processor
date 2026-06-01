@@ -12,10 +12,10 @@ describe("parseSheinStudioBatchDetailResponse", () => {
       parseSheinStudioBatchDetailResponse({
         batch: {
           id: "batch-1",
-          status: "review_ready",
+          status: "draft",
           prompt: "botanical",
           style_count: "3",
-          shein_store_id: "store-7",
+          shein_store_id: 7,
           created_at: "2026-06-01T10:00:00Z",
           updated_at: "2026-06-01T10:05:00Z",
         },
@@ -40,7 +40,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
                 target_group_key: "size:1200x1200",
                 target_group_label: "1200 x 1200",
                 image_url: "https://cdn.example.com/design-1.png",
-                approved: true,
+                review_status: "approved",
                 review_note: "looks good",
                 created_at: "2026-06-01T10:01:00Z",
                 updated_at: "2026-06-01T10:05:00Z",
@@ -52,10 +52,10 @@ describe("parseSheinStudioBatchDetailResponse", () => {
     ).toEqual({
       batch: {
         id: "batch-1",
-        status: "review_ready",
+        status: "draft",
         prompt: "botanical",
         styleCount: "3",
-        sheinStoreId: "store-7",
+        sheinStoreId: 7,
         createdAt: "2026-06-01T10:00:00Z",
         updatedAt: "2026-06-01T10:05:00Z",
       },
@@ -81,7 +81,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
               targetGroupKey: "size:1200x1200",
               targetGroupLabel: "1200 x 1200",
               imageUrl: "https://cdn.example.com/design-1.png",
-              approved: true,
+              reviewStatus: "approved",
               reviewNote: "looks good",
               role: undefined,
               roleLabel: undefined,
@@ -120,7 +120,7 @@ describe("shein studio batches API", () => {
             status: "review_ready",
             prompt: "botanical",
             style_count: "3",
-            shein_store_id: "store-7",
+            shein_store_id: 7,
             created_at: "2026-06-01T10:00:00Z",
             updated_at: "2026-06-01T10:05:00Z",
           },
@@ -143,7 +143,7 @@ describe("shein studio batches API", () => {
                   source_attempt_id: "attempt-1",
                   target_group_key: "size:1200x1200",
                   image_url: "https://cdn.example.com/design-1.png",
-                  approved: true,
+                  review_status: "approved",
                   created_at: "2026-06-01T10:01:00Z",
                   updated_at: "2026-06-01T10:05:00Z",
                 },
@@ -161,7 +161,7 @@ describe("shein studio batches API", () => {
 
     await expect(getSheinStudioBatchDetail("batch-1")).resolves.toMatchObject({
       batch: { id: "batch-1", status: "review_ready" },
-      items: [{ item: { id: "item-1" }, designs: [{ id: "design-1", approved: true }] }],
+      items: [{ item: { id: "item-1" }, designs: [{ id: "design-1", reviewStatus: "approved" }] }],
     });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/listing-kits/studio/batches/batch-1");
@@ -176,7 +176,7 @@ describe("shein studio batches API", () => {
             status: "review_ready",
             prompt: "botanical",
             style_count: "3",
-            shein_store_id: "store-7",
+            shein_store_id: 7,
             created_at: "2026-06-01T10:00:00Z",
             updated_at: "2026-06-01T10:05:00Z",
           },

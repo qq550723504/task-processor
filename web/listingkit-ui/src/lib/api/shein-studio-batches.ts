@@ -12,7 +12,7 @@ import type {
 import { z } from "zod";
 
 const studioBatchStatusSchema = z.enum([
-  "pending",
+  "draft",
   "generating",
   "partially_materialized",
   "review_ready",
@@ -35,11 +35,17 @@ const studioBatchSchema = z
     status: studioBatchStatusSchema,
     prompt: z.string().optional(),
     style_count: z.string().optional(),
-    shein_store_id: z.string().optional(),
+    shein_store_id: z.number().optional(),
     created_at: z.string(),
     updated_at: z.string(),
   })
   .passthrough();
+
+const studioMaterializedDesignReviewStatusSchema = z.enum([
+  "unreviewed",
+  "approved",
+  "rejected",
+]);
 
 const studioBatchItemSchema = z
   .object({
@@ -64,7 +70,7 @@ const studioMaterializedDesignSchema = z
     target_group_key: z.string(),
     target_group_label: z.string().optional(),
     image_url: z.string(),
-    approved: z.boolean().optional(),
+    review_status: studioMaterializedDesignReviewStatusSchema,
     review_note: z.string().optional(),
     role: z.string().optional(),
     role_label: z.string().optional(),
@@ -129,7 +135,7 @@ function mapStudioMaterializedDesign(
     targetGroupKey: payload.target_group_key,
     targetGroupLabel: payload.target_group_label,
     imageUrl: payload.image_url,
-    approved: payload.approved ?? false,
+    reviewStatus: payload.review_status,
     reviewNote: payload.review_note,
     role: payload.role,
     roleLabel: payload.role_label,
