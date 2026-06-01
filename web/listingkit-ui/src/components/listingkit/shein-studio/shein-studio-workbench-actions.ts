@@ -33,6 +33,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
+  SheinStudioBatchDetail,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -44,6 +45,7 @@ import type {
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
+import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 
 type PersistDraft = (
   overrides?: Partial<{
@@ -95,6 +97,11 @@ type UseSheinStudioDesignActionsParams = {
     queueIndex?: number;
     queueTotal?: number;
   };
+  itemizedBatchContext?: {
+    batchId: string;
+    detail: SheinStudioBatchDetail;
+    onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
+  };
 };
 
 export function useSheinStudioDesignActions({
@@ -127,6 +134,7 @@ export function useSheinStudioDesignActions({
   variationIntensity,
   hasLocalWorkflowStateRef,
   batchTraceContext,
+  itemizedBatchContext,
 }: UseSheinStudioDesignActionsParams) {
   const { handleCreateTasks } = useSheinStudioTaskCreationAction({
     activeSelection,
@@ -154,6 +162,7 @@ export function useSheinStudioDesignActions({
     setIsCreatingTasks: (value) => workbench.setField("isCreatingTasks", value),
     sheinStoreId,
     hasLocalWorkflowStateRef,
+    itemizedBatchContext,
   });
 
   function buildNextPromptHistoryGroups() {

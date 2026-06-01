@@ -2,6 +2,10 @@ import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { evaluateImportedGalleryDesigns } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import {
+  createSheinStudioBatchTasks,
+  type SheinStudioBatchTaskCreationResult,
+} from "@/lib/api/shein-studio-batches";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import {
   createGroupedSheinReviewTasks,
@@ -15,6 +19,7 @@ import type {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
+  SheinStudioBatchDetail,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -60,6 +65,7 @@ export function useSheinStudioTaskCreationAction({
   setIsCreatingTasks,
   sheinStoreId,
   hasLocalWorkflowStateRef,
+  itemizedBatchContext,
 }: {
   activeSelection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
@@ -87,6 +93,11 @@ export function useSheinStudioTaskCreationAction({
   setIsCreatingTasks: (value: boolean) => void;
   sheinStoreId: string;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
+  itemizedBatchContext?: {
+    batchId: string;
+    detail: SheinStudioBatchDetail;
+    onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
+  };
 }) {
   async function handleCreateTasks() {
     if (!activeSelection?.variantId) {
@@ -124,7 +135,14 @@ export function useSheinStudioTaskCreationAction({
     try {
       let created: SheinStudioCreatedTask[] = [];
       let creationWarnings: GroupedSheinTaskCreationWarning[] = [];
-      if (groupedSelections.length > 0) {
+      if (itemizedBatchContext) {
+        const result = await createSheinStudioBatchTasks(
+          itemizedBatchContext.batchId,
+          approved.map((design) => design.id),
+        );
+        created = result.createdTasks;
+        itemizedBatchContext.onCreated(result);
+      } else if (groupedSelections.length > 0) {
         const result = await createGroupedSheinReviewTasks({
               prompt,
               groupedImageMode,
@@ -184,7 +202,7 @@ export function useSheinStudioTaskCreationAction({
       hasLocalWorkflowStateRef.current = true;
       setCreatedTasks(created);
       setCreatingMessage(
-        groupedSelections.length > 0
+        groupedSelections.length > 0 && !itemizedBatchContext
           ? `已为 ${created.length} 个 SDS 商品生成 SHEIN 资料任务。请在下方打开并审核。`
           : `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
       );

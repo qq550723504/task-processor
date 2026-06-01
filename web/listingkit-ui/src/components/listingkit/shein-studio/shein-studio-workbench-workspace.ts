@@ -5,6 +5,8 @@ import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/sh
 import {
   evaluateImportedGalleryDesigns,
   mergeSheinStudioDraftState,
+  flattenItemizedBatchDesigns,
+  type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
   loadLocalSheinStudioDraftSnapshot,
@@ -393,6 +395,33 @@ export function useSheinStudioBatchActions({
     workbench,
   ]);
 
+  const handleLoadHydratedBatch = useCallback((
+    batch: SheinStudioWorkbenchHydratedBatch,
+  ) => {
+    const flattenedDesigns = flattenItemizedBatchDesigns(batch.detail);
+    hasLocalWorkflowStateRef.current = true;
+    setActiveBatchId(batch.savedBatch.id);
+    setActiveSheinStudioBatchId(batch.savedBatch.id);
+    workbench.applyHydratedBatch(batch);
+    hasCustomizedSdsSelectionRef.current =
+      (batch.savedBatch.selectedSdsImages?.length ?? 0) > 0;
+    setEffectiveStep(
+      resolveSheinStudioEffectiveStep({
+        activeStep,
+        createdTaskCount: batch.savedBatch.createdTasks.length,
+        designCount: flattenedDesigns.length,
+      }),
+    );
+    workbench.setField("saveMessage", `已载入批次：${batch.savedBatch.name}`);
+  }, [
+    activeStep,
+    hasCustomizedSdsSelectionRef,
+    hasLocalWorkflowStateRef,
+    setActiveBatchId,
+    setEffectiveStep,
+    workbench,
+  ]);
+
   const handleDeleteBatch = useCallback(async (batchID: string) => {
     await deleteSheinStudioBatch(batchID);
     workbench.setField("savedBatches", await listSheinStudioBatches());
@@ -401,6 +430,7 @@ export function useSheinStudioBatchActions({
   return {
     handleDeleteBatch,
     handleLoadBatch,
+    handleLoadHydratedBatch,
     handleSaveBatch,
   };
 }

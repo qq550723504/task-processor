@@ -7,11 +7,17 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
-import { pickActiveSheinStudioGroup, projectGroupToWorkbench } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import {
+  pickActiveSheinStudioGroup,
+  projectGroupToWorkbench,
+  projectHydratedBatchToWorkbench,
+  type SheinStudioWorkbenchHydratedBatch,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioBatchDetail,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -61,6 +67,7 @@ export type SheinStudioWorkbenchState = {
   isCreatingTasks: boolean;
   regeneratingId: string;
   createdTasks: SheinStudioCreatedTask[];
+  itemizedBatchDetail: SheinStudioBatchDetail | null;
   persistedUpdatedAt: string;
   galleryRatioCheck: SDSRatioMatch | null;
   savedBatches: SheinStudioSavedBatch[];
@@ -108,6 +115,7 @@ export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
 
 export type SheinStudioWorkbenchController = {
   applyBatch: (batch: SheinStudioSavedBatch) => void;
+  applyHydratedBatch: (batch: SheinStudioWorkbenchHydratedBatch) => void;
   applyDraft: (draft: SheinStudioWorkbenchDraftPatch) => void;
   selectGroup: (groupId: string) => void;
   setField: <K extends keyof SheinStudioWorkbenchState>(
@@ -131,6 +139,10 @@ export type SheinStudioWorkbenchAction =
   | {
       type: "apply-batch";
       batch: SheinStudioSavedBatch;
+    }
+  | {
+      type: "apply-hydrated-batch";
+      batch: SheinStudioWorkbenchHydratedBatch;
     }
   | {
       type: "select-group";
@@ -169,6 +181,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     isCreatingTasks: false,
     regeneratingId: "",
     createdTasks: [],
+    itemizedBatchDetail: null,
     persistedUpdatedAt: "",
     galleryRatioCheck: null,
     savedBatches: [],
@@ -213,6 +226,15 @@ export function applySheinStudioWorkbenchBatch(
   };
 }
 
+export function applySheinStudioWorkbenchHydratedBatch(
+  batch: SheinStudioWorkbenchHydratedBatch,
+): SheinStudioWorkbenchAction {
+  return {
+    type: "apply-hydrated-batch",
+    batch,
+  };
+}
+
 export function selectSheinStudioWorkbenchGroup(
   groupId: string,
 ): SheinStudioWorkbenchAction {
@@ -239,6 +261,13 @@ const ACTIVE_GROUP_SYNC_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
   "renderSizeImagesWithSds",
   "designs",
   "selectedIds",
+  "createdTasks",
+]);
+
+const ITEMIZED_OVERRIDE_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
+  "designs",
+  "selectedIds",
+  "generationJobs",
   "createdTasks",
 ]);
 
@@ -346,6 +375,8 @@ export function sheinStudioWorkbenchReducer(
               [field]: next,
             } as Partial<SheinStudioWorkbenchState>)
           : state.groups,
+        itemizedBatchDetail:
+          ITEMIZED_OVERRIDE_FIELDS.has(field) ? null : state.itemizedBatchDetail,
         [field]: next,
       };
     }
@@ -354,6 +385,13 @@ export function sheinStudioWorkbenchReducer(
         {
           ...state,
           ...action.draft,
+          itemizedBatchDetail:
+            "designs" in action.draft ||
+            "selectedIds" in action.draft ||
+            "createdTasks" in action.draft ||
+            "generationJobs" in action.draft
+              ? null
+              : state.itemizedBatchDetail,
           persistedUpdatedAt:
             "updatedAt" in action.draft && typeof action.draft.updatedAt === "string"
               ? action.draft.updatedAt
@@ -392,13 +430,25 @@ export function sheinStudioWorkbenchReducer(
           selectedIds: action.batch.selectedIds,
           generationJobs: action.batch.generationJobs ?? [],
           createdTasks: action.batch.createdTasks,
+          itemizedBatchDetail: null,
           persistedUpdatedAt: action.batch.updatedAt,
         },
         action.batch.groups ?? state.groups,
       );
+    case "apply-hydrated-batch":
+      return projectActiveGroupIntoState(
+        {
+          ...state,
+          ...projectHydratedBatchToWorkbench(action.batch),
+        },
+        action.batch.savedBatch.groups ?? state.groups,
+      );
     case "select-group":
       return projectActiveGroupIntoState(
-        state,
+        {
+          ...state,
+          itemizedBatchDetail: null,
+        },
         state.groups,
         action.groupId,
       );
