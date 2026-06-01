@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
 	"testing"
 	"time"
@@ -573,6 +575,64 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 	}
 }
 
+func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParsedPlatformFromNavigation(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	client := &stubPlatformAdaptWorkflowClient{}
+	svc := &service{
+		repo:                         repo,
+		platformAdaptWorkflowClient:  client,
+		platformAdaptWorkflowEnabled: true,
+	}
+
+	task := &Task{
+		ID:        "task-generation-action-platform-temporal-navigation-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-action-platform-temporal-navigation-1"},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ExecuteTaskGenerationAction(context.Background(), task.ID, &ExecuteGenerationActionRequest{
+		ActionKey:    assetGenerationActionRunPlatformAdaptTemporal,
+		ResponseMode: "patch_only",
+		Target: &AssetGenerationActionTarget{
+			NavigationTarget: &GenerationReviewNavigationTarget{
+				Descriptor: &GenerationNavigationDescriptor{
+					FollowUpReads: []GenerationNavigationFollowUpRead{
+						{Query: &GenerationQueueQuery{Platform: "  WALMART  "}},
+					},
+				},
+				ActionTarget: &AssetGenerationActionTarget{
+					NavigationTarget: &GenerationReviewNavigationTarget{
+						SessionQuery: &GenerationQueueQuery{Platform: "temu"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTaskGenerationAction() error = %v", err)
+	}
+	if len(client.calls) != 1 || client.calls[0].TaskID != task.ID || client.calls[0].Platform != "walmart" {
+		t.Fatalf("platform adapt temporal calls = %+v, want single walmart call for parsed request platform", client.calls)
+	}
+	if result == nil || result.ActionKey != assetGenerationActionRunPlatformAdaptTemporal || result.InteractionMode != "queue_only" {
+		t.Fatalf("result = %+v, want queue_only platform temporal action result", result)
+	}
+	if result.ResponseMode != "patch_only" {
+		t.Fatalf("response mode = %q, want patch_only", result.ResponseMode)
+	}
+	if result.ResolvedTarget == nil || result.ResolvedTarget.QueueQuery == nil || result.ResolvedTarget.QueueQuery.Platform != "walmart" {
+		t.Fatalf("resolved target = %+v, want shared temporal result seam to receive parsed walmart queue query", result.ResolvedTarget)
+	}
+}
+
 func TestResolveLayerTemporalPlatformPrefersTargetQueueQuery(t *testing.T) {
 	t.Parallel()
 
@@ -811,6 +871,60 @@ func TestTaskGenerationLayerTemporalPlatformServiceDelegatesPlatformPhase(t *tes
 		"client.StartPlatformAdaptation(",
 		`fmt.Errorf("platform adaptation temporal workflow is not configured")`,
 		"resolveLayerTemporalPlatform(req)",
+	})
+}
+
+func TestTaskGenerationLayerTemporalPlatformPhaseUsesLocalPlatformParsingHome(t *testing.T) {
+	t.Parallel()
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, "task_generation_action_temporal_platform.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("ParseFile(task_generation_action_temporal_platform.go) error = %v", err)
+	}
+
+	var callNames []string
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		if funcDecl.Name == nil || funcDecl.Name.Name != "run" || funcDecl.Recv == nil || len(funcDecl.Recv.List) != 1 {
+			continue
+		}
+		star, ok := funcDecl.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		ident, ok := star.X.(*ast.Ident)
+		if !ok || ident.Name != "taskGenerationActionTemporalPlatformPhase" {
+			continue
+		}
+
+		ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if name := calledFunctionName(call.Fun); name != "" {
+				callNames = append(callNames, name)
+			}
+			return true
+		})
+		break
+	}
+
+	if len(callNames) == 0 {
+		t.Fatal("task_generation_action_temporal_platform.go should contain method taskGenerationActionTemporalPlatformPhase.run with named calls")
+	}
+
+	assertFunctionCallsContainAll(t, callNames, []string{
+		"resolveTemporalRequestPlatform",
+		"StartPlatformAdaptation",
+		"buildTaskGenerationActionTemporalResultPhase",
+	})
+	assertFunctionCallsExcludeAll(t, callNames, []string{
+		"resolveLayerTemporalPlatform",
 	})
 }
 
