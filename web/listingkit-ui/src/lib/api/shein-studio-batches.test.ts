@@ -6,6 +6,7 @@ import {
   generateSheinStudioBatch,
   getSheinStudioBatchDetail,
   parseSheinStudioBatchDetailResponse,
+  retrySheinStudioBatchItems,
 } from "@/lib/api/shein-studio-batches";
 
 describe("parseSheinStudioBatchDetailResponse", () => {
@@ -18,6 +19,40 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           prompt: "botanical",
           style_count: "3",
           shein_store_id: 7,
+          grouped_image_mode: "shared_by_size",
+          variation_intensity: "strong",
+          artwork_model: "gpt-image-2",
+          transparent_background: true,
+          selection: {
+            product_id: 1,
+            parent_product_id: 1,
+            variant_id: 100,
+            prototype_group_id: 200,
+            layer_id: "layer-1",
+            product_name: "tee",
+            variant_label: "M / black",
+          },
+          grouped_selections: [
+            {
+              selection_id: "1:200:101:layer-2:101",
+              selection: {
+                product_id: 1,
+                parent_product_id: 1,
+                variant_id: 101,
+                prototype_group_id: 200,
+                layer_id: "layer-2",
+                product_name: "hoodie",
+                variant_label: "L / white",
+              },
+              baseline_status: "ready",
+              baseline_reason: "",
+              shein_store_id: "869",
+              eligible: true,
+            },
+          ],
+          selected_sds_images: [
+            { imageUrl: "https://cdn.example.com/sds-1.png", color: "black" },
+          ],
           created_at: "2026-06-01T10:00:00Z",
           updated_at: "2026-06-01T10:05:00Z",
         },
@@ -58,6 +93,68 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         prompt: "botanical",
         styleCount: "3",
         sheinStoreId: 7,
+        variationIntensity: "strong",
+        artworkModel: "gpt-image-2",
+        transparentBackground: true,
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [
+          {
+            imageUrl: "https://cdn.example.com/sds-1.png",
+            color: "black",
+            variantSku: undefined,
+          },
+        ],
+        selectionVariantId: 100,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 100,
+          prototypeGroupId: 200,
+          layerId: "layer-1",
+          productName: "tee",
+          variantLabel: "M / black",
+          printableWidth: undefined,
+          printableHeight: undefined,
+          templateImageUrl: undefined,
+          maskImageUrl: undefined,
+          blankDesignUrl: undefined,
+          mockupImageUrl: undefined,
+          mockupImageUrls: undefined,
+          sizeReferenceImageUrls: undefined,
+          selectedVariantIds: undefined,
+          variants: undefined,
+        },
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+              printableWidth: undefined,
+              printableHeight: undefined,
+              templateImageUrl: undefined,
+              maskImageUrl: undefined,
+              blankDesignUrl: undefined,
+              mockupImageUrl: undefined,
+              mockupImageUrls: undefined,
+              sizeReferenceImageUrls: undefined,
+              selectedVariantIds: undefined,
+              variants: undefined,
+            },
+            baselineKey: undefined,
+            baselineStatus: "ready",
+            baselineReason: "",
+            baselineReasonCode: undefined,
+            sheinStoreId: "869",
+            eligible: true,
+            eligibilityReason: undefined,
+          },
+        ],
         createdAt: "2026-06-01T10:00:00Z",
         updatedAt: "2026-06-01T10:05:00Z",
       },
@@ -120,13 +217,41 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         },
         items: [],
       }),
-    ).toEqual({
+    ).toMatchObject({
       batch: {
         id: "batch-1",
         status: "draft",
         prompt: "botanical",
         styleCount: "3",
         sheinStoreId: 0,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+  });
+
+  it("accepts string shein store ids from the batch detail endpoint", () => {
+    expect(
+      parseSheinStudioBatchDetailResponse({
+        batch: {
+          id: "batch-1",
+          status: "draft",
+          prompt: "botanical",
+          style_count: "3",
+          shein_store_id: "870",
+          created_at: "2026-06-01T10:00:00Z",
+          updated_at: "2026-06-01T10:05:00Z",
+        },
+        items: [],
+      }),
+    ).toMatchObject({
+      batch: {
+        id: "batch-1",
+        status: "draft",
+        prompt: "botanical",
+        styleCount: "3",
+        sheinStoreId: 870,
         createdAt: "2026-06-01T10:00:00Z",
         updatedAt: "2026-06-01T10:05:00Z",
       },
@@ -294,6 +419,58 @@ describe("shein studio batches API", () => {
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: "POST",
       body: JSON.stringify({}),
+    });
+  });
+
+  it("retries failed batch items from the batch endpoint", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "generating",
+            prompt: "botanical",
+            style_count: "3",
+            shein_store_id: 7,
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:06:00Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batch_id: "batch-1",
+                target_group_key: "size:1200x1200",
+                status: "generating",
+                selection_count: 1,
+                created_at: "2026-06-01T10:00:00Z",
+                updated_at: "2026-06-01T10:06:00Z",
+              },
+              designs: [],
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      retrySheinStudioBatchItems("batch-1", ["item-1", "item-2"]),
+    ).resolves.toMatchObject({
+      batch: { id: "batch-1", status: "generating" },
+      items: [{ item: { id: "item-1", status: "generating" }, designs: [] }],
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/batches/batch-1/items/retry",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ item_ids: ["item-1", "item-2"] }),
     });
   });
 

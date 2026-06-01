@@ -271,6 +271,32 @@ const ITEMIZED_OVERRIDE_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
   "createdTasks",
 ]);
 
+function parseWorkbenchTimestamp(value?: string) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isOlderWorkbenchTimestamp(
+  candidate?: string,
+  current?: string,
+) {
+  const candidateTime = parseWorkbenchTimestamp(candidate);
+  const currentTime = parseWorkbenchTimestamp(current);
+  if (candidateTime == null || currentTime == null) {
+    return false;
+  }
+  return candidateTime < currentTime;
+}
+
+function upsertSavedBatchSnapshot(
+  batches: SheinStudioSavedBatch[],
+  nextBatch: SheinStudioSavedBatch,
+) {
+  return [nextBatch, ...batches.filter((batch) => batch.id !== nextBatch.id)].sort(
+    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+  );
+}
+
 function syncActiveGroupFromState(
   state: SheinStudioWorkbenchState,
   patch: Partial<SheinStudioWorkbenchState>,
@@ -436,13 +462,54 @@ export function sheinStudioWorkbenchReducer(
         action.batch.groups ?? state.groups,
       );
     case "apply-hydrated-batch":
-      return projectActiveGroupIntoState(
-        {
+      {
+        if (
+          state.itemizedBatchDetail?.batch.id === action.batch.detail.batch.id &&
+          isOlderWorkbenchTimestamp(
+            action.batch.detail.batch.updatedAt,
+            state.itemizedBatchDetail.batch.updatedAt || state.persistedUpdatedAt,
+          )
+        ) {
+          return state;
+        }
+        const hydratedPatch = projectHydratedBatchToWorkbench(action.batch);
+        const hydratedGroups = action.batch.savedBatch.groups ?? state.groups;
+        const hydratedSavedBatch: SheinStudioSavedBatch = {
+          ...action.batch.savedBatch,
+          designs: hydratedPatch.designs,
+          selectedIds: hydratedPatch.selectedIds,
+          createdTasks: hydratedPatch.createdTasks,
+          generationJobs: hydratedPatch.generationJobs,
+          sessionStatus: action.batch.detail.batch.status,
+          updatedAt:
+            hydratedPatch.persistedUpdatedAt || action.batch.savedBatch.updatedAt,
+        };
+        const baseState = {
           ...state,
-          ...projectHydratedBatchToWorkbench(action.batch),
-        },
-        action.batch.savedBatch.groups ?? state.groups,
-      );
+          ...hydratedPatch,
+          groups: hydratedGroups,
+          savedBatches: upsertSavedBatchSnapshot(
+            state.savedBatches,
+            hydratedSavedBatch,
+          ),
+        };
+        const syncedGroups = syncActiveGroupFromState(baseState, hydratedPatch);
+        const projected = projectActiveGroupIntoState(
+          {
+            ...baseState,
+            groups: syncedGroups,
+          },
+          syncedGroups,
+        );
+        return {
+          ...projected,
+          itemizedBatchDetail: hydratedPatch.itemizedBatchDetail,
+          designs: hydratedPatch.designs,
+          selectedIds: hydratedPatch.selectedIds,
+          createdTasks: hydratedPatch.createdTasks,
+          persistedUpdatedAt: hydratedPatch.persistedUpdatedAt,
+        };
+      }
     case "select-group":
       return projectActiveGroupIntoState(
         {

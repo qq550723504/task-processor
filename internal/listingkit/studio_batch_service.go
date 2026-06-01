@@ -28,7 +28,10 @@ func NewStudioBatchActionValidationError(message string) error {
 
 type StudioBatchService interface {
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
 	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
@@ -67,6 +70,18 @@ func (s *service) GetStudioBatchDetail(ctx context.Context, batchID string) (*St
 
 func (s *service) StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
 	return s.taskStudioBatchOrDefault().StartStudioBatchGeneration(ctx, batchID)
+}
+
+func (s *service) PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
+	return s.taskStudioBatchOrDefault().PrepareStudioBatchGeneration(ctx, batchID)
+}
+
+func (s *service) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
+	return s.taskStudioBatchOrDefault().ResumeStudioBatchGeneration(ctx, batchID)
+}
+
+func (s *service) PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
+	return s.taskStudioBatchOrDefault().PrepareRetryStudioBatchItems(ctx, batchID, req)
 }
 
 func (s *service) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {

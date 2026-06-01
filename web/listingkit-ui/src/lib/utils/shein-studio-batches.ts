@@ -358,26 +358,43 @@ function mergeBatchDetailWithSavedBatchContext(
   const selectedIDs = getApprovedSheinStudioBatchDesignIDs(detail);
   const detailStoreID =
     detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "";
+  const detailPrompt = detail.batch.prompt.trim();
+  const detailStyleCount = detail.batch.styleCount.trim();
+  const detailSelection = detail.batch.selection;
+  const detailGroupedSelections = detail.batch.groupedSelections ?? [];
+  const detailSelectedSdsImages = detail.batch.selectedSdsImages ?? [];
   return {
     id: detail.batch.id,
     name: savedBatch?.name ?? deriveBatchName(detail.batch.prompt),
-    prompt: detail.batch.prompt,
-    styleCount: detail.batch.styleCount,
-    variationIntensity: savedBatch?.variationIntensity,
+    prompt: detailPrompt || savedBatch?.prompt || "",
+    styleCount: detailStyleCount || savedBatch?.styleCount || "1",
+    variationIntensity:
+      detail.batch.variationIntensity ?? savedBatch?.variationIntensity,
     productImageCount: savedBatch?.productImageCount,
     productImagePrompt: savedBatch?.productImagePrompt,
     productImagePrompts: savedBatch?.productImagePrompts,
-    artworkModel: savedBatch?.artworkModel,
-    transparentBackground: savedBatch?.transparentBackground,
-    sheinStoreId: savedBatch?.sheinStoreId || detailStoreID,
+    artworkModel: detail.batch.artworkModel || savedBatch?.artworkModel,
+    transparentBackground:
+      detail.batch.transparentBackground ?? savedBatch?.transparentBackground,
+    sheinStoreId: detailStoreID || savedBatch?.sheinStoreId || "",
     imageStrategy: savedBatch?.imageStrategy,
-    groupedImageMode: savedBatch?.groupedImageMode,
-    selectedSdsImages: savedBatch?.selectedSdsImages,
+    groupedImageMode:
+      detail.batch.groupedImageMode ?? savedBatch?.groupedImageMode,
+    selectedSdsImages:
+      detailSelectedSdsImages.length > 0
+        ? detailSelectedSdsImages
+        : (savedBatch?.selectedSdsImages ?? []),
     renderSizeImagesWithSds: savedBatch?.renderSizeImagesWithSds,
     selectionVariantId:
-      savedBatch?.selectionVariantId ?? savedBatch?.selection?.variantId,
-    selection: savedBatch?.selection,
-    groupedSelections: savedBatch?.groupedSelections ?? [],
+      detail.batch.selectionVariantId ??
+      detailSelection?.variantId ??
+      savedBatch?.selectionVariantId ??
+      savedBatch?.selection?.variantId,
+    selection: detailSelection ?? savedBatch?.selection,
+    groupedSelections:
+      detailGroupedSelections.length > 0
+        ? detailGroupedSelections
+        : (savedBatch?.groupedSelections ?? []),
     groups: savedBatch?.groups ?? [],
     designs,
     selectedIds: selectedIDs,
@@ -386,7 +403,7 @@ function mergeBatchDetailWithSavedBatchContext(
     generationError: savedBatch?.generationError,
     generationJobId: savedBatch?.generationJobId,
     sessionStatus: detail.batch.status,
-    updatedAt: detail.batch.updatedAt,
+    updatedAt: savedBatch?.updatedAt ?? detail.batch.updatedAt,
   };
 }
 

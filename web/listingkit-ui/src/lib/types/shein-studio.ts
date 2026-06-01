@@ -175,6 +175,14 @@ export type SheinStudioBatchRecord = {
   prompt: string;
   styleCount: string;
   sheinStoreId: number;
+  variationIntensity?: SheinStudioVariationIntensity;
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
+  groupedImageMode?: SheinStudioGroupedImageMode;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  selectionVariantId?: number;
+  selection?: SDSProductVariantSelection;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
   createdAt: string;
   updatedAt: string;
 };

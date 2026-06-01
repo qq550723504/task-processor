@@ -29,6 +29,7 @@ const saveSheinStudioDraftWithOptions = vi.fn();
 const setActiveSheinStudioBatchId = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const generateSheinStudioBatch = vi.fn();
+const retrySheinStudioBatchItems = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const createSheinStudioBatchTasks = vi.fn();
 const push = vi.fn();
@@ -101,6 +102,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
   SheinStudioGenerationPanel: (props: {
     groupedImageMode?: string;
     generationError?: string;
+    isGenerating?: boolean;
     onGenerate: () => void;
     onRestorePrompt?: (value: string) => void;
     prompt: string;
@@ -124,7 +126,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
           onChange={(event) => props.setPrompt(event.target.value)}
           value={props.prompt}
         />
-        <button onClick={props.onGenerate} type="button">
+        <button disabled={props.isGenerating} onClick={props.onGenerate} type="button">
           generate styles
         </button>
         {(props.promptHistory ?? []).map((entry) => (
@@ -184,6 +186,8 @@ vi.mock("@/lib/api/sds-baseline", () => ({
 vi.mock("@/lib/api/shein-studio-batches", () => ({
   generateSheinStudioBatch: (...args: unknown[]) =>
     generateSheinStudioBatch(...args),
+  retrySheinStudioBatchItems: (...args: unknown[]) =>
+    retrySheinStudioBatchItems(...args),
   createSheinStudioBatchTasks: (...args: unknown[]) =>
     createSheinStudioBatchTasks(...args),
 }));
@@ -324,6 +328,7 @@ describe("SheinStudioWorkbench", () => {
     updateSheinStudioSession.mockReset();
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     generateSheinStudioBatch.mockReset();
+    retrySheinStudioBatchItems.mockReset();
     deleteSheinStudioBatch.mockResolvedValue(undefined);
     createSheinStudioBatchTasks.mockReset();
     push.mockReset();
@@ -1110,6 +1115,24 @@ describe("SheinStudioWorkbench", () => {
     expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(callCountBeforeEdit);
   });
 
+  it("surfaces dedicated batch hydration failures instead of silently leaving an empty shell", async () => {
+    getSheinStudioHydratedBatch.mockRejectedValue(
+      new Error("Missing ZITADEL session"),
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "当前批次加载失败：Missing ZITADEL session。请重新登录后再继续。",
+        ),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it("keeps dedicated batch prompt edits in local draft without remote autosave", async () => {
     getSheinStudioHydratedBatch.mockResolvedValue(
       buildHydratedBatch({
@@ -1134,6 +1157,337 @@ describe("SheinStudioWorkbench", () => {
       { timeout: 3000 },
     );
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
+  });
+
+  it("uses the hydrated batch version when generating from a dedicated batch route", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        {
+          batch: {
+            ...buildHydratedBatch().detail.batch,
+            updatedAt: "2026-05-26T10:06:00.000Z",
+          },
+        },
+      ),
+    );
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      name: "Retro Cherries",
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    generateSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        status: "review_ready",
+        updatedAt: "2026-05-26T10:07:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:07:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:06:30.000Z",
+              updatedAt: "2026-05-26T10:07:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "batch-1",
+          updatedAt: "2026-05-26T10:06:00.000Z",
+        }),
+        { makeActive: false },
+      ),
+    );
+    await waitFor(() =>
+      expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+    );
+  });
+
+  it("retries failed dedicated batch items when generate is clicked on a partially failed batch", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        {
+          batch: {
+            ...buildHydratedBatch().detail.batch,
+            status: "partially_failed",
+            updatedAt: "2026-05-26T10:06:00.000Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1000x1000",
+                status: "failed",
+                selectionCount: 1,
+                lastError: "excessive system load",
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              designs: [],
+            },
+          ],
+        },
+      ),
+    );
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      name: "Retro Cherries",
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    retrySheinStudioBatchItems.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        status: "generating",
+        updatedAt: "2026-05-26T10:07:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "generating",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:07:00.000Z",
+          },
+          designs: [],
+        },
+      ],
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
+        "item-1",
+      ]),
+    );
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dedicated batch page busy when generate times out but the batch is still running", async () => {
+    getSheinStudioHydratedBatch
+      .mockResolvedValueOnce(
+        buildHydratedBatch(
+          {
+            name: "Retro Cherries",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            batch: {
+              ...buildHydratedBatch().detail.batch,
+              status: "draft",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        buildHydratedBatch(
+          {
+            name: "Retro Cherries",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            batch: {
+              ...buildHydratedBatch().detail.batch,
+              status: "generating",
+              updatedAt: "2026-05-26T10:07:00.000Z",
+            },
+            items: [
+              {
+                item: {
+                  id: "item-1",
+                  batchId: "batch-1",
+                  targetGroupKey: "size:1000x1000",
+                  status: "generating",
+                  selectionCount: 1,
+                  createdAt: "2026-05-26T09:59:00.000Z",
+                  updatedAt: "2026-05-26T10:07:00.000Z",
+                },
+                designs: [],
+              },
+            ],
+          },
+        ),
+      );
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      name: "Retro Cherries",
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    generateSheinStudioBatch.mockRejectedValue(
+      new Error("ListingKit API request failed: 504"),
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+    );
+    await waitFor(() =>
+      expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("正在生成款式图")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "generate styles" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps the dedicated batch page busy when failed-item retry times out but hydration shows retry is still running", async () => {
+    getSheinStudioHydratedBatch
+      .mockResolvedValueOnce(
+        buildHydratedBatch(
+          {
+            name: "Retro Cherries",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            batch: {
+              ...buildHydratedBatch().detail.batch,
+              status: "partially_failed",
+              updatedAt: "2026-05-26T10:06:00.000Z",
+            },
+            items: [
+              {
+                item: {
+                  id: "item-1",
+                  batchId: "batch-1",
+                  targetGroupKey: "size:1000x1000",
+                  status: "failed",
+                  selectionCount: 1,
+                  lastError: "excessive system load",
+                  createdAt: "2026-05-26T09:59:00.000Z",
+                  updatedAt: "2026-05-26T10:06:00.000Z",
+                },
+                designs: [],
+              },
+            ],
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        buildHydratedBatch(
+          {
+            name: "Retro Cherries",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          {
+            batch: {
+              ...buildHydratedBatch().detail.batch,
+              status: "generating",
+              updatedAt: "2026-05-26T10:07:00.000Z",
+            },
+            items: [
+              {
+                item: {
+                  id: "item-1",
+                  batchId: "batch-1",
+                  targetGroupKey: "size:1000x1000",
+                  status: "generating",
+                  selectionCount: 1,
+                  createdAt: "2026-05-26T09:59:00.000Z",
+                  updatedAt: "2026-05-26T10:07:00.000Z",
+                },
+                designs: [],
+              },
+            ],
+          },
+        ),
+      );
+    saveSheinStudioBatch.mockResolvedValue({
+      ...buildHydratedBatch().savedBatch,
+      name: "Retro Cherries",
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    });
+    retrySheinStudioBatchItems.mockRejectedValue(
+      new Error("ListingKit API request failed: 504"),
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+
+    await waitFor(() =>
+      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
+        "item-1",
+      ]),
+    );
+    await waitFor(() =>
+      expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("正在生成款式图")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "generate styles" }),
+    ).toBeDisabled();
   });
 
   it("saves the dedicated batch back into the same batch id from the save button", async () => {
@@ -1287,6 +1641,62 @@ describe("SheinStudioWorkbench", () => {
       <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
     );
 
+    await waitFor(() =>
+      expect(screen.getByText("已加入 1 款")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("已加入 0 款")).not.toBeInTheDocument();
+  });
+
+  it("does not let a newer but incomplete local snapshot erase dedicated batch context", async () => {
+    saveLocalSheinStudioDraftSnapshot(
+      {
+        prompt: "",
+        styleCount: "1",
+        productImageCount: "5",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        artworkModel: "nanobanana",
+        transparentBackground: false,
+        sheinStoreId: "",
+        imageStrategy: "ai_generated",
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [],
+        renderSizeImagesWithSds: true,
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:06:00.000Z",
+      },
+      { batchId: "batch-1" },
+    );
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch({
+        name: "869全品类",
+        prompt: "retro cherries",
+        sheinStoreId: "869",
+        groupedSelections: [groupedSelection],
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      }, {
+        batch: {
+          id: "batch-1",
+          status: "draft",
+          prompt: "",
+          styleCount: "",
+          sheinStoreId: 0,
+          createdAt: "2026-05-26T09:59:00.000Z",
+          updatedAt: "2026-05-26T10:05:00.000Z",
+        },
+      }),
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
     await waitFor(() =>
       expect(screen.getByText("已加入 1 款")).toBeInTheDocument(),
     );

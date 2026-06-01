@@ -39,6 +39,7 @@ func buildRuntimeSupportRepositories() BuildServiceRepositories {
 		Core: CoreRepositoryBuilders{
 			Task:                 BuildListingKitTaskRepository,
 			StudioAsyncJob:       BuildListingKitStudioAsyncJobRepository,
+			StudioBatch:          BuildListingKitStudioBatchRepository,
 			StudioBatchRun:       BuildListingKitStudioBatchRunRepository,
 			Subscription:         BuildListingSubscriptionRepository,
 			Asset:                BuildAssetRepository,

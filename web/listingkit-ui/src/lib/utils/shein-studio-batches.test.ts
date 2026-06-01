@@ -591,7 +591,7 @@ describe("shein studio storage api", () => {
       name: "botanical legacy",
       prompt: "botanical",
       styleCount: "3",
-      sheinStoreId: "store-9",
+      sheinStoreId: "7",
       selection: expect.objectContaining({
         variantId: 100,
         productName: "tee",
@@ -621,7 +621,170 @@ describe("shein studio storage api", () => {
           prompt: "botanical",
         }),
       ],
-      updatedAt: "2026-06-01T10:05:00Z",
+      updatedAt: "2026-06-01T10:04:00Z",
+    });
+  });
+
+  it("keeps saved batch prompt and grouped selection context when detail is still uninitialized", async () => {
+    listSheinStudioSessionBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "869全品类",
+        prompt: "server batch prompt",
+        styleCount: "4",
+        sheinStoreId: "869",
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 100,
+          prototypeGroupId: 200,
+          layerId: "layer-1",
+          productName: "tee",
+          variantLabel: "M / black",
+        },
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "869",
+            eligible: true,
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-06-01T10:04:00Z",
+      },
+    ]);
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "draft",
+        prompt: "",
+        styleCount: "",
+        sheinStoreId: 0,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+
+    await expect(getSheinStudioHydratedBatch("batch-1")).resolves.toMatchObject({
+      savedBatch: expect.objectContaining({
+        id: "batch-1",
+        name: "869全品类",
+        prompt: "server batch prompt",
+        styleCount: "4",
+        sheinStoreId: "869",
+        selection: expect.objectContaining({
+          variantId: 100,
+          productName: "tee",
+        }),
+        groupedSelections: [
+          expect.objectContaining({
+            selectionId: "1:200:101:layer-2:101",
+            sheinStoreId: "869",
+          }),
+        ],
+      }),
+    });
+  });
+
+  it("hydrates dedicated batch selection context from itemized detail when the saved batch summary is skeletal", async () => {
+    listSheinStudioSessionBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "869全品类",
+        prompt: "server batch prompt",
+        styleCount: "4",
+        sheinStoreId: "",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-06-01T10:04:00Z",
+      },
+    ]);
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "generating",
+        prompt: "server batch prompt",
+        styleCount: "4",
+        sheinStoreId: 869,
+        groupedImageMode: "shared_by_size",
+        transparentBackground: true,
+        selectionVariantId: 100,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 100,
+          prototypeGroupId: 200,
+          layerId: "layer-1",
+          productName: "tee",
+          variantLabel: "M / black",
+        },
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "869",
+            eligible: true,
+          },
+        ],
+        selectedSdsImages: [
+          {
+            imageUrl: "https://cdn.example.com/sds-1.png",
+            color: "black",
+          },
+        ],
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+
+    await expect(getSheinStudioHydratedBatch("batch-1")).resolves.toMatchObject({
+      savedBatch: expect.objectContaining({
+        id: "batch-1",
+        sheinStoreId: "869",
+        groupedImageMode: "shared_by_size",
+        transparentBackground: true,
+        selection: expect.objectContaining({
+          variantId: 100,
+          productName: "tee",
+        }),
+        groupedSelections: [
+          expect.objectContaining({
+            selectionId: "1:200:101:layer-2:101",
+            sheinStoreId: "869",
+          }),
+        ],
+        selectedSdsImages: [
+          expect.objectContaining({
+            imageUrl: "https://cdn.example.com/sds-1.png",
+          }),
+        ],
+      }),
     });
   });
 

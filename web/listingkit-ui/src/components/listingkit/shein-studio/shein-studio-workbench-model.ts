@@ -13,6 +13,8 @@ import {
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import type {
   SheinStudioBatchDetail,
+  SheinStudioBatchItemStatus,
+  SheinStudioBatchStatus,
   SheinStudioGroupedWorkspace,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
@@ -99,6 +101,32 @@ export function getApprovedItemizedBatchDesignIDs(
   );
 }
 
+const ACTIVE_ITEMIZED_BATCH_STATUSES = new Set<SheinStudioBatchStatus>([
+  "generating",
+]);
+
+const ACTIVE_ITEMIZED_BATCH_ITEM_STATUSES = new Set<SheinStudioBatchItemStatus>([
+  "pending",
+  "generating",
+  "awaiting_materialization",
+]);
+
+export function hasInFlightItemizedBatchGeneration(
+  detail?: SheinStudioBatchDetail | null,
+) {
+  if (!detail) {
+    return false;
+  }
+  if (
+    detail.items.some((entry) =>
+      ACTIVE_ITEMIZED_BATCH_ITEM_STATUSES.has(entry.item.status),
+    )
+  ) {
+    return true;
+  }
+  return ACTIVE_ITEMIZED_BATCH_STATUSES.has(detail.batch.status);
+}
+
 export function projectHydratedBatchToWorkbench(
   hydratedBatch: SheinStudioWorkbenchHydratedBatch,
 ) {
@@ -135,7 +163,7 @@ export function projectHydratedBatchToWorkbench(
     selectedIds: getApprovedItemizedBatchDesignIDs(detail),
     generationJobs: savedBatch.generationJobs ?? [],
     createdTasks: savedBatch.createdTasks,
-    persistedUpdatedAt: detail.batch.updatedAt,
+    persistedUpdatedAt: detail.batch.updatedAt || savedBatch.updatedAt,
     itemizedBatchDetail: detail,
   };
 }

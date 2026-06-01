@@ -37,6 +37,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				StudioAsyncJob: func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
 					return nil, nil, nil
 				},
+				StudioBatch: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				StudioBatchRun: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
 					return nil, nil, nil
 				},
@@ -408,9 +411,10 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 			Config: &config.Config{},
 		},
 		repositories: &builtRepositories{
-			taskRepository:   taskRepo,
-			assetRepository:  assetRepo,
-			reviewRepository: reviewRepo,
+			taskRepository:        taskRepo,
+			studioBatchRepository: listingkit.NewMemStudioBatchRepository(),
+			assetRepository:       assetRepo,
+			reviewRepository:      reviewRepo,
 		},
 		submit: submitModule{
 			assets: submitAssetDependencies{
@@ -427,6 +431,9 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 
 	if cfg.Core.Repository != taskRepo {
 		t.Fatal("expected task repository to be mapped into service config")
+	}
+	if cfg.Core.StudioBatchRepository == nil {
+		t.Fatal("expected studio batch repository to be mapped into service config")
 	}
 	if cfg.Core.ImageUploadStore != uploadStore {
 		t.Fatal("expected submit image upload store to be mapped into service config")
@@ -1253,6 +1260,9 @@ func buildSuccessfulServiceInputFixture() BuildServiceInput {
 	}
 	input.Repositories.Core.StudioAsyncJob = func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error) {
 		return listingkit.NewMemStudioAsyncJobRepository(), nil, nil
+	}
+	input.Repositories.Core.StudioBatch = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error) {
+		return listingkit.NewMemStudioBatchRepository(), nil, nil
 	}
 	input.Repositories.Core.StudioBatchRun = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
 		return listingkit.NewMemStudioBatchRunRepository(), nil, nil

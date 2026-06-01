@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+const (
+	defaultStudioBatchTransientRetryLimit = 3
+	defaultStudioBatchStaleRecoveryLimit  = defaultStudioBatchTransientRetryLimit + 1
+	defaultStudioBatchAttemptStaleAfter   = 10 * time.Minute
+)
+
 type studioBatchGenerator interface {
 	RunPendingStudioBatchItems(ctx context.Context, batchID string) error
 	RecoverStudioBatchMaterialization(ctx context.Context, batchID string) error
@@ -96,6 +102,10 @@ func (g *studioBatchGenerationService) RecoverStudioBatchMaterialization(ctx con
 			if err := g.recoverGeneratingItem(ctx, detail.Batch, item, attempts); err != nil {
 				return err
 			}
+		case StudioBatchItemStatusFailed:
+			if err := g.recoverFailedItem(ctx, item, attempts); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -150,10 +160,49 @@ func (g *studioBatchGenerationService) recoverGeneratingItem(ctx context.Context
 		}
 		return g.recoverAwaitingMaterializationItem(ctx, batch, *claimedItem, attempts)
 	case StudioGenerationAttemptStatusRunning, StudioGenerationAttemptStatusQueued:
-		return g.failItemAndAttempt(ctx, item, attempt, "generation interrupted before result persisted")
+		if !isStudioBatchAttemptStale(attempt, g.now()) {
+			return nil
+		}
+		message := "generation attempt timed out before result persisted"
+		if shouldRetryStudioBatchRecoveredFailure(message, attempt.AttemptNo) {
+			return g.requeueItemAfterFailedAttempt(ctx, item, attempt, message)
+		}
+		return g.failItemAndAttempt(ctx, item, attempt, message)
 	default:
 		return g.failItemAndAttempt(ctx, item, attempt, firstNonEmpty(strings.TrimSpace(attempt.ErrorMessage), "generation failed"))
 	}
+}
+
+func (g *studioBatchGenerationService) recoverFailedItem(ctx context.Context, item StudioBatchItemRecord, attempts []StudioGenerationAttemptRecord) error {
+	attempt := latestStudioBatchAttempt(attempts)
+	if attempt == nil {
+		return nil
+	}
+	if attempt.Status != StudioGenerationAttemptStatusFailed {
+		return nil
+	}
+	message := firstNonEmpty(strings.TrimSpace(attempt.ErrorMessage), strings.TrimSpace(item.LastError))
+	if !shouldRetryStudioBatchRecoveredFailure(message, attempt.AttemptNo) {
+		return nil
+	}
+	return g.requeueItemAfterFailedAttempt(ctx, item, attempt, message)
+}
+
+func isStudioBatchAttemptStale(attempt *StudioGenerationAttemptRecord, now time.Time) bool {
+	if attempt == nil {
+		return false
+	}
+	referenceTime := attempt.UpdatedAt
+	if attempt.StartedAt != nil && attempt.StartedAt.After(referenceTime) {
+		referenceTime = *attempt.StartedAt
+	}
+	if referenceTime.IsZero() {
+		referenceTime = attempt.CreatedAt
+	}
+	if referenceTime.IsZero() {
+		return false
+	}
+	return now.UTC().Sub(referenceTime.UTC()) >= defaultStudioBatchAttemptStaleAfter
 }
 
 func latestStudioBatchAttempt(attempts []StudioGenerationAttemptRecord) *StudioGenerationAttemptRecord {
@@ -184,71 +233,98 @@ func (g *studioBatchGenerationService) failItemAndAttempt(ctx context.Context, i
 	return g.repo.UpdateStudioBatchItem(ctx, &item)
 }
 
-func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attemptNo int) error {
+func (g *studioBatchGenerationService) requeueItemAfterFailedAttempt(ctx context.Context, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, message string) error {
 	now := g.now()
+	if attempt != nil {
+		attempt.Status = StudioGenerationAttemptStatusFailed
+		attempt.ErrorMessage = message
+		if attempt.FinishedAt == nil {
+			attempt.FinishedAt = timePtr(now)
+		}
+		attempt.UpdatedAt = now
+		if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
+			return err
+		}
+	}
+
+	item.Status = StudioBatchItemStatusPending
+	item.LastError = ""
+	item.UpdatedAt = now
+	return g.repo.UpdateStudioBatchItem(ctx, &item)
+}
+
+func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attemptNo int) error {
 	request := buildStudioBatchItemDesignRequest(batch, item)
 	requestPayload, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
 
-	attempt := &StudioGenerationAttemptRecord{
-		ID:             buildStudioBatchAttemptID(item.ID, attemptNo),
-		ItemID:         item.ID,
-		AttemptNo:      attemptNo,
-		Status:         StudioGenerationAttemptStatusRunning,
-		RequestPayload: string(requestPayload),
-		StartedAt:      timePtr(now),
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
-	if err := g.repo.CreateStudioGenerationAttempt(ctx, attempt); err != nil {
-		return err
-	}
-
-	execution, err := g.execute(ctx, StudioBatchGenerateExecutionInput{
-		BatchID:   batch.ID,
-		ItemID:    item.ID,
-		AttemptID: attempt.ID,
-		Request:   request,
-	})
-	finishedAt := g.now()
-	attempt.FinishedAt = timePtr(finishedAt)
-	attempt.UpdatedAt = finishedAt
-	if err != nil {
-		attempt.Status = StudioGenerationAttemptStatusFailed
-		attempt.ErrorMessage = err.Error()
-		if updateErr := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); updateErr != nil {
-			return updateErr
+	nextAttemptNo := attemptNo
+	for {
+		now := g.now()
+		attempt := &StudioGenerationAttemptRecord{
+			ID:             buildStudioBatchAttemptID(item.ID, nextAttemptNo),
+			ItemID:         item.ID,
+			AttemptNo:      nextAttemptNo,
+			Status:         StudioGenerationAttemptStatusRunning,
+			RequestPayload: string(requestPayload),
+			StartedAt:      timePtr(now),
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
-		item.Status = StudioBatchItemStatusFailed
-		item.LastError = err.Error()
-		item.UpdatedAt = finishedAt
-		return g.repo.UpdateStudioBatchItem(ctx, &item)
-	}
-
-	attempt.Status = StudioGenerationAttemptStatusSucceeded
-	attempt.ResultPayload = strings.TrimSpace(execution.ResultPayload)
-	if attempt.ResultPayload == "" && execution.Response != nil {
-		payload, marshalErr := json.Marshal(execution.Response)
-		if marshalErr != nil {
-			return marshalErr
+		if err := g.repo.CreateStudioGenerationAttempt(ctx, attempt); err != nil {
+			return err
 		}
-		attempt.ResultPayload = string(payload)
-	}
-	if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
-		return err
-	}
 
-	claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, finishedAt)
-	if err != nil {
-		return err
-	}
-	if !claimed || claimedItem == nil {
-		return nil
-	}
+		execution, execErr := g.execute(ctx, StudioBatchGenerateExecutionInput{
+			BatchID:   batch.ID,
+			ItemID:    item.ID,
+			AttemptID: attempt.ID,
+			Request:   request,
+		})
+		finishedAt := g.now()
+		attempt.FinishedAt = timePtr(finishedAt)
+		attempt.UpdatedAt = finishedAt
+		if execErr != nil {
+			attempt.Status = StudioGenerationAttemptStatusFailed
+			attempt.ErrorMessage = execErr.Error()
+			if updateErr := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); updateErr != nil {
+				return updateErr
+			}
+			if shouldRetryStudioBatchAttempt(execErr, nextAttemptNo) {
+				nextAttemptNo++
+				continue
+			}
+			item.Status = StudioBatchItemStatusFailed
+			item.LastError = execErr.Error()
+			item.UpdatedAt = finishedAt
+			return g.repo.UpdateStudioBatchItem(ctx, &item)
+		}
 
-	return g.materializeAttempt(ctx, batch, *claimedItem, attempt, execution.Response)
+		attempt.Status = StudioGenerationAttemptStatusSucceeded
+		attempt.ResultPayload = strings.TrimSpace(execution.ResultPayload)
+		if attempt.ResultPayload == "" && execution.Response != nil {
+			payload, marshalErr := json.Marshal(execution.Response)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			attempt.ResultPayload = string(payload)
+		}
+		if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
+			return err
+		}
+
+		claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, finishedAt)
+		if err != nil {
+			return err
+		}
+		if !claimed || claimedItem == nil {
+			return nil
+		}
+
+		return g.materializeAttempt(ctx, batch, *claimedItem, attempt, execution.Response)
+	}
 }
 
 func (g *studioBatchGenerationService) materializeAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, response *StudioDesignResponse) error {
@@ -322,6 +398,58 @@ func (g *studioBatchGenerationService) now() time.Time {
 		return g.currentTime().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func shouldRetryStudioBatchAttempt(err error, attemptNo int) bool {
+	if err == nil {
+		return false
+	}
+	return shouldRetryStudioBatchAttemptMessage(err.Error(), attemptNo)
+}
+
+func shouldRetryStudioBatchRecoveredFailure(message string, attemptNo int) bool {
+	if isStudioBatchTimeoutFailureMessage(message) {
+		return attemptNo < defaultStudioBatchStaleRecoveryLimit
+	}
+	return shouldRetryStudioBatchAttemptMessage(message, attemptNo)
+}
+
+func shouldRetryStudioBatchAttemptMessage(message string, attemptNo int) bool {
+	if attemptNo >= defaultStudioBatchTransientRetryLimit {
+		return false
+	}
+	message = strings.ToLower(strings.TrimSpace(message))
+	if message == "" {
+		return false
+	}
+	return isStudioBatchTransientRetryMessage(message)
+}
+
+func isStudioBatchTimeoutFailureMessage(message string) bool {
+	message = strings.ToLower(strings.TrimSpace(message))
+	if message == "" {
+		return false
+	}
+	return strings.Contains(message, "timeout") ||
+		strings.Contains(message, "timed out") ||
+		strings.Contains(message, "gateway timeout")
+}
+
+func isStudioBatchTransientRetryMessage(message string) bool {
+	if message == "" {
+		return false
+	}
+	return strings.Contains(message, "excessive system load") ||
+		strings.Contains(message, "rate limit") ||
+		strings.Contains(message, "rate limited") ||
+		strings.Contains(message, "too many requests") ||
+		strings.Contains(message, "temporarily unavailable") ||
+		strings.Contains(message, "timeout") ||
+		strings.Contains(message, "timed out") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "service unavailable") ||
+		strings.Contains(message, "bad gateway") ||
+		strings.Contains(message, "gateway timeout")
 }
 
 func latestRecoverableStudioBatchAttempt(attempts []StudioGenerationAttemptRecord) *StudioGenerationAttemptRecord {

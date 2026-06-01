@@ -1,5 +1,10 @@
 import { apiRequest } from "@/lib/api/client";
 import { parseApiResponseShape } from "@/lib/api/response-schema";
+import {
+  normalizeGroupedSelectionsResponse,
+  normalizeSelectionResponse,
+} from "@/lib/api/shein-studio-sessions";
+import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 import type {
   SheinStudioBatchDetail,
   SheinStudioBatchItem,
@@ -36,7 +41,7 @@ const studioBatchSchema = z
     status: studioBatchStatusSchema,
     prompt: z.string().optional(),
     style_count: z.string().optional(),
-    shein_store_id: z.number().optional(),
+    shein_store_id: z.union([z.number(), z.string()]).optional(),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -119,12 +124,38 @@ export type SheinStudioBatchTaskCreationResult = SheinStudioBatchDetail & {
 function mapStudioBatch(
   payload: z.infer<typeof studioBatchSchema>,
 ): SheinStudioBatchRecord {
+  const selection = normalizeSelectionResponse(
+    payload.selection as Record<string, unknown> | undefined,
+  );
   return {
     id: payload.id,
     status: payload.status as SheinStudioBatchStatus,
     prompt: payload.prompt ?? "",
     styleCount: payload.style_count ?? "1",
-    sheinStoreId: payload.shein_store_id ?? 0,
+    sheinStoreId: Number(payload.shein_store_id ?? 0) || 0,
+    variationIntensity:
+      payload.variation_intensity === "light" ||
+      payload.variation_intensity === "medium" ||
+      payload.variation_intensity === "strong"
+        ? payload.variation_intensity
+        : undefined,
+    artworkModel:
+      typeof payload.artwork_model === "string" ? payload.artwork_model : undefined,
+    transparentBackground:
+      typeof payload.transparent_background === "boolean"
+        ? payload.transparent_background
+        : undefined,
+    groupedImageMode:
+      payload.grouped_image_mode === "per_product" ||
+      payload.grouped_image_mode === "shared_by_size"
+        ? payload.grouped_image_mode
+        : undefined,
+    selectedSdsImages: normalizeSelectedSDSImages(payload.selected_sds_images),
+    selectionVariantId: selection?.variantId,
+    selection,
+    groupedSelections: normalizeGroupedSelectionsResponse(
+      payload.grouped_selections as Array<Record<string, unknown>> | undefined,
+    ),
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
   };
@@ -255,6 +286,20 @@ export async function generateSheinStudioBatch(
     {
       method: "POST",
       body: {},
+    },
+  );
+  return parseSheinStudioBatchDetailResponse(payload);
+}
+
+export async function retrySheinStudioBatchItems(
+  batchId: string,
+  itemIds: string[],
+): Promise<SheinStudioBatchDetail> {
+  const payload = await apiRequest<unknown>(
+    `/studio/batches/${batchId}/items/retry`,
+    {
+      method: "POST",
+      body: { item_ids: itemIds },
     },
   );
   return parseSheinStudioBatchDetailResponse(payload);

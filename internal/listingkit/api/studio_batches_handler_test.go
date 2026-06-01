@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,25 +15,45 @@ import (
 )
 
 type stubStudioBatchActionService struct {
-	startCtx           context.Context
-	startBatchID       string
-	startResult        *listingkit.StudioBatchDetail
-	startErr           error
-	retryCtx           context.Context
-	retryBatchID       string
-	retryReq           *listingkit.RetryStudioBatchItemsRequest
-	retryResult        *listingkit.StudioBatchDetail
-	retryErr           error
-	approveCtx         context.Context
-	approveBatchID     string
-	approveReq         *listingkit.ApproveStudioBatchDesignsRequest
-	approveResult      *listingkit.StudioBatchDetail
-	approveErr         error
-	createTasksCtx     context.Context
-	createTasksBatchID string
-	createTasksReq     *listingkit.CreateStudioBatchTasksRequest
-	createTasksResult  *listingkit.CreateStudioBatchTasksResult
-	createTasksErr     error
+	getBatchDetailCtx     context.Context
+	getBatchDetailBatchID string
+	getBatchDetailResult  *listingkit.StudioBatchDetail
+	getBatchDetailErr     error
+	prepareGenerateCtx    context.Context
+	prepareGenerateBatchID string
+	prepareGenerateResult *listingkit.StudioBatchDetail
+	prepareGenerateErr    error
+	prepareRetryCtx       context.Context
+	prepareRetryBatchID   string
+	prepareRetryReq       *listingkit.RetryStudioBatchItemsRequest
+	prepareRetryResult    *listingkit.StudioBatchDetail
+	prepareRetryErr       error
+	resumeCtx            context.Context
+	resumeBatchID        string
+	resumeResult         *listingkit.StudioBatchDetail
+	resumeErr            error
+	resumeCalled         chan struct{}
+	resumeBlock          chan struct{}
+	resumeCalls          int
+	startCtx              context.Context
+	startBatchID          string
+	startResult           *listingkit.StudioBatchDetail
+	startErr              error
+	retryCtx              context.Context
+	retryBatchID          string
+	retryReq              *listingkit.RetryStudioBatchItemsRequest
+	retryResult           *listingkit.StudioBatchDetail
+	retryErr              error
+	approveCtx            context.Context
+	approveBatchID        string
+	approveReq            *listingkit.ApproveStudioBatchDesignsRequest
+	approveResult         *listingkit.StudioBatchDetail
+	approveErr            error
+	createTasksCtx        context.Context
+	createTasksBatchID    string
+	createTasksReq        *listingkit.CreateStudioBatchTasksRequest
+	createTasksResult     *listingkit.CreateStudioBatchTasksResult
+	createTasksErr        error
 }
 
 func (s *stubStudioBatchActionService) EnsureStudioSession(context.Context, *listingkit.EnsureStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error) {
@@ -61,6 +82,42 @@ func (s *stubStudioBatchActionService) ListStudioBatches(context.Context, int) (
 
 func (s *stubStudioBatchActionService) GetStudioBatch(context.Context, string) (*listingkit.SheinStudioSessionDetail, error) {
 	return nil, nil
+}
+
+func (s *stubStudioBatchActionService) GetStudioBatchDetail(ctx context.Context, batchID string) (*listingkit.StudioBatchDetail, error) {
+	s.getBatchDetailCtx = ctx
+	s.getBatchDetailBatchID = batchID
+	return s.getBatchDetailResult, s.getBatchDetailErr
+}
+
+func (s *stubStudioBatchActionService) PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*listingkit.StudioBatchDetail, error) {
+	s.prepareGenerateCtx = ctx
+	s.prepareGenerateBatchID = batchID
+	return s.prepareGenerateResult, s.prepareGenerateErr
+}
+
+func (s *stubStudioBatchActionService) PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *listingkit.RetryStudioBatchItemsRequest) (*listingkit.StudioBatchDetail, error) {
+	s.prepareRetryCtx = ctx
+	s.prepareRetryBatchID = batchID
+	s.prepareRetryReq = req
+	return s.prepareRetryResult, s.prepareRetryErr
+}
+
+func (s *stubStudioBatchActionService) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*listingkit.StudioBatchDetail, error) {
+	s.resumeCtx = ctx
+	s.resumeBatchID = batchID
+	s.resumeCalls++
+	if s.resumeCalled != nil {
+		select {
+		case <-s.resumeCalled:
+		default:
+			close(s.resumeCalled)
+		}
+	}
+	if s.resumeBlock != nil {
+		<-s.resumeBlock
+	}
+	return s.resumeResult, s.resumeErr
 }
 
 func (s *stubStudioBatchActionService) UpsertStudioBatch(context.Context, *listingkit.UpsertStudioBatchRequest) (*listingkit.SheinStudioSessionDetail, error) {
@@ -103,12 +160,13 @@ func TestStudioBatchGenerateHandlerStartsItemizedGeneration(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioBatchActionService{
-		startResult: &listingkit.StudioBatchDetail{
+		prepareGenerateResult: &listingkit.StudioBatchDetail{
 			Batch: &listingkit.StudioBatchRecord{ID: "batch-1"},
 			Items: []listingkit.StudioBatchItemDetail{{
 				Item: listingkit.StudioBatchItemRecord{ID: "item-1"},
 			}},
 		},
+		resumeCalled: make(chan struct{}),
 	}
 	h := &studioSessionHandler{service: svc}
 	router := gin.New()
@@ -122,12 +180,99 @@ func TestStudioBatchGenerateHandlerStartsItemizedGeneration(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
-	if svc.startBatchID != "batch-1" {
-		t.Fatalf("start batch id = %q, want batch-1", svc.startBatchID)
+	if svc.prepareGenerateBatchID != "batch-1" {
+		t.Fatalf("prepare generate batch id = %q, want batch-1", svc.prepareGenerateBatchID)
+	}
+	select {
+	case <-svc.resumeCalled:
+	case <-time.After(time.Second):
+		t.Fatal("background resume was not launched for generate")
 	}
 	if !strings.Contains(rec.Body.String(), "\"items\"") {
 		t.Fatalf("body = %s, want itemized detail payload", rec.Body.String())
 	}
+}
+
+func TestStudioBatchGetHandlerReturnsItemizedDetail(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		getBatchDetailResult: &listingkit.StudioBatchDetail{
+			Batch: &listingkit.StudioBatchRecord{ID: "batch-1"},
+			Items: []listingkit.StudioBatchItemDetail{{
+				Item: listingkit.StudioBatchItemRecord{ID: "item-1"},
+			}},
+		},
+		resumeCalled: make(chan struct{}),
+	}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/studio/batches/:batch_id", h.GetStudioBatch)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/batches/batch-1", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	select {
+	case <-svc.resumeCalled:
+	case <-time.After(time.Second):
+		t.Fatal("resume flow was not triggered")
+	}
+	if svc.resumeBatchID != "batch-1" {
+		t.Fatalf("resume batch id = %q, want batch-1", svc.resumeBatchID)
+	}
+	if svc.getBatchDetailBatchID != "batch-1" {
+		t.Fatalf("detail batch id = %q, want handler to return current detail", svc.getBatchDetailBatchID)
+	}
+	if !strings.Contains(rec.Body.String(), "\"batch\"") || !strings.Contains(rec.Body.String(), "\"items\"") {
+		t.Fatalf("body = %s, want itemized batch detail payload", rec.Body.String())
+	}
+}
+
+func TestStudioBatchGetHandlerCoalescesConcurrentResumeLaunches(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		getBatchDetailResult: &listingkit.StudioBatchDetail{
+			Batch: &listingkit.StudioBatchRecord{ID: "batch-1"},
+		},
+		resumeCalled: make(chan struct{}),
+		resumeBlock:  make(chan struct{}),
+	}
+	h := &studioSessionHandler{
+		service:          svc,
+		resumeDispatcher: newStudioBatchResumeDispatcher(),
+	}
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/studio/batches/:batch_id", h.GetStudioBatch)
+
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/batches/batch-1", nil)
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+
+	select {
+	case <-svc.resumeCalled:
+	case <-time.After(time.Second):
+		t.Fatal("first resume launch was not triggered")
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/batches/batch-1", nil)
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+
+	if rec1.Code != http.StatusOK || rec2.Code != http.StatusOK {
+		t.Fatalf("statuses = %d/%d, want 200/200", rec1.Code, rec2.Code)
+	}
+	if svc.resumeCalls != 1 {
+		t.Fatalf("resume call count = %d, want 1 coalesced launch", svc.resumeCalls)
+	}
+
+	close(svc.resumeBlock)
 }
 
 func TestStudioBatchApproveDesignsHandlerBindsIDs(t *testing.T) {
@@ -164,9 +309,10 @@ func TestStudioBatchRetryItemsHandlerBindsIDs(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioBatchActionService{
-		retryResult: &listingkit.StudioBatchDetail{
+		prepareRetryResult: &listingkit.StudioBatchDetail{
 			Batch: &listingkit.StudioBatchRecord{ID: "batch-1"},
 		},
+		resumeCalled: make(chan struct{}),
 	}
 	h := &studioSessionHandler{service: svc}
 	router := gin.New()
@@ -180,11 +326,16 @@ func TestStudioBatchRetryItemsHandlerBindsIDs(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
-	if svc.retryBatchID != "batch-1" {
-		t.Fatalf("retry batch id = %q, want batch-1", svc.retryBatchID)
+	if svc.prepareRetryBatchID != "batch-1" {
+		t.Fatalf("prepare retry batch id = %q, want batch-1", svc.prepareRetryBatchID)
 	}
-	if svc.retryReq == nil || len(svc.retryReq.ItemIDs) != 1 || svc.retryReq.ItemIDs[0] != "item-1" {
-		t.Fatalf("retry req = %+v, want bound item id", svc.retryReq)
+	if svc.prepareRetryReq == nil || len(svc.prepareRetryReq.ItemIDs) != 1 || svc.prepareRetryReq.ItemIDs[0] != "item-1" {
+		t.Fatalf("prepare retry req = %+v, want bound item id", svc.prepareRetryReq)
+	}
+	select {
+	case <-svc.resumeCalled:
+	case <-time.After(time.Second):
+		t.Fatal("background resume was not launched for retry")
 	}
 }
 
@@ -193,7 +344,7 @@ func TestStudioBatchRetryItemsHandlerReturnsBadRequestForValidationErrors(t *tes
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioBatchActionService{
-		retryErr: listingkit.NewStudioBatchActionValidationError("item item-1 is not retryable"),
+		prepareRetryErr: listingkit.NewStudioBatchActionValidationError("item item-1 is not retryable"),
 	}
 	h := &studioSessionHandler{service: svc}
 	router := gin.New()
@@ -207,8 +358,8 @@ func TestStudioBatchRetryItemsHandlerReturnsBadRequestForValidationErrors(t *tes
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
 	}
-	if !errors.Is(svc.retryErr, listingkit.ErrStudioBatchActionValidation) {
-		t.Fatalf("retry err = %v, want validation sentinel", svc.retryErr)
+	if !errors.Is(svc.prepareRetryErr, listingkit.ErrStudioBatchActionValidation) {
+		t.Fatalf("prepare retry err = %v, want validation sentinel", svc.prepareRetryErr)
 	}
 }
 

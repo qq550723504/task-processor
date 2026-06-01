@@ -16,7 +16,10 @@ type StudioSessionService interface {
 	ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error)
 	GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error)
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
+	PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
 	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
@@ -129,7 +132,7 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		ApprovedDesignIDs:       []string(session.ApprovedDesignIDs),
 		CreatedTasks:            []SheinStudioCreatedTask(session.CreatedTasks),
 		DesignCount:             designCount,
-		UpdatedAt:               session.UpdatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:               session.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
 

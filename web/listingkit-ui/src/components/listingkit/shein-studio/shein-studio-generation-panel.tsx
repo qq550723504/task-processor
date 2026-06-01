@@ -164,7 +164,9 @@ export function SheinStudioGenerationPanel({
         <ExecutionMetric
           label="当前可执行状态"
           value={
-            !selectionReady
+            isGenerating
+              ? "正在生成款式图"
+              : !selectionReady
               ? "请先选择商品"
               : storeRequiredMessage
                 ? "需先设置批次店铺"
@@ -182,6 +184,8 @@ export function SheinStudioGenerationPanel({
         >
           {storeRequiredMessage
             ? "先回到上方选择批次店铺，再继续生成。"
+            : isGenerating
+              ? "当前批次仍在继续生成，请等待这一轮完成后再继续操作。"
             : "当前条件已齐备，确认下方参数后即可继续生成或创建任务。"}
         </div>
       ) : null}

@@ -53,8 +53,8 @@ export async function buildListingKitProxyResponse({
       : await upstream.text();
 
     const upstreamBodyPreview =
-      !upstream.ok && typeof body === "string"
-        ? body.slice(0, 500)
+      typeof body === "string" && !upstream.ok
+        ? body.slice(0, 1000)
         : undefined;
 
     logListingKitProxyResponse({

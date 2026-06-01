@@ -4,6 +4,7 @@ import {
   buildSheinStudioGenerateRequest,
   buildSheinStudioSelectedVariants,
   getSheinStudioCreateActionDisabledReason,
+  hasInFlightItemizedBatchGeneration,
   mergeSheinStudioDraftState,
   pickActiveSheinStudioGroup,
   projectGroupToWorkbench,
@@ -300,5 +301,65 @@ describe("shein studio workbench model", () => {
         regeneratingId: "design-1",
       }),
     ).toBe("正在重新生成图片");
+  });
+
+  it("treats partially failed batches without active items as not in flight", () => {
+    expect(
+      hasInFlightItemizedBatchGeneration({
+        batch: {
+          id: "batch-1",
+          status: "partially_failed",
+          prompt: "retro cherries",
+          styleCount: "1",
+          sheinStoreId: 869,
+          createdAt: "2026-05-26T10:00:00Z",
+          updatedAt: "2026-05-26T10:05:00Z",
+        },
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "size:1000x1000",
+              status: "failed",
+              selectionCount: 1,
+              createdAt: "2026-05-26T10:00:00Z",
+              updatedAt: "2026-05-26T10:05:00Z",
+            },
+            designs: [],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("treats partially failed batches with pending items as still in flight", () => {
+    expect(
+      hasInFlightItemizedBatchGeneration({
+        batch: {
+          id: "batch-1",
+          status: "partially_failed",
+          prompt: "retro cherries",
+          styleCount: "1",
+          sheinStoreId: 869,
+          createdAt: "2026-05-26T10:00:00Z",
+          updatedAt: "2026-05-26T10:05:00Z",
+        },
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "size:1000x1000",
+              status: "pending",
+              selectionCount: 1,
+              createdAt: "2026-05-26T10:00:00Z",
+              updatedAt: "2026-05-26T10:05:00Z",
+            },
+            designs: [],
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 });

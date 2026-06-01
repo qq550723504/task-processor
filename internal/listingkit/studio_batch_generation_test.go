@@ -3,6 +3,8 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -352,6 +354,167 @@ func TestResumeStudioBatchGenerationPreservesExistingAttemptsAndDesigns(t *testi
 	}
 }
 
+func TestResumeStudioBatchGenerationLeavesFreshRunningAttemptUntouched(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	service := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo: repo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo:        repo,
+			execute:     stubStudioBatchExecutionByItem(map[string]*StudioDesignResponse{}),
+			currentTime: func() time.Time { return now },
+		}),
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "persisted prompt",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusGenerating,
+			SelectionCount:   1,
+			CreatedAt:        now.Add(-2 * time.Minute),
+			UpdatedAt:        now.Add(-2 * time.Minute),
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:        "attempt-1",
+			ItemID:    "item-1",
+			AttemptNo: 1,
+			Status:    StudioGenerationAttemptStatusRunning,
+			StartedAt: timePtr(now.Add(-2 * time.Minute)),
+			CreatedAt: now.Add(-2 * time.Minute),
+			UpdatedAt: now.Add(-2 * time.Minute),
+		}},
+	})
+
+	detail, err := service.ResumeStudioBatchGeneration(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("ResumeStudioBatchGeneration() error = %v", err)
+	}
+
+	if got := detail.Items[0].Item.Status; got != StudioBatchItemStatusGenerating {
+		t.Fatalf("item status = %q, want %q", got, StudioBatchItemStatusGenerating)
+	}
+	if got := detail.Items[0].Attempts[0].Status; got != StudioGenerationAttemptStatusRunning {
+		t.Fatalf("attempt status = %q, want %q", got, StudioGenerationAttemptStatusRunning)
+	}
+}
+
+func TestResumeStudioBatchGenerationRetriesStaleRunningAttemptAndContinuesPendingItems(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	now := time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC)
+	var executed []string
+	service := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo: repo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				executed = append(executed, input.ItemID)
+				return &StudioBatchGenerateExecutionOutput{
+					BatchID: input.BatchID,
+					ItemID:  input.ItemID,
+					Response: &StudioDesignResponse{
+						Images: []StudioGeneratedImage{{
+							ID:       "design-" + input.ItemID,
+							ImageURL: "https://cdn.example.com/" + input.ItemID + ".png",
+						}},
+					},
+				}, nil
+			},
+			currentTime: func() time.Time { return now },
+		}),
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "persisted prompt",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{
+			{
+				ID:               "item-1",
+				BatchID:          "batch-1",
+				TargetGroupKey:   "7001:9001:101:layer-1:101",
+				TargetGroupLabel: "Canvas Tote · Red",
+				GroupMode:        "per_product",
+				Status:           StudioBatchItemStatusGenerating,
+				SelectionCount:   1,
+				CreatedAt:        now.Add(-20 * time.Minute),
+				UpdatedAt:        now.Add(-20 * time.Minute),
+			},
+			{
+				ID:               "item-2",
+				BatchID:          "batch-1",
+				TargetGroupKey:   "7001:9001:102:layer-1:102",
+				TargetGroupLabel: "Canvas Tote · Blue",
+				GroupMode:        "per_product",
+				Status:           StudioBatchItemStatusPending,
+				SelectionCount:   1,
+				CreatedAt:        now.Add(-20 * time.Minute),
+				UpdatedAt:        now.Add(-20 * time.Minute),
+			},
+		},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:        "attempt-1",
+			ItemID:    "item-1",
+			AttemptNo: 1,
+			Status:    StudioGenerationAttemptStatusRunning,
+			StartedAt: timePtr(now.Add(-20 * time.Minute)),
+			CreatedAt: now.Add(-20 * time.Minute),
+			UpdatedAt: now.Add(-20 * time.Minute),
+		}},
+	})
+
+	detail, err := service.ResumeStudioBatchGeneration(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("ResumeStudioBatchGeneration() error = %v", err)
+	}
+
+	if len(detail.Items) != 2 {
+		t.Fatalf("len(detail.Items) = %d, want 2", len(detail.Items))
+	}
+	if got := detail.Items[0].Item.Status; got != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item-1 status = %q, want %q", got, StudioBatchItemStatusReviewReady)
+	}
+	if got := detail.Items[0].Attempts[0].Status; got != StudioGenerationAttemptStatusFailed {
+		t.Fatalf("item-1 attempt status = %q, want %q", got, StudioGenerationAttemptStatusFailed)
+	}
+	if got := len(detail.Items[0].Attempts); got != 2 {
+		t.Fatalf("item-1 attempt count = %d, want 2", got)
+	}
+	if got := detail.Items[0].Attempts[1].Status; got != StudioGenerationAttemptStatusMaterialized {
+		t.Fatalf("item-1 retry attempt status = %q, want %q", got, StudioGenerationAttemptStatusMaterialized)
+	}
+	if len(detail.Items[0].Designs) != 1 || detail.Items[0].Designs[0].ID != "design-item-1" {
+		t.Fatalf("item-1 designs = %+v, want retried materialized design", detail.Items[0].Designs)
+	}
+	if got := detail.Items[1].Item.Status; got != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item-2 status = %q, want %q", got, StudioBatchItemStatusReviewReady)
+	}
+	if len(detail.Items[1].Designs) != 1 || detail.Items[1].Designs[0].ID != "design-item-2" {
+		t.Fatalf("item-2 designs = %+v, want resumed materialized design", detail.Items[1].Designs)
+	}
+	if got := strings.Join(executed, ","); got != "item-1,item-2" {
+		t.Fatalf("executed items = %q, want item-1 retry before item-2 pending", got)
+	}
+}
+
 func TestRunPendingStudioBatchItemsClaimsPendingItemBeforeAttemptCreation(t *testing.T) {
 	t.Parallel()
 
@@ -405,6 +568,129 @@ func TestRunPendingStudioBatchItemsClaimsPendingItemBeforeAttemptCreation(t *tes
 	}
 }
 
+func TestRunPendingStudioBatchItemsAutoRetriesTransientFailuresUntilSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	executions := 0
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo: repo,
+		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			executions++
+			if executions < 3 {
+				return nil, errors.New(`generate studio design 1: 调用 OpenAI image API 失败，已重试3次: image api returned status 400: {"error":{"message":"excessive system load"}}`)
+			}
+			return &StudioBatchGenerateExecutionOutput{
+				Response: testStudioDesignResponse("design-1", "https://cdn.example.com/design-1.png"),
+				ItemID:   input.ItemID,
+				BatchID:  input.BatchID,
+			}, nil
+		},
+		currentTime: func() time.Time { return time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusPending,
+			SelectionCount:   1,
+		}},
+	})
+
+	if err := engine.RunPendingStudioBatchItems(ctx, "batch-1"); err != nil {
+		t.Fatalf("RunPendingStudioBatchItems() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if executions != 3 {
+		t.Fatalf("executions = %d, want 3 attempts including transient retries", executions)
+	}
+	if detail.Items[0].Status != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item status = %q, want review_ready after transient retry recovery", detail.Items[0].Status)
+	}
+	if got := len(detail.AttemptsByItem["item-1"]); got != 3 {
+		t.Fatalf("attempts = %+v, want 3 persisted attempts", detail.AttemptsByItem["item-1"])
+	}
+	if detail.AttemptsByItem["item-1"][0].Status != StudioGenerationAttemptStatusFailed || detail.AttemptsByItem["item-1"][1].Status != StudioGenerationAttemptStatusFailed || detail.AttemptsByItem["item-1"][2].Status != StudioGenerationAttemptStatusMaterialized {
+		t.Fatalf("attempt statuses = %+v, want failed, failed, materialized", detail.AttemptsByItem["item-1"])
+	}
+	if len(detail.DesignsByItem["item-1"]) != 1 || detail.DesignsByItem["item-1"][0].ID != "design-1" {
+		t.Fatalf("designs = %+v, want successful materialized design after retries", detail.DesignsByItem["item-1"])
+	}
+}
+
+func TestRunPendingStudioBatchItemsStopsRetryingTransientFailuresAtAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	executions := 0
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo: repo,
+		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			executions++
+			return nil, errors.New(`generate studio design 1: 调用 OpenAI image API 失败，已重试3次: image api returned status 400: {"error":{"message":"excessive system load"}}`)
+		},
+		currentTime: func() time.Time { return time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusPending,
+			SelectionCount:   1,
+		}},
+	})
+
+	if err := engine.RunPendingStudioBatchItems(ctx, "batch-1"); err != nil {
+		t.Fatalf("RunPendingStudioBatchItems() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if executions != defaultStudioBatchTransientRetryLimit {
+		t.Fatalf("executions = %d, want retry limit %d", executions, defaultStudioBatchTransientRetryLimit)
+	}
+	if detail.Items[0].Status != StudioBatchItemStatusFailed {
+		t.Fatalf("item status = %q, want failed after retry limit", detail.Items[0].Status)
+	}
+	if detail.Items[0].LastError == "" {
+		t.Fatal("expected final failed item to keep retry exhaustion error")
+	}
+	if got := len(detail.AttemptsByItem["item-1"]); got != defaultStudioBatchTransientRetryLimit {
+		t.Fatalf("attempt count = %d, want %d", got, defaultStudioBatchTransientRetryLimit)
+	}
+	if len(detail.DesignsByItem["item-1"]) != 0 {
+		t.Fatalf("designs = %+v, want none after exhausted retries", detail.DesignsByItem["item-1"])
+	}
+}
+
 func TestRecoverStudioBatchMaterializationMarksMissingResultPayloadFailed(t *testing.T) {
 	t.Parallel()
 
@@ -455,7 +741,7 @@ func TestRecoverStudioBatchMaterializationMarksMissingResultPayloadFailed(t *tes
 	}
 }
 
-func TestRecoverStudioBatchMaterializationMarksStrandedGeneratingItemFailed(t *testing.T) {
+func TestRecoverStudioBatchMaterializationMarksStrandedGeneratingItemFailedAtRetryLimit(t *testing.T) {
 	t.Parallel()
 
 	repo := NewMemStudioBatchRepository()
@@ -484,7 +770,7 @@ func TestRecoverStudioBatchMaterializationMarksStrandedGeneratingItemFailed(t *t
 		attempts: []StudioGenerationAttemptRecord{{
 			ID:        "attempt-1",
 			ItemID:    "item-1",
-			AttemptNo: 1,
+			AttemptNo: defaultStudioBatchStaleRecoveryLimit,
 			Status:    StudioGenerationAttemptStatusRunning,
 		}},
 	})
@@ -502,6 +788,69 @@ func TestRecoverStudioBatchMaterializationMarksStrandedGeneratingItemFailed(t *t
 	}
 	if detail.AttemptsByItem["item-1"][0].Status != StudioGenerationAttemptStatusFailed {
 		t.Fatalf("attempt status = %q, want failed", detail.AttemptsByItem["item-1"][0].Status)
+	}
+}
+
+func TestRecoverStudioBatchMaterializationRequeuesRetryableFailedItem(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	now := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo:        repo,
+		currentTime: func() time.Time { return now },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusPartiallyFailed,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "generation attempt timed out before result persisted",
+			SelectionCount:   1,
+			CreatedAt:        now.Add(-20 * time.Minute),
+			UpdatedAt:        now.Add(-20 * time.Minute),
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    defaultStudioBatchTransientRetryLimit,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "generation attempt timed out before result persisted",
+			CreatedAt:    now.Add(-20 * time.Minute),
+			UpdatedAt:    now.Add(-20 * time.Minute),
+		}},
+	})
+
+	if err := engine.RecoverStudioBatchMaterialization(ctx, "batch-1"); err != nil {
+		t.Fatalf("RecoverStudioBatchMaterialization() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if detail.Items[0].Status != StudioBatchItemStatusPending {
+		t.Fatalf("item status = %q, want pending for auto retry", detail.Items[0].Status)
+	}
+	if detail.Items[0].LastError != "" {
+		t.Fatalf("item last error = %q, want cleared", detail.Items[0].LastError)
+	}
+	if detail.AttemptsByItem["item-1"][0].Status != StudioGenerationAttemptStatusFailed {
+		t.Fatalf("attempt status = %q, want failed preserved", detail.AttemptsByItem["item-1"][0].Status)
+	}
+	if got := detail.Batch.Status; got != StudioBatchStatusGenerating {
+		t.Fatalf("batch status = %q, want generating after item requeue", got)
 	}
 }
 

@@ -504,7 +504,7 @@ function cacheStudioSession(
   }
 }
 
-function normalizeSelectionResponse(
+export function normalizeSelectionResponse(
   selection: Record<string, unknown> | undefined,
 ): SDSProductVariantSelection | undefined {
   if (!selection) {
@@ -751,7 +751,7 @@ function groupedSelectionToPayload(selection: GroupedSDSSelectionEligibility) {
   };
 }
 
-function normalizeGroupedSelectionsResponse(
+export function normalizeGroupedSelectionsResponse(
   items: Array<Record<string, unknown>> | undefined,
 ): GroupedSDSSelectionEligibility[] {
   if (!Array.isArray(items)) {

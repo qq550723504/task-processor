@@ -558,6 +558,13 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Session.ID)
 	}
 	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
+	storedSession := repo.sessions[detail.Session.ID]
+	if storedSession == nil {
+		t.Fatalf("stored session missing for %q", detail.Session.ID)
+	}
+	if got, want := list.Items[0].UpdatedAt, storedSession.UpdatedAt.UTC().Format(time.RFC3339Nano); got != want {
+		t.Fatalf("batch list updated_at = %q, want %q", got, want)
+	}
 	listDesignCallsBeforeGetBatch := repo.listDesignsCalls
 	if repo.countDesignsCalls != 1 {
 		t.Fatalf("count design calls = %d, want 1", repo.countDesignsCalls)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -12,14 +13,85 @@ import (
 )
 
 type studioSessionHandler struct {
-	service listingkit.StudioSessionHandlerService
+	service          listingkit.StudioSessionHandlerService
+	resumeDispatcher *studioBatchResumeDispatcher
 }
 
 func NewStudioSessionHandler(service listingkit.StudioSessionHandlerService) (listingkit.StudioSessionHandler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
-	return &studioSessionHandler{service: service}, nil
+	return &studioSessionHandler{
+		service:          service,
+		resumeDispatcher: newStudioBatchResumeDispatcher(),
+	}, nil
+}
+
+type studioBatchResumeDispatcher struct {
+	mu       sync.Mutex
+	inFlight map[string]studioBatchResumeSlot
+}
+
+type studioBatchResumeSlot struct {
+	queued bool
+}
+
+func newStudioBatchResumeDispatcher() *studioBatchResumeDispatcher {
+	return &studioBatchResumeDispatcher{
+		inFlight: make(map[string]studioBatchResumeSlot),
+	}
+}
+
+func (h *studioSessionHandler) ensureResumeDispatcher() *studioBatchResumeDispatcher {
+	if h == nil {
+		return nil
+	}
+	if h.resumeDispatcher == nil {
+		h.resumeDispatcher = newStudioBatchResumeDispatcher()
+	}
+	return h.resumeDispatcher
+}
+
+func (d *studioBatchResumeDispatcher) Launch(batchID string, fn func()) bool {
+	if d == nil || fn == nil {
+		return false
+	}
+	d.mu.Lock()
+	slot, exists := d.inFlight[batchID]
+	if exists {
+		slot.queued = true
+		d.inFlight[batchID] = slot
+		d.mu.Unlock()
+		return false
+	}
+	d.inFlight[batchID] = studioBatchResumeSlot{}
+	d.mu.Unlock()
+
+	go func() {
+		for {
+			fn()
+
+			d.mu.Lock()
+			slot := d.inFlight[batchID]
+			if slot.queued {
+				slot.queued = false
+				d.inFlight[batchID] = slot
+				d.mu.Unlock()
+				continue
+			}
+			delete(d.inFlight, batchID)
+			d.mu.Unlock()
+			return
+		}
+	}()
+	return true
+}
+
+func (h *studioSessionHandler) launchBatchResume(c *gin.Context, batchID string) {
+	resumeCtx := detachedRequestContext(c)
+	h.ensureResumeDispatcher().Launch(batchID, func() {
+		_, _ = h.service.ResumeStudioBatchGeneration(resumeCtx, batchID)
+	})
 }
 
 func (h *studioSessionHandler) EnsureStudioSession(c *gin.Context) {
@@ -113,10 +185,13 @@ func (h *studioSessionHandler) ListStudioBatches(c *gin.Context) {
 }
 
 func (h *studioSessionHandler) GetStudioBatch(c *gin.Context) {
-	detail, err := h.service.GetStudioBatch(requestContext(c), c.Param("batch_id"))
+	batchID := c.Param("batch_id")
+	h.launchBatchResume(c, batchID)
+
+	detail, err := h.service.GetStudioBatchDetail(requestContext(c), batchID)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrStudioSessionNotFound) {
+		if errors.Is(err, listingkit.ErrStudioSessionNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "studio_batch_query_failed", "message": err.Error()})
@@ -126,11 +201,13 @@ func (h *studioSessionHandler) GetStudioBatch(c *gin.Context) {
 }
 
 func (h *studioSessionHandler) StartStudioBatchGeneration(c *gin.Context) {
-	detail, err := h.service.StartStudioBatchGeneration(requestContext(c), c.Param("batch_id"))
+	batchID := c.Param("batch_id")
+	detail, err := h.service.PrepareStudioBatchGeneration(requestContext(c), batchID)
 	if err != nil {
 		writeStudioBatchActionError(c, "studio_batch_generate_failed", err)
 		return
 	}
+	h.launchBatchResume(c, batchID)
 	c.JSON(http.StatusOK, detail)
 }
 
@@ -140,11 +217,13 @@ func (h *studioSessionHandler) RetryStudioBatchItems(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	detail, err := h.service.RetryStudioBatchItems(requestContext(c), c.Param("batch_id"), &req)
+	batchID := c.Param("batch_id")
+	detail, err := h.service.PrepareRetryStudioBatchItems(requestContext(c), batchID, &req)
 	if err != nil {
 		writeStudioBatchActionError(c, "studio_batch_retry_failed", err)
 		return
 	}
+	h.launchBatchResume(c, batchID)
 	c.JSON(http.StatusOK, detail)
 }
 
