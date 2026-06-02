@@ -123,6 +123,52 @@ func TestServiceGetStudioBatchDetailProjectsItemizedGraph(t *testing.T) {
 	}
 }
 
+func TestServiceGetStudioBatchDetailIncludesDraftUpdatedAtFromSavedBatchDraft(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Date(2026, 6, 2, 2, 0, 0, 0, time.UTC)
+	draftUpdatedAt := now.Add(-3 * time.Minute)
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusPending,
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, nil, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := &service{
+		studioBatchRepo: repo,
+		studioSessionRepo: &studioBatchGenerationSessionRepoStub{
+			session: &SheinStudioSession{
+				ID:           "batch-1",
+				SavedAsBatch: true,
+				UpdatedAt:    draftUpdatedAt,
+			},
+		},
+	}
+
+	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.DraftUpdatedAt == nil {
+		t.Fatalf("detail.Batch.DraftUpdatedAt = %+v, want non-nil", detail.Batch)
+	}
+	if got := detail.Batch.DraftUpdatedAt.UTC(); !got.Equal(draftUpdatedAt) {
+		t.Fatalf("detail.Batch.DraftUpdatedAt = %s, want %s", got, draftUpdatedAt)
+	}
+}
+
 func TestServiceGetStudioBatchDetailDerivesActiveBatchStatusFromItems(t *testing.T) {
 	t.Parallel()
 
@@ -840,6 +886,113 @@ func TestServicePrepareRetryStudioBatchItemsResetsSelectedItemsWithoutRunningGen
 	}
 	if len(detail.Items[1].Attempts) != 1 || detail.Items[1].Attempts[0].Status != StudioGenerationAttemptStatusFailed {
 		t.Fatalf("item-2 attempts = %+v, want existing failed attempt preserved before async retry", detail.Items[1].Attempts)
+	}
+}
+
+func TestServiceRetryStudioBatchItemsRefreshesLatestDraftPromptBeforeRunning(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := repo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{
+		ID:                    "batch-1",
+		Status:                StudioBatchStatusFailed,
+		Prompt:                "",
+		StyleCount:            "1",
+		VariationIntensity:    "medium",
+		GroupedImageMode:      "shared_by_size",
+		Selection:             SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+		GroupedSelections:     SheinStudioGroupedSelectionList{{SelectionID: "7001:9001:101:layer-1:101", Selection: testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200), Eligible: true}},
+		TransparentBackground: false,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+	}, []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "invalid request: prompt is required",
+			SelectionIDs:     []string{"7001:9001:101:layer-1:101"},
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "invalid request: prompt is required",
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
+	}, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	sessionRepo := &studioBatchGenerationSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Status:           SheinStudioSessionStatusSelecting,
+			Prompt:           "fresh prompt from draft",
+			StyleCount:       "1",
+			VariationIntensity: "medium",
+			GroupedImageMode: "shared_by_size",
+			Selection:        SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+			GroupedSelections: SheinStudioGroupedSelectionList{
+				{
+					SelectionID: "7001:9001:101:layer-1:101",
+					Selection:   testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200),
+					Eligible:    true,
+				},
+			},
+		},
+	}
+
+	var prompts []string
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				prompts = append(prompts, input.Request.Prompt)
+				return &StudioBatchGenerateExecutionOutput{
+					BatchID: input.BatchID,
+					ItemID:  input.ItemID,
+					Response: &StudioDesignResponse{
+						Images: []StudioGeneratedImage{{
+							ID:       "design-1",
+							ImageURL: "https://cdn.example.com/design-1.png",
+						}},
+					},
+				}, nil
+			},
+			currentTime: func() time.Time { return now.Add(time.Second) },
+		}),
+	})
+
+	detail, err := svc.RetryStudioBatchItems(ctx, "batch-1", &RetryStudioBatchItemsRequest{
+		ItemIDs: []string{"item-1"},
+	})
+	if err != nil {
+		t.Fatalf("RetryStudioBatchItems() error = %v", err)
+	}
+
+	if len(prompts) != 1 {
+		t.Fatalf("len(prompts) = %d, want 1", len(prompts))
+	}
+	if got := prompts[0]; got != "fresh prompt from draft" {
+		t.Fatalf("execution prompt = %q, want refreshed draft prompt", got)
+	}
+	if detail.Batch == nil || detail.Batch.Prompt != "fresh prompt from draft" {
+		t.Fatalf("detail.Batch = %+v, want refreshed draft prompt", detail.Batch)
 	}
 }
 

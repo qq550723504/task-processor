@@ -13,7 +13,7 @@ import (
 
 type taskStudioBatchService struct {
 	repo              StudioBatchRepository
-	studioSessionRepo StudioSessionRepository
+	studioSessionRepo studioBatchSeedSessionRepository
 	generator         studioBatchGenerator
 	currentTime       func() time.Time
 }
@@ -100,7 +100,11 @@ func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batch
 	if err != nil {
 		return nil, err
 	}
-	return projectStudioBatchDetail(detail), nil
+	draftUpdatedAt, draftErr := s.loadStudioBatchDraftUpdatedAt(ctx, normalizedBatchID)
+	if draftErr != nil {
+		return nil, draftErr
+	}
+	return projectStudioBatchDetail(detail, draftUpdatedAt), nil
 }
 
 func (s *taskStudioBatchService) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {
@@ -154,6 +158,10 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 		return nil, NewStudioBatchActionValidationError("item_ids is required")
 	}
 
+	if err := s.syncStudioBatchRetryExecutionConfigFromDraft(ctx, normalizedBatchID); err != nil {
+		return nil, err
+	}
+
 	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.Items))
 	for _, item := range detail.Items {
 		itemsByID[item.ID] = item
@@ -181,6 +189,40 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 	}
 
 	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
+}
+
+func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ctx context.Context, batchID string) error {
+	if s == nil || s.repo == nil || s.studioSessionRepo == nil {
+		return nil
+	}
+
+	session, err := s.studioSessionRepo.GetSession(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	if session == nil || !session.SavedAsBatch {
+		return nil
+	}
+
+	batch, err := s.repo.GetStudioBatch(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	if batch == nil {
+		return nil
+	}
+
+	batch.Prompt = session.Prompt
+	batch.StyleCount = session.StyleCount
+	batch.VariationIntensity = session.VariationIntensity
+	batch.ArtworkModel = session.ArtworkModel
+	batch.SelectedSDSImages = append(SheinStudioSelectedSDSImageList(nil), session.SelectedSDSImages...)
+	batch.TransparentBackground = session.TransparentBackground
+	if storeID, convErr := strconv.ParseInt(strings.TrimSpace(session.SheinStoreID), 10, 64); convErr == nil {
+		batch.SheinStoreID = storeID
+	}
+	batch.UpdatedAt = s.currentTime().UTC()
+	return s.repo.UpdateStudioBatch(ctx, batch)
 }
 
 func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
@@ -238,12 +280,12 @@ func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, bat
 	}, nil
 }
 
-func projectStudioBatchDetail(detail *StudioBatchDetailGraph) *StudioBatchDetail {
+func projectStudioBatchDetail(detail *StudioBatchDetailGraph, draftUpdatedAt *time.Time) *StudioBatchDetail {
 	if detail == nil {
 		return &StudioBatchDetail{}
 	}
 
-	batch := projectStudioBatchRecord(detail.Batch, detail.Items)
+	batch := projectStudioBatchRecord(detail.Batch, detail.Items, draftUpdatedAt)
 	items := make([]StudioBatchItemDetail, 0, len(detail.Items))
 	for _, item := range detail.Items {
 		items = append(items, StudioBatchItemDetail{
@@ -259,7 +301,7 @@ func projectStudioBatchDetail(detail *StudioBatchDetailGraph) *StudioBatchDetail
 	}
 }
 
-func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemRecord) *StudioBatchRecord {
+func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemRecord, draftUpdatedAt *time.Time) *StudioBatchRecord {
 	if batch == nil {
 		return nil
 	}
@@ -267,7 +309,27 @@ func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemR
 	if cloned.Status != StudioBatchStatusTasksCreated {
 		cloned.Status = aggregateStudioBatchStatus(items)
 	}
+	cloned.DraftUpdatedAt = draftUpdatedAt
 	return &cloned
+}
+
+func (s *taskStudioBatchService) loadStudioBatchDraftUpdatedAt(ctx context.Context, batchID string) (*time.Time, error) {
+	if s.studioSessionRepo == nil {
+		return nil, nil
+	}
+	session, err := s.studioSessionRepo.GetSession(ctx, batchID)
+	switch {
+	case err == nil:
+		if session == nil || !session.SavedAsBatch {
+			return nil, nil
+		}
+		updatedAt := session.UpdatedAt.UTC()
+		return &updatedAt, nil
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return nil, nil
+	default:
+		return nil, err
+	}
 }
 
 func normalizeStudioBatchDesignIDs(ids []string) []string {
