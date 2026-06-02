@@ -41,7 +41,7 @@ export function SheinSavedBatchesPanel({
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
-                onClick={() => router.push(`/listing-kits/shein/batches/${batch.id}`)}
+                onClick={() => router.push(`/listing-kits/sds/batches/${batch.id}`)}
                 variant="ghost"
               >
                 打开批次

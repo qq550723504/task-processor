@@ -56,22 +56,6 @@ type stubStudioBatchActionService struct {
 	createTasksErr        error
 }
 
-func (s *stubStudioBatchActionService) EnsureStudioSession(context.Context, *listingkit.EnsureStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error) {
-	return nil, nil
-}
-
-func (s *stubStudioBatchActionService) GetStudioSession(context.Context, string) (*listingkit.SheinStudioSessionDetail, error) {
-	return nil, nil
-}
-
-func (s *stubStudioBatchActionService) UpdateStudioSession(context.Context, string, *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error) {
-	return nil, nil
-}
-
-func (s *stubStudioBatchActionService) ReplaceStudioSessionDesigns(context.Context, string, *listingkit.ReplaceStudioSessionDesignsRequest) (*listingkit.SheinStudioSessionDetail, error) {
-	return nil, nil
-}
-
 func (s *stubStudioBatchActionService) ListStudioSessionGallery(context.Context, int) (*listingkit.StudioSessionGalleryResponse, error) {
 	return nil, nil
 }
@@ -80,7 +64,7 @@ func (s *stubStudioBatchActionService) ListStudioBatches(context.Context, int) (
 	return nil, nil
 }
 
-func (s *stubStudioBatchActionService) GetStudioBatch(context.Context, string) (*listingkit.SheinStudioSessionDetail, error) {
+func (s *stubStudioBatchActionService) GetStudioBatch(context.Context, string) (*listingkit.StudioBatchDraftDetail, error) {
 	return nil, nil
 }
 
@@ -120,7 +104,7 @@ func (s *stubStudioBatchActionService) ResumeStudioBatchGeneration(ctx context.C
 	return s.resumeResult, s.resumeErr
 }
 
-func (s *stubStudioBatchActionService) UpsertStudioBatch(context.Context, *listingkit.UpsertStudioBatchRequest) (*listingkit.SheinStudioSessionDetail, error) {
+func (s *stubStudioBatchActionService) UpsertStudioBatch(context.Context, *listingkit.UpsertStudioBatchRequest) (*listingkit.StudioBatchDraftDetail, error) {
 	return nil, nil
 }
 

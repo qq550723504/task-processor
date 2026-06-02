@@ -144,7 +144,8 @@ export type SheinStudioSavedBatch = {
   generationJobs?: SheinStudioGenerationJob[];
   generationError?: string;
   generationJobId?: string;
-  sessionStatus?: string;
+  batchStatus?: string;
+  draftUpdatedAt?: string;
   updatedAt: string;
 };
 
@@ -184,6 +185,7 @@ export type SheinStudioBatchRecord = {
   selection?: SDSProductVariantSelection;
   groupedSelections?: GroupedSDSSelectionEligibility[];
   createdAt: string;
+  draftUpdatedAt?: string;
   updatedAt: string;
 };
 
@@ -233,7 +235,8 @@ export type SheinStudioDraft = Omit<
   generationError?: string;
   generationJobId?: string;
   generationJobs?: SheinStudioGenerationJob[];
-  sessionStatus?: string;
+  batchStatus?: string;
+  draftUpdatedAt?: string;
   updatedAt: string;
 };
 

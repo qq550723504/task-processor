@@ -3,7 +3,7 @@ import { parseApiResponseShape } from "@/lib/api/response-schema";
 import {
   normalizeGroupedSelectionsResponse,
   normalizeSelectionResponse,
-} from "@/lib/api/shein-studio-sessions";
+} from "@/lib/api/shein-studio-batch-drafts";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 import type {
   SheinStudioBatchDetail,
@@ -43,6 +43,7 @@ const studioBatchSchema = z
     style_count: z.string().optional(),
     shein_store_id: z.union([z.number(), z.string()]).optional(),
     created_at: z.string(),
+    draft_updated_at: z.string().optional(),
     updated_at: z.string(),
   })
   .passthrough();
@@ -157,6 +158,7 @@ function mapStudioBatch(
       payload.grouped_selections as Array<Record<string, unknown>> | undefined,
     ),
     createdAt: payload.created_at,
+    draftUpdatedAt: payload.draft_updated_at,
     updatedAt: payload.updated_at,
   };
 }
@@ -318,3 +320,4 @@ export async function createSheinStudioBatchTasks(
   );
   return parseSheinStudioBatchTaskCreationResponse(payload);
 }
+

@@ -10,13 +10,13 @@ import (
 
 type taskStudioBatchRunServiceConfig struct {
 	repo              StudioBatchRunRepository
-	studioSessionRepo StudioSessionRepository
+	studioSessionRepo studioBatchSeedSessionRepository
 	startRun          func(ctx context.Context, runID string) error
 }
 
 type taskStudioBatchRunService struct {
 	repo              StudioBatchRunRepository
-	studioSessionRepo StudioSessionRepository
+	studioSessionRepo studioBatchSeedSessionRepository
 	startRun          func(ctx context.Context, runID string) error
 }
 

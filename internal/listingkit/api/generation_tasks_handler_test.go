@@ -152,13 +152,24 @@ func (s *stubGenerationTaskService) SubmitTask(ctx context.Context, taskID strin
 	return nil, errors.New("not implemented")
 }
 
-func (s *stubGenerationTaskService) UpdateStudioSession(ctx context.Context, sessionID string, req *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error) {
+func (s *stubGenerationTaskService) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus listingkit.StudioAsyncJobStatus, jobID string, errMessage string) error {
 	s.updatedStudioSessionCtx = ctx
 	s.updatedStudioSessionID = sessionID
-	s.updatedStudioSessionReq = req
-	return &listingkit.SheinStudioSessionDetail{
-		Session: &listingkit.SheinStudioSession{ID: sessionID},
-	}, s.err
+	sessionStatus := listingkit.SheinStudioSessionStatusGenerating
+	switch jobStatus {
+	case listingkit.StudioAsyncJobStatusSucceeded:
+		sessionStatus = listingkit.SheinStudioSessionStatusGenerated
+	case listingkit.StudioAsyncJobStatusFailed:
+		sessionStatus = listingkit.SheinStudioSessionStatusFailed
+	}
+	trimmedJobID := strings.TrimSpace(jobID)
+	trimmedErr := strings.TrimSpace(errMessage)
+	s.updatedStudioSessionReq = &listingkit.UpdateStudioSessionRequest{
+		Status:          &sessionStatus,
+		GenerationJobID: &trimmedJobID,
+		GenerationError: &trimmedErr,
+	}
+	return s.err
 }
 
 func TestGetTaskGenerationTasksReturnsPage(t *testing.T) {

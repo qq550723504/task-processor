@@ -7,13 +7,9 @@ import (
 )
 
 type StudioSessionHandlerService interface {
-	EnsureStudioSession(ctx context.Context, req *EnsureStudioSessionRequest) (*SheinStudioSessionDetail, error)
-	GetStudioSession(ctx context.Context, sessionID string) (*SheinStudioSessionDetail, error)
-	UpdateStudioSession(ctx context.Context, sessionID string, req *UpdateStudioSessionRequest) (*SheinStudioSessionDetail, error)
-	ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error)
 	ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error)
 	ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error)
-	GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error)
+	GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchDraftDetail, error)
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
@@ -22,14 +18,11 @@ type StudioSessionHandlerService interface {
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
 	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
-	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*SheinStudioSessionDetail, error)
+	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error)
 	DeleteStudioBatch(ctx context.Context, batchID string) error
 }
 
 type StudioSessionHandler interface {
-	EnsureStudioSession(c *gin.Context)
-	GetStudioSession(c *gin.Context)
-	UpdateStudioSession(c *gin.Context)
 	ListStudioSessionGallery(c *gin.Context)
 	ListStudioBatches(c *gin.Context)
 	GetStudioBatch(c *gin.Context)

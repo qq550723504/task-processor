@@ -429,7 +429,7 @@ describe("buildRecentBatchSummaries", () => {
         styleCount: "1",
         sheinStoreId: "869",
         generationError: "image generation timeout",
-        sessionStatus: "generating",
+        batchStatus: "generating",
         groups: [
           {
             id: "group-1",

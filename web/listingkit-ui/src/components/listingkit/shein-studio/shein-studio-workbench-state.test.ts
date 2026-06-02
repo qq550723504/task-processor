@@ -343,7 +343,8 @@ describe("sheinStudioWorkbenchReducer", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
-          updatedAt: "2026-05-15T00:00:00.000Z",
+          draftUpdatedAt: "2026-05-15T00:00:00.000Z",
+          updatedAt: "2026-05-15T00:05:00.000Z",
         },
         detail: {
           batch: {
@@ -353,6 +354,7 @@ describe("sheinStudioWorkbenchReducer", () => {
             styleCount: "4",
             sheinStoreId: 88,
             createdAt: "2026-05-15T00:00:00.000Z",
+            draftUpdatedAt: "2026-05-15T00:00:00.000Z",
             updatedAt: "2026-05-15T00:05:00.000Z",
           },
           items: [
@@ -401,7 +403,7 @@ describe("sheinStudioWorkbenchReducer", () => {
     expect(next.itemizedBatchDetail?.batch.id).toBe("batch-1");
     expect(next.designs).toHaveLength(2);
     expect(next.selectedIds).toEqual(["design-1"]);
-    expect(next.persistedUpdatedAt).toBe("2026-05-15T00:05:00.000Z");
+    expect(next.persistedUpdatedAt).toBe("2026-05-15T00:00:00.000Z");
   });
 
   it("selects a saved group and projects it into the current editor state", () => {
@@ -834,7 +836,8 @@ describe("sheinStudioWorkbenchReducer", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
-          updatedAt: "2026-06-01T10:05:00Z",
+          draftUpdatedAt: "2026-06-01T10:05:00Z",
+          updatedAt: "2026-06-01T10:10:00Z",
         },
         detail: {
           batch: {
@@ -844,6 +847,7 @@ describe("sheinStudioWorkbenchReducer", () => {
             styleCount: "2",
             sheinStoreId: 869,
             createdAt: "2026-06-01T10:00:00Z",
+            draftUpdatedAt: "2026-06-01T10:05:00Z",
             updatedAt: "2026-06-01T10:10:00Z",
           },
           items: [
@@ -894,7 +898,7 @@ describe("sheinStudioWorkbenchReducer", () => {
       styleCount: "2",
       selectedIds: ["design-1"],
       updatedAt: "2026-06-01T10:10:00Z",
-      sessionStatus: "review_ready",
+      batchStatus: "review_ready",
     });
     expect(next.savedBatches[0]?.designs).toHaveLength(2);
     expect(next.savedBatches[0]?.designs.map((design) => design.id)).toEqual([

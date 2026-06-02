@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
-import { parseStudioSessionDetailResponse } from "@/lib/api/shein-studio-session-schema";
+import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-schema";
 import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
@@ -24,7 +24,7 @@ import type {
 } from "@/lib/types/shein-studio";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 
-export type StudioSessionStatus =
+export type StudioBatchDraftStatus =
   | "selecting"
   | "generating"
   | "generated"
@@ -32,57 +32,61 @@ export type StudioSessionStatus =
   | "failed"
   | "tasks_created";
 
-export type StudioSessionDetailResponse = {
-  session?: {
-    id: string;
-    tenant_id?: string;
-    batch_name?: string;
-    status?: StudioSessionStatus;
-    selection?: Record<string, unknown>;
-    prompt?: string;
-    style_count?: string;
-    variation_intensity?: SheinStudioVariationIntensity;
-    product_image_count?: string;
-    product_image_prompt?: string;
-    product_image_prompts?: SheinStudioProductImagePrompt[];
-    artwork_model?: SheinStudioArtworkModel;
-    image_strategy?: SheinStudioImageStrategy;
-    grouped_image_mode?: SheinStudioGroupedImageMode;
-    selected_sds_images?: SheinStudioSelectedSDSImage[];
-    groups?: Array<Record<string, unknown>>;
-    grouped_selections?: Array<Record<string, unknown>>;
-    transparent_background?: boolean;
-    render_size_images_with_sds?: boolean;
-    shein_store_id?: string;
-    generation_job_id?: string;
-    generation_jobs?: Array<{
-      job_id?: string;
-      target_group_key?: string;
-      target_group_label?: string;
-      status?: "running" | "succeeded" | "failed";
-    }>;
-    generation_error?: string;
-    approved_design_ids?: string[];
-    created_tasks?: RawCreatedTask[];
-    updated_at?: string;
-  };
-  designs?: Array<{
-    id: string;
-    tenant_id?: string;
-    image_url?: string;
-    prompt?: string;
-    revised_prompt?: string;
-    image_model?: string;
-    transparent_background?: boolean;
-    variation_intensity?: SheinStudioVariationIntensity;
-    review_note?: string;
-    role?: string;
-    role_label?: string;
+type StudioBatchDraftRecordResponse = {
+  id: string;
+  tenant_id?: string;
+  batch_name?: string;
+  status?: StudioBatchDraftStatus;
+  selection?: Record<string, unknown>;
+  prompt?: string;
+  style_count?: string;
+  variation_intensity?: SheinStudioVariationIntensity;
+  product_image_count?: string;
+  product_image_prompt?: string;
+  product_image_prompts?: SheinStudioProductImagePrompt[];
+  artwork_model?: SheinStudioArtworkModel;
+  image_strategy?: SheinStudioImageStrategy;
+  grouped_image_mode?: SheinStudioGroupedImageMode;
+  selected_sds_images?: SheinStudioSelectedSDSImage[];
+  groups?: Array<Record<string, unknown>>;
+  grouped_selections?: Array<Record<string, unknown>>;
+  transparent_background?: boolean;
+  render_size_images_with_sds?: boolean;
+  shein_store_id?: string;
+  generation_job_id?: string;
+  generation_jobs?: Array<{
+    job_id?: string;
     target_group_key?: string;
     target_group_label?: string;
-    product_image_urls?: string[];
-    approved?: boolean;
+    status?: "running" | "succeeded" | "failed";
   }>;
+  generation_error?: string;
+  approved_design_ids?: string[];
+  created_tasks?: RawCreatedTask[];
+  updated_at?: string;
+};
+
+type StudioBatchDraftDesignResponse = {
+  id: string;
+  tenant_id?: string;
+  image_url?: string;
+  prompt?: string;
+  revised_prompt?: string;
+  image_model?: string;
+  transparent_background?: boolean;
+  variation_intensity?: SheinStudioVariationIntensity;
+  review_note?: string;
+  role?: string;
+  role_label?: string;
+  target_group_key?: string;
+  target_group_label?: string;
+  product_image_urls?: string[];
+  approved?: boolean;
+};
+
+export type StudioBatchDraftDetailResponse = {
+  batch?: StudioBatchDraftRecordResponse;
+  designs?: StudioBatchDraftDesignResponse[];
 };
 
 type RawCreatedTask = {
@@ -92,8 +96,7 @@ type RawCreatedTask = {
   design_id?: string;
 };
 
-type RawStudioGenerationJob =
-  NonNullable<StudioSessionDetailResponse["session"]>["generation_jobs"];
+type RawStudioGenerationJob = StudioBatchDraftRecordResponse["generation_jobs"];
 
 type StudioBatchListResponse = {
   items?: Array<{
@@ -121,15 +124,14 @@ type StudioBatchListResponse = {
   }>;
 };
 
-const sessionCache = new Map<string, string>();
-const STUDIO_SESSION_TIMEOUT_MS = 15_000;
+const STUDIO_BATCH_DRAFT_TIMEOUT_MS = 15_000;
 
-type StudioSessionRequestOptions = {
+type StudioBatchDraftRequestOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
 };
 
-export function buildStudioSessionSelectionKey(selection?: SDSProductVariantSelection) {
+export function buildStudioBatchDraftSelectionKey(selection?: SDSProductVariantSelection) {
   if (!selection) {
     return "";
   }
@@ -145,164 +147,16 @@ export function buildStudioSessionSelectionKey(selection?: SDSProductVariantSele
   });
 }
 
-export async function ensureSheinStudioSession(
-  selection?: SDSProductVariantSelection,
-  options?: StudioSessionRequestOptions,
-) {
-  if (!selection?.variantId) {
-    return null;
-  }
-  const detail = parseStudioSessionDetailResponse(await apiRequest<unknown>("/studio/sessions", {
-    method: "POST",
-    body: {
-      selection: selectionToPayload(selection),
-    },
-    signal: options?.signal,
-    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-  }));
-  cacheStudioSession(detail, selection);
-  return detail;
-}
-
-export async function getSheinStudioSession(
-  sessionId: string,
-  options?: StudioSessionRequestOptions,
-) {
-  return parseStudioSessionDetailResponse(
-    await apiRequest<unknown>(`/studio/sessions/${sessionId}`, {
-      signal: options?.signal,
-      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-    }),
-  );
-}
-
-export async function updateSheinStudioSession(
-  sessionId: string,
-  patch: {
-    status?: StudioSessionStatus;
-    expectedUpdatedAt?: string;
-    prompt?: string;
-    styleCount?: string;
-    variationIntensity?: SheinStudioVariationIntensity;
-    productImageCount?: string;
-    productImagePrompt?: string;
-    productImagePrompts?: SheinStudioProductImagePrompt[];
-    artworkModel?: string;
-    imageStrategy?: string;
-    groupedImageMode?: SheinStudioGroupedImageMode;
-    selectedSdsImages?: SheinStudioSelectedSDSImage[];
-    groups?: SheinStudioGroupedWorkspace[];
-    groupedSelections?: GroupedSDSSelectionEligibility[];
-    transparentBackground?: boolean;
-    renderSizeImagesWithSds?: boolean;
-    sheinStoreId?: string;
-    generationJobId?: string;
-    generationJobs?: SheinStudioGenerationJob[];
-    generationError?: string;
-    approvedDesignIds?: string[];  
-    createdTasks?: SheinStudioCreatedTask[];
-  },
-  options?: StudioSessionRequestOptions,
-) {
-  return parseStudioSessionDetailResponse(
-    await apiRequest<unknown>(`/studio/sessions/${sessionId}`, {
-      method: "PATCH",
-      body: {
-        status: patch.status,
-        expected_updated_at: patch.expectedUpdatedAt,
-        prompt: patch.prompt,
-        style_count: patch.styleCount,
-        variation_intensity: patch.variationIntensity,
-        product_image_count: patch.productImageCount,
-        product_image_prompt: patch.productImagePrompt,
-        product_image_prompts: patch.productImagePrompts,
-        artwork_model: patch.artworkModel,
-        image_strategy: patch.imageStrategy,
-        grouped_image_mode: patch.groupedImageMode,
-        selected_sds_images: patch.selectedSdsImages,
-        grouped_selections: patch.groupedSelections?.map(groupedSelectionToPayload),
-        transparent_background: patch.transparentBackground,
-        render_size_images_with_sds: patch.renderSizeImagesWithSds,
-        shein_store_id: patch.sheinStoreId,
-        generation_job_id: patch.generationJobId,
-        generation_jobs: patch.generationJobs?.map((job) => ({
-          job_id: job.jobId,
-          target_group_key: job.targetGroupKey,
-          target_group_label: job.targetGroupLabel,
-          status: job.status,
-        })),
-        generation_error: patch.generationError,
-        approved_design_ids: patch.approvedDesignIds,
-        created_tasks: patch.createdTasks,
-      },
-      signal: options?.signal,
-      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-    }),
-  );
-}
-
-export async function replaceSheinStudioSessionDesigns(
-  sessionId: string,
-  input: {
-    expectedUpdatedAt?: string;
-    status?: StudioSessionStatus;
-    approvedDesignIds: string[];
-    designs: SheinStudioGeneratedDesign[];
-  },
-  options?: StudioSessionRequestOptions,
-) {
-  return parseStudioSessionDetailResponse(
-    await apiRequest<unknown>(`/studio/sessions/${sessionId}/designs`, {
-      method: "POST",
-      body: {
-        status: input.status,
-        expected_updated_at: input.expectedUpdatedAt,
-        approved_design_ids: input.approvedDesignIds,
-        designs: input.designs.map((design) => ({
-          id: design.id,
-          image_url: design.imageUrl ?? design.dataUrl,
-          prompt: design.prompt,
-          revised_prompt: design.revisedPrompt,
-          image_model: design.imageModel,
-          transparent_background: design.transparentBackground,
-          variation_intensity: design.variationIntensity,
-          review_note: design.reviewNote,
-          role: design.role,
-          role_label: design.roleLabel,
-          target_group_key: design.targetGroupKey,
-          target_group_label: design.targetGroupLabel,
-          product_image_urls: design.productImageUrls,
-        })),
-      },
-      signal: options?.signal,
-      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-    }),
-  );
-}
-
-export async function listSheinStudioSessionBatches(options?: StudioSessionRequestOptions) {
+export async function listSheinStudioBatchDrafts(options?: StudioBatchDraftRequestOptions) {
   const payload = await apiRequest<unknown>("/studio/batches", {
     signal: options?.signal,
-    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    timeoutMs: options?.timeoutMs ?? STUDIO_BATCH_DRAFT_TIMEOUT_MS,
   });
   const response = payload as StudioBatchListResponse;
   return (response.items ?? []).map(mapStudioBatchListItemToBatch);
 }
 
-export async function getSheinStudioSessionBatch(
-  batchId: string,
-  options?: StudioSessionRequestOptions,
-) {
-  const detail = parseStudioSessionDetailResponse(
-    await apiRequest<unknown>(`/studio/batches/${batchId}`, {
-      signal: options?.signal,
-      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
-    }),
-  );
-  return mapStudioSessionDetailToBatch(detail);
-}
-
-export async function upsertSheinStudioSessionBatch(
+export async function upsertSheinStudioBatchDraft(
   input: {
     id?: string;
     expectedUpdatedAt?: string;
@@ -328,12 +182,12 @@ export async function upsertSheinStudioSessionBatch(
     generationJobs?: SheinStudioGenerationJob[];
     designs: SheinStudioGeneratedDesign[];
   },
-  options?: StudioSessionRequestOptions,
+  options?: StudioBatchDraftRequestOptions,
 ) {
   const explicitBatchName = input.name?.trim() || undefined;
   const batchName =
     explicitBatchName ?? (input.id ? undefined : deriveBatchName(input.prompt));
-  const detail = parseStudioSessionDetailResponse(
+  const detail = parseStudioBatchDraftDetailResponse(
     await apiRequest<unknown>("/studio/batches", {
       method: "POST",
       body: {
@@ -380,70 +234,70 @@ export async function upsertSheinStudioSessionBatch(
         })),
       },
       signal: options?.signal,
-      timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+      timeoutMs: options?.timeoutMs ?? STUDIO_BATCH_DRAFT_TIMEOUT_MS,
     }),
   );
-  return mapStudioSessionDetailToBatch(detail);
+  return mapStudioBatchDraftDetailToBatch(detail);
 }
 
-export async function deleteSheinStudioSessionBatch(
+export async function deleteSheinStudioBatchDraft(
   batchId: string,
-  options?: StudioSessionRequestOptions,
+  options?: StudioBatchDraftRequestOptions,
 ) {
   await apiRequest<unknown>(`/studio/batches/${batchId}`, {
     method: "DELETE",
     signal: options?.signal,
-    timeoutMs: options?.timeoutMs ?? STUDIO_SESSION_TIMEOUT_MS,
+    timeoutMs: options?.timeoutMs ?? STUDIO_BATCH_DRAFT_TIMEOUT_MS,
   });
 }
 
-export function mapStudioSessionDetailToDraft(
-  detail: StudioSessionDetailResponse | null | undefined,
+export function mapStudioBatchDraftDetailToDraft(
+  detail: StudioBatchDraftDetailResponse | null | undefined,
 ): SheinStudioDraft | null {
-  if (!detail?.session) {
+  if (!detail?.batch) {
     return null;
   }
 
   const selectedIds =
-    detail.session.approved_design_ids ??
+    detail.batch.approved_design_ids ??
     detail.designs
       ?.filter((design) => design.approved)
       .map((design) => design.id) ??
     [];
 
-  const generationJobs = normalizeGenerationJobs(detail.session.generation_jobs);
+  const generationJobs = normalizeGenerationJobs(detail.batch.generation_jobs);
 
   return normalizeDraft({
-    prompt: detail.session.prompt ?? "",
-    styleCount: detail.session.style_count ?? "1",
-    variationIntensity: detail.session.variation_intensity ?? "medium",
-    productImageCount: detail.session.product_image_count ?? "5",
-    productImagePrompt: detail.session.product_image_prompt ?? "",
-    productImagePrompts: detail.session.product_image_prompts ?? [],
-    artworkModel: detail.session.artwork_model,
-    transparentBackground: detail.session.transparent_background ?? false,
-    sheinStoreId: detail.session.shein_store_id ?? "",
-    imageStrategy: detail.session.image_strategy,
-    groupedImageMode: detail.session.grouped_image_mode,
-    selectedSdsImages: normalizeSelectedSDSImages(detail.session.selected_sds_images),
-    renderSizeImagesWithSds: detail.session.render_size_images_with_sds ?? true,
-    selectionVariantId: normalizeSelectionResponse(detail.session.selection)?.variantId,
-    selection: normalizeSelectionResponse(detail.session.selection),
-    groups: normalizeGroupsResponse(detail.session.groups),
+    prompt: detail.batch.prompt ?? "",
+    styleCount: detail.batch.style_count ?? "1",
+    variationIntensity: detail.batch.variation_intensity ?? "medium",
+    productImageCount: detail.batch.product_image_count ?? "5",
+    productImagePrompt: detail.batch.product_image_prompt ?? "",
+    productImagePrompts: detail.batch.product_image_prompts ?? [],
+    artworkModel: detail.batch.artwork_model,
+    transparentBackground: detail.batch.transparent_background ?? false,
+    sheinStoreId: detail.batch.shein_store_id ?? "",
+    imageStrategy: detail.batch.image_strategy,
+    groupedImageMode: detail.batch.grouped_image_mode,
+    selectedSdsImages: normalizeSelectedSDSImages(detail.batch.selected_sds_images),
+    renderSizeImagesWithSds: detail.batch.render_size_images_with_sds ?? true,
+    selectionVariantId: normalizeSelectionResponse(detail.batch.selection)?.variantId,
+    selection: normalizeSelectionResponse(detail.batch.selection),
+    groups: normalizeGroupsResponse(detail.batch.groups),
     groupedSelections: normalizeGroupedSelectionsResponse(
-      detail.session.grouped_selections,
+      detail.batch.grouped_selections,
     ),
     designs:
       detail.designs?.map((design) => ({
         id: design.id,
         imageUrl: design.image_url,
-        prompt: design.prompt ?? detail.session?.prompt,
+        prompt: design.prompt ?? detail.batch?.prompt,
         revisedPrompt: design.revised_prompt,
-        imageModel: design.image_model ?? detail.session?.artwork_model,
+        imageModel: design.image_model ?? detail.batch?.artwork_model,
         transparentBackground:
-          design.transparent_background ?? detail.session?.transparent_background,
+          design.transparent_background ?? detail.batch?.transparent_background,
         variationIntensity:
-          design.variation_intensity ?? detail.session?.variation_intensity,
+          design.variation_intensity ?? detail.batch?.variation_intensity,
         reviewNote: design.review_note,
         role: design.role,
         roleLabel: design.role_label,
@@ -453,55 +307,36 @@ export function mapStudioSessionDetailToDraft(
       })) ?? [],
     selectedIds,
     createdTasks: normalizeCreatedTasks(
-      detail.session.created_tasks,
+      detail.batch.created_tasks,
       selectedIds,
       detail.designs,
     ),
-    generationError: detail.session.generation_error ?? "",
-    generationJobId: detail.session.generation_job_id ?? "",
+    generationError: detail.batch.generation_error ?? "",
+    generationJobId: detail.batch.generation_job_id ?? "",
     generationJobs:
       generationJobs.length > 0
         ? generationJobs
-        : detail.session.generation_job_id
-          ? [{ jobId: detail.session.generation_job_id, status: "running" }]
+        : detail.batch.generation_job_id
+          ? [{ jobId: detail.batch.generation_job_id, status: "running" }]
           : [],
-    sessionStatus: detail.session.status ?? "",
-    updatedAt: detail.session.updated_at ?? new Date().toISOString(),
+    batchStatus: detail.batch.status ?? "",
+    draftUpdatedAt: detail.batch.updated_at ?? new Date().toISOString(),
+    updatedAt: detail.batch.updated_at ?? new Date().toISOString(),
   });
 }
 
-export function mapStudioSessionDetailToBatch(
-  detail: StudioSessionDetailResponse | null | undefined,
+export function mapStudioBatchDraftDetailToBatch(
+  detail: StudioBatchDraftDetailResponse | null | undefined,
 ): SheinStudioSavedBatch | null {
-  const draft = mapStudioSessionDetailToDraft(detail);
-  if (!draft || !detail?.session?.id) {
+  const draft = mapStudioBatchDraftDetailToDraft(detail);
+  if (!draft || !detail?.batch?.id) {
     return null;
   }
   return {
-    id: detail.session.id,
-    name: detail.session.batch_name ?? deriveBatchName(detail.session.prompt ?? draft.prompt),
+    id: detail.batch.id,
+    name: detail.batch.batch_name ?? deriveBatchName(detail.batch.prompt ?? draft.prompt),
     ...draft,
   };
-}
-
-export function getCachedStudioSessionId(selection?: SDSProductVariantSelection) {
-  return sessionCache.get(buildStudioSessionSelectionKey(selection));
-}
-
-function cacheStudioSession(
-  detail: StudioSessionDetailResponse,
-  selection?: SDSProductVariantSelection,
-) {
-  const sessionId = detail.session?.id;
-  if (!sessionId) {
-    return;
-  }
-  const key = buildStudioSessionSelectionKey(
-    selection ?? normalizeSelectionResponse(detail.session?.selection),
-  );
-  if (key) {
-    sessionCache.set(key, sessionId);
-  }
 }
 
 export function normalizeSelectionResponse(
@@ -595,6 +430,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     designs: [],
     selectedIds: item.approved_design_ids ?? [],
     createdTasks: normalizeCreatedTasks(item.created_tasks, item.approved_design_ids),
+    draftUpdatedAt: item.updated_at ?? new Date().toISOString(),
     updatedAt: item.updated_at ?? new Date().toISOString(),
   } satisfies SheinStudioSavedBatch;
 }

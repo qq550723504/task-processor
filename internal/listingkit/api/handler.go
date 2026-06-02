@@ -82,7 +82,7 @@ type sdsBaselineWarmService interface {
 }
 
 type studioSessionAsyncJobService interface {
-	UpdateStudioSession(ctx context.Context, sessionID string, req *listingkit.UpdateStudioSessionRequest) (*listingkit.SheinStudioSessionDetail, error)
+	SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus listingkit.StudioAsyncJobStatus, jobID string, errMessage string) error
 }
 
 type studioBatchRunHandlerService interface {

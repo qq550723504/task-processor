@@ -2,10 +2,7 @@ import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { evaluateImportedGalleryDesigns } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import {
-  createSheinStudioBatchTasks,
-  type SheinStudioBatchTaskCreationResult,
-} from "@/lib/api/shein-studio-batches";
+import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import {
   createGroupedSheinReviewTasks,
@@ -135,14 +132,7 @@ export function useSheinStudioTaskCreationAction({
     try {
       let created: SheinStudioCreatedTask[] = [];
       let creationWarnings: GroupedSheinTaskCreationWarning[] = [];
-      if (itemizedBatchContext) {
-        const result = await createSheinStudioBatchTasks(
-          itemizedBatchContext.batchId,
-          approved.map((design) => design.id),
-        );
-        created = result.createdTasks;
-        itemizedBatchContext.onCreated(result);
-      } else if (groupedSelections.length > 0) {
+      if (groupedSelections.length > 0) {
         const result = await createGroupedSheinReviewTasks({
               prompt,
               groupedImageMode,
@@ -202,7 +192,7 @@ export function useSheinStudioTaskCreationAction({
       hasLocalWorkflowStateRef.current = true;
       setCreatedTasks(created);
       setCreatingMessage(
-        groupedSelections.length > 0 && !itemizedBatchContext
+        groupedSelections.length > 0
           ? `已为 ${created.length} 个 SDS 商品生成 SHEIN 资料任务。请在下方打开并审核。`
           : `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
       );

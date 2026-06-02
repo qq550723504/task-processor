@@ -41,6 +41,9 @@ func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
 	keys := routeKeys(reg.Routes())
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions")
+	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/:session_id")
+	require.NotContains(t, keys, "PATCH /api/v1/listing-kits/studio/sessions/:session_id")
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions/:session_id/designs")
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions/:session_id/designs/append")
 }
@@ -62,6 +65,9 @@ func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions")
+	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/:session_id")
+	require.NotContains(t, keys, "PATCH /api/v1/listing-kits/studio/sessions/:session_id")
 
 	pools := reg.WorkerPools()
 	require.Len(t, pools, 1)
@@ -79,9 +85,6 @@ func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)  {}
 func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)     {}
 func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)          {}
 func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)          {}
-func (stubStudioSessionRouteHandler) EnsureStudioSession(*gin.Context)        {}
-func (stubStudioSessionRouteHandler) GetStudioSession(*gin.Context)           {}
-func (stubStudioSessionRouteHandler) UpdateStudioSession(*gin.Context)        {}
 
 type stubRouteHandler struct{}
 

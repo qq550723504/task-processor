@@ -1,18 +1,15 @@
 import {
-  buildStudioSessionSelectionKey,
-  deleteSheinStudioSessionBatch,
-  ensureSheinStudioSession,
-  getCachedStudioSessionId,
-  listSheinStudioSessionBatches,
-  mapStudioSessionDetailToDraft,
-  replaceSheinStudioSessionDesigns,
-  upsertSheinStudioSessionBatch,
-  updateSheinStudioSession,
-} from "@/lib/api/shein-studio-sessions";
+  buildStudioBatchDraftSelectionKey,
+  deleteSheinStudioBatchDraft,
+  listSheinStudioBatchDrafts,
+  upsertSheinStudioBatchDraft,
+} from "@/lib/api/shein-studio-batch-drafts";
+import { ApiError } from "@/lib/api/client";
 import { getSheinStudioBatchDetail } from "@/lib/api/shein-studio-batches";
 import {
   normalizeBatch,
   dedupeGeneratedDesignsByID,
+  normalizeDraft,
 } from "@/lib/shein-studio/storage-shared";
 import { enqueueSheinStudioSave } from "@/lib/shein-studio/save-queue";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -33,6 +30,7 @@ import type {
 } from "@/lib/types/shein-studio";
 
 const ACTIVE_BATCH_STORAGE_KEY = "listingkit:shein-studio:active-batch-id";
+const LOCAL_DRAFT_SNAPSHOT_KEY = "listingkit:shein-studio:recent-draft";
 
 export type SheinStudioSaveInput = {
   id?: string;
@@ -60,14 +58,14 @@ export type SheinStudioSaveInput = {
   generationJobs?: SheinStudioGenerationJob[];
 };
 
+type SaveBatchOptions = {
+  makeActive?: boolean;
+};
+
 type SaveDraftOptions = {
   navigationTriggered?: boolean;
   source?: string;
   signal?: AbortSignal;
-};
-
-type SaveBatchOptions = {
-  makeActive?: boolean;
 };
 
 export type SheinStudioHydratedBatch = {
@@ -80,7 +78,7 @@ function buildSheinStudioSaveQueueKey(input: SheinStudioSaveInput) {
   if (batchID) {
     return `batch:${batchID}`;
   }
-  const selectionKey = buildStudioSessionSelectionKey(input.selection);
+  const selectionKey = buildStudioBatchDraftSelectionKey(input.selection);
   if (selectionKey) {
     return `selection:${selectionKey}`;
   }
@@ -89,6 +87,57 @@ function buildSheinStudioSaveQueueKey(input: SheinStudioSaveInput) {
 
 function canUseBatchStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function loadLocalDraftSnapshot() {
+  if (!canUseBatchStorage()) {
+    return null;
+  }
+  const raw = window.localStorage.getItem(LOCAL_DRAFT_SNAPSHOT_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as {
+      batchId?: unknown;
+      draft?: unknown;
+    };
+    const draft = normalizeDraft(
+      parsed && typeof parsed === "object" && "draft" in parsed
+        ? (parsed.draft as Record<string, unknown> | null | undefined)
+        : undefined,
+    );
+    if (!draft) {
+      return null;
+    }
+    return {
+      batchId: typeof parsed?.batchId === "string" ? parsed.batchId : "",
+      draft,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalDraftSnapshot(input: SheinStudioSaveInput, batchId?: string) {
+  if (!canUseBatchStorage()) {
+    return null;
+  }
+  const draft = normalizeDraft({
+    ...input,
+    updatedAt: input.updatedAt || new Date().toISOString(),
+  });
+  if (!draft) {
+    return null;
+  }
+  window.localStorage.setItem(
+    LOCAL_DRAFT_SNAPSHOT_KEY,
+    JSON.stringify({
+      batchId: batchId?.trim() || undefined,
+      draft,
+    }),
+  );
+  return draft;
 }
 
 export function getActiveSheinStudioBatchId() {
@@ -113,9 +162,14 @@ export async function loadSheinStudioDraft(selection?: SDSProductVariantSelectio
   if (!selection?.variantId) {
     return null;
   }
-
-  const detail = await ensureSheinStudioSession(selection);
-  return mapStudioSessionDetailToDraft(detail);
+  const snapshot = loadLocalDraftSnapshot();
+  if (!snapshot?.draft?.selection?.variantId) {
+    return null;
+  }
+  return buildStudioBatchDraftSelectionKey(snapshot.draft.selection) ===
+    buildStudioBatchDraftSelectionKey(selection)
+    ? snapshot.draft
+    : null;
 }
 
 export async function saveSheinStudioDraft(input: SheinStudioSaveInput) {
@@ -124,113 +178,18 @@ export async function saveSheinStudioDraft(input: SheinStudioSaveInput) {
 
 export async function saveSheinStudioDraftWithOptions(
   input: SheinStudioSaveInput,
-  options?: SaveDraftOptions,
+  _options?: SaveDraftOptions,
 ) {
   return enqueueSheinStudioSave(buildSheinStudioSaveQueueKey(input), async () => {
-  const startedAt = performance.now();
-  const normalizedDesigns = dedupeGeneratedDesignsByID(input.designs);
-  const normalizedInput: SheinStudioSaveInput = {
-    ...input,
-    designs: normalizedDesigns,
-  };
-  const body = JSON.stringify(normalizedInput);
-  const bodyBytes = new TextEncoder().encode(body).byteLength;
-  const source = options?.source ?? "unknown";
-
-  console.info("[shein-studio-draft] client save started", {
-    bodyBytes,
-    designCount: normalizedInput.designs.length,
-    navigationTriggered: options?.navigationTriggered ?? false,
-    selectionVariantId: input.selection?.variantId ?? null,
-    source,
-  });
-
-  if (!normalizedInput.selection?.variantId) {
-    return null;
-  }
-  try {
-    const sessionId =
-      getCachedStudioSessionId(normalizedInput.selection) ??
-      (await ensureSheinStudioSession(normalizedInput.selection, {
-        signal: options?.signal,
-      }))?.session?.id;
-    if (!sessionId) {
-      throw new Error("SHEIN Studio session was not initialized");
+    if (!input.selection?.variantId) {
+      return null;
     }
-
-    const status =
-      (normalizedInput.generationJobs?.length ?? 0) > 0
-        ? "generating"
-        : normalizedInput.createdTasks.length > 0
-        ? "tasks_created"
-        : normalizedInput.designs.length > 0
-          ? "reviewing"
-          : "selecting";
-
-    const detail = await updateSheinStudioSession(sessionId, {
-      status,
-      expectedUpdatedAt: normalizedInput.updatedAt,
-      prompt: normalizedInput.prompt,
-      styleCount: normalizedInput.styleCount,
-      variationIntensity: normalizedInput.variationIntensity,
-      productImageCount: normalizedInput.productImageCount,
-      productImagePrompt: normalizedInput.productImagePrompt,
-      productImagePrompts: normalizedInput.productImagePrompts,
-      artworkModel: normalizedInput.artworkModel,
-      imageStrategy: normalizedInput.imageStrategy,
-      groupedImageMode: normalizedInput.groupedImageMode,
-      selectedSdsImages: normalizedInput.selectedSdsImages,
-      transparentBackground: normalizedInput.transparentBackground,
-      renderSizeImagesWithSds: normalizedInput.renderSizeImagesWithSds,
-      sheinStoreId: normalizedInput.sheinStoreId,
-      approvedDesignIds: normalizedInput.selectedIds,
-      createdTasks: normalizedInput.createdTasks,
-      generationJobs: normalizedInput.generationJobs,
-      groups: normalizedInput.groups,
-      groupedSelections: normalizedInput.groupedSelections,
-    }, {
-      signal: options?.signal,
-    });
-
-    const synced =
-      normalizedInput.designs.length > 0 || normalizedInput.selectedIds.length > 0 || normalizedInput.createdTasks.length > 0
-        ? await replaceSheinStudioSessionDesigns(sessionId, {
-            expectedUpdatedAt: detail.session?.updated_at,
-            status,
-            approvedDesignIds: normalizedInput.selectedIds,
-            designs: normalizedInput.designs,
-          }, {
-            signal: options?.signal,
-          })
-        : detail;
-    console.info("[shein-studio-draft] client save completed", {
-      bodyBytes,
-      designCount: normalizedInput.designs.length,
-      draftSaveDurationMs: Math.round(performance.now() - startedAt),
-      draftSaveStatus: "succeeded",
-      navigationTriggered: options?.navigationTriggered ?? false,
-      selectionVariantId: normalizedInput.selection?.variantId ?? null,
-      source,
-    });
-    return mapStudioSessionDetailToDraft(synced);
-  } catch (error) {
-    console.warn("[shein-studio-draft] client save failed", {
-      bodyBytes,
-      designCount: normalizedInput.designs.length,
-      draftSaveDurationMs: Math.round(performance.now() - startedAt),
-      draftSaveStatus: "failed",
-      error: error instanceof Error ? error.message : String(error),
-      navigationTriggered: options?.navigationTriggered ?? false,
-      selectionVariantId: normalizedInput.selection?.variantId ?? null,
-      source,
-    });
-    throw error;
-  }
+    return saveLocalDraftSnapshot(input) ?? null;
   });
 }
 
 export async function listSheinStudioBatches() {
-  return (await listSheinStudioSessionBatches())
+  return (await listSheinStudioBatchDrafts())
     .map((item) => normalizeBatch(item))
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 }
@@ -262,33 +221,49 @@ export async function saveSheinStudioBatch(
   options?: SaveBatchOptions,
 ) {
   return enqueueSheinStudioSave(buildSheinStudioSaveQueueKey(input), async () => {
-    const saved = normalizeBatch(
-      await upsertSheinStudioSessionBatch({
-        id: input.id,
-        expectedUpdatedAt: input.updatedAt,
-        name: input.name?.trim() || undefined,
-        prompt: input.prompt,
-        styleCount: input.styleCount,
-        variationIntensity: input.variationIntensity,
-        productImageCount: input.productImageCount,
-        productImagePrompt: input.productImagePrompt,
-        productImagePrompts: input.productImagePrompts,
-        artworkModel: input.artworkModel,
-        imageStrategy: input.imageStrategy,
-        groupedImageMode: input.groupedImageMode,
-        selectedSdsImages: input.selectedSdsImages,
-        transparentBackground: input.transparentBackground,
-        renderSizeImagesWithSds: input.renderSizeImagesWithSds,
-        sheinStoreId: input.sheinStoreId,
-        selection: input.selection,
-        groups: input.groups,
-        groupedSelections: input.groupedSelections,
-        approvedDesignIds: input.selectedIds,
-        createdTasks: input.createdTasks,
-        generationJobs: input.generationJobs,
-        designs: dedupeGeneratedDesignsByID(input.designs),
-      }),
-    );
+    const buildUpsertInput = (expectedUpdatedAt?: string) => ({
+      id: input.id,
+      expectedUpdatedAt,
+      name: input.name?.trim() || undefined,
+      prompt: input.prompt,
+      styleCount: input.styleCount,
+      variationIntensity: input.variationIntensity,
+      productImageCount: input.productImageCount,
+      productImagePrompt: input.productImagePrompt,
+      productImagePrompts: input.productImagePrompts,
+      artworkModel: input.artworkModel,
+      imageStrategy: input.imageStrategy,
+      groupedImageMode: input.groupedImageMode,
+      selectedSdsImages: input.selectedSdsImages,
+      transparentBackground: input.transparentBackground,
+      renderSizeImagesWithSds: input.renderSizeImagesWithSds,
+      sheinStoreId: input.sheinStoreId,
+      selection: input.selection,
+      groups: input.groups,
+      groupedSelections: input.groupedSelections,
+      approvedDesignIds: input.selectedIds,
+      createdTasks: input.createdTasks,
+      generationJobs: input.generationJobs,
+      designs: dedupeGeneratedDesignsByID(input.designs),
+    });
+    const saveBatch = async (expectedUpdatedAt?: string) =>
+      normalizeBatch(await upsertSheinStudioBatchDraft(buildUpsertInput(expectedUpdatedAt)));
+
+    let saved: ReturnType<typeof normalizeBatch>;
+    try {
+      saved = await saveBatch(input.updatedAt);
+    } catch (error) {
+      const batchID = input.id?.trim();
+      if (!batchID || !shouldRetryStudioBatchSaveConflict(error, input)) {
+        throw error;
+      }
+      const latestBatch = await getSheinStudioHydratedBatch(batchID);
+      saved = await saveBatch(
+        latestBatch.detail.batch.draftUpdatedAt ||
+          latestBatch.savedBatch.draftUpdatedAt ||
+          latestBatch.savedBatch.updatedAt,
+      );
+    }
     if (saved?.id && options?.makeActive !== false) {
       setActiveSheinStudioBatchId(saved.id);
     }
@@ -296,8 +271,19 @@ export async function saveSheinStudioBatch(
   });
 }
 
+function shouldRetryStudioBatchSaveConflict(
+  error: unknown,
+  input: SheinStudioSaveInput,
+) {
+  const batchID = input.id?.trim();
+  if (!batchID) {
+    return false;
+  }
+  return error instanceof ApiError && error.status === 409;
+}
+
 export async function deleteSheinStudioBatch(batchID: string) {
-  await deleteSheinStudioSessionBatch(batchID);
+  await deleteSheinStudioBatchDraft(batchID);
   if (getActiveSheinStudioBatchId() === batchID) {
     setActiveSheinStudioBatchId("");
   }
@@ -402,8 +388,16 @@ function mergeBatchDetailWithSavedBatchContext(
     generationJobs: savedBatch?.generationJobs ?? [],
     generationError: savedBatch?.generationError,
     generationJobId: savedBatch?.generationJobId,
-    sessionStatus: detail.batch.status,
-    updatedAt: savedBatch?.updatedAt ?? detail.batch.updatedAt,
+    batchStatus: detail.batch.status,
+    draftUpdatedAt:
+      detail.batch.draftUpdatedAt ||
+      savedBatch?.draftUpdatedAt ||
+      savedBatch?.updatedAt ||
+      detail.batch.updatedAt,
+    updatedAt:
+      detail.batch.updatedAt ||
+      savedBatch?.updatedAt ||
+      new Date().toISOString(),
   };
 }
 
@@ -414,3 +408,4 @@ function deriveBatchName(prompt: string) {
   }
   return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
 }
+

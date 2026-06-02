@@ -72,7 +72,9 @@ import {
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { getCurrentSubscription } from "@/lib/api/subscription";
+import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
+import { approveSheinStudioBatchDesigns } from "@/lib/api/shein-studio-batches";
 import {
   getSheinStudioHydratedBatch,
   listSheinStudioBatches,
@@ -1136,12 +1138,24 @@ export function SheinStudioWorkbench({
       batchGenerationContext: activeSelection?.variantId
         ? {
             ensureBatch: async () => {
+              const currentBatchId = activeBatchId || initialBatchId || "";
+              const latestHydratedBatch =
+                currentBatchId && initialBatchId
+                  ? await getSheinStudioHydratedBatch(currentBatchId).catch(
+                      () => null,
+                    )
+                  : null;
               const saved = await saveSheinStudioBatch(
                 {
                   ...buildDraftInput(),
-                  ...(activeBatchId ? { id: activeBatchId } : {}),
+                  ...(currentBatchId ? { id: currentBatchId } : {}),
+                  updatedAt:
+                    latestHydratedBatch?.detail.batch.draftUpdatedAt ||
+                    latestHydratedBatch?.savedBatch.draftUpdatedAt ||
+                    latestHydratedBatch?.savedBatch.updatedAt ||
+                    buildDraftInput().updatedAt,
                 },
-                activeBatchId ? { makeActive: false } : undefined,
+                currentBatchId ? { makeActive: false } : undefined,
               );
               if (!saved) {
                 return null;
@@ -1179,7 +1193,9 @@ export function SheinStudioWorkbench({
                 selectedIds: getApprovedItemizedBatchDesignIDs(detail),
                 createdTasks: [],
                 generationJobs: [],
-                updatedAt: savedBatch.updatedAt,
+                draftUpdatedAt:
+                  savedBatch.draftUpdatedAt || savedBatch.updatedAt,
+                updatedAt: detail.batch.updatedAt,
               };
               setActiveBatchId(savedBatch.id);
               setActiveSheinStudioBatchId(savedBatch.id);
@@ -1256,8 +1272,12 @@ export function SheinStudioWorkbench({
                   selectedIds: getApprovedItemizedBatchDesignIDs(nextDetail),
                   createdTasks: result.createdTasks,
                   generationJobs: [],
+                  draftUpdatedAt:
+                    currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
                   updatedAt:
-                    currentActiveBatch?.updatedAt || persistedUpdatedAt,
+                    currentActiveBatch?.updatedAt ||
+                    nextDetail.batch.updatedAt ||
+                    persistedUpdatedAt,
                 };
                 workbenchController.setField("savedBatches", (current) =>
                   upsertSavedBatch(current, nextSavedBatch),
@@ -1325,7 +1345,8 @@ export function SheinStudioWorkbench({
           localSnapshot?.batchId === batchId &&
           isLocalSnapshotNewerThanBatch(
             localSnapshot.draft.updatedAt,
-            hydratedBatch.savedBatch.updatedAt,
+            hydratedBatch.savedBatch.draftUpdatedAt ??
+              hydratedBatch.savedBatch.updatedAt,
           )
             ? mergeDedicatedBatchWithLocalSnapshot(
                 batchId,
@@ -1486,7 +1507,11 @@ export function SheinStudioWorkbench({
       overrides?: Partial<SheinStudioSavedBatch>,
     ) => ({
       id: overrides?.id ?? batch.id,
-      updatedAt: overrides?.updatedAt ?? batch.updatedAt,
+      updatedAt:
+        overrides?.draftUpdatedAt ??
+        overrides?.updatedAt ??
+        batch.draftUpdatedAt ??
+        batch.updatedAt,
       name: overrides?.name ?? batch.name,
       prompt: overrides?.prompt ?? batch.prompt,
       styleCount: overrides?.styleCount ?? batch.styleCount,
@@ -1940,14 +1965,12 @@ export function SheinStudioWorkbench({
 
   const applyItemizedBatchDetail = useCallback(
     (
-      updater: (
-        detail: NonNullable<typeof itemizedBatchDetail>,
-      ) => NonNullable<typeof itemizedBatchDetail>,
+      nextDetail: NonNullable<typeof itemizedBatchDetail>,
+      nextCreatedTasks = createdTasks,
     ) => {
-      if (!activeBatchId || !itemizedBatchDetail) {
+      if (!activeBatchId) {
         return false;
       }
-      const nextDetail = updater(itemizedBatchDetail);
       const nextSavedBatch: SheinStudioSavedBatch = {
         ...(currentActiveBatch ?? {}),
         id: activeBatchId,
@@ -1970,9 +1993,13 @@ export function SheinStudioWorkbench({
         groups,
         designs: flattenItemizedBatchDesigns(nextDetail),
         selectedIds: getApprovedItemizedBatchDesignIDs(nextDetail),
-        createdTasks,
+        createdTasks: nextCreatedTasks,
         generationJobs,
-        updatedAt: currentActiveBatch?.updatedAt || persistedUpdatedAt,
+        draftUpdatedAt: currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
+        updatedAt:
+          nextDetail.batch.updatedAt ||
+          currentActiveBatch?.updatedAt ||
+          persistedUpdatedAt,
       };
       workbenchController.setField("savedBatches", (current) =>
         upsertSavedBatch(current, nextSavedBatch),
@@ -1994,7 +2021,6 @@ export function SheinStudioWorkbench({
       groupedSelections,
       groups,
       imageStrategy,
-      itemizedBatchDetail,
       persistedUpdatedAt,
       productImageCount,
       productImagePrompt,
@@ -2010,9 +2036,74 @@ export function SheinStudioWorkbench({
     ],
   );
 
+  const applyOptimisticItemizedBatchDetail = useCallback(
+    (
+      updater: (
+        detail: NonNullable<typeof itemizedBatchDetail>,
+      ) => NonNullable<typeof itemizedBatchDetail>,
+    ) => {
+      if (!activeBatchId || !itemizedBatchDetail) {
+        return false;
+      }
+      const nextDetail = updater(itemizedBatchDetail);
+      return applyItemizedBatchDetail(nextDetail);
+    },
+    [
+      activeBatchId,
+      applyItemizedBatchDetail,
+      itemizedBatchDetail,
+    ],
+  );
+
   function toggleSelection(designId: string) {
+    if (activeBatchId && itemizedBatchDetail) {
+      const nextSelectedIds = selectedIds.includes(designId)
+        ? selectedIds.filter((item) => item !== designId)
+        : [...selectedIds, designId];
+      const previousDetail = itemizedBatchDetail;
+      if (
+        !applyOptimisticItemizedBatchDetail((detail) => ({
+          ...detail,
+          items: detail.items.map((entry) => ({
+            ...entry,
+            designs: entry.designs.map((design) =>
+              design.id !== designId
+                ? design
+                : {
+                    ...design,
+                    reviewStatus:
+                      design.reviewStatus === "approved"
+                        ? "unreviewed"
+                        : "approved",
+                  },
+            ),
+          })),
+        }))
+      ) {
+        return;
+      }
+      void (async () => {
+        try {
+          const nextDetail = await approveSheinStudioBatchDesigns(
+            activeBatchId,
+            nextSelectedIds,
+          );
+          workbenchController.setField("creatingWarning", "");
+          if (nextDetail) {
+            applyItemizedBatchDetail(nextDetail);
+          }
+        } catch (error) {
+          applyItemizedBatchDetail(previousDetail);
+          workbenchController.setField(
+            "creatingWarning",
+            `批准状态保存失败：${formatSubscriptionApiError(error)}`,
+          );
+        }
+      })();
+      return;
+    }
     if (
-      applyItemizedBatchDetail((detail) => ({
+      applyOptimisticItemizedBatchDetail((detail) => ({
         ...detail,
         items: detail.items.map((entry) => ({
           ...entry,
@@ -2041,7 +2132,7 @@ export function SheinStudioWorkbench({
 
   function handleNoteChange(designId: string, note: string) {
     if (
-      applyItemizedBatchDetail((detail) => ({
+      applyOptimisticItemizedBatchDetail((detail) => ({
         ...detail,
         items: detail.items.map((entry) => ({
           ...entry,

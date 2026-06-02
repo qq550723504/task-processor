@@ -6,13 +6,8 @@ import type { SheinStudioWorkbenchController } from "@/components/listingkit/she
 import {
   buildSheinStudioGenerateRequest,
   hasInFlightItemizedBatchGeneration,
-  STUDIO_SESSION_SYNC_TIMEOUT_MS,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
-import {
-  ensureSheinStudioSession,
-  updateSheinStudioSession,
-} from "@/lib/api/shein-studio-sessions";
 import {
   generateSheinStudioBatch,
   retrySheinStudioBatchItems,
@@ -336,55 +331,9 @@ export function useSheinStudioDesignActions({
         return;
       }
 
-      const sessionSyncPromise = (async () => {
-        try {
-          const sessionDetail = await ensureSheinStudioSession(activeSelection, {
-            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-          });
-          const sessionId = sessionDetail?.session?.id ?? "";
-          if (!sessionId) {
-            return "";
-          }
-          writeListingKitTraceContext({ sessionId });
-          logListingKitTraceEvent("info", "studio generation session synced", {
-            sessionId,
-          });
-          await updateSheinStudioSession(
-            sessionId,
-            {
-              status: "generating",
-              prompt: prompt.trim(),
-              styleCount,
-              variationIntensity,
-              productImageCount,
-              productImagePrompt,
-              productImagePrompts,
-              artworkModel,
-              imageStrategy,
-              groupedImageMode,
-              selectedSdsImages,
-              groups: nextGroups,
-              transparentBackground,
-              renderSizeImagesWithSds,
-              sheinStoreId,
-              generationError: "",
-              approvedDesignIds: [],
-              createdTasks: [],
-            },
-            {
-              timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-            },
-          );
-          return sessionId;
-        } catch (error) {
-          logListingKitTraceEvent("warn", "studio generation session sync failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return "";
-        }
-      })();
-
-      const sessionId = await sessionSyncPromise;
+      if (!batchGenerationContext) {
+        throw new Error("当前工作台尚未连接到批次生成链路，请刷新后重试。");
+      }
       const targets = buildGroupedGenerationTargets({
         activeSelection,
         groupedSelections: groupedSelections
@@ -403,21 +352,6 @@ export function useSheinStudioDesignActions({
       const syncGenerationJobs = (jobs: SheinStudioGenerationJob[]) => {
         nextGenerationJobs = jobs;
         workbench.setField("generationJobs", jobs);
-        if (!sessionId) {
-          return;
-        }
-        void updateSheinStudioSession(
-          sessionId,
-          {
-            status: "generating",
-            generationJobId: jobs[0]?.jobId ?? "",
-            generationJobs: jobs,
-            generationError: "",
-          },
-          {
-            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-          },
-        ).catch(() => undefined);
       };
 
       const persistProgress = async (
@@ -458,7 +392,6 @@ export function useSheinStudioDesignActions({
               transparentBackground,
             }),
             {
-              sessionId,
               onJobStarted: (jobId) => {
                 const existingIndex = nextGenerationJobs.findIndex(
                   (job) => job.jobId === jobId,
@@ -566,22 +499,20 @@ export function useSheinStudioDesignActions({
       workbench.setField("selectedIds", accumulatedSelectedIDs);
       workbench.setField("generationJobs", []);
       navigateToStep("review");
-      if (!sessionId) {
-        void persistDraft(
-          {
-            designs: accumulatedDesigns,
-            groups: nextGroups,
-            selectedIds: accumulatedSelectedIDs,
-            createdTasks: [],
-            generationJobs: [],
-          },
-          {
-            navigationTriggered: true,
-            source: "generate_success",
-            warnOnFailure: false,
-          },
-        ).catch(() => undefined);
-      }
+      void persistDraft(
+        {
+          designs: accumulatedDesigns,
+          groups: nextGroups,
+          selectedIds: accumulatedSelectedIDs,
+          createdTasks: [],
+          generationJobs: [],
+        },
+        {
+          navigationTriggered: true,
+          source: "generate_success",
+          warnOnFailure: false,
+        },
+      ).catch(() => undefined);
     } catch (error) {
       if (
         batchGenerationContext?.recoverInFlightGeneration &&

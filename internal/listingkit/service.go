@@ -26,6 +26,7 @@ type service struct {
 	taskGeneration                 *taskGenerationService
 	taskRevision                   *taskRevisionService
 	taskStudioSession              *taskStudioSessionService
+	taskStudioBatchDraft           *taskStudioBatchDraftService
 	taskStudioBatch                *taskStudioBatchService
 	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService

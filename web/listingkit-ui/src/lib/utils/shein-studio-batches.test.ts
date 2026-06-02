@@ -1,37 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api/client";
 import {
   getSheinStudioBatch,
   getSheinStudioHydratedBatch,
   listSheinStudioBatches,
-  loadSheinStudioDraft,
   saveSheinStudioBatch,
-  saveSheinStudioDraft,
 } from "@/lib/utils/shein-studio-batches";
 
-const ensureSheinStudioSession = vi.fn();
-const buildStudioSessionSelectionKey = vi.fn();
-const getCachedStudioSessionId = vi.fn();
-const mapStudioSessionDetailToDraft = vi.fn();
-const listSheinStudioSessionBatches = vi.fn();
-const upsertSheinStudioSessionBatch = vi.fn();
-const deleteSheinStudioSessionBatch = vi.fn();
-const replaceSheinStudioSessionDesigns = vi.fn();
-const updateSheinStudioSession = vi.fn();
+const buildStudioBatchDraftSelectionKey = vi.fn();
+const listSheinStudioBatchDrafts = vi.fn();
+const upsertSheinStudioBatchDraft = vi.fn();
+const deleteSheinStudioBatchDraft = vi.fn();
 const getSheinStudioBatchDetail = vi.fn();
 
-vi.mock("@/lib/api/shein-studio-sessions", () => ({
-  ensureSheinStudioSession: (...args: unknown[]) => ensureSheinStudioSession(...args),
-  buildStudioSessionSelectionKey: (...args: unknown[]) =>
-    buildStudioSessionSelectionKey(...args),
-  getCachedStudioSessionId: (...args: unknown[]) => getCachedStudioSessionId(...args),
-  listSheinStudioSessionBatches: (...args: unknown[]) => listSheinStudioSessionBatches(...args),
-  mapStudioSessionDetailToDraft: (...args: unknown[]) => mapStudioSessionDetailToDraft(...args),
-  upsertSheinStudioSessionBatch: (...args: unknown[]) => upsertSheinStudioSessionBatch(...args),
-  deleteSheinStudioSessionBatch: (...args: unknown[]) => deleteSheinStudioSessionBatch(...args),
-  replaceSheinStudioSessionDesigns: (...args: unknown[]) =>
-    replaceSheinStudioSessionDesigns(...args),
-  updateSheinStudioSession: (...args: unknown[]) => updateSheinStudioSession(...args),
+const selection = {
+  productId: 1,
+  parentProductId: 1,
+  variantId: 100,
+  prototypeGroupId: 200,
+  layerId: "layer-1",
+  productName: "tee",
+  variantLabel: "M / black",
+};
+
+vi.mock("@/lib/api/shein-studio-batch-drafts", () => ({
+  buildStudioBatchDraftSelectionKey: (...args: unknown[]) =>
+    buildStudioBatchDraftSelectionKey(...args),
+  listSheinStudioBatchDrafts: (...args: unknown[]) => listSheinStudioBatchDrafts(...args),
+  upsertSheinStudioBatchDraft: (...args: unknown[]) => upsertSheinStudioBatchDraft(...args),
+  deleteSheinStudioBatchDraft: (...args: unknown[]) => deleteSheinStudioBatchDraft(...args),
 }));
 
 vi.mock("@/lib/api/shein-studio-batches", () => ({
@@ -41,38 +39,16 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
 describe("shein studio storage api", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    ensureSheinStudioSession.mockReset();
-    buildStudioSessionSelectionKey.mockReset();
-    buildStudioSessionSelectionKey.mockReturnValue("");
-    getCachedStudioSessionId.mockReset();
-    listSheinStudioSessionBatches.mockReset();
-    mapStudioSessionDetailToDraft.mockReset();
-    upsertSheinStudioSessionBatch.mockReset();
-    deleteSheinStudioSessionBatch.mockReset();
-    replaceSheinStudioSessionDesigns.mockReset();
-    updateSheinStudioSession.mockReset();
+    buildStudioBatchDraftSelectionKey.mockReset();
+    buildStudioBatchDraftSelectionKey.mockReturnValue("");
+    listSheinStudioBatchDrafts.mockReset();
+    upsertSheinStudioBatchDraft.mockReset();
+    deleteSheinStudioBatchDraft.mockReset();
     getSheinStudioBatchDetail.mockReset();
   });
 
-  it("loads draft from server api", async () => {
-    ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
-    mapStudioSessionDetailToDraft.mockReturnValue({ prompt: "retro cherries" });
-
-    const draft = await loadSheinStudioDraft({
-      productId: 1,
-      parentProductId: 1,
-      variantId: 100,
-      prototypeGroupId: 200,
-      layerId: "layer-1",
-      productName: "tee",
-      variantLabel: "M / black",
-    });
-
-    expect(draft?.prompt).toBe("retro cherries");
-  });
-
   it("saves batch snapshots through server api", async () => {
-    upsertSheinStudioSessionBatch.mockResolvedValue({
+    upsertSheinStudioBatchDraft.mockResolvedValue({
       id: "batch-1",
       name: "retro cherries",
       prompt: "retro cherries",
@@ -155,7 +131,7 @@ describe("shein studio storage api", () => {
       createdTasks: [],
       updatedAt: "2026-04-24T00:00:00.000Z",
     });
-    listSheinStudioSessionBatches.mockResolvedValue([
+    listSheinStudioBatchDrafts.mockResolvedValue([
       {
         id: "batch-1",
         name: "retro cherries",
@@ -265,7 +241,7 @@ describe("shein studio storage api", () => {
     });
 
     expect(saved?.prompt).toBe("retro cherries");
-    expect(upsertSheinStudioSessionBatch).toHaveBeenCalledWith(
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         groupedSelections: [
           expect.objectContaining({
@@ -288,7 +264,7 @@ describe("shein studio storage api", () => {
   });
 
   it("does not synthesize a default batch name on create", async () => {
-    listSheinStudioSessionBatches.mockResolvedValue([
+    listSheinStudioBatchDrafts.mockResolvedValue([
       {
         id: "batch-1",
         name: "批次1",
@@ -353,7 +329,7 @@ describe("shein studio storage api", () => {
         updatedAt: "2026-04-24T00:00:00.000Z",
       },
     ]);
-    upsertSheinStudioSessionBatch.mockResolvedValue({
+    upsertSheinStudioBatchDraft.mockResolvedValue({
       id: "batch-8",
       name: "批次8",
       prompt: "",
@@ -395,12 +371,12 @@ describe("shein studio storage api", () => {
       createdTasks: [],
     });
 
-    expect(upsertSheinStudioSessionBatch).toHaveBeenCalledWith(
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: "",
       }),
     );
-    expect(upsertSheinStudioSessionBatch).toHaveBeenCalledWith(
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
       expect.not.objectContaining({
         name: expect.any(String),
       }),
@@ -408,7 +384,7 @@ describe("shein studio storage api", () => {
   });
 
   it("keeps a saved batch even when prompt is empty", async () => {
-    upsertSheinStudioSessionBatch.mockResolvedValue({
+    upsertSheinStudioBatchDraft.mockResolvedValue({
       id: "batch-empty-prompt",
       name: "批次12",
       prompt: "",
@@ -459,8 +435,97 @@ describe("shein studio storage api", () => {
     );
   });
 
+  it("retries batch save once with the latest updatedAt when the server reports a conflict", async () => {
+    upsertSheinStudioBatchDraft
+      .mockRejectedValueOnce(
+        new ApiError("ListingKit API request failed: 409", 409, {
+          error: "studio_batch_save_failed",
+          message: "studio session has been updated by another request",
+        }),
+      )
+      .mockResolvedValueOnce({
+        id: "batch-1",
+        name: "批次1",
+        prompt: "retro cherries",
+        styleCount: "3",
+        sheinStoreId: "869",
+        selectionVariantId: 100,
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        draftUpdatedAt: "2026-06-01T10:05:00.000Z",
+        updatedAt: "2026-06-01T10:06:00.000Z",
+      });
+    listSheinStudioBatchDrafts.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "批次1",
+        prompt: "retro cherries",
+        styleCount: "3",
+        sheinStoreId: "869",
+        selectionVariantId: 100,
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        draftUpdatedAt: "2026-06-01T10:05:00.000Z",
+        updatedAt: "2026-06-01T10:05:00.000Z",
+      },
+    ]);
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "draft",
+        prompt: "retro cherries",
+        styleCount: "3",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        draftUpdatedAt: "2026-06-01T10:05:00.000Z",
+        updatedAt: "2026-06-01T10:06:00.000Z",
+      },
+      items: [],
+    });
+
+    const saved = await saveSheinStudioBatch({
+      id: "batch-1",
+      updatedAt: "2026-06-01T10:04:00.000Z",
+      prompt: "retro cherries",
+      styleCount: "3",
+      sheinStoreId: "869",
+      selection,
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+    });
+
+    expect(saved).toEqual(
+      expect.objectContaining({
+        id: "batch-1",
+        updatedAt: "2026-06-01T10:06:00.000Z",
+      }),
+    );
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledTimes(2);
+    expect(upsertSheinStudioBatchDraft).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: "batch-1",
+        expectedUpdatedAt: "2026-06-01T10:04:00.000Z",
+      }),
+    );
+    expect(upsertSheinStudioBatchDraft).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        id: "batch-1",
+        expectedUpdatedAt: "2026-06-01T10:05:00.000Z",
+      }),
+    );
+  });
+
   it("maps itemized batch detail back into the saved batch shape", async () => {
-    listSheinStudioSessionBatches.mockResolvedValue([
+    listSheinStudioBatchDrafts.mockResolvedValue([
       {
         id: "batch-1",
         name: "botanical legacy",
@@ -542,6 +607,7 @@ describe("shein studio storage api", () => {
         styleCount: "3",
         sheinStoreId: 7,
         createdAt: "2026-06-01T10:00:00Z",
+        draftUpdatedAt: "2026-06-01T10:04:00Z",
         updatedAt: "2026-06-01T10:05:00Z",
       },
       items: [
@@ -604,7 +670,8 @@ describe("shein studio storage api", () => {
       ],
       groups: [expect.objectContaining({ id: "group-1", name: "Group 1" })],
       createdTasks: [{ id: "task-0", title: "Existing Task", designId: "design-0" }],
-      sessionStatus: "review_ready",
+      draftUpdatedAt: "2026-06-01T10:04:00Z",
+      batchStatus: "review_ready",
       selectedIds: ["design-1"],
       designs: [
         expect.objectContaining({
@@ -621,12 +688,12 @@ describe("shein studio storage api", () => {
           prompt: "botanical",
         }),
       ],
-      updatedAt: "2026-06-01T10:04:00Z",
+      updatedAt: "2026-06-01T10:05:00Z",
     });
   });
 
   it("keeps saved batch prompt and grouped selection context when detail is still uninitialized", async () => {
-    listSheinStudioSessionBatches.mockResolvedValue([
+    listSheinStudioBatchDrafts.mockResolvedValue([
       {
         id: "batch-1",
         name: "869全品类",
@@ -701,7 +768,7 @@ describe("shein studio storage api", () => {
   });
 
   it("hydrates dedicated batch selection context from itemized detail when the saved batch summary is skeletal", async () => {
-    listSheinStudioSessionBatches.mockResolvedValue([
+    listSheinStudioBatchDrafts.mockResolvedValue([
       {
         id: "batch-1",
         name: "869全品类",
@@ -789,7 +856,7 @@ describe("shein studio storage api", () => {
   });
 
   it("surfaces a hydration error when saved batch context cannot be loaded", async () => {
-    listSheinStudioSessionBatches.mockRejectedValueOnce(new Error("list failed"));
+    listSheinStudioBatchDrafts.mockRejectedValueOnce(new Error("list failed"));
     getSheinStudioBatchDetail.mockResolvedValue({
       batch: {
         id: "batch-1",
@@ -808,107 +875,5 @@ describe("shein studio storage api", () => {
     );
   });
 
-  it("saves draft through server api", async () => {
-    getCachedStudioSessionId.mockReturnValue(undefined);
-    ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
-    updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
-    mapStudioSessionDetailToDraft.mockReturnValue({ prompt: "retro cherries" });
-
-    const saved = await saveSheinStudioDraft({
-      prompt: "retro cherries",
-      styleCount: "4",
-      sheinStoreId: "",
-      selection: {
-        productId: 1,
-        parentProductId: 1,
-        variantId: 100,
-        prototypeGroupId: 200,
-        layerId: "layer-1",
-        productName: "tee",
-        variantLabel: "M / black",
-      },
-      groupedSelections: [
-        {
-          selectionId: "1:200:101:layer-2:101",
-          selection: {
-            productId: 1,
-            parentProductId: 1,
-            variantId: 101,
-            prototypeGroupId: 200,
-            layerId: "layer-2",
-            productName: "hoodie",
-            variantLabel: "L / white",
-          },
-          baselineStatus: "ready",
-          baselineReason: "",
-          sheinStoreId: "store-9",
-          eligible: true,
-        },
-      ],
-      groups: [
-        {
-          id: "group-1",
-          name: "Group 1",
-          currentPrompt: "prompt a",
-          promptHistory: [
-            {
-              prompt: "prompt old",
-              groupedImageMode: "shared_by_size",
-              createdAt: "2026-05-26T00:00:00Z",
-            },
-          ],
-          primarySelection: {
-            productId: 1,
-            parentProductId: 1,
-            variantId: 100,
-            prototypeGroupId: 200,
-            layerId: "layer-1",
-            productName: "tee",
-            variantLabel: "M / black",
-          },
-          groupedSelections: [],
-          sheinStoreId: "store-9",
-          imageStrategy: "sds_official",
-          groupedImageMode: "shared_by_size",
-          selectedSdsImages: [],
-          renderSizeImagesWithSds: true,
-          productImageCount: "5",
-          productImagePrompt: "",
-          productImagePrompts: [],
-          artworkModel: "",
-          transparentBackground: false,
-          variationIntensity: "medium",
-          designs: [],
-          selectedIds: [],
-          createdTasks: [],
-          updatedAt: "2026-05-26T00:00:00Z",
-        },
-      ],
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-    });
-
-    expect(saved?.prompt).toBe("retro cherries");
-    expect(updateSheinStudioSession).toHaveBeenCalledWith(
-      "session-1",
-      expect.objectContaining({
-        groupedSelections: [
-          expect.objectContaining({
-            selectionId: "1:200:101:layer-2:101",
-            sheinStoreId: "store-9",
-          }),
-        ],
-        groups: [
-          expect.objectContaining({
-            id: "group-1",
-            currentPrompt: "prompt a",
-          }),
-        ],
-      }),
-      expect.objectContaining({
-        signal: undefined,
-      }),
-    );
-  });
 });
+

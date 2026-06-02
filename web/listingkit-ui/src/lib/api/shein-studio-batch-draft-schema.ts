@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { parseApiResponseShape } from "@/lib/api/response-schema";
-import type { StudioSessionDetailResponse } from "@/lib/api/shein-studio-sessions";
+import type { StudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-drafts";
 
 const productImagePromptSchema = z
   .object({
@@ -58,7 +58,7 @@ const generationJobSchema = z
   })
   .passthrough();
 
-const studioSessionSchema = z
+const studioBatchDraftRecordSchema = z
   .object({
     id: z.string(),
     tenant_id: z.string().optional(),
@@ -107,19 +107,20 @@ const studioDesignSchema = z
   })
   .passthrough();
 
-const studioSessionDetailSchema = z
+const studioBatchDraftDetailSchema = z
   .object({
-    session: studioSessionSchema.optional(),
+    batch: studioBatchDraftRecordSchema.optional(),
     designs: z.array(studioDesignSchema).optional(),
   })
   .passthrough();
 
-export function parseStudioSessionDetailResponse(
+export function parseStudioBatchDraftDetailResponse(
   payload: unknown,
-): StudioSessionDetailResponse {
+): StudioBatchDraftDetailResponse {
   return parseApiResponseShape(
     payload,
-    studioSessionDetailSchema,
-    "ListingKit API returned an unexpected studio session response",
-  ) as StudioSessionDetailResponse;
+    studioBatchDraftDetailSchema,
+    "ListingKit API returned an unexpected studio batch draft response",
+  ) as StudioBatchDraftDetailResponse;
 }
+

@@ -21,6 +21,10 @@ import type {
 } from "@/lib/types/shein-studio";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 
+type LegacyBatchStatusCarrier = {
+  sessionStatus?: unknown;
+};
+
 export const MAX_SHEIN_STUDIO_BATCHES = 12;
 export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
   "sds_official";
@@ -452,6 +456,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
   if (!raw) {
     return null;
   }
+  const legacyRaw = raw as Partial<SheinStudioDraft> & LegacyBatchStatusCarrier;
 
   const groups = normalizeGroupedWorkspaces(raw.groups);
   const normalizedGroups =
@@ -487,7 +492,16 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     generationJobId:
       typeof raw.generationJobId === "string" ? raw.generationJobId : "",
     generationJobs: normalizeGenerationJobs(raw.generationJobs),
-    sessionStatus: typeof raw.sessionStatus === "string" ? raw.sessionStatus : "",
+    batchStatus:
+      typeof raw.batchStatus === "string"
+        ? raw.batchStatus
+        : typeof legacyRaw.sessionStatus === "string"
+          ? legacyRaw.sessionStatus
+          : "",
+    draftUpdatedAt:
+      typeof raw.draftUpdatedAt === "string"
+        ? raw.draftUpdatedAt
+        : raw.updatedAt ?? new Date().toISOString(),
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   } satisfies SheinStudioDraft;
 }
@@ -496,6 +510,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
   if (!raw?.id || !raw.name) {
     return null;
   }
+  const legacyRaw = raw as Partial<SheinStudioSavedBatch> & LegacyBatchStatusCarrier;
 
   const groups = normalizeGroupedWorkspaces(raw.groups);
   const normalizedGroups =
@@ -533,7 +548,16 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     generationJobId:
       typeof raw.generationJobId === "string" ? raw.generationJobId : "",
     generationJobs: normalizeGenerationJobs(raw.generationJobs),
-    sessionStatus: typeof raw.sessionStatus === "string" ? raw.sessionStatus : "",
+    batchStatus:
+      typeof raw.batchStatus === "string"
+        ? raw.batchStatus
+        : typeof legacyRaw.sessionStatus === "string"
+          ? legacyRaw.sessionStatus
+          : "",
+    draftUpdatedAt:
+      typeof raw.draftUpdatedAt === "string"
+        ? raw.draftUpdatedAt
+        : raw.updatedAt ?? new Date().toISOString(),
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   } satisfies SheinStudioSavedBatch;
 }

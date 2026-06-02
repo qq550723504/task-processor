@@ -236,9 +236,6 @@ func AppendStudioSessionRouteDescriptors(routes []httproute.Descriptor, handler 
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches/:batch_id/design-approvals", Module: "listing-kit-studio", Handler: handler.ApproveStudioBatchDesigns},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batches/:batch_id/tasks", Module: "listing-kit-studio", Handler: handler.CreateStudioBatchTasks},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/studio/batches/:batch_id", Module: "listing-kit-studio", Handler: handler.DeleteStudioBatch},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions", Module: "listing-kit-studio", Handler: handler.EnsureStudioSession},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: handler.GetStudioSession},
-		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: handler.UpdateStudioSession},
 	)
 }
 

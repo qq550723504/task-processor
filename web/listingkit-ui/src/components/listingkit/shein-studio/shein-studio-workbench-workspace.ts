@@ -84,7 +84,7 @@ export function useSheinStudioWorkspaceLoader({
     let cancelled = false;
 
     async function loadWorkspaceState() {
-      workbench.setField("isLoadingWorkspace", true);
+        workbench.setField("isLoadingWorkspace", true);
       try {
         const localDraft = !hasDedicatedBatchContext && !hasExplicitSelection
           ? loadLocalSheinStudioDraftSnapshot()
@@ -160,7 +160,7 @@ export function useSheinStudioWorkspaceLoader({
             (job) => job.status === "running" && job.jobId.trim(),
           );
           resumableGenerationJobs =
-            draft?.sessionStatus === "generating" ||
+            draft?.batchStatus === "generating" ||
             (draft?.generationJobs?.length ?? 0) > 0 ||
             Boolean(draft?.generationJobId)
               ? runningGenerationJobs && runningGenerationJobs.length > 0

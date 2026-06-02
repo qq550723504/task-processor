@@ -163,7 +163,10 @@ export function projectHydratedBatchToWorkbench(
     selectedIds: getApprovedItemizedBatchDesignIDs(detail),
     generationJobs: savedBatch.generationJobs ?? [],
     createdTasks: savedBatch.createdTasks,
-    persistedUpdatedAt: detail.batch.updatedAt || savedBatch.updatedAt,
+    persistedUpdatedAt:
+      detail.batch.draftUpdatedAt ||
+      savedBatch.draftUpdatedAt ||
+      savedBatch.updatedAt,
     itemizedBatchDetail: detail,
   };
 }

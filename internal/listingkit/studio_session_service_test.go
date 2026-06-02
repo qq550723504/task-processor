@@ -232,6 +232,12 @@ func newStudioSessionTestService() *service {
 	}
 }
 
+func newLegacyStudioSessionTestService() *taskStudioSessionService {
+	return newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		repo: newStudioSessionRepoStub(),
+	})
+}
+
 func testStudioSelection() *SheinStudioSelection {
 	return &SheinStudioSelection{
 		ProductID:          124110,
@@ -248,7 +254,7 @@ func testStudioSelection() *SheinStudioSelection {
 }
 
 func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
-	svc := newStudioSessionTestService()
+	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
@@ -316,8 +322,8 @@ func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
 }
 
 func TestStudioSessionServiceUpdateDoesNotReloadDesignsForMetadataOnlyWrites(t *testing.T) {
-	svc := newStudioSessionTestService()
-	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
+	svc := newLegacyStudioSessionTestService()
+	repo := svc.repo.(*studioSessionRepoStub)
 	ctx := context.Background()
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
@@ -349,7 +355,7 @@ func TestStudioSessionServiceUpdateDoesNotReloadDesignsForMetadataOnlyWrites(t *
 }
 
 func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
-	svc := newStudioSessionTestService()
+	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
@@ -391,7 +397,7 @@ func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 }
 
 func TestStudioSessionServiceTracksMultipleGenerationJobs(t *testing.T) {
-	svc := newStudioSessionTestService()
+	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
@@ -441,7 +447,7 @@ func TestStudioSessionServiceTracksMultipleGenerationJobs(t *testing.T) {
 }
 
 func TestStudioSessionServicePersistsGroupedSelections(t *testing.T) {
-	svc := newStudioSessionTestService()
+	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
@@ -488,7 +494,7 @@ func TestStudioSessionServicePersistsGroupedSelections(t *testing.T) {
 }
 
 func TestStudioSessionServiceUsesContextUserIDWhenRequestOmitted(t *testing.T) {
-	svc := newStudioSessionTestService()
+	svc := newLegacyStudioSessionTestService()
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "tenant-a", UserID: "user-42"})
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
@@ -537,14 +543,14 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert batch: %v", err)
 	}
-	if detail.Session == nil || !detail.Session.SavedAsBatch {
-		t.Fatalf("session = %#v, want saved batch session", detail.Session)
+	if detail.Batch == nil || !detail.Batch.SavedAsBatch {
+		t.Fatalf("batch = %#v, want saved batch draft", detail.Batch)
 	}
-	if detail.Session.BatchName != "retro cherries" {
-		t.Fatalf("batch name = %q, want retro cherries", detail.Session.BatchName)
+	if detail.Batch.BatchName != "retro cherries" {
+		t.Fatalf("batch name = %q, want retro cherries", detail.Batch.BatchName)
 	}
-	if len(detail.Session.GroupedSelections) != 1 {
-		t.Fatalf("grouped selections = %#v, want 1 item", detail.Session.GroupedSelections)
+	if len(detail.Batch.GroupedSelections) != 1 {
+		t.Fatalf("grouped selections = %#v, want 1 item", detail.Batch.GroupedSelections)
 	}
 
 	list, err := svc.ListStudioBatches(ctx, 10)
@@ -554,13 +560,13 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	if len(list.Items) != 1 {
 		t.Fatalf("batch count = %d, want 1", len(list.Items))
 	}
-	if list.Items[0].ID != detail.Session.ID {
-		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Session.ID)
+	if list.Items[0].ID != detail.Batch.ID {
+		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Batch.ID)
 	}
 	repo := svc.studioSessionRepo.(*studioSessionRepoStub)
-	storedSession := repo.sessions[detail.Session.ID]
+	storedSession := repo.sessions[detail.Batch.ID]
 	if storedSession == nil {
-		t.Fatalf("stored session missing for %q", detail.Session.ID)
+		t.Fatalf("stored session missing for %q", detail.Batch.ID)
 	}
 	if got, want := list.Items[0].UpdatedAt, storedSession.UpdatedAt.UTC().Format(time.RFC3339Nano); got != want {
 		t.Fatalf("batch list updated_at = %q, want %q", got, want)
@@ -573,18 +579,18 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 		t.Fatalf("list design calls before get batch = %d, want 1", listDesignCallsBeforeGetBatch)
 	}
 
-	loaded, err := svc.GetStudioBatch(ctx, detail.Session.ID)
+	loaded, err := svc.GetStudioBatch(ctx, detail.Batch.ID)
 	if err != nil {
 		t.Fatalf("get batch: %v", err)
 	}
-	if loaded.Session == nil || loaded.Session.ID != detail.Session.ID {
-		t.Fatalf("loaded session = %#v, want %q", loaded.Session, detail.Session.ID)
+	if loaded.Batch == nil || loaded.Batch.ID != detail.Batch.ID {
+		t.Fatalf("loaded batch = %#v, want %q", loaded.Batch, detail.Batch.ID)
 	}
 	if len(loaded.Designs) != 1 || loaded.Designs[0].ID != "design-1" {
 		t.Fatalf("loaded designs = %#v, want design-1", loaded.Designs)
 	}
-	if len(loaded.Session.GroupedSelections) != 1 || loaded.Session.GroupedSelections[0].SheinStoreID != "store-9" {
-		t.Fatalf("loaded grouped selections = %#v, want store-9", loaded.Session.GroupedSelections)
+	if len(loaded.Batch.GroupedSelections) != 1 || loaded.Batch.GroupedSelections[0].SheinStoreID != "store-9" {
+		t.Fatalf("loaded grouped selections = %#v, want store-9", loaded.Batch.GroupedSelections)
 	}
 	if repo.listDesignsCalls != listDesignCallsBeforeGetBatch+1 {
 		t.Fatalf(
@@ -610,11 +616,11 @@ func TestStudioSessionServiceDeleteBatchRemovesSession(t *testing.T) {
 		t.Fatalf("upsert batch: %v", err)
 	}
 
-	if err := svc.DeleteStudioBatch(ctx, detail.Session.ID); err != nil {
+	if err := svc.DeleteStudioBatch(ctx, detail.Batch.ID); err != nil {
 		t.Fatalf("delete batch: %v", err)
 	}
 
-	loaded, err := svc.GetStudioBatch(ctx, detail.Session.ID)
+	loaded, err := svc.GetStudioBatch(ctx, detail.Batch.ID)
 	if err == nil {
 		t.Fatalf("get deleted batch = %#v, want error", loaded)
 	}
@@ -638,10 +644,10 @@ func TestStudioSessionServiceDeleteBatchIsIdempotent(t *testing.T) {
 		t.Fatalf("upsert batch: %v", err)
 	}
 
-	if err := svc.DeleteStudioBatch(ctx, detail.Session.ID); err != nil {
+	if err := svc.DeleteStudioBatch(ctx, detail.Batch.ID); err != nil {
 		t.Fatalf("first delete batch: %v", err)
 	}
-	if err := svc.DeleteStudioBatch(ctx, detail.Session.ID); err != nil {
+	if err := svc.DeleteStudioBatch(ctx, detail.Batch.ID); err != nil {
 		t.Fatalf("second delete batch: %v", err)
 	}
 }
@@ -682,8 +688,8 @@ func TestStudioSessionServiceAssignsTenantScopedSequentialBatchNames(t *testing.
 	if err != nil {
 		t.Fatalf("upsert sequential batch: %v", err)
 	}
-	if detail.Session.BatchName != "批次8" {
-		t.Fatalf("batch name = %q, want 批次8", detail.Session.BatchName)
+	if detail.Batch.BatchName != "批次8" {
+		t.Fatalf("batch name = %q, want 批次8", detail.Batch.BatchName)
 	}
 }
 
@@ -699,19 +705,19 @@ func TestStudioSessionServiceAllowsCreatingBatchContainerWithoutPrompt(t *testin
 	if err != nil {
 		t.Fatalf("upsert batch without prompt: %v", err)
 	}
-	if detail.Session == nil || detail.Session.Prompt != "" {
-		t.Fatalf("session prompt = %#v, want empty prompt persisted", detail.Session)
+	if detail.Batch == nil || detail.Batch.Prompt != "" {
+		t.Fatalf("batch prompt = %#v, want empty prompt persisted", detail.Batch)
 	}
-	if detail.Session.BatchName == "" {
-		t.Fatalf("batch name = %q, want generated batch name", detail.Session.BatchName)
+	if detail.Batch.BatchName == "" {
+		t.Fatalf("batch name = %q, want generated batch name", detail.Batch.BatchName)
 	}
-	if detail.Session.Status != SheinStudioSessionStatusSelecting {
-		t.Fatalf("status = %q, want selecting for a prompt-less batch container", detail.Session.Status)
+	if detail.Batch.Status != SheinStudioSessionStatusSelecting {
+		t.Fatalf("status = %q, want selecting for a prompt-less batch container", detail.Batch.Status)
 	}
 }
 
 func TestStudioSessionServiceRejectsStaleUpdateStudioSessionWrites(t *testing.T) {
-	svc := newStudioSessionTestService()
+	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()
 
 	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{

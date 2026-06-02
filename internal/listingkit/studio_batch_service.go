@@ -60,7 +60,7 @@ type CreateStudioBatchTasksResult struct {
 
 type taskStudioBatchServiceConfig struct {
 	repo              StudioBatchRepository
-	studioSessionRepo StudioSessionRepository
+	studioSessionRepo studioBatchSeedSessionRepository
 	generator         studioBatchGenerator
 }
 

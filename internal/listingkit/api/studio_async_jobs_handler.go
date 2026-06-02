@@ -296,22 +296,7 @@ func (h *handler) syncStudioDesignAsyncJobSession(
 	if h == nil || h.studioSessionService == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-
-	sessionStatus := listingkit.SheinStudioSessionStatusGenerating
-	switch jobStatus {
-	case listingkit.StudioAsyncJobStatusSucceeded:
-		sessionStatus = listingkit.SheinStudioSessionStatusGenerated
-	case listingkit.StudioAsyncJobStatusFailed:
-		sessionStatus = listingkit.SheinStudioSessionStatusFailed
-	}
-
-	trimmedJobID := strings.TrimSpace(jobID)
-	trimmedErr := strings.TrimSpace(errMessage)
-	_, _ = h.studioSessionService.UpdateStudioSession(ctx, sessionID, &listingkit.UpdateStudioSessionRequest{
-		Status:          &sessionStatus,
-		GenerationJobID: &trimmedJobID,
-		GenerationError: &trimmedErr,
-	})
+	_ = h.studioSessionService.SyncStudioDesignAsyncJob(ctx, sessionID, jobStatus, jobID, errMessage)
 }
 
 func studioAsyncLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {

@@ -8,13 +8,9 @@ import (
 )
 
 type StudioSessionService interface {
-	EnsureStudioSession(ctx context.Context, req *EnsureStudioSessionRequest) (*SheinStudioSessionDetail, error)
-	GetStudioSession(ctx context.Context, sessionID string) (*SheinStudioSessionDetail, error)
-	UpdateStudioSession(ctx context.Context, sessionID string, req *UpdateStudioSessionRequest) (*SheinStudioSessionDetail, error)
-	ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error)
 	ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error)
 	ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error)
-	GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error)
+	GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchDraftDetail, error)
 	GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
@@ -23,44 +19,33 @@ type StudioSessionService interface {
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
 	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
-	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*SheinStudioSessionDetail, error)
+	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error)
 	DeleteStudioBatch(ctx context.Context, batchID string) error
-}
-
-func (s *service) EnsureStudioSession(ctx context.Context, req *EnsureStudioSessionRequest) (*SheinStudioSessionDetail, error) {
-	return s.taskStudioSessionOrDefault().EnsureStudioSession(ctx, req)
-}
-
-func (s *service) GetStudioSession(ctx context.Context, sessionID string) (*SheinStudioSessionDetail, error) {
-	return s.taskStudioSessionOrDefault().GetStudioSession(ctx, sessionID)
-}
-
-func (s *service) UpdateStudioSession(ctx context.Context, sessionID string, req *UpdateStudioSessionRequest) (*SheinStudioSessionDetail, error) {
-	return s.taskStudioSessionOrDefault().UpdateStudioSession(ctx, sessionID, req)
-}
-
-func (s *service) ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error) {
-	return s.taskStudioSessionOrDefault().ReplaceStudioSessionDesigns(ctx, sessionID, req)
+	SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus StudioAsyncJobStatus, jobID string, errMessage string) error
 }
 
 func (s *service) ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error) {
-	return s.taskStudioSessionOrDefault().ListStudioSessionGallery(ctx, limit)
+	return s.taskStudioBatchDraftOrDefault().ListStudioSessionGallery(ctx, limit)
 }
 
 func (s *service) ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error) {
-	return s.taskStudioSessionOrDefault().ListStudioBatches(ctx, limit)
+	return s.taskStudioBatchDraftOrDefault().ListStudioBatches(ctx, limit)
 }
 
-func (s *service) GetStudioBatch(ctx context.Context, batchID string) (*SheinStudioSessionDetail, error) {
-	return s.taskStudioSessionOrDefault().GetStudioBatch(ctx, batchID)
+func (s *service) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchDraftDetail, error) {
+	return s.taskStudioBatchDraftOrDefault().GetStudioBatch(ctx, batchID)
 }
 
-func (s *service) UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*SheinStudioSessionDetail, error) {
-	return s.taskStudioSessionOrDefault().UpsertStudioBatch(ctx, req)
+func (s *service) UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error) {
+	return s.taskStudioBatchDraftOrDefault().UpsertStudioBatch(ctx, req)
 }
 
 func (s *service) DeleteStudioBatch(ctx context.Context, batchID string) error {
-	return s.taskStudioSessionOrDefault().DeleteStudioBatch(ctx, batchID)
+	return s.taskStudioBatchDraftOrDefault().DeleteStudioBatch(ctx, batchID)
+}
+
+func (s *service) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus StudioAsyncJobStatus, jobID string, errMessage string) error {
+	return s.taskStudioSessionOrDefault().SyncStudioDesignAsyncJob(ctx, sessionID, jobStatus, jobID, errMessage)
 }
 
 func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {
@@ -71,6 +56,16 @@ func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {
 		repo: s.studioSessionRepo,
 	})
 	return s.taskStudioSession
+}
+
+func (s *service) taskStudioBatchDraftOrDefault() *taskStudioBatchDraftService {
+	if s.taskStudioBatchDraft != nil {
+		return s.taskStudioBatchDraft
+	}
+	s.taskStudioBatchDraft = newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
+		repo: s.studioSessionRepo,
+	})
+	return s.taskStudioBatchDraft
 }
 
 func buildStudioSelectionKey(selection *SheinStudioSelection) string {

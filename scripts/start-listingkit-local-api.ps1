@@ -178,6 +178,7 @@ if (Test-Path -LiteralPath $stderrLog) { Remove-Item -LiteralPath $stderrLog -Fo
 if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
 
 $env:TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY = "1"
+$env:TASK_PROCESSOR_BROWSER_PROXYSERVER = ""
 Initialize-ListingKitObjectStorageEnvFromK8s
 
 Write-Host "Building local product-listing-api..." -ForegroundColor Cyan
@@ -226,6 +227,7 @@ Write-Host "  PID: $($process.Id)"
 Write-Host "  stdout: $stdoutLog"
 Write-Host "  stderr: $stderrLog"
 Write-Host "  shein proxy: ignored for this local process (TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY=1)"
+Write-Host "  browser proxy: cleared for this local process (TASK_PROCESSOR_BROWSER_PROXYSERVER='')"
 Write-Host ""
 Write-Host "Stop command:" -ForegroundColor Yellow
 Write-Host "  Stop-Process -Id $($process.Id)"

@@ -629,9 +629,6 @@ func (stubStudioSessionHandler) ApproveStudioBatchDesigns(*gin.Context)  {}
 func (stubStudioSessionHandler) CreateStudioBatchTasks(*gin.Context)     {}
 func (stubStudioSessionHandler) UpsertStudioBatch(*gin.Context)          {}
 func (stubStudioSessionHandler) DeleteStudioBatch(*gin.Context)          {}
-func (stubStudioSessionHandler) EnsureStudioSession(*gin.Context)        {}
-func (stubStudioSessionHandler) GetStudioSession(*gin.Context)           {}
-func (stubStudioSessionHandler) UpdateStudioSession(*gin.Context)        {}
 
 func routeKeys(routes []routeDescriptor) []string {
 	keys := make([]string, 0, len(routes))

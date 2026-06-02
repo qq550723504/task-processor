@@ -457,7 +457,7 @@ export function sheinStudioWorkbenchReducer(
           generationJobs: action.batch.generationJobs ?? [],
           createdTasks: action.batch.createdTasks,
           itemizedBatchDetail: null,
-          persistedUpdatedAt: action.batch.updatedAt,
+          persistedUpdatedAt: action.batch.draftUpdatedAt ?? action.batch.updatedAt,
         },
         action.batch.groups ?? state.groups,
       );
@@ -480,9 +480,12 @@ export function sheinStudioWorkbenchReducer(
           selectedIds: hydratedPatch.selectedIds,
           createdTasks: hydratedPatch.createdTasks,
           generationJobs: hydratedPatch.generationJobs,
-          sessionStatus: action.batch.detail.batch.status,
-          updatedAt:
-            hydratedPatch.persistedUpdatedAt || action.batch.savedBatch.updatedAt,
+          batchStatus: action.batch.detail.batch.status,
+          draftUpdatedAt:
+            action.batch.detail.batch.draftUpdatedAt ??
+            action.batch.savedBatch.draftUpdatedAt ??
+            action.batch.savedBatch.updatedAt,
+          updatedAt: action.batch.savedBatch.updatedAt,
         };
         const baseState = {
           ...state,

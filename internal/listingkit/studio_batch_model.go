@@ -58,6 +58,7 @@ type StudioBatchRecord struct {
 	SelectedSDSImages     SheinStudioSelectedSDSImageList `json:"selected_sds_images,omitempty" gorm:"type:text"`
 	TransparentBackground bool                            `json:"transparent_background"`
 	SheinStoreID          int64                           `json:"shein_store_id,omitempty" gorm:"index"`
+	DraftUpdatedAt        *time.Time                      `json:"draft_updated_at,omitempty" gorm:"-"`
 	CreatedAt             time.Time                       `json:"created_at"`
 	UpdatedAt             time.Time                       `json:"updated_at"`
 }

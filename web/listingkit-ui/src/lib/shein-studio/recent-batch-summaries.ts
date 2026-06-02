@@ -78,9 +78,9 @@ function buildSelectionReviewAlert(input: {
 function buildRecentGenerationResult(input: {
   designCount: number;
   generationError?: string;
-  sessionStatus?: string;
+  batchStatus?: string;
 }): SheinStudioRecentBatchResult | null {
-  if (input.sessionStatus === "generating") {
+  if (input.batchStatus === "generating") {
     return {
       tone: "warning",
       label: "最近生成中",
@@ -129,7 +129,7 @@ function buildRecentTaskResult(input: {
 function buildRecentResults(input: {
   designCount: number;
   generationError?: string;
-  sessionStatus?: string;
+  batchStatus?: string;
   selectedIds: string[];
   createdTaskCount: number;
 }) {
@@ -220,6 +220,7 @@ function buildPersistedBatchSummary(
     alerts: buildPersistedBatchAlerts(batch),
     recentResults: buildRecentResults({
       designCount,
+      batchStatus: batch.batchStatus,
       selectedIds,
       createdTaskCount,
     }),
@@ -252,7 +253,7 @@ function buildRecoverableDraftSummary(
     recentResults: buildRecentResults({
       designCount: group.designs.length,
       generationError: draft.generationError,
-      sessionStatus: draft.sessionStatus,
+      batchStatus: draft.batchStatus,
       selectedIds: group.selectedIds,
       createdTaskCount: group.createdTasks.length,
     }),

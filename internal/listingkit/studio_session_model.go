@@ -250,6 +250,13 @@ type SheinStudioSessionDetail struct {
 	Designs []SheinStudioDesign `json:"designs,omitempty"`
 }
 
+type StudioBatchDraft = SheinStudioSession
+
+type StudioBatchDraftDetail struct {
+	Batch   *StudioBatchDraft   `json:"batch,omitempty"`
+	Designs []SheinStudioDesign `json:"designs,omitempty"`
+}
+
 type SheinStudioSessionGalleryItem struct {
 	TenantID              string `json:"tenant_id,omitempty"`
 	SessionID             string `json:"session_id"`

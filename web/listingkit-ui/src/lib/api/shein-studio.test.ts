@@ -2,13 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
-  getSheinStudioSession,
-  mapStudioSessionDetailToBatch,
-  mapStudioSessionDetailToDraft,
-  replaceSheinStudioSessionDesigns,
-  upsertSheinStudioSessionBatch,
-  updateSheinStudioSession,
-} from "@/lib/api/shein-studio-sessions";
+  mapStudioBatchDraftDetailToBatch,
+  mapStudioBatchDraftDetailToDraft,
+  upsertSheinStudioBatchDraft,
+} from "@/lib/api/shein-studio-batch-drafts";
 import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 
 vi.mock("@/lib/api/client", async () => {
@@ -113,50 +110,9 @@ describe("shein studio design metadata", () => {
     );
   });
 
-  it("persists design prompt and model metadata in studio sessions", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "session-1" },
-      designs: [],
-    });
-
-    await replaceSheinStudioSessionDesigns("session-1", {
-      approvedDesignIds: ["design-1"],
-      designs: [
-        {
-          id: "design-1",
-          imageUrl: "https://oss.example.com/design-1.png",
-          prompt: "retro botanical clock",
-          imageModel: "gpt-image-2",
-          transparentBackground: true,
-          variationIntensity: "light",
-          targetGroupKey: "size:1200x1200",
-          targetGroupLabel: "1200 x 1200",
-        },
-      ],
-    });
-
-    expect(mockedApiRequest).toHaveBeenCalledWith(
-      "/studio/sessions/session-1/designs",
-      expect.objectContaining({
-        body: expect.objectContaining({
-          designs: [
-            expect.objectContaining({
-              prompt: "retro botanical clock",
-              image_model: "gpt-image-2",
-              transparent_background: true,
-              variation_intensity: "light",
-              target_group_key: "size:1200x1200",
-              target_group_label: "1200 x 1200",
-            }),
-          ],
-        }),
-      }),
-    );
-  });
-
-  it("loads design prompt and model metadata from studio sessions", () => {
-    const draft = mapStudioSessionDetailToDraft({
-      session: {
+  it("loads design prompt and model metadata from studio batch drafts", () => {
+    const draft = mapStudioBatchDraftDetailToDraft({
+      batch: {
         id: "session-1",
         prompt: "fallback session prompt",
         groups: [
@@ -285,161 +241,13 @@ describe("shein studio design metadata", () => {
     ]);
   });
 
-  it("sends grouped selections when updating a studio session", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "session-1" },
-      designs: [],
-    });
-
-    await updateSheinStudioSession("session-1", {
-      groupedImageMode: "per_product",
-      groupedSelections: [
-        {
-          selectionId: "1:200:101:layer-2:101",
-          selection: {
-            productId: 1,
-            parentProductId: 1,
-            variantId: 101,
-            prototypeGroupId: 200,
-            layerId: "layer-2",
-            productName: "hoodie",
-            variantLabel: "L / white",
-          },
-          baselineStatus: "ready",
-          baselineReason: "",
-          baselineReasonCode: "cache_unavailable",
-          sheinStoreId: "store-9",
-          eligible: true,
-        },
-      ],
-    });
-
-    expect(mockedApiRequest).toHaveBeenCalledWith(
-      "/studio/sessions/session-1",
-      expect.objectContaining({
-        body: expect.objectContaining({
-          grouped_image_mode: "per_product",
-          grouped_selections: [
-            expect.objectContaining({
-              selection_id: "1:200:101:layer-2:101",
-              baseline_status: "ready",
-              baseline_reason_code: "cache_unavailable",
-              shein_store_id: "store-9",
-            }),
-          ],
-        }),
-      }),
-    );
-  });
-
-  it("ignores grouped workspaces when updating a studio session because the backend only persists grouped selections", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "session-1" },
-      designs: [],
-    });
-
-    await updateSheinStudioSession("session-1", {
-      groups: [
-        {
-          id: "group-1",
-          name: "Group 1",
-          currentPrompt: "prompt a",
-          promptHistory: [
-            {
-              prompt: "prompt old",
-              groupedImageMode: "shared_by_size",
-              createdAt: "2026-05-26T00:00:00Z",
-            },
-          ],
-          primarySelection: {
-            productId: 1,
-            parentProductId: 1,
-            variantId: 100,
-            prototypeGroupId: 200,
-            layerId: "layer-1",
-            productName: "tee",
-            variantLabel: "M / black",
-          },
-          groupedSelections: [],
-          sheinStoreId: "store-9",
-          imageStrategy: "sds_official",
-          groupedImageMode: "shared_by_size",
-          selectedSdsImages: [],
-          renderSizeImagesWithSds: true,
-          productImageCount: "5",
-          productImagePrompt: "",
-          productImagePrompts: [],
-          artworkModel: "",
-          transparentBackground: false,
-          variationIntensity: "medium",
-          designs: [],
-          selectedIds: [],
-          createdTasks: [],
-          updatedAt: "2026-05-26T00:00:00Z",
-        },
-      ],
-    });
-
-    expect(mockedApiRequest).toHaveBeenCalledWith(
-      "/studio/sessions/session-1",
-      expect.objectContaining({
-        body: expect.objectContaining({
-          grouped_selections: undefined,
-        }),
-      }),
-    );
-  });
-
-  it("keeps top-level grouped selections when updating a legacy session with empty groups", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "session-1" },
-      designs: [],
-    });
-
-    await updateSheinStudioSession("session-1", {
-      groups: [],
-      groupedSelections: [
-        {
-          selectionId: "1:200:101:layer-2:101",
-          selection: {
-            productId: 1,
-            parentProductId: 1,
-            variantId: 101,
-            prototypeGroupId: 200,
-            layerId: "layer-2",
-            productName: "hoodie",
-            variantLabel: "L / white",
-          },
-          baselineStatus: "ready",
-          baselineReason: "",
-          sheinStoreId: "store-9",
-          eligible: true,
-        },
-      ],
-    });
-
-    expect(mockedApiRequest).toHaveBeenCalledWith(
-      "/studio/sessions/session-1",
-      expect.objectContaining({
-        body: expect.objectContaining({
-          grouped_selections: [
-            expect.objectContaining({
-              selection_id: "1:200:101:layer-2:101",
-              shein_store_id: "store-9",
-            }),
-          ],
-        }),
-      }),
-    );
-  });
-
   it("sends grouped selections when saving a studio batch", async () => {
     mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "batch-1" },
+      batch: { id: "batch-1" },
       designs: [],
     });
 
-    await upsertSheinStudioSessionBatch({
+    await upsertSheinStudioBatchDraft({
       prompt: "retro botanical clock",
       styleCount: "2",
       groupedImageMode: "shared_by_size",
@@ -496,11 +304,11 @@ describe("shein studio design metadata", () => {
 
   it("ignores grouped workspaces when saving a studio batch because the backend only persists grouped selections", async () => {
     mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "batch-1" },
+      batch: { id: "batch-1" },
       designs: [],
     });
 
-    await upsertSheinStudioSessionBatch({
+    await upsertSheinStudioBatchDraft({
       prompt: "retro botanical clock",
       styleCount: "2",
       selection: {
@@ -568,11 +376,11 @@ describe("shein studio design metadata", () => {
 
   it("keeps top-level grouped selections when saving a legacy batch with empty groups", async () => {
     mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "batch-1" },
+      batch: { id: "batch-1" },
       designs: [],
     });
 
-    await upsertSheinStudioSessionBatch({
+    await upsertSheinStudioBatchDraft({
       id: "batch-1",
       prompt: "retro botanical clock",
       styleCount: "2",
@@ -625,8 +433,8 @@ describe("shein studio design metadata", () => {
   });
 
   it("maps empty-prompt batch containers from session detail", () => {
-    const batch = mapStudioSessionDetailToBatch({
-      session: {
+    const batch = mapStudioBatchDraftDetailToBatch({
+      batch: {
         id: "batch-1",
         batch_name: "批次12",
         prompt: "",
@@ -689,9 +497,9 @@ describe("shein studio design metadata", () => {
     });
   });
 
-  it("maps generation jobs from session detail into the draft", () => {
-    const draft = mapStudioSessionDetailToDraft({
-      session: {
+  it("maps generation jobs from batch draft detail into the draft", () => {
+    const draft = mapStudioBatchDraftDetailToDraft({
+      batch: {
         id: "session-1",
         prompt: "retro cherries",
         status: "generating",
@@ -717,7 +525,7 @@ describe("shein studio design metadata", () => {
 
     expect(draft).toMatchObject({
       generationJobId: "job-primary",
-      sessionStatus: "generating",
+      batchStatus: "generating",
       generationJobs: [
         {
           jobId: "job-primary",
@@ -733,59 +541,11 @@ describe("shein studio design metadata", () => {
         },
       ],
     });
-  });
-
-  it("sends generation jobs when updating a studio session", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "session-1" },
-      designs: [],
-    });
-
-    await updateSheinStudioSession("session-1", {
-      generationJobId: "job-primary",
-      generationJobs: [
-        {
-          jobId: "job-primary",
-          targetGroupKey: "primary",
-          targetGroupLabel: "当前商品",
-          status: "running",
-        },
-        {
-          jobId: "job-group-1",
-          targetGroupKey: "group-1",
-          targetGroupLabel: "分组商品 1",
-          status: "running",
-        },
-      ],
-    });
-
-    expect(mockedApiRequest).toHaveBeenCalledWith(
-      "/studio/sessions/session-1",
-      expect.objectContaining({
-        body: expect.objectContaining({
-          generation_job_id: "job-primary",
-          generation_jobs: [
-            {
-              job_id: "job-primary",
-              target_group_key: "primary",
-              target_group_label: "当前商品",
-              status: "running",
-            },
-            {
-              job_id: "job-group-1",
-              target_group_key: "group-1",
-              target_group_label: "分组商品 1",
-              status: "running",
-            },
-          ],
-        }),
-      }),
-    );
   });
 
   it("normalizes legacy created tasks that use design_id or omit design ids", () => {
-    const batch = mapStudioSessionDetailToBatch({
-      session: {
+    const batch = mapStudioBatchDraftDetailToBatch({
+      batch: {
         id: "batch-legacy",
         batch_name: "历史批次",
         prompt: "legacy prompt",
@@ -820,7 +580,7 @@ describe("shein studio design metadata", () => {
 
   it("does not synthesize a fallback batch name when updating an existing batch", async () => {
     mockedApiRequest.mockResolvedValueOnce({
-      session: {
+      batch: {
         id: "batch-1",
         batch_name: "半圆旗帜",
         prompt: "new prompt",
@@ -838,7 +598,7 @@ describe("shein studio design metadata", () => {
       designs: [],
     });
 
-    await upsertSheinStudioSessionBatch({
+    await upsertSheinStudioBatchDraft({
       id: "batch-1",
       prompt: "new prompt",
       styleCount: "1",
@@ -867,27 +627,5 @@ describe("shein studio design metadata", () => {
     );
   });
 
-  it("rejects studio session responses without a string session id", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: 123 },
-      designs: [],
-    });
-
-    await expect(getSheinStudioSession("session-1")).rejects.toMatchObject({
-      message: "ListingKit API returned an unexpected studio session response",
-      status: 502,
-    });
-  });
-
-  it("rejects studio session designs without a string design id", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      session: { id: "session-1" },
-      designs: [{ id: 123, image_url: "https://oss.example.com/design.png" }],
-    });
-
-    await expect(getSheinStudioSession("session-1")).rejects.toMatchObject({
-      message: "ListingKit API returned an unexpected studio session response",
-      status: 502,
-    });
-  });
 });
+
