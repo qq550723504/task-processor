@@ -82,11 +82,12 @@ func TestTaskGenerationActionTargetResolutionServiceHelperBoundary(t *testing.T)
 	source := readTaskGenerationSourceFile(t, "service_generation_actions.go")
 
 	assertSourceContainsAll(t, source, []string{
-		"func cloneAssetGenerationActionTarget(",
 		"func cloneGenerationQueueQuery(",
 		"func cloneRetryGenerationTasksRequest(",
 	})
 	assertSourceExcludesAll(t, source, []string{
+		"func cloneAssetGenerationActionTarget(",
+		"func cloneAssetGenerationActionImpact(",
 		"type taskGenerationActionTargetResolutionPhase struct{}",
 		"type taskGenerationActionTargetResolutionResult struct",
 		"buildTaskGenerationActionTargetResolutionPhase()",
