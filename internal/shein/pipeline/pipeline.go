@@ -17,8 +17,6 @@ import (
 	"task-processor/internal/shein/store"
 	"task-processor/internal/shein/translate"
 	"task-processor/internal/shein/validation"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Pipeline 任务处理管道
@@ -141,14 +139,9 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(build.NewBuildSkcListHandler(imageDownloder, aiClient))
 	// 构建最终的发品数据
 	pipeline.AddHandler(build.NewBuildSpuHandler())
-	// 清理敏感词（集成硬编码敏感词检查）
-	sensitiveFilter, err := shein.NewSensitiveWordsFilter("data/sensitive_words_shein.json")
-	if err != nil {
-		logrus.WithError(err).Warn("初始化敏感词过滤器失败，跳过敏感词处理")
-	} else {
-		// 使用清理模式 - 自动替换敏感词
-		pipeline.AddHandler(content.NewSensitiveWordsCleanHandler(sensitiveFilter))
-	}
+	// 清理敏感词。旧 pipeline 只保留默认内置规则，不再依赖本地 JSON 词库文件。
+	sensitiveFilter := shein.NewSensitiveWordsFilterWithDefaults()
+	pipeline.AddHandler(content.NewSensitiveWordsCleanHandler(sensitiveFilter))
 	// 发布产品
 	pipeline.AddHandler(publish.NewPublishProductHandler(cfg.Debug.SavePublishJSON))
 	// 标记变体构建成功

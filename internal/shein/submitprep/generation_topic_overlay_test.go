@@ -3,8 +3,6 @@ package submitprep
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,20 +33,23 @@ func (s *stubGenerationTopicPolicyRepository) CreateGenerationTopicPolicy(contex
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubGenerationTopicPolicyRepository) GetGenerationTopicPolicy(context.Context, int64, int64) (*listingadmin.GenerationTopicPolicy, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubGenerationTopicPolicyRepository) UpdateGenerationTopicPolicy(context.Context, *listingadmin.GenerationTopicPolicy) (*listingadmin.GenerationTopicPolicy, error) {
 	return nil, errors.New("not implemented")
 }
 
-func TestNewSensitiveWordServiceForContext_OverlaysTenantGenerationTopicLexicon(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForOverlayTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
+func (s *stubGenerationTopicPolicyRepository) UpdateGenerationTopicPolicyStatus(context.Context, int64, int64, int16, string) (*listingadmin.GenerationTopicPolicy, error) {
+	return nil, errors.New("not implemented")
+}
 
+func (s *stubGenerationTopicPolicyRepository) DeleteGenerationTopicPolicy(context.Context, int64, int64) error {
+	return errors.New("not implemented")
+}
+
+func TestNewSensitiveWordServiceForContext_OverlaysTenantGenerationTopicLexicon(t *testing.T) {
 	restoreRepo := SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
 		keys: map[int64][]string{
 			101: {"children", "unknown"},
@@ -61,14 +62,4 @@ func TestNewSensitiveWordServiceForContext_OverlaysTenantGenerationTopicLexicon(
 	if strings.Contains(strings.ToLower(got), "kids") {
 		t.Fatalf("sanitized text = %q, want children topic lexicon removed", got)
 	}
-}
-
-func writeSensitiveWordsConfigForOverlayTest(t *testing.T, contents string) func() {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sensitive_words_shein.json")
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		t.Fatalf("write sensitive words config: %v", err)
-	}
-	return SetSensitiveWordsConfigPathForTesting(path)
 }

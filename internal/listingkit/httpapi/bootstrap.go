@@ -142,18 +142,19 @@ type BuildModuleInput struct {
 }
 
 type AdminRepositoryBuilders struct {
-	Store                 func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
-	StoreStatistics       func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
-	ImportTask            func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
-	FilterRule            func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
-	ProfitRule            func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
-	PricingRule           func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
-	OperationStrategy     func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
-	SensitiveWord         func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
-	GenerationTopicPolicy func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error)
-	ProductImportMapping  func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error)
-	Category              func(*config.Config, *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error)
-	ProductData           func(*config.Config, *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error)
+	Store                   func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
+	StoreStatistics         func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
+	ImportTask              func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
+	FilterRule              func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
+	ProfitRule              func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
+	PricingRule             func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
+	OperationStrategy       func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
+	SensitiveWord           func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
+	GenerationTopicOverride func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error)
+	GenerationTopicPolicy   func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error)
+	ProductImportMapping    func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error)
+	Category                func(*config.Config, *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error)
+	ProductData             func(*config.Config, *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error)
 }
 
 type CoreRepositoryBuilders struct {
@@ -244,6 +245,8 @@ func (b AdminRepositoryBuilders) Validate() error {
 		return fmt.Errorf("admin repository builder operation strategy is required")
 	case b.SensitiveWord == nil:
 		return fmt.Errorf("admin repository builder sensitive word is required")
+	case b.GenerationTopicOverride == nil:
+		return fmt.Errorf("admin repository builder generation topic override is required")
 	case b.GenerationTopicPolicy == nil:
 		return fmt.Errorf("admin repository builder generation topic policy is required")
 	case b.ProductImportMapping == nil:

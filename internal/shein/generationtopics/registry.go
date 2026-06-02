@@ -23,6 +23,12 @@ type Resolution struct {
 	Unknown []string
 }
 
+type DefinitionOverlay struct {
+	Enabled           bool
+	PromptDirectives  []string
+	LexiconByLanguage map[string][]string
+}
+
 var sheinGenerationTopicDefinitions = map[string]Definition{
 	"children": {
 		Key:      "children",
@@ -149,6 +155,28 @@ func BuildSheinPolicySummary(topicKeys []string) string {
 	)
 }
 
+func ResolveSheinTopicDefinitionsWithOverlay(topicKeys []string, overlayForKey func(string) (DefinitionOverlay, error)) []Definition {
+	definitions, _ := ResolveSheinTopicKeys(topicKeys)
+	if len(definitions) == 0 || overlayForKey == nil {
+		return definitions
+	}
+
+	merged := make([]Definition, 0, len(definitions))
+	for _, definition := range definitions {
+		overlay, err := overlayForKey(definition.Key)
+		if err != nil || !overlay.Enabled {
+			merged = append(merged, definition)
+			continue
+		}
+		merged = append(merged, MergeDefinition(
+			definition,
+			overlay.PromptDirectives,
+			overlay.LexiconByLanguage,
+		))
+	}
+	return merged
+}
+
 func AssembleSheinPolicySummary(definitions []Definition, maxDirectives int, maxChars int) string {
 	if len(definitions) == 0 || maxDirectives <= 0 || maxChars <= 0 {
 		return ""
@@ -189,6 +217,10 @@ func AssembleSheinPolicySummary(definitions []Definition, maxDirectives int, max
 
 func CollectSheinTopicLexicons(topicKeys []string) map[string][]string {
 	definitions, _ := ResolveSheinTopicKeys(topicKeys)
+	return CollectLexiconsFromDefinitions(definitions)
+}
+
+func CollectLexiconsFromDefinitions(definitions []Definition) map[string][]string {
 	if len(definitions) == 0 {
 		return nil
 	}
@@ -220,6 +252,17 @@ func CollectSheinTopicLexicons(topicKeys []string) map[string][]string {
 		}
 	}
 	return wordsByLanguage
+}
+
+func MergeDefinition(definition Definition, additionalDirectives []string, additionalLexicon map[string][]string) Definition {
+	merged := cloneDefinition(definition)
+	if len(additionalDirectives) > 0 {
+		merged.PromptDirectives = mergeStringList(merged.PromptDirectives, additionalDirectives)
+	}
+	if len(additionalLexicon) > 0 {
+		merged.LexiconByLanguage = mergeLexiconMap(merged.LexiconByLanguage, additionalLexicon)
+	}
+	return merged
 }
 
 func NormalizeKey(topicKey string) string {
@@ -273,4 +316,54 @@ func canAppendDirective(existing []string, directive string, maxChars int) bool 
 	}
 	candidate := append(append([]string(nil), existing...), directive)
 	return utf8.RuneCountInString(strings.Join(candidate, "\n")) <= maxChars
+}
+
+func mergeStringList(base []string, additions []string) []string {
+	if len(base) == 0 && len(additions) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(base)+len(additions))
+	merged := make([]string, 0, len(base)+len(additions))
+	for _, group := range [][]string{base, additions} {
+		for _, item := range group {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			key := strings.ToLower(item)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
+}
+
+func mergeLexiconMap(base map[string][]string, additions map[string][]string) map[string][]string {
+	if len(base) == 0 && len(additions) == 0 {
+		return nil
+	}
+	merged := cloneDefinition(Definition{LexiconByLanguage: base}).LexiconByLanguage
+	if merged == nil {
+		merged = make(map[string][]string)
+	}
+	for language, words := range additions {
+		normalizedLanguage := NormalizeKey(language)
+		if normalizedLanguage == "" {
+			continue
+		}
+		merged[normalizedLanguage] = mergeStringList(merged[normalizedLanguage], words)
+		if len(merged[normalizedLanguage]) == 0 {
+			delete(merged, normalizedLanguage)
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
 }

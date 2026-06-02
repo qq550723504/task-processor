@@ -145,6 +145,13 @@ func BuildListingAdminGenerationTopicPolicyRepository(cfg *config.Config, logger
 	})
 }
 
+func BuildListingAdminGenerationTopicOverrideRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminGenerationTopicOverrideRepository, func(logger *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit generation topic override admin API disabled")
+		return nil, nil, nil
+	})
+}
+
 func BuildListingAdminProductImportMappingRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminProductImportMappingRepository, func(logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit product import mapping admin API disabled")
@@ -585,6 +592,23 @@ func newDBListingAdminGenerationTopicPolicyRepository(cfg *config.DatabaseConfig
 		return nil, nil, fmt.Errorf("listing admin generation topic policy auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormGenerationTopicPolicyRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingAdminGenerationTopicOverrideRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingadmin.AutoMigrateGenerationTopicOverrideRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listing admin generation topic override auto-migrate failed: %w", err)
+	}
+	repo := listingadmin.NewGormGenerationTopicOverrideRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

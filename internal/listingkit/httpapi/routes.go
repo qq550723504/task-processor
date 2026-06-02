@@ -147,6 +147,13 @@ type AdminRouteHandler interface {
 	UpdateAdminSensitiveWord(c *gin.Context)
 	UpdateAdminSensitiveWordStatus(c *gin.Context)
 	DeleteAdminSensitiveWord(c *gin.Context)
+	ListAdminGenerationTopicCatalog(c *gin.Context)
+	ListAdminGenerationTopicOverrides(c *gin.Context)
+	GetAdminGenerationTopicOverride(c *gin.Context)
+	CreateAdminGenerationTopicOverride(c *gin.Context)
+	UpdateAdminGenerationTopicOverride(c *gin.Context)
+	UpdateAdminGenerationTopicOverrideStatus(c *gin.Context)
+	DeleteAdminGenerationTopicOverride(c *gin.Context)
 	ListAdminGenerationTopicPolicies(c *gin.Context)
 	GetAdminGenerationTopicPolicy(c *gin.Context)
 	CreateAdminGenerationTopicPolicy(c *gin.Context)
@@ -338,6 +345,13 @@ func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler AdminRou
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/admin/sensitive-words/:id", Module: "listing-kit-admin", Handler: handler.UpdateAdminSensitiveWord},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/admin/sensitive-words/:id/status", Module: "listing-kit-admin", Handler: handler.UpdateAdminSensitiveWordStatus},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/admin/sensitive-words/:id", Module: "listing-kit-admin", Handler: handler.DeleteAdminSensitiveWord},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-catalog", Module: "listing-kit-admin", Handler: handler.ListAdminGenerationTopicCatalog},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-overrides", Module: "listing-kit-admin", Handler: handler.ListAdminGenerationTopicOverrides},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-overrides/:id", Module: "listing-kit-admin", Handler: handler.GetAdminGenerationTopicOverride},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/admin/generation-topic-overrides", Module: "listing-kit-admin", Handler: handler.CreateAdminGenerationTopicOverride},
+		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/admin/generation-topic-overrides/:id", Module: "listing-kit-admin", Handler: handler.UpdateAdminGenerationTopicOverride},
+		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/admin/generation-topic-overrides/:id/status", Module: "listing-kit-admin", Handler: handler.UpdateAdminGenerationTopicOverrideStatus},
+		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/admin/generation-topic-overrides/:id", Module: "listing-kit-admin", Handler: handler.DeleteAdminGenerationTopicOverride},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-policies", Module: "listing-kit-admin", Handler: handler.ListAdminGenerationTopicPolicies},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-policies/:id", Module: "listing-kit-admin", Handler: handler.GetAdminGenerationTopicPolicy},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/admin/generation-topic-policies", Module: "listing-kit-admin", Handler: handler.CreateAdminGenerationTopicPolicy},

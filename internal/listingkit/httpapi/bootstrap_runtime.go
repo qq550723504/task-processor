@@ -125,7 +125,9 @@ func assembleServiceRuntime(input BuildServiceInput, repositories *builtReposito
 func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
 	submitprep.SetSensitiveWordRepository(repositories.sensitiveWordRepository)
 	submitprep.SetGenerationTopicPolicyRepository(repositories.generationTopicPolicyRepository)
+	submitprep.SetGenerationTopicOverrideRepository(repositories.generationTopicOverrideRepository)
 	sheinpub.SetGenerationTopicPolicyRepository(repositories.generationTopicPolicyRepository)
+	sheinpub.SetGenerationTopicOverrideRepository(repositories.generationTopicOverrideRepository)
 	assembly, err := assembleServiceRuntime(input, repositories, closers)
 	if err != nil {
 		return nil, err

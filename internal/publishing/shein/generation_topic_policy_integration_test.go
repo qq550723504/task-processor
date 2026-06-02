@@ -22,15 +22,6 @@ import (
 )
 
 func TestAdminGenerationTopicPolicyCreationFlowsIntoPromptAndPreviewSanitizer(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
-
 	repo := newGenerationTopicPolicyAdminRepo(t)
 	createGenerationTopicPolicyViaAdmin(t, repo, "101", "children")
 	createGenerationTopicPolicyViaAdmin(t, repo, "202", "meals")
@@ -94,6 +85,73 @@ func TestAdminGenerationTopicPolicyCreationFlowsIntoPromptAndPreviewSanitizer(t 
 	}
 }
 
+func TestAdminGenerationTopicOverrideFlowsIntoPromptAndPreviewSanitizer(t *testing.T) {
+	policyRepo, overrideRepo := newGenerationTopicAdminRepos(t)
+	createGenerationTopicPolicyViaAdmin(t, policyRepo, "101", "children")
+	createGenerationTopicOverrideViaAdmin(t, overrideRepo, "101", `{
+		"platform":"shein",
+		"topicKey":"children",
+		"additionalPromptDirectives":["Avoid toddler-focused positioning."],
+		"additionalLexiconByLanguage":{"en":["toddler"]},
+		"status":1
+	}`)
+
+	restorePromptPolicyRepo := SetGenerationTopicPolicyRepository(policyRepo)
+	defer restorePromptPolicyRepo()
+	restorePromptOverrideRepo := SetGenerationTopicOverrideRepository(overrideRepo)
+	defer restorePromptOverrideRepo()
+	restoreSanitizerPolicyRepo := submitprep.SetGenerationTopicPolicyRepository(policyRepo)
+	defer restoreSanitizerPolicyRepo()
+	restoreSanitizerOverrideRepo := submitprep.SetGenerationTopicOverrideRepository(overrideRepo)
+	defer restoreSanitizerOverrideRepo()
+
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"title":"Door Curtain","description":"A door curtain."}`,
+				},
+			}},
+		},
+	}
+
+	if _, _, err := optimizeSubmitContentWithAI(
+		tenantctx.WithTenantID(context.Background(), "101"),
+		ai,
+		"Toddler room curtain",
+		"Decor for toddler bedroom",
+		"",
+		nil,
+	); err != nil {
+		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+	}
+	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
+		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	}
+	systemPrompt := ai.lastReq.Messages[0].Content
+	if !strings.Contains(systemPrompt, "Do not mention children, babies, or age-specific users.") {
+		t.Fatalf("system prompt = %q, want default directive retained", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Avoid toddler-focused positioning.") {
+		t.Fatalf("system prompt = %q, want override directive included", systemPrompt)
+	}
+
+	copy := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
+		Title:       "Toddler Room Curtain",
+		Description: "Toddler decor for children bedroom",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Toddler Room Curtain"},
+		},
+	}, "Toddler Room Curtain", nil)
+
+	if strings.Contains(strings.ToLower(copy.Title), "toddler") {
+		t.Fatalf("tenant copy title = %q, want override lexicon removed", copy.Title)
+	}
+	if strings.Contains(strings.ToLower(copy.Description), "toddler") {
+		t.Fatalf("tenant copy description = %q, want override lexicon removed", copy.Description)
+	}
+}
+
 func newGenerationTopicPolicyAdminRepo(t *testing.T) listingadmin.GenerationTopicPolicyRepository {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -105,6 +163,22 @@ func newGenerationTopicPolicyAdminRepo(t *testing.T) listingadmin.GenerationTopi
 		t.Fatalf("migrate generation topic policy: %v", err)
 	}
 	return listingadmin.NewGormGenerationTopicPolicyRepository(db)
+}
+
+func newGenerationTopicAdminRepos(t *testing.T) (listingadmin.GenerationTopicPolicyRepository, listingadmin.GenerationTopicOverrideRepository) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := listingadmin.AutoMigrateGenerationTopicPolicyRepository(db); err != nil {
+		t.Fatalf("migrate generation topic policy: %v", err)
+	}
+	if err := listingadmin.AutoMigrateGenerationTopicOverrideRepository(db); err != nil {
+		t.Fatalf("migrate generation topic override: %v", err)
+	}
+	return listingadmin.NewGormGenerationTopicPolicyRepository(db), listingadmin.NewGormGenerationTopicOverrideRepository(db)
 }
 
 func createGenerationTopicPolicyViaAdmin(t *testing.T, repo listingadmin.GenerationTopicPolicyRepository, tenantID string, topicKey string) {
@@ -130,5 +204,22 @@ func createGenerationTopicPolicyViaAdmin(t *testing.T, repo listingadmin.Generat
 	}
 	if created.TopicKey != topicKey || created.Platform != "shein" {
 		t.Fatalf("created policy = %+v, want topicKey=%q platform=shein", created, topicKey)
+	}
+}
+
+func createGenerationTopicOverrideViaAdmin(t *testing.T, repo listingadmin.GenerationTopicOverrideRepository, tenantID string, payload string) {
+	t.Helper()
+	handler := listingadmin.NewGenerationTopicOverrideHandler(repo)
+	engine := gin.New()
+	engine.POST("/generation-topic-overrides", handler.CreateGenerationTopicOverride)
+
+	req := httptest.NewRequest(http.MethodPost, "/generation-topic-overrides", bytes.NewBufferString(payload))
+	req.Header.Set("X-Tenant-ID", tenantID)
+	req.Header.Set("X-User-ID", "user-"+tenantID)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /generation-topic-overrides = %d, body=%s", resp.Code, resp.Body.String())
 	}
 }

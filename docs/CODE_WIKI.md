@@ -148,8 +148,7 @@ task-processor/
 │   └── config-task.yaml
 ├── data/                        # 静态数据
 │   ├── prohibited_items_temu.json
-│   ├── sensitive_words.json
-│   └── sensitive_words_shein.json
+│   └── sensitive_words.json
 ├── deployments/                 # 部署配置
 │   ├── docker/
 │   └── kubernetes/

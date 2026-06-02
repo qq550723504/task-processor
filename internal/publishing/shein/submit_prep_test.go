@@ -596,9 +596,6 @@ func TestBuildSubmitSnapshot_CapturesFinalPayloadFields(t *testing.T) {
 }
 
 func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
-	restore := overrideSensitiveWordsConfigForTest(t)
-	defer restore()
-
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}},
 		MultiLanguageDescList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy curtain for home decor"}},
@@ -623,14 +620,6 @@ func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
 }
 
 func TestRetrySensitiveWordCleanup_PersistsNewValidationWordsToTenantRepository(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
 	repo := &stubSensitiveWordRepository{pages: map[int64][]listingadmin.SensitiveWord{}}
 	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
 	defer restoreRepo()
@@ -660,14 +649,6 @@ func TestRetrySensitiveWordCleanup_PersistsNewValidationWordsToTenantRepository(
 }
 
 func TestRetrySensitiveWordCleanup_ReenablesExistingDisabledValidationWord(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
 	repo := &stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
@@ -703,16 +684,15 @@ func TestRetrySensitiveWordCleanup_ReenablesExistingDisabledValidationWord(t *te
 }
 
 func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T) {
-	restore := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {
-    "en": ["bpa free", "amazon"]
-  },
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restore()
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {
+				{TenantID: 101, Language: "en", Word: "amazon", Status: 1},
+				{TenantID: 101, Language: "en", Word: "bpa free", Status: 1},
+			},
+		},
+	})
+	defer restoreRepo()
 
 	pkg := &Package{
 		DraftPayload: &RequestDraft{
@@ -729,7 +709,7 @@ func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T
 		},
 	}
 
-	changed := SanitizeDraftPayloadSensitiveContent(pkg, context.Background(), nil)
+	changed := SanitizeDraftPayloadSensitiveContent(pkg, tenantctx.WithTenantID(context.Background(), "101"), nil)
 	if !changed {
 		t.Fatal("changed = false, want true")
 	}
@@ -745,14 +725,6 @@ func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T
 }
 
 func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
 	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
@@ -805,17 +777,71 @@ func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *
 	}
 }
 
+func TestPrepareSubmitProductContent_LoadsTenantGenerationTopicOverrideLexicon(t *testing.T) {
+	restorePolicyRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: {"children"},
+		},
+	})
+	defer restorePolicyRepo()
+	restoreOverrideRepo := submitprep.SetGenerationTopicOverrideRepository(&stubGenerationTopicOverrideRepository{
+		items: map[string]listingadmin.GenerationTopicOverride{
+			overrideRepoKey(101, "shein", "children"): {
+				TenantID: 101,
+				Platform: "shein",
+				TopicKey: "children",
+				AdditionalLexiconByLanguage: map[string][]string{
+					"en": {"toddler"},
+				},
+				Status: 1,
+			},
+		},
+	})
+	defer restoreOverrideRepo()
+
+	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Toddler Door Curtain",
+		}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Toddler decor for bedrooms.",
+		}},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "Toddler White"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "Toddler White",
+			}},
+		}},
+	}
+
+	if err := PrepareSubmitProductContent(ctx, product, "US", nil, nil); err != nil {
+		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
+	}
+	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageNameList, "en")), "toddler") {
+		t.Fatalf("english title still contains override lexicon: %+v", product.MultiLanguageNameList)
+	}
+	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageDescList, "en")), "toddler") {
+		t.Fatalf("english description still contains override lexicon: %+v", product.MultiLanguageDescList)
+	}
+	if strings.Contains(strings.ToLower(findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en")), "toddler") {
+		t.Fatalf("skc still contains override lexicon: %+v", product.SKCList[0].MultiLanguageNameList)
+	}
+}
+
 func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *testing.T) {
-	restore := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {
-    "en": ["bpa free", "amazon"]
-  },
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restore()
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {
+				{TenantID: 101, Language: "en", Word: "amazon", Status: 1},
+				{TenantID: 101, Language: "en", Word: "bpa free", Status: 1},
+			},
+		},
+	})
+	defer restoreRepo()
 
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{
@@ -839,7 +865,7 @@ func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *test
 		}},
 	}
 
-	if err := PrepareSubmitProductContent(context.Background(), product, "US", nil, nil); err != nil {
+	if err := PrepareSubmitProductContent(tenantctx.WithTenantID(context.Background(), "101"), product, "US", nil, nil); err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
 

@@ -37,15 +37,17 @@ type storeAdminHandlers struct {
 }
 
 type catalogAdminHandlers struct {
-	filterRuleHandler            *listingadmin.FilterRuleHandler
-	profitRuleHandler            *listingadmin.ProfitRuleHandler
-	pricingRuleHandler           *listingadmin.PricingRuleHandler
-	operationStrategyHandler     *listingadmin.OperationStrategyHandler
-	sensitiveWordHandler         *listingadmin.SensitiveWordHandler
-	generationTopicPolicyHandler *listingadmin.GenerationTopicPolicyHandler
-	productImportMappingHandler  *listingadmin.ProductImportMappingHandler
-	categoryHandler              *listingadmin.CategoryHandler
-	productDataHandler           *listingadmin.ProductDataHandler
+	filterRuleHandler              *listingadmin.FilterRuleHandler
+	profitRuleHandler              *listingadmin.ProfitRuleHandler
+	pricingRuleHandler             *listingadmin.PricingRuleHandler
+	operationStrategyHandler       *listingadmin.OperationStrategyHandler
+	sensitiveWordHandler           *listingadmin.SensitiveWordHandler
+	generationTopicCatalogHandler  *listingadmin.GenerationTopicCatalogHandler
+	generationTopicPolicyHandler   *listingadmin.GenerationTopicPolicyHandler
+	generationTopicOverrideHandler *listingadmin.GenerationTopicOverrideHandler
+	productImportMappingHandler    *listingadmin.ProductImportMappingHandler
+	categoryHandler                *listingadmin.CategoryHandler
+	productDataHandler             *listingadmin.ProductDataHandler
 }
 
 type adminHandlers struct {
@@ -93,18 +95,19 @@ type studioBatchRunHandlerService interface {
 type HandlerOption func(*handler)
 
 type AdminHandlerDependencies struct {
-	StoreRepository                 listingadmin.StoreRepository
-	StoreStatisticsRepository       listingadmin.StoreStatisticsRepository
-	ImportTaskRepository            listingadmin.ImportTaskRepository
-	FilterRuleRepository            listingadmin.FilterRuleRepository
-	ProfitRuleRepository            listingadmin.ProfitRuleRepository
-	PricingRuleRepository           listingadmin.PricingRuleRepository
-	OperationStrategyRepository     listingadmin.OperationStrategyRepository
-	SensitiveWordRepository         listingadmin.SensitiveWordRepository
-	GenerationTopicPolicyRepository listingadmin.GenerationTopicPolicyRepository
-	ProductImportMappingRepository  listingadmin.ProductImportMappingRepository
-	CategoryRepository              listingadmin.CategoryRepository
-	ProductDataRepository           listingadmin.ProductDataRepository
+	StoreRepository                   listingadmin.StoreRepository
+	StoreStatisticsRepository         listingadmin.StoreStatisticsRepository
+	ImportTaskRepository              listingadmin.ImportTaskRepository
+	FilterRuleRepository              listingadmin.FilterRuleRepository
+	ProfitRuleRepository              listingadmin.ProfitRuleRepository
+	PricingRuleRepository             listingadmin.PricingRuleRepository
+	OperationStrategyRepository       listingadmin.OperationStrategyRepository
+	SensitiveWordRepository           listingadmin.SensitiveWordRepository
+	GenerationTopicOverrideRepository listingadmin.GenerationTopicOverrideRepository
+	GenerationTopicPolicyRepository   listingadmin.GenerationTopicPolicyRepository
+	ProductImportMappingRepository    listingadmin.ProductImportMappingRepository
+	CategoryRepository                listingadmin.CategoryRepository
+	ProductDataRepository             listingadmin.ProductDataRepository
 }
 
 type SubscriptionDependencies struct {

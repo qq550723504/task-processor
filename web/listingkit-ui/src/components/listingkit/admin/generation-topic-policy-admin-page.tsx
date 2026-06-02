@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -28,6 +29,15 @@ import {
   type ListingGenerationTopicPolicy,
   type ListingGenerationTopicPolicyInput,
 } from "@/lib/api/admin-generation-topic-policies";
+import {
+  createListingGenerationTopicOverride,
+  deleteListingGenerationTopicOverride,
+  getListingGenerationTopicCatalog,
+  updateListingGenerationTopicOverride,
+  updateListingGenerationTopicOverrideStatus,
+  type ListingGenerationTopicCatalogItem,
+  type ListingGenerationTopicOverrideInput,
+} from "@/lib/api/admin-generation-topic-overrides";
 
 const DEFAULT_FORM: ListingGenerationTopicPolicyInput = {
   platform: "shein",
@@ -36,19 +46,14 @@ const DEFAULT_FORM: ListingGenerationTopicPolicyInput = {
   status: 1,
 };
 
-const TOPIC_OPTIONS = [
-  ["children", "children"],
-  ["baby", "baby"],
-  ["food", "food"],
-  ["meals", "meals"],
-  ["knives", "knives"],
-] as const;
-
 export function GenerationTopicPolicyAdminPage() {
   const [platform, setPlatform] = useState("shein");
   const [topicKey, setTopicKey] = useState("");
   const [status, setStatus] = useState("");
   const [form, setForm] = useState<ListingGenerationTopicPolicyInput>(DEFAULT_FORM);
+  const [overrideDrafts, setOverrideDrafts] = useState<Record<string, OverrideDraft>>(
+    {},
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -67,12 +72,25 @@ export function GenerationTopicPolicyAdminPage() {
     queryKey: ["listingkit-admin-generation-topic-policies", query],
     queryFn: () => getListingGenerationTopicPolicies(query),
   });
+  const catalogQuery = useQuery({
+    queryKey: ["listingkit-admin-generation-topic-catalog", platform],
+    queryFn: () => getListingGenerationTopicCatalog({ platform }),
+  });
 
   const items: ListingGenerationTopicPolicy[] = policyQuery.data?.items ?? [];
+  const catalogItems: ListingGenerationTopicCatalogItem[] =
+    catalogQuery.data?.items ?? [];
   const total = policyQuery.data?.total ?? 0;
   const loading = policyQuery.isLoading || policyQuery.isFetching;
+  const catalogLoading = catalogQuery.isLoading || catalogQuery.isFetching;
+  const topicOptions = useMemo<ReadonlyArray<readonly [string, string]>>(
+    () => catalogItems.map((item) => [item.key, item.key] as const),
+    [catalogItems],
+  );
   const visibleError =
-    error || (policyQuery.error instanceof Error ? policyQuery.error.message : "");
+    error ||
+    (policyQuery.error instanceof Error ? policyQuery.error.message : "") ||
+    (catalogQuery.error instanceof Error ? catalogQuery.error.message : "");
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -109,6 +127,68 @@ export function GenerationTopicPolicyAdminPage() {
       await policyQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
+    }
+  }
+
+  async function handleSaveOverride(item: ListingGenerationTopicCatalogItem) {
+    setSaving(true);
+    setError("");
+    try {
+      const draft = resolveOverrideDraft(item, overrideDrafts[item.key]);
+      const input: ListingGenerationTopicOverrideInput = {
+        platform: "shein",
+        topicKey: item.key,
+        additionalPromptDirectives: parseMultilineList(draft.directivesText),
+        additionalLexiconByLanguage: parseLexiconJson(draft.lexiconText),
+        remark: draft.remark || undefined,
+        status: draft.status,
+      };
+      if (item.tenantOverride?.id) {
+        await updateListingGenerationTopicOverride(item.tenantOverride.id, input);
+      } else {
+        await createListingGenerationTopicOverride(input);
+      }
+      await catalogQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleOverride(item: ListingGenerationTopicCatalogItem) {
+    if (!item.tenantOverride?.id) {
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await updateListingGenerationTopicOverrideStatus(
+        item.tenantOverride.id,
+        item.tenantOverride.status === 1 ? 0 : 1,
+        item.tenantOverride.remark,
+      );
+      await catalogQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteOverride(item: ListingGenerationTopicCatalogItem) {
+    if (!item.tenantOverride?.id) {
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await deleteListingGenerationTopicOverride(item.tenantOverride.id);
+      await catalogQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -261,7 +341,7 @@ export function GenerationTopicPolicyAdminPage() {
             onChange={(nextTopicKey) => setForm({ ...form, topicKey: nextTopicKey })}
             options={[
               ["", "请选择"],
-              ...TOPIC_OPTIONS,
+              ...topicOptions,
             ]}
           />
           <TopicSelect
@@ -294,6 +374,234 @@ export function GenerationTopicPolicyAdminPage() {
           </Button>
         </form>
       </section>
+
+      <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-zinc-950">Topic Catalog</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            查看默认主题词包，并按租户追加 prompt 规则与多语言词包。
+          </p>
+        </div>
+        <div className="space-y-4">
+          {catalogLoading ? (
+            <div className="text-sm text-zinc-500">加载 catalog 中...</div>
+          ) : catalogItems.length === 0 ? (
+            <div className="text-sm text-zinc-500">暂无 catalog 数据</div>
+          ) : (
+            catalogItems.map((item) => {
+              const draft = resolveOverrideDraft(item, overrideDrafts[item.key]);
+              return (
+                <div
+                  key={item.key}
+                  className="rounded-lg border border-zinc-200 bg-zinc-50 p-4"
+                >
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-zinc-950">
+                          {item.key}
+                        </h3>
+                        <Badge variant="outline">priority {item.priority}</Badge>
+                        <Badge
+                          variant={
+                            item.tenantOverride?.status === 1 ? "success" : "neutral"
+                          }
+                        >
+                          {item.tenantOverride
+                            ? item.tenantOverride.status === 1
+                              ? "override 启用"
+                              : "override 禁用"
+                            : "无 override"}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-xs font-medium text-zinc-500">
+                        默认 Prompt Directives
+                      </p>
+                      <ul className="mt-1 list-disc pl-5 text-sm text-zinc-700">
+                        {item.promptDirectives.map((directive) => (
+                          <li key={directive}>{directive}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="grid gap-2 text-right sm:grid-cols-2 lg:min-w-[280px]">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void handleSaveOverride(item)}
+                        disabled={saving}
+                      >
+                        {saving ? (
+                          <RefreshCw className="size-4 animate-spin" />
+                        ) : (
+                          <Plus className="size-4" />
+                        )}
+                        保存 override
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleToggleOverride(item)}
+                        disabled={saving || !item.tenantOverride?.id}
+                      >
+                        切换状态
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => void handleDeleteOverride(item)}
+                        disabled={saving || !item.tenantOverride?.id}
+                      >
+                        <Trash2 className="size-4" />
+                        删除 override
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                    <DefinitionBlock
+                      title="默认词包"
+                      lexiconByLanguage={item.lexiconByLanguage}
+                    />
+                    <DefinitionBlock
+                      title="生效词包"
+                      directives={item.effectiveDefinition.promptDirectives}
+                      lexiconByLanguage={item.effectiveDefinition.lexiconByLanguage}
+                    />
+                    <div className="space-y-3 rounded-md border border-zinc-200 bg-white p-3">
+                      <h4 className="text-sm font-semibold text-zinc-950">
+                        租户 Override
+                      </h4>
+                      <Label className="block text-xs font-medium text-zinc-500">
+                        额外 Prompt Directives
+                        <Textarea
+                          className="mt-1 min-h-24"
+                          value={draft.directivesText}
+                          onChange={(event) =>
+                            setOverrideDrafts((current) => ({
+                              ...current,
+                              [item.key]: { ...draft, directivesText: event.target.value },
+                            }))
+                          }
+                          placeholder="每行一条 directive"
+                        />
+                      </Label>
+                      <Label className="block text-xs font-medium text-zinc-500">
+                        额外词包 JSON
+                        <Textarea
+                          className="mt-1 min-h-28 font-mono text-xs"
+                          value={draft.lexiconText}
+                          onChange={(event) =>
+                            setOverrideDrafts((current) => ({
+                              ...current,
+                              [item.key]: { ...draft, lexiconText: event.target.value },
+                            }))
+                          }
+                          placeholder={'{"en":["toddler"],"zh":["幼童"]}'}
+                        />
+                      </Label>
+                      <TopicInput
+                        label="备注"
+                        value={draft.remark}
+                        onChange={(remark) =>
+                          setOverrideDrafts((current) => ({
+                            ...current,
+                            [item.key]: { ...draft, remark },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type OverrideDraft = {
+  directivesText: string;
+  lexiconText: string;
+  remark: string;
+  status: number;
+};
+
+function resolveOverrideDraft(
+  item: ListingGenerationTopicCatalogItem,
+  draft?: OverrideDraft,
+): OverrideDraft {
+  if (draft) {
+    return draft;
+  }
+  return {
+    directivesText: (item.tenantOverride?.additionalPromptDirectives ?? []).join("\n"),
+    lexiconText: JSON.stringify(
+      item.tenantOverride?.additionalLexiconByLanguage ?? {},
+      null,
+      2,
+    ),
+    remark: item.tenantOverride?.remark ?? "",
+    status: item.tenantOverride?.status ?? 1,
+  };
+}
+
+function parseMultilineList(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseLexiconJson(value: string): Record<string, string[]> {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {};
+  }
+  const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+  const normalized: Record<string, string[]> = {};
+  for (const [language, words] of Object.entries(parsed)) {
+    if (!Array.isArray(words)) {
+      continue;
+    }
+    normalized[language] = words
+      .map((word) => String(word).trim())
+      .filter(Boolean);
+  }
+  return normalized;
+}
+
+function DefinitionBlock({
+  title,
+  directives = [],
+  lexiconByLanguage,
+}: {
+  title: string;
+  directives?: string[];
+  lexiconByLanguage: Record<string, string[]>;
+}) {
+  return (
+    <div className="rounded-md border border-zinc-200 bg-white p-3">
+      <h4 className="text-sm font-semibold text-zinc-950">{title}</h4>
+      {directives.length > 0 ? (
+        <>
+          <p className="mt-2 text-xs font-medium text-zinc-500">Prompt Directives</p>
+          <ul className="mt-1 list-disc pl-5 text-sm text-zinc-700">
+            {directives.map((directive) => (
+              <li key={directive}>{directive}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <div className="mt-3 space-y-2">
+        {Object.entries(lexiconByLanguage).map(([language, words]) => (
+          <div key={language}>
+            <p className="text-xs font-medium uppercase text-zinc-500">{language}</p>
+            <p className="text-sm text-zinc-700">{words.join(", ") || "-"}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -331,7 +639,7 @@ function TopicSelect({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: Array<[string, string]>;
+  options: ReadonlyArray<readonly [string, string]>;
 }) {
   return (
     <Label className="mb-3 block text-xs font-medium text-zinc-500">

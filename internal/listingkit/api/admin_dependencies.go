@@ -24,6 +24,7 @@ func withCatalogAdminDependencies(deps AdminHandlerDependencies) HandlerOption {
 		WithPricingRuleRepository(deps.PricingRuleRepository),
 		WithOperationStrategyRepository(deps.OperationStrategyRepository),
 		WithSensitiveWordRepository(deps.SensitiveWordRepository),
+		WithGenerationTopicOverrideRepository(deps.GenerationTopicOverrideRepository),
 		WithGenerationTopicPolicyRepository(deps.GenerationTopicPolicyRepository),
 		WithProductImportMappingRepository(deps.ProductImportMappingRepository),
 		WithCategoryRepository(deps.CategoryRepository),
@@ -83,6 +84,13 @@ func WithOperationStrategyRepository(repo listingadmin.OperationStrategyReposito
 func WithSensitiveWordRepository(repo listingadmin.SensitiveWordRepository) HandlerOption {
 	return withAdminDependency(repo, func(repo listingadmin.SensitiveWordRepository, admin *adminHandlers) {
 		admin.sensitiveWordHandler = listingadmin.NewSensitiveWordHandler(repo)
+	})
+}
+
+func WithGenerationTopicOverrideRepository(repo listingadmin.GenerationTopicOverrideRepository) HandlerOption {
+	return withAdminDependency(repo, func(repo listingadmin.GenerationTopicOverrideRepository, admin *adminHandlers) {
+		admin.generationTopicOverrideHandler = listingadmin.NewGenerationTopicOverrideHandler(repo)
+		admin.generationTopicCatalogHandler = listingadmin.NewGenerationTopicCatalogHandler(repo)
 	})
 }
 

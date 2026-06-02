@@ -522,6 +522,34 @@ func (s *stubListingKitHandler) DeleteAdminSensitiveWord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
+func (s *stubListingKitHandler) ListAdminGenerationTopicCatalog(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}})
+}
+
+func (s *stubListingKitHandler) ListAdminGenerationTopicOverrides(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminGenerationTopicOverride(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminGenerationTopicOverride(c *gin.Context) {
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminGenerationTopicOverride(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminGenerationTopicOverrideStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminGenerationTopicOverride(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
 func (s *stubListingKitHandler) ListAdminGenerationTopicPolicies(c *gin.Context) {
 	s.listAdminGenerationTopicPoliciesCalled = true
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
 	assetrepo "task-processor/internal/asset/repository"
@@ -91,6 +92,9 @@ func buildServiceInputFixture() BuildServiceInput {
 					return nil, nil, nil
 				},
 				SensitiveWord: func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
+					return nil, nil, nil
+				},
+				GenerationTopicOverride: func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error) {
 					return nil, nil, nil
 				},
 				GenerationTopicPolicy: func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error) {
@@ -657,6 +661,9 @@ func TestBuildAdminRepositoriesComposesCatalogAndRulePhases(t *testing.T) {
 	input.Repositories.Admin.PricingRule = func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error) {
 		return &listingadmin.GormPricingRuleRepository{}, nil, nil
 	}
+	input.Repositories.Admin.GenerationTopicPolicy = func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error) {
+		return &listingadmin.GormGenerationTopicPolicyRepository{}, nil, nil
+	}
 	closers := &closerStack{}
 
 	adminRepos, err := buildAdminRepositories(input, closers)
@@ -674,6 +681,48 @@ func TestBuildAdminRepositoriesComposesCatalogAndRulePhases(t *testing.T) {
 	}
 	if adminRepos.pricingRuleRepository == nil {
 		t.Fatal("expected admin rule pricing repository")
+	}
+	if adminRepos.generationTopicPolicyRepository == nil {
+		t.Fatal("expected admin rule generation topic policy repository")
+	}
+}
+
+func TestBuildAdminRepositoriesIncludesGenerationTopicOverrideRepository(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	input.Repositories.Admin.GenerationTopicOverride = func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error) {
+		return &listingadmin.GormGenerationTopicOverrideRepository{}, nil, nil
+	}
+	closers := &closerStack{}
+
+	adminRepos, err := buildAdminRepositories(input, closers)
+	if err != nil {
+		t.Fatalf("buildAdminRepositories: %v", err)
+	}
+	if adminRepos.generationTopicOverrideRepository == nil {
+		t.Fatal("expected admin rule generation topic override repository")
+	}
+}
+
+func TestListingKitRoutesRegisterGenerationTopicCatalogAndOverrides(t *testing.T) {
+	t.Parallel()
+
+	routes := AppendRouteDescriptors(nil, stubRouteHandlerWithGenerationTopicOverrides{})
+	paths := routeKeys(routes)
+
+	for _, route := range []string{
+		"GET /api/v1/listing-kits/admin/generation-topic-catalog",
+		"GET /api/v1/listing-kits/admin/generation-topic-overrides",
+		"GET /api/v1/listing-kits/admin/generation-topic-overrides/:id",
+		"POST /api/v1/listing-kits/admin/generation-topic-overrides",
+		"PUT /api/v1/listing-kits/admin/generation-topic-overrides/:id",
+		"PATCH /api/v1/listing-kits/admin/generation-topic-overrides/:id/status",
+		"DELETE /api/v1/listing-kits/admin/generation-topic-overrides/:id",
+	} {
+		if !containsString(paths, route) {
+			t.Fatalf("expected route %s", route)
+		}
 	}
 }
 
@@ -1377,6 +1426,31 @@ type httpapiStubSheinAPIClientFactory struct{}
 
 func (httpapiStubSheinAPIClientFactory) NewSheinAPIClient(int64, *listingkit.SheinStoreInfo) *sheinclient.APIClient {
 	return nil
+}
+
+type stubRouteHandlerWithGenerationTopicOverrides struct {
+	stubRouteHandler
+}
+
+func (stubRouteHandlerWithGenerationTopicOverrides) ListAdminGenerationTopicCatalog(*gin.Context)   {}
+func (stubRouteHandlerWithGenerationTopicOverrides) ListAdminGenerationTopicOverrides(*gin.Context) {}
+func (stubRouteHandlerWithGenerationTopicOverrides) GetAdminGenerationTopicOverride(*gin.Context)   {}
+func (stubRouteHandlerWithGenerationTopicOverrides) CreateAdminGenerationTopicOverride(*gin.Context) {
+}
+func (stubRouteHandlerWithGenerationTopicOverrides) UpdateAdminGenerationTopicOverride(*gin.Context) {
+}
+func (stubRouteHandlerWithGenerationTopicOverrides) UpdateAdminGenerationTopicOverrideStatus(*gin.Context) {
+}
+func (stubRouteHandlerWithGenerationTopicOverrides) DeleteAdminGenerationTopicOverride(*gin.Context) {
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (httpapiStubProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {

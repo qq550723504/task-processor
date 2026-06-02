@@ -13,14 +13,30 @@ func NewSensitiveWordService() *SensitiveWordService {
 	return NewSensitiveWordServiceWithPath("data/sensitive_words.json")
 }
 
+// NewSensitiveWordServiceInMemory 创建纯内存敏感词服务，不依赖本地配置文件。
+func NewSensitiveWordServiceInMemory() *SensitiveWordService {
+	service := &SensitiveWordService{
+		persistConfig: false,
+		ctx:           context.Background(),
+		saveQueue:     make(chan struct{}, 10),
+		stopSave:      make(chan struct{}),
+		logger:        corelogger.GetGlobalLogger("shein.sensitive_word"),
+	}
+
+	service.startSaveWorker()
+	service.initDefaultConfig()
+	return service
+}
+
 // NewSensitiveWordServiceWithPath 使用指定路径创建敏感词服务
 func NewSensitiveWordServiceWithPath(configPath string) *SensitiveWordService {
 	service := &SensitiveWordService{
-		configPath: configPath,
-		ctx:        context.Background(),
-		saveQueue:  make(chan struct{}, 10),
-		stopSave:   make(chan struct{}),
-		logger:     corelogger.GetGlobalLogger("shein.sensitive_word"),
+		configPath:    configPath,
+		persistConfig: true,
+		ctx:           context.Background(),
+		saveQueue:     make(chan struct{}, 10),
+		stopSave:      make(chan struct{}),
+		logger:        corelogger.GetGlobalLogger("shein.sensitive_word"),
 	}
 
 	service.startSaveWorker()

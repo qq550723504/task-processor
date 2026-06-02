@@ -1,9 +1,6 @@
 package listingkit
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	sheinpub "task-processor/internal/publishing/shein"
@@ -26,18 +23,5 @@ func localizedSubmitSnapshotText(items []sheinpub.LocalizedText, language string
 
 func overrideSensitiveWordsConfigForTest(t *testing.T) func() {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	sourcePath := filepath.Join(filepath.Dir(file), "..", "..", "data", "sensitive_words_shein.json")
-	bytes, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatalf("read sensitive words config: %v", err)
-	}
-	tempPath := filepath.Join(t.TempDir(), "sensitive_words_shein.json")
-	if err := os.WriteFile(tempPath, bytes, 0o600); err != nil {
-		t.Fatalf("write temp sensitive words config: %v", err)
-	}
-	return submitprep.SetSensitiveWordsConfigPathForTesting(tempPath)
+	return func() {}
 }

@@ -9,13 +9,16 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit/tenantctx"
+	generationtopics "task-processor/internal/shein/generationtopics"
 )
 
 const generationTopicPolicyPlatformShein = "shein"
 
 var (
-	generationTopicPolicyRepoMu sync.RWMutex
-	generationTopicPolicyRepo   listingadmin.GenerationTopicPolicyRepository
+	generationTopicPolicyRepoMu   sync.RWMutex
+	generationTopicPolicyRepo     listingadmin.GenerationTopicPolicyRepository
+	generationTopicOverrideRepoMu sync.RWMutex
+	generationTopicOverrideRepo   listingadmin.GenerationTopicOverrideRepository
 )
 
 func SetGenerationTopicPolicyRepository(repo listingadmin.GenerationTopicPolicyRepository) func() {
@@ -37,6 +40,25 @@ func currentGenerationTopicPolicyRepository() listingadmin.GenerationTopicPolicy
 	return repo
 }
 
+func SetGenerationTopicOverrideRepository(repo listingadmin.GenerationTopicOverrideRepository) func() {
+	generationTopicOverrideRepoMu.Lock()
+	previous := generationTopicOverrideRepo
+	generationTopicOverrideRepo = repo
+	generationTopicOverrideRepoMu.Unlock()
+	return func() {
+		generationTopicOverrideRepoMu.Lock()
+		generationTopicOverrideRepo = previous
+		generationTopicOverrideRepoMu.Unlock()
+	}
+}
+
+func currentGenerationTopicOverrideRepository() listingadmin.GenerationTopicOverrideRepository {
+	generationTopicOverrideRepoMu.RLock()
+	repo := generationTopicOverrideRepo
+	generationTopicOverrideRepoMu.RUnlock()
+	return repo
+}
+
 func loadTenantGenerationTopicPolicySummary(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -53,7 +75,34 @@ func loadTenantGenerationTopicPolicySummary(ctx context.Context) string {
 	if err != nil || len(keys) == 0 {
 		return ""
 	}
-	return buildSheinGenerationPolicySummary(keys)
+	definitions := loadTenantGenerationTopicDefinitions(ctx, tenantID, keys)
+	if len(definitions) == 0 {
+		return ""
+	}
+	return generationtopics.AssembleSheinPolicySummary(
+		definitions,
+		generationtopics.SheinGenerationPolicyMaxDirectives,
+		generationtopics.SheinGenerationPolicyMaxChars,
+	)
+}
+
+func loadTenantGenerationTopicDefinitions(ctx context.Context, tenantID int64, topicKeys []string) []generationtopics.Definition {
+	overrideRepo := currentGenerationTopicOverrideRepository()
+	if overrideRepo == nil {
+		definitions, _ := generationtopics.ResolveSheinTopicKeys(topicKeys)
+		return definitions
+	}
+	return generationtopics.ResolveSheinTopicDefinitionsWithOverlay(topicKeys, func(topicKey string) (generationtopics.DefinitionOverlay, error) {
+		override, err := overrideRepo.GetGenerationTopicOverrideByTopicKey(ctx, tenantID, generationTopicPolicyPlatformShein, topicKey)
+		if err != nil || override == nil || override.Status != 1 {
+			return generationtopics.DefinitionOverlay{}, err
+		}
+		return generationtopics.DefinitionOverlay{
+			Enabled:           true,
+			PromptDirectives:  override.AdditionalPromptDirectives,
+			LexiconByLanguage: override.AdditionalLexiconByLanguage,
+		}, nil
+	})
 }
 
 func tenantIDFromContext(ctx context.Context) (int64, bool) {

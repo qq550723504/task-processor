@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GenerationTopicPolicyAdminPage } from "@/components/listingkit/admin/generation-topic-policy-admin-page";
 import * as generationTopicPoliciesApi from "@/lib/api/admin-generation-topic-policies";
+import * as generationTopicOverridesApi from "@/lib/api/admin-generation-topic-overrides";
 
 describe("GenerationTopicPolicyAdminPage", () => {
   beforeEach(() => {
@@ -29,6 +30,28 @@ describe("GenerationTopicPolicyAdminPage", () => {
       page: 1,
       page_size: 20,
     });
+    vi.spyOn(
+      generationTopicOverridesApi,
+      "getListingGenerationTopicCatalog",
+    ).mockResolvedValue({
+      items: [
+        {
+          key: "children",
+          priority: 10,
+          promptDirectives: [
+            "Do not mention children, babies, or age-specific users.",
+          ],
+          lexiconByLanguage: { en: ["child", "children"], zh: ["儿童"] },
+          tenantOverride: null,
+          effectiveDefinition: {
+            promptDirectives: [
+              "Do not mention children, babies, or age-specific users.",
+            ],
+            lexiconByLanguage: { en: ["child", "children"], zh: ["儿童"] },
+          },
+        },
+      ],
+    });
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -45,9 +68,12 @@ describe("GenerationTopicPolicyAdminPage", () => {
     await waitFor(() => {
       expect(screen.getByText("manual")).toBeInTheDocument();
     });
+    expect(await screen.findByText("Topic Catalog")).toBeInTheDocument();
+    expect(screen.getAllByText("child, children")).toHaveLength(2);
     expect(
       generationTopicPoliciesApi.getListingGenerationTopicPolicies,
     ).toHaveBeenCalled();
+    expect(generationTopicOverridesApi.getListingGenerationTopicCatalog).toHaveBeenCalled();
     expect(screen.getByText("manual")).toBeInTheDocument();
   });
 });

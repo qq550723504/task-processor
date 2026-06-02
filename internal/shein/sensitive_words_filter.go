@@ -24,8 +24,28 @@ type SensitiveWordsFilter struct {
 	hardcodedWords  map[string][]string
 }
 
+// NewSensitiveWordsFilterWithDefaults 创建不依赖本地配置文件的默认敏感词过滤器。
+func NewSensitiveWordsFilterWithDefaults() *SensitiveWordsFilter {
+	filter := &SensitiveWordsFilter{
+		config: &config.SensitiveWordsConfig{
+			StaticWords:  map[string][]string{},
+			DynamicWords: map[string][]string{},
+			LastUpdated:  time.Now().Format(time.RFC3339),
+			Version:      "1.0",
+			Platform:     "shein",
+		},
+		compiledRegexes: make(map[string][]*regexp.Regexp),
+		hardcodedWords:  initHardcodedWords(),
+	}
+	logger.GetGlobalLogger("shein/sensitive_words_filter.go").Info("✅ 已初始化默认敏感词过滤器")
+	return filter
+}
+
 // NewSensitiveWordsFilter 创建敏感词过滤器
 func NewSensitiveWordsFilter(configPath string) (*SensitiveWordsFilter, error) {
+	if strings.TrimSpace(configPath) == "" {
+		return NewSensitiveWordsFilterWithDefaults(), nil
+	}
 	filter := &SensitiveWordsFilter{
 		configPath:      configPath,
 		compiledRegexes: make(map[string][]*regexp.Regexp),

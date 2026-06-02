@@ -2,9 +2,6 @@ package shein
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -192,16 +189,15 @@ func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
 }
 
 func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
-	restore := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {
-    "en": ["bpa free", "amazon"]
-  },
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restore()
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {
+				{TenantID: 101, Language: "en", Word: "amazon", Status: 1},
+				{TenantID: 101, Language: "en", Word: "bpa free", Status: 1},
+			},
+		},
+	})
+	defer restoreRepo()
 
 	canonical := &canonical.Product{
 		Title:       "Amazon BPA Free Vase",
@@ -211,7 +207,7 @@ func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
 		},
 	}
 
-	copy := buildSheinListingCopy(nil, canonical, canonical.Title, nil)
+	copy := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), canonical, canonical.Title, nil)
 
 	assertNoSensitivePhrase(t, copy.Title, "title")
 	assertNoSensitivePhrase(t, copy.Description, "description")
@@ -219,14 +215,6 @@ func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
 }
 
 func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
 	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
@@ -262,14 +250,6 @@ func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing
 }
 
 func TestDifferentTenantsLoadDifferentGenerationTopicLexicons(t *testing.T) {
-	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
-  "static_words": {},
-  "dynamic_words": {},
-  "last_updated": "2026-06-02T00:00:00Z",
-  "version": "1.0.0",
-  "platform": "shein"
-}`)
-	defer restoreConfig()
 	restoreRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
 		keys: map[int64][]string{
 			101: {"children"},
@@ -301,6 +281,44 @@ func TestDifferentTenantsLoadDifferentGenerationTopicLexicons(t *testing.T) {
 	}
 }
 
+func TestBuildSheinListingCopyLoadsTenantGenerationTopicOverrideLexicon(t *testing.T) {
+	restorePolicyRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: {"children"},
+		},
+	})
+	defer restorePolicyRepo()
+	restoreOverrideRepo := submitprep.SetGenerationTopicOverrideRepository(&stubGenerationTopicOverrideRepository{
+		items: map[string]listingadmin.GenerationTopicOverride{
+			overrideRepoKey(101, "shein", "children"): {
+				TenantID: 101,
+				Platform: "shein",
+				TopicKey: "children",
+				AdditionalLexiconByLanguage: map[string][]string{
+					"en": {"toddler"},
+				},
+				Status: 1,
+			},
+		},
+	})
+	defer restoreOverrideRepo()
+
+	copy := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
+		Title:       "Toddler Room Curtain",
+		Description: "Toddler-themed decor for a kids room",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Toddler Room Curtain"},
+		},
+	}, "Toddler Room Curtain", nil)
+
+	if strings.Contains(strings.ToLower(copy.Title), "toddler") {
+		t.Fatalf("title = %q, want override lexicon removed", copy.Title)
+	}
+	if strings.Contains(strings.ToLower(copy.Description), "toddler") {
+		t.Fatalf("description = %q, want override lexicon removed", copy.Description)
+	}
+}
+
 func assertNoSensitivePhrase(t *testing.T, value string, field string) {
 	t.Helper()
 	normalized := strings.ToLower(value)
@@ -309,31 +327,4 @@ func assertNoSensitivePhrase(t *testing.T, value string, field string) {
 			t.Fatalf("%s = %q, want %q removed", field, value, phrase)
 		}
 	}
-}
-
-func writeSensitiveWordsConfigForTest(t *testing.T, content string) func() {
-	t.Helper()
-	tempPath := filepath.Join(t.TempDir(), "sensitive_words_shein.json")
-	if err := os.WriteFile(tempPath, []byte(content), 0o600); err != nil {
-		t.Fatalf("write temp sensitive words config: %v", err)
-	}
-	return submitprep.SetSensitiveWordsConfigPathForTesting(tempPath)
-}
-
-func overrideSensitiveWordsConfigForTest(t *testing.T) func() {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	sourcePath := filepath.Join(filepath.Dir(file), "..", "..", "..", "data", "sensitive_words_shein.json")
-	bytes, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatalf("read sensitive words config: %v", err)
-	}
-	tempPath := filepath.Join(t.TempDir(), "sensitive_words_shein.json")
-	if err := os.WriteFile(tempPath, bytes, 0o600); err != nil {
-		t.Fatalf("write temp sensitive words config: %v", err)
-	}
-	return submitprep.SetSensitiveWordsConfigPathForTesting(tempPath)
 }

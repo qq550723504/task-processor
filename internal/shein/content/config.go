@@ -24,20 +24,26 @@ type SensitiveWordConfig struct {
 
 // SensitiveWordService 基于JSON文件的敏感词处理服务
 type SensitiveWordService struct {
-	configPath string
-	config     *SensitiveWordConfig
-	mutex      sync.RWMutex
-	ctx        context.Context
-	saveQueue  chan struct{}
-	stopSave   chan struct{}
-	wg         sync.WaitGroup
-	logger     *logrus.Entry
+	configPath    string
+	persistConfig bool
+	config        *SensitiveWordConfig
+	mutex         sync.RWMutex
+	ctx           context.Context
+	saveQueue     chan struct{}
+	stopSave      chan struct{}
+	wg            sync.WaitGroup
+	logger        *logrus.Entry
 }
 
 // loadConfig 加载敏感词配置文件
 func (s *SensitiveWordService) loadConfig() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	if !s.persistConfig || s.configPath == "" {
+		s.config = s.createDefaultConfig()
+		return nil
+	}
 
 	// 检查文件是否存在
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
@@ -86,6 +92,11 @@ func (s *SensitiveWordService) saveConfig() error {
 func (s *SensitiveWordService) saveConfigUnlocked() error {
 	if s.config == nil {
 		return fmt.Errorf("配置为空，无法保存")
+	}
+	if !s.persistConfig || s.configPath == "" {
+		s.config.LastUpdated = time.Now()
+		s.config.Version = "1.0"
+		return nil
 	}
 
 	s.config.LastUpdated = time.Now()

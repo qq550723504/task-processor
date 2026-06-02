@@ -2,8 +2,6 @@ package submitprep
 
 import (
 	"context"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,12 +17,12 @@ import (
 )
 
 var (
-	sensitiveWordsPathMu       sync.RWMutex
-	sensitiveWordsPathOverride string
-	sensitiveWordRepoMu        sync.RWMutex
-	sensitiveWordRepo          listingadmin.SensitiveWordRepository
-	generationTopicRepoMu      sync.RWMutex
-	generationTopicRepo        listingadmin.GenerationTopicPolicyRepository
+	sensitiveWordRepoMu           sync.RWMutex
+	sensitiveWordRepo             listingadmin.SensitiveWordRepository
+	generationTopicRepoMu         sync.RWMutex
+	generationTopicRepo           listingadmin.GenerationTopicPolicyRepository
+	generationTopicOverrideRepoMu sync.RWMutex
+	generationTopicOverrideRepo   listingadmin.GenerationTopicOverrideRepository
 )
 
 func CleanSensitiveWords(product *sheinproduct.Product) error {
@@ -46,7 +44,7 @@ func NewSensitiveWordService() *sheincontent.SensitiveWordService {
 }
 
 func NewSensitiveWordServiceForContext(ctx context.Context) *sheincontent.SensitiveWordService {
-	service := sheincontent.NewSensitiveWordServiceWithPath(sensitiveWordsConfigPath())
+	service := sheincontent.NewSensitiveWordServiceInMemory()
 	overlaySensitiveWordsFromRepository(ctx, service)
 	overlayGenerationTopicLexicons(ctx, service)
 	return service
@@ -106,6 +104,25 @@ func currentGenerationTopicPolicyRepository() listingadmin.GenerationTopicPolicy
 	return repo
 }
 
+func SetGenerationTopicOverrideRepository(repo listingadmin.GenerationTopicOverrideRepository) func() {
+	generationTopicOverrideRepoMu.Lock()
+	previous := generationTopicOverrideRepo
+	generationTopicOverrideRepo = repo
+	generationTopicOverrideRepoMu.Unlock()
+	return func() {
+		generationTopicOverrideRepoMu.Lock()
+		generationTopicOverrideRepo = previous
+		generationTopicOverrideRepoMu.Unlock()
+	}
+}
+
+func currentGenerationTopicOverrideRepository() listingadmin.GenerationTopicOverrideRepository {
+	generationTopicOverrideRepoMu.RLock()
+	repo := generationTopicOverrideRepo
+	generationTopicOverrideRepoMu.RUnlock()
+	return repo
+}
+
 func overlaySensitiveWordsFromRepository(ctx context.Context, service *sheincontent.SensitiveWordService) {
 	if ctx == nil || service == nil {
 		return
@@ -143,7 +160,27 @@ func overlayGenerationTopicLexicons(ctx context.Context, service *sheincontent.S
 	if err != nil || len(keys) == 0 {
 		return
 	}
-	for language, words := range generationtopics.CollectSheinTopicLexicons(keys) {
+	overrideRepo := currentGenerationTopicOverrideRepository()
+	var definitions []generationtopics.Definition
+	if overrideRepo == nil {
+		definitions, _ = generationtopics.ResolveSheinTopicKeys(keys)
+	} else {
+		definitions = generationtopics.ResolveSheinTopicDefinitionsWithOverlay(keys, func(topicKey string) (generationtopics.DefinitionOverlay, error) {
+			override, err := overrideRepo.GetGenerationTopicOverrideByTopicKey(ctx, tenantID, "shein", topicKey)
+			if err != nil || override == nil || override.Status != 1 {
+				return generationtopics.DefinitionOverlay{}, err
+			}
+			return generationtopics.DefinitionOverlay{
+				Enabled:           true,
+				PromptDirectives:  override.AdditionalPromptDirectives,
+				LexiconByLanguage: override.AdditionalLexiconByLanguage,
+			}, nil
+		})
+	}
+	if len(definitions) == 0 {
+		return
+	}
+	for language, words := range generationtopics.CollectLexiconsFromDefinitions(definitions) {
 		service.AddStaticSensitiveWordsByLanguage(language, words)
 	}
 }
@@ -353,30 +390,4 @@ func autoDiscoveredSensitiveWordRemark() string {
 
 func int16Ptr(value int16) *int16 {
 	return &value
-}
-
-func sensitiveWordsConfigPath() string {
-	sensitiveWordsPathMu.RLock()
-	override := sensitiveWordsPathOverride
-	sensitiveWordsPathMu.RUnlock()
-	if override != "" {
-		return override
-	}
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "data/sensitive_words_shein.json"
-	}
-	return filepath.Join(filepath.Dir(file), "..", "..", "..", "data", "sensitive_words_shein.json")
-}
-
-func SetSensitiveWordsConfigPathForTesting(path string) func() {
-	sensitiveWordsPathMu.Lock()
-	previous := sensitiveWordsPathOverride
-	sensitiveWordsPathOverride = path
-	sensitiveWordsPathMu.Unlock()
-	return func() {
-		sensitiveWordsPathMu.Lock()
-		sensitiveWordsPathOverride = previous
-		sensitiveWordsPathMu.Unlock()
-	}
 }
