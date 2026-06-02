@@ -1905,6 +1905,388 @@ func TestExecuteTaskGenerationActionAppliesSectionReviewOutcome(t *testing.T) {
 	}
 }
 
+func newResolveAssetGenerationActionTargetCloneFixture(actionKey, interactionMode string) *AssetGenerationActionTarget {
+	return &AssetGenerationActionTarget{
+		ActionKey:       actionKey,
+		InteractionMode: interactionMode,
+		Filters: &AssetGenerationRecommendedFilters{
+			QualityGrade:           "ideal",
+			QualityGradeLabel:      "Ideal",
+			Platforms:              []string{"shein"},
+			RetryableOnly:          true,
+			RenderPreviewAvailable: true,
+			PreviewCapability:      "detail_preview",
+		},
+		NavigationTarget: &GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "main",
+				PreviewCapability: "detail_preview",
+			},
+			ActionTarget: &AssetGenerationActionTarget{
+				ActionKey:       assetGenerationActionReviewDetailPreviews,
+				InteractionMode: "review_only",
+				QueueQuery: &GenerationQueueQuery{
+					Platform:          "shein",
+					Slot:              "main",
+					PreviewCapability: "detail_preview",
+				},
+			},
+		},
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+		RetryRequest: &RetryGenerationTasksRequest{
+			TaskIDs:               []string{"task-1"},
+			Slots:                 []string{"main"},
+			ExecutionQuality:      "failed",
+			ExecutionQualityLabel: "Failed",
+			QualityGrade:          "provisional",
+			QualityGradeLabel:     "Provisional",
+			FallbackOnly:          true,
+			RendererOnly:          true,
+		},
+		ExpectedImpact: &AssetGenerationActionImpact{
+			MatchedItems:   1,
+			RetryableItems: 1,
+			Platforms:      []string{"shein"},
+			QualityGrades:  []string{"ideal"},
+			States:         []string{"ready"},
+		},
+	}
+}
+
+func TestResolveAssetGenerationActionTargetRequestActionKeyWinsOverBlankTargetActionKey(t *testing.T) {
+	t.Parallel()
+
+	overviewTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "review_only",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+
+	target, source, err := resolveAssetGenerationActionTarget(&AssetGenerationOverview{
+		PrimaryActionTarget: overviewTarget,
+	}, &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionApproveSectionReview,
+		Target: &AssetGenerationActionTarget{
+			InteractionMode: "queue_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform: "temu",
+				Slot:     "hero",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+	}
+	if source != "overview" {
+		t.Fatalf("source = %q, want overview", source)
+	}
+	if target == nil || target.ActionKey != assetGenerationActionApproveSectionReview {
+		t.Fatalf("target = %+v, want approve_section_review target", target)
+	}
+	if target.QueueQuery == nil || target.QueueQuery.Platform != "shein" || target.QueueQuery.Slot != "main" {
+		t.Fatalf("target queue = %+v, want overview-resolved shein/main target", target.QueueQuery)
+	}
+}
+
+func TestResolveAssetGenerationActionTargetUsesTargetActionKeyWhenTopLevelBlank(t *testing.T) {
+	t.Parallel()
+
+	requestTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "review_only",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+
+	target, source, err := resolveAssetGenerationActionTarget(nil, &ExecuteGenerationActionRequest{
+		ActionKey: "   ",
+		Target:    requestTarget,
+	})
+	if err != nil {
+		t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+	}
+	if source != "request_target" {
+		t.Fatalf("source = %q, want request_target", source)
+	}
+	if target == nil || target.ActionKey != requestTarget.ActionKey || !reflect.DeepEqual(target.QueueQuery, requestTarget.QueueQuery) {
+		t.Fatalf("target = %+v, want cloned request target", target)
+	}
+}
+
+func TestResolveAssetGenerationActionTargetKeepsCurrentErrorSurfaceForInvalidOrMissingActionKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		req     *ExecuteGenerationActionRequest
+		wantErr string
+	}{
+		{
+			name:    "missing action key",
+			req:     &ExecuteGenerationActionRequest{},
+			wantErr: "generation action not found: missing action key",
+		},
+		{
+			name: "invalid action key",
+			req: &ExecuteGenerationActionRequest{
+				ActionKey: "delete_everything",
+			},
+			wantErr: "generation action not found: delete_everything",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			target, source, err := resolveAssetGenerationActionTarget(nil, tt.req)
+			if !errors.Is(err, ErrGenerationActionNotFound) {
+				t.Fatalf("error = %v, want ErrGenerationActionNotFound", err)
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
+			}
+			if target != nil {
+				t.Fatalf("target = %+v, want nil on error", target)
+			}
+			if source != "" {
+				t.Fatalf("source = %q, want empty source on error", source)
+			}
+		})
+	}
+}
+
+func TestResolveAssetGenerationActionTargetOverviewWinsBeforeRequestTargetWhenKeysMatch(t *testing.T) {
+	t.Parallel()
+
+	overviewTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "review_only",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+	requestTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "review_only",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "temu",
+			Slot:              "hero",
+			PreviewCapability: "subject_preview",
+		},
+	}
+
+	target, source, err := resolveAssetGenerationActionTarget(&AssetGenerationOverview{
+		PrimaryActionTarget: overviewTarget,
+	}, &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionApproveSectionReview,
+		Target:    requestTarget,
+	})
+	if err != nil {
+		t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+	}
+	if source != "overview" {
+		t.Fatalf("source = %q, want overview", source)
+	}
+	if target == nil || target.QueueQuery == nil || target.QueueQuery.Platform != "shein" || target.QueueQuery.Slot != "main" {
+		t.Fatalf("target = %+v, want overview target to win over request target", target)
+	}
+}
+
+func TestResolveAssetGenerationActionTargetMatchesOverviewSecondaryTargetBeforeRequestFallback(t *testing.T) {
+	t.Parallel()
+
+	secondaryTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "review_only",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "secondary-main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+	requestTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "review_only",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "temu",
+			Slot:              "hero",
+			PreviewCapability: "subject_preview",
+		},
+	}
+
+	target, source, err := resolveAssetGenerationActionTarget(&AssetGenerationOverview{
+		PrimaryActionTarget: &AssetGenerationActionTarget{
+			ActionKey: assetGenerationActionReviewDetailPreviews,
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "primary-main",
+				PreviewCapability: "detail_preview",
+			},
+		},
+		SecondaryActionTargets: []*AssetGenerationActionTarget{secondaryTarget},
+	}, &ExecuteGenerationActionRequest{
+		ActionKey: assetGenerationActionApproveSectionReview,
+		Target:    requestTarget,
+	})
+	if err != nil {
+		t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+	}
+	if source != "overview" {
+		t.Fatalf("source = %q, want overview", source)
+	}
+	if target == nil || target.QueueQuery == nil || target.QueueQuery.Platform != "shein" || target.QueueQuery.Slot != "secondary-main" {
+		t.Fatalf("target = %+v, want matching secondary overview target", target)
+	}
+}
+
+func TestResolveAssetGenerationActionTargetClonesRequestTargetAndDefaultsInteractionMode(t *testing.T) {
+	t.Parallel()
+
+	requestTarget := &AssetGenerationActionTarget{
+		ActionKey: assetGenerationActionApproveSectionReview,
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+
+	target, source, err := resolveAssetGenerationActionTarget(nil, &ExecuteGenerationActionRequest{
+		Target: requestTarget,
+	})
+	if err != nil {
+		t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+	}
+	if source != "request_target" {
+		t.Fatalf("source = %q, want request_target", source)
+	}
+	if target == requestTarget {
+		t.Fatal("target pointer reused, want cloned request target")
+	}
+	if target.InteractionMode != actionInteractionMode(assetGenerationActionApproveSectionReview) {
+		t.Fatalf("interaction mode = %q, want %q", target.InteractionMode, actionInteractionMode(assetGenerationActionApproveSectionReview))
+	}
+	if requestTarget.InteractionMode != "" {
+		t.Fatalf("request target interaction mode = %q, want original request target left unchanged", requestTarget.InteractionMode)
+	}
+}
+
+func TestResolveAssetGenerationActionTargetPreservesRequestInteractionModeWhenNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	requestTarget := &AssetGenerationActionTarget{
+		ActionKey:       assetGenerationActionApproveSectionReview,
+		InteractionMode: "custom_mode",
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+		},
+	}
+
+	target, source, err := resolveAssetGenerationActionTarget(nil, &ExecuteGenerationActionRequest{
+		Target: requestTarget,
+	})
+	if err != nil {
+		t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+	}
+	if source != "request_target" {
+		t.Fatalf("source = %q, want request_target", source)
+	}
+	if target == nil {
+		t.Fatal("target = nil, want resolved request target")
+	}
+	if target.InteractionMode != "custom_mode" {
+		t.Fatalf("interaction mode = %q, want custom_mode preserved", target.InteractionMode)
+	}
+	if requestTarget.InteractionMode != "custom_mode" {
+		t.Fatalf("request target interaction mode = %q, want original request target unchanged", requestTarget.InteractionMode)
+	}
+}
+
+func TestResolveAssetGenerationActionTargetReturnsDefensiveClones(t *testing.T) {
+	t.Parallel()
+
+	t.Run("overview target", func(t *testing.T) {
+		t.Parallel()
+
+		original := newResolveAssetGenerationActionTargetCloneFixture(assetGenerationActionApproveSectionReview, "review_only")
+
+		target, source, err := resolveAssetGenerationActionTarget(&AssetGenerationOverview{
+			PrimaryActionTarget: original,
+		}, &ExecuteGenerationActionRequest{
+			ActionKey: assetGenerationActionApproveSectionReview,
+		})
+		if err != nil {
+			t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+		}
+		if source != "overview" {
+			t.Fatalf("source = %q, want overview", source)
+		}
+		if target == original || target.Filters == original.Filters || target.NavigationTarget == original.NavigationTarget || target.NavigationTarget.ActionTarget == original.NavigationTarget.ActionTarget || target.QueueQuery == original.QueueQuery || target.RetryRequest == original.RetryRequest || target.ExpectedImpact == original.ExpectedImpact {
+			t.Fatalf("target = %+v, want defensive clone of overview target", target)
+		}
+
+		target.Filters.Platforms[0] = "temu"
+		target.NavigationTarget.QueueQuery.Platform = "temu"
+		target.NavigationTarget.ActionTarget.QueueQuery.Platform = "temu"
+		target.QueueQuery.Platform = "temu"
+		target.RetryRequest.TaskIDs[0] = "task-2"
+		target.ExpectedImpact.Platforms[0] = "temu"
+
+		if original.Filters.Platforms[0] != "shein" || original.NavigationTarget.QueueQuery.Platform != "shein" || original.NavigationTarget.ActionTarget.QueueQuery.Platform != "shein" || original.QueueQuery.Platform != "shein" || original.RetryRequest.TaskIDs[0] != "task-1" || original.ExpectedImpact.Platforms[0] != "shein" {
+			t.Fatalf("original target mutated after clone update = %+v", original)
+		}
+	})
+
+	t.Run("request target", func(t *testing.T) {
+		t.Parallel()
+
+		original := newResolveAssetGenerationActionTargetCloneFixture(assetGenerationActionApproveSectionReview, "review_only")
+
+		target, source, err := resolveAssetGenerationActionTarget(nil, &ExecuteGenerationActionRequest{
+			Target: original,
+		})
+		if err != nil {
+			t.Fatalf("resolveAssetGenerationActionTarget() error = %v", err)
+		}
+		if source != "request_target" {
+			t.Fatalf("source = %q, want request_target", source)
+		}
+		if target == original || target.Filters == original.Filters || target.NavigationTarget == original.NavigationTarget || target.NavigationTarget.ActionTarget == original.NavigationTarget.ActionTarget || target.QueueQuery == original.QueueQuery || target.RetryRequest == original.RetryRequest || target.ExpectedImpact == original.ExpectedImpact {
+			t.Fatalf("target = %+v, want defensive clone of request target", target)
+		}
+
+		target.Filters.Platforms[0] = "temu"
+		target.NavigationTarget.QueueQuery.Platform = "temu"
+		target.NavigationTarget.ActionTarget.QueueQuery.Platform = "temu"
+		target.QueueQuery.Platform = "temu"
+		target.RetryRequest.TaskIDs[0] = "task-2"
+		target.ExpectedImpact.Platforms[0] = "temu"
+
+		if original.Filters.Platforms[0] != "shein" || original.NavigationTarget.QueueQuery.Platform != "shein" || original.NavigationTarget.ActionTarget.QueueQuery.Platform != "shein" || original.QueueQuery.Platform != "shein" || original.RetryRequest.TaskIDs[0] != "task-1" || original.ExpectedImpact.Platforms[0] != "shein" {
+			t.Fatalf("original target mutated after clone update = %+v", original)
+		}
+	})
+}
+
 func TestExecuteTaskGenerationActionRejectsUnknownActionKey(t *testing.T) {
 	t.Parallel()
 
