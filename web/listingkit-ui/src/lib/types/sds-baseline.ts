@@ -122,3 +122,53 @@ export function normalizeGroupedSDSSelectionEligibility(
         : undefined,
   };
 }
+
+function selectionsReferToSameVariant(
+  left: SDSProductVariantSelection | undefined,
+  right: SDSProductVariantSelection | undefined,
+) {
+  if (!left?.variantId || !right?.variantId) {
+    return false;
+  }
+  return (
+    (left.parentProductId || left.productId || 0) ===
+      (right.parentProductId || right.productId || 0) &&
+    (left.prototypeGroupId || 0) === (right.prototypeGroupId || 0) &&
+    left.variantId === right.variantId &&
+    (left.layerId || "") === (right.layerId || "")
+  );
+}
+
+export function removePrimarySelectionFromGroupedSelections(
+  groupedSelections: GroupedSDSSelectionEligibility[],
+  primarySelection?: SDSProductVariantSelection,
+): GroupedSDSSelectionEligibility[] {
+  const seen = new Set<string>();
+
+  return groupedSelections.filter((item) => {
+    if (!item?.selection) {
+      return false;
+    }
+    if (primarySelection && selectionsReferToSameVariant(item.selection, primarySelection)) {
+      return false;
+    }
+    const key = item.selectionId || buildGroupedSDSSelectionID(item.selection);
+    if (key && seen.has(key)) {
+      return false;
+    }
+    if (key) {
+      seen.add(key);
+    }
+    return true;
+  });
+}
+
+export function countSelectionsWithPrimary(
+  primarySelection: SDSProductVariantSelection | undefined,
+  groupedSelections: GroupedSDSSelectionEligibility[],
+) {
+  return (
+    removePrimarySelectionFromGroupedSelections(groupedSelections, primarySelection).length +
+    (primarySelection?.variantId ? 1 : 0)
+  );
+}

@@ -156,6 +156,7 @@ function mapStudioBatch(
     selection,
     groupedSelections: normalizeGroupedSelectionsResponse(
       payload.grouped_selections as Array<Record<string, unknown>> | undefined,
+      selection,
     ),
     createdAt: payload.created_at,
     draftUpdatedAt: payload.draft_updated_at,

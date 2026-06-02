@@ -4,6 +4,7 @@ import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   buildGroupedSDSSelectionID,
+  removePrimarySelectionFromGroupedSelections,
   type GroupedSDSSelectionEligibility,
   normalizeSDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
@@ -257,6 +258,7 @@ export function mapStudioBatchDraftDetailToDraft(
   if (!detail?.batch) {
     return null;
   }
+  const primarySelection = normalizeSelectionResponse(detail.batch.selection);
 
   const selectedIds =
     detail.batch.approved_design_ids ??
@@ -281,11 +283,12 @@ export function mapStudioBatchDraftDetailToDraft(
     groupedImageMode: detail.batch.grouped_image_mode,
     selectedSdsImages: normalizeSelectedSDSImages(detail.batch.selected_sds_images),
     renderSizeImagesWithSds: detail.batch.render_size_images_with_sds ?? true,
-    selectionVariantId: normalizeSelectionResponse(detail.batch.selection)?.variantId,
-    selection: normalizeSelectionResponse(detail.batch.selection),
+    selectionVariantId: primarySelection?.variantId,
+    selection: primarySelection,
     groups: normalizeGroupsResponse(detail.batch.groups),
     groupedSelections: normalizeGroupedSelectionsResponse(
       detail.batch.grouped_selections,
+      primarySelection,
     ),
     designs:
       detail.designs?.map((design) => ({
@@ -407,6 +410,7 @@ export function normalizeSelectionResponse(
 }
 
 function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse["items"]>[number]) {
+  const primarySelection = normalizeSelectionResponse(item.selection);
   return {
     id: item.id,
     name: item.batch_name ?? deriveBatchName(item.prompt ?? ""),
@@ -423,10 +427,13 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     groupedImageMode: item.grouped_image_mode,
     selectedSdsImages: normalizeSelectedSDSImages(undefined),
     renderSizeImagesWithSds: item.render_size_images_with_sds ?? true,
-    selectionVariantId: normalizeSelectionResponse(item.selection)?.variantId,
-    selection: normalizeSelectionResponse(item.selection),
+    selectionVariantId: primarySelection?.variantId,
+    selection: primarySelection,
     groups: normalizeGroupsResponse(item.groups),
-    groupedSelections: normalizeGroupedSelectionsResponse(item.grouped_selections),
+    groupedSelections: normalizeGroupedSelectionsResponse(
+      item.grouped_selections,
+      primarySelection,
+    ),
     designs: [],
     selectedIds: item.approved_design_ids ?? [],
     createdTasks: normalizeCreatedTasks(item.created_tasks, item.approved_design_ids),
@@ -589,12 +596,14 @@ function groupedSelectionToPayload(selection: GroupedSDSSelectionEligibility) {
 
 export function normalizeGroupedSelectionsResponse(
   items: Array<Record<string, unknown>> | undefined,
+  primarySelection?: SDSProductVariantSelection,
 ): GroupedSDSSelectionEligibility[] {
   if (!Array.isArray(items)) {
     return [];
   }
-  return items
-    .map<GroupedSDSSelectionEligibility | null>((item) => {
+  return removePrimarySelectionFromGroupedSelections(
+    items
+      .map<GroupedSDSSelectionEligibility | null>((item) => {
       if (!item || typeof item !== "object") {
         return null;
       }
@@ -637,7 +646,9 @@ export function normalizeGroupedSelectionsResponse(
         eligibilityReason: entry.eligibilityReason ?? entry.eligibility_reason,
       };
     })
-    .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item));
+      .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item)),
+    primarySelection,
+  );
 }
 
 function normalizePromptHistoryResponse(

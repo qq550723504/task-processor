@@ -1,5 +1,6 @@
 import { pickActiveSheinStudioGroup } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { buildRecentBatchBaselineAlert } from "@/lib/shein-studio/sds-baseline-ui";
+import { countSelectionsWithPrimary } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioDraft,
   SheinStudioGroupedWorkspace,
@@ -191,8 +192,11 @@ function buildPersistedBatchSummary(
     batch.selection?.productName ??
     "未命名 SDS 商品";
   const productCount = group
-    ? group.groupedSelections.length + 1
-    : (batch.groupedSelections?.length ?? 0) + (batch.selection?.variantId ? 1 : 0);
+    ? countSelectionsWithPrimary(group.primarySelection, group.groupedSelections)
+    : countSelectionsWithPrimary(
+        batch.selection,
+        batch.groupedSelections ?? [],
+      );
   const promptPreview =
     group?.currentPrompt?.trim() || batch.prompt.trim() || "暂未填写";
   const storeAssignments = group
@@ -240,7 +244,10 @@ function buildRecoverableDraftSummary(
     isRecoverableDraft: true,
     title: group.name?.trim() || "未保存草稿",
     primaryProductName: group.primarySelection.productName || "未命名 SDS 商品",
-    productCount: group.groupedSelections.length + 1,
+    productCount: countSelectionsWithPrimary(
+      group.primarySelection,
+      group.groupedSelections,
+    ),
     promptPreview: group.currentPrompt.trim() || draft.prompt.trim() || "暂未填写",
     storeSummary: buildStoreSummaryFromAssignments([
       group.sheinStoreId,

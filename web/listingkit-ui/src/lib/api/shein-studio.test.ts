@@ -484,16 +484,7 @@ describe("shein studio design metadata", () => {
       selection: expect.objectContaining({
         variantId: 212095,
       }),
-      groupedSelections: [
-        expect.objectContaining({
-          baselineStatus: "baseline_cached",
-          baselineReason: "基础模板已缓存，等待进一步校验",
-          baselineReasonCode: "cache_unavailable",
-          selection: expect.objectContaining({
-            variantId: 212095,
-          }),
-        }),
-      ],
+      groupedSelections: [],
     });
   });
 

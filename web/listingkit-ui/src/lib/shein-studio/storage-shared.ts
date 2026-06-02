@@ -1,6 +1,7 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   normalizeGroupedSDSSelectionEligibility,
+  removePrimarySelectionFromGroupedSelections,
   type GroupedSDSSelectionEligibility,
 } from "@/lib/types/sds-baseline";
 import type {
@@ -273,12 +274,16 @@ function normalizeSelectedImages(input: unknown): SheinStudioSelectedSDSImage[] 
   return normalizeSelectedSDSImages(input);
 }
 
-function normalizeGroupedSelections(input: unknown): GroupedSDSSelectionEligibility[] {
+function normalizeGroupedSelections(
+  input: unknown,
+  primarySelection?: SDSProductVariantSelection,
+): GroupedSDSSelectionEligibility[] {
   if (!Array.isArray(input)) {
     return [];
   }
-  return input
-    .map((item) => {
+  return removePrimarySelectionFromGroupedSelections(
+    input
+      .map((item) => {
       if (!item || typeof item !== "object") {
         return null;
       }
@@ -290,7 +295,9 @@ function normalizeGroupedSelections(input: unknown): GroupedSDSSelectionEligibil
         selection: normalizeSelection(candidate.selection),
       });
     })
-    .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item));
+      .filter((item): item is GroupedSDSSelectionEligibility => Boolean(item)),
+    primarySelection,
+  );
 }
 
 function normalizePromptHistory(input: unknown): SDSGroupedPromptHistoryEntry[] {
@@ -361,7 +368,10 @@ function normalizeGroupedWorkspace(
     id: candidate.id.trim(),
     name: candidate.name.trim(),
     primarySelection,
-    groupedSelections: normalizeGroupedSelections(candidate.groupedSelections),
+    groupedSelections: normalizeGroupedSelections(
+      candidate.groupedSelections,
+      primarySelection,
+    ),
     styleCount:
       typeof candidate.styleCount === "string" ? candidate.styleCount : "1",
     sheinStoreId:
@@ -412,7 +422,10 @@ function buildLegacyGroupedWorkspace(
   if (!primarySelection || !prompt) {
     return [];
   }
-  const groupedSelections = normalizeGroupedSelections(raw.groupedSelections);
+  const dedupedGroupedSelections = normalizeGroupedSelections(
+    raw.groupedSelections,
+    primarySelection,
+  );
   const designs = Array.isArray(raw.designs)
     ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
     : [];
@@ -425,7 +438,7 @@ function buildLegacyGroupedWorkspace(
       id: `legacy-${primarySelection.parentProductId}-${primarySelection.variantId}`,
       name: primarySelection.productName || "未命名分组",
       primarySelection,
-      groupedSelections,
+      groupedSelections: dedupedGroupedSelections,
       styleCount: typeof raw.styleCount === "string" ? raw.styleCount : "1",
       sheinStoreId: typeof raw.sheinStoreId === "string" ? raw.sheinStoreId : "",
       imageStrategy: normalizeImageStrategy(raw.imageStrategy),
@@ -478,7 +491,10 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
-    groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
+    groupedSelections: normalizeGroupedSelections(
+      raw.groupedSelections,
+      normalizeSelection(raw.selection),
+    ),
     groups: normalizedGroups,
     designs: Array.isArray(raw.designs)
       ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
@@ -534,7 +550,10 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
-    groupedSelections: normalizeGroupedSelections(raw.groupedSelections),
+    groupedSelections: normalizeGroupedSelections(
+      raw.groupedSelections,
+      normalizeSelection(raw.selection),
+    ),
     groups: normalizedGroups,
     designs: Array.isArray(raw.designs)
       ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)

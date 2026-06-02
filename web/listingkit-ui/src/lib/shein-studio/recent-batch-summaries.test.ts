@@ -67,6 +67,38 @@ describe("buildRecentBatchSummaries", () => {
     });
   });
 
+  it("does not double count the primary selection when legacy grouped selections duplicate it", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-legacy",
+        name: "批次12",
+        prompt: "",
+        styleCount: "1",
+        sheinStoreId: "",
+        selection,
+        groupedSelections: [
+          {
+            selectionId: "1:200:100:layer-1:",
+            sheinStoreId: "",
+            selection,
+            eligible: true,
+            baselineStatus: "baseline_cached",
+            baselineReason: "基础模板已缓存，等待进一步校验",
+          },
+        ],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0]).toMatchObject({
+      id: "batch-legacy",
+      productCount: 1,
+    });
+  });
+
   it("marks local recovery drafts separately from persisted batches", () => {
     const summaries = buildRecentBatchSummaries([], {
       draft: {

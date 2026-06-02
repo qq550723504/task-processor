@@ -83,6 +83,7 @@ import {
 } from "@/lib/utils/shein-studio-batches";
 import {
   buildGroupedSDSSelectionID,
+  countSelectionsWithPrimary,
   type GroupedSDSSelectionEligibility,
   type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
@@ -2411,11 +2412,17 @@ export function SheinStudioWorkbench({
               <SheinStudioGenerationPanel
                 artworkModel={artworkModel}
                 availableSdsImages={availableSdsImages}
-                batchProductCount={groupedSelections.length + (activeSelection?.variantId ? 1 : 0)}
+                batchProductCount={countSelectionsWithPrimary(
+                  activeSelection,
+                  groupedSelections,
+                )}
                 batchStoreLabel={currentStoreLabel || "未设置"}
                 createTaskButtonLabel={
                   groupedSelections.length > 0
-                    ? `为 ${groupedSelections.length + 1} 款商品生成 SHEIN 资料`
+                    ? `为 ${countSelectionsWithPrimary(
+                        activeSelection,
+                        groupedSelections,
+                      )} 款商品生成 SHEIN 资料`
                     : "生成 SHEIN 资料"
                 }
                 createdTasks={createdTasks}
