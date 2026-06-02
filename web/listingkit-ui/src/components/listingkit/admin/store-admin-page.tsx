@@ -222,18 +222,21 @@ export function StoreAdminPage() {
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-950">平台店铺管理</h1>
             <p className="mt-1 text-sm text-zinc-500">
               共 {total} 个店铺，按当前 ZITADEL 租户隔离。这里维护平台侧店铺主数据，不负责租户自己的发布配置。
             </p>
           </div>
-          <form className="flex flex-wrap gap-2" onSubmit={(event) => event.preventDefault()}>
+          <form
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <Button
               type="button"
               onClick={() => void deletedStoreQuery.refetch()}
-              className="mt-5"
+              className="w-full sm:mt-5 sm:w-auto"
               variant="secondary"
             >
               <RotateCcw className="size-4" />
@@ -256,14 +259,14 @@ export function StoreAdminPage() {
               <Input
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                className="h-9 w-52 rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+                className="h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900 sm:w-52"
                 placeholder="搜索店铺"
               />
             </Label>
             <Button
               type="button"
               onClick={() => void storeQuery.refetch()}
-              className="mt-5"
+              className="w-full sm:mt-5 sm:w-auto"
               variant="secondary"
             >
               {loading ? <RefreshCw className="size-4 animate-spin" /> : <Search className="size-4" />}
@@ -278,10 +281,10 @@ export function StoreAdminPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+            <Table className="min-w-[64rem] divide-y divide-zinc-200 text-sm">
               <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
                 <TableRow>
                   <TableHead className="px-4 py-3">店铺</TableHead>
@@ -443,7 +446,7 @@ export function StoreAdminPage() {
               title="店铺属性"
               description="站点、类型和上架限制决定店铺的投放边界。"
             >
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <StoreSelect label="平台" value={form.platform} onChange={(platformValue) => setForm({ ...form, platform: platformValue })} options={["SHEIN", "TEMU"]} />
                 <StoreSelect label="地区" value={form.region ?? ""} onChange={(region) => setForm({ ...form, region })} options={REGION_OPTIONS} />
               </div>
@@ -514,7 +517,7 @@ export function StoreAdminPage() {
           </Button>
         </div>
         <div className="overflow-x-auto">
-          <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+          <Table className="min-w-[48rem] divide-y divide-zinc-200 text-sm">
             <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
               <TableRow>
                 <TableHead className="px-4 py-3">店铺</TableHead>

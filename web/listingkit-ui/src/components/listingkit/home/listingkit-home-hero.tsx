@@ -27,8 +27,8 @@ const WORKFLOW_STEPS = [
 
 export function ListingKitHomeHero() {
   return (
-    <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
-      <div className="grid gap-7 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
+    <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
+      <div className="grid gap-7 xl:grid-cols-[0.92fr_1.08fr] xl:items-center">
         <div className="space-y-5">
           <p className="text-[11px] font-semibold uppercase text-teal-700">
             ListingKit
@@ -52,16 +52,16 @@ export function ListingKitHomeHero() {
               </span>
             ))}
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/listing-kits/new"
-              className="inline-flex h-11 items-center justify-center rounded-lg bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-zinc-800"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-zinc-800 sm:w-auto"
             >
               开始生成商品资料
             </Link>
             <Link
               href="/listing-kits/canonical-products"
-              className="inline-flex h-11 items-center justify-center rounded-lg bg-white px-5 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-white px-5 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100 sm:w-auto"
             >
               查看标准商品
             </Link>

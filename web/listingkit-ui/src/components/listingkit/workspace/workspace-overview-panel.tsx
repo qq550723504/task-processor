@@ -66,7 +66,7 @@ export function WorkspaceOverviewPanel({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
       {visibleOverviewMetrics.map((metric) => (
         <Card className="p-4" key={metric.key}>
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
@@ -88,7 +88,7 @@ export function WorkspaceOverviewPanel({
         </Card>
       ))}
       {hasResolvedAction ? (
-        <Card className="p-4 md:col-span-2 xl:col-span-4">
+        <Card className="p-4 sm:col-span-2 xl:col-span-2 2xl:col-span-4">
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
             当前建议
           </p>
@@ -118,7 +118,7 @@ export function WorkspaceOverviewPanel({
           }
 
           return (
-            <Card className="border-amber-200 bg-amber-50/60 p-4 md:col-span-2 xl:col-span-3">
+            <Card className="border-amber-200 bg-amber-50/60 p-4 sm:col-span-2 xl:col-span-2 2xl:col-span-3">
               <p className="text-xs uppercase tracking-[0.18em] text-amber-700">
                 恢复重点
               </p>

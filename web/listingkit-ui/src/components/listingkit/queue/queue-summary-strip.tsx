@@ -17,7 +17,7 @@ export function QueueSummaryStrip({ summary }: { summary?: QueueSummary | null }
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {metrics.map((metric) => (
         <Card className="p-4" key={metric.key}>
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">

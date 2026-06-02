@@ -280,7 +280,7 @@ function SheinSaleAttributeReviewContent({
             保存销售属性失败：{applyErrorMessage}
           </div>
         ) : null}
-        <div className="flex flex-wrap items-start justify-between gap-3 xl:grid xl:grid-cols-[minmax(0,1fr),auto] xl:items-start">
+        <div className="flex flex-col gap-3 2xl:grid 2xl:grid-cols-[minmax(0,1fr),auto] 2xl:items-start">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
               SHEIN 销售属性确认
@@ -289,10 +289,10 @@ function SheinSaleAttributeReviewContent({
               先确认主规格，再确认其他规格。主规格通常是颜色/款式，其他规格通常是尺寸/件数。
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {canRegenerate ? (
               <Button
-                className="h-9 shrink-0 px-3 text-xs"
+                className="h-9 w-full px-3 text-xs sm:w-auto"
                 disabled={isApplying}
                 variant="secondary"
                 onClick={() => onRegenerateSaleAttributes?.()}
@@ -302,7 +302,7 @@ function SheinSaleAttributeReviewContent({
             ) : null}
             {canSaveManual ? (
               <Button
-                className="h-9 shrink-0 px-3 text-xs"
+                className="h-9 w-full px-3 text-xs sm:w-auto"
                 disabled={isApplying}
                 onClick={() =>
                   onApplyManualSaleAttributes?.({
@@ -318,7 +318,7 @@ function SheinSaleAttributeReviewContent({
             ) : null}
             {canConfirm ? (
               <Button
-                className="h-9 shrink-0 px-3 text-xs"
+                className="h-9 w-full px-3 text-xs sm:w-auto"
                 disabled={isApplying}
                 variant="secondary"
                 onClick={() => onConfirmCurrentSaleAttributes?.()}
@@ -341,7 +341,7 @@ function SheinSaleAttributeReviewContent({
           ) : null}
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
           <ResultSummaryCard
             description="系统当前识别到的主规格"
             mapped={formatResolvedAttributeMap(fallbackPrimaryAttributes[0])}
@@ -427,7 +427,7 @@ function SheinSaleAttributeReviewContent({
               />
             </summary>
             <div className="mt-3 space-y-3">
-              <div className="grid gap-3 xl:grid-cols-2">
+              <div className="grid gap-3 2xl:grid-cols-2">
                 <TemplateOptionSelect
                   id="shein-sale-attribute-primary-template"
                   label={`第 1 步：主规格字段${current.primary_source_dimension ? ` · 来源 ${current.primary_source_dimension}` : ""}`}
@@ -478,7 +478,7 @@ function SheinSaleAttributeReviewContent({
           </details>
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 2xl:grid-cols-2">
           {fallbackPrimaryAttributes.length > 0 || fallbackSecondaryAttributes.length > 0 ? (
             <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
               <SectionHeading
@@ -633,7 +633,7 @@ function ManualSKCMappingRow({
 }) {
   return (
     <div className="space-y-3 rounded-xl border border-zinc-200 bg-white/80 p-3">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr),minmax(280px,1fr)]">
+      <div className="grid gap-3 2xl:grid-cols-[minmax(0,1.2fr),minmax(280px,1fr)]">
         <div>
           <p className="text-sm font-medium text-zinc-900">
             {patch.skc_name ?? patch.sale_name ?? patch.supplier_code}
@@ -653,7 +653,7 @@ function ManualSKCMappingRow({
         />
       </div>
       {secondaryOption && (patch.sku_patches?.length ?? 0) > 0 ? (
-        <div className="grid gap-2 xl:grid-cols-2">
+        <div className="grid gap-2 2xl:grid-cols-2">
           {(patch.sku_patches ?? []).map((skuPatch) => (
             <div
               className="rounded-xl border border-zinc-200/80 bg-zinc-50/70 p-3"

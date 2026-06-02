@@ -151,7 +151,7 @@ export function SheinSubmitReadinessPanel({
     <Card className="border-zinc-300 bg-zinc-50/80 p-5">
       <div className="space-y-4">
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-600">
               SHEIN 发布检查
             </p>
@@ -173,7 +173,7 @@ export function SheinSubmitReadinessPanel({
               {workspaceOverview.subheadline}
             </p>
           ) : null}
-          <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
+          <div className="flex flex-col gap-1 text-xs uppercase tracking-[0.16em] text-zinc-500 sm:flex-row sm:flex-wrap sm:gap-2">
             <span>
               阻断 {readiness?.blocking_items?.length ?? workspaceOverview?.submit_state?.blocking_count ?? 0}
             </span>
@@ -287,7 +287,7 @@ export function SheinSubmitReadinessPanel({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
               下一步
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {workspaceOverview.next_actions.map((line) => (
                 <span
                   className="rounded-full border border-zinc-200 bg-white/80 px-3 py-1 text-[11px] font-medium tracking-[0.02em] text-zinc-700"

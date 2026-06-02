@@ -429,4 +429,20 @@ describe("SheinStudioGenerationPanel", () => {
       screen.getByPlaceholderText("可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"),
     ).toBeEnabled();
   });
+
+  it("uses mobile-first metrics and action groups", () => {
+    renderPanel();
+
+    const metricsGrid = screen
+      .getByText("批次店铺")
+      .closest("div")?.parentElement as HTMLDivElement | null;
+    expect(metricsGrid).not.toBeNull();
+    expect(metricsGrid?.className).not.toContain("sm:grid-cols-3");
+
+    const actionGroup = screen
+      .getByRole("button", { name: "生成 SHEIN 资料" })
+      .parentElement as HTMLDivElement | null;
+    expect(actionGroup).not.toBeNull();
+    expect(actionGroup?.className).toContain("flex-col");
+  });
 });

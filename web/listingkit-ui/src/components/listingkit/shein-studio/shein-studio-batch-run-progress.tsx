@@ -159,7 +159,7 @@ export function SheinStudioBatchRunProgress({
 
   return (
     <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
             STUDIO BATCH RUN
@@ -167,13 +167,14 @@ export function SheinStudioBatchRunProgress({
           <h2 className="text-xl font-semibold tracking-tight text-zinc-950">
             {progressHeading(run?.status, run?.cancelRequested)}
           </h2>
-          <p className="text-sm text-zinc-600">
+          <p className="break-all text-sm text-zinc-600">
             当前运行 ID：{runId}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
           {!isTerminalBatchRunStatus(run?.status) && !isCancellingRun ? (
             <Button
+              className="w-full sm:w-auto"
               onClick={() => void handleCancel()}
               type="button"
               variant="secondary"
@@ -181,7 +182,7 @@ export function SheinStudioBatchRunProgress({
               {isCancelling ? "正在取消..." : "取消本轮生成"}
             </Button>
           ) : null}
-          <Button onClick={onBack} type="button" variant="ghost">
+          <Button className="w-full sm:w-auto" onClick={onBack} type="button" variant="ghost">
             返回最近批次
           </Button>
         </div>
@@ -201,7 +202,7 @@ export function SheinStudioBatchRunProgress({
 
       {run ? (
         <>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">状态</p>
               <p className="mt-2 text-lg font-semibold text-zinc-950">
@@ -238,7 +239,7 @@ export function SheinStudioBatchRunProgress({
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
               {isCancellingRun ? "当前批次正在收尾，第 " : "当前正在处理第 "}
               {run.currentIndex} / {run.totalBatches} 个批次：
-              <span className="font-medium text-zinc-950"> {run.currentBatchId}</span>
+              <span className="break-all font-medium text-zinc-950"> {run.currentBatchId}</span>
             </div>
           ) : null}
 
@@ -260,11 +261,11 @@ export function SheinStudioBatchRunProgress({
             <div className="mt-3 space-y-2">
               {items.map((item) => (
                 <div
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-3 text-sm"
+                  className="flex flex-col items-start gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
                   key={item.id}
                 >
-                  <div>
-                    <p className="font-medium text-zinc-950">{item.batchId}</p>
+                  <div className="min-w-0">
+                    <p className="break-all font-medium text-zinc-950">{item.batchId}</p>
                     {item.errorMessage ? (
                       <p className="mt-1 text-xs text-rose-700">{item.errorMessage}</p>
                     ) : null}

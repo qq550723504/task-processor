@@ -247,6 +247,17 @@ describe("PlatformSubscriptionPlansPage", () => {
       "professional",
     );
   });
+
+  it("uses a stacked mobile-first plans list and editor layout", async () => {
+    const { container } = renderWithQueryClient(<PlatformSubscriptionPlansPage />);
+
+    await screen.findByText("专业版");
+
+    expect(container.querySelector("section.grid")).not.toHaveClass(
+      "xl:grid-cols-[minmax(0,1fr)_420px]",
+    );
+    expect(screen.getByRole("button", { name: "新建套餐" })).toHaveClass("w-full");
+  });
 });
 
 function renderWithQueryClient(ui: ReactElement) {

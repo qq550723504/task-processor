@@ -57,7 +57,7 @@ export function SheinCustomerIssueSummary({
 
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
             待处理问题
@@ -84,7 +84,7 @@ export function SheinCustomerIssueSummary({
               className="rounded-xl border border-white/70 bg-white/75 p-3"
               key={`${issue.severity}-${issue.category}-${issue.title}-${index}`}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -107,7 +107,7 @@ export function SheinCustomerIssueSummary({
                 </div>
                 {canAct ? (
                   <Button
-                    className="h-8 shrink-0 px-3 text-xs"
+                    className="h-8 w-full px-3 text-xs sm:w-auto"
                     variant="secondary"
                     onClick={() => onSelectIssue?.(issue)}
                   >

@@ -217,7 +217,7 @@ export function TaskAdvancedSettingsToggle({
           </p>
         </div>
         <Button
-          className="min-w-[112px]"
+          className="w-full sm:min-w-[112px] sm:w-auto"
           onClick={() => setShowAdvancedSettings((current) => !current)}
           variant="secondary"
           type="button"
@@ -245,11 +245,16 @@ export function TaskCreateFormActions({
   submitLabel: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-3">
-      <Button className="min-w-[140px]" disabled={isCreating} type="submit">
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+      <Button className="w-full sm:min-w-[140px] sm:w-auto" disabled={isCreating} type="submit">
         {isCreating ? "创建中..." : submitLabel}
       </Button>
-      <Button className="min-w-[112px]" variant="secondary" onClick={onBack} type="button">
+      <Button
+        className="w-full sm:min-w-[112px] sm:w-auto"
+        variant="secondary"
+        onClick={onBack}
+        type="button"
+      >
         返回首页
       </Button>
     </div>

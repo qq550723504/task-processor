@@ -125,7 +125,7 @@ export function ProductDataAdminPage() {
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-950">商品数据</h1>
             <p className="mt-1 text-sm text-zinc-500">
@@ -133,7 +133,7 @@ export function ProductDataAdminPage() {
             </p>
           </div>
           <form
-            className="flex flex-wrap gap-2"
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
             onSubmit={(event) => event.preventDefault()}
           >
             <ProductDataSelect
@@ -174,7 +174,7 @@ export function ProductDataAdminPage() {
             <Button
               type="button"
               onClick={() => void productDataQuery.refetch()}
-              className="mt-5"
+              className="w-full sm:mt-5 sm:w-auto"
               variant="secondary"
             >
               {loading ? (
@@ -193,10 +193,10 @@ export function ProductDataAdminPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+            <Table className="min-w-[56rem] divide-y divide-zinc-200 text-sm">
               <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
                 <TableRow>
                   <TableHead className="px-4 py-3">商品</TableHead>
@@ -311,7 +311,7 @@ export function ProductDataAdminPage() {
             value={form.title ?? ""}
             onChange={(title) => setForm({ ...form, title })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <ProductDataSelect
               label="平台"
               value={form.platform ?? ""}
@@ -337,7 +337,7 @@ export function ProductDataAdminPage() {
               setForm({ ...form, platformProductId: nextPlatformProductId })
             }
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <ProductDataInput
               label="售价"
               type="number"
@@ -355,7 +355,7 @@ export function ProductDataAdminPage() {
               onChange={(stock) => setForm({ ...form, stock })}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <ProductDataSelect
               label="数据状态"
               value={String(form.status ?? 1)}

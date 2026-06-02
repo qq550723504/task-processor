@@ -1,17 +1,21 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+const push = vi.fn();
+
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push,
+  }),
 }));
 
 import { selectListingKitMockPayload } from "@/app/api/listing-kits/proxy-mock";
 import ListingKitSDSPage from "@/app/listing-kits/sds/page";
 import ListingKitStyleGalleryRoute from "@/app/listing-kits/style-gallery/page";
-
-vi.mock("@/components/listingkit/shein-studio/shein-studio-page-shell", () => ({
-  SheinStudioPageShell: () => <div>SHEIN Studio shell mounted</div>,
-}));
 
 vi.mock("@/lib/server/style-gallery", () => ({
   buildStyleGallery: vi.fn(async () => ({
@@ -45,10 +49,10 @@ describe("ListingKit lightweight smoke", () => {
     expect(payload).toEqual({ task_id: "task-1", status: "completed" });
   });
 
-  it("mounts the SDS route shell", () => {
+  it("mounts the SDS route entry", () => {
     render(<ListingKitSDSPage />);
 
-    expect(screen.getByText("SHEIN Studio shell mounted")).toBeInTheDocument();
+    expect(screen.getByText("从 POD 商品生成上架资料")).toBeInTheDocument();
   });
 
   it("builds and renders the style gallery route", async () => {

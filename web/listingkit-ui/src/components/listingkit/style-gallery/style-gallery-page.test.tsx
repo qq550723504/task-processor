@@ -164,4 +164,26 @@ describe("StyleGalleryPage", () => {
     expect(screen.getByText("图库加载失败：500")).toBeInTheDocument();
     expect(screen.queryByText("暂无款式图")).not.toBeInTheDocument();
   });
+
+  it("uses mobile-first full-width hero and filter controls", () => {
+    render(
+      <StyleGalleryPage
+        initialGallery={{
+          items: [],
+          summary: {
+            publishedInputs: 0,
+            studioLegacy: 0,
+            studioSaved: 0,
+            taskLinked: 0,
+          },
+          generatedAt: "2026-05-10T00:00:00.000Z",
+          total: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "刷新" })).toHaveClass("w-full");
+    expect(screen.getByRole("link", { name: "从 POD 生成" })).toHaveClass("w-full");
+    expect(screen.getByLabelText("尺寸筛选")).toHaveClass("w-full");
+  });
 });

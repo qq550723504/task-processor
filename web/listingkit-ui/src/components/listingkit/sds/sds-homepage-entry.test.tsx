@@ -124,4 +124,29 @@ describe("SdsHomepageEntry", () => {
     expect(await screen.findByText("运行中批量生成")).toBeInTheDocument();
     expect(screen.getByText("当前运行 ID：run-1")).toBeInTheDocument();
   });
+
+  it("uses a mobile-first homepage hero and featured summary grid", async () => {
+    const { container } = render(<SdsHomepageEntry />);
+
+    await screen.findByText("最近批次摘要");
+
+    const heroHeading = screen.getByRole("heading", {
+      name: "从 POD 商品生成上架资料",
+    });
+    const heroSection = heroHeading.closest("section");
+    expect(heroSection).not.toBeNull();
+    expect(heroSection?.className).not.toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
+
+    const actionGroup = screen
+      .getByRole("button", { name: "新建批次并选品" })
+      .parentElement;
+    expect(actionGroup).not.toBeNull();
+    expect(actionGroup?.className).toContain("flex-col");
+
+    const featuredGrid = container.querySelector(
+      ".mt-4.grid.gap-3",
+    ) as HTMLDivElement | null;
+    expect(featuredGrid).not.toBeNull();
+    expect(featuredGrid?.className).not.toContain("lg:grid-cols-3");
+  });
 });

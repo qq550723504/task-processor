@@ -8,7 +8,7 @@ export function SheinStudioProgressStrip({
   selectedStyleCount: number;
 }) {
   return (
-    <div className="mb-3 grid gap-3 rounded-[1.5rem] border border-zinc-200 bg-white/80 px-4 py-4 text-sm shadow-sm md:grid-cols-3">
+    <div className="mb-3 grid gap-3 rounded-[1.5rem] border border-zinc-200 bg-white/80 px-4 py-4 text-sm shadow-sm sm:grid-cols-2 xl:grid-cols-3">
       <ProgressMetric
         label="已生成"
         value={generatedStyleCount > 0 ? `${generatedStyleCount} 个款式` : "未生成"}

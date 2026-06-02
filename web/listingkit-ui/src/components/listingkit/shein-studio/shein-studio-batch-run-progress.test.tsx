@@ -47,7 +47,9 @@ describe("SheinStudioBatchRunProgress", () => {
   });
 
   it("shows cancelling state when cancel was requested but the run is still draining", async () => {
-    render(<SheinStudioBatchRunProgress onBack={vi.fn()} runId="run-1" />);
+    const { container } = render(
+      <SheinStudioBatchRunProgress onBack={vi.fn()} runId="run-1" />,
+    );
 
     await waitFor(() => {
       expect(mockedGetSheinStudioBatchRun).toHaveBeenCalledWith("run-1");
@@ -56,5 +58,16 @@ describe("SheinStudioBatchRunProgress", () => {
     expect(await screen.findByText("正在取消批量生成")).toBeInTheDocument();
     expect(screen.getAllByText("取消中")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "取消本轮生成" })).not.toBeInTheDocument();
+
+    const title = screen.getByRole("heading", { name: "正在取消批量生成" });
+    const headerRow = title.closest("div")?.parentElement;
+    expect(headerRow).not.toBeNull();
+    expect(headerRow?.className).toContain("flex-col");
+
+    const metricGrid = container.querySelector(
+      ".grid.gap-3",
+    ) as HTMLDivElement | null;
+    expect(metricGrid).not.toBeNull();
+    expect(metricGrid?.className).not.toContain("md:grid-cols-4");
   });
 });

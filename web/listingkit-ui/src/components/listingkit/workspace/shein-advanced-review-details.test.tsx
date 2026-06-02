@@ -4,7 +4,7 @@ import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/sh
 
 describe("SheinAdvancedReviewDetails", () => {
   it("renders refresh history with affected recompute areas", () => {
-    render(
+    const { container } = render(
       <SheinAdvancedReviewDetails
         open
         showCategoryReview={false}
@@ -52,5 +52,10 @@ describe("SheinAdvancedReviewDetails", () => {
     expect(
       within(articles[1]).getByText("当前操作 普通属性 · 将重算 普通属性"),
     ).toBeInTheDocument();
+    expect(
+      Array.from(container.querySelectorAll("div")).some((element) =>
+        String(element.className).includes("2xl:grid-cols-2"),
+      ),
+    ).toBe(true);
   });
 });

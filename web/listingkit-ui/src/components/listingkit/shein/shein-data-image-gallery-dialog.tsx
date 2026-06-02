@@ -35,7 +35,7 @@ export function ImagePreviewDialog({
       role="dialog"
     >
       <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-2xl">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-200 px-5 py-4">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
               SHEIN 图片预览
@@ -47,13 +47,14 @@ export function ImagePreviewDialog({
               {activeImage.url}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Button asChild className="w-full sm:w-auto" variant="outline">
               <a href={activeImage.url} rel="noreferrer" target="_blank">
                 打开原图
               </a>
             </Button>
             <Button
+              className="w-full sm:w-auto"
               onClick={onClose}
               type="button"
             >
@@ -61,7 +62,7 @@ export function ImagePreviewDialog({
             </Button>
           </div>
         </div>
-        <div className="grid min-h-0 flex-1 gap-4 overflow-auto bg-zinc-100 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-auto bg-zinc-100 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="min-h-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

@@ -36,7 +36,7 @@ export function CanonicalProductListPage() {
 
   return (
     <ListingKitPageShell backgroundClassName="bg-[#f7f7f3]">
-      <section className="grid gap-4 border-b border-zinc-200 pb-6 lg:grid-cols-[1fr_auto] lg:items-end">
+      <section className="grid gap-4 border-b border-zinc-200 pb-6 xl:grid-cols-[1fr_auto] xl:items-end">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-teal-700">
             标准商品
@@ -48,7 +48,7 @@ export function CanonicalProductListPage() {
             从最近的 ListingKit 任务结果中聚合标准商品，用于检查 1688、POD 到 SHEIN 前的统一商品事实。
           </p>
         </div>
-        <Button variant="secondary" onClick={() => products.refetch()}>
+        <Button className="w-full sm:w-auto" variant="secondary" onClick={() => products.refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
@@ -98,7 +98,7 @@ export function CanonicalProductListPage() {
 function CanonicalProductRow({ item }: { item: CanonicalProductListItem }) {
   return (
     <Card className="border-zinc-200 bg-white p-4 transition hover:border-zinc-300 hover:shadow-md">
-      <div className="grid gap-4 lg:grid-cols-[72px_1fr_auto] lg:items-center">
+      <div className="grid gap-4 xl:grid-cols-[72px_1fr_auto] xl:items-center">
         <div className="h-[72px] w-[72px] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
           {item.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -127,8 +127,10 @@ function CanonicalProductRow({ item }: { item: CanonicalProductListItem }) {
               </Badge>
             ))}
           </div>
-          <h2 className="mt-2 truncate text-lg font-semibold text-zinc-950">{item.title}</h2>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h2 className="mt-2 line-clamp-2 break-words text-lg font-semibold text-zinc-950">
+            {item.title}
+          </h2>
+          <p className="mt-1 line-clamp-2 break-words text-sm text-zinc-500">
             {item.brand || "未知品牌"} · {item.categoryPath.join(" / ") || "未分类"}
           </p>
           <p className="mt-1 text-xs text-zinc-400">
@@ -137,7 +139,7 @@ function CanonicalProductRow({ item }: { item: CanonicalProductListItem }) {
         </div>
         <Link
           href={`/listing-kits/canonical-products/${item.taskId}`}
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+          className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 sm:w-auto"
         >
           详情
           <ArrowRight className="ml-2 h-4 w-4" />

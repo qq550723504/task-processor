@@ -29,14 +29,14 @@ export function ListingKitSettingsShell({
 }: ListingKitSettingsShellProps) {
   return (
     <ListingKitPageShell backgroundClassName={backgroundClassName}>
-      <section className="rounded-[2rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_90px_rgba(39,39,42,0.10)]">
+      <section className="rounded-[2rem] border border-white/70 bg-white/78 p-5 shadow-[0_24px_90px_rgba(39,39,42,0.10)] sm:p-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
           {eyebrow}
         </p>
         <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-zinc-950">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">{description}</p>
         {sections.length > 0 ? (
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
             {sections.map((section) => (
               <a
                 key={section.id}
@@ -52,7 +52,7 @@ export function ListingKitSettingsShell({
 
       {sections.map((section) => (
         <div key={section.id} data-testid={`settings-section-${section.id}`}>
-          <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+          <div className="mb-2 flex flex-col items-start gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-center">
             <span className="text-xs font-medium text-zinc-600">{section.summary}</span>
             {section.badges?.map((badge) => (
               <span

@@ -88,4 +88,15 @@ describe("TaskRevisionHistoryPanel", () => {
     expect(screen.queryByText("更新 SHEIN 资料")).not.toBeInTheDocument();
     expect(screen.getByText("刷新型修订")).toBeInTheDocument();
   });
+
+  it("keeps the history action and detail layout mobile-friendly", () => {
+    const { container } = render(<TaskRevisionHistoryPanel taskId="task-1" />);
+
+    expect(screen.getByRole("button", { name: "收起历史" })).toHaveClass("w-full");
+    expect(
+      Array.from(container.querySelectorAll("div")).some((element) =>
+        element.className.includes("xl:grid-cols-[280px_minmax(0,1fr)]"),
+      ),
+    ).toBe(true);
+  });
 });

@@ -73,7 +73,7 @@ export function SheinAdvancedReviewDetails({
       id="shein-advanced-review-details"
       open={open}
     >
-      <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
+      <summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
             高级详情
@@ -102,7 +102,7 @@ export function SheinAdvancedReviewDetails({
                 className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3"
                 key={`${entry.scope}-${entry.status}-${entry.occurredAt}-${index}`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm font-medium text-zinc-900">
                     {entry.title}
                   </div>
@@ -134,7 +134,7 @@ export function SheinAdvancedReviewDetails({
           </div>
         </details>
       ) : null}
-      <div className="mt-5 grid min-w-0 items-start gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid min-w-0 items-start gap-4 2xl:grid-cols-2">
         {showCategoryReview ? (
           <div id="shein-category-review-card" className="min-w-0">
             <SheinCategoryReviewCard {...categoryReviewProps} />

@@ -42,7 +42,7 @@ export function WorkspaceHeader({
   onSelectRecovery?: (descriptor: RecoveryDescriptor) => void;
 }) {
   return (
-    <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+    <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
       <div className="min-w-0 space-y-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">

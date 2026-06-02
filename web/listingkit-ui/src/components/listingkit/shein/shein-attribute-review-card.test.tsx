@@ -58,6 +58,7 @@ describe("SheinAttributeReviewCard", () => {
     await user.click(screen.getByRole("button", { name: "重新生成普通属性" }));
 
     expect(onRegenerateAttributes).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "重新生成普通属性" })).toHaveClass("w-full");
   });
 
   it("returns manually selected pending attribute candidates", async () => {
@@ -215,6 +216,29 @@ describe("SheinAttributeReviewCard", () => {
         '保存普通属性失败：resolve shein sku sale attribute "40x30cm" failed',
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps resolved attribute summaries on a mobile-first grid", () => {
+    const { container } = render(
+      <SheinAttributeReviewCard
+        editorContext={{
+          attributes: {
+            current: {
+              status: "resolved",
+              resolved_attributes: [
+                { name: "Upper Material", value: "flyknit" },
+              ],
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      Array.from(container.querySelectorAll("div")).some((element) =>
+        String(element.className).includes("xl:grid-cols-2"),
+      ),
+    ).toBe(true);
   });
 
   it("allows manual extra value input for option-based attributes", async () => {

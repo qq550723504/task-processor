@@ -130,6 +130,36 @@ describe("SheinStudioBatchDetail", () => {
     push.mockReset();
   });
 
+  it("uses a mobile-first summary layout for batch details", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValueOnce(buildHydratedBatch());
+
+    const { container } = render(<SheinStudioBatchDetail batchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: "retro cherries" }),
+      ).toBeInTheDocument(),
+    );
+
+    const summarySection = screen
+      .getByRole("heading", { level: 1, name: "retro cherries" })
+      .closest("section");
+    expect(summarySection).not.toBeNull();
+    expect(summarySection?.className).not.toContain("lg:grid-cols-[1.15fr_0.85fr]");
+
+    const actionGroup = screen
+      .getByRole("button", { name: "继续选品并加入当前批次" })
+      .parentElement;
+    expect(actionGroup).not.toBeNull();
+    expect(actionGroup?.className).toContain("flex-col");
+
+    const metricsGrid = container.querySelector(
+      ".grid.gap-3",
+    ) as HTMLDivElement | null;
+    expect(metricsGrid).not.toBeNull();
+    expect(metricsGrid?.className).not.toContain("lg:grid-cols-1");
+  });
+
   it("routes back to SDS selection with the current batch activated for adding products", async () => {
     getSheinStudioHydratedBatch.mockResolvedValueOnce(buildHydratedBatch());
 

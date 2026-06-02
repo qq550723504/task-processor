@@ -376,7 +376,7 @@ export function SdsHomepageEntry() {
   return (
     <div className="flex-1 overflow-hidden bg-zinc-50">
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 lg:px-6">
-        <section className="grid gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <section className="grid gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
               POD
@@ -400,18 +400,28 @@ export function SdsHomepageEntry() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {summaries.length > 0 ? (
-              <Button onClick={handleContinueRecent} type="button" variant="secondary">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={handleContinueRecent}
+                type="button"
+                variant="secondary"
+              >
                 {recommendedRiskLabel
                   ? `继续最近批次（优先处理 ${recommendedRiskLabel}${recommendedRiskDetail ? ` · ${recommendedRiskDetail}` : ""}）`
                   : "继续最近批次"}
               </Button>
             ) : null}
-            <Button onClick={handleQuickSingleGenerate} type="button" variant="outline">
+            <Button
+              className="w-full sm:w-auto"
+              onClick={handleQuickSingleGenerate}
+              type="button"
+              variant="outline"
+            >
               快速单个生成
             </Button>
-            <Button onClick={handleCreateNew} type="button">
+            <Button className="w-full sm:w-auto" onClick={handleCreateNew} type="button">
               新建批次并选品
             </Button>
           </div>
@@ -472,7 +482,7 @@ export function SdsHomepageEntry() {
               </div>
 
               {!showAllBatches ? (
-                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {featuredSummaries.map((summary) => (
                     <button
                       className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-left transition hover:border-zinc-300 hover:bg-white"

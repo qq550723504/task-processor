@@ -51,4 +51,28 @@ describe("StoreStatisticsAdminPage", () => {
     expect(screen.getByText("6 / 10")).toBeInTheDocument();
     expect(screen.getByText("60%")).toBeInTheDocument();
   });
+
+  it("keeps summary cards and the table mobile-friendly", async () => {
+    vi.spyOn(
+      adminStoreStatisticsApi,
+      "getListingStoreStatistics",
+    ).mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <StoreStatisticsAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(adminStoreStatisticsApi.getListingStoreStatistics).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole("button", { name: "刷新" })).toHaveClass("w-full");
+    expect(container.querySelector(".sm\\:grid-cols-2")).not.toBeNull();
+    expect(container.querySelector(".overflow-x-auto")).not.toBeNull();
+  });
 });

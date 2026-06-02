@@ -124,6 +124,44 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     );
   });
 
+  it("uses mobile-safe batch grid and bulk controls", () => {
+    const { container } = render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onOpenBatchQueue={() => undefined}
+        onSelectSummary={() => undefined}
+        storeOptions={[{ id: "869", label: "Store 869" }]}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Retro Cherries",
+            primaryProductName: "tee",
+            productCount: 2,
+            promptPreview: "retro cherries",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
+
+    const storeLabel = screen.getByText("目标店铺").closest("label");
+    expect(storeLabel).not.toBeNull();
+    expect(storeLabel?.className).not.toContain("min-w-[220px]");
+
+    const batchGrid = container.querySelector(
+      ".grid.gap-3",
+    ) as HTMLDivElement | null;
+    expect(batchGrid).not.toBeNull();
+    expect(batchGrid?.className).not.toContain("lg:grid-cols-2");
+  });
+
   it("labels recoverable drafts with restore actions", () => {
     const onDeleteSummary = vi.fn();
 

@@ -4,7 +4,7 @@ type FinalReviewSubmitAction = "publish" | "save_draft";
 
 export function FinalReviewHeader({ confirmed }: { confirmed: boolean }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-zinc-500">
           SHEIN 最终确认
@@ -46,7 +46,7 @@ export function FinalReviewReadinessBanner({
           : "border-amber-200 bg-amber-50"
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div
             className={`text-xs font-semibold uppercase tracking-[0.18em] ${
@@ -115,11 +115,16 @@ export function FinalReviewPublishConfirmCard({
             SKU：{skuCount} 个
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={onCancel} type="button">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={onCancel} type="button">
             取消
           </Button>
-          <Button disabled={isSubmitting || isPublished} onClick={onConfirm} type="button">
+          <Button
+            className="w-full sm:w-auto"
+            disabled={isSubmitting || isPublished}
+            onClick={onConfirm}
+            type="button"
+          >
             {isPublished ? "已发布到 SHEIN" : "确认发布"}
           </Button>
         </div>
@@ -157,7 +162,7 @@ export function FinalReviewSubmitActions({
   submitHint: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
       <div className="basis-full rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm leading-6 text-zinc-700">
         <p className="font-semibold text-zinc-950">{submitHint}</p>
         <p className="mt-1">
@@ -165,6 +170,7 @@ export function FinalReviewSubmitActions({
         </p>
       </div>
       <Button
+        className="w-full sm:w-auto"
         variant="secondary"
         disabled={isSaving || !ready || isSubmitting}
         onClick={() =>
@@ -178,6 +184,7 @@ export function FinalReviewSubmitActions({
         {submitAction === "save_draft" ? "保存中..." : "保存到 SHEIN 草稿箱"}
       </Button>
       <Button
+        className="w-full sm:w-auto"
         disabled={!ready || isSubmitting || isPublished}
         onClick={() =>
           onSubmit?.("publish", {

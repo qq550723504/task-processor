@@ -77,7 +77,7 @@ export function ReviewSummaryGrid({
             className={`rounded-2xl border p-3 ${summaryTone(item.status)}`}
             key={item.key}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold">{item.title}</p>
@@ -128,7 +128,7 @@ export function ImageSubmitSummary({
 }) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
             图片提交摘要
@@ -141,7 +141,7 @@ export function ImageSubmitSummary({
         </div>
         {imageBlocked && onSelectImages ? (
           <Button
-            className="h-8 px-3 text-xs"
+            className="h-8 w-full px-3 text-xs sm:w-auto"
             variant="secondary"
             onClick={onSelectImages}
           >
@@ -168,7 +168,7 @@ export function ImageStructureDetails({
 }) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
             图片结构明细
@@ -188,7 +188,7 @@ export function ImageStructureDetails({
           </Badge>
         )}
       </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
         {finalImages.map((image, index) => (
           <div
             className="min-w-0 rounded-2xl border border-zinc-100 bg-zinc-50 p-3"
@@ -243,7 +243,7 @@ export function FinalReviewOverviewCards({
   finalReview?: SheinPreviewPayload["final_review"];
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
         <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
           商品
@@ -291,7 +291,7 @@ export function StoreResolutionCard({
   }
   return (
     <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
             店铺解析
@@ -381,37 +381,41 @@ export function SkuPricingTable({
         id="shein-final-review-pricing"
         className="scroll-mt-6 overflow-hidden rounded-2xl border border-zinc-200"
       >
-        <div className="grid grid-cols-[1.5fr_0.7fr_0.7fr_0.8fr] bg-zinc-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          <span>SKU</span>
-          <span>成本</span>
-          <span>自动价</span>
-          <span>最终售价</span>
-        </div>
-        <div className="max-h-72 divide-y divide-zinc-100 overflow-auto">
-          {(pricing?.sku_prices ?? []).map((sku) => (
-            <div
-              key={sku.supplier_sku}
-              className="grid grid-cols-[1.5fr_0.7fr_0.7fr_0.8fr] items-center gap-2 px-3 py-2 text-sm"
-            >
-              <span className="truncate font-medium text-zinc-900">
-                {sku.supplier_sku}
-              </span>
-              <span className="text-zinc-600">CNY {sku.cost_cny ?? "-"}</span>
-              <span className="text-zinc-600">
-                {money(sku.calculated_price, sku.currency)}
-              </span>
-              <Input
-                className="h-9 rounded-xl"
-                value={priceOverrides[sku.supplier_sku ?? ""] ?? ""}
-                onChange={(event) =>
-                  setPriceOverrides((current) => ({
-                    ...current,
-                    [sku.supplier_sku ?? ""]: event.target.value,
-                  }))
-                }
-              />
+        <div className="overflow-x-auto">
+          <div className="min-w-[38rem]">
+            <div className="grid grid-cols-[1.5fr_0.7fr_0.7fr_0.8fr] bg-zinc-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <span>SKU</span>
+              <span>成本</span>
+              <span>自动价</span>
+              <span>最终售价</span>
             </div>
-          ))}
+            <div className="max-h-72 divide-y divide-zinc-100 overflow-auto">
+              {(pricing?.sku_prices ?? []).map((sku) => (
+                <div
+                  key={sku.supplier_sku}
+                  className="grid grid-cols-[1.5fr_0.7fr_0.7fr_0.8fr] items-center gap-2 px-3 py-2 text-sm"
+                >
+                  <span className="truncate font-medium text-zinc-900">
+                    {sku.supplier_sku}
+                  </span>
+                  <span className="text-zinc-600">CNY {sku.cost_cny ?? "-"}</span>
+                  <span className="text-zinc-600">
+                    {money(sku.calculated_price, sku.currency)}
+                  </span>
+                  <Input
+                    className="h-9 rounded-xl"
+                    value={priceOverrides[sku.supplier_sku ?? ""] ?? ""}
+                    onChange={(event) =>
+                      setPriceOverrides((current) => ({
+                        ...current,
+                        [sku.supplier_sku ?? ""]: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </>

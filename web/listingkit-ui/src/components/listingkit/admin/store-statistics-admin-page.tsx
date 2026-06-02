@@ -58,7 +58,7 @@ export function StoreStatisticsAdminPage() {
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-950">上架统计</h1>
             <p className="mt-1 text-sm text-zinc-500">
@@ -66,7 +66,10 @@ export function StoreStatisticsAdminPage() {
               {totals.limit}，待处理 {totals.pending}。
             </p>
           </div>
-          <form className="flex flex-wrap gap-2" onSubmit={handleSubmit}>
+          <form
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+            onSubmit={handleSubmit}
+          >
             <Label className="mb-3 block text-xs font-medium text-zinc-500">
               日期
               <Input
@@ -78,7 +81,7 @@ export function StoreStatisticsAdminPage() {
             </Label>
             <Button
               type="submit"
-              className="mt-5"
+              className="w-full sm:mt-5 sm:w-auto"
               variant="secondary"
             >
               {loading ? (
@@ -97,7 +100,7 @@ export function StoreStatisticsAdminPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-3 md:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="完成数" value={String(totals.completed)} />
         <StatTile label="待处理" value={String(totals.pending)} />
         <StatTile label="队列中" value={String(totals.queued)} />
@@ -105,7 +108,8 @@ export function StoreStatisticsAdminPage() {
       </section>
 
       <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-        <Table className="min-w-full">
+        <div className="overflow-x-auto">
+          <Table className="min-w-[56rem]">
             <TableHeader className="bg-zinc-50">
               <TableRow className="text-xs uppercase tracking-[0.2em] hover:bg-transparent">
                 <TableHead>店铺</TableHead>
@@ -192,6 +196,7 @@ export function StoreStatisticsAdminPage() {
               )}
             </TableBody>
           </Table>
+        </div>
       </section>
     </div>
   );

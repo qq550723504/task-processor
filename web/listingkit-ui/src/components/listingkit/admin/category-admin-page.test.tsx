@@ -50,4 +50,24 @@ describe("CategoryAdminPage", () => {
     expect(screen.getByText("SHIRTS")).toBeInTheDocument();
     expect(screen.getByText("#1")).toBeInTheDocument();
   });
+
+  it("uses a stacked mobile-first filter form and scrollable table", async () => {
+    vi.spyOn(adminCategoriesApi, "getListingCategories").mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <CategoryAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(adminCategoriesApi.getListingCategories).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole("button", { name: "查询" })).toHaveClass("w-full");
+    expect(container.querySelector(".overflow-x-auto")).not.toBeNull();
+  });
 });

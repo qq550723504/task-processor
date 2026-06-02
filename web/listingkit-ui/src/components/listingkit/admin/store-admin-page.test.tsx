@@ -96,6 +96,34 @@ describe("StoreAdminPage", () => {
     expect(screen.queryByTestId("store-profile-admin-panel")).not.toBeInTheDocument();
   });
 
+  it("uses mobile-first store filters and wide-table scroll containers", async () => {
+    vi.spyOn(adminStoresApi, "getListingStores").mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(adminStoresApi.getListingStores).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole("button", { name: "回收站" })).toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "查询" })).toHaveClass("w-full");
+    expect(screen.getByPlaceholderText("搜索店铺")).toHaveClass("w-full");
+  });
+
   it("edits an existing ListingKit store", async () => {
     const user = userEvent.setup();
     const store = {

@@ -66,6 +66,30 @@ describe("SheinStudioPageShell", () => {
     expect(screen.queryByRole("link", { name: "查看 SHEIN 任务" })).not.toBeInTheDocument();
   });
 
+  it("uses a mobile-first compact shell layout without forcing a desktop-width metric rail", () => {
+    const { container } = render(
+      <SheinStudioPageShell
+        eyebrow="POD"
+        layout="compact"
+        title="从 POD 商品生成上架资料"
+        description="选择 POD 商品、生成图片、审核款式，然后创建平台资料确认任务。"
+      />,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: "从 POD 商品生成上架资料",
+    });
+    const heroSection = heading.closest("section");
+    expect(heroSection).not.toBeNull();
+    expect(heroSection?.className).not.toContain("lg:grid-cols-[minmax(0,1fr)_minmax(28rem,auto)]");
+
+    const compactMetricRail = container.querySelector(
+      ".grid.gap-2.text-sm",
+    ) as HTMLDivElement | null;
+    expect(compactMetricRail).not.toBeNull();
+    expect(compactMetricRail?.className).not.toContain("lg:min-w-[430px]");
+  });
+
   it("surfaces the recent batch risk recommendation in the homepage guidance", () => {
     render(<SheinStudioPageShell />);
 

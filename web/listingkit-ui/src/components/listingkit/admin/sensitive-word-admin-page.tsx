@@ -117,7 +117,7 @@ export function SensitiveWordAdminPage() {
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-950">敏感词</h1>
             <p className="mt-1 text-sm text-zinc-500">
@@ -125,7 +125,7 @@ export function SensitiveWordAdminPage() {
             </p>
           </div>
           <form
-            className="flex flex-wrap gap-2"
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
             onSubmit={(event) => event.preventDefault()}
           >
             <SensitiveInput
@@ -153,7 +153,7 @@ export function SensitiveWordAdminPage() {
             <Button
               type="button"
               onClick={() => void sensitiveWordQuery.refetch()}
-              className="mt-5"
+              className="w-full sm:mt-5 sm:w-auto"
               variant="secondary"
             >
               {loading ? (
@@ -172,10 +172,10 @@ export function SensitiveWordAdminPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <Table className="min-w-full divide-y divide-zinc-200 text-sm">
+            <Table className="min-w-[52rem] divide-y divide-zinc-200 text-sm">
               <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
                 <TableRow>
                   <TableHead className="px-4 py-3">敏感词</TableHead>
@@ -274,7 +274,7 @@ export function SensitiveWordAdminPage() {
               setForm({ ...form, language: nextLanguage })
             }
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <SensitiveSelect
               label="敏感级别"
               value={String(form.level ?? 1)}

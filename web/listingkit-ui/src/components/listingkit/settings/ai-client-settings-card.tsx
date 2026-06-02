@@ -111,7 +111,7 @@ export function AIClientSettingsCard() {
       }
     >
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {aiClientOptions.map((option) => {
           const Icon = option.icon;
           const active = option.name === clientName;
@@ -119,7 +119,7 @@ export function AIClientSettingsCard() {
             <Button
               key={option.name}
               variant={active ? "default" : "outline"}
-              className="h-auto min-w-[160px] justify-start rounded-xl px-3 py-3 text-left"
+              className="h-auto w-full min-w-0 justify-start rounded-xl px-3 py-3 text-left"
               type="button"
               onClick={() => {
                 setClientName(option.name);
@@ -144,7 +144,7 @@ export function AIClientSettingsCard() {
       </div>
 
       <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
             <div className="text-sm font-semibold text-zinc-950">{selectedClient.label}</div>
             <div className="mt-1 text-sm text-zinc-600">{selectedClient.description}</div>
@@ -158,7 +158,7 @@ export function AIClientSettingsCard() {
           <span className="ml-1 font-semibold">{resolvedScopeLabel}</span>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr]">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[180px_1fr_1fr]">
           <Label className="space-y-1">
             <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
               配置范围
@@ -192,7 +192,7 @@ export function AIClientSettingsCard() {
             onChange={(value) => set("model", value)}
           />
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
           <Input
             label="API Key"
             hint={settings.data?.api_key_set ? "留空表示继续使用已保存密钥" : "保存后后端不会回显明文密钥"}

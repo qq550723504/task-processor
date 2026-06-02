@@ -323,18 +323,18 @@ export function PlatformSubscriptionPage() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <CardTitle className="text-2xl">租户订阅管理</CardTitle>
             <CardDescription className="mt-1">
               推荐先按套餐开通；只有在补差或排障时，再单独调整模块额度和用量。
             </CardDescription>
           </div>
-          <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row">
+          <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Input
               value={tenantInput}
               onChange={(event) => setTenantInput(event.target.value)}
-              className="h-9 min-w-[260px] font-mono"
+              className="h-9 w-full font-mono sm:min-w-[260px] sm:flex-1"
               placeholder="搜索或输入租户 ID"
               aria-label="租户 ID"
               list="listingkit-tenant-options"
@@ -347,7 +347,7 @@ export function PlatformSubscriptionPage() {
             <Button
               type="submit"
               disabled={!tenantInput.trim()}
-              className="h-9 gap-2 px-3"
+              className="h-9 w-full gap-2 px-3 sm:w-auto"
             >
               <Search className="size-4" />
               查询
@@ -357,7 +357,7 @@ export function PlatformSubscriptionPage() {
               variant="outline"
               disabled={!normalizedTenantId}
               onClick={() => void query.refetch()}
-              className="h-9 gap-2 px-3"
+              className="h-9 w-full gap-2 px-3 sm:w-auto"
             >
               <RefreshCw className={`size-4 ${query.isFetching ? "animate-spin" : ""}`} />
               刷新
@@ -378,16 +378,16 @@ export function PlatformSubscriptionPage() {
         ) : null}
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <Card className="overflow-hidden p-0">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-semibold text-zinc-900">已配置租户</h2>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => void tenantListQuery.refetch()}
-                className="h-8 gap-2 px-3 text-xs"
+                className="h-8 w-full gap-2 px-3 text-xs sm:w-auto"
               >
                 <RefreshCw
                   className={`size-3.5 ${tenantListQuery.isFetching ? "animate-spin" : ""}`}
@@ -395,7 +395,7 @@ export function PlatformSubscriptionPage() {
                 刷新
               </Button>
             </div>
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 2xl:flex-wrap 2xl:overflow-visible">
               {tenantListQuery.isLoading ? (
                 <span className="text-sm text-zinc-500">加载中...</span>
               ) : tenantOptions.length === 0 ? (
@@ -435,7 +435,8 @@ export function PlatformSubscriptionPage() {
               )}
             </div>
           </div>
-          <Table>
+          <div className="overflow-x-auto">
+          <Table className="min-w-[52rem]">
             <TableHeader>
               <TableRow className="bg-zinc-50 text-xs font-semibold uppercase text-zinc-500 hover:bg-zinc-50">
                 <TableHead className="px-4 py-3">模块</TableHead>
@@ -499,6 +500,7 @@ export function PlatformSubscriptionPage() {
                 )}
             </TableBody>
           </Table>
+          </div>
         </Card>
 
         <div className="space-y-4">
