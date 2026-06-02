@@ -7,9 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/listingadmin"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/submitprep"
 )
 
 func TestSubmitTaskRebuildsNormalizedProductAttributesFromPackage(t *testing.T) {
@@ -1069,6 +1071,18 @@ func TestSubmitTaskAddsRegionalTranslationsForEnglishSheinContent(t *testing.T) 
 
 func TestSubmitTaskCleansSheinSensitiveWordsBeforePublish(t *testing.T) {
 	t.Parallel()
+
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubListingkitSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			373211199677923496: {{
+				TenantID: 373211199677923496,
+				Language: "en",
+				Word:     "whimsy",
+				Status:   1,
+			}},
+		},
+	})
+	defer restoreRepo()
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()

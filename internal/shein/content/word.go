@@ -10,7 +10,7 @@ import (
 
 // NewSensitiveWordService 创建敏感词服务
 func NewSensitiveWordService() *SensitiveWordService {
-	return NewSensitiveWordServiceWithPath("data/sensitive_words.json")
+	return NewSensitiveWordServiceInMemory()
 }
 
 // NewSensitiveWordServiceInMemory 创建纯内存敏感词服务，不依赖本地配置文件。
@@ -25,6 +25,28 @@ func NewSensitiveWordServiceInMemory() *SensitiveWordService {
 
 	service.startSaveWorker()
 	service.initDefaultConfig()
+	return service
+}
+
+// NewSensitiveWordServiceInMemoryWithPath 创建只读加载配置文件的内存敏感词服务。
+// 它会读取现有词库，但不会将运行时动态词持久化回磁盘。
+func NewSensitiveWordServiceInMemoryWithPath(configPath string) *SensitiveWordService {
+	service := &SensitiveWordService{
+		configPath:    configPath,
+		persistConfig: false,
+		ctx:           context.Background(),
+		saveQueue:     make(chan struct{}, 10),
+		stopSave:      make(chan struct{}),
+		logger:        corelogger.GetGlobalLogger("shein.sensitive_word"),
+	}
+
+	service.startSaveWorker()
+
+	if err := service.loadConfig(); err != nil {
+		service.logger.Errorf("加载敏感词配置失败: %v，使用默认配置", err)
+		service.initDefaultConfig()
+	}
+
 	return service
 }
 
