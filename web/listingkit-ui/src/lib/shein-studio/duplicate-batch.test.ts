@@ -69,6 +69,12 @@ describe("buildDuplicatedSheinStudioBatchInput", () => {
       designs: [{ id: "design-1", imageUrl: "https://example.com/d.png" }],
       selectedIds: ["design-1"],
       createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      generationJobs: [
+        {
+          jobId: "job-1",
+          status: "running",
+        },
+      ],
       updatedAt: "2026-05-29T21:10:00.000Z",
     });
 
@@ -85,6 +91,7 @@ describe("buildDuplicatedSheinStudioBatchInput", () => {
       designs: [],
       selectedIds: [],
       createdTasks: [],
+      generationJobs: [],
       groups: [
         {
           primarySelection: { variantId: 123 },

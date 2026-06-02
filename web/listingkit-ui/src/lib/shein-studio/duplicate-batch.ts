@@ -40,5 +40,6 @@ export function buildDuplicatedSheinStudioBatchInput(
     designs: [],
     selectedIds: [],
     createdTasks: [],
+    generationJobs: [],
   };
 }
