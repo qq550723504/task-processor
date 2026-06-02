@@ -22,6 +22,7 @@ import {
   sheinFreshnessNextAction,
   sheinFreshnessTone,
 } from "@/lib/listingkit/shein-freshness";
+import { buildTaskWorkspaceHref } from "@/lib/listingkit/task-workspace-href";
 import type {
   ListingKitTaskListItem,
   ListingKitTaskListTaxonomy,
@@ -31,13 +32,6 @@ type ListingKitHomeTaskCardProps = {
   task: ListingKitTaskListItem;
   taxonomy?: ListingKitTaskListTaxonomy;
 };
-
-const RESUMABLE_SHEIN_WORKFLOW_STATUSES = new Set([
-  "pending_confirmation",
-  "ready_to_submit",
-  "publish_failed",
-  "draft_saved",
-]);
 
 function taskStatusLabel(status?: string) {
   switch (status) {
@@ -125,15 +119,6 @@ function hasPodPlatformIssue(task: ListingKitTaskListItem) {
   );
 }
 
-function isResumableSheinTask(task: ListingKitTaskListItem) {
-  return (
-    (task.platforms ?? []).includes("shein") &&
-    (RESUMABLE_SHEIN_WORKFLOW_STATUSES.has(task.shein_workflow_status ?? "") ||
-      Boolean(task.shein_work_queue) ||
-      Boolean(task.shein_action_queue))
-  );
-}
-
 function compactSignals(
   task: ListingKitTaskListItem,
   taxonomy?: ListingKitTaskListTaxonomy,
@@ -199,14 +184,7 @@ function compactSignals(
 }
 
 export function taskWorkspaceHref(task: ListingKitTaskListItem) {
-  const baseHref = `/listing-kits/${task.task_id}/workspace`;
-  const platform = isResumableSheinTask(task) ? "shein" : task.platforms?.[0];
-
-  if (!platform) {
-    return baseHref;
-  }
-
-  return `${baseHref}?platform=${platform}`;
+  return buildTaskWorkspaceHref(task);
 }
 
 export function ListingKitHomeTaskCard({

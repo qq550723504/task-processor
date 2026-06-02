@@ -875,5 +875,89 @@ describe("shein studio storage api", () => {
     );
   });
 
+  it("dedupes concurrent saved batch list requests", async () => {
+    listSheinStudioBatchDrafts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve([
+              {
+                id: "batch-1",
+                name: "Batch 1",
+                prompt: "prompt",
+                styleCount: "1",
+                sheinStoreId: "",
+                designs: [],
+                selectedIds: [],
+                createdTasks: [],
+                updatedAt: "2026-06-01T10:04:00Z",
+              },
+            ]);
+          }, 0);
+        }),
+    );
+
+    const [first, second] = await Promise.all([
+      listSheinStudioBatches(),
+      listSheinStudioBatches(),
+    ]);
+
+    expect(listSheinStudioBatchDrafts).toHaveBeenCalledTimes(1);
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+  });
+
+  it("dedupes concurrent hydrated batch requests for the same batch id", async () => {
+    listSheinStudioBatchDrafts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve([
+              {
+                id: "batch-1",
+                name: "Batch 1",
+                prompt: "prompt",
+                styleCount: "1",
+                sheinStoreId: "",
+                designs: [],
+                selectedIds: [],
+                createdTasks: [],
+                updatedAt: "2026-06-01T10:04:00Z",
+              },
+            ]);
+          }, 0);
+        }),
+    );
+    getSheinStudioBatchDetail.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              batch: {
+                id: "batch-1",
+                status: "draft",
+                prompt: "prompt",
+                styleCount: "1",
+                sheinStoreId: 7,
+                createdAt: "2026-06-01T10:00:00Z",
+                updatedAt: "2026-06-01T10:05:00Z",
+              },
+              items: [],
+            });
+          }, 0);
+        }),
+    );
+
+    const [first, second] = await Promise.all([
+      getSheinStudioHydratedBatch("batch-1"),
+      getSheinStudioHydratedBatch("batch-1"),
+    ]);
+
+    expect(getSheinStudioBatchDetail).toHaveBeenCalledTimes(1);
+    expect(listSheinStudioBatchDrafts).toHaveBeenCalledTimes(1);
+    expect(first.savedBatch.id).toBe("batch-1");
+    expect(second.savedBatch.id).toBe("batch-1");
+  });
+
 });
 

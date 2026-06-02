@@ -92,6 +92,13 @@ func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batch
 	normalizedBatchID := strings.TrimSpace(batchID)
 	detail, err := s.repo.GetStudioBatchDetail(ctx, normalizedBatchID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		fallbackDetail, syncRequired, syncErr := s.resolveStudioBatchDetailWithoutGraph(ctx, normalizedBatchID)
+		if syncErr != nil {
+			return nil, syncErr
+		}
+		if !syncRequired {
+			return fallbackDetail, nil
+		}
 		if syncErr := s.ensureStudioBatchGenerationGraphForResume(ctx, normalizedBatchID); syncErr != nil {
 			return nil, syncErr
 		}
@@ -105,6 +112,23 @@ func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batch
 		return nil, draftErr
 	}
 	return projectStudioBatchDetail(detail, draftUpdatedAt), nil
+}
+
+func (s *taskStudioBatchService) resolveStudioBatchDetailWithoutGraph(ctx context.Context, batchID string) (*StudioBatchDetail, bool, error) {
+	if s.studioSessionRepo == nil {
+		return nil, false, gorm.ErrRecordNotFound
+	}
+	session, err := s.studioSessionRepo.GetSession(ctx, batchID)
+	if err != nil {
+		return nil, false, err
+	}
+	if session == nil || !session.SavedAsBatch {
+		return nil, false, ErrStudioSessionNotFound
+	}
+	if shouldSyncStudioBatchGraphOnRead(session) {
+		return nil, true, nil
+	}
+	return buildStudioBatchDraftOnlyDetail(session), false, nil
 }
 
 func (s *taskStudioBatchService) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {
@@ -453,4 +477,31 @@ func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now tim
 		batch.GroupedImageMode = "shared_by_size"
 	}
 	return batch
+}
+
+func shouldSyncStudioBatchGraphOnRead(session *SheinStudioSession) bool {
+	if session == nil {
+		return false
+	}
+	if session.Status == SheinStudioSessionStatusGenerating {
+		return true
+	}
+	if strings.TrimSpace(session.GenerationJobID) != "" {
+		return true
+	}
+	return len(session.GenerationJobs) > 0
+}
+
+func buildStudioBatchDraftOnlyDetail(session *SheinStudioSession) *StudioBatchDetail {
+	if session == nil {
+		return &StudioBatchDetail{}
+	}
+	batch := buildStudioBatchRecordFromSessionDraft(session, session.UpdatedAt.UTC())
+	batch.Status = StudioBatchStatusDraft
+	updatedAt := session.UpdatedAt.UTC()
+	batch.DraftUpdatedAt = &updatedAt
+	return &StudioBatchDetail{
+		Batch: batch,
+		Items: []StudioBatchItemDetail{},
+	}
 }

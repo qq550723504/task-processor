@@ -43,6 +43,7 @@ import {
   sheinFreshnessSummaryText,
   sheinFreshnessTone,
 } from "@/lib/listingkit/shein-freshness";
+import { buildTaskWorkspaceHref } from "@/lib/listingkit/task-workspace-href";
 import type {
   ListingKitTaskListItem,
   ListingKitTaskListSummary,
@@ -601,7 +602,7 @@ function TaskRow({
   task: ListingKitTaskListItem;
   taxonomy?: ListingKitTaskListTaxonomy;
 }) {
-  const workspaceHref = `/listing-kits/${task.task_id}/workspace?platform=${task.platforms?.[0] ?? "shein"}`;
+  const workspaceHref = buildTaskWorkspaceHref(task);
   const remoteCheckedAt = task.shein_submission_remote_checked_at
     ? formatDate(task.shein_submission_remote_checked_at)
     : null;

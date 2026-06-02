@@ -73,6 +73,12 @@ export type SheinStudioHydratedBatch = {
   detail: SheinStudioBatchDetail;
 };
 
+let inFlightBatchListPromise: Promise<SheinStudioSavedBatch[]> | null = null;
+const inFlightHydratedBatchPromises = new Map<
+  string,
+  Promise<SheinStudioHydratedBatch>
+>();
+
 function buildSheinStudioSaveQueueKey(input: SheinStudioSaveInput) {
   const batchID = input.id?.trim();
   if (batchID) {
@@ -189,9 +195,18 @@ export async function saveSheinStudioDraftWithOptions(
 }
 
 export async function listSheinStudioBatches() {
-  return (await listSheinStudioBatchDrafts())
-    .map((item) => normalizeBatch(item))
-    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (!inFlightBatchListPromise) {
+    inFlightBatchListPromise = listSheinStudioBatchDrafts()
+      .then((items) =>
+        items
+          .map((item) => normalizeBatch(item))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+      )
+      .finally(() => {
+        inFlightBatchListPromise = null;
+      });
+  }
+  return inFlightBatchListPromise;
 }
 
 export async function getSheinStudioBatch(batchID: string) {
@@ -201,19 +216,35 @@ export async function getSheinStudioBatch(batchID: string) {
 export async function getSheinStudioHydratedBatch(
   batchID: string,
 ): Promise<SheinStudioHydratedBatch> {
-  const detail = await getSheinStudioBatchDetail(batchID);
-  const savedBatch = (await listSheinStudioBatches()).find(
-    (item) => item.id === batchID,
-  );
-  if (!savedBatch) {
-    throw new Error(`Saved batch context unavailable for ${batchID}.`);
+  const normalizedBatchID = batchID.trim();
+  if (!normalizedBatchID) {
+    throw new Error("Saved batch context unavailable for an empty batch id.");
   }
-  return {
-    savedBatch: normalizeBatch(
-      mergeBatchDetailWithSavedBatchContext(detail, savedBatch),
-    )!,
-    detail,
-  };
+  const inFlight = inFlightHydratedBatchPromises.get(normalizedBatchID);
+  if (inFlight) {
+    return inFlight;
+  }
+  const pending = (async () => {
+    const detail = await getSheinStudioBatchDetail(normalizedBatchID);
+    const savedBatch = (await listSheinStudioBatches()).find(
+      (item) => item.id === normalizedBatchID,
+    );
+    if (!savedBatch) {
+      throw new Error(
+        `Saved batch context unavailable for ${normalizedBatchID}.`,
+      );
+    }
+    return {
+      savedBatch: normalizeBatch(
+        mergeBatchDetailWithSavedBatchContext(detail, savedBatch),
+      )!,
+      detail,
+    };
+  })().finally(() => {
+    inFlightHydratedBatchPromises.delete(normalizedBatchID);
+  });
+  inFlightHydratedBatchPromises.set(normalizedBatchID, pending);
+  return pending;
 }
 
 export async function saveSheinStudioBatch(

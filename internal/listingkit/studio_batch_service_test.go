@@ -476,7 +476,7 @@ func TestTaskStudioBatchServiceContinueGenerationAutoRetriesPreviouslyFailedRetr
 	}
 }
 
-func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromSavedSessionWhenMissing(t *testing.T) {
+func TestServiceGetStudioBatchDetailReturnsDraftOnlyStateWhenSelectingBatchGraphIsMissing(t *testing.T) {
 	t.Parallel()
 
 	repo := NewMemStudioBatchRepository()
@@ -516,6 +516,55 @@ func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromSavedSessionWhenMi
 	}
 	if detail.Batch.Prompt != "retro summer fruit" {
 		t.Fatalf("detail.Batch.Prompt = %q, want session prompt", detail.Batch.Prompt)
+	}
+	if got := detail.Batch.Status; got != StudioBatchStatusDraft {
+		t.Fatalf("detail.Batch.Status = %q, want %q", got, StudioBatchStatusDraft)
+	}
+	if len(detail.Items) != 0 {
+		t.Fatalf("len(detail.Items) = %d, want 0 for draft-only detail", len(detail.Items))
+	}
+	if _, err := repo.GetStudioBatch(ctx, "batch-1"); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("GetStudioBatch() error = %v, want record not found because GET detail should stay read-only", err)
+	}
+}
+
+func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromGeneratingSessionWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	sessionRepo := &studioBatchGenerationSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Status:           SheinStudioSessionStatusGenerating,
+			Prompt:           "retro summer fruit",
+			StyleCount:       "1",
+			ArtworkModel:     "gpt-image-1",
+			GroupedImageMode: "shared_by_size",
+			Selection:        SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+			GroupedSelections: SheinStudioGroupedSelectionList{
+				{
+					SelectionID: "7001:9001:102:layer-1:102",
+					Selection:   testStudioBatchSelection(102, "Canvas Tote", "Blue", 1200, 1200),
+					Eligible:    true,
+				},
+			},
+		},
+	}
+
+	svc := &service{
+		studioBatchRepo:   repo,
+		studioSessionRepo: sessionRepo,
+	}
+
+	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+
+	if detail.Batch == nil || detail.Batch.ID != "batch-1" {
+		t.Fatalf("detail.Batch = %+v, want batch-1", detail.Batch)
 	}
 	if len(detail.Items) != 1 {
 		t.Fatalf("len(detail.Items) = %d, want 1 shared-size item", len(detail.Items))
@@ -937,14 +986,14 @@ func TestServiceRetryStudioBatchItemsRefreshesLatestDraftPromptBeforeRunning(t *
 
 	sessionRepo := &studioBatchGenerationSessionRepoStub{
 		session: &SheinStudioSession{
-			ID:               "batch-1",
-			SavedAsBatch:     true,
-			Status:           SheinStudioSessionStatusSelecting,
-			Prompt:           "fresh prompt from draft",
-			StyleCount:       "1",
+			ID:                 "batch-1",
+			SavedAsBatch:       true,
+			Status:             SheinStudioSessionStatusSelecting,
+			Prompt:             "fresh prompt from draft",
+			StyleCount:         "1",
 			VariationIntensity: "medium",
-			GroupedImageMode: "shared_by_size",
-			Selection:        SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+			GroupedImageMode:   "shared_by_size",
+			Selection:          SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
 			GroupedSelections: SheinStudioGroupedSelectionList{
 				{
 					SelectionID: "7001:9001:101:layer-1:101",
