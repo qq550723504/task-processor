@@ -25,7 +25,7 @@ func PrepareSubmitProductContent(ctx context.Context, product *sheinproduct.Prod
 	if err := translateSubmitProductContent(product, translateAPI, region); err != nil {
 		return err
 	}
-	if err := CleanSubmitProductSensitiveWords(product); err != nil {
+	if err := CleanSubmitProductSensitiveWords(ctx, product); err != nil {
 		return err
 	}
 	return nil
@@ -65,12 +65,12 @@ func SubmitProductNeedsTargetLanguages(product *sheinproduct.Product, region str
 	return false
 }
 
-func CleanSubmitProductSensitiveWords(product *sheinproduct.Product) error {
-	return submitprep.CleanSensitiveWords(product)
+func CleanSubmitProductSensitiveWords(ctx context.Context, product *sheinproduct.Product) error {
+	return submitprep.CleanSensitiveWordsWithContext(ctx, product)
 }
 
-func RetrySensitiveWordCleanup(product *sheinproduct.Product, validationNotes []string) bool {
-	return submitprep.RetrySensitiveWordCleanup(product, validationNotes)
+func RetrySensitiveWordCleanup(ctx context.Context, product *sheinproduct.Product, validationNotes []string) bool {
+	return submitprep.RetrySensitiveWordCleanupWithContext(ctx, product, validationNotes)
 }
 
 func BuildSubmitSnapshot(product *sheinproduct.Product) *SubmitSnapshot {

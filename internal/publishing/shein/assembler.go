@@ -49,7 +49,7 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 
 	images := common.BuildImages(product, image)
 	spuName := common.WithBrandHint(product.Title, req.BrandHint)
-	copy := buildSheinListingCopy(product, spuName, a.titleOptimizer)
+	copy := buildSheinListingCopy(req.Context, product, spuName, a.titleOptimizer)
 	brand := common.ResolveBrand(req.BrandHint, product)
 	variants := common.BuildVariants(product)
 	productAttributes := common.BuildAttributes(product.Attributes)
@@ -144,12 +144,13 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 			}).Info("completed SHEIN sale attribute resolution")
 		}
 	}
-	NormalizeListingCopy(pkg, product, req.Language)
+	NormalizeListingCopy(req.Context, pkg, product, req.Language)
 	groups := buildVariantGroups(copy.SKCTitleBase, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)
 	pkg.DraftPayload.SupplierCode = supplierCode
 	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, siteList, product, a.pricingPolicy)
+	SanitizeDraftPayloadSensitiveContent(pkg, req.Context, nil)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
 	NormalizePackageSemanticFields(pkg)

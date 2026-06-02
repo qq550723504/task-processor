@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
+	"task-processor/internal/shein/submitprep"
 )
 
 type serviceRuntimeModules struct {
@@ -121,6 +122,7 @@ func assembleServiceRuntime(input BuildServiceInput, repositories *builtReposito
 }
 
 func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
+	submitprep.SetSensitiveWordRepository(repositories.sensitiveWordRepository)
 	assembly, err := assembleServiceRuntime(input, repositories, closers)
 	if err != nil {
 		return nil, err

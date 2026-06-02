@@ -85,6 +85,9 @@ func (s *SensitiveWordService) ProcessProductData(ctx *sheinctx.TaskContext) err
 	if ctx.ProductData.MultiLanguageDescList != nil {
 		processedCount += s.processMultiLanguageDescs(ctx.ProductData.MultiLanguageDescList)
 	}
+	if ctx.ProductData.ProductAttributeList != nil {
+		processedCount += s.processProductAttributes(ctx, ctx.ProductData.ProductAttributeList)
+	}
 	if ctx.ProductData.SKCList != nil {
 		processedCount += s.processSKCData(ctx, ctx.ProductData.SKCList)
 	}
@@ -179,6 +182,11 @@ func (s *SensitiveWordService) AddDynamicSensitiveWords(words []string) {
 // AddStaticSensitiveWords 添加静态敏感词（自动检测语言）
 func (s *SensitiveWordService) AddStaticSensitiveWords(words []string) {
 	s.addSensitiveWords(words, s.config.StaticWords, "静态")
+}
+
+// AddStaticSensitiveWordsByLanguage 按指定语言添加静态敏感词
+func (s *SensitiveWordService) AddStaticSensitiveWordsByLanguage(language string, words []string) {
+	s.addWordsByLanguage(s.config.StaticWords, language, words, "静态")
 }
 
 // addSensitiveWords 通用：按语言分类后添加到指定词表

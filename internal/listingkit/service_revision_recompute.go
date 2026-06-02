@@ -47,7 +47,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	}
 	applySheinSaleAttributeReviewOverride(task.Result.Shein, req.Shein.SaleAttributeResolution)
 	normalizeSheinCategoryRefreshSaleAttributeState(task.Result.Shein)
-	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
+	sheinpub.NormalizeListingCopy(buildReq.Context, task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(task.Result.Shein)
 	preview := sheinpub.BuildPreviewProduct(task.Result.Shein)
 	sheinpub.SetPreviewPayload(task.Result.Shein, preview)
@@ -76,7 +76,7 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 	if cookieNote == "" {
 		stripSheinCookieUnavailableReviewNotes(pkg)
 	}
-	sheinpub.NormalizeListingCopy(pkg, task.Result.CanonicalProduct, buildReq.Language)
+	sheinpub.NormalizeListingCopy(buildReq.Context, pkg, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(pkg)
 	preview := sheinpub.BuildPreviewProduct(pkg)
 	sheinpub.SetPreviewPayload(pkg, preview)

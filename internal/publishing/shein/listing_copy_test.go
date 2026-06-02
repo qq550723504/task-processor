@@ -2,11 +2,17 @@ package shein
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shein/submitprep"
 )
 
 type stubTitleAIClient struct {
@@ -41,7 +47,7 @@ func TestBuildSheinListingCopyKeepsStructuredEnglishTitle(t *testing.T) {
 		},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, nil)
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, nil)
 	if copy.Title != "Flannel Non-slip Floor Mat" {
 		t.Fatalf("title = %q, want clean structured title", copy.Title)
 	}
@@ -58,7 +64,7 @@ func TestBuildSheinListingCopySanitizesPromptLikeTitleWithRules(t *testing.T) {
 		},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, nil)
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, nil)
 	if copy.Title != "Flannel non-slip floor mat" {
 		t.Fatalf("title = %q, want sanitized base title", copy.Title)
 	}
@@ -78,7 +84,7 @@ func TestBuildSheinListingCopyUsesLLMWhenRuleExtractionCannotRecover(t *testing.
 		},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
 		response: `{"title":"Flannel Floral Floor Mat"}`,
 	})
 	if copy.Title != "Flannel Floral Floor Mat" {
@@ -98,7 +104,7 @@ func TestBuildSheinListingCopyFallsBackWhenLLMReturnsPromptLikeTitle(t *testing.
 		},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
 		response: `{"title":"Please design a floral image for this floor mat with 3D graphics"}`,
 	})
 	if copy.Title == "" || copy.Title == canonical.Attributes["product_english_name"].Value {
@@ -126,7 +132,7 @@ func TestBuildSheinListingCopyEnrichesShortStructuredTitleWithLLMAddition(t *tes
 		}},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
 		response: `{"addition":"Rock Typography Graphic Print"}`,
 	})
 	if copy.Title != "Door curtain with Rock Typography Graphic Print" {
@@ -149,7 +155,7 @@ func TestBuildSheinListingCopyKeepsLongStructuredTitleWithoutLLMAddition(t *test
 		},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
 		response: `{"addition":"Floral Theme"}`,
 	})
 	if copy.Title != "Flannel Non-slip Floor Mat" {
@@ -171,7 +177,7 @@ func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
 		}},
 	}
 
-	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
 		response: `{"addition":"Rock Typography Graphic Print"}`,
 	})
 	if copy.Title != "Door curtain with Rock Typography Graphic Print" {
@@ -183,4 +189,111 @@ func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
 	if copy.SKCTitleBase != "Door curtain with Rock Typography Graphic Print" {
 		t.Fatalf("skc base title = %q, want enriched skc base title", copy.SKCTitleBase)
 	}
+}
+
+func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
+	restore := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {
+    "en": ["bpa free", "amazon"]
+  },
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restore()
+
+	canonical := &canonical.Product{
+		Title:       "Amazon BPA Free Vase",
+		Description: "Amazon BPA Free vase for home decor.",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Amazon BPA Free Vase"},
+		},
+	}
+
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, nil)
+
+	assertNoSensitivePhrase(t, copy.Title, "title")
+	assertNoSensitivePhrase(t, copy.Description, "description")
+	assertNoSensitivePhrase(t, copy.SKCTitleBase, "skc base")
+}
+
+func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing.T) {
+	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {},
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restoreConfig()
+	restoreRepo := submitprep.SetSensitiveWordRepository(stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {{
+				TenantID: 101,
+				Language: "en",
+				Word:     "whimsy",
+				Status:   1,
+			}},
+		},
+	})
+	defer restoreRepo()
+
+	runtimeCtx := tenantctx.WithTenantID(context.Background(), "101")
+	canonical := &canonical.Product{
+		Title:       "Whimsy Door Curtain",
+		Description: "Whimsy curtain for home decor.",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Whimsy Door Curtain"},
+		},
+	}
+
+	copy := buildSheinListingCopy(runtimeCtx, canonical, canonical.Title, nil)
+
+	if strings.Contains(strings.ToLower(copy.Title), "whimsy") {
+		t.Fatalf("title = %q, want tenant sensitive word removed", copy.Title)
+	}
+	if strings.Contains(strings.ToLower(copy.Description), "whimsy") {
+		t.Fatalf("description = %q, want tenant sensitive word removed", copy.Description)
+	}
+	if strings.Contains(strings.ToLower(copy.SKCTitleBase), "whimsy") {
+		t.Fatalf("skc base = %q, want tenant sensitive word removed", copy.SKCTitleBase)
+	}
+}
+
+func assertNoSensitivePhrase(t *testing.T, value string, field string) {
+	t.Helper()
+	normalized := strings.ToLower(value)
+	for _, phrase := range []string{"amazon", "bpa free"} {
+		if strings.Contains(normalized, phrase) {
+			t.Fatalf("%s = %q, want %q removed", field, value, phrase)
+		}
+	}
+}
+
+func writeSensitiveWordsConfigForTest(t *testing.T, content string) func() {
+	t.Helper()
+	tempPath := filepath.Join(t.TempDir(), "sensitive_words_shein.json")
+	if err := os.WriteFile(tempPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp sensitive words config: %v", err)
+	}
+	return submitprep.SetSensitiveWordsConfigPathForTesting(tempPath)
+}
+
+func overrideSensitiveWordsConfigForTest(t *testing.T) func() {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test file path")
+	}
+	sourcePath := filepath.Join(filepath.Dir(file), "..", "..", "..", "data", "sensitive_words_shein.json")
+	bytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read sensitive words config: %v", err)
+	}
+	tempPath := filepath.Join(t.TempDir(), "sensitive_words_shein.json")
+	if err := os.WriteFile(tempPath, bytes, 0o600); err != nil {
+		t.Fatalf("write temp sensitive words config: %v", err)
+	}
+	return submitprep.SetSensitiveWordsConfigPathForTesting(tempPath)
 }

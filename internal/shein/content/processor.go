@@ -4,6 +4,7 @@ package content
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"task-processor/internal/shein/api/product"
 	sheinctx "task-processor/internal/shein/context"
@@ -48,6 +49,24 @@ func (s *SensitiveWordService) removeSensitiveWordsAndBrandsWithContext(ctx *she
 	text = s.cleanTextForSheinPlatform(text)
 
 	return text
+}
+
+// SanitizeTextWithContext applies the full SHEIN-sensitive cleanup pipeline to a single text field.
+func (s *SensitiveWordService) SanitizeTextWithContext(ctx *sheinctx.TaskContext, text string) string {
+	return s.removeSensitiveWordsAndBrandsWithContext(ctx, text)
+}
+
+// SanitizeDisplayTextWithContext removes sensitive and brand words while preserving
+// the source text's case and punctuation as much as possible for preview/draft copy.
+func (s *SensitiveWordService) SanitizeDisplayTextWithContext(ctx *sheinctx.TaskContext, text string) string {
+	if text == "" {
+		return text
+	}
+
+	text = s.removeSensitiveWords(text)
+	text = s.removeAmazonBrandWords(text)
+	text = s.removeContextBrandWords(ctx, text)
+	return s.cleanupText(text)
 }
 
 // processMultiLanguageNames 处理多语言名称
@@ -118,6 +137,53 @@ func (s *SensitiveWordService) processSKCData(ctx *sheinctx.TaskContext, skcList
 		}
 	}
 	return processedCount
+}
+
+// processProductAttributes cleans only free-text attribute extra values and leaves structured values intact.
+func (s *SensitiveWordService) processProductAttributes(ctx *sheinctx.TaskContext, attrs []product.ProductAttribute) int {
+	if attrs == nil {
+		return 0
+	}
+
+	processedCount := 0
+	for i := range attrs {
+		value := attrs[i].AttributeExtraValue
+		if !shouldSanitizeFreeTextAttributeValue(value) {
+			continue
+		}
+		if cleaned := s.removeSensitiveWordsAndBrandsWithContext(ctx, value); cleaned != value {
+			attrs[i].AttributeExtraValue = cleaned
+			processedCount++
+		}
+	}
+	return processedCount
+}
+
+func shouldSanitizeFreeTextAttributeValue(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if len(value) >= 3 && strings.ContainsAny(value, " \t\r\n") {
+		return true
+	}
+	hasLetter := false
+	for _, r := range value {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			continue
+		}
+		if unicode.IsDigit(r) || unicode.IsSpace(r) {
+			continue
+		}
+		switch r {
+		case '.', ',', '-', '_', '/', '\\', '+', '%', 'x', 'X':
+			continue
+		default:
+			return hasLetter
+		}
+	}
+	return false
 }
 
 // cleanTextForSheinPlatform 为SHEIN平台清理文本

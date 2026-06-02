@@ -8,11 +8,11 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-func (s *service) retrySheinSensitiveWordSubmit(_ context.Context, taskID string, pkg *SheinPackage, action string, requestID string, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, response *sheinpub.SubmissionResponse, responseErr error) (*sheinpub.SubmissionResponse, error, bool) {
+func (s *service) retrySheinSensitiveWordSubmit(ctx context.Context, taskID string, pkg *SheinPackage, action string, requestID string, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, response *sheinpub.SubmissionResponse, responseErr error) (*sheinpub.SubmissionResponse, error, bool) {
 	if action != "publish" || response == nil || responseErr == nil || len(response.ValidationNotes) == 0 {
 		return response, responseErr, false
 	}
-	if !sheinpub.RetrySensitiveWordCleanup(submitProduct, response.ValidationNotes) {
+	if !sheinpub.RetrySensitiveWordCleanup(ctx, submitProduct, response.ValidationNotes) {
 		return response, responseErr, false
 	}
 

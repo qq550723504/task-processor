@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"unicode"
@@ -16,7 +17,7 @@ type listingCopy struct {
 	TitleDiagnostics *TitleDiagnostics
 }
 
-func buildSheinListingCopy(canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
+func buildSheinListingCopy(runtimeCtx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
 	titleResolution := resolveListingTitle(canonical, fallbackTitle, aiClient)
 	titleResolution = enrichResolvedListingTitle(titleResolution, canonical, fallbackTitle, aiClient)
 	title := titleResolution.title
@@ -24,7 +25,7 @@ func buildSheinListingCopy(canonical *canonical.Product, fallbackTitle string, a
 	if description == "" || containsCJK(description) {
 		description = synthesizeEnglishDescription(canonical, title)
 	}
-	return listingCopy{
+	copy := listingCopy{
 		Title:        cleanListingText(title),
 		Description:  cleanListingText(description),
 		SKCTitleBase: titleResolution.skcBase,
@@ -35,14 +36,16 @@ func buildSheinListingCopy(canonical *canonical.Product, fallbackTitle string, a
 			SKCBaseTitle:       titleResolution.skcBase,
 		},
 	}
+	sanitizeSheinListingCopy(&copy, runtimeCtx, nil)
+	return copy
 }
 
-func NormalizeListingCopy(pkg *Package, canonical *canonical.Product, language string) bool {
+func NormalizeListingCopy(runtimeCtx context.Context, pkg *Package, canonical *canonical.Product, language string) bool {
 	NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return false
 	}
-	copy := buildSheinListingCopy(canonical, firstNonEmpty(pkg.ProductNameEn, pkg.SpuName), nil)
+	copy := buildSheinListingCopy(runtimeCtx, canonical, firstNonEmpty(pkg.ProductNameEn, pkg.SpuName), nil)
 	changed := false
 	if copy.Title != "" && (strings.TrimSpace(pkg.ProductNameEn) == "" || containsCJK(pkg.ProductNameEn)) {
 		pkg.ProductNameEn = copy.Title

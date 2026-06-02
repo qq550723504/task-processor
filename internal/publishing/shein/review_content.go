@@ -58,7 +58,7 @@ func OptimizePackageReviewContent(ctx context.Context, pkg *Package, aiClient op
 
 	title = strengthenSubmitTitle(title, sourceTitle, sourceDescription)
 	description = strengthenSubmitDescription(description, sourceDescription)
-	applyPackageReviewContent(pkg, title, description)
+	applyPackageReviewContent(ctx, pkg, title, description)
 	return nil
 }
 
@@ -129,7 +129,7 @@ func buildPackageReviewContentFeatures(pkg *Package) string {
 	return strings.Join(parts, "\n")
 }
 
-func applyPackageReviewContent(pkg *Package, title, description string) {
+func applyPackageReviewContent(ctx context.Context, pkg *Package, title, description string) {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return
@@ -159,6 +159,7 @@ func applyPackageReviewContent(pkg *Package, title, description string) {
 		applyPackageReviewSKCContent(pkg.DraftPayload.SKCList, title)
 	}
 	applyPackageReviewPackageSKCContent(pkg.SkcList, title)
+	SanitizeDraftPayloadSensitiveContent(pkg, ctx, nil)
 	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
 	NormalizePackageSemanticFields(pkg)
 }

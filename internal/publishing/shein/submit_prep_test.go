@@ -3,13 +3,13 @@ package shein
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit/tenantctx"
+	common "task-processor/internal/publishing/common"
 	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/submitprep"
 )
@@ -66,6 +66,68 @@ type stubTranslateAPI struct{}
 
 func (stubTranslateAPI) Translate(text string, from, to string) (string, error) {
 	return "Spanish " + text, nil
+}
+
+type stubSensitiveWordRepository struct {
+	pages map[int64][]listingadmin.SensitiveWord
+}
+
+func (s stubSensitiveWordRepository) ListSensitiveWords(ctx context.Context, query listingadmin.SensitiveWordQuery) (*listingadmin.SensitiveWordPage, error) {
+	items := append([]listingadmin.SensitiveWord(nil), s.pages[query.TenantID]...)
+	if query.Status != nil {
+		filtered := items[:0]
+		for _, item := range items {
+			if item.Status == *query.Status {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
+	page := query.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 {
+		pageSize = len(items)
+		if pageSize == 0 {
+			pageSize = 1
+		}
+	}
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return &listingadmin.SensitiveWordPage{Items: nil, Total: int64(len(items)), Page: page, PageSize: pageSize}, nil
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return &listingadmin.SensitiveWordPage{
+		Items:    append([]listingadmin.SensitiveWord(nil), items[start:end]...),
+		Total:    int64(len(items)),
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+func (stubSensitiveWordRepository) GetSensitiveWord(context.Context, int64, int64) (*listingadmin.SensitiveWord, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSensitiveWordRepository) CreateSensitiveWord(context.Context, *listingadmin.SensitiveWord) (*listingadmin.SensitiveWord, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSensitiveWordRepository) UpdateSensitiveWord(context.Context, *listingadmin.SensitiveWord) (*listingadmin.SensitiveWord, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSensitiveWordRepository) UpdateSensitiveWordStatus(context.Context, int64, int64, int16, string) (*listingadmin.SensitiveWord, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubSensitiveWordRepository) DeleteSensitiveWord(context.Context, int64, int64) error {
+	return errors.New("not implemented")
 }
 
 func TestPrepareSubmitProductContent_FallsBackWhenAIUnavailable(t *testing.T) {
@@ -340,7 +402,7 @@ func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
 		}},
 	}
 
-	if !RetrySensitiveWordCleanup(product, []string{"敏感词：whimsy"}) {
+	if !RetrySensitiveWordCleanup(context.Background(), product, []string{"敏感词：whimsy"}) {
 		t.Fatal("expected sensitive-word retry cleanup to return true")
 	}
 	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageNameList, "en")), "whimsy") {
@@ -354,6 +416,157 @@ func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
 	}
 }
 
+func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T) {
+	restore := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {
+    "en": ["bpa free", "amazon"]
+  },
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restore()
+
+	pkg := &Package{
+		DraftPayload: &RequestDraft{
+			MultiLanguageNameList: []LocalizedText{{Language: "en", Name: "Amazon BPA Free Vase"}},
+			MultiLanguageDescList: []LocalizedText{{Language: "en", Name: "Amazon BPA Free vase for home decor."}},
+			ProductAttributeList: []common.Attribute{
+				{Name: "Material Detail", Value: "Amazon BPA Free acrylic"},
+				{Name: "Length", Value: "12"},
+			},
+			SKCList: []SKCRequestDraft{{
+				SkcName:               "Amazon BPA Free Blue",
+				MultiLanguageNameList: []LocalizedText{{Language: "en", Name: "Amazon BPA Free Blue"}},
+			}},
+		},
+	}
+
+	changed := SanitizeDraftPayloadSensitiveContent(pkg, context.Background(), nil)
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+
+	assertNoSensitivePhrase(t, firstLocalizedText(pkg.DraftPayload.MultiLanguageNameList), "draft title")
+	assertNoSensitivePhrase(t, firstLocalizedText(pkg.DraftPayload.MultiLanguageDescList), "draft description")
+	assertNoSensitivePhrase(t, pkg.DraftPayload.SKCList[0].SkcName, "draft skc name")
+	assertNoSensitivePhrase(t, pkg.DraftPayload.SKCList[0].MultiLanguageNameList[0].Name, "draft localized skc name")
+	assertNoSensitivePhrase(t, pkg.DraftPayload.ProductAttributeList[0].Value, "draft free-text attribute")
+	if got := pkg.DraftPayload.ProductAttributeList[1].Value; got != "12" {
+		t.Fatalf("structured attribute value = %q, want unchanged", got)
+	}
+}
+
+func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *testing.T) {
+	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {},
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restoreConfig()
+	restoreRepo := submitprep.SetSensitiveWordRepository(stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {{
+				TenantID: 101,
+				Language: "en",
+				Word:     "whimsy",
+				Status:   1,
+			}},
+		},
+	})
+	defer restoreRepo()
+
+	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Whimsy Door Curtain",
+		}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Whimsy curtain for home decor.",
+		}},
+		ProductAttributeList: []sheinproduct.ProductAttribute{{
+			AttributeExtraValue: "Whimsy fabric finish",
+		}},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "Whimsy White"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "Whimsy White",
+			}},
+		}},
+	}
+
+	if err := PrepareSubmitProductContent(ctx, product, "US", nil, nil); err != nil {
+		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
+	}
+
+	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageNameList, "en")), "whimsy") {
+		t.Fatalf("english title still contains tenant sensitive word: %+v", product.MultiLanguageNameList)
+	}
+	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageDescList, "en")), "whimsy") {
+		t.Fatalf("english description still contains tenant sensitive word: %+v", product.MultiLanguageDescList)
+	}
+	if strings.Contains(strings.ToLower(product.ProductAttributeList[0].AttributeExtraValue), "whimsy") {
+		t.Fatalf("attribute still contains tenant sensitive word: %+v", product.ProductAttributeList)
+	}
+	if strings.Contains(strings.ToLower(findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en")), "whimsy") {
+		t.Fatalf("skc still contains tenant sensitive word: %+v", product.SKCList[0].MultiLanguageNameList)
+	}
+}
+
+func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *testing.T) {
+	restore := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {
+    "en": ["bpa free", "amazon"]
+  },
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restore()
+
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Amazon BPA Free Vase",
+		}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{
+			Language: "en",
+			Name:     "Amazon BPA Free vase for home decor.",
+		}},
+		ProductAttributeList: []sheinproduct.ProductAttribute{
+			{AttributeExtraValue: "Amazon BPA Free acrylic"},
+			{AttributeExtraValue: "12"},
+		},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{Language: "en", Name: "Amazon BPA Free Blue"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "Amazon BPA Free Blue",
+			}},
+		}},
+	}
+
+	if err := PrepareSubmitProductContent(context.Background(), product, "US", nil, nil); err != nil {
+		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
+	}
+
+	assertNoSensitivePhrase(t, findLocalizedText(product.MultiLanguageNameList, "en"), "submit title")
+	assertNoSensitivePhrase(t, findLocalizedText(product.MultiLanguageDescList, "en"), "submit description")
+	assertNoSensitivePhrase(t, product.ProductAttributeList[0].AttributeExtraValue, "submit free-text attribute")
+	if got := product.ProductAttributeList[1].AttributeExtraValue; got != "12" {
+		t.Fatalf("structured submit attribute value = %q, want unchanged", got)
+	}
+	assertNoSensitivePhrase(t, product.SKCList[0].MultiLanguageName.Name, "submit skc name")
+	assertNoSensitivePhrase(t, findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en"), "submit localized skc name")
+}
+
 func findLocalizedText(items []sheinproduct.LanguageContent, language string) string {
 	for _, item := range items {
 		if strings.EqualFold(strings.TrimSpace(item.Language), language) {
@@ -361,22 +574,4 @@ func findLocalizedText(items []sheinproduct.LanguageContent, language string) st
 		}
 	}
 	return ""
-}
-
-func overrideSensitiveWordsConfigForTest(t *testing.T) func() {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	sourcePath := filepath.Join(filepath.Dir(file), "..", "..", "..", "data", "sensitive_words_shein.json")
-	bytes, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatalf("read sensitive words config: %v", err)
-	}
-	tempPath := filepath.Join(t.TempDir(), "sensitive_words_shein.json")
-	if err := os.WriteFile(tempPath, bytes, 0o600); err != nil {
-		t.Fatalf("write temp sensitive words config: %v", err)
-	}
-	return submitprep.SetSensitiveWordsConfigPathForTesting(tempPath)
 }
