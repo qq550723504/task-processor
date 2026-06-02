@@ -33,11 +33,11 @@ func (p *taskGenerationActionEntryPhase) run(
 	if err != nil {
 		return nil, err
 	}
-	overview := buildAssetGenerationOverview(queue)
-	target, source, err := resolveAssetGenerationActionTarget(overview, req)
+	resolution, err := buildTaskGenerationActionTargetResolutionPhase().run(queue, req)
 	if err != nil {
 		return nil, err
 	}
+	target := resolution.target
 	if target.ExpectedImpact == nil {
 		target.ExpectedImpact = buildAssetGenerationActionImpact(queue, target.QueueQuery)
 	}
@@ -50,7 +50,7 @@ func (p *taskGenerationActionEntryPhase) run(
 		Audit: &GenerationActionAudit{
 			RequestedActionKey: requestedAssetGenerationActionKey(req),
 			ResolvedActionKey:  target.ActionKey,
-			ResolutionSource:   source,
+			ResolutionSource:   resolution.source,
 			ExecutionPath:      target.InteractionMode,
 			ExecutedAt:         time.Now().UTC(),
 		},

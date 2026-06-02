@@ -108,8 +108,7 @@ func TestTaskGenerationActionPhaseOwnershipServiceEntryBoundary(t *testing.T) {
 			required: []string{
 				"getCurrentAssetGenerationQueue(",
 				"getCurrentListingKitResult(",
-				"buildAssetGenerationOverview(",
-				"resolveAssetGenerationActionTarget(",
+				"buildTaskGenerationActionTargetResolutionPhase().run(queue, req)",
 				"buildAssetGenerationActionImpact(",
 				"buildGenerationReviewSession(",
 				"GenerationActionExecutionResult{",

@@ -5,6 +5,29 @@ import (
 	"strings"
 )
 
+type taskGenerationActionTargetResolutionPhase struct{}
+
+type taskGenerationActionTargetResolutionResult struct {
+	target *AssetGenerationActionTarget
+	source string
+}
+
+func buildTaskGenerationActionTargetResolutionPhase() *taskGenerationActionTargetResolutionPhase {
+	return &taskGenerationActionTargetResolutionPhase{}
+}
+
+func (p *taskGenerationActionTargetResolutionPhase) run(queue *GenerationWorkQueue, req *ExecuteGenerationActionRequest) (*taskGenerationActionTargetResolutionResult, error) {
+	overview := buildAssetGenerationOverview(queue)
+	target, source, err := resolveAssetGenerationActionTarget(overview, req)
+	if err != nil {
+		return nil, err
+	}
+	return &taskGenerationActionTargetResolutionResult{
+		target: target,
+		source: source,
+	}, nil
+}
+
 func resolveAssetGenerationActionTarget(overview *AssetGenerationOverview, req *ExecuteGenerationActionRequest) (*AssetGenerationActionTarget, string, error) {
 	actionKey := requestedAssetGenerationActionKey(req)
 	if actionKey == "" {

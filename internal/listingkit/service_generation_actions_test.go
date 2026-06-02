@@ -381,6 +381,22 @@ func TestTaskGenerationActionEntryServiceDelegatesBootstrapPhase(t *testing.T) {
 	})
 }
 
+func TestExecuteTaskGenerationActionEntryPhaseDelegatesLocalTargetResolutionPhase(t *testing.T) {
+	t.Parallel()
+
+	source := readTaskGenerationSourceFile(t, "task_generation_action_entry.go")
+
+	assertSourceContainsAll(t, source, []string{
+		"buildTaskGenerationActionTargetResolutionPhase().run(queue, req)",
+		"resolution.target",
+		"resolution.source",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"overview := buildAssetGenerationOverview(queue)",
+		"target, source, err := resolveAssetGenerationActionTarget(overview, req)",
+	})
+}
+
 func TestTaskGenerationActionEntryPhaseBuildsRequestTargetBootstrapState(t *testing.T) {
 	t.Parallel()
 
@@ -945,9 +961,9 @@ func TestTaskGenerationLayerTemporalStandardPhaseStartsWorkflowAndShapesResult(t
 		context.Background(),
 		"  task-generation-action-standard-seam-1  ",
 		&ExecuteGenerationActionRequest{
-			ActionKey:     assetGenerationActionRunStandardProductTemporal,
-			ResponseMode:  "",
-			Target:        &AssetGenerationActionTarget{ActionKey: assetGenerationActionRunStandardProductTemporal},
+			ActionKey:    assetGenerationActionRunStandardProductTemporal,
+			ResponseMode: "",
+			Target:       &AssetGenerationActionTarget{ActionKey: assetGenerationActionRunStandardProductTemporal},
 		},
 	)
 	if err != nil {
@@ -1996,6 +2012,19 @@ func TestResolveAssetGenerationActionTargetRequestActionKeyWinsOverBlankTargetAc
 	if target.QueueQuery == nil || target.QueueQuery.Platform != "shein" || target.QueueQuery.Slot != "main" {
 		t.Fatalf("target queue = %+v, want overview-resolved shein/main target", target.QueueQuery)
 	}
+}
+
+func TestResolveAssetGenerationActionTargetPhaseOwnsOverviewResolutionBridge(t *testing.T) {
+	t.Parallel()
+
+	source := readTaskGenerationSourceFile(t, "task_generation_action_target_resolution.go")
+
+	assertSourceContainsAll(t, source, []string{
+		"type taskGenerationActionTargetResolutionResult struct",
+		"buildTaskGenerationActionTargetResolutionPhase()",
+		"buildAssetGenerationOverview(queue)",
+		"resolveAssetGenerationActionTarget(overview, req)",
+	})
 }
 
 func TestResolveAssetGenerationActionTargetUsesTargetActionKeyWhenTopLevelBlank(t *testing.T) {
