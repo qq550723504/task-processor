@@ -12,29 +12,30 @@ import (
 )
 
 type builtRepositories struct {
-	taskRepository                 listingkit.Repository
-	studioAsyncJobRepository       listingkit.StudioAsyncJobRepository
-	studioBatchRepository          listingkit.StudioBatchRepository
-	studioBatchRunRepository       listingkit.StudioBatchRunRepository
-	storeRepository                listingadmin.StoreRepository
-	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
-	importTaskRepository           listingadmin.ImportTaskRepository
-	filterRuleRepository           listingadmin.FilterRuleRepository
-	profitRuleRepository           listingadmin.ProfitRuleRepository
-	pricingRuleRepository          listingadmin.PricingRuleRepository
-	operationStrategyRepository    listingadmin.OperationStrategyRepository
-	sensitiveWordRepository        listingadmin.SensitiveWordRepository
-	productImportMappingRepository listingadmin.ProductImportMappingRepository
-	categoryRepository             listingadmin.CategoryRepository
-	productDataRepository          listingadmin.ProductDataRepository
-	subscriptionService            *listingsubscription.Service
-	assetRepository                assetrepo.Repository
-	reviewRepository               reviewstore.Repository
-	studioSessionRepository        listingkit.StudioSessionRepository
-	uploadedImageRepository        listingkit.UploadedImageRepository
-	storeProfileRepository         listingkit.StoreProfileRepository
-	storeRoutingSettingsRepository listingkit.StoreRoutingSettingsRepository
-	resolutionCacheStore           sheinpub.ResolutionCacheStore
+	taskRepository                  listingkit.Repository
+	studioAsyncJobRepository        listingkit.StudioAsyncJobRepository
+	studioBatchRepository           listingkit.StudioBatchRepository
+	studioBatchRunRepository        listingkit.StudioBatchRunRepository
+	storeRepository                 listingadmin.StoreRepository
+	storeStatisticsRepository       listingadmin.StoreStatisticsRepository
+	importTaskRepository            listingadmin.ImportTaskRepository
+	filterRuleRepository            listingadmin.FilterRuleRepository
+	profitRuleRepository            listingadmin.ProfitRuleRepository
+	pricingRuleRepository           listingadmin.PricingRuleRepository
+	operationStrategyRepository     listingadmin.OperationStrategyRepository
+	sensitiveWordRepository         listingadmin.SensitiveWordRepository
+	generationTopicPolicyRepository listingadmin.GenerationTopicPolicyRepository
+	productImportMappingRepository  listingadmin.ProductImportMappingRepository
+	categoryRepository              listingadmin.CategoryRepository
+	productDataRepository           listingadmin.ProductDataRepository
+	subscriptionService             *listingsubscription.Service
+	assetRepository                 assetrepo.Repository
+	reviewRepository                reviewstore.Repository
+	studioSessionRepository         listingkit.StudioSessionRepository
+	uploadedImageRepository         listingkit.UploadedImageRepository
+	storeProfileRepository          listingkit.StoreProfileRepository
+	storeRoutingSettingsRepository  listingkit.StoreRoutingSettingsRepository
+	resolutionCacheStore            sheinpub.ResolutionCacheStore
 }
 
 type builtCoreRepositories struct {
@@ -76,17 +77,18 @@ type lateCoreRepositoryDependencies struct {
 }
 
 type builtAdminRepositories struct {
-	storeRepository                listingadmin.StoreRepository
-	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
-	importTaskRepository           listingadmin.ImportTaskRepository
-	filterRuleRepository           listingadmin.FilterRuleRepository
-	profitRuleRepository           listingadmin.ProfitRuleRepository
-	pricingRuleRepository          listingadmin.PricingRuleRepository
-	operationStrategyRepository    listingadmin.OperationStrategyRepository
-	sensitiveWordRepository        listingadmin.SensitiveWordRepository
-	productImportMappingRepository listingadmin.ProductImportMappingRepository
-	categoryRepository             listingadmin.CategoryRepository
-	productDataRepository          listingadmin.ProductDataRepository
+	storeRepository                 listingadmin.StoreRepository
+	storeStatisticsRepository       listingadmin.StoreStatisticsRepository
+	importTaskRepository            listingadmin.ImportTaskRepository
+	filterRuleRepository            listingadmin.FilterRuleRepository
+	profitRuleRepository            listingadmin.ProfitRuleRepository
+	pricingRuleRepository           listingadmin.PricingRuleRepository
+	operationStrategyRepository     listingadmin.OperationStrategyRepository
+	sensitiveWordRepository         listingadmin.SensitiveWordRepository
+	generationTopicPolicyRepository listingadmin.GenerationTopicPolicyRepository
+	productImportMappingRepository  listingadmin.ProductImportMappingRepository
+	categoryRepository              listingadmin.CategoryRepository
+	productDataRepository           listingadmin.ProductDataRepository
 }
 
 type adminCatalogRepositories struct {
@@ -99,11 +101,12 @@ type adminCatalogRepositories struct {
 }
 
 type adminRuleRepositories struct {
-	filterRuleRepository        listingadmin.FilterRuleRepository
-	profitRuleRepository        listingadmin.ProfitRuleRepository
-	pricingRuleRepository       listingadmin.PricingRuleRepository
-	operationStrategyRepository listingadmin.OperationStrategyRepository
-	sensitiveWordRepository     listingadmin.SensitiveWordRepository
+	filterRuleRepository            listingadmin.FilterRuleRepository
+	profitRuleRepository            listingadmin.ProfitRuleRepository
+	pricingRuleRepository           listingadmin.PricingRuleRepository
+	operationStrategyRepository     listingadmin.OperationStrategyRepository
+	sensitiveWordRepository         listingadmin.SensitiveWordRepository
+	generationTopicPolicyRepository listingadmin.GenerationTopicPolicyRepository
 }
 
 type repositoryAssembly struct {
@@ -322,13 +325,18 @@ func buildAdminRuleRepositories(input BuildServiceInput, closers *closerStack) (
 	if err != nil {
 		return nil, err
 	}
+	generationTopicPolicyRepository, err := buildWithClosers(repoBuilders.GenerationTopicPolicy, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
 
 	return &adminRuleRepositories{
-		filterRuleRepository:        filterRuleRepository,
-		profitRuleRepository:        profitRuleRepository,
-		pricingRuleRepository:       pricingRuleRepository,
-		operationStrategyRepository: operationStrategyRepository,
-		sensitiveWordRepository:     sensitiveWordRepository,
+		filterRuleRepository:            filterRuleRepository,
+		profitRuleRepository:            profitRuleRepository,
+		pricingRuleRepository:           pricingRuleRepository,
+		operationStrategyRepository:     operationStrategyRepository,
+		sensitiveWordRepository:         sensitiveWordRepository,
+		generationTopicPolicyRepository: generationTopicPolicyRepository,
 	}, nil
 }
 
@@ -368,6 +376,7 @@ func applyAdminRepositories(repos *builtRepositories, admin *builtAdminRepositor
 	repos.pricingRuleRepository = admin.pricingRuleRepository
 	repos.operationStrategyRepository = admin.operationStrategyRepository
 	repos.sensitiveWordRepository = admin.sensitiveWordRepository
+	repos.generationTopicPolicyRepository = admin.generationTopicPolicyRepository
 	repos.productImportMappingRepository = admin.productImportMappingRepository
 	repos.categoryRepository = admin.categoryRepository
 	repos.productDataRepository = admin.productDataRepository

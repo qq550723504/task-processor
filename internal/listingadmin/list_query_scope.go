@@ -70,6 +70,13 @@ func (q *SensitiveWordQuery) applyListScope(scope listQueryScope) {
 	q.PageSize = scope.PageSize
 }
 
+func (q *GenerationTopicPolicyQuery) applyListScope(scope listQueryScope) {
+	q.TenantID = scope.TenantID
+	q.OwnerUserID = scope.OwnerUserID
+	q.Page = scope.Page
+	q.PageSize = scope.PageSize
+}
+
 func (q *StoreQuery) applyListScope(scope listQueryScope) {
 	q.TenantID = scope.TenantID
 	q.OwnerUserID = scope.OwnerUserID

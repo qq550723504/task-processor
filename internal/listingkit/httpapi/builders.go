@@ -138,6 +138,13 @@ func BuildListingAdminSensitiveWordRepository(cfg *config.Config, logger *logrus
 	})
 }
 
+func BuildListingAdminGenerationTopicPolicyRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminGenerationTopicPolicyRepository, func(logger *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit generation topic policy admin API disabled")
+		return nil, nil, nil
+	})
+}
+
 func BuildListingAdminProductImportMappingRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminProductImportMappingRepository, func(logger *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit product import mapping admin API disabled")
@@ -561,6 +568,23 @@ func newDBListingAdminSensitiveWordRepository(cfg *config.DatabaseConfig, logger
 		return nil, nil, fmt.Errorf("listing admin sensitive word auto-migrate failed: %w", err)
 	}
 	repo := listingadmin.NewGormSensitiveWordRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingAdminGenerationTopicPolicyRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingadmin.AutoMigrateGenerationTopicPolicyRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listing admin generation topic policy auto-migrate failed: %w", err)
+	}
+	repo := listingadmin.NewGormGenerationTopicPolicyRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

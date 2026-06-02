@@ -140,6 +140,7 @@ Requirements:
 6. Keep claims concrete and product-focused. Avoid fluff, repetition, keyword stuffing, brand names, emojis, medical claims, absolute guarantees, or platform policy-risk claims.
 7. Preserve the core product type and major factual details from the source.
 8. Return strict JSON only: {"title":"...","description":"..."}`
+	systemPrompt += tenantGenerationTopicPolicyPromptBlock(ctx)
 	userPrompt := fmt.Sprintf("Source product content:\nTitle: %s\nDescription: %s\nFeatures:\n%s\n\nCreate a stronger SHEIN listing title and description aimed at ecommerce conversion. Use the images as additional evidence for visible style, pattern, room context, and shopper intent. Do not invent hidden materials, dimensions, or compliance claims.", title, description, features)
 	temperature := float32(0.7)
 	messages := []openaiclient.ChatCompletionMessage{{

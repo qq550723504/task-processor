@@ -93,6 +93,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				SensitiveWord: func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
 					return nil, nil, nil
 				},
+				GenerationTopicPolicy: func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				ProductImportMapping: func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error) {
 					return nil, nil, nil
 				},

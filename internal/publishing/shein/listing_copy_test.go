@@ -227,7 +227,7 @@ func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing
   "platform": "shein"
 }`)
 	defer restoreConfig()
-	restoreRepo := submitprep.SetSensitiveWordRepository(stubSensitiveWordRepository{
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
 				TenantID: 101,
@@ -258,6 +258,46 @@ func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing
 	}
 	if strings.Contains(strings.ToLower(copy.SKCTitleBase), "whimsy") {
 		t.Fatalf("skc base = %q, want tenant sensitive word removed", copy.SKCTitleBase)
+	}
+}
+
+func TestDifferentTenantsLoadDifferentGenerationTopicLexicons(t *testing.T) {
+	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {},
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restoreConfig()
+	restoreRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: {"children"},
+			202: {"meals"},
+		},
+	})
+	defer restoreRepo()
+
+	copyA := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
+		Title:       "Kids Room Curtain",
+		Description: "Decor for children bedroom",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Kids Room Curtain"},
+		},
+	}, "Kids Room Curtain", nil)
+	copyB := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "202"), &canonical.Product{
+		Title:       "Breakfast Table Curtain",
+		Description: "Meal-themed decor",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Breakfast Table Curtain"},
+		},
+	}, "Breakfast Table Curtain", nil)
+
+	if strings.Contains(strings.ToLower(copyA.Title), "kids") || strings.Contains(strings.ToLower(copyA.Description), "children") {
+		t.Fatalf("tenant 101 copy = %+v, want children terms removed", copyA)
+	}
+	if strings.Contains(strings.ToLower(copyB.Title), "breakfast") || strings.Contains(strings.ToLower(copyB.Description), "meal") {
+		t.Fatalf("tenant 202 copy = %+v, want meal terms removed", copyB)
 	}
 }
 

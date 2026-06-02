@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit/tenantctx"
@@ -69,11 +70,22 @@ func (stubTranslateAPI) Translate(text string, from, to string) (string, error) 
 }
 
 type stubSensitiveWordRepository struct {
-	pages map[int64][]listingadmin.SensitiveWord
+	pages   map[int64][]listingadmin.SensitiveWord
+	created []listingadmin.SensitiveWord
+	updated []listingadmin.SensitiveWord
 }
 
-func (s stubSensitiveWordRepository) ListSensitiveWords(ctx context.Context, query listingadmin.SensitiveWordQuery) (*listingadmin.SensitiveWordPage, error) {
+func (s *stubSensitiveWordRepository) ListSensitiveWords(ctx context.Context, query listingadmin.SensitiveWordQuery) (*listingadmin.SensitiveWordPage, error) {
 	items := append([]listingadmin.SensitiveWord(nil), s.pages[query.TenantID]...)
+	if query.Word != "" {
+		filtered := items[:0]
+		for _, item := range items {
+			if strings.Contains(strings.ToLower(item.Word), strings.ToLower(query.Word)) {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
 	if query.Status != nil {
 		filtered := items[:0]
 		for _, item := range items {
@@ -110,23 +122,44 @@ func (s stubSensitiveWordRepository) ListSensitiveWords(ctx context.Context, que
 	}, nil
 }
 
-func (stubSensitiveWordRepository) GetSensitiveWord(context.Context, int64, int64) (*listingadmin.SensitiveWord, error) {
+func (s *stubSensitiveWordRepository) GetSensitiveWord(context.Context, int64, int64) (*listingadmin.SensitiveWord, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (stubSensitiveWordRepository) CreateSensitiveWord(context.Context, *listingadmin.SensitiveWord) (*listingadmin.SensitiveWord, error) {
+func (s *stubSensitiveWordRepository) CreateSensitiveWord(_ context.Context, word *listingadmin.SensitiveWord) (*listingadmin.SensitiveWord, error) {
+	if word == nil {
+		return nil, errors.New("word is nil")
+	}
+	created := *word
+	created.ID = int64(len(s.created) + len(s.pages[created.TenantID]) + 1)
+	s.created = append(s.created, created)
+	s.pages[created.TenantID] = append(s.pages[created.TenantID], created)
+	return &created, nil
+}
+
+func (s *stubSensitiveWordRepository) UpdateSensitiveWord(_ context.Context, word *listingadmin.SensitiveWord) (*listingadmin.SensitiveWord, error) {
+	if word == nil {
+		return nil, errors.New("word is nil")
+	}
+	updated := *word
+	s.updated = append(s.updated, updated)
+	items := s.pages[updated.TenantID]
+	for i := range items {
+		if items[i].ID == updated.ID {
+			items[i] = updated
+			s.pages[updated.TenantID] = items
+			return &updated, nil
+		}
+	}
+	s.pages[updated.TenantID] = append(s.pages[updated.TenantID], updated)
+	return &updated, nil
+}
+
+func (s *stubSensitiveWordRepository) UpdateSensitiveWordStatus(context.Context, int64, int64, int16, string) (*listingadmin.SensitiveWord, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (stubSensitiveWordRepository) UpdateSensitiveWord(context.Context, *listingadmin.SensitiveWord) (*listingadmin.SensitiveWord, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (stubSensitiveWordRepository) UpdateSensitiveWordStatus(context.Context, int64, int64, int16, string) (*listingadmin.SensitiveWord, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (stubSensitiveWordRepository) DeleteSensitiveWord(context.Context, int64, int64) error {
+func (s *stubSensitiveWordRepository) DeleteSensitiveWord(context.Context, int64, int64) error {
 	return errors.New("not implemented")
 }
 
@@ -269,6 +302,179 @@ func TestOptimizeSubmitContentWithAI_SendsMainImageToAI(t *testing.T) {
 	}
 	if parts[1].Type != "image_url" || parts[1].ImageURL == nil || parts[1].ImageURL.URL != "https://example.com/main.jpg" {
 		t.Fatalf("image part = %+v, want main image only", parts[1])
+	}
+}
+
+func TestOptimizeSubmitContentWithAI_IncludesTenantGenerationPolicyText(t *testing.T) {
+	restoreRepo := SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: []string{"children", "rock", "baby"},
+		},
+	})
+	defer restoreRepo()
+
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"title":"Door Curtain","description":"A door curtain."}`,
+				},
+			}},
+		},
+	}
+
+	_, _, err := optimizeSubmitContentWithAI(
+		tenantctx.WithTenantID(context.Background(), "101"),
+		ai,
+		"Door curtain",
+		"Soft curtain",
+		"Category id: 1",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+	}
+	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
+		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	}
+	systemPrompt := ai.lastReq.Messages[0].Content
+	if !strings.Contains(systemPrompt, "Additional tenant content restrictions:") {
+		t.Fatalf("system prompt = %q, want tenant policy header", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention children, babies, or age-specific users.") {
+		t.Fatalf("system prompt = %q, want children directive", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention babies, newborns, or infant-specific usage.") {
+		t.Fatalf("system prompt = %q, want baby directive", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "rock") {
+		t.Fatalf("system prompt = %q, want unknown topic keys omitted", systemPrompt)
+	}
+}
+
+func TestExtractListingTitleAdditionWithLLM_IncludesTenantGenerationPolicyText(t *testing.T) {
+	restoreRepo := SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: []string{"children", "rock", "baby"},
+		},
+	})
+	defer restoreRepo()
+
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"addition":"Rock Typography Graphic Print"}`,
+				},
+			}},
+		},
+	}
+
+	addition := extractListingTitleAdditionWithLLM(
+		tenantctx.WithTenantID(context.Background(), "101"),
+		"Door curtain",
+		&canonical.Product{
+			Attributes: map[string]canonical.Attribute{
+				"ai_style":        {Value: "Please design a rock style door curtain"},
+				"picture_request": {Value: "Please design a rock print"},
+			},
+		},
+		"Door curtain",
+		ai,
+	)
+	if addition != "Rock Typography Graphic Print" {
+		t.Fatalf("addition = %q, want extracted addition", addition)
+	}
+	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
+		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	}
+	systemPrompt := ai.lastReq.Messages[0].Content
+	if !strings.Contains(systemPrompt, "Additional tenant content restrictions:") {
+		t.Fatalf("system prompt = %q, want tenant policy header", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention children, babies, or age-specific users.") {
+		t.Fatalf("system prompt = %q, want children directive", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention babies, newborns, or infant-specific usage.") {
+		t.Fatalf("system prompt = %q, want baby directive", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "rock") {
+		t.Fatalf("system prompt = %q, want unknown topic keys omitted", systemPrompt)
+	}
+}
+
+func TestExtractPromptTitleWithLLM_IncludesTenantGenerationPolicyText(t *testing.T) {
+	restoreRepo := SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: []string{"children", "rock", "baby"},
+		},
+	})
+	defer restoreRepo()
+
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"title":"Floral Door Curtain"}`,
+				},
+			}},
+		},
+	}
+
+	title := extractPromptTitleWithLLM(
+		tenantctx.WithTenantID(context.Background(), "101"),
+		"Please design a floral door curtain print with dramatic text and graphics, 3000px",
+		nil,
+		"Door curtain",
+		ai,
+	)
+	if title != "Floral Door Curtain" {
+		t.Fatalf("title = %q, want extracted title", title)
+	}
+	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
+		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	}
+	systemPrompt := ai.lastReq.Messages[0].Content
+	if !strings.Contains(systemPrompt, "Additional tenant content restrictions:") {
+		t.Fatalf("system prompt = %q, want tenant policy header", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention children, babies, or age-specific users.") {
+		t.Fatalf("system prompt = %q, want children directive", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention babies, newborns, or infant-specific usage.") {
+		t.Fatalf("system prompt = %q, want baby directive", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "rock") {
+		t.Fatalf("system prompt = %q, want unknown topic keys omitted", systemPrompt)
+	}
+}
+
+func TestPromptEntryPointsOmitTenantPolicyWithoutTenantContext(t *testing.T) {
+	restoreRepo := SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+		keys: map[int64][]string{
+			101: []string{"children"},
+		},
+	})
+	defer restoreRepo()
+
+	ai := &recordingChatCompleter{
+		response: &openaiclient.ChatCompletionResponse{
+			Choices: []openaiclient.ChatCompletionChoice{{
+				Message: openaiclient.ChatCompletionMessage{
+					Content: `{"title":"Door Curtain","description":"A door curtain."}`,
+				},
+			}},
+		},
+	}
+
+	if _, _, err := optimizeSubmitContentWithAI(context.Background(), ai, "Door curtain", "Soft curtain", "", nil); err != nil {
+		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+	}
+	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
+		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	}
+	if strings.Contains(ai.lastReq.Messages[0].Content, "Additional tenant content restrictions:") {
+		t.Fatalf("system prompt = %q, want no tenant policy block without tenant context", ai.lastReq.Messages[0].Content)
 	}
 }
 
@@ -416,6 +622,86 @@ func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
 	}
 }
 
+func TestRetrySensitiveWordCleanup_PersistsNewValidationWordsToTenantRepository(t *testing.T) {
+	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {},
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restoreConfig()
+	repo := &stubSensitiveWordRepository{pages: map[int64][]listingadmin.SensitiveWord{}}
+	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
+	defer restoreRepo()
+
+	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy curtain for home decor"}},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName:     sheinproduct.LanguageContent{Language: "en", Name: "whimsy white"},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "whimsy white"}},
+		}},
+	}
+
+	if !RetrySensitiveWordCleanup(ctx, product, []string{"敏感词：[Whimsy]"}) {
+		t.Fatal("expected sensitive-word retry cleanup to return true")
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("created sensitive words = %+v, want 1 record", repo.created)
+	}
+	if repo.created[0].TenantID != 101 || repo.created[0].Language != "en" || repo.created[0].Word != "whimsy" || repo.created[0].Status != 1 {
+		t.Fatalf("created sensitive word = %+v", repo.created[0])
+	}
+	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageNameList, "en")), "whimsy") {
+		t.Fatalf("english title still contains whimsy: %+v", product.MultiLanguageNameList)
+	}
+}
+
+func TestRetrySensitiveWordCleanup_ReenablesExistingDisabledValidationWord(t *testing.T) {
+	restoreConfig := writeSensitiveWordsConfigForTest(t, `{
+  "static_words": {},
+  "dynamic_words": {},
+  "last_updated": "2026-06-02T00:00:00Z",
+  "version": "1.0.0",
+  "platform": "shein"
+}`)
+	defer restoreConfig()
+	repo := &stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {{
+				ID:       1,
+				TenantID: 101,
+				Language: "en",
+				Word:     "Whimsy",
+				Status:   0,
+				Tags:     "manual",
+			}},
+		},
+	}
+	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
+	defer restoreRepo()
+
+	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}},
+	}
+
+	if !RetrySensitiveWordCleanup(ctx, product, []string{"敏感词：[Whimsy]"}) {
+		t.Fatal("expected sensitive-word retry cleanup to return true")
+	}
+	if len(repo.created) != 0 {
+		t.Fatalf("created sensitive words = %+v, want no new record", repo.created)
+	}
+	if len(repo.updated) != 1 {
+		t.Fatalf("updated sensitive words = %+v, want 1 updated record", repo.updated)
+	}
+	if repo.updated[0].Status != 1 || !strings.Contains(repo.updated[0].Tags, "validation-retry") {
+		t.Fatalf("updated sensitive word = %+v", repo.updated[0])
+	}
+}
+
 func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T) {
 	restore := writeSensitiveWordsConfigForTest(t, `{
   "static_words": {
@@ -467,7 +753,7 @@ func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *
   "platform": "shein"
 }`)
 	defer restoreConfig()
-	restoreRepo := submitprep.SetSensitiveWordRepository(stubSensitiveWordRepository{
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
 				TenantID: 101,

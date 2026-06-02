@@ -42,7 +42,7 @@ var (
 	titleCanvasNoisePattern = regexp.MustCompile(`(?i)([,;:，；：]\s*)?(?:\d{3,5}\s*(?:pixels?|px)|\d+\s*[x*]\s*\d+).*$`)
 )
 
-func resolveListingTitle(canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+func resolveListingTitle(ctx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
 	candidates := []titleCandidate{
 		{source: "product_english_name", value: lookupCanonicalAttribute(canonical, "product_english_name")},
 		{source: "english_name", value: lookupCanonicalAttribute(canonical, "english_name")},
@@ -65,7 +65,7 @@ func resolveListingTitle(canonical *canonical.Product, fallbackTitle string, aiC
 		if extracted := extractPromptTitleByRules(value, canonical, fallbackTitle); extracted != "" {
 			return buildResolvedTitle(extracted, "prompt_extracted_rule", "prompt-like "+candidate.source+" replaced by rule-extracted title", true, canonical, fallbackTitle)
 		}
-		if extracted := extractPromptTitleWithLLM(value, canonical, fallbackTitle, aiClient); extracted != "" {
+		if extracted := extractPromptTitleWithLLM(ctx, value, canonical, fallbackTitle, aiClient); extracted != "" {
 			return buildResolvedTitle(extracted, "prompt_extracted_llm", "prompt-like "+candidate.source+" replaced by llm-extracted title", true, canonical, fallbackTitle)
 		}
 	}
@@ -77,11 +77,11 @@ func resolveListingTitle(canonical *canonical.Product, fallbackTitle string, aiC
 	return buildResolvedTitle(title, "structured_fallback", note, contaminated, canonical, fallbackTitle)
 }
 
-func enrichResolvedListingTitle(resolution titleResolution, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+func enrichResolvedListingTitle(ctx context.Context, resolution titleResolution, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
 	if !shouldEnrichListingTitle(resolution.title) {
 		return resolution
 	}
-	addition := extractListingTitleAdditionWithLLM(resolution.title, canonical, fallbackTitle, aiClient)
+	addition := extractListingTitleAdditionWithLLM(ctx, resolution.title, canonical, fallbackTitle, aiClient)
 	if addition == "" {
 		return resolution
 	}
@@ -252,7 +252,7 @@ func collectListingTitlePromptSignals(canonical *canonical.Product) []string {
 	return result
 }
 
-func extractListingTitleAdditionWithLLM(baseTitle string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+func extractListingTitleAdditionWithLLM(ctx context.Context, baseTitle string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
 	if aiClient == nil {
 		return ""
 	}
@@ -260,7 +260,10 @@ func extractListingTitleAdditionWithLLM(baseTitle string, canonical *canonical.P
 	if len(signals) == 0 {
 		return ""
 	}
-	ctx, cancel := timeout.WithAIShortTimeout(context.Background())
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
 	productType := inferEnglishProductType(canonical, fallbackTitle)
 	systemPrompt := `You improve concise e-commerce product titles by extracting a short title addition from print-design instructions.
@@ -272,6 +275,7 @@ Rules:
 4. Do not repeat the base product type, material, or size.
 5. Do not include sentences, prompt instructions, dimensions, pixels, copyright notes, or platform filler words.
 5. Leave "addition" empty if there is no safe concise addition.`
+	systemPrompt += tenantGenerationTopicPolicyPromptBlock(ctx)
 	userPrompt := fmt.Sprintf(
 		"Base title: %s\nFallback product type: %s\nPrompt-like or style signals:\n- %s\nExtract one short addition that makes the base title more suitable for e-commerce.",
 		cleanListingText(baseTitle),
@@ -332,11 +336,14 @@ func mergeListingTitleWithAddition(baseTitle string, addition string) string {
 	return trimShortTitle(cleanListingText(baseTitle+" with "+addition), 90, 12)
 }
 
-func extractPromptTitleWithLLM(promptText string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+func extractPromptTitleWithLLM(ctx context.Context, promptText string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
 	if aiClient == nil {
 		return ""
 	}
-	ctx, cancel := timeout.WithAIShortTimeout(context.Background())
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
 	productType := inferEnglishProductType(canonical, fallbackTitle)
 	systemPrompt := `You extract short e-commerce product titles from noisy image-generation prompts.
@@ -346,6 +353,7 @@ Rules:
 2. Keep useful product semantics such as product type, material, style, or theme when obvious.
 3. Never include instruction phrases, copyright notes, generation requirements, size/canvas instructions, or sentence-style prompt text.
 4. Prefer 3-10 words and under 80 characters.`
+	systemPrompt += tenantGenerationTopicPolicyPromptBlock(ctx)
 	userPrompt := fmt.Sprintf("Fallback product title: %s\nPrompt-like source text: %s\nExtract a short product title.", productType, cleanListingText(promptText))
 	temperature := float32(0.2)
 	resp, err := aiClient.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{

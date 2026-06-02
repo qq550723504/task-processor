@@ -199,6 +199,12 @@ func (stubRouteHandler) CreateAdminSensitiveWord(*gin.Context)                  
 func (stubRouteHandler) UpdateAdminSensitiveWord(*gin.Context)                    {}
 func (stubRouteHandler) UpdateAdminSensitiveWordStatus(*gin.Context)              {}
 func (stubRouteHandler) DeleteAdminSensitiveWord(*gin.Context)                    {}
+func (stubRouteHandler) ListAdminGenerationTopicPolicies(*gin.Context)            {}
+func (stubRouteHandler) GetAdminGenerationTopicPolicy(*gin.Context)               {}
+func (stubRouteHandler) CreateAdminGenerationTopicPolicy(*gin.Context)            {}
+func (stubRouteHandler) UpdateAdminGenerationTopicPolicy(*gin.Context)            {}
+func (stubRouteHandler) UpdateAdminGenerationTopicPolicyStatus(*gin.Context)      {}
+func (stubRouteHandler) DeleteAdminGenerationTopicPolicy(*gin.Context)            {}
 func (stubRouteHandler) ListAdminProductImportMappings(*gin.Context)              {}
 func (stubRouteHandler) GetAdminProductImportMapping(*gin.Context)                {}
 func (stubRouteHandler) CreateAdminProductImportMapping(*gin.Context)             {}

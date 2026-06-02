@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shein/submitprep"
 )
 
@@ -123,6 +124,8 @@ func assembleServiceRuntime(input BuildServiceInput, repositories *builtReposito
 
 func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
 	submitprep.SetSensitiveWordRepository(repositories.sensitiveWordRepository)
+	submitprep.SetGenerationTopicPolicyRepository(repositories.generationTopicPolicyRepository)
+	sheinpub.SetGenerationTopicPolicyRepository(repositories.generationTopicPolicyRepository)
 	assembly, err := assembleServiceRuntime(input, repositories, closers)
 	if err != nil {
 		return nil, err

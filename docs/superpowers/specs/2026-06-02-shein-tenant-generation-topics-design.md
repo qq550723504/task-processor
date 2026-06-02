@@ -280,3 +280,11 @@ Implement tenant-specific SHEIN generation restrictions as:
 - Existing sensitive-word service overlay for deterministic lexical fallback
 
 This approach solves tenant variance and context-size concerns without replacing the current sanitizer architecture.
+
+## Implementation Notes
+
+- Prompt summaries are capped at five directives or 600 characters, whichever comes first.
+- Prompt injection currently prefixes the compact summary with `Additional tenant content restrictions:`.
+- Unknown or unsupported topic keys are ignored instead of being passed through to the model.
+- Topic lexicons are overlaid as static words inside `NewSensitiveWordServiceForContext(ctx)`.
+- First version supports only `platform = "shein"`.

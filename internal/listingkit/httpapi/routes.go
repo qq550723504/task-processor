@@ -147,6 +147,12 @@ type AdminRouteHandler interface {
 	UpdateAdminSensitiveWord(c *gin.Context)
 	UpdateAdminSensitiveWordStatus(c *gin.Context)
 	DeleteAdminSensitiveWord(c *gin.Context)
+	ListAdminGenerationTopicPolicies(c *gin.Context)
+	GetAdminGenerationTopicPolicy(c *gin.Context)
+	CreateAdminGenerationTopicPolicy(c *gin.Context)
+	UpdateAdminGenerationTopicPolicy(c *gin.Context)
+	UpdateAdminGenerationTopicPolicyStatus(c *gin.Context)
+	DeleteAdminGenerationTopicPolicy(c *gin.Context)
 	ListAdminProductImportMappings(c *gin.Context)
 	GetAdminProductImportMapping(c *gin.Context)
 	CreateAdminProductImportMapping(c *gin.Context)
@@ -332,6 +338,12 @@ func appendAdminRouteDescriptors(routes []httproute.Descriptor, handler AdminRou
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/admin/sensitive-words/:id", Module: "listing-kit-admin", Handler: handler.UpdateAdminSensitiveWord},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/admin/sensitive-words/:id/status", Module: "listing-kit-admin", Handler: handler.UpdateAdminSensitiveWordStatus},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/admin/sensitive-words/:id", Module: "listing-kit-admin", Handler: handler.DeleteAdminSensitiveWord},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-policies", Module: "listing-kit-admin", Handler: handler.ListAdminGenerationTopicPolicies},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/generation-topic-policies/:id", Module: "listing-kit-admin", Handler: handler.GetAdminGenerationTopicPolicy},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/admin/generation-topic-policies", Module: "listing-kit-admin", Handler: handler.CreateAdminGenerationTopicPolicy},
+		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/admin/generation-topic-policies/:id", Module: "listing-kit-admin", Handler: handler.UpdateAdminGenerationTopicPolicy},
+		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/admin/generation-topic-policies/:id/status", Module: "listing-kit-admin", Handler: handler.UpdateAdminGenerationTopicPolicyStatus},
+		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/admin/generation-topic-policies/:id", Module: "listing-kit-admin", Handler: handler.DeleteAdminGenerationTopicPolicy},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/product-import-mappings", Module: "listing-kit-admin", Handler: handler.ListAdminProductImportMappings},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/product-import-mappings/:id", Module: "listing-kit-admin", Handler: handler.GetAdminProductImportMapping},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/admin/product-import-mappings", Module: "listing-kit-admin", Handler: handler.CreateAdminProductImportMapping},

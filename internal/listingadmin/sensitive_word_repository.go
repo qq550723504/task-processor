@@ -18,6 +18,9 @@ func AutoMigrateSensitiveWordRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
+	if err := ensurePostgresColumnTypeMigrations(db, (listingSensitiveWord{}).TableName(), sensitiveWordLegacyColumnMigrations()); err != nil {
+		return err
+	}
 	return ensureOwnerAuditColumns(db, (listingSensitiveWord{}).TableName())
 }
 

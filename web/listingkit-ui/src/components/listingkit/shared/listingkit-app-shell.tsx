@@ -198,6 +198,12 @@ const OPERATIONS_NAV_ITEMS = [
         match: "prefix",
       },
       {
+        label: "生成禁用主题",
+        href: "/listing-kits/admin/generation-topic-policies",
+        icon: ShieldAlert,
+        match: "prefix",
+      },
+      {
         label: "SHEIN 登录",
         href: "/listing-kits/shein-login",
         icon: KeyRound,

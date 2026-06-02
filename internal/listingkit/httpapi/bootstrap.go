@@ -32,22 +32,23 @@ type Module struct {
 }
 
 type ServiceBundle struct {
-	TemporalWorkerService          TemporalWorkerService
-	TaskRepository                 listingkit.Repository
-	StudioAsyncJobRepository       listingkit.StudioAsyncJobRepository
-	StoreRepository                listingadmin.StoreRepository
-	StoreStatisticsRepository      listingadmin.StoreStatisticsRepository
-	ImportTaskRepository           listingadmin.ImportTaskRepository
-	FilterRuleRepository           listingadmin.FilterRuleRepository
-	ProfitRuleRepository           listingadmin.ProfitRuleRepository
-	PricingRuleRepository          listingadmin.PricingRuleRepository
-	OperationStrategyRepository    listingadmin.OperationStrategyRepository
-	SensitiveWordRepository        listingadmin.SensitiveWordRepository
-	ProductImportMappingRepository listingadmin.ProductImportMappingRepository
-	CategoryRepository             listingadmin.CategoryRepository
-	ProductDataRepository          listingadmin.ProductDataRepository
-	SubscriptionService            *listingsubscription.Service
-	Closers                        []func() error
+	TemporalWorkerService           TemporalWorkerService
+	TaskRepository                  listingkit.Repository
+	StudioAsyncJobRepository        listingkit.StudioAsyncJobRepository
+	StoreRepository                 listingadmin.StoreRepository
+	StoreStatisticsRepository       listingadmin.StoreStatisticsRepository
+	ImportTaskRepository            listingadmin.ImportTaskRepository
+	FilterRuleRepository            listingadmin.FilterRuleRepository
+	ProfitRuleRepository            listingadmin.ProfitRuleRepository
+	PricingRuleRepository           listingadmin.PricingRuleRepository
+	OperationStrategyRepository     listingadmin.OperationStrategyRepository
+	SensitiveWordRepository         listingadmin.SensitiveWordRepository
+	GenerationTopicPolicyRepository listingadmin.GenerationTopicPolicyRepository
+	ProductImportMappingRepository  listingadmin.ProductImportMappingRepository
+	CategoryRepository              listingadmin.CategoryRepository
+	ProductDataRepository           listingadmin.ProductDataRepository
+	SubscriptionService             *listingsubscription.Service
+	Closers                         []func() error
 
 	runtime serviceBundleRuntime
 }
@@ -141,17 +142,18 @@ type BuildModuleInput struct {
 }
 
 type AdminRepositoryBuilders struct {
-	Store                func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
-	StoreStatistics      func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
-	ImportTask           func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
-	FilterRule           func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
-	ProfitRule           func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
-	PricingRule          func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
-	OperationStrategy    func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
-	SensitiveWord        func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
-	ProductImportMapping func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error)
-	Category             func(*config.Config, *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error)
-	ProductData          func(*config.Config, *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error)
+	Store                 func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
+	StoreStatistics       func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
+	ImportTask            func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
+	FilterRule            func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
+	ProfitRule            func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
+	PricingRule           func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
+	OperationStrategy     func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
+	SensitiveWord         func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
+	GenerationTopicPolicy func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error)
+	ProductImportMapping  func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error)
+	Category              func(*config.Config, *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error)
+	ProductData           func(*config.Config, *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error)
 }
 
 type CoreRepositoryBuilders struct {
@@ -242,6 +244,8 @@ func (b AdminRepositoryBuilders) Validate() error {
 		return fmt.Errorf("admin repository builder operation strategy is required")
 	case b.SensitiveWord == nil:
 		return fmt.Errorf("admin repository builder sensitive word is required")
+	case b.GenerationTopicPolicy == nil:
+		return fmt.Errorf("admin repository builder generation topic policy is required")
 	case b.ProductImportMapping == nil:
 		return fmt.Errorf("admin repository builder product import mapping is required")
 	case b.Category == nil:
@@ -451,22 +455,23 @@ func closeTemporalWorkflowClientOnError(err error, temporalCloser func() error) 
 
 func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleService, workerService TemporalWorkerService, handlerDependencies listingkitapi.HandlerDependencies, closers []func() error) *ServiceBundle {
 	return &ServiceBundle{
-		TemporalWorkerService:          workerService,
-		TaskRepository:                 repositories.taskRepository,
-		StudioAsyncJobRepository:       repositories.studioAsyncJobRepository,
-		StoreRepository:                repositories.storeRepository,
-		StoreStatisticsRepository:      repositories.storeStatisticsRepository,
-		ImportTaskRepository:           repositories.importTaskRepository,
-		FilterRuleRepository:           repositories.filterRuleRepository,
-		ProfitRuleRepository:           repositories.profitRuleRepository,
-		PricingRuleRepository:          repositories.pricingRuleRepository,
-		OperationStrategyRepository:    repositories.operationStrategyRepository,
-		SensitiveWordRepository:        repositories.sensitiveWordRepository,
-		ProductImportMappingRepository: repositories.productImportMappingRepository,
-		CategoryRepository:             repositories.categoryRepository,
-		ProductDataRepository:          repositories.productDataRepository,
-		SubscriptionService:            repositories.subscriptionService,
-		Closers:                        closers,
+		TemporalWorkerService:           workerService,
+		TaskRepository:                  repositories.taskRepository,
+		StudioAsyncJobRepository:        repositories.studioAsyncJobRepository,
+		StoreRepository:                 repositories.storeRepository,
+		StoreStatisticsRepository:       repositories.storeStatisticsRepository,
+		ImportTaskRepository:            repositories.importTaskRepository,
+		FilterRuleRepository:            repositories.filterRuleRepository,
+		ProfitRuleRepository:            repositories.profitRuleRepository,
+		PricingRuleRepository:           repositories.pricingRuleRepository,
+		OperationStrategyRepository:     repositories.operationStrategyRepository,
+		SensitiveWordRepository:         repositories.sensitiveWordRepository,
+		GenerationTopicPolicyRepository: repositories.generationTopicPolicyRepository,
+		ProductImportMappingRepository:  repositories.productImportMappingRepository,
+		CategoryRepository:              repositories.categoryRepository,
+		ProductDataRepository:           repositories.productDataRepository,
+		SubscriptionService:             repositories.subscriptionService,
+		Closers:                         closers,
 		runtime: serviceBundleRuntime{
 			temporalWorkerService: workerService,
 			taskRepository:        repositories.taskRepository,

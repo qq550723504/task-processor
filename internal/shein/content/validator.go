@@ -31,6 +31,15 @@ func (s *SensitiveWordService) extractSensitiveWordsFromValidation(results []she
 	return s.deduplicateWords(sensitiveWords)
 }
 
+// ExtractSensitiveWordsFromValidationNotes extracts platform-returned sensitive
+// words from raw validation note strings.
+func (s *SensitiveWordService) ExtractSensitiveWordsFromValidationNotes(notes []string) []string {
+	if s == nil || len(notes) == 0 {
+		return nil
+	}
+	return s.deduplicateWords(s.extractWordsFromMessages(notes))
+}
+
 // extractWordsFromMessages 从消息中提取敏感词
 func (s *SensitiveWordService) extractWordsFromMessages(messages []string) []string {
 	var words []string

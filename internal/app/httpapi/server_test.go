@@ -203,64 +203,67 @@ func (s *stubImageHandler) ReviewTask(c *gin.Context) {
 }
 
 type stubListingKitHandler struct {
-	generateCalled                        bool
-	generateStudioDesignsCalled           bool
-	generateStudioProductImagesCalled     bool
-	startStudioAsyncJobCalled             bool
-	getStudioAsyncJobCalled               bool
-	uploadImagesCalled                    bool
-	getUploadedImageCalled                bool
-	listTasksCalled                       bool
-	getResultCalled                       bool
-	getPreviewCalled                      bool
-	getGenerationCalled                   bool
-	getGenerationQueueCalled              bool
-	getGenerationReviewSessionCalled      bool
-	getGenerationReviewPreviewCalled      bool
-	dispatchGenerationNavigationCalled    bool
-	retryGenerationCalled                 bool
-	retryChildTaskCalled                  bool
-	executeGenerationActionCalled         bool
-	getHistoryCalled                      bool
-	getHistoryDetailCalled                bool
-	getExportCalled                       bool
-	revisionCalled                        bool
-	validateCalled                        bool
-	searchSheinCategoriesCalled           bool
-	submitCalled                          bool
-	listAdminStoresCalled                 bool
-	listAdminStoreStatisticsCalled        bool
-	listDeletedAdminStoresCalled          bool
-	restoreAdminStoreCalled               bool
-	permanentlyDeleteAdminStoreCalled     bool
-	extendAdminStoreValidityCalled        bool
-	listAdminImportTasksCalled            bool
-	batchCreateAdminImportTasksCalled     bool
-	deleteAdminImportTaskCalled           bool
-	listAdminFilterRulesCalled            bool
-	createAdminFilterRuleCalled           bool
-	deleteAdminFilterRuleCalled           bool
-	listAdminProfitRulesCalled            bool
-	createAdminProfitRuleCalled           bool
-	deleteAdminProfitRuleCalled           bool
-	listAdminPricingRulesCalled           bool
-	createAdminPricingRuleCalled          bool
-	deleteAdminPricingRuleCalled          bool
-	listAdminOperationStrategiesCalled    bool
-	createAdminOperationStrategyCalled    bool
-	deleteAdminOperationStrategyCalled    bool
-	listAdminSensitiveWordsCalled         bool
-	createAdminSensitiveWordCalled        bool
-	deleteAdminSensitiveWordCalled        bool
-	listAdminProductImportMappingsCalled  bool
-	createAdminProductImportMappingCalled bool
-	deleteAdminProductImportMappingCalled bool
-	listAdminCategoriesCalled             bool
-	createAdminCategoryCalled             bool
-	deleteAdminCategoryCalled             bool
-	listAdminProductDataCalled            bool
-	createAdminProductDataCalled          bool
-	deleteAdminProductDataCalled          bool
+	generateCalled                         bool
+	generateStudioDesignsCalled            bool
+	generateStudioProductImagesCalled      bool
+	startStudioAsyncJobCalled              bool
+	getStudioAsyncJobCalled                bool
+	uploadImagesCalled                     bool
+	getUploadedImageCalled                 bool
+	listTasksCalled                        bool
+	getResultCalled                        bool
+	getPreviewCalled                       bool
+	getGenerationCalled                    bool
+	getGenerationQueueCalled               bool
+	getGenerationReviewSessionCalled       bool
+	getGenerationReviewPreviewCalled       bool
+	dispatchGenerationNavigationCalled     bool
+	retryGenerationCalled                  bool
+	retryChildTaskCalled                   bool
+	executeGenerationActionCalled          bool
+	getHistoryCalled                       bool
+	getHistoryDetailCalled                 bool
+	getExportCalled                        bool
+	revisionCalled                         bool
+	validateCalled                         bool
+	searchSheinCategoriesCalled            bool
+	submitCalled                           bool
+	listAdminStoresCalled                  bool
+	listAdminStoreStatisticsCalled         bool
+	listDeletedAdminStoresCalled           bool
+	restoreAdminStoreCalled                bool
+	permanentlyDeleteAdminStoreCalled      bool
+	extendAdminStoreValidityCalled         bool
+	listAdminImportTasksCalled             bool
+	batchCreateAdminImportTasksCalled      bool
+	deleteAdminImportTaskCalled            bool
+	listAdminFilterRulesCalled             bool
+	createAdminFilterRuleCalled            bool
+	deleteAdminFilterRuleCalled            bool
+	listAdminProfitRulesCalled             bool
+	createAdminProfitRuleCalled            bool
+	deleteAdminProfitRuleCalled            bool
+	listAdminPricingRulesCalled            bool
+	createAdminPricingRuleCalled           bool
+	deleteAdminPricingRuleCalled           bool
+	listAdminOperationStrategiesCalled     bool
+	createAdminOperationStrategyCalled     bool
+	deleteAdminOperationStrategyCalled     bool
+	listAdminSensitiveWordsCalled          bool
+	createAdminSensitiveWordCalled         bool
+	deleteAdminSensitiveWordCalled         bool
+	listAdminGenerationTopicPoliciesCalled bool
+	createAdminGenerationTopicPolicyCalled bool
+	deleteAdminGenerationTopicPolicyCalled bool
+	listAdminProductImportMappingsCalled   bool
+	createAdminProductImportMappingCalled  bool
+	deleteAdminProductImportMappingCalled  bool
+	listAdminCategoriesCalled              bool
+	createAdminCategoryCalled              bool
+	deleteAdminCategoryCalled              bool
+	listAdminProductDataCalled             bool
+	createAdminProductDataCalled           bool
+	deleteAdminProductDataCalled           bool
 }
 
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
@@ -516,6 +519,33 @@ func (s *stubListingKitHandler) UpdateAdminSensitiveWordStatus(c *gin.Context) {
 
 func (s *stubListingKitHandler) DeleteAdminSensitiveWord(c *gin.Context) {
 	s.deleteAdminSensitiveWordCalled = true
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *stubListingKitHandler) ListAdminGenerationTopicPolicies(c *gin.Context) {
+	s.listAdminGenerationTopicPoliciesCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminGenerationTopicPolicy(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) CreateAdminGenerationTopicPolicy(c *gin.Context) {
+	s.createAdminGenerationTopicPolicyCalled = true
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminGenerationTopicPolicy(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpdateAdminGenerationTopicPolicyStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminGenerationTopicPolicy(c *gin.Context) {
+	s.deleteAdminGenerationTopicPolicyCalled = true
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
@@ -1487,6 +1517,40 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.deleteAdminSensitiveWordCalled {
 		t.Fatal("listing kit DeleteAdminSensitiveWord handler was not called")
+	}
+
+	handler.listAdminGenerationTopicPoliciesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/generation-topic-policies", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/admin/generation-topic-policies = %d, want 200", resp.Code)
+	}
+	if !handler.listAdminGenerationTopicPoliciesCalled {
+		t.Fatal("listing kit ListAdminGenerationTopicPolicies handler was not called")
+	}
+
+	handler.createAdminGenerationTopicPolicyCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/admin/generation-topic-policies", bytes.NewReader([]byte(`{"platform":"shein","topicKey":"children"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/listing-kits/admin/generation-topic-policies = %d, want 201", resp.Code)
+	}
+	if !handler.createAdminGenerationTopicPolicyCalled {
+		t.Fatal("listing kit CreateAdminGenerationTopicPolicy handler was not called")
+	}
+
+	handler.deleteAdminGenerationTopicPolicyCalled = false
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/admin/generation-topic-policies/1", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/v1/listing-kits/admin/generation-topic-policies/:id = %d, want 200", resp.Code)
+	}
+	if !handler.deleteAdminGenerationTopicPolicyCalled {
+		t.Fatal("listing kit DeleteAdminGenerationTopicPolicy handler was not called")
 	}
 
 	handler.listAdminProductImportMappingsCalled = false
