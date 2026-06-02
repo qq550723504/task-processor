@@ -115,8 +115,13 @@ export function GenerationTopicPolicyAdminPage() {
             return !item.tenantOverride;
           case "override_enabled":
             return item.tenantOverride?.status === 1;
-          case "override_disabled":
-            return Boolean(item.tenantOverride) && item.tenantOverride.status !== 1;
+          case "override_disabled": {
+            const tenantOverride = item.tenantOverride;
+            if (!tenantOverride) {
+              return false;
+            }
+            return tenantOverride.status !== 1;
+          }
           default:
             return true;
         }
