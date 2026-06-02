@@ -14,6 +14,30 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func resolveConfigPath(configPath string) string {
+	if configPath == "" || filepath.IsAbs(configPath) {
+		return configPath
+	}
+	if _, err := os.Stat(configPath); err == nil {
+		return configPath
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return configPath
+	}
+	for dir := cwd; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, configPath)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	return configPath
+}
+
 // SensitiveWordConfig 敏感词配置结构（按语言分类）
 type SensitiveWordConfig struct {
 	StaticWords  map[string][]string `json:"static_words"`  // 按语言分类的静态敏感词
@@ -40,10 +64,11 @@ func (s *SensitiveWordService) loadConfig() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if !s.persistConfig || s.configPath == "" {
+	if s.configPath == "" {
 		s.config = s.createDefaultConfig()
 		return nil
 	}
+	s.configPath = resolveConfigPath(s.configPath)
 
 	// 检查文件是否存在
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
