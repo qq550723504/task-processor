@@ -254,6 +254,7 @@ func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattr
 	}
 
 	invalid := make([]string, 0)
+	invalidItems := make([]sheinpub.ResolvedAttribute, 0)
 	for _, item := range current.ResolvedAttributes {
 		if item.AttributeID <= 0 {
 			continue
@@ -262,6 +263,7 @@ func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattr
 			continue
 		}
 		invalid = append(invalid, formatResolvedAttributeDiffItem(item))
+		invalidItems = append(invalidItems, item)
 	}
 
 	missingRequired := make([]string, 0)
@@ -283,6 +285,9 @@ func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattr
 		if len(invalid) > 0 {
 			sort.Strings(invalid)
 			parts = append(parts, "当前模板已失效的属性值: "+strings.Join(invalid, "; "))
+			if drift := buildResolvedAttributeTemplateDriftDetails(invalidItems, attributeIndex); drift != "" {
+				parts = append(parts, "同属性在线模板差异: "+drift)
+			}
 		}
 		if len(missingRequired) > 0 {
 			sort.Strings(missingRequired)
@@ -577,6 +582,68 @@ func diffResolvedAttributes(current []sheinpub.ResolvedAttribute, fresh []sheinp
 	sort.Strings(currentOnly)
 	sort.Strings(freshOnly)
 	return currentOnly, freshOnly
+}
+
+func buildResolvedAttributeTemplateDriftDetails(
+	invalidItems []sheinpub.ResolvedAttribute,
+	attributeIndex map[int]sheinattribute.AttributeInfo,
+) string {
+	if len(invalidItems) == 0 || len(attributeIndex) == 0 {
+		return ""
+	}
+
+	currentOnly := append([]sheinpub.ResolvedAttribute(nil), invalidItems...)
+	freshCandidates := make([]sheinpub.ResolvedAttribute, 0)
+	seen := make(map[string]struct{})
+	for _, item := range invalidItems {
+		attr, ok := attributeIndex[item.AttributeID]
+		if !ok {
+			continue
+		}
+		for _, candidate := range buildResolvedAttributeTemplateCandidates(attr) {
+			key := formatResolvedAttributeDiffItem(candidate)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			freshCandidates = append(freshCandidates, candidate)
+		}
+	}
+	if len(currentOnly) == 0 && len(freshCandidates) == 0 {
+		return ""
+	}
+
+	leftOnly, rightOnly := diffResolvedAttributes(currentOnly, freshCandidates)
+	parts := make([]string, 0, 2)
+	if len(leftOnly) > 0 {
+		parts = append(parts, "当前任务独有: "+strings.Join(leftOnly, "; "))
+	}
+	if len(rightOnly) > 0 {
+		parts = append(parts, "在线模板独有: "+strings.Join(rightOnly, "; "))
+	}
+	return strings.Join(parts, "；")
+}
+
+func buildResolvedAttributeTemplateCandidates(attr sheinattribute.AttributeInfo) []sheinpub.ResolvedAttribute {
+	if attr.AttributeID <= 0 || len(attr.AttributeValueInfoList) == 0 {
+		return nil
+	}
+
+	name := strings.TrimSpace(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))
+	candidates := make([]sheinpub.ResolvedAttribute, 0, len(attr.AttributeValueInfoList))
+	for _, option := range attr.AttributeValueInfoList {
+		if option.AttributeValueID <= 0 {
+			continue
+		}
+		valueID := option.AttributeValueID
+		candidates = append(candidates, sheinpub.ResolvedAttribute{
+			Name:             name,
+			Value:            strings.TrimSpace(firstNonEmpty(option.AttributeValueEn, option.AttributeValue)),
+			AttributeID:      attr.AttributeID,
+			AttributeValueID: &valueID,
+		})
+	}
+	return candidates
 }
 
 func formatResolvedAttributeDiffItem(item sheinpub.ResolvedAttribute) string {

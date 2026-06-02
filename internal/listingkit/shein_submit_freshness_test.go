@@ -131,6 +131,47 @@ func TestEvaluateSheinAttributeFreshnessBlocksOfflineValueID(t *testing.T) {
 	}
 }
 
+func TestEvaluateSheinAttributeFreshnessReportsValueIDDifferenceDetails(t *testing.T) {
+	t.Parallel()
+
+	currentValueID := 1002592
+	current := &SheinPackage{
+		ResolvedAttributes: []sheinpub.ResolvedAttribute{{
+			Name:             "Material",
+			Value:            "PU",
+			AttributeID:      160,
+			AttributeValueID: &currentValueID,
+		}},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeInfos: []sheinattribute.AttributeInfo{{
+				AttributeID:     160,
+				AttributeName:   "Material",
+				AttributeNameEn: "Material",
+				AttributeStatus: 3,
+				AttributeValueInfoList: []sheinattribute.AttributeValue{
+					{AttributeValueID: 1000145, AttributeValue: "Polyurethane", AttributeValueEn: "Polyurethane"},
+				},
+			}},
+		}},
+	}
+
+	ok, message := evaluateSheinAttributeFreshness(current, templates)
+	if ok {
+		t.Fatal("expected offline attribute value to block")
+	}
+	if got := message; !containsAll(got,
+		"attribute_value_id=1002592",
+		"attribute_value_id=1000145",
+		"Material",
+		"PU",
+		"Polyurethane",
+	) {
+		t.Fatalf("drift message = %q, want current and online template diff details", got)
+	}
+}
+
 func TestEvaluateSheinAttributeFreshnessBlocksMissingRequiredAttribute(t *testing.T) {
 	t.Parallel()
 
