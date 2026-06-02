@@ -4,6 +4,7 @@ package publish
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
@@ -59,14 +60,21 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 	logger.GetGlobalLogger("shein/publish").Info("✅ 发布前预验证通过")
 	h.maybeDebugSave(ctx, "")
 
-	// 发布产品
-	response, err := h.publishProduct(ctx)
+	// 店铺开启草稿模式时，正常链路改为保存到草稿箱而不是直接发布。
+	response, err := h.submitProduct(ctx)
 	if err != nil {
 		// 发布失败可能是网络问题或临时性错误，可重试
 		return shein.NewRetryableError("发布产品失败", err)
 	}
 
 	return h.errorHandler.HandlePublishResponse(ctx, response)
+}
+
+func (h *PublishProductHandler) submitProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
+	if shouldSaveDraftByStore(ctx) {
+		return h.SaveDraftProduct(ctx)
+	}
+	return h.publishProduct(ctx)
 }
 
 // publishProduct 统一的产品发布方法
@@ -98,6 +106,17 @@ func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*produ
 	}
 
 	return response, nil
+}
+
+func shouldSaveDraftByStore(ctx *shein.TaskContext) bool {
+	if ctx == nil {
+		return false
+	}
+	return storeDraftEnabled(ctx.StoreInfo)
+}
+
+func storeDraftEnabled(storeInfo *managementapi.StoreRespDTO) bool {
+	return storeInfo != nil && storeInfo.EnableDraft != nil && *storeInfo.EnableDraft
 }
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符

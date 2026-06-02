@@ -6,6 +6,7 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 		lockSubmit: func(key string) func() {
 			return s.sheinSubmitLocks.lock(key)
 		},
+		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
 		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,
 		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,

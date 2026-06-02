@@ -40,8 +40,15 @@ type sheinDirectSubmitOptions struct {
 }
 
 func normalizeSubmitTarget(req *SubmitTaskRequest) (platform string, action string, err error) {
+	return normalizeSubmitTargetWithDefault(req, "")
+}
+
+func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction string) (platform string, action string, err error) {
 	platform = "shein"
 	action = "publish"
+	if value := strings.ToLower(strings.TrimSpace(defaultAction)); value != "" {
+		action = value
+	}
 	if req != nil {
 		if value := strings.ToLower(strings.TrimSpace(req.Platform)); value != "" {
 			platform = value

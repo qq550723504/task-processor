@@ -17,6 +17,7 @@ import (
 type taskSubmissionServiceConfig struct {
 	repo                            Repository
 	lockSubmit                      func(key string) func()
+	resolveDefaultSheinSubmitAction func(context.Context, string) (string, error)
 	acquireSheinSubmitTask          func(context.Context, string, string, string, time.Time) (*Task, *ListingKitPreview, error)
 	shouldStartSheinPublishWorkflow func(platform, action string) bool
 	submitSheinTaskWithWorkflow     func(context.Context, string, *Task, *SubmitTaskRequest, sheinWorkflowSubmitOptions) (*ListingKitPreview, error)
@@ -31,6 +32,7 @@ type taskSubmissionServiceConfig struct {
 type taskSubmissionService struct {
 	repo                            Repository
 	lockSubmit                      func(key string) func()
+	resolveDefaultSheinSubmitAction func(context.Context, string) (string, error)
 	acquireSheinSubmitTask          func(context.Context, string, string, string, time.Time) (*Task, *ListingKitPreview, error)
 	shouldStartSheinPublishWorkflow func(platform, action string) bool
 	submitSheinTaskWithWorkflow     func(context.Context, string, *Task, *SubmitTaskRequest, sheinWorkflowSubmitOptions) (*ListingKitPreview, error)
@@ -46,6 +48,7 @@ func newTaskSubmissionService(config taskSubmissionServiceConfig) *taskSubmissio
 	return &taskSubmissionService{
 		repo:                            config.repo,
 		lockSubmit:                      config.lockSubmit,
+		resolveDefaultSheinSubmitAction: config.resolveDefaultSheinSubmitAction,
 		acquireSheinSubmitTask:          config.acquireSheinSubmitTask,
 		shouldStartSheinPublishWorkflow: config.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     config.submitSheinTaskWithWorkflow,
@@ -59,7 +62,7 @@ func newTaskSubmissionService(config taskSubmissionServiceConfig) *taskSubmissio
 }
 
 func (s *taskSubmissionService) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {
-	platform, action, err := normalizeSubmitTarget(req)
+	platform, action, err := s.normalizeSubmitTarget(ctx, taskID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +102,19 @@ func (s *taskSubmissionService) SubmitTask(ctx context.Context, taskID string, r
 		requestID: requestID,
 		startedAt: startedAt,
 	})
+}
+
+func (s *taskSubmissionService) normalizeSubmitTarget(ctx context.Context, taskID string, req *SubmitTaskRequest) (platform string, action string, err error) {
+	defaultAction := ""
+	if req == nil || strings.TrimSpace(req.Action) == "" {
+		if s.resolveDefaultSheinSubmitAction != nil {
+			defaultAction, err = s.resolveDefaultSheinSubmitAction(ctx, taskID)
+			if err != nil {
+				return "", "", err
+			}
+		}
+	}
+	return normalizeSubmitTargetWithDefault(req, defaultAction)
 }
 
 func (s *taskSubmissionService) acquireSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
