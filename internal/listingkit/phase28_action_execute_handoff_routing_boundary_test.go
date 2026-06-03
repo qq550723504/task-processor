@@ -5,12 +5,17 @@ import "testing"
 func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("top_level_handoff_routes_branch_results_through_local_result_seams", func(t *testing.T) {
+	t.Run("mode_routing_seam_routes_branch_results_through_local_result_seams", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff.go", "run")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_routing.go")
+		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
 
+		assertSourceContainsAll(t, fileSource, []string{
+			"func buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(",
+			"func (p *taskGenerationActionExecuteRequestHandoffModeRoutingPhase) run(",
+		})
 		assertSourceContainsAll(t, source, []string{
 			`case "retryable":`,
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",

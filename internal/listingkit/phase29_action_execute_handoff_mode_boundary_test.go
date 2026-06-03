@@ -1,0 +1,82 @@
+package listingkit
+
+import "testing"
+
+func TestTaskGenerationActionExecuteRequestHandoffModeBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("top_level_handoff_routes_through_local_mode_routing_seam", func(t *testing.T) {
+		t.Parallel()
+
+		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff.go", "run")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff.go", "run")
+
+		assertSourceContainsAll(t, source, []string{
+			"return buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(p.service).run(ctx, taskID, target)",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			`case "retryable":`,
+			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage)",
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase",
+		})
+		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
+		})
+	})
+
+	t.Run("mode_routing_seam_routes_interaction_modes_through_existing_branch_and_result_seams", func(t *testing.T) {
+		t.Parallel()
+
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_routing.go")
+		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
+
+		assertSourceContainsAll(t, fileSource, []string{
+			"func buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(",
+			"func (p *taskGenerationActionExecuteRequestHandoffModeRoutingPhase) run(",
+		})
+		assertSourceContainsAll(t, source, []string{
+			`case "retryable":`,
+			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage)",
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"RetryTaskGenerationTasks(",
+			"cloneRetryGenerationTasksRequest(",
+			"GetTaskGenerationQueue(",
+			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
+			"generationWorkQueueFromRetryPage(",
+			"generationWorkQueueFromPage(",
+			"buildGenerationReviewSession(",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
+		})
+		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"RetryTaskGenerationTasks",
+			"cloneRetryGenerationTasksRequest",
+			"GetTaskGenerationQueue",
+			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"fromRetryPage",
+			"fromQueuePage",
+			"generationWorkQueueFromRetryPage",
+			"generationWorkQueueFromPage",
+			"buildGenerationReviewSession",
+		})
+	})
+}
