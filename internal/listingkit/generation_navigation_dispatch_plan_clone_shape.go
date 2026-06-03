@@ -15,12 +15,6 @@ func (p *generationNavigationDispatchPlanCloneShapePhase) run(plan *GenerationNa
 	}
 	cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))
 	for _, step := range plan.Steps {
-		cloned.Steps = append(cloned.Steps, GenerationNavigationDispatchStep{
-			Kind:               step.Kind,
-			ResponseMode:       step.ResponseMode,
-			CachePreference:    step.CachePreference,
-			RequiresRevalidate: step.RequiresRevalidate,
-			Query:              cloneGenerationQueueQuery(step.Query),
-		})
+		cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))
 	}
 }
