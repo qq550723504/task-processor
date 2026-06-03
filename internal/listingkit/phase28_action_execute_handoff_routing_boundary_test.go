@@ -5,25 +5,27 @@ import "testing"
 func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("mode_routing_seam_routes_branch_results_through_local_result_seams", func(t *testing.T) {
+	t.Run("mode_pairing_seam_routes_branch_results_through_local_result_seams", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_routing.go")
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_pairing.go")
+		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "runRetryable")
+		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "runRetryable")
+		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "runQueue")
+		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "runQueue")
 
 		assertSourceContainsAll(t, fileSource, []string{
-			"func buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(",
-			"func (p *taskGenerationActionExecuteRequestHandoffModeRoutingPhase) run(",
+			"func buildTaskGenerationActionExecuteRequestHandoffModePairingPhase(",
+			"func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runRetryable(",
+			"func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runQueue(",
 		})
-		assertSourceContainsAll(t, source, []string{
-			`case "retryable":`,
+		assertSourceContainsAll(t, retrySource, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",
 			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage)",
-			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
-			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
 		})
-		assertSourceExcludesAll(t, source, []string{
+		assertSourceExcludesAll(t, retrySource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase(",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
 			"resultShape.fromRetryPage(",
@@ -32,14 +34,18 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"persistenceQueueFromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
+			"RetryTaskGenerationTasks(",
+			"cloneRetryGenerationTasksRequest(",
+			"GetTaskGenerationQueue(",
+			"cloneGenerationQueueQuery(",
 		})
-		assertFunctionCallsContainAll(t, callNames, []string{
+		assertFunctionCallsContainAll(t, retryCalls, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
 			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
+		})
+		assertFunctionCallsExcludeAll(t, retryCalls, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
 			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
 			"fromRetryPage",
@@ -48,6 +54,51 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
+			"RetryTaskGenerationTasks",
+			"cloneRetryGenerationTasksRequest",
+			"GetTaskGenerationQueue",
+			"cloneGenerationQueueQuery",
+		})
+
+		assertSourceContainsAll(t, queueSource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
+		})
+		assertSourceExcludesAll(t, queueSource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
+			"resultShape.fromRetryPage(",
+			"resultShape.fromQueuePage(",
+			"persistenceQueueFromRetryPage(",
+			"persistenceQueueFromQueuePage(",
+			"generationWorkQueueFromRetryPage(",
+			"generationWorkQueueFromPage(",
+			"RetryTaskGenerationTasks(",
+			"cloneRetryGenerationTasksRequest(",
+			"GetTaskGenerationQueue(",
+			"cloneGenerationQueueQuery(",
+		})
+		assertFunctionCallsContainAll(t, queueCalls, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
+		})
+		assertFunctionCallsExcludeAll(t, queueCalls, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"fromRetryPage",
+			"fromQueuePage",
+			"persistenceQueueFromRetryPage",
+			"persistenceQueueFromQueuePage",
+			"generationWorkQueueFromRetryPage",
+			"generationWorkQueueFromPage",
+			"RetryTaskGenerationTasks",
+			"cloneRetryGenerationTasksRequest",
+			"GetTaskGenerationQueue",
+			"cloneGenerationQueueQuery",
 		})
 	})
 

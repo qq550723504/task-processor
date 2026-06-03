@@ -11,18 +11,12 @@ func buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(service *tas
 }
 
 func (p *taskGenerationActionExecuteRequestHandoffModeRoutingPhase) run(ctx context.Context, taskID string, target *AssetGenerationActionTarget) (*taskGenerationActionExecuteRequestHandoff, error) {
+	pairing := buildTaskGenerationActionExecuteRequestHandoffModePairingPhase(p.service)
+
 	switch target.InteractionMode {
 	case "retryable":
-		retryPage, err := buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)
-		if err != nil {
-			return nil, err
-		}
-		return buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage), nil
+		return pairing.runRetryable(ctx, taskID, target)
 	default:
-		queuePage, err := buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)
-		if err != nil {
-			return nil, err
-		}
-		return buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage), nil
+		return pairing.runQueue(ctx, taskID, target)
 	}
 }
