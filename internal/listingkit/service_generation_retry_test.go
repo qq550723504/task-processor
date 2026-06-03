@@ -2071,6 +2071,46 @@ func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
 			t.Fatal("persistenceQueue.Items reused queuePage.Items backing storage, want page-derived queue copy")
 		}
 	})
+
+	t.Run("empty_interaction_mode_uses_default_queue_path", func(t *testing.T) {
+		t.Parallel()
+
+		task, generation := newTaskGenerationActionQueueFixture(t, "task-generation-action-handoff-default-queue-1")
+		target := &AssetGenerationActionTarget{
+			ActionKey: "review_missing_slots",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:     "amazon",
+				Slot:         "auxiliary",
+				QualityGrade: "missing",
+			},
+		}
+		originalQueueQuery := cloneGenerationQueueQuery(target.QueueQuery)
+
+		handoff, err := buildTaskGenerationActionExecuteRequestHandoffPhase(generation).run(context.Background(), task.ID, target)
+		if err != nil {
+			t.Fatalf("taskGenerationActionExecuteRequestHandoffPhase.run() error = %v", err)
+		}
+		if !reflect.DeepEqual(target.QueueQuery, originalQueueQuery) {
+			t.Fatalf("target.QueueQuery = %+v, want original query unchanged as %+v", target.QueueQuery, originalQueueQuery)
+		}
+		if handoff == nil || handoff.queuePage == nil {
+			t.Fatalf("handoff = %+v, want queue page handoff for default mode", handoff)
+		}
+		if handoff.retryPage != nil {
+			t.Fatalf("handoff.retryPage = %+v, want nil for default queue path", handoff.retryPage)
+		}
+
+		wantQueue := generationWorkQueueFromPage(handoff.queuePage)
+		if !reflect.DeepEqual(handoff.persistenceQueue, wantQueue) {
+			t.Fatalf("persistenceQueue = %+v, want queue-derived queue %+v", handoff.persistenceQueue, wantQueue)
+		}
+		if handoff.persistenceQueue == nil || handoff.queuePage.Items == nil || len(handoff.queuePage.Items) == 0 {
+			t.Fatalf("handoff = %+v, want populated queue page and persistence queue", handoff)
+		}
+		if &handoff.persistenceQueue.Items[0] == &handoff.queuePage.Items[0] {
+			t.Fatal("persistenceQueue.Items reused queuePage.Items backing storage, want page-derived queue copy")
+		}
+	})
 }
 
 func TestTaskGenerationActionProjectionSessionUsesRetryQueueForRetryableTargets(t *testing.T) {
