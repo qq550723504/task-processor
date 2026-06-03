@@ -28,23 +28,19 @@ func TestRetryOrientedActionKeyFilterMutationBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("retry_oriented_mutation_home_owns_retry_rule_family", func(t *testing.T) {
+	t.Run("retry_oriented_mutation_home_routes_failed_and_provisional_retry_families", func(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "generation_action_filters_retry_oriented_mutation.go", "applyAssetGenerationRetryOrientedFilterMutation")
 		callNames := readNamedFunctionCallNames(t, "generation_action_filters_retry_oriented_mutation.go", "applyAssetGenerationRetryOrientedFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"case \"retry_failed_generation\", \"inspect_failed_renderer_tasks\":",
-			"case \"upgrade_fallback_assets\", \"retry_provisional_slots\":",
-			"case \"retry_section_generation\":",
+			"if applyAssetGenerationFailedRetryFilterMutation(actionKey, filters) {",
+			"return applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters)",
 		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"applyAssetGenerationPreviewCapabilityFilterMutation",
-			"cloneAssetGenerationFilters",
-			"cloneGenerationQueueQuery",
-			"cloneRetryGenerationTasksRequest",
-			"applyAssetGenerationIdealReviewFilters",
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"applyAssetGenerationFailedRetryFilterMutation",
+			"applyAssetGenerationProvisionalRetryFilterMutation",
 		})
 	})
 }

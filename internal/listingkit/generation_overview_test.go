@@ -327,6 +327,34 @@ func TestActionFiltersForKeyRetrySectionUsesProvisionalRetryableMutationWithoutF
 	}
 }
 
+func TestActionFiltersForKeyUpgradeFallbackUsesProvisionalRetryableMutationAndClearsExecutionQuality(t *testing.T) {
+	t.Parallel()
+
+	base := &AssetGenerationRecommendedFilters{
+		QualityGrade:      "ideal",
+		QualityGradeLabel: generationQualityGradeLabel("ideal"),
+		RetryableOnly:     false,
+		ExecutionQuality:  "failed",
+	}
+
+	filters := actionFiltersForKey("upgrade_fallback_assets", base)
+	if filters == nil {
+		t.Fatal("filters = nil, want cloned filters")
+	}
+	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != generationQualityGradeLabel("provisional") {
+		t.Fatalf("quality grade = %q/%q, want provisional label", filters.QualityGrade, filters.QualityGradeLabel)
+	}
+	if filters.ExecutionQuality != "" {
+		t.Fatalf("execution quality = %q, want cleared", filters.ExecutionQuality)
+	}
+	if !filters.RetryableOnly {
+		t.Fatalf("retryable only = %v, want true", filters.RetryableOnly)
+	}
+	if base.QualityGrade != "ideal" || base.ExecutionQuality != "failed" || base.RetryableOnly {
+		t.Fatalf("base mutated = %+v, want original values preserved", base)
+	}
+}
+
 func containsIgnoreCase(input, fragment string) bool {
 	return strings.Contains(strings.ToLower(input), strings.ToLower(fragment))
 }
