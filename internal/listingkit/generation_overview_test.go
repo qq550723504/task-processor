@@ -243,6 +243,32 @@ func TestActionFiltersForKeyReviewReadyPreservesExistingQualityGrade(t *testing.
 	}
 }
 
+func TestActionFiltersForKeyContinuePublishReviewDefaultsIdealAndClearsRetryableState(t *testing.T) {
+	t.Parallel()
+
+	base := &AssetGenerationRecommendedFilters{
+		RetryableOnly:    true,
+		ExecutionQuality: "failed",
+	}
+
+	filters := actionFiltersForKey("continue_publish_review", base)
+	if filters == nil {
+		t.Fatal("filters = nil, want cloned filters")
+	}
+	if filters.QualityGrade != "ideal" || filters.QualityGradeLabel != generationQualityGradeLabel("ideal") {
+		t.Fatalf("quality grade = %q/%q, want ideal label", filters.QualityGrade, filters.QualityGradeLabel)
+	}
+	if filters.ExecutionQuality != "" {
+		t.Fatalf("execution quality = %q, want cleared", filters.ExecutionQuality)
+	}
+	if filters.RetryableOnly {
+		t.Fatalf("retryable only = %v, want false", filters.RetryableOnly)
+	}
+	if base.ExecutionQuality != "failed" || !base.RetryableOnly || base.QualityGrade != "" {
+		t.Fatalf("base mutated = %+v, want original values preserved", base)
+	}
+}
+
 func TestActionFiltersForKeyMissingActionOverridesGradeAndClearsExecutionQuality(t *testing.T) {
 	t.Parallel()
 
