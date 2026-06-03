@@ -5,27 +5,74 @@ import "testing"
 func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("handoff_phase_routes_result_adaptation_through_local_seam", func(t *testing.T) {
+	t.Run("result_routing_seams_defer_to_phase26_adaptation_home", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff.go", "run")
+		retryFileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_result.go")
+		retryBuildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry_result.go", "buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase")
+		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry_result.go", "run")
+		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_retry_result.go", "run")
+		queueFileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue_result.go")
+		queueBuildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue_result.go", "buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase")
+		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue_result.go", "run")
+		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_queue_result.go", "run")
 
-		assertSourceContainsAll(t, source, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
-			"return adaptation.fromRetryPage(retryPage), nil",
-			"return adaptation.fromQueuePage(queuePage), nil",
+		assertSourceContainsAll(t, retryFileSource, []string{
+			"func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase()",
+			"adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),",
 		})
-		assertSourceExcludesAll(t, source, []string{
+		assertSourceContainsAll(t, retryBuildSource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
+		})
+		assertSourceContainsAll(t, retrySource, []string{
+			"return p.adaptation.fromRetryPage(retryPage)",
+		})
+		assertSourceExcludesAll(t, retrySource, []string{
+			"RetryTaskGenerationTasks(",
+			"cloneRetryGenerationTasksRequest(",
+			"GetTaskGenerationQueue(",
+			"cloneGenerationQueueQuery(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
-		assertFunctionCallsContainAll(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+		assertFunctionCallsContainAll(t, retryCalls, []string{
 			"fromRetryPage",
+		})
+		assertFunctionCallsExcludeAll(t, retryCalls, []string{
+			"RetryTaskGenerationTasks",
+			"cloneRetryGenerationTasksRequest",
+			"GetTaskGenerationQueue",
+			"cloneGenerationQueueQuery",
+			"generationWorkQueueFromRetryPage",
+			"generationWorkQueueFromPage",
+		})
+
+		assertSourceContainsAll(t, queueFileSource, []string{
+			"func buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase()",
+			"adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),",
+		})
+		assertSourceContainsAll(t, queueBuildSource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
+		})
+		assertSourceContainsAll(t, queueSource, []string{
+			"return p.adaptation.fromQueuePage(queuePage)",
+		})
+		assertSourceExcludesAll(t, queueSource, []string{
+			"RetryTaskGenerationTasks(",
+			"cloneRetryGenerationTasksRequest(",
+			"GetTaskGenerationQueue(",
+			"cloneGenerationQueueQuery(",
+			"generationWorkQueueFromRetryPage(",
+			"generationWorkQueueFromPage(",
+		})
+		assertFunctionCallsContainAll(t, queueCalls, []string{
 			"fromQueuePage",
 		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
+		assertFunctionCallsExcludeAll(t, queueCalls, []string{
+			"RetryTaskGenerationTasks",
+			"cloneRetryGenerationTasksRequest",
+			"GetTaskGenerationQueue",
+			"cloneGenerationQueueQuery",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})

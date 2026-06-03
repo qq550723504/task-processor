@@ -49,10 +49,9 @@ func TestTaskGenerationActionExecuteRequestHandoffBoundary(t *testing.T) {
 		assertSourceContainsAll(t, source, []string{
 			`case "retryable":`,
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage)",
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
-			"return adaptation.fromRetryPage(retryPage), nil",
-			"return adaptation.fromQueuePage(queuePage), nil",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"buildGenerationReviewSession(",
@@ -64,20 +63,21 @@ func TestTaskGenerationActionExecuteRequestHandoffBoundary(t *testing.T) {
 			"cloneGenerationQueueQuery(",
 			"func cloneGenerationQueueQuery(",
 			"func cloneRetryGenerationTasksRequest(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
+			"adaptation.fromRetryPage(",
+			"adaptation.fromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
-			"fromRetryPage",
-			"fromQueuePage",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
 		})
 		assertFunctionCallsAppearInOrder(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
-			"fromRetryPage",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"RetryTaskGenerationTasks",
@@ -87,6 +87,9 @@ func TestTaskGenerationActionExecuteRequestHandoffBoundary(t *testing.T) {
 			"buildGenerationReviewSession",
 			"buildTaskGenerationActionRefreshPhase",
 			"buildTaskGenerationActionProjectionPhase",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"fromRetryPage",
+			"fromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})

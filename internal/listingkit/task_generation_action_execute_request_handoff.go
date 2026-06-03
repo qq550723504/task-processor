@@ -17,20 +17,18 @@ func buildTaskGenerationActionExecuteRequestHandoffPhase(service *taskGeneration
 }
 
 func (p *taskGenerationActionExecuteRequestHandoffPhase) run(ctx context.Context, taskID string, target *AssetGenerationActionTarget) (*taskGenerationActionExecuteRequestHandoff, error) {
-	adaptation := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()
-
 	switch target.InteractionMode {
 	case "retryable":
 		retryPage, err := buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)
 		if err != nil {
 			return nil, err
 		}
-		return adaptation.fromRetryPage(retryPage), nil
+		return buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage), nil
 	default:
 		queuePage, err := buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)
 		if err != nil {
 			return nil, err
 		}
-		return adaptation.fromQueuePage(queuePage), nil
+		return buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage), nil
 	}
 }
