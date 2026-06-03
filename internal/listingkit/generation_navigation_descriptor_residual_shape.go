@@ -5,5 +5,5 @@ func applyGenerationNavigationDescriptorResidualCloneShape(descriptor *Generatio
 		return
 	}
 	applyGenerationNavigationDescriptorResidualClonePairing(descriptor, cloned)
-	cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)
+	applyGenerationNavigationDescriptorDispatchPlanCloneDelegation(descriptor, cloned)
 }
