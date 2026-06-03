@@ -2382,6 +2382,13 @@ func TestTaskGenerationActionExecuteRequestHandoffResultPhase(t *testing.T) {
 		if handoff.persistenceQueue != retryQueue {
 			t.Fatalf("handoff.persistenceQueue = %+v, want retry-derived queue %+v", handoff.persistenceQueue, retryQueue)
 		}
+
+		wantHandoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromRetryNormalization(
+			buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromRetryPage(retryPage),
+		)
+		if !reflect.DeepEqual(handoff, wantHandoff) {
+			t.Fatalf("handoff = %+v, want retry result routed through normalization and result shape %+v", handoff, wantHandoff)
+		}
 	})
 
 	t.Run("queue_result_phase_keeps_unified_handoff_shape_and_queue_persistence_queue_mapping", func(t *testing.T) {
@@ -2415,6 +2422,13 @@ func TestTaskGenerationActionExecuteRequestHandoffResultPhase(t *testing.T) {
 		}
 		if &handoff.persistenceQueue.Items[0] == &queuePage.Items[0] {
 			t.Fatal("handoff.persistenceQueue.Items reused queuePage.Items backing storage, want copy")
+		}
+
+		wantHandoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromQueueNormalization(
+			buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromQueuePage(queuePage),
+		)
+		if !reflect.DeepEqual(handoff, wantHandoff) {
+			t.Fatalf("handoff = %+v, want queue result routed through normalization and result shape %+v", handoff, wantHandoff)
 		}
 	})
 }
