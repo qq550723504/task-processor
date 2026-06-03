@@ -4,9 +4,6 @@ func applyGenerationNavigationDescriptorResidualCloneShape(descriptor *Generatio
 	if descriptor == nil || cloned == nil {
 		return
 	}
-	cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)
+	applyGenerationNavigationDescriptorResidualClonePairing(descriptor, cloned)
 	cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)
-	if len(descriptor.Invalidates) > 0 {
-		cloned.Invalidates = append([]string(nil), descriptor.Invalidates...)
-	}
 }
