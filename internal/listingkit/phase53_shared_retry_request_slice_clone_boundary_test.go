@@ -23,19 +23,21 @@ func TestSharedRetryRequestSliceCloneBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("retry_request_slice_clone_home_owns_taskids_and_slots_clone", func(t *testing.T) {
+	t.Run("retry_request_slice_clone_home_routes_through_taskid_slot_pairing_home", func(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "task_generation_retry_request_slice_clone.go", "applyRetryGenerationTasksRequestSliceClone")
 		callNames := readNamedFunctionCallNames(t, "task_generation_retry_request_slice_clone.go", "applyRetryGenerationTasksRequestSliceClone")
 
 		assertSourceContainsAll(t, source, []string{
+			"applyRetryGenerationTasksRequestTaskIDSlotClonePairing(req, cloned)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"cloned.TaskIDs = append([]string(nil), req.TaskIDs...)",
 			"cloned.Slots = append([]string(nil), req.Slots...)",
 		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"cloneGenerationQueueQuery",
-			"cloneRetryGenerationTasksRequest",
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"applyRetryGenerationTasksRequestTaskIDSlotClonePairing",
 		})
 	})
 }
