@@ -1,15 +1,15 @@
 package listingkit
 
 type taskGenerationActionExecuteRequestHandoffQueueResultPhase struct {
-	adaptation *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase
+	resultShape *taskGenerationActionExecuteRequestHandoffResultShapePhase
 }
 
 func buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase() *taskGenerationActionExecuteRequestHandoffQueueResultPhase {
 	return &taskGenerationActionExecuteRequestHandoffQueueResultPhase{
-		adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),
+		resultShape: buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),
 	}
 }
 
 func (p *taskGenerationActionExecuteRequestHandoffQueueResultPhase) run(queuePage *GenerationQueuePage) *taskGenerationActionExecuteRequestHandoff {
-	return p.adaptation.fromQueuePage(queuePage)
+	return p.resultShape.fromQueuePage(queuePage)
 }

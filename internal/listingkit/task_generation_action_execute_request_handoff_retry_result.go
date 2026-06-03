@@ -1,15 +1,15 @@
 package listingkit
 
 type taskGenerationActionExecuteRequestHandoffRetryResultPhase struct {
-	adaptation *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase
+	resultShape *taskGenerationActionExecuteRequestHandoffResultShapePhase
 }
 
 func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase() *taskGenerationActionExecuteRequestHandoffRetryResultPhase {
 	return &taskGenerationActionExecuteRequestHandoffRetryResultPhase{
-		adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),
+		resultShape: buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),
 	}
 }
 
 func (p *taskGenerationActionExecuteRequestHandoffRetryResultPhase) run(retryPage *GenerationTaskPage) *taskGenerationActionExecuteRequestHandoff {
-	return p.adaptation.fromRetryPage(retryPage)
+	return p.resultShape.fromRetryPage(retryPage)
 }

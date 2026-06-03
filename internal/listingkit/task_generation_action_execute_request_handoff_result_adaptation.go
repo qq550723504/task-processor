@@ -6,16 +6,10 @@ func buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase() *task
 	return &taskGenerationActionExecuteRequestHandoffResultAdaptationPhase{}
 }
 
-func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) fromRetryPage(retryPage *GenerationTaskPage) *taskGenerationActionExecuteRequestHandoff {
-	return &taskGenerationActionExecuteRequestHandoff{
-		retryPage:        retryPage,
-		persistenceQueue: generationWorkQueueFromRetryPage(retryPage),
-	}
+func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) persistenceQueueFromRetryPage(retryPage *GenerationTaskPage) *GenerationWorkQueue {
+	return generationWorkQueueFromRetryPage(retryPage)
 }
 
-func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) fromQueuePage(queuePage *GenerationQueuePage) *taskGenerationActionExecuteRequestHandoff {
-	return &taskGenerationActionExecuteRequestHandoff{
-		queuePage:        queuePage,
-		persistenceQueue: generationWorkQueueFromPage(queuePage),
-	}
+func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) persistenceQueueFromQueuePage(queuePage *GenerationQueuePage) *GenerationWorkQueue {
+	return generationWorkQueueFromPage(queuePage)
 }

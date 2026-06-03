@@ -2113,7 +2113,7 @@ func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
 	})
 }
 
-func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testing.T) {
+func TestTaskGenerationActionExecuteRequestHandoffResultShapePhase(t *testing.T) {
 	t.Parallel()
 
 	t.Run("retry_page_results_keep_unified_handoff_shape_and_use_retry_derived_queue", func(t *testing.T) {
@@ -2126,11 +2126,11 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testi
 			},
 		}
 		retryPage := &GenerationTaskPage{
-			TaskID:       "retry-task-1",
+			TaskID:        "retry-task-1",
 			ExecutedQueue: retryQueue,
 		}
 
-		handoff := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase().fromRetryPage(retryPage)
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromRetryPage(retryPage)
 		if handoff == nil {
 			t.Fatal("handoff = nil, want retry handoff result")
 		}
@@ -2156,7 +2156,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testi
 			},
 		}
 
-		handoff := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase().fromQueuePage(queuePage)
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromQueuePage(queuePage)
 		if handoff == nil {
 			t.Fatal("handoff = nil, want queue handoff result")
 		}
@@ -2176,6 +2176,54 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testi
 		}
 		if &handoff.persistenceQueue.Items[0] == &queuePage.Items[0] {
 			t.Fatal("handoff.persistenceQueue.Items reused queuePage.Items backing storage, want copy")
+		}
+	})
+}
+
+func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retry_page_adaptation_only_maps_page_to_persistence_queue", func(t *testing.T) {
+		t.Parallel()
+
+		retryQueue := &GenerationWorkQueue{
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, RetryableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "retry-task-2", Platform: "amazon", Slot: "auxiliary", Retryable: true},
+			},
+		}
+		retryPage := &GenerationTaskPage{
+			TaskID:        "retry-task-2",
+			ExecutedQueue: retryQueue,
+		}
+
+		persistenceQueue := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase().persistenceQueueFromRetryPage(retryPage)
+		if persistenceQueue != retryQueue {
+			t.Fatalf("persistenceQueue = %+v, want retry-derived queue %+v", persistenceQueue, retryQueue)
+		}
+	})
+
+	t.Run("queue_page_adaptation_only_maps_page_to_persistence_queue", func(t *testing.T) {
+		t.Parallel()
+
+		queuePage := &GenerationQueuePage{
+			TaskID:  "queue-task-2",
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, PreviewableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "queue-task-2", Platform: "amazon", Slot: "auxiliary", State: "queued"},
+			},
+		}
+
+		persistenceQueue := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase().persistenceQueueFromQueuePage(queuePage)
+		wantQueue := generationWorkQueueFromPage(queuePage)
+		if !reflect.DeepEqual(persistenceQueue, wantQueue) {
+			t.Fatalf("persistenceQueue = %+v, want queue-derived queue %+v", persistenceQueue, wantQueue)
+		}
+		if persistenceQueue == nil || len(persistenceQueue.Items) != 1 {
+			t.Fatalf("persistenceQueue = %+v, want cloned queue items", persistenceQueue)
+		}
+		if &persistenceQueue.Items[0] == &queuePage.Items[0] {
+			t.Fatal("persistenceQueue.Items reused queuePage.Items backing storage, want copy")
 		}
 	})
 }
