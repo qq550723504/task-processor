@@ -50,13 +50,23 @@ func TestTaskGenerationActionTargetCloneOwnershipBoundary(t *testing.T) {
 	t.Run("service_helper_home_keeps_only_shared_queue_and_retry_clones", func(t *testing.T) {
 		t.Parallel()
 
-		source := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
+		queueCloneSource := readTaskGenerationSourceFile(t, "generation_queue_query_clone.go")
+		retryCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
-		assertSourceContainsAll(t, source, []string{
+		assertSourceContainsAll(t, queueCloneSource, []string{
 			"func cloneGenerationQueueQuery(",
+		})
+		assertSourceExcludesAll(t, queueCloneSource, []string{
+			"func cloneRetryGenerationTasksRequest(",
+			"func cloneAssetGenerationActionTarget(",
+			"func cloneAssetGenerationActionImpact(",
+		})
+
+		assertSourceContainsAll(t, retryCloneSource, []string{
 			"func cloneRetryGenerationTasksRequest(",
 		})
-		assertSourceExcludesAll(t, source, []string{
+		assertSourceExcludesAll(t, retryCloneSource, []string{
+			"func cloneGenerationQueueQuery(",
 			"func cloneAssetGenerationActionTarget(",
 			"func cloneAssetGenerationActionImpact(",
 		})
