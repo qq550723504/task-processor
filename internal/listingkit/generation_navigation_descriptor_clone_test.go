@@ -123,6 +123,35 @@ func TestCloneGenerationNavigationDispatchPlan(t *testing.T) {
 	}
 }
 
+func TestCloneGenerationNavigationFollowUpRead(t *testing.T) {
+	t.Parallel()
+
+	original := GenerationNavigationFollowUpRead{
+		Kind:         "queue",
+		ResponseMode: "patch_only",
+		Query: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+			ResponseMode:      "patch_only",
+		},
+	}
+
+	cloned := cloneGenerationNavigationFollowUpRead(original)
+	if !reflect.DeepEqual(cloned, original) {
+		t.Fatalf("cloneGenerationNavigationFollowUpRead() = %+v, want field-for-field clone of %+v", cloned, original)
+	}
+	if cloned.Query == original.Query {
+		t.Fatalf("cloneGenerationNavigationFollowUpRead() = %+v, want defensive clone of query pointer", cloned)
+	}
+
+	originalPlatform := original.Query.Platform
+	cloned.Query.Platform = "temu"
+	if original.Query.Platform != originalPlatform {
+		t.Fatalf("original mutated after clone update = %+v", original)
+	}
+}
+
 func testGenerationNavigationDescriptorForClone() *GenerationNavigationDescriptor {
 	return &GenerationNavigationDescriptor{
 		ResourceKind:                 "review_session",
