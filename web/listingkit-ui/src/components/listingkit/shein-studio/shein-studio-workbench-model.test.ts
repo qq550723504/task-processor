@@ -8,6 +8,8 @@ import {
   mergeSheinStudioDraftState,
   pickActiveSheinStudioGroup,
   projectGroupToWorkbench,
+  projectHydratedBatchToWorkbench,
+  projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -192,6 +194,167 @@ describe("shein studio workbench model", () => {
     expect(projection.groupedImageMode).toBe("per_product");
     expect(projection.productImageCount).toBe("3");
     expect(projection.selectedIds).toEqual(["design-2"]);
+  });
+
+  it("treats itemized batch detail as the primary workbench source", () => {
+    const projection = projectHydratedBatchToWorkbench({
+      savedBatch: {
+        id: "batch-1",
+        name: "Saved Batch",
+        prompt: "stale saved prompt",
+        styleCount: "9",
+        variationIntensity: "light",
+        productImageCount: "5",
+        artworkModel: "legacy-model",
+        transparentBackground: false,
+        sheinStoreId: "42",
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [],
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-06-01T10:00:00Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "review_ready",
+          prompt: "itemized prompt",
+          styleCount: "2",
+          sheinStoreId: 869,
+          variationIntensity: "strong",
+          artworkModel: "nanobanana",
+          transparentBackground: true,
+          groupedImageMode: "per_product",
+          selectedSdsImages: [{ imageUrl: "https://example.com/sds.jpg" }],
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-2",
+            productName: "hoodie",
+            variantLabel: "L / white",
+          },
+          groupedSelections: [],
+          createdAt: "2026-06-01T10:00:00Z",
+          updatedAt: "2026-06-01T10:10:00Z",
+        },
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "group-1",
+              status: "review_ready",
+              selectionCount: 1,
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+            designs: [
+              {
+                id: "design-1",
+                batchId: "batch-1",
+                itemId: "item-1",
+                sourceAttemptId: "attempt-1",
+                targetGroupKey: "group-1",
+                imageUrl: "https://example.com/design-1.png",
+                reviewStatus: "approved",
+                createdAt: "2026-06-01T10:00:00Z",
+                updatedAt: "2026-06-01T10:10:00Z",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(projection.prompt).toBe("itemized prompt");
+    expect(projection.styleCount).toBe("2");
+    expect(projection.variationIntensity).toBe("strong");
+    expect(projection.artworkModel).toBe("nanobanana");
+    expect(projection.transparentBackground).toBe(true);
+    expect(projection.sheinStoreId).toBe("869");
+    expect(projection.groupedImageMode).toBe("per_product");
+    expect(projection.selection?.variantId).toBe(101);
+    expect(projection.designs.map((item) => item.id)).toEqual(["design-1"]);
+    expect(projection.selectedIds).toEqual(["design-1"]);
+    expect(projection.itemizedBatchDetail?.batch.id).toBe("batch-1");
+  });
+
+  it("preserves a newer saved-batch prompt over stale itemized detail prompt", () => {
+    const projection = projectHydratedBatchToWorkbench({
+      savedBatch: {
+        id: "batch-1",
+        name: "Saved Batch",
+        prompt: "updated prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        draftUpdatedAt: "2026-06-01T10:10:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "draft",
+          prompt: "stale itemized prompt",
+          styleCount: "1",
+          sheinStoreId: 869,
+          createdAt: "2026-06-01T10:00:00Z",
+          updatedAt: "2026-06-01T10:05:00Z",
+        },
+        items: [],
+      },
+    });
+
+    expect(projection.prompt).toBe("updated prompt");
+  });
+
+  it("projects the current workbench state into a saved-batch fallback shape", () => {
+    const projection = projectWorkbenchStateToSavedBatch({
+      id: "batch-1",
+      prompt: "current prompt",
+      styleCount: "2",
+      variationIntensity: "strong",
+      productImageCount: "6",
+      productImagePrompt: "hero shot",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: true,
+      sheinStoreId: "869",
+      imageStrategy: "ai_generated",
+      groupedImageMode: "per_product",
+      selectedSdsImages: [{ imageUrl: "https://example.com/sds.jpg" }],
+      renderSizeImagesWithSds: true,
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 101,
+        prototypeGroupId: 200,
+        layerId: "layer-2",
+        productName: "hoodie",
+        variantLabel: "L / white",
+      },
+      groupedSelections: [],
+      groups: [],
+      designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+      selectedIds: ["design-1"],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+      updatedAt: "2026-06-01T10:10:00Z",
+    });
+
+    expect(projection).toMatchObject({
+      id: "batch-1",
+      name: "",
+      prompt: "current prompt",
+      selectedIds: ["design-1"],
+      updatedAt: "2026-06-01T10:10:00Z",
+    });
   });
 
   it("returns the create-task disabled reason from the first blocking condition", () => {

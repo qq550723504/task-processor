@@ -34,6 +34,17 @@ const DEFAULT_AI_PRODUCT_IMAGE_COUNT = 5;
 const MAX_AI_PRODUCT_IMAGE_COUNT = 9;
 
 type CreateSheinReviewTasksInput = Parameters<typeof createSheinReviewTasks>[0];
+type ApprovedDesignSelectionInput =
+  | {
+      designs: SheinStudioGeneratedDesign[];
+      selectedIds: string[];
+      approvedDesigns?: never;
+    }
+  | {
+      designs?: never;
+      selectedIds?: never;
+      approvedDesigns: SheinStudioGeneratedDesign[];
+    };
 
 type CreateGroupedSheinReviewTasksInput = {
   prompt: string;
@@ -45,12 +56,12 @@ type CreateGroupedSheinReviewTasksInput = {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   renderSizeImagesWithSds?: boolean;
   onProgress?: (message: string) => void;
-  groups: Array<{
-    sheinStoreId: string;
-    selections: GroupedSDSSelectionInput[];
-    designs: SheinStudioGeneratedDesign[];
-    selectedIds: string[];
-  }>;
+  groups: Array<
+    {
+      sheinStoreId: string;
+      selections: GroupedSDSSelectionInput[];
+    } & ApprovedDesignSelectionInput
+  >;
   createReviewTasks?: (input: CreateSheinReviewTasksInput) => Promise<SheinStudioCreatedTask[]>;
 };
 
@@ -221,6 +232,15 @@ async function buildDesignFile(design: SheinStudioGeneratedDesign, index: number
   });
 }
 
+export function resolveApprovedSheinStudioReviewDesigns(
+  input: ApprovedDesignSelectionInput,
+) {
+  if (Array.isArray(input.approvedDesigns)) {
+    return input.approvedDesigns;
+  }
+  return input.designs.filter((design) => input.selectedIds.includes(design.id));
+}
+
 export async function createSheinReviewTasks(input: {
   prompt: string;
   sheinStoreId: string;
@@ -231,12 +251,9 @@ export async function createSheinReviewTasks(input: {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   renderSizeImagesWithSds?: boolean;
   selection?: SDSProductVariantSelection;
-  designs: SheinStudioGeneratedDesign[];
-  selectedIds: string[];
   onProgress?: (message: string) => void;
-}) {
+} & ApprovedDesignSelectionInput) {
   const {
-    designs,
     imageStrategy = "sds_official",
     onProgress,
     selectedSdsImages = [],
@@ -246,7 +263,6 @@ export async function createSheinReviewTasks(input: {
     prompt,
     renderSizeImagesWithSds = true,
     selection,
-    selectedIds,
     sheinStoreId,
   } = input;
 
@@ -254,7 +270,7 @@ export async function createSheinReviewTasks(input: {
     throw new Error("Select an SDS variant first.");
   }
 
-  const approved = designs.filter((design) => selectedIds.includes(design.id));
+  const approved = resolveApprovedSheinStudioReviewDesigns(input);
   if (approved.length === 0) {
     throw new Error("Approve at least one style before creating SHEIN tasks.");
   }
@@ -448,8 +464,7 @@ export async function createGroupedSheinReviewTasks(
 
       const selectionDesigns = selectDesignsForGroupedSelection({
         groupedImageMode: input.groupedImageMode ?? "shared_by_size",
-        designs: group.designs,
-        selectedIds: group.selectedIds,
+        approvedDesignSelection: group,
         selection: item.selection,
       });
       if (selectionDesigns.selectedIds.length === 0) {
@@ -467,8 +482,7 @@ export async function createGroupedSheinReviewTasks(
         productImagePrompts: input.productImagePrompts,
         renderSizeImagesWithSds: input.renderSizeImagesWithSds,
         selection: item.selection,
-        designs: selectionDesigns.designs,
-        selectedIds: selectionDesigns.selectedIds,
+        approvedDesigns: selectionDesigns.designs,
         onProgress: input.onProgress,
       });
       created.push(...tasks);
@@ -483,21 +497,20 @@ export async function createGroupedSheinReviewTasks(
 
 function selectDesignsForGroupedSelection({
   groupedImageMode,
-  designs,
-  selectedIds,
+  approvedDesignSelection,
   selection,
 }: {
   groupedImageMode: SheinStudioGroupedImageMode;
-  designs: SheinStudioGeneratedDesign[];
-  selectedIds: string[];
+  approvedDesignSelection: ApprovedDesignSelectionInput;
   selection: SDSProductVariantSelection;
 }) {
-  const selectedDesigns = designs.filter((design) => selectedIds.includes(design.id));
+  const approvedDesigns =
+    resolveApprovedSheinStudioReviewDesigns(approvedDesignSelection);
   const targetKey =
     groupedImageMode === "per_product"
       ? buildGroupedSDSSelectionID(selection)
       : buildSharedBySizeGroupKey(selection);
-  const matchedDesigns = selectedDesigns.filter(
+  const matchedDesigns = approvedDesigns.filter(
     (design) =>
       design.targetGroupKey?.trim() &&
       resolveDesignTargetKey(design, selection, groupedImageMode) === targetKey,

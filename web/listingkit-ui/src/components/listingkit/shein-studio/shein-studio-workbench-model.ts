@@ -3,6 +3,7 @@ import {
   type SDSRatioMatch,
 } from "@/lib/shein-studio/gallery-handoff";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
   DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
@@ -15,12 +16,17 @@ import type {
   SheinStudioBatchDetail,
   SheinStudioBatchItemStatus,
   SheinStudioBatchStatus,
+  SheinStudioCreatedTask,
   SheinStudioGroupedWorkspace,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
   SheinStudioGenerateRequest,
+  SheinStudioGenerationJob,
+  SheinStudioImageStrategy,
   SheinStudioArtworkModel,
+  SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
+  SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
@@ -72,6 +78,52 @@ export type SheinStudioWorkbenchHydratedBatch = {
   savedBatch: SheinStudioSavedBatch;
   detail: SheinStudioBatchDetail;
 };
+
+function projectItemizedBatchCompatibilityFields(
+  detail: SheinStudioBatchDetail,
+) {
+  return {
+    designs: flattenItemizedBatchDesigns(detail),
+    selectedIds: getApprovedItemizedBatchDesignIDs(detail),
+    selection: detail.batch.selection,
+    prompt: detail.batch.prompt,
+    styleCount: detail.batch.styleCount || "1",
+    variationIntensity: detail.batch.variationIntensity,
+    artworkModel: detail.batch.artworkModel,
+    transparentBackground: detail.batch.transparentBackground,
+    sheinStoreId:
+      detail.batch.sheinStoreId > 0
+        ? String(detail.batch.sheinStoreId)
+        : undefined,
+    groupedImageMode: detail.batch.groupedImageMode,
+    selectedSdsImages: detail.batch.selectedSdsImages ?? [],
+    groupedSelections: detail.batch.groupedSelections ?? [],
+  };
+}
+
+function resolveDraftComparableTimestamp(value?: string) {
+  return value?.trim() || "";
+}
+
+function preferSavedBatchDraftValue(
+  savedValue: string | undefined,
+  itemizedValue: string | undefined,
+  savedUpdatedAt: string | undefined,
+  itemizedUpdatedAt: string | undefined,
+) {
+  const normalizedSaved = savedValue?.trim() ?? "";
+  const normalizedItemized = itemizedValue?.trim() ?? "";
+  if (!normalizedSaved) {
+    return normalizedItemized;
+  }
+  if (!normalizedItemized) {
+    return normalizedSaved;
+  }
+  return resolveDraftComparableTimestamp(savedUpdatedAt) >=
+    resolveDraftComparableTimestamp(itemizedUpdatedAt)
+    ? normalizedSaved
+    : normalizedItemized;
+}
 
 export function flattenItemizedBatchDesigns(
   detail: SheinStudioBatchDetail,
@@ -131,12 +183,22 @@ export function projectHydratedBatchToWorkbench(
   hydratedBatch: SheinStudioWorkbenchHydratedBatch,
 ) {
   const { savedBatch, detail } = hydratedBatch;
+  const itemized = projectItemizedBatchCompatibilityFields(detail);
+  const savedDraftUpdatedAt = savedBatch.draftUpdatedAt || savedBatch.updatedAt;
+  const itemizedDraftUpdatedAt =
+    detail.batch.draftUpdatedAt || detail.batch.updatedAt;
 
   return {
-    selection: savedBatch.selection,
-    prompt: savedBatch.prompt || detail.batch.prompt,
-    styleCount: savedBatch.styleCount || detail.batch.styleCount || "1",
+    selection: itemized.selection ?? savedBatch.selection,
+    prompt: preferSavedBatchDraftValue(
+      savedBatch.prompt,
+      itemized.prompt,
+      savedDraftUpdatedAt,
+      itemizedDraftUpdatedAt,
+    ),
+    styleCount: itemized.styleCount || savedBatch.styleCount || "1",
     variationIntensity:
+      itemized.variationIntensity ??
       savedBatch.variationIntensity ??
       DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
     productImageCount:
@@ -145,29 +207,117 @@ export function projectHydratedBatchToWorkbench(
     productImagePrompt: savedBatch.productImagePrompt ?? "",
     productImagePrompts: savedBatch.productImagePrompts ?? [],
     artworkModel:
-      savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
-    transparentBackground: savedBatch.transparentBackground ?? false,
+      itemized.artworkModel ??
+      savedBatch.artworkModel ??
+      DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+    transparentBackground:
+      itemized.transparentBackground ??
+      savedBatch.transparentBackground ??
+      false,
     sheinStoreId:
+      itemized.sheinStoreId ||
       savedBatch.sheinStoreId ||
-      (detail.batch.sheinStoreId > 0
-        ? String(detail.batch.sheinStoreId)
-        : DEFAULT_SHEIN_STORE_ID),
+      DEFAULT_SHEIN_STORE_ID,
     imageStrategy:
       savedBatch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
-      savedBatch.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
-    selectedSdsImages: savedBatch.selectedSdsImages ?? [],
-    groupedSelections: savedBatch.groupedSelections ?? [],
+      itemized.groupedImageMode ??
+      savedBatch.groupedImageMode ??
+      DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
+    selectedSdsImages:
+      itemized.selectedSdsImages.length > 0
+        ? itemized.selectedSdsImages
+        : (savedBatch.selectedSdsImages ?? []),
+    groupedSelections:
+      itemized.groupedSelections.length > 0
+        ? itemized.groupedSelections
+        : (savedBatch.groupedSelections ?? []),
     renderSizeImagesWithSds: savedBatch.renderSizeImagesWithSds ?? true,
-    designs: flattenItemizedBatchDesigns(detail),
-    selectedIds: getApprovedItemizedBatchDesignIDs(detail),
+    designs: itemized.designs,
+    selectedIds: itemized.selectedIds,
     generationJobs: savedBatch.generationJobs ?? [],
     createdTasks: savedBatch.createdTasks,
     persistedUpdatedAt:
-      detail.batch.draftUpdatedAt ||
-      savedBatch.draftUpdatedAt ||
+      itemizedDraftUpdatedAt ||
+      savedDraftUpdatedAt ||
       savedBatch.updatedAt,
     itemizedBatchDetail: detail,
+  };
+}
+
+export function projectWorkbenchStateToSavedBatch({
+  id,
+  prompt,
+  styleCount,
+  variationIntensity,
+  productImageCount,
+  productImagePrompt,
+  productImagePrompts,
+  artworkModel,
+  transparentBackground,
+  sheinStoreId,
+  imageStrategy,
+  groupedImageMode,
+  selectedSdsImages,
+  renderSizeImagesWithSds,
+  selection,
+  groupedSelections,
+  groups,
+  designs,
+  selectedIds,
+  createdTasks,
+  generationJobs,
+  updatedAt,
+  name = "",
+}: {
+  id: string;
+  prompt: string;
+  styleCount: string;
+  variationIntensity: SheinStudioVariationIntensity;
+  productImageCount: string;
+  productImagePrompt: string;
+  productImagePrompts: SheinStudioProductImagePrompt[];
+  artworkModel: SheinStudioArtworkModel;
+  transparentBackground: boolean;
+  sheinStoreId: string;
+  imageStrategy: SheinStudioImageStrategy;
+  groupedImageMode: SheinStudioGroupedImageMode;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
+  renderSizeImagesWithSds: boolean;
+  selection?: SDSProductVariantSelection;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  groups: SheinStudioGroupedWorkspace[];
+  designs: SheinStudioGeneratedDesign[];
+  selectedIds: string[];
+  createdTasks: SheinStudioCreatedTask[];
+  generationJobs: SheinStudioGenerationJob[];
+  updatedAt: string;
+  name?: string;
+}): SheinStudioSavedBatch {
+  return {
+    id,
+    name,
+    prompt,
+    styleCount,
+    variationIntensity,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
+    artworkModel,
+    transparentBackground,
+    sheinStoreId,
+    imageStrategy,
+    groupedImageMode,
+    selectedSdsImages,
+    renderSizeImagesWithSds,
+    selection,
+    groupedSelections,
+    groups,
+    designs,
+    selectedIds,
+    createdTasks,
+    generationJobs,
+    updatedAt,
   };
 }
 

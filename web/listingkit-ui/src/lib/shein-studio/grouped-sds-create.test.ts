@@ -153,8 +153,7 @@ describe("createGroupedSheinReviewTasks", () => {
         prompt: "Grouped prompt",
         sheinStoreId: "869",
         selection: baseSelection,
-        designs: [perProductDesign],
-        selectedIds: [perProductDesign.id],
+        approvedDesigns: [perProductDesign],
       }),
     );
     expect(createReviewTasks).toHaveBeenNthCalledWith(
@@ -163,8 +162,7 @@ describe("createGroupedSheinReviewTasks", () => {
         prompt: "Grouped prompt",
         sheinStoreId: "869",
         selection: secondSelection,
-        designs: [secondProductDesign],
-        selectedIds: [secondProductDesign.id],
+        approvedDesigns: [secondProductDesign],
       }),
     );
     expect(result).toEqual({
@@ -211,8 +209,7 @@ describe("createGroupedSheinReviewTasks", () => {
     expect(createReviewTasks).toHaveBeenCalledWith(
       expect.objectContaining({
         selection: baseSelection,
-        designs: [perProductDesign],
-        selectedIds: [perProductDesign.id],
+        approvedDesigns: [perProductDesign],
       }),
     );
     expect(result).toEqual({
@@ -260,16 +257,14 @@ describe("createGroupedSheinReviewTasks", () => {
       1,
       expect.objectContaining({
         selection: expect.objectContaining({ variantId: 101 }),
-        designs: [sameSizeDesign],
-        selectedIds: [sameSizeDesign.id],
+        approvedDesigns: [sameSizeDesign],
       }),
     );
     expect(createReviewTasks).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         selection: expect.objectContaining({ variantId: 102 }),
-        designs: [sameSizeDesign],
-        selectedIds: [sameSizeDesign.id],
+        approvedDesigns: [sameSizeDesign],
       }),
     );
   });
@@ -305,16 +300,14 @@ describe("createGroupedSheinReviewTasks", () => {
       1,
       expect.objectContaining({
         selection: baseSelection,
-        designs: [perProductDesign],
-        selectedIds: [perProductDesign.id],
+        approvedDesigns: [perProductDesign],
       }),
     );
     expect(createReviewTasks).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         selection: secondSelection,
-        designs: [secondProductDesign],
-        selectedIds: [secondProductDesign.id],
+        approvedDesigns: [secondProductDesign],
       }),
     );
   });
@@ -351,8 +344,7 @@ describe("createGroupedSheinReviewTasks", () => {
     expect(createReviewTasks).toHaveBeenCalledWith(
       expect.objectContaining({
         selection: baseSelection,
-        designs: [perProductDesign],
-        selectedIds: [perProductDesign.id],
+        approvedDesigns: [perProductDesign],
       }),
     );
     expect(onProgress).toHaveBeenCalledWith(

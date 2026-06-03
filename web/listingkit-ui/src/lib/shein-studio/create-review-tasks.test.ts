@@ -4,6 +4,7 @@ import {
   DEFAULT_SHEIN_STORE_ID,
   normalizeListingKitUploadFetchUrl,
   orderGeneratedProductImageUrls,
+  resolveApprovedSheinStudioReviewDesigns,
   sanitizeReviewTaskProductImageUrls,
 } from "@/lib/shein-studio/create-review-tasks";
 import { DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY } from "@/lib/shein-studio/storage-shared";
@@ -84,6 +85,30 @@ describe("sanitizeReviewTaskProductImageUrls", () => {
         "hybrid",
       ),
     ).toEqual(["https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png"]);
+  });
+});
+
+describe("resolveApprovedSheinStudioReviewDesigns", () => {
+  it("supports legacy flat selection inputs", () => {
+    expect(
+      resolveApprovedSheinStudioReviewDesigns({
+        designs: [
+          { id: "design-1", imageUrl: "https://example.com/1.png" },
+          { id: "design-2", imageUrl: "https://example.com/2.png" },
+        ],
+        selectedIds: ["design-2"],
+      }),
+    ).toEqual([{ id: "design-2", imageUrl: "https://example.com/2.png" }]);
+  });
+
+  it("prefers explicit approved designs when already resolved upstream", () => {
+    expect(
+      resolveApprovedSheinStudioReviewDesigns({
+        approvedDesigns: [
+          { id: "design-3", imageUrl: "https://example.com/3.png" },
+        ],
+      }),
+    ).toEqual([{ id: "design-3", imageUrl: "https://example.com/3.png" }]);
   });
 });
 

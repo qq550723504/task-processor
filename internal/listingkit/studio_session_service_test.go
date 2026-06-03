@@ -253,74 +253,6 @@ func testStudioSelection() *SheinStudioSelection {
 	}
 }
 
-func TestStudioSessionServiceEnsureAndReplaceDesigns(t *testing.T) {
-	svc := newLegacyStudioSessionTestService()
-	ctx := context.Background()
-
-	detail, err := svc.EnsureStudioSession(ctx, &EnsureStudioSessionRequest{
-		Selection: testStudioSelection(),
-	})
-	if err != nil {
-		t.Fatalf("ensure session: %v", err)
-	}
-	if detail.Session == nil || detail.Session.ID == "" {
-		t.Fatalf("session = %#v, want created session", detail.Session)
-	}
-
-	prompt := "retro cherries"
-	status := SheinStudioSessionStatusReviewing
-	if _, err := svc.UpdateStudioSession(ctx, detail.Session.ID, &UpdateStudioSessionRequest{
-		Status:     &status,
-		Prompt:     &prompt,
-		StyleCount: ptr("2"),
-	}); err != nil {
-		t.Fatalf("update session: %v", err)
-	}
-
-	replaced, err := svc.ReplaceStudioSessionDesigns(ctx, detail.Session.ID, &ReplaceStudioSessionDesignsRequest{
-		Status:            &status,
-		ApprovedDesignIDs: []string{"design-1"},
-		Designs: []SheinStudioDesign{
-			{
-				ID:                    "design-1",
-				ImageURL:              "https://oss.example.com/design-1.png",
-				Prompt:                "retro cherries",
-				RevisedPrompt:         "rev-1",
-				ImageModel:            "gpt-image-2",
-				TransparentBackground: true,
-				VariationIntensity:    "light",
-			},
-			{ID: "design-2", ImageURL: "https://oss.example.com/design-2.png", RevisedPrompt: "rev-2"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("replace designs: %v", err)
-	}
-	if len(replaced.Designs) != 2 {
-		t.Fatalf("design count = %d, want 2", len(replaced.Designs))
-	}
-	if !replaced.Designs[0].Approved || replaced.Designs[1].Approved {
-		t.Fatalf("approved flags = %#v, want [true false]", replaced.Designs)
-	}
-	if replaced.Designs[0].Prompt != "retro cherries" ||
-		replaced.Designs[0].ImageModel != "gpt-image-2" ||
-		!replaced.Designs[0].TransparentBackground ||
-		replaced.Designs[0].VariationIntensity != "light" {
-		t.Fatalf("design generation metadata = %#v, want prompt/model/background/variation preserved", replaced.Designs[0])
-	}
-
-	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)
-	if err != nil {
-		t.Fatalf("get session: %v", err)
-	}
-	if loaded.Session.Prompt != prompt {
-		t.Fatalf("prompt = %q, want %q", loaded.Session.Prompt, prompt)
-	}
-	if len(loaded.Session.ApprovedDesignIDs) != 1 || loaded.Session.ApprovedDesignIDs[0] != "design-1" {
-		t.Fatalf("approved ids = %#v, want [design-1]", loaded.Session.ApprovedDesignIDs)
-	}
-}
-
 func TestStudioSessionServiceUpdateDoesNotReloadDesignsForMetadataOnlyWrites(t *testing.T) {
 	svc := newLegacyStudioSessionTestService()
 	repo := svc.repo.(*studioSessionRepoStub)
@@ -372,13 +304,6 @@ func TestStudioSessionServiceSupportsFailedEmptyResult(t *testing.T) {
 		GenerationError: &generationError,
 	}); err != nil {
 		t.Fatalf("mark failed: %v", err)
-	}
-	if _, err := svc.ReplaceStudioSessionDesigns(ctx, detail.Session.ID, &ReplaceStudioSessionDesignsRequest{
-		Status:            &status,
-		ApprovedDesignIDs: []string{},
-		Designs:           []SheinStudioDesign{},
-	}); err != nil {
-		t.Fatalf("replace empty designs: %v", err)
 	}
 
 	loaded, err := svc.GetStudioSession(ctx, detail.Session.ID)

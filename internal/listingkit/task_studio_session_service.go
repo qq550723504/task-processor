@@ -98,7 +98,7 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 	if session == nil {
 		return nil, ErrStudioSessionNotFound
 	}
-	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
+	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, req.ExpectedUpdatedAt); err != nil {
 		return nil, err
 	}
 
@@ -188,83 +188,6 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 		"created_task_count":    len(session.CreatedTasks),
 	})).Info("studio session updated")
 	return studioSessionDetailWithoutDesigns(session), nil
-}
-
-func (s *taskStudioSessionService) ReplaceStudioSessionDesigns(ctx context.Context, sessionID string, req *ReplaceStudioSessionDesignsRequest) (*SheinStudioSessionDetail, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio session repository is not configured")
-	}
-	session, err := s.repo.GetSession(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if session == nil {
-		return nil, ErrStudioSessionNotFound
-	}
-	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, reqExpectedUpdatedAt(req)); err != nil {
-		return nil, err
-	}
-
-	approvedSet := make(map[string]struct{}, len(req.ApprovedDesignIDs))
-	for _, id := range req.ApprovedDesignIDs {
-		if normalized := strings.TrimSpace(id); normalized != "" {
-			approvedSet[normalized] = struct{}{}
-		}
-	}
-
-	designs := make([]SheinStudioDesign, 0, len(req.Designs))
-	for index, design := range req.Designs {
-		designID := strings.TrimSpace(design.ID)
-		if designID == "" {
-			designID = uuid.NewString()
-		}
-		_, approved := approvedSet[designID]
-		designs = append(designs, SheinStudioDesign{
-			ID:                    designID,
-			SessionID:             sessionID,
-			ImageURL:              design.ImageURL,
-			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
-			Prompt:                design.Prompt,
-			RevisedPrompt:         design.RevisedPrompt,
-			ImageModel:            design.ImageModel,
-			TransparentBackground: design.TransparentBackground,
-			VariationIntensity:    design.VariationIntensity,
-			Role:                  design.Role,
-			RoleLabel:             design.RoleLabel,
-			ReviewNote:            design.ReviewNote,
-			SortOrder:             index,
-			Approved:              approved,
-		})
-	}
-
-	if req.Status != nil {
-		session.Status = *req.Status
-	}
-	session.ApprovedDesignIDs = slices.Clone(req.ApprovedDesignIDs)
-	if err := s.repo.UpdateSession(ctx, session); err != nil {
-		return nil, err
-	}
-	if err := s.repo.ReplaceDesigns(ctx, sessionID, req.ApprovedDesignIDs, designs); err != nil {
-		return nil, err
-	}
-	return s.loadStudioSessionDetail(ctx, session)
-}
-
-func reqExpectedUpdatedAt(req any) *string {
-	switch value := req.(type) {
-	case *UpdateStudioSessionRequest:
-		if value == nil {
-			return nil
-		}
-		return value.ExpectedUpdatedAt
-	case *ReplaceStudioSessionDesignsRequest:
-		if value == nil {
-			return nil
-		}
-		return value.ExpectedUpdatedAt
-	default:
-		return nil
-	}
 }
 
 func validateStudioSessionExpectedUpdatedAt(current time.Time, expected *string) error {

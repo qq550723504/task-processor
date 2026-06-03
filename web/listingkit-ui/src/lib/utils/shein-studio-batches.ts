@@ -367,68 +367,78 @@ export function updateSheinStudioBatchDetailReviewNote(
   };
 }
 
+function projectItemizedBatchSavedBatchCompatibility(
+  detail: SheinStudioBatchDetail,
+) {
+  return {
+    prompt: detail.batch.prompt.trim(),
+    styleCount: detail.batch.styleCount.trim(),
+    variationIntensity: detail.batch.variationIntensity,
+    artworkModel: detail.batch.artworkModel,
+    transparentBackground: detail.batch.transparentBackground,
+    sheinStoreId:
+      detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "",
+    groupedImageMode: detail.batch.groupedImageMode,
+    selectionVariantId: detail.batch.selectionVariantId,
+    selection: detail.batch.selection,
+    groupedSelections: detail.batch.groupedSelections ?? [],
+    selectedSdsImages: detail.batch.selectedSdsImages ?? [],
+    designs: flattenSheinStudioBatchDetailDesigns(detail),
+    selectedIds: getApprovedSheinStudioBatchDesignIDs(detail),
+    batchStatus: detail.batch.status,
+    draftUpdatedAt: detail.batch.draftUpdatedAt,
+    updatedAt: detail.batch.updatedAt,
+  };
+}
+
 function mergeBatchDetailWithSavedBatchContext(
   detail: SheinStudioBatchDetail,
   savedBatch?: SheinStudioSavedBatch,
 ): SheinStudioSavedBatch {
-  const designs = flattenSheinStudioBatchDetailDesigns(detail);
-  const selectedIDs = getApprovedSheinStudioBatchDesignIDs(detail);
-  const detailStoreID =
-    detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "";
-  const detailPrompt = detail.batch.prompt.trim();
-  const detailStyleCount = detail.batch.styleCount.trim();
-  const detailSelection = detail.batch.selection;
-  const detailGroupedSelections = detail.batch.groupedSelections ?? [];
-  const detailSelectedSdsImages = detail.batch.selectedSdsImages ?? [];
+  const itemized = projectItemizedBatchSavedBatchCompatibility(detail);
   return {
     id: detail.batch.id,
     name: savedBatch?.name ?? deriveBatchName(detail.batch.prompt),
-    prompt: detailPrompt || savedBatch?.prompt || "",
-    styleCount: detailStyleCount || savedBatch?.styleCount || "1",
-    variationIntensity:
-      detail.batch.variationIntensity ?? savedBatch?.variationIntensity,
+    prompt: itemized.prompt || savedBatch?.prompt || "",
+    styleCount: itemized.styleCount || savedBatch?.styleCount || "1",
+    variationIntensity: itemized.variationIntensity ?? savedBatch?.variationIntensity,
     productImageCount: savedBatch?.productImageCount,
     productImagePrompt: savedBatch?.productImagePrompt,
     productImagePrompts: savedBatch?.productImagePrompts,
-    artworkModel: detail.batch.artworkModel || savedBatch?.artworkModel,
-    transparentBackground:
-      detail.batch.transparentBackground ?? savedBatch?.transparentBackground,
-    sheinStoreId: detailStoreID || savedBatch?.sheinStoreId || "",
+    artworkModel: itemized.artworkModel || savedBatch?.artworkModel,
+    transparentBackground: itemized.transparentBackground ?? savedBatch?.transparentBackground,
+    sheinStoreId: itemized.sheinStoreId || savedBatch?.sheinStoreId || "",
     imageStrategy: savedBatch?.imageStrategy,
-    groupedImageMode:
-      detail.batch.groupedImageMode ?? savedBatch?.groupedImageMode,
+    groupedImageMode: itemized.groupedImageMode ?? savedBatch?.groupedImageMode,
     selectedSdsImages:
-      detailSelectedSdsImages.length > 0
-        ? detailSelectedSdsImages
+      itemized.selectedSdsImages.length > 0
+        ? itemized.selectedSdsImages
         : (savedBatch?.selectedSdsImages ?? []),
     renderSizeImagesWithSds: savedBatch?.renderSizeImagesWithSds,
     selectionVariantId:
-      detail.batch.selectionVariantId ??
-      detailSelection?.variantId ??
+      itemized.selectionVariantId ??
+      itemized.selection?.variantId ??
       savedBatch?.selectionVariantId ??
       savedBatch?.selection?.variantId,
-    selection: detailSelection ?? savedBatch?.selection,
+    selection: itemized.selection ?? savedBatch?.selection,
     groupedSelections:
-      detailGroupedSelections.length > 0
-        ? detailGroupedSelections
+      itemized.groupedSelections.length > 0
+        ? itemized.groupedSelections
         : (savedBatch?.groupedSelections ?? []),
     groups: savedBatch?.groups ?? [],
-    designs,
-    selectedIds: selectedIDs,
+    designs: itemized.designs,
+    selectedIds: itemized.selectedIds,
     createdTasks: savedBatch?.createdTasks ?? [],
     generationJobs: savedBatch?.generationJobs ?? [],
     generationError: savedBatch?.generationError,
     generationJobId: savedBatch?.generationJobId,
-    batchStatus: detail.batch.status,
+    batchStatus: itemized.batchStatus,
     draftUpdatedAt:
-      detail.batch.draftUpdatedAt ||
+      itemized.draftUpdatedAt ||
       savedBatch?.draftUpdatedAt ||
       savedBatch?.updatedAt ||
-      detail.batch.updatedAt,
-    updatedAt:
-      detail.batch.updatedAt ||
-      savedBatch?.updatedAt ||
-      new Date().toISOString(),
+      itemized.updatedAt,
+    updatedAt: itemized.updatedAt || savedBatch?.updatedAt || new Date().toISOString(),
   };
 }
 

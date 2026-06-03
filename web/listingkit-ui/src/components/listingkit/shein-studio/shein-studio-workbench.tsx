@@ -39,6 +39,7 @@ import {
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   mergeSheinStudioDraftState,
+  projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
   type SheinStudioWorkbenchHydratedBatch,
@@ -623,9 +624,8 @@ export function SheinStudioWorkbench({
       if (matched) {
         return matched;
       }
-      return {
+      return projectWorkbenchStateToSavedBatch({
         id: resolvedBatchId,
-        name: "",
         prompt,
         styleCount,
         variationIntensity,
@@ -647,7 +647,7 @@ export function SheinStudioWorkbench({
         createdTasks,
         generationJobs,
         updatedAt: persistedUpdatedAt,
-      } satisfies SheinStudioSavedBatch;
+      });
     },
     [
       activeBatchId,

@@ -154,8 +154,7 @@ export function useSheinStudioTaskCreationAction({
                       eligible: true,
                     },
                   ],
-                  designs: approved,
-                  selectedIds: approved.map((design) => design.id),
+                  approvedDesigns: approved,
                 },
                 ...groupSelectionsByStore(groupedSelections).map((group) => ({
                   sheinStoreId: group.sheinStoreId,
@@ -166,8 +165,7 @@ export function useSheinStudioTaskCreationAction({
                     eligible: item.eligible,
                     eligibilityReason: item.eligibilityReason,
                   })),
-                  designs: approved,
-                  selectedIds: approved.map((design) => design.id),
+                  approvedDesigns: approved,
                 })),
               ],
             });
@@ -184,8 +182,7 @@ export function useSheinStudioTaskCreationAction({
               productImagePrompts,
               renderSizeImagesWithSds,
               selection: activeSelection,
-              designs: approved,
-              selectedIds: approved.map((design) => design.id),
+              approvedDesigns: approved,
               onProgress: setCreatingMessage,
             });
       }

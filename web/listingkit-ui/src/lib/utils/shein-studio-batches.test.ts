@@ -855,6 +855,107 @@ describe("shein studio storage api", () => {
     });
   });
 
+  it("treats itemized batch detail as the primary saved-batch compatibility source", async () => {
+    listSheinStudioBatchDrafts.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Legacy Batch",
+        prompt: "stale saved prompt",
+        styleCount: "9",
+        sheinStoreId: "42",
+        variationIntensity: "light",
+        artworkModel: "legacy-model",
+        transparentBackground: false,
+        groupedImageMode: "shared_by_size",
+        selectionVariantId: 100,
+        selection,
+        selectedSdsImages: [],
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-06-01T10:04:00Z",
+      },
+    ]);
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "review_ready",
+        prompt: "itemized prompt",
+        styleCount: "2",
+        sheinStoreId: 869,
+        variationIntensity: "strong",
+        artworkModel: "nanobanana",
+        transparentBackground: true,
+        groupedImageMode: "per_product",
+        selectionVariantId: 101,
+        selection: {
+          productId: 1,
+          parentProductId: 1,
+          variantId: 101,
+          prototypeGroupId: 200,
+          layerId: "layer-2",
+          productName: "hoodie",
+          variantLabel: "L / white",
+        },
+        selectedSdsImages: [
+          {
+            imageUrl: "https://cdn.example.com/sds-1.png",
+            color: "black",
+          },
+        ],
+        groupedSelections: [],
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:05:00Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://cdn.example.com/design-1.png",
+              reviewStatus: "approved",
+              createdAt: "2026-06-01T10:01:00Z",
+              updatedAt: "2026-06-01T10:05:00Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(getSheinStudioHydratedBatch("batch-1")).resolves.toMatchObject({
+      savedBatch: expect.objectContaining({
+        prompt: "itemized prompt",
+        styleCount: "2",
+        sheinStoreId: "869",
+        variationIntensity: "strong",
+        artworkModel: "nanobanana",
+        transparentBackground: true,
+        groupedImageMode: "per_product",
+        selectionVariantId: 101,
+        selection: expect.objectContaining({
+          variantId: 101,
+          productName: "hoodie",
+        }),
+        selectedIds: ["design-1"],
+        designs: [expect.objectContaining({ id: "design-1" })],
+      }),
+    });
+  });
+
   it("surfaces a hydration error when saved batch context cannot be loaded", async () => {
     listSheinStudioBatchDrafts.mockRejectedValueOnce(new Error("list failed"));
     getSheinStudioBatchDetail.mockResolvedValue({
