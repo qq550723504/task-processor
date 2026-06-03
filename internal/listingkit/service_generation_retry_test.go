@@ -2298,6 +2298,11 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingRun(t *testing.T) {
 		if handoff.persistenceQueue != handoff.retryPage.ExecutedQueue {
 			t.Fatalf("persistenceQueue = %+v, want executed queue pointer %+v", handoff.persistenceQueue, handoff.retryPage.ExecutedQueue)
 		}
+
+		wantHandoff := buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(handoff.retryPage)
+		if !reflect.DeepEqual(handoff, wantHandoff) {
+			t.Fatalf("handoff = %+v, want retry result normalization applied to retry page %+v", handoff, wantHandoff)
+		}
 	})
 
 	t.Run("queue_mode_keeps_phase31_queue_pairing_and_queue_normalized_handoff", func(t *testing.T) {
@@ -2338,6 +2343,11 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingRun(t *testing.T) {
 		}
 		if &handoff.persistenceQueue.Items[0] == &handoff.queuePage.Items[0] {
 			t.Fatal("persistenceQueue.Items reused queuePage.Items backing storage, want page-derived queue copy")
+		}
+
+		wantHandoff := buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(handoff.queuePage)
+		if !reflect.DeepEqual(handoff, wantHandoff) {
+			t.Fatalf("handoff = %+v, want queue result normalization applied to queue page %+v", handoff, wantHandoff)
 		}
 	})
 }
