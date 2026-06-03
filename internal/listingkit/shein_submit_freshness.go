@@ -167,13 +167,7 @@ func buildSheinSubmitFreshnessReadiness(pkg *SheinPackage, checks []sheinworkspa
 	}
 	readiness := sheinworkspace.BuildSubmitReadiness(
 		checks,
-		func(spec sheinworkspace.ReadinessCheckSpec) sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint] {
-			guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)
-			return sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint]{
-				Reason:      cloneSheinReadinessReason(guidance.reason),
-				RepairHints: cloneSheinRepairHints(guidance.repairHints),
-			}
-		},
+		buildSheinSubmitReadinessGuidanceResolver(pkg),
 		"当前 SHEIN 在线模板或店铺状态已变化，提交前需要先刷新在线解析结果",
 		"SHEIN 在线模板可用，但仍建议再次确认最新平台状态",
 		"SHEIN 在线模板与登录态仍可用于当前提交",
@@ -181,14 +175,10 @@ func buildSheinSubmitFreshnessReadiness(pkg *SheinPackage, checks []sheinworkspa
 	if readiness == nil {
 		return nil
 	}
-	if len(readiness.BlockingItems) > 0 {
-		if message := strings.TrimSpace(readiness.BlockingItems[0].Message); message != "" {
-			readiness.Summary = append([]string{message}, readiness.Summary...)
-		}
-		readiness.Summary = append(readiness.Summary, "在线阻断项："+sheinworkspace.JoinReadinessLabels(readiness.BlockingItems, "、"))
-	}
-	readiness.Summary = uniqueStrings(readiness.Summary)
-	return readiness
+	return shapeSheinSubmitReadinessSummary(readiness, sheinSubmitReadinessSummaryShape{
+		blockingLabel:       "在线阻断项：",
+		prependFirstBlocker: true,
+	})
 }
 
 func evaluateSheinCategoryFreshness(current *SheinPackage, info *sheincategory.CategoryInfo) (bool, string) {
@@ -237,65 +227,12 @@ func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattr
 		return false, "当前普通属性模板在线校验失败，需重新刷新属性模板后再提交"
 	}
 
-	attributes := filterSheinFreshnessDisplayAttributes(templates.Data[0].AttributeInfos)
-	if len(attributes) == 0 {
+	templateContext, ok := buildSheinAttributeFreshnessTemplateContext(current, templates)
+	if !ok {
 		return false, "当前普通属性模板为空，需重新刷新属性模板后再提交"
 	}
 
-	attributeIndex := make(map[int]sheinattribute.AttributeInfo, len(attributes))
-	resolvedByID := make(map[int]sheinpub.ResolvedAttribute, len(current.ResolvedAttributes))
-	for _, attr := range attributes {
-		attributeIndex[attr.AttributeID] = attr
-	}
-	for _, item := range current.ResolvedAttributes {
-		if item.AttributeID > 0 {
-			resolvedByID[item.AttributeID] = item
-		}
-	}
-
-	invalid := make([]string, 0)
-	invalidItems := make([]sheinpub.ResolvedAttribute, 0)
-	for _, item := range current.ResolvedAttributes {
-		if item.AttributeID <= 0 {
-			continue
-		}
-		if sheinResolvedAttributeStillLegal(item, attributeIndex) {
-			continue
-		}
-		invalid = append(invalid, formatResolvedAttributeDiffItem(item))
-		invalidItems = append(invalidItems, item)
-	}
-
-	missingRequired := make([]string, 0)
-	for _, attr := range attributes {
-		if !isSheinTemplateRequired(attr) {
-			continue
-		}
-		if !sheinpubDependencyIsActive(attr, resolvedByID) {
-			continue
-		}
-		if _, ok := resolvedByID[attr.AttributeID]; ok {
-			continue
-		}
-		missingRequired = append(missingRequired, formatSheinFreshnessAttributeName(attr))
-	}
-
-	if len(invalid) > 0 || len(missingRequired) > 0 {
-		parts := []string{"当前普通属性模板已变化，现有 resolved attributes 中有内容已不再满足当前提交要求"}
-		if len(invalid) > 0 {
-			sort.Strings(invalid)
-			parts = append(parts, "当前模板已失效的属性值: "+strings.Join(invalid, "; "))
-			if drift := buildResolvedAttributeTemplateDriftDetails(invalidItems, attributeIndex); drift != "" {
-				parts = append(parts, "同属性在线模板差异: "+drift)
-			}
-		}
-		if len(missingRequired) > 0 {
-			sort.Strings(missingRequired)
-			parts = append(parts, "当前模板新增或恢复生效的必填属性: "+strings.Join(missingRequired, "; "))
-		}
-		return false, strings.Join(parts, "；")
-	}
-	return true, "当前普通属性模板中的已选值仍然合法"
+	return evaluateSheinResolvedAttributeFreshness(current, templateContext)
 }
 
 func evaluateSheinSaleAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
@@ -320,61 +257,12 @@ func evaluateSheinSaleAttributeFreshnessWithCustomValidation(
 		return true, "", false
 	}
 
-	saleOptions := buildSheinFreshnessSaleTemplateOptions(templates)
-	if len(saleOptions) == 0 {
+	templateContext, ok := buildSheinSaleAttributeFreshnessTemplateContext(templates)
+	if !ok {
 		return false, "当前销售属性模板为空，需重新刷新销售属性后再提交", false
 	}
 
-	byID := make(map[int]sheinpub.SaleAttributeTemplateOption, len(saleOptions))
-	for _, option := range saleOptions {
-		byID[option.AttributeID] = option
-	}
-	attrByID := flattenSheinAttributeTemplatesByID(templates)
-
-	baseIssues := make([]string, 0)
-	changed := false
-	issues := make([]string, 0)
-	if currentResolution.PrimaryAttributeID > 0 {
-		if _, ok := byID[currentResolution.PrimaryAttributeID]; !ok {
-			baseIssues = append(baseIssues, fmt.Sprintf("主规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.PrimaryAttributeID))
-		}
-	}
-	if currentResolution.SecondaryAttributeID > 0 {
-		if _, ok := byID[currentResolution.SecondaryAttributeID]; !ok {
-			baseIssues = append(baseIssues, fmt.Sprintf("副规格 attribute_id=%d 已不在当前销售属性模板中", currentResolution.SecondaryAttributeID))
-		}
-	}
-
-	customRelationIDs := sheinFreshnessCustomAttributeValueIDs(currentResolution.CustomAttributeRelation)
-	invalidSKC := collectInvalidSaleAttributes(currentResolution.SKCAttributes, byID, customRelationIDs)
-	invalidSKU := collectInvalidSaleAttributes(currentResolution.SKUAttributes, byID, customRelationIDs)
-	if len(invalidSKC) > 0 || len(invalidSKU) > 0 {
-		repaired := repairSheinFreshnessSaleAttributes(current, attrByID, api)
-		if repaired {
-			changed = true
-			currentResolution = current.SaleAttributeResolution
-			customRelationIDs = sheinFreshnessCustomAttributeValueIDs(currentResolution.CustomAttributeRelation)
-			invalidSKC = collectInvalidSaleAttributes(currentResolution.SKCAttributes, byID, customRelationIDs)
-			invalidSKU = collectInvalidSaleAttributes(currentResolution.SKUAttributes, byID, customRelationIDs)
-		}
-	}
-	issues = append(issues, baseIssues...)
-	if len(invalidSKC) > 0 {
-		sort.Strings(invalidSKC)
-		issues = append(issues, "当前模板已失效的 SKC 销售属性值: "+strings.Join(invalidSKC, "; "))
-	}
-	if len(invalidSKU) > 0 {
-		sort.Strings(invalidSKU)
-		issues = append(issues, "当前模板已失效的 SKU 销售属性值: "+strings.Join(invalidSKU, "; "))
-	}
-
-	if len(issues) > 0 {
-		return false, "当前销售属性模板已变化，现有销售属性中有内容已不再满足当前提交要求；" + strings.Join(issues, "；"), changed
-	}
-	if changed {
-		return true, "当前销售属性模板中的已选值仍然合法，失效值已通过 SHEIN 自定义销售属性校验自动修正", true
-	}
-	return true, "当前销售属性模板中的已选值仍然合法", false
+	return evaluateSheinSaleAttributeFreshnessResolution(current, currentResolution, templateContext, api)
 }
 
 func repairSheinFreshnessSaleAttributes(

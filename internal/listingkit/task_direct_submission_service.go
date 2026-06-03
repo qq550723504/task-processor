@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -51,17 +50,8 @@ func (s *taskDirectSubmissionService) submitSheinTaskDirect(ctx context.Context,
 
 	ensureTaskPodExecution(task)
 	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, task.Result.PodExecution, opts.action)
-	if readiness == nil || !readiness.Ready {
-		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness)))
-	}
-	if s.validateSheinPublishFreshness != nil {
-		freshness, err := s.validateSheinPublishFreshness(ctx, task, pkg, opts.action)
-		if err != nil {
-			return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
-		}
-		if freshness != nil && !freshness.Ready {
-			return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(freshness)))
-		}
+	if err := validateSheinSubmitReadinessGates(ctx, task, pkg, opts.action, readiness, s.validateSheinPublishFreshness); err != nil {
+		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 
 	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)

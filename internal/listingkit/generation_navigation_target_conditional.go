@@ -15,21 +15,7 @@ func cloneGenerationNavigationDescriptor(descriptor *GenerationNavigationDescrip
 		return nil
 	}
 	cloned := *descriptor
-	cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)
-	cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)
-	if len(descriptor.Invalidates) > 0 {
-		cloned.Invalidates = append([]string(nil), descriptor.Invalidates...)
-	}
-	if len(descriptor.FollowUpReads) > 0 {
-		cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))
-		for _, item := range descriptor.FollowUpReads {
-			cloned.FollowUpReads = append(cloned.FollowUpReads, GenerationNavigationFollowUpRead{
-				Kind:         item.Kind,
-				ResponseMode: item.ResponseMode,
-				Query:        cloneGenerationQueueQuery(item.Query),
-			})
-		}
-	}
+	buildGenerationNavigationDescriptorCloneShapePhase().run(descriptor, &cloned)
 	return &cloned
 }
 
@@ -38,18 +24,7 @@ func cloneGenerationNavigationDispatchPlan(plan *GenerationNavigationDispatchPla
 		return nil
 	}
 	cloned := *plan
-	if len(plan.Steps) > 0 {
-		cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))
-		for _, step := range plan.Steps {
-			cloned.Steps = append(cloned.Steps, GenerationNavigationDispatchStep{
-				Kind:               step.Kind,
-				ResponseMode:       step.ResponseMode,
-				CachePreference:    step.CachePreference,
-				RequiresRevalidate: step.RequiresRevalidate,
-				Query:              cloneGenerationQueueQuery(step.Query),
-			})
-		}
-	}
+	buildGenerationNavigationDispatchPlanCloneShapePhase().run(plan, &cloned)
 	return &cloned
 }
 

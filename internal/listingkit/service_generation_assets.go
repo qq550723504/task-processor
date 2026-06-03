@@ -81,10 +81,11 @@ func decorateListingKitResultGeneration(result *ListingKitResult, tasks []assetg
 	if result == nil {
 		return
 	}
-	result.AssetGenerationTasks = cloneGenerationTasks(tasks)
-	result.AssetGenerationSummary = buildAssetGenerationSummary(tasks)
-	result.AssetGenerationQueue = buildGenerationWorkQueue(result)
-	result.AssetGenerationOverview = buildAssetGenerationOverview(result.AssetGenerationQueue)
+	projection := buildAssetGenerationProjection(result, tasks)
+	result.AssetGenerationTasks = projection.Tasks
+	result.AssetGenerationSummary = projection.Summary
+	result.AssetGenerationQueue = projection.Queue
+	result.AssetGenerationOverview = projection.Overview
 }
 
 func withListingKitResultGeneration(result *ListingKitResult, tasks []assetgeneration.Task) *ListingKitResult {

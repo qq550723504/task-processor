@@ -60,6 +60,8 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingBoundary(t *testing
 			"func buildTaskGenerationActionExecuteRequestHandoffModePairingPhase(",
 			"func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runRetryable(",
 			"func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runQueue(",
+			"normalization *taskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase",
+			"normalization: buildTaskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase(),",
 		})
 		assertSourceExcludesAll(t, fileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffRetryPhase(",
@@ -70,32 +72,32 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingBoundary(t *testing
 
 		assertSourceContainsAll(t, retrySource, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",
-			"return buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage), nil",
+			"return p.normalization.fromRetryPage(retryPage), nil",
 		})
 		assertSourceExcludesAll(t, retrySource, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase(",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
-			"fromRetryPage(",
 			"fromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, retryCalls, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
-			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
+			"fromRetryPage",
 		})
 		assertFunctionCallsExcludeAll(t, retryCalls, []string{
 			"RetryTaskGenerationTasks",
 			"cloneRetryGenerationTasksRequest",
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
-			"fromRetryPage",
 			"fromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
@@ -103,33 +105,33 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingBoundary(t *testing
 
 		assertSourceContainsAll(t, queueSource, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
-			"return buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage), nil",
+			"return p.normalization.fromQueuePage(queuePage), nil",
 		})
 		assertSourceExcludesAll(t, queueSource, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase(",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
 			"fromRetryPage(",
-			"fromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, queueCalls, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
-			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
+			"fromQueuePage",
 		})
 		assertFunctionCallsExcludeAll(t, queueCalls, []string{
 			"RetryTaskGenerationTasks",
 			"cloneRetryGenerationTasksRequest",
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
 			"fromRetryPage",
-			"fromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})

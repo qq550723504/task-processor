@@ -79,13 +79,14 @@ func TestTaskGenerationActionTargetResolutionEntryBoundary(t *testing.T) {
 func TestTaskGenerationActionTargetResolutionServiceHelperBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readTaskGenerationSourceFile(t, "service_generation_actions.go")
+	queueCloneSource := readTaskGenerationSourceFile(t, "generation_queue_query_clone.go")
+	retryCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
-	assertSourceContainsAll(t, source, []string{
+	assertSourceContainsAll(t, queueCloneSource, []string{
 		"func cloneGenerationQueueQuery(",
-		"func cloneRetryGenerationTasksRequest(",
 	})
-	assertSourceExcludesAll(t, source, []string{
+	assertSourceExcludesAll(t, queueCloneSource, []string{
+		"func cloneRetryGenerationTasksRequest(",
 		"func cloneAssetGenerationActionTarget(",
 		"func cloneAssetGenerationActionImpact(",
 		"type taskGenerationActionTargetResolutionPhase struct{}",
@@ -95,5 +96,8 @@ func TestTaskGenerationActionTargetResolutionServiceHelperBoundary(t *testing.T)
 		"func resolveAssetGenerationActionTarget(",
 		"func collectAssetGenerationActionTargets(",
 		"func requestedAssetGenerationActionKey(",
+	})
+	assertSourceContainsAll(t, retryCloneSource, []string{
+		"func cloneRetryGenerationTasksRequest(",
 	})
 }

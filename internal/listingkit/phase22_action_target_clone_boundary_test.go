@@ -8,32 +8,40 @@ func TestTaskGenerationActionTargetCloneOwnershipBoundary(t *testing.T) {
 	t.Run("local_clone_home_owns_action_target_clone_shape", func(t *testing.T) {
 		t.Parallel()
 
-		source := readTaskGenerationSourceFile(t, "task_generation_action_target_clone.go")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_target_clone.go")
+		source := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionTarget")
 		callNames := readNamedFunctionCallNames(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionTarget")
 
-		assertSourceContainsAll(t, source, []string{
+		assertSourceContainsAll(t, fileSource, []string{
 			"func cloneAssetGenerationActionTarget(",
 			"func cloneAssetGenerationActionImpact(",
+		})
+		assertSourceExcludesAll(t, fileSource, []string{
+			"func cloneGenerationQueueQuery(",
+			"func cloneRetryGenerationTasksRequest(",
+			"func resolveAssetGenerationActionTarget(",
+			"func requestedAssetGenerationActionKey(",
+		})
+		assertSourceContainsAll(t, source, []string{
+			"buildTaskGenerationActionTargetCloneShapePhase().run(target, &cloned)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"cloneAssetGenerationFilters(target.Filters)",
 			"cloneGenerationQueueQuery(target.QueueQuery)",
 			"cloneRetryGenerationTasksRequest(target.RetryRequest)",
 			"cloneAssetGenerationActionImpact(target.ExpectedImpact)",
 			"cloneGenerationReviewNavigationTarget(target.NavigationTarget)",
 		})
-		assertSourceExcludesAll(t, source, []string{
-			"func cloneGenerationQueueQuery(",
-			"func cloneRetryGenerationTasksRequest(",
-			"func resolveAssetGenerationActionTarget(",
-			"func requestedAssetGenerationActionKey(",
-		})
 		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildTaskGenerationActionTargetCloneShapePhase",
+			"run",
+		})
+		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneAssetGenerationFilters",
 			"cloneGenerationQueueQuery",
 			"cloneRetryGenerationTasksRequest",
 			"cloneAssetGenerationActionImpact",
 			"cloneGenerationReviewNavigationTarget",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"resolveAssetGenerationActionTarget",
 			"requestedAssetGenerationActionKey",
 		})
@@ -42,13 +50,23 @@ func TestTaskGenerationActionTargetCloneOwnershipBoundary(t *testing.T) {
 	t.Run("service_helper_home_keeps_only_shared_queue_and_retry_clones", func(t *testing.T) {
 		t.Parallel()
 
-		source := readTaskGenerationSourceFile(t, "service_generation_actions.go")
+		queueCloneSource := readTaskGenerationSourceFile(t, "generation_queue_query_clone.go")
+		retryCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
-		assertSourceContainsAll(t, source, []string{
+		assertSourceContainsAll(t, queueCloneSource, []string{
 			"func cloneGenerationQueueQuery(",
+		})
+		assertSourceExcludesAll(t, queueCloneSource, []string{
+			"func cloneRetryGenerationTasksRequest(",
+			"func cloneAssetGenerationActionTarget(",
+			"func cloneAssetGenerationActionImpact(",
+		})
+
+		assertSourceContainsAll(t, retryCloneSource, []string{
 			"func cloneRetryGenerationTasksRequest(",
 		})
-		assertSourceExcludesAll(t, source, []string{
+		assertSourceExcludesAll(t, retryCloneSource, []string{
+			"func cloneGenerationQueueQuery(",
 			"func cloneAssetGenerationActionTarget(",
 			"func cloneAssetGenerationActionImpact(",
 		})

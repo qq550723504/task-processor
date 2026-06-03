@@ -3,11 +3,15 @@ package listingkit
 import "context"
 
 type taskGenerationActionExecuteRequestHandoffModePairingPhase struct {
-	service *taskGenerationService
+	service       *taskGenerationService
+	normalization *taskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase
 }
 
 func buildTaskGenerationActionExecuteRequestHandoffModePairingPhase(service *taskGenerationService) *taskGenerationActionExecuteRequestHandoffModePairingPhase {
-	return &taskGenerationActionExecuteRequestHandoffModePairingPhase{service: service}
+	return &taskGenerationActionExecuteRequestHandoffModePairingPhase{
+		service:       service,
+		normalization: buildTaskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase(),
+	}
 }
 
 func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runRetryable(ctx context.Context, taskID string, target *AssetGenerationActionTarget) (*taskGenerationActionExecuteRequestHandoff, error) {
@@ -15,7 +19,7 @@ func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runRetryable
 	if err != nil {
 		return nil, err
 	}
-	return buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage), nil
+	return p.normalization.fromRetryPage(retryPage), nil
 }
 
 func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runQueue(ctx context.Context, taskID string, target *AssetGenerationActionTarget) (*taskGenerationActionExecuteRequestHandoff, error) {
@@ -23,5 +27,5 @@ func (p *taskGenerationActionExecuteRequestHandoffModePairingPhase) runQueue(ctx
 	if err != nil {
 		return nil, err
 	}
-	return buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage), nil
+	return p.normalization.fromQueuePage(queuePage), nil
 }
