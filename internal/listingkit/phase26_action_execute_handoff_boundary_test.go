@@ -5,7 +5,7 @@ import "testing"
 func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("result_routing_seams_defer_to_phase26_adaptation_home", func(t *testing.T) {
+	t.Run("result_routing_seams_defer_to_phase30_result_shape_home", func(t *testing.T) {
 		t.Parallel()
 
 		retryFileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_result.go")
@@ -19,19 +19,22 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 
 		assertSourceContainsAll(t, retryFileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase()",
-			"adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),",
+			"resultShape: buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),",
 		})
 		assertSourceContainsAll(t, retryBuildSource, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
+			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
 		})
 		assertSourceContainsAll(t, retrySource, []string{
-			"return p.adaptation.fromRetryPage(retryPage)",
+			"return p.resultShape.fromRetryPage(retryPage)",
 		})
 		assertSourceExcludesAll(t, retrySource, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
+			"persistenceQueueFromRetryPage(",
+			"persistenceQueueFromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
@@ -43,25 +46,31 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"cloneRetryGenerationTasksRequest",
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"persistenceQueueFromRetryPage",
+			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})
 
 		assertSourceContainsAll(t, queueFileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase()",
-			"adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),",
+			"resultShape: buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),",
 		})
 		assertSourceContainsAll(t, queueBuildSource, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
+			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
 		})
 		assertSourceContainsAll(t, queueSource, []string{
-			"return p.adaptation.fromQueuePage(queuePage)",
+			"return p.resultShape.fromQueuePage(queuePage)",
 		})
 		assertSourceExcludesAll(t, queueSource, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
+			"persistenceQueueFromRetryPage(",
+			"persistenceQueueFromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
@@ -73,6 +82,9 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"cloneRetryGenerationTasksRequest",
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"persistenceQueueFromRetryPage",
+			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})
@@ -82,22 +94,24 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 		t.Parallel()
 
 		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_adaptation.go")
-		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "fromRetryPage")
-		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "fromRetryPage")
-		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "fromQueuePage")
-		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "fromQueuePage")
+		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "persistenceQueueFromRetryPage")
+		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "persistenceQueueFromRetryPage")
+		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "persistenceQueueFromQueuePage")
+		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_adaptation.go", "persistenceQueueFromQueuePage")
 
 		assertSourceContainsAll(t, fileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
-			"func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) fromRetryPage(",
-			"func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) fromQueuePage(",
+			"func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) persistenceQueueFromRetryPage(",
+			"func (p *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase) persistenceQueueFromQueuePage(",
 		})
 
 		assertSourceContainsAll(t, retrySource, []string{
-			"retryPage:        retryPage",
-			"persistenceQueue: generationWorkQueueFromRetryPage(retryPage)",
+			"return generationWorkQueueFromRetryPage(retryPage)",
 		})
 		assertSourceExcludesAll(t, retrySource, []string{
+			"retryPage:",
+			"queuePage:",
+			"persistenceQueue:",
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
@@ -112,10 +126,12 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 		})
 
 		assertSourceContainsAll(t, queueSource, []string{
-			"queuePage:        queuePage",
-			"persistenceQueue: generationWorkQueueFromPage(queuePage)",
+			"return generationWorkQueueFromPage(queuePage)",
 		})
 		assertSourceExcludesAll(t, queueSource, []string{
+			"retryPage:",
+			"queuePage:",
+			"persistenceQueue:",
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",

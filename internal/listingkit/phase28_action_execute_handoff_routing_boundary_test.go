@@ -24,9 +24,12 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
 		})
 		assertSourceExcludesAll(t, source, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase()",
-			"adaptation.fromRetryPage(",
-			"adaptation.fromQueuePage(",
+			"resultShape.fromRetryPage(",
+			"resultShape.fromQueuePage(",
+			"persistenceQueueFromRetryPage(",
+			"persistenceQueueFromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
@@ -37,15 +40,18 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
 			"fromRetryPage",
 			"fromQueuePage",
+			"persistenceQueueFromRetryPage",
+			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})
 	})
 
-	t.Run("retry_result_routing_stays_local_and_defers_adaptation", func(t *testing.T) {
+	t.Run("retry_result_routing_stays_local_and_defers_result_shape", func(t *testing.T) {
 		t.Parallel()
 
 		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_result.go")
@@ -57,13 +63,16 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"func (p *taskGenerationActionExecuteRequestHandoffRetryResultPhase) run(",
 		})
 		assertSourceContainsAll(t, source, []string{
-			"return p.adaptation.fromRetryPage(retryPage)",
+			"return p.resultShape.fromRetryPage(retryPage)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
+			"persistenceQueueFromRetryPage(",
+			"persistenceQueueFromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
@@ -75,12 +84,15 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"cloneRetryGenerationTasksRequest",
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"persistenceQueueFromRetryPage",
+			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})
 	})
 
-	t.Run("queue_result_routing_stays_local_and_defers_adaptation", func(t *testing.T) {
+	t.Run("queue_result_routing_stays_local_and_defers_result_shape", func(t *testing.T) {
 		t.Parallel()
 
 		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue_result.go")
@@ -92,13 +104,16 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"func (p *taskGenerationActionExecuteRequestHandoffQueueResultPhase) run(",
 		})
 		assertSourceContainsAll(t, source, []string{
-			"return p.adaptation.fromQueuePage(queuePage)",
+			"return p.resultShape.fromQueuePage(queuePage)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
+			"persistenceQueueFromRetryPage(",
+			"persistenceQueueFromQueuePage(",
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 		})
@@ -110,6 +125,9 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"cloneRetryGenerationTasksRequest",
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
+			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"persistenceQueueFromRetryPage",
+			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
 			"generationWorkQueueFromPage",
 		})
