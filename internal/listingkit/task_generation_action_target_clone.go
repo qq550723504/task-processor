@@ -14,8 +14,6 @@ func cloneAssetGenerationActionImpact(impact *AssetGenerationActionImpact) *Asse
 		return nil
 	}
 	cloned := *impact
-	cloned.Platforms = append([]string(nil), impact.Platforms...)
-	cloned.QualityGrades = append([]string(nil), impact.QualityGrades...)
-	cloned.States = append([]string(nil), impact.States...)
+	applyAssetGenerationActionImpactCloneShape(impact, &cloned)
 	return &cloned
 }
