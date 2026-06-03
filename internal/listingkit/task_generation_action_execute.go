@@ -17,24 +17,14 @@ func buildTaskGenerationActionExecutePhase(service *taskGenerationService) *task
 }
 
 func (p *taskGenerationActionExecutePhase) run(ctx context.Context, taskID string, baseResult *ListingKitResult, target *AssetGenerationActionTarget) (*taskGenerationActionExecution, error) {
-	execution := &taskGenerationActionExecution{}
-
-	switch target.InteractionMode {
-	case "retryable":
-		retryPage, err := p.service.RetryTaskGenerationTasks(ctx, taskID, cloneRetryGenerationTasksRequest(target.RetryRequest))
-		if err != nil {
-			return nil, err
-		}
-		execution.retryPage = retryPage
-		execution.persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromRetryPage(retryPage), target.QueueQuery)
-	default:
-		queuePage, err := p.service.GetTaskGenerationQueue(ctx, taskID, cloneGenerationQueueQuery(target.QueueQuery))
-		if err != nil {
-			return nil, err
-		}
-		execution.queuePage = queuePage
-		execution.persistenceSession = buildGenerationReviewSession(baseResult, generationWorkQueueFromPage(queuePage), target.QueueQuery)
+	handoff, err := buildTaskGenerationActionExecuteRequestHandoffPhase(p.service).run(ctx, taskID, target)
+	if err != nil {
+		return nil, err
 	}
 
-	return execution, nil
+	return &taskGenerationActionExecution{
+		retryPage:          handoff.retryPage,
+		queuePage:          handoff.queuePage,
+		persistenceSession: buildGenerationReviewSession(baseResult, handoff.persistenceQueue, target.QueueQuery),
+	}, nil
 }
