@@ -5,6 +5,107 @@ import (
 	"testing"
 )
 
+func TestCloneGenerationReviewNavigationTarget(t *testing.T) {
+	t.Parallel()
+
+	if cloned := cloneGenerationReviewNavigationTarget(nil); cloned != nil {
+		t.Fatalf("cloneGenerationReviewNavigationTarget(nil) = %+v, want nil", cloned)
+	}
+
+	original := testGenerationReviewNavigationTargetForClone()
+	cloned := cloneGenerationReviewNavigationTarget(original)
+	if cloned == nil {
+		t.Fatal("cloneGenerationReviewNavigationTarget() = nil, want clone")
+	}
+	if cloned == original {
+		t.Fatal("cloneGenerationReviewNavigationTarget() returned original pointer")
+	}
+	if cloned.DispatchKind != original.DispatchKind {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().DispatchKind = %q, want %q", cloned.DispatchKind, original.DispatchKind)
+	}
+	if cloned.Conditional == nil || !reflect.DeepEqual(cloned.Conditional, original.Conditional) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().Conditional = %+v, want field-for-field clone of %+v", cloned.Conditional, original.Conditional)
+	}
+	if cloned.Descriptor == nil || !reflect.DeepEqual(cloned.Descriptor, original.Descriptor) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().Descriptor = %+v, want field-for-field clone of %+v", cloned.Descriptor, original.Descriptor)
+	}
+	if cloned.QueueQuery == nil || !reflect.DeepEqual(cloned.QueueQuery, original.QueueQuery) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().QueueQuery = %+v, want field-for-field clone of %+v", cloned.QueueQuery, original.QueueQuery)
+	}
+	if cloned.SessionQuery == nil || !reflect.DeepEqual(cloned.SessionQuery, original.SessionQuery) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().SessionQuery = %+v, want field-for-field clone of %+v", cloned.SessionQuery, original.SessionQuery)
+	}
+	if cloned.PreviewQuery == nil || !reflect.DeepEqual(cloned.PreviewQuery, original.PreviewQuery) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().PreviewQuery = %+v, want field-for-field clone of %+v", cloned.PreviewQuery, original.PreviewQuery)
+	}
+	if cloned.ActionTarget == nil || !reflect.DeepEqual(cloned.ActionTarget, original.ActionTarget) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget().ActionTarget = %+v, want field-for-field clone of %+v", cloned.ActionTarget, original.ActionTarget)
+	}
+	if cloned.Conditional == original.Conditional ||
+		cloned.Descriptor == original.Descriptor ||
+		cloned.QueueQuery == original.QueueQuery ||
+		cloned.SessionQuery == original.SessionQuery ||
+		cloned.PreviewQuery == original.PreviewQuery ||
+		cloned.ActionTarget == original.ActionTarget {
+		t.Fatalf("cloneGenerationReviewNavigationTarget() = %+v, want defensive clone of nested pointers", cloned)
+	}
+	if &cloned.Descriptor.Invalidates[0] == &original.Descriptor.Invalidates[0] ||
+		&cloned.Descriptor.FollowUpReads[0] == &original.Descriptor.FollowUpReads[0] ||
+		&cloned.ActionTarget.RetryRequest.TaskIDs[0] == &original.ActionTarget.RetryRequest.TaskIDs[0] ||
+		&cloned.ActionTarget.ExpectedImpact.Platforms[0] == &original.ActionTarget.ExpectedImpact.Platforms[0] {
+		t.Fatalf("cloneGenerationReviewNavigationTarget() = %+v, want defensive clone of nested slices", cloned)
+	}
+
+	expected := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+		DispatchKind: "action",
+		Conditional:  cloneGenerationConditionalState(original.Conditional),
+		Descriptor:   cloneGenerationNavigationDescriptor(original.Descriptor),
+		QueueQuery:   cloneGenerationQueueQuery(original.QueueQuery),
+		SessionQuery: cloneGenerationQueueQuery(original.SessionQuery),
+		PreviewQuery: cloneGenerationQueueQuery(original.PreviewQuery),
+		ActionTarget: cloneAssetGenerationActionTarget(original.ActionTarget),
+	})
+	if cloned.ResourceKind != expected.ResourceKind ||
+		cloned.CacheKey != expected.CacheKey ||
+		cloned.CachePolicy != expected.CachePolicy ||
+		cloned.RevalidateAfterAction != expected.RevalidateAfterAction ||
+		!reflect.DeepEqual(cloned.Descriptor, expected.Descriptor) {
+		t.Fatalf("cloneGenerationReviewNavigationTarget() = %+v, want outward identity aligned with %+v", cloned, expected)
+	}
+
+	originalConditionalDelta := original.Conditional.DeltaToken
+	originalDescriptorInvalidate := original.Descriptor.Invalidates[0]
+	originalDescriptorFollowUpPlatform := original.Descriptor.FollowUpReads[0].Query.Platform
+	originalQueuePlatform := original.QueueQuery.Platform
+	originalSessionPlatform := original.SessionQuery.Platform
+	originalPreviewAssetID := original.PreviewQuery.AssetID
+	originalActionTargetQueuePlatform := original.ActionTarget.QueueQuery.Platform
+	originalActionTargetRetryTaskID := original.ActionTarget.RetryRequest.TaskIDs[0]
+	originalActionTargetImpactPlatform := original.ActionTarget.ExpectedImpact.Platforms[0]
+
+	cloned.Conditional.DeltaToken = "delta-2"
+	cloned.Descriptor.Invalidates[0] = "queue:temu"
+	cloned.Descriptor.FollowUpReads[0].Query.Platform = "temu"
+	cloned.QueueQuery.Platform = "temu"
+	cloned.SessionQuery.Platform = "temu"
+	cloned.PreviewQuery.AssetID = "asset-preview-2"
+	cloned.ActionTarget.QueueQuery.Platform = "temu"
+	cloned.ActionTarget.RetryRequest.TaskIDs[0] = "child-task-2"
+	cloned.ActionTarget.ExpectedImpact.Platforms[0] = "temu"
+
+	if original.Conditional.DeltaToken != originalConditionalDelta ||
+		original.Descriptor.Invalidates[0] != originalDescriptorInvalidate ||
+		original.Descriptor.FollowUpReads[0].Query.Platform != originalDescriptorFollowUpPlatform ||
+		original.QueueQuery.Platform != originalQueuePlatform ||
+		original.SessionQuery.Platform != originalSessionPlatform ||
+		original.PreviewQuery.AssetID != originalPreviewAssetID ||
+		original.ActionTarget.QueueQuery.Platform != originalActionTargetQueuePlatform ||
+		original.ActionTarget.RetryRequest.TaskIDs[0] != originalActionTargetRetryTaskID ||
+		original.ActionTarget.ExpectedImpact.Platforms[0] != originalActionTargetImpactPlatform {
+		t.Fatalf("original mutated after clone update = %+v", original)
+	}
+}
+
 func TestCloneAssetGenerationActionTargetForNavigation(t *testing.T) {
 	t.Parallel()
 
@@ -276,4 +377,82 @@ func testAssetGenerationActionTargetForNavigation() *AssetGenerationActionTarget
 			States:        []string{"ready", "retryable"},
 		},
 	}
+}
+
+func testGenerationReviewNavigationTargetForClone() *GenerationReviewNavigationTarget {
+	return applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+		DispatchKind: "action",
+		Conditional: &GenerationConditionalState{
+			DeltaToken: "delta-1",
+			ETag:       "etag-1",
+			NoChanges:  true,
+		},
+		Descriptor: &GenerationNavigationDescriptor{
+			ResourceKind:                 "review_session",
+			CacheKey:                     "cache-key-1",
+			CachePolicy:                  "stale_while_revalidate",
+			SupportsStaleWhileRevalidate: true,
+			RevalidateAfterAction:        true,
+			RefreshScope:                 "session",
+			Invalidates:                  []string{"queue:shein", "preview:detail"},
+			FollowUpReads: []GenerationNavigationFollowUpRead{
+				{
+					Kind:         "queue",
+					ResponseMode: "patch_only",
+					Query: &GenerationQueueQuery{
+						Platform:          "shein",
+						Slot:              "main",
+						PreviewCapability: "detail_preview",
+						ResponseMode:      "patch_only",
+					},
+				},
+			},
+			Conditional: &GenerationConditionalState{
+				DeltaToken: "delta-descriptor",
+				ETag:       "etag-descriptor",
+				NoChanges:  true,
+			},
+		},
+		QueueQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "main",
+			PreviewCapability: "detail_preview",
+			ResponseMode:      "full",
+		},
+		SessionQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			Slot:              "detail",
+			PreviewCapability: "detail_preview",
+			ResponseMode:      "patch_only",
+		},
+		PreviewQuery: &GenerationQueueQuery{
+			Platform:          "shein",
+			AssetID:           "asset-preview-1",
+			PreviewCapability: "detail_preview",
+			ResponseMode:      "patch_only",
+		},
+		ActionTarget: &AssetGenerationActionTarget{
+			ActionKey:       "retry_section_generation",
+			InteractionMode: "review_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          "shein",
+				Slot:              "main",
+				PreviewCapability: "detail_preview",
+				ResponseMode:      "full",
+			},
+			RetryRequest: &RetryGenerationTasksRequest{
+				TaskIDs:               []string{"child-task-1"},
+				Slots:                 []string{"main"},
+				ExecutionQuality:      "hq",
+				ExecutionQualityLabel: "High Quality",
+				QualityGrade:          "ideal",
+				QualityGradeLabel:     "Ideal",
+			},
+			ExpectedImpact: &AssetGenerationActionImpact{
+				Platforms:     []string{"shein"},
+				QualityGrades: []string{"ideal"},
+				States:        []string{"ready"},
+			},
+		},
+	})
 }
