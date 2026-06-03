@@ -10,11 +10,7 @@ func (p *generationNavigationDescriptorCloneShapePhase) run(descriptor *Generati
 	if descriptor == nil || cloned == nil {
 		return
 	}
-	cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)
-	cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)
-	if len(descriptor.Invalidates) > 0 {
-		cloned.Invalidates = append([]string(nil), descriptor.Invalidates...)
-	}
+	applyGenerationNavigationDescriptorResidualCloneShape(descriptor, cloned)
 	if len(descriptor.FollowUpReads) > 0 {
 		cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))
 		for _, item := range descriptor.FollowUpReads {
