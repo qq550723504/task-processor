@@ -2113,6 +2113,73 @@ func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retry_page_results_keep_unified_handoff_shape_and_use_retry_derived_queue", func(t *testing.T) {
+		t.Parallel()
+
+		retryQueue := &GenerationWorkQueue{
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, RetryableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "retry-task-1", Platform: "amazon", Slot: "auxiliary", Retryable: true},
+			},
+		}
+		retryPage := &GenerationTaskPage{
+			TaskID:       "retry-task-1",
+			ExecutedQueue: retryQueue,
+		}
+
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase().fromRetryPage(retryPage)
+		if handoff == nil {
+			t.Fatal("handoff = nil, want retry handoff result")
+		}
+		if handoff.retryPage != retryPage {
+			t.Fatalf("handoff.retryPage = %+v, want original retry page %+v", handoff.retryPage, retryPage)
+		}
+		if handoff.queuePage != nil {
+			t.Fatalf("handoff.queuePage = %+v, want nil on retry adaptation path", handoff.queuePage)
+		}
+		if handoff.persistenceQueue != retryQueue {
+			t.Fatalf("handoff.persistenceQueue = %+v, want retry-derived queue %+v", handoff.persistenceQueue, retryQueue)
+		}
+	})
+
+	t.Run("queue_page_results_keep_unified_handoff_shape_and_clone_page_items_into_persistence_queue", func(t *testing.T) {
+		t.Parallel()
+
+		queuePage := &GenerationQueuePage{
+			TaskID:  "queue-task-1",
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, PreviewableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "queue-task-1", Platform: "amazon", Slot: "auxiliary", State: "queued"},
+			},
+		}
+
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase().fromQueuePage(queuePage)
+		if handoff == nil {
+			t.Fatal("handoff = nil, want queue handoff result")
+		}
+		if handoff.queuePage != queuePage {
+			t.Fatalf("handoff.queuePage = %+v, want original queue page %+v", handoff.queuePage, queuePage)
+		}
+		if handoff.retryPage != nil {
+			t.Fatalf("handoff.retryPage = %+v, want nil on queue adaptation path", handoff.retryPage)
+		}
+
+		wantQueue := generationWorkQueueFromPage(queuePage)
+		if !reflect.DeepEqual(handoff.persistenceQueue, wantQueue) {
+			t.Fatalf("handoff.persistenceQueue = %+v, want queue-derived queue %+v", handoff.persistenceQueue, wantQueue)
+		}
+		if handoff.persistenceQueue == nil || len(handoff.persistenceQueue.Items) != 1 {
+			t.Fatalf("handoff.persistenceQueue = %+v, want cloned queue items", handoff.persistenceQueue)
+		}
+		if &handoff.persistenceQueue.Items[0] == &queuePage.Items[0] {
+			t.Fatal("handoff.persistenceQueue.Items reused queuePage.Items backing storage, want copy")
+		}
+	})
+}
+
 func TestTaskGenerationActionProjectionSessionUsesRetryQueueForRetryableTargets(t *testing.T) {
 	t.Parallel()
 
