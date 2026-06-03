@@ -28,7 +28,7 @@ func TestActionTargetFilterMutationBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("action_target_filter_mutation_shape_home_owns_preview_and_action_key_rules", func(t *testing.T) {
+	t.Run("action_target_filter_mutation_shape_home_routes_preview_and_regular_action_key_homes", func(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
@@ -36,13 +36,11 @@ func TestActionTargetFilterMutationBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationPreviewCapabilityFilterMutation(actionKey, filters) {",
-			"case \"generate_missing_assets\", \"review_missing_slots\":",
-			"case \"retry_failed_generation\", \"inspect_failed_renderer_tasks\":",
-			"case \"defer_section_review\", \"approve_section_review\":",
+			"applyAssetGenerationRegularActionKeyFilterMutation(actionKey, filters)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"applyAssetGenerationPreviewCapabilityFilterMutation",
-			"applyAssetGenerationIdealReviewFilters",
+			"applyAssetGenerationRegularActionKeyFilterMutation",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneAssetGenerationFilters",
