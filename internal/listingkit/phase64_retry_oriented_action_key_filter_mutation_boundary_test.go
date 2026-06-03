@@ -13,8 +13,8 @@ func TestRetryOrientedActionKeyFilterMutationBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationRetryOrientedFilterMutation(actionKey, filters) {",
-			"case \"generate_missing_assets\", \"review_missing_slots\":",
 			"if applyAssetGenerationReviewReadyFilterMutation(actionKey, filters) {",
+			"applyAssetGenerationMissingSlotFilterMutation(actionKey, filters)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"case \"retry_failed_generation\", \"inspect_failed_renderer_tasks\":",
@@ -24,6 +24,7 @@ func TestRetryOrientedActionKeyFilterMutationBoundary(t *testing.T) {
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"applyAssetGenerationRetryOrientedFilterMutation",
 			"applyAssetGenerationReviewReadyFilterMutation",
+			"applyAssetGenerationMissingSlotFilterMutation",
 		})
 	})
 

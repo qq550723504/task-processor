@@ -2,7 +2,7 @@ package listingkit
 
 import "testing"
 
-func TestNonRetryRegularActionKeyMutationBoundary(t *testing.T) {
+func TestMissingSlotActionKeyMutationBoundary(t *testing.T) {
 	t.Parallel()
 
 	t.Run("regular_action_key_home_routes_retry_review_ready_and_missing_slot_homes_only", func(t *testing.T) {
@@ -26,21 +26,20 @@ func TestNonRetryRegularActionKeyMutationBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("review_ready_home_owns_review_ready_and_section_review_rule_family", func(t *testing.T) {
+	t.Run("missing_slot_home_owns_missing_slot_rule_family", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_review_ready_mutation.go", "applyAssetGenerationReviewReadyFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_review_ready_mutation.go", "applyAssetGenerationReviewReadyFilterMutation")
+		source := readNamedFunctionSource(t, "generation_action_filters_missing_slot_mutation.go", "applyAssetGenerationMissingSlotFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_action_filters_missing_slot_mutation.go", "applyAssetGenerationMissingSlotFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"case \"review_ready_assets\", \"continue_publish_review\":",
-			"case \"defer_section_review\", \"approve_section_review\":",
-		})
-		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationIdealReviewFilters",
+			"case \"generate_missing_assets\", \"review_missing_slots\":",
+			"filters.QualityGrade = \"missing\"",
+			"filters.ExecutionQuality = \"\"",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"applyAssetGenerationRetryOrientedFilterMutation",
+			"applyAssetGenerationReviewReadyFilterMutation",
 			"cloneAssetGenerationFilters",
 			"cloneGenerationQueueQuery",
 			"cloneRetryGenerationTasksRequest",

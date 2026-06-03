@@ -26,7 +26,7 @@ func TestRegularActionKeyFilterMutationBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("regular_action_key_mutation_home_routes_retry_review_ready_and_missing_slot_families", func(t *testing.T) {
+	t.Run("regular_action_key_mutation_home_routes_retry_review_ready_and_missing_slot_homes", func(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
@@ -35,11 +35,12 @@ func TestRegularActionKeyFilterMutationBoundary(t *testing.T) {
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationRetryOrientedFilterMutation(actionKey, filters) {",
 			"if applyAssetGenerationReviewReadyFilterMutation(actionKey, filters) {",
-			"case \"generate_missing_assets\", \"review_missing_slots\":",
+			"applyAssetGenerationMissingSlotFilterMutation(actionKey, filters)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"applyAssetGenerationRetryOrientedFilterMutation",
 			"applyAssetGenerationReviewReadyFilterMutation",
+			"applyAssetGenerationMissingSlotFilterMutation",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"applyAssetGenerationPreviewCapabilityFilterMutation",
