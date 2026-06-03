@@ -179,6 +179,70 @@ func TestBuildAssetGenerationOverviewIsDeterministicForMapBackedSummaries(t *tes
 	}
 }
 
+func TestActionFiltersForKeyPreviewCapabilityPrefersIdealReviewMutation(t *testing.T) {
+	t.Parallel()
+
+	base := &AssetGenerationRecommendedFilters{
+		Platforms:        []string{"shein"},
+		RetryableOnly:    true,
+		ExecutionQuality: "failed",
+	}
+
+	filters := actionFiltersForKey("review_detail_previews", base)
+	if filters == nil {
+		t.Fatal("filters = nil, want cloned filters")
+	}
+	if filters == base {
+		t.Fatal("filters reused base pointer, want defensive clone")
+	}
+	if filters.PreviewCapability != "detail_preview" {
+		t.Fatalf("preview capability = %q, want detail_preview", filters.PreviewCapability)
+	}
+	if !filters.RenderPreviewAvailable {
+		t.Fatalf("render preview available = %v, want true", filters.RenderPreviewAvailable)
+	}
+	if filters.ExecutionQuality != "" {
+		t.Fatalf("execution quality = %q, want cleared", filters.ExecutionQuality)
+	}
+	if filters.RetryableOnly {
+		t.Fatalf("retryable only = %v, want false", filters.RetryableOnly)
+	}
+	if filters.QualityGrade != "ideal" || filters.QualityGradeLabel != generationQualityGradeLabel("ideal") {
+		t.Fatalf("quality grade = %q/%q, want ideal label", filters.QualityGrade, filters.QualityGradeLabel)
+	}
+	if base.ExecutionQuality != "failed" || !base.RetryableOnly || base.PreviewCapability != "" {
+		t.Fatalf("base mutated = %+v, want original values preserved", base)
+	}
+}
+
+func TestActionFiltersForKeyReviewReadyPreservesExistingQualityGrade(t *testing.T) {
+	t.Parallel()
+
+	base := &AssetGenerationRecommendedFilters{
+		QualityGrade:      "provisional",
+		QualityGradeLabel: generationQualityGradeLabel("provisional"),
+		RetryableOnly:     true,
+		ExecutionQuality:  "failed",
+	}
+
+	filters := actionFiltersForKey("approve_section_review", base)
+	if filters == nil {
+		t.Fatal("filters = nil, want cloned filters")
+	}
+	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != generationQualityGradeLabel("provisional") {
+		t.Fatalf("quality grade = %q/%q, want provisional label preserved", filters.QualityGrade, filters.QualityGradeLabel)
+	}
+	if filters.ExecutionQuality != "" {
+		t.Fatalf("execution quality = %q, want cleared", filters.ExecutionQuality)
+	}
+	if filters.RetryableOnly {
+		t.Fatalf("retryable only = %v, want false", filters.RetryableOnly)
+	}
+	if base.ExecutionQuality != "failed" || !base.RetryableOnly {
+		t.Fatalf("base mutated = %+v, want original values preserved", base)
+	}
+}
+
 func containsIgnoreCase(input, fragment string) bool {
 	return strings.Contains(strings.ToLower(input), strings.ToLower(fragment))
 }
