@@ -4,6 +4,6 @@ func applyRetryGenerationTasksRequestTaskIDSlotClonePairing(req *RetryGeneration
 	if req == nil || cloned == nil {
 		return
 	}
-	cloned.TaskIDs = append([]string(nil), req.TaskIDs...)
-	cloned.Slots = append([]string(nil), req.Slots...)
+	applyRetryGenerationTasksRequestTaskIDClone(req, cloned)
+	applyRetryGenerationTasksRequestSlotClone(req, cloned)
 }
