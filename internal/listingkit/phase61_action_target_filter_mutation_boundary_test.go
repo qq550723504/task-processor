@@ -35,13 +35,13 @@ func TestActionTargetFilterMutationBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"if applyAssetGenerationPreviewCapabilityFilters(actionKey, filters) {",
+			"if applyAssetGenerationPreviewCapabilityFilterMutation(actionKey, filters) {",
 			"case \"generate_missing_assets\", \"review_missing_slots\":",
 			"case \"retry_failed_generation\", \"inspect_failed_renderer_tasks\":",
 			"case \"defer_section_review\", \"approve_section_review\":",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationPreviewCapabilityFilters",
+			"applyAssetGenerationPreviewCapabilityFilterMutation",
 			"applyAssetGenerationIdealReviewFilters",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
