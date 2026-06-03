@@ -1969,6 +1969,83 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retryable_targets_return_retry_page_and_retry_derived_persistence_queue", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRetryPersistenceFailureFixture(t, "task-generation-action-handoff-retry-1")
+		target := &AssetGenerationActionTarget{
+			ActionKey:       "generate_missing_assets",
+			InteractionMode: "retryable",
+			RetryRequest: &RetryGenerationTasksRequest{
+				Slots:        []string{"auxiliary"},
+				QualityGrade: "missing",
+			},
+		}
+
+		handoff, err := buildTaskGenerationActionExecuteRequestHandoffPhase(fixture.generation).run(context.Background(), fixture.taskID, target)
+		if err != nil {
+			t.Fatalf("taskGenerationActionExecuteRequestHandoffPhase.run() error = %v", err)
+		}
+		if handoff == nil || handoff.retryPage == nil {
+			t.Fatalf("handoff = %+v, want retry page handoff", handoff)
+		}
+		if handoff.queuePage != nil {
+			t.Fatalf("handoff.queuePage = %+v, want nil for retryable path", handoff.queuePage)
+		}
+
+		wantQueue := generationWorkQueueFromRetryPage(handoff.retryPage)
+		if handoff.persistenceQueue != wantQueue {
+			t.Fatalf("persistenceQueue = %+v, want retry-derived queue %+v", handoff.persistenceQueue, wantQueue)
+		}
+		if handoff.retryPage.ExecutedQueue == nil {
+			t.Fatalf("retry page = %+v, want executed queue", handoff.retryPage)
+		}
+		if handoff.persistenceQueue != handoff.retryPage.ExecutedQueue {
+			t.Fatalf("persistenceQueue = %+v, want executed queue pointer %+v", handoff.persistenceQueue, handoff.retryPage.ExecutedQueue)
+		}
+	})
+
+	t.Run("non_retryable_targets_return_queue_page_and_queue_derived_persistence_queue", func(t *testing.T) {
+		t.Parallel()
+
+		task, generation := newTaskGenerationActionQueueFixture(t, "task-generation-action-handoff-queue-1")
+		target := &AssetGenerationActionTarget{
+			ActionKey:       "review_missing_slots",
+			InteractionMode: "queue_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:     "amazon",
+				Slot:         "auxiliary",
+				QualityGrade: "missing",
+			},
+		}
+
+		handoff, err := buildTaskGenerationActionExecuteRequestHandoffPhase(generation).run(context.Background(), task.ID, target)
+		if err != nil {
+			t.Fatalf("taskGenerationActionExecuteRequestHandoffPhase.run() error = %v", err)
+		}
+		if handoff == nil || handoff.queuePage == nil {
+			t.Fatalf("handoff = %+v, want queue page handoff", handoff)
+		}
+		if handoff.retryPage != nil {
+			t.Fatalf("handoff.retryPage = %+v, want nil for non-retryable path", handoff.retryPage)
+		}
+
+		wantQueue := generationWorkQueueFromPage(handoff.queuePage)
+		if !reflect.DeepEqual(handoff.persistenceQueue, wantQueue) {
+			t.Fatalf("persistenceQueue = %+v, want queue-derived queue %+v", handoff.persistenceQueue, wantQueue)
+		}
+		if handoff.persistenceQueue == nil || handoff.queuePage.Items == nil || len(handoff.queuePage.Items) == 0 {
+			t.Fatalf("handoff = %+v, want populated queue page and persistence queue", handoff)
+		}
+		if &handoff.persistenceQueue.Items[0] == &handoff.queuePage.Items[0] {
+			t.Fatal("persistenceQueue.Items reused queuePage.Items backing storage, want page-derived queue copy")
+		}
+	})
+}
+
 func TestTaskGenerationActionProjectionSessionUsesRetryQueueForRetryableTargets(t *testing.T) {
 	t.Parallel()
 
