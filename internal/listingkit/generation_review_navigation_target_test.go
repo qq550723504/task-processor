@@ -162,6 +162,49 @@ func TestGenerationReviewActionNavigationTarget(t *testing.T) {
 	}
 }
 
+func TestGenerationReviewActionNavigationTargetQueueQueryClone(t *testing.T) {
+	t.Parallel()
+
+	original := testAssetGenerationActionTargetForNavigation()
+
+	actual := buildGenerationReviewActionNavigationTarget(original)
+	if actual == nil {
+		t.Fatal("buildGenerationReviewActionNavigationTarget() = nil, want navigation target")
+	}
+	if actual.QueueQuery == nil {
+		t.Fatal("buildGenerationReviewActionNavigationTarget().QueueQuery = nil, want clone")
+	}
+	if actual.QueueQuery == original.QueueQuery {
+		t.Fatal("buildGenerationReviewActionNavigationTarget().QueueQuery reused original pointer")
+	}
+	if !reflect.DeepEqual(actual.QueueQuery, original.QueueQuery) {
+		t.Fatalf("buildGenerationReviewActionNavigationTarget().QueueQuery = %+v, want field-for-field clone of %+v", actual.QueueQuery, original.QueueQuery)
+	}
+
+	expected := applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+		DispatchKind: "action",
+		ActionTarget: cloneAssetGenerationActionTargetForNavigation(original),
+		QueueQuery:   cloneGenerationQueueQuery(original.QueueQuery),
+	})
+	if actual.ResourceKind != expected.ResourceKind ||
+		actual.CacheKey != expected.CacheKey ||
+		actual.CachePolicy != expected.CachePolicy ||
+		actual.RevalidateAfterAction != expected.RevalidateAfterAction ||
+		!reflect.DeepEqual(actual.Descriptor, expected.Descriptor) {
+		t.Fatalf("buildGenerationReviewActionNavigationTarget() = %+v, want outward identity aligned with %+v", actual, expected)
+	}
+
+	actual.QueueQuery.Platform = "amazon"
+	actual.QueueQuery.SortBy = "updated_at"
+	actual.QueueQuery.Page = 99
+
+	if original.QueueQuery.Platform != "shein" ||
+		original.QueueQuery.SortBy != "updated_at" ||
+		original.QueueQuery.Page != 2 {
+		t.Fatalf("original.QueueQuery mutated after navigation queue update = %+v", original.QueueQuery)
+	}
+}
+
 func testAssetGenerationActionTargetForNavigation() *AssetGenerationActionTarget {
 	return &AssetGenerationActionTarget{
 		ActionKey:       "approve_section_review",
