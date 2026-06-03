@@ -43,20 +43,18 @@ func TestFailedVsProvisionalRetryActionKeyMutationBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("provisional_retry_home_owns_provisional_and_section_retry_rule_family", func(t *testing.T) {
+	t.Run("provisional_retry_home_routes_section_retry_and_provisional_pair", func(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "generation_action_filters_provisional_retry_mutation.go", "applyAssetGenerationProvisionalRetryFilterMutation")
 		callNames := readNamedFunctionCallNames(t, "generation_action_filters_provisional_retry_mutation.go", "applyAssetGenerationProvisionalRetryFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
+			"if applyAssetGenerationSectionRetryFilterMutation(actionKey, filters) {",
 			"case \"upgrade_fallback_assets\", \"retry_provisional_slots\":",
-			"case \"retry_section_generation\":",
 		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"applyAssetGenerationFailedRetryFilterMutation",
-			"applyAssetGenerationIdealReviewFilters",
-			"cloneAssetGenerationFilters",
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"applyAssetGenerationSectionRetryFilterMutation",
 		})
 	})
 }
