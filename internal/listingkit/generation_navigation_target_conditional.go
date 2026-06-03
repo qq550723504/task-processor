@@ -24,18 +24,7 @@ func cloneGenerationNavigationDispatchPlan(plan *GenerationNavigationDispatchPla
 		return nil
 	}
 	cloned := *plan
-	if len(plan.Steps) > 0 {
-		cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))
-		for _, step := range plan.Steps {
-			cloned.Steps = append(cloned.Steps, GenerationNavigationDispatchStep{
-				Kind:               step.Kind,
-				ResponseMode:       step.ResponseMode,
-				CachePreference:    step.CachePreference,
-				RequiresRevalidate: step.RequiresRevalidate,
-				Query:              cloneGenerationQueueQuery(step.Query),
-			})
-		}
-	}
+	buildGenerationNavigationDispatchPlanCloneShapePhase().run(plan, &cloned)
 	return &cloned
 }
 
