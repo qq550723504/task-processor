@@ -5,7 +5,6 @@ func cloneRetryGenerationTasksRequest(req *RetryGenerationTasksRequest) *RetryGe
 		return nil
 	}
 	cloned := *req
-	cloned.TaskIDs = append([]string(nil), req.TaskIDs...)
-	cloned.Slots = append([]string(nil), req.Slots...)
+	applyRetryGenerationTasksRequestCloneShape(req, &cloned)
 	return &cloned
 }
