@@ -11,10 +11,5 @@ func (p *generationNavigationDescriptorCloneShapePhase) run(descriptor *Generati
 		return
 	}
 	applyGenerationNavigationDescriptorResidualCloneShape(descriptor, cloned)
-	if len(descriptor.FollowUpReads) > 0 {
-		cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))
-		for _, item := range descriptor.FollowUpReads {
-			cloned.FollowUpReads = append(cloned.FollowUpReads, cloneGenerationNavigationFollowUpRead(item))
-		}
-	}
+	applyGenerationNavigationDescriptorFollowUpReadCloneRouting(descriptor, cloned)
 }
