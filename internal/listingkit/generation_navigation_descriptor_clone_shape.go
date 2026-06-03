@@ -10,6 +10,5 @@ func (p *generationNavigationDescriptorCloneShapePhase) run(descriptor *Generati
 	if descriptor == nil || cloned == nil {
 		return
 	}
-	applyGenerationNavigationDescriptorResidualCloneShape(descriptor, cloned)
-	applyGenerationNavigationDescriptorFollowUpReadCloneRouting(descriptor, cloned)
+	applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)
 }
