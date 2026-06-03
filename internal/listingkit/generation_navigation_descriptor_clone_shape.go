@@ -18,11 +18,7 @@ func (p *generationNavigationDescriptorCloneShapePhase) run(descriptor *Generati
 	if len(descriptor.FollowUpReads) > 0 {
 		cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))
 		for _, item := range descriptor.FollowUpReads {
-			cloned.FollowUpReads = append(cloned.FollowUpReads, GenerationNavigationFollowUpRead{
-				Kind:         item.Kind,
-				ResponseMode: item.ResponseMode,
-				Query:        cloneGenerationQueueQuery(item.Query),
-			})
+			cloned.FollowUpReads = append(cloned.FollowUpReads, cloneGenerationNavigationFollowUpRead(item))
 		}
 	}
 }
