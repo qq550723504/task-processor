@@ -5,11 +5,7 @@ func cloneAssetGenerationActionTarget(target *AssetGenerationActionTarget) *Asse
 		return nil
 	}
 	cloned := *target
-	cloned.Filters = cloneAssetGenerationFilters(target.Filters)
-	cloned.QueueQuery = cloneGenerationQueueQuery(target.QueueQuery)
-	cloned.RetryRequest = cloneRetryGenerationTasksRequest(target.RetryRequest)
-	cloned.ExpectedImpact = cloneAssetGenerationActionImpact(target.ExpectedImpact)
-	cloned.NavigationTarget = cloneGenerationReviewNavigationTarget(target.NavigationTarget)
+	buildTaskGenerationActionTargetCloneShapePhase().run(target, &cloned)
 	return &cloned
 }
 
