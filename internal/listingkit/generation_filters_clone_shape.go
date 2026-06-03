@@ -4,5 +4,5 @@ func applyAssetGenerationFiltersCloneShape(filters *AssetGenerationRecommendedFi
 	if filters == nil || cloned == nil {
 		return
 	}
-	cloned.Platforms = append([]string(nil), filters.Platforms...)
+	applyAssetGenerationFiltersPlatformsClone(filters, cloned)
 }
