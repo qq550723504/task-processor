@@ -1976,6 +1976,19 @@ func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
 		t.Parallel()
 
 		fixture := newRetryPersistenceFailureFixture(t, "task-generation-action-handoff-retry-1")
+		originalBuildRetrySelection := fixture.generation.buildRetryGenerationTaskSelection
+		var observedRetryRequest *RetryGenerationTasksRequest
+		fixture.generation.buildRetryGenerationTaskSelection = func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			observedRetryRequest = req
+			selectedTasks, err := originalBuildRetrySelection(ctx, task, inventory, existing, req)
+			if req != nil {
+				req.QualityGrade = "mutated-by-handoff-downstream"
+				if len(req.Slots) > 0 {
+					req.Slots[0] = "mutated-slot"
+				}
+			}
+			return selectedTasks, err
+		}
 		target := &AssetGenerationActionTarget{
 			ActionKey:       "generate_missing_assets",
 			InteractionMode: "retryable",
@@ -1984,10 +1997,20 @@ func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
 				QualityGrade: "missing",
 			},
 		}
+		originalRetryRequest := cloneRetryGenerationTasksRequest(target.RetryRequest)
 
 		handoff, err := buildTaskGenerationActionExecuteRequestHandoffPhase(fixture.generation).run(context.Background(), fixture.taskID, target)
 		if err != nil {
 			t.Fatalf("taskGenerationActionExecuteRequestHandoffPhase.run() error = %v", err)
+		}
+		if observedRetryRequest == nil {
+			t.Fatal("observed retry request = nil, want downstream retry request clone")
+		}
+		if observedRetryRequest == target.RetryRequest {
+			t.Fatal("observed retry request reused original target.RetryRequest, want clone")
+		}
+		if !reflect.DeepEqual(target.RetryRequest, originalRetryRequest) {
+			t.Fatalf("target.RetryRequest = %+v, want original request unchanged as %+v", target.RetryRequest, originalRetryRequest)
 		}
 		if handoff == nil || handoff.retryPage == nil {
 			t.Fatalf("handoff = %+v, want retry page handoff", handoff)
@@ -2021,10 +2044,14 @@ func TestTaskGenerationActionExecuteRequestHandoffRun(t *testing.T) {
 				QualityGrade: "missing",
 			},
 		}
+		originalQueueQuery := cloneGenerationQueueQuery(target.QueueQuery)
 
 		handoff, err := buildTaskGenerationActionExecuteRequestHandoffPhase(generation).run(context.Background(), task.ID, target)
 		if err != nil {
 			t.Fatalf("taskGenerationActionExecuteRequestHandoffPhase.run() error = %v", err)
+		}
+		if !reflect.DeepEqual(target.QueueQuery, originalQueueQuery) {
+			t.Fatalf("target.QueueQuery = %+v, want original query unchanged as %+v", target.QueueQuery, originalQueueQuery)
 		}
 		if handoff == nil || handoff.queuePage == nil {
 			t.Fatalf("handoff = %+v, want queue page handoff", handoff)
