@@ -8,32 +8,40 @@ func TestTaskGenerationActionTargetCloneOwnershipBoundary(t *testing.T) {
 	t.Run("local_clone_home_owns_action_target_clone_shape", func(t *testing.T) {
 		t.Parallel()
 
-		source := readTaskGenerationSourceFile(t, "task_generation_action_target_clone.go")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_target_clone.go")
+		source := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionTarget")
 		callNames := readNamedFunctionCallNames(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionTarget")
 
-		assertSourceContainsAll(t, source, []string{
+		assertSourceContainsAll(t, fileSource, []string{
 			"func cloneAssetGenerationActionTarget(",
 			"func cloneAssetGenerationActionImpact(",
+		})
+		assertSourceExcludesAll(t, fileSource, []string{
+			"func cloneGenerationQueueQuery(",
+			"func cloneRetryGenerationTasksRequest(",
+			"func resolveAssetGenerationActionTarget(",
+			"func requestedAssetGenerationActionKey(",
+		})
+		assertSourceContainsAll(t, source, []string{
+			"buildTaskGenerationActionTargetCloneShapePhase().run(target, &cloned)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"cloneAssetGenerationFilters(target.Filters)",
 			"cloneGenerationQueueQuery(target.QueueQuery)",
 			"cloneRetryGenerationTasksRequest(target.RetryRequest)",
 			"cloneAssetGenerationActionImpact(target.ExpectedImpact)",
 			"cloneGenerationReviewNavigationTarget(target.NavigationTarget)",
 		})
-		assertSourceExcludesAll(t, source, []string{
-			"func cloneGenerationQueueQuery(",
-			"func cloneRetryGenerationTasksRequest(",
-			"func resolveAssetGenerationActionTarget(",
-			"func requestedAssetGenerationActionKey(",
-		})
 		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildTaskGenerationActionTargetCloneShapePhase",
+			"run",
+		})
+		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneAssetGenerationFilters",
 			"cloneGenerationQueueQuery",
 			"cloneRetryGenerationTasksRequest",
 			"cloneAssetGenerationActionImpact",
 			"cloneGenerationReviewNavigationTarget",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"resolveAssetGenerationActionTarget",
 			"requestedAssetGenerationActionKey",
 		})
