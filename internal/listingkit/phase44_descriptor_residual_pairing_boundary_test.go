@@ -38,7 +38,7 @@ func TestGenerationNavigationDescriptorResidualPairingBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"applyGenerationNavigationDescriptorResidualClonePairing(descriptor, cloned)",
-			"cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)",
+			"applyGenerationNavigationDescriptorDispatchPlanCloneDelegation(descriptor, cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)",
@@ -46,7 +46,7 @@ func TestGenerationNavigationDescriptorResidualPairingBoundary(t *testing.T) {
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"applyGenerationNavigationDescriptorResidualClonePairing",
-			"cloneGenerationNavigationDispatchPlan",
+			"applyGenerationNavigationDescriptorDispatchPlanCloneDelegation",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneGenerationConditionalState",

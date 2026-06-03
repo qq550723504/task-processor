@@ -25,21 +25,23 @@ func TestGenerationNavigationDispatchPlanCloneAggregateBoundary(t *testing.T) {
 			"if plan == nil || cloned == nil {",
 			"if len(plan.Steps) == 0 {",
 			"cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))",
+			"cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"func cloneGenerationNavigationDispatchPlan(",
+			"cloneGenerationNavigationDescriptor(",
+			"buildTaskGenerationNavigationDispatchPlanPhase(",
 			"Kind:               step.Kind,",
 			"ResponseMode:       step.ResponseMode,",
 			"CachePreference:    step.CachePreference,",
 			"RequiresRevalidate: step.RequiresRevalidate,",
 			"Query:              cloneGenerationQueueQuery(step.Query),",
 		})
-		assertSourceExcludesAll(t, source, []string{
-			"func cloneGenerationNavigationDispatchPlan(",
-			"cloneGenerationNavigationDescriptor(",
-			"buildTaskGenerationNavigationDispatchPlanPhase(",
-		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"cloneGenerationQueueQuery",
+			"cloneGenerationNavigationDispatchPlanStep",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"cloneGenerationQueueQuery",
 			"cloneGenerationNavigationDescriptor",
 			"buildTaskGenerationNavigationDispatchPlanPhase",
 		})

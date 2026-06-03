@@ -107,17 +107,8 @@ func (s *taskTemporalSubmissionAdapter) ValidateSheinPublishReadiness(ctx contex
 		}
 	}
 	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, task.Result.PodExecution, in.Action)
-	if readiness == nil || !readiness.Ready {
-		return fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness))
-	}
-	if s.validateSheinPublishFreshness != nil {
-		freshness, freshnessErr := s.validateSheinPublishFreshness(ctx, task, pkg, in.Action)
-		if freshnessErr != nil {
-			return freshnessErr
-		}
-		if freshness != nil && !freshness.Ready {
-			return fmt.Errorf("%w: %s", ErrSubmitBlocked, firstSubmitReadinessMessage(freshness))
-		}
+	if err := validateSheinSubmitReadinessGates(ctx, task, pkg, in.Action, readiness, s.validateSheinPublishFreshness); err != nil {
+		return err
 	}
 	return nil
 }

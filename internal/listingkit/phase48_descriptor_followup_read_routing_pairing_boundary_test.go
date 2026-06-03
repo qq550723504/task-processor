@@ -12,16 +12,18 @@ func TestGenerationNavigationDescriptorFollowUpReadRoutingPairingBoundary(t *tes
 		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_followup_read_routing_pairing.go", "applyGenerationNavigationDescriptorFollowUpReadRoutingPairing")
 
 		assertSourceContainsAll(t, source, []string{
-			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",
-			"cloned.FollowUpReads = append(cloned.FollowUpReads, cloneGenerationNavigationFollowUpRead(item))",
+			"cloned.FollowUpReads = cloneGenerationNavigationFollowUpReadSlice(descriptor.FollowUpReads)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloneGenerationQueueQuery(",
+			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",
+			"cloned.FollowUpReads = append(cloned.FollowUpReads, cloneGenerationNavigationFollowUpRead(item))",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"cloneGenerationNavigationFollowUpRead",
+			"cloneGenerationNavigationFollowUpReadSlice",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"cloneGenerationNavigationFollowUpRead",
 			"cloneGenerationQueueQuery",
 		})
 	})

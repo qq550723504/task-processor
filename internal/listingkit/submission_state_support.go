@@ -3,38 +3,19 @@ package listingkit
 import sheinpub "task-processor/internal/publishing/shein"
 
 func applySheinSubmissionStatusFields(fields *SheinSubmissionStatusFields, pkg *SheinPackage) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if fields == nil || pkg == nil {
+	projection := buildSheinSubmissionProjection(pkg)
+	if fields == nil || projection == nil {
 		return
 	}
-	fields.SheinWorkflowStatus = deriveSheinWorkflowStatus(pkg)
-	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
-		fields.SheinLatestSubmissionStatus = latest.Status
-		fields.SheinLatestSubmissionError = latest.ErrorMessage
-	} else if pkg.SubmissionState != nil {
-		fields.SheinLatestSubmissionStatus = pkg.SubmissionState.LastStatus
-		fields.SheinLatestSubmissionError = pkg.SubmissionState.LastError
-	}
-	if pkg.SubmissionState != nil {
-		fields.SheinSubmissionRemoteStatus = pkg.SubmissionState.RemoteStatus
-	}
+	*fields = projection.StatusFields
 }
 
 func applySheinSubmissionRemoteSummary(fields *SheinTaskListSubmissionFields, pkg *SheinPackage) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if fields == nil || pkg == nil || pkg.SubmissionState == nil {
+	projection := buildSheinSubmissionProjection(pkg)
+	if fields == nil || projection == nil {
 		return
 	}
-	submission := pkg.SubmissionState
-	fields.SheinSubmissionRemoteCheckedAt = submission.RemoteCheckedAt
-	record := sheinPrimarySubmissionRecord(submission)
-	if record == nil {
-		return
-	}
-	fields.SheinSubmissionRemoteRecordID = record.RemoteRecordID
-	if fields.SheinSubmissionRemoteCheckedAt == nil {
-		fields.SheinSubmissionRemoteCheckedAt = record.RemoteCheckedAt
-	}
+	*fields = projection.TaskList
 }
 
 func deriveSheinWorkflowStatus(pkg *SheinPackage) string {

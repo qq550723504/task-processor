@@ -23,23 +23,24 @@ func TestGenerationNavigationDescriptorCloneAggregateBoundary(t *testing.T) {
 		})
 		assertSourceContainsAll(t, source, []string{
 			"if descriptor == nil || cloned == nil {",
-			"cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)",
-			"cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)",
-			"cloned.Invalidates = append([]string(nil), descriptor.Invalidates...)",
-			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",
-			"Query:        cloneGenerationQueueQuery(item.Query),",
+			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"func cloneGenerationNavigationDescriptor(",
 			"buildGenerationReviewNavigationTarget(",
 			"cloneGenerationReviewNavigationTarget(",
+			"cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)",
+			"cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)",
+			"cloned.Invalidates = append([]string(nil), descriptor.Invalidates...)",
+			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
+			"applyGenerationNavigationDescriptorCloneShapePairing",
+		})
+		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneGenerationConditionalState",
 			"cloneGenerationNavigationDispatchPlan",
 			"cloneGenerationQueueQuery",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"buildGenerationReviewNavigationTarget",
 			"cloneGenerationReviewNavigationTarget",
 		})

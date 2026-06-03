@@ -12,19 +12,23 @@ func TestGenerationNavigationDescriptorFollowUpReadCloneBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "generation_navigation_followup_read_clone.go", "cloneGenerationNavigationFollowUpRead")
 
 		assertSourceContainsAll(t, source, []string{
-			"Kind:         item.Kind,",
-			"ResponseMode: item.ResponseMode,",
-			"Query:        cloneGenerationQueueQuery(item.Query),",
+			"cloned := item",
+			"applyGenerationNavigationFollowUpReadCloneShape(item, &cloned)",
+			"return cloned",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"func cloneGenerationNavigationDescriptor(",
 			"func cloneGenerationNavigationDispatchPlan(",
 			"cloneGenerationConditionalState(",
+			"Kind:         item.Kind,",
+			"ResponseMode: item.ResponseMode,",
+			"Query:        cloneGenerationQueueQuery(item.Query),",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"cloneGenerationQueueQuery",
+			"applyGenerationNavigationFollowUpReadCloneShape",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"cloneGenerationQueueQuery",
 			"cloneGenerationConditionalState",
 			"cloneGenerationNavigationDispatchPlan",
 		})
@@ -37,18 +41,17 @@ func TestGenerationNavigationDescriptorFollowUpReadCloneBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape.go", "run")
 
 		assertSourceContainsAll(t, source, []string{
+			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",
 			"cloned.FollowUpReads = append(cloned.FollowUpReads, cloneGenerationNavigationFollowUpRead(item))",
 		})
-		assertSourceExcludesAll(t, source, []string{
-			"Kind:         item.Kind,",
-			"ResponseMode: item.ResponseMode,",
-			"Query:        cloneGenerationQueueQuery(item.Query),",
-		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"cloneGenerationNavigationFollowUpRead",
+			"applyGenerationNavigationDescriptorCloneShapePairing",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
+			"cloneGenerationNavigationFollowUpRead",
 			"cloneGenerationQueueQuery",
 		})
 	})

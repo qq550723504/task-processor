@@ -72,8 +72,7 @@ func TestTaskGenerationNavigationActionTargetCloneBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"func cloneAssetGenerationActionTarget(",
-			"cloneGenerationReviewNavigationTarget(target.NavigationTarget)",
-			"cloneAssetGenerationActionImpact(target.ExpectedImpact)",
+			"buildTaskGenerationActionTargetCloneShapePhase().run(target, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"func cloneAssetGenerationActionTargetForNavigation(",

@@ -11,11 +11,11 @@ func buildSheinTaskStatusOverview(pkg *SheinPackage) *sheinworkspace.StatusOverv
 }
 
 func buildSheinTaskStatusOverviewWithPod(pkg *SheinPackage, pod *PodExecutionSummary) *sheinworkspace.StatusOverview {
-	if pkg == nil {
+	projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
+	if projection == nil {
 		return nil
 	}
-	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
-	return sheinworkspace.BuildStatusOverview(pkg.Inspection, sheinworkspace.BuildSubmitStateInput(readiness))
+	return projection.StatusOverview
 }
 
 func sheinBlockingKeys(pkg *SheinPackage) []string {
@@ -23,7 +23,11 @@ func sheinBlockingKeys(pkg *SheinPackage) []string {
 }
 
 func sheinBlockingKeysWithPod(pkg *SheinPackage, pod *PodExecutionSummary) []string {
-	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
+	projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
+	if projection == nil {
+		return nil
+	}
+	readiness := projection.Readiness
 	if readiness == nil || len(readiness.BlockingItems) == 0 {
 		return nil
 	}
@@ -35,7 +39,11 @@ func sheinWarningKeys(pkg *SheinPackage) []string {
 }
 
 func sheinWarningKeysWithPod(pkg *SheinPackage, pod *PodExecutionSummary) []string {
-	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
+	projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
+	if projection == nil {
+		return nil
+	}
+	readiness := projection.Readiness
 	if readiness == nil || len(readiness.WarningItems) == 0 {
 		return nil
 	}

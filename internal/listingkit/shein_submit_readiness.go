@@ -247,13 +247,7 @@ func buildSheinSubmitReadinessWithPodForAction(pkg *SheinPackage, pod *PodExecut
 
 	readiness := sheinworkspace.BuildSubmitReadiness(
 		checks,
-		func(spec sheinworkspace.ReadinessCheckSpec) sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint] {
-			guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)
-			return sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint]{
-				Reason:      cloneSheinReadinessReason(guidance.reason),
-				RepairHints: cloneSheinRepairHints(guidance.repairHints),
-			}
-		},
+		buildSheinSubmitReadinessGuidanceResolver(pkg),
 		"当前仍有关键字段未完成，SHEIN 资料包还不能直接进入提交态",
 		"SHEIN 资料包已经基本可提交，但仍建议先处理人工备注",
 		"SHEIN 资料包已具备提交前所需的关键骨架",
@@ -261,14 +255,10 @@ func buildSheinSubmitReadinessWithPodForAction(pkg *SheinPackage, pod *PodExecut
 	if readiness == nil {
 		return nil
 	}
-	if len(readiness.BlockingItems) > 0 {
-		readiness.Summary = append(readiness.Summary, "待补关键项："+sheinworkspace.JoinReadinessLabels(readiness.BlockingItems, "、"))
-	}
-	if len(readiness.WarningItems) > 0 {
-		readiness.Summary = append(readiness.Summary, "待确认项："+sheinworkspace.JoinReadinessLabels(readiness.WarningItems, "、"))
-	}
-	readiness.Summary = uniqueStrings(readiness.Summary)
-	return readiness
+	return shapeSheinSubmitReadinessSummary(readiness, sheinSubmitReadinessSummaryShape{
+		blockingLabel: "待补关键项：",
+		warningLabel:  "待确认项：",
+	})
 }
 
 func sheinSourceFactsReady(pkg *SheinPackage) (bool, string) {

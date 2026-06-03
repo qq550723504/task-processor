@@ -2,8 +2,6 @@ package listingkit
 
 import (
 	"context"
-
-	assetgeneration "task-processor/internal/asset/generation"
 )
 
 func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {
@@ -19,15 +17,16 @@ func (s *service) GetTaskExport(ctx context.Context, taskID string, platform str
 	if err != nil {
 		return nil, err
 	}
-	export.AssetGenerationSummary = buildAssetGenerationSummary(tasks)
-	export.AssetGenerationTasks = append([]assetgeneration.Task(nil), tasks...)
+	projection := buildAssetGenerationProjection(task.Result, tasks)
+	export.AssetGenerationSummary = projection.Summary
+	export.AssetGenerationTasks = projection.Tasks
 	if len(export.AssetRenderPreviews) == 0 && task.Result != nil {
 		export.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
 	}
 	if len(export.PlatformAssetRenderPreviews) == 0 && task.Result != nil {
 		export.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
 	}
-	export.AssetGenerationQueue = buildGenerationWorkQueue(withListingKitResultGeneration(task.Result, tasks))
-	export.AssetGenerationOverview = buildAssetGenerationOverview(export.AssetGenerationQueue)
+	export.AssetGenerationQueue = projection.Queue
+	export.AssetGenerationOverview = projection.Overview
 	return export, nil
 }
