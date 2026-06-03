@@ -1862,7 +1862,21 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 			t.Fatalf("GetTask() error = %v", err)
 		}
 
-		execution, err := buildTaskGenerationActionExecutePhase(fixture.generation).run(context.Background(), fixture.taskID, task.Result, &AssetGenerationActionTarget{
+		originalBuildRetrySelection := fixture.generation.buildRetryGenerationTaskSelection
+		var observedRetryRequest *RetryGenerationTasksRequest
+		fixture.generation.buildRetryGenerationTaskSelection = func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			observedRetryRequest = req
+			selectedTasks, err := originalBuildRetrySelection(ctx, task, inventory, existing, req)
+			if req != nil {
+				req.QualityGrade = "mutated-by-downstream"
+				if len(req.Slots) > 0 {
+					req.Slots[0] = "mutated-slot"
+				}
+			}
+			return selectedTasks, err
+		}
+
+		target := &AssetGenerationActionTarget{
 			ActionKey:       "generate_missing_assets",
 			InteractionMode: "retryable",
 			QueueQuery: &GenerationQueueQuery{
@@ -1870,11 +1884,24 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 				Slot:     "auxiliary",
 			},
 			RetryRequest: &RetryGenerationTasksRequest{
-				Slots: []string{"auxiliary"},
+				Slots:        []string{"auxiliary"},
+				QualityGrade: "missing",
 			},
-		})
+		}
+		originalRetryRequest := cloneRetryGenerationTasksRequest(target.RetryRequest)
+
+		execution, err := buildTaskGenerationActionExecutePhase(fixture.generation).run(context.Background(), fixture.taskID, task.Result, target)
 		if err != nil {
 			t.Fatalf("taskGenerationActionExecutePhase.run() error = %v", err)
+		}
+		if observedRetryRequest == nil {
+			t.Fatal("observed retry request = nil, want downstream retry request clone")
+		}
+		if observedRetryRequest == target.RetryRequest {
+			t.Fatal("observed retry request reused original target.RetryRequest, want clone")
+		}
+		if !reflect.DeepEqual(target.RetryRequest, originalRetryRequest) {
+			t.Fatalf("target.RetryRequest = %+v, want original request unchanged as %+v", target.RetryRequest, originalRetryRequest)
 		}
 		if execution == nil || execution.retryPage == nil {
 			t.Fatalf("execution = %+v, want retry page", execution)
@@ -1894,22 +1921,32 @@ func TestTaskGenerationActionExecuteRunBranchesByInteractionMode(t *testing.T) {
 		if execution.persistenceSession.Queue.Summary == nil || execution.persistenceSession.Queue.Summary.TotalItems != execution.retryPage.ExecutedQueue.Summary.TotalItems {
 			t.Fatalf("persistence session queue = %+v, want retry executed queue summary", execution.persistenceSession.Queue)
 		}
+		if execution.persistenceSession.Queue == execution.retryPage.ExecutedQueue {
+			t.Fatal("persistence session queue reused retry page executed queue pointer, want page-derived review queue")
+		}
 	})
 
 	t.Run("non_retryable_targets_use_generation_queue", func(t *testing.T) {
 		t.Parallel()
 
 		task, generation := newTaskGenerationActionQueueFixture(t, "task-generation-action-execute-queue-1")
-
-		execution, err := buildTaskGenerationActionExecutePhase(generation).run(context.Background(), task.ID, task.Result, &AssetGenerationActionTarget{
+		target := &AssetGenerationActionTarget{
 			ActionKey:       "review_missing_slots",
 			InteractionMode: "queue_only",
 			QueueQuery: &GenerationQueueQuery{
+				Platform:     "amazon",
+				Slot:         "auxiliary",
 				QualityGrade: "missing",
 			},
-		})
+		}
+		originalQueueQuery := cloneGenerationQueueQuery(target.QueueQuery)
+
+		execution, err := buildTaskGenerationActionExecutePhase(generation).run(context.Background(), task.ID, task.Result, target)
 		if err != nil {
 			t.Fatalf("taskGenerationActionExecutePhase.run() error = %v", err)
+		}
+		if !reflect.DeepEqual(target.QueueQuery, originalQueueQuery) {
+			t.Fatalf("target.QueueQuery = %+v, want original query unchanged as %+v", target.QueueQuery, originalQueueQuery)
 		}
 		if execution == nil || execution.queuePage == nil {
 			t.Fatalf("execution = %+v, want queue page", execution)
