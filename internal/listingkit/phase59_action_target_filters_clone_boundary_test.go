@@ -30,7 +30,13 @@ func TestActionTargetFiltersCloneBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "generation_filters_clone_shape.go", "applyAssetGenerationFiltersCloneShape")
 
 		assertSourceContainsAll(t, source, []string{
+			"applyAssetGenerationFiltersPlatformsClone(filters, cloned)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"cloned.Platforms = append([]string(nil), filters.Platforms...)",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"applyAssetGenerationFiltersPlatformsClone",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneAssetGenerationFilters",
