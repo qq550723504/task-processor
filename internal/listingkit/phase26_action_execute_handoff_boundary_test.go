@@ -19,13 +19,15 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 
 		assertSourceContainsAll(t, retryFileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase()",
-			"resultShape: buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),",
+			"normalization *taskGenerationActionExecuteRequestHandoffResultNormalizationPhase",
+			"resultShape   *taskGenerationActionExecuteRequestHandoffResultShapePhase",
 		})
 		assertSourceContainsAll(t, retryBuildSource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase()",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
 		})
 		assertSourceContainsAll(t, retrySource, []string{
-			"return p.resultShape.fromRetryPage(retryPage)",
+			"return p.resultShape.fromRetryNormalization(p.normalization.fromRetryPage(retryPage))",
 		})
 		assertSourceExcludesAll(t, retrySource, []string{
 			"RetryTaskGenerationTasks(",
@@ -39,6 +41,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, retryCalls, []string{
+			"fromRetryNormalization",
 			"fromRetryPage",
 		})
 		assertFunctionCallsExcludeAll(t, retryCalls, []string{
@@ -55,13 +58,15 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 
 		assertSourceContainsAll(t, queueFileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase()",
-			"resultShape: buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),",
+			"normalization *taskGenerationActionExecuteRequestHandoffResultNormalizationPhase",
+			"resultShape   *taskGenerationActionExecuteRequestHandoffResultShapePhase",
 		})
 		assertSourceContainsAll(t, queueBuildSource, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase()",
 			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
 		})
 		assertSourceContainsAll(t, queueSource, []string{
-			"return p.resultShape.fromQueuePage(queuePage)",
+			"return p.resultShape.fromQueueNormalization(p.normalization.fromQueuePage(queuePage))",
 		})
 		assertSourceExcludesAll(t, queueSource, []string{
 			"RetryTaskGenerationTasks(",
@@ -75,6 +80,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, queueCalls, []string{
+			"fromQueueNormalization",
 			"fromQueuePage",
 		})
 		assertFunctionCallsExcludeAll(t, queueCalls, []string{

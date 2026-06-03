@@ -1,25 +1,21 @@
 package listingkit
 
-type taskGenerationActionExecuteRequestHandoffResultShapePhase struct {
-	adaptation *taskGenerationActionExecuteRequestHandoffResultAdaptationPhase
-}
+type taskGenerationActionExecuteRequestHandoffResultShapePhase struct{}
 
 func buildTaskGenerationActionExecuteRequestHandoffResultShapePhase() *taskGenerationActionExecuteRequestHandoffResultShapePhase {
-	return &taskGenerationActionExecuteRequestHandoffResultShapePhase{
-		adaptation: buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(),
+	return &taskGenerationActionExecuteRequestHandoffResultShapePhase{}
+}
+
+func (p *taskGenerationActionExecuteRequestHandoffResultShapePhase) fromRetryNormalization(normalized *taskGenerationActionExecuteRequestHandoffResultNormalization) *taskGenerationActionExecuteRequestHandoff {
+	return &taskGenerationActionExecuteRequestHandoff{
+		retryPage:        normalized.retryPage,
+		persistenceQueue: normalized.persistenceQueue,
 	}
 }
 
-func (p *taskGenerationActionExecuteRequestHandoffResultShapePhase) fromRetryPage(retryPage *GenerationTaskPage) *taskGenerationActionExecuteRequestHandoff {
+func (p *taskGenerationActionExecuteRequestHandoffResultShapePhase) fromQueueNormalization(normalized *taskGenerationActionExecuteRequestHandoffResultNormalization) *taskGenerationActionExecuteRequestHandoff {
 	return &taskGenerationActionExecuteRequestHandoff{
-		retryPage:        retryPage,
-		persistenceQueue: p.adaptation.persistenceQueueFromRetryPage(retryPage),
-	}
-}
-
-func (p *taskGenerationActionExecuteRequestHandoffResultShapePhase) fromQueuePage(queuePage *GenerationQueuePage) *taskGenerationActionExecuteRequestHandoff {
-	return &taskGenerationActionExecuteRequestHandoff{
-		queuePage:        queuePage,
-		persistenceQueue: p.adaptation.persistenceQueueFromQueuePage(queuePage),
+		queuePage:        normalized.queuePage,
+		persistenceQueue: normalized.persistenceQueue,
 	}
 }

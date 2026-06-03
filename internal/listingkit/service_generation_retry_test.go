@@ -2412,7 +2412,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultPhase(t *testing.T) {
 func TestTaskGenerationActionExecuteRequestHandoffResultShapePhase(t *testing.T) {
 	t.Parallel()
 
-	t.Run("retry_page_results_keep_unified_handoff_shape_and_use_retry_derived_queue", func(t *testing.T) {
+	t.Run("retry_normalization_results_keep_unified_handoff_shape", func(t *testing.T) {
 		t.Parallel()
 
 		retryQueue := &GenerationWorkQueue{
@@ -2426,7 +2426,8 @@ func TestTaskGenerationActionExecuteRequestHandoffResultShapePhase(t *testing.T)
 			ExecutedQueue: retryQueue,
 		}
 
-		handoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromRetryPage(retryPage)
+		normalized := buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromRetryPage(retryPage)
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromRetryNormalization(normalized)
 		if handoff == nil {
 			t.Fatal("handoff = nil, want retry handoff result")
 		}
@@ -2441,7 +2442,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultShapePhase(t *testing.T)
 		}
 	})
 
-	t.Run("queue_page_results_keep_unified_handoff_shape_and_clone_page_items_into_persistence_queue", func(t *testing.T) {
+	t.Run("queue_normalization_results_keep_unified_handoff_shape", func(t *testing.T) {
 		t.Parallel()
 
 		queuePage := &GenerationQueuePage{
@@ -2452,7 +2453,8 @@ func TestTaskGenerationActionExecuteRequestHandoffResultShapePhase(t *testing.T)
 			},
 		}
 
-		handoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromQueuePage(queuePage)
+		normalized := buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromQueuePage(queuePage)
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromQueueNormalization(normalized)
 		if handoff == nil {
 			t.Fatal("handoff = nil, want queue handoff result")
 		}
@@ -2520,6 +2522,73 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(t *testi
 		}
 		if &persistenceQueue.Items[0] == &queuePage.Items[0] {
 			t.Fatal("persistenceQueue.Items reused queuePage.Items backing storage, want copy")
+		}
+	})
+}
+
+func TestTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retry_page_normalization_keeps_retry_page_and_derives_persistence_queue_through_adaptation", func(t *testing.T) {
+		t.Parallel()
+
+		retryQueue := &GenerationWorkQueue{
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, RetryableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "retry-normalization-task-1", Platform: "amazon", Slot: "auxiliary", Retryable: true},
+			},
+		}
+		retryPage := &GenerationTaskPage{
+			TaskID:        "retry-normalization-task-1",
+			ExecutedQueue: retryQueue,
+		}
+
+		normalized := buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromRetryPage(retryPage)
+		if normalized == nil {
+			t.Fatal("normalized = nil, want retry normalization")
+		}
+		if normalized.retryPage != retryPage {
+			t.Fatalf("normalized.retryPage = %+v, want original retry page %+v", normalized.retryPage, retryPage)
+		}
+		if normalized.queuePage != nil {
+			t.Fatalf("normalized.queuePage = %+v, want nil for retry normalization", normalized.queuePage)
+		}
+		if normalized.persistenceQueue != retryQueue {
+			t.Fatalf("normalized.persistenceQueue = %+v, want retry-derived queue %+v", normalized.persistenceQueue, retryQueue)
+		}
+	})
+
+	t.Run("queue_page_normalization_keeps_queue_page_and_derives_persistence_queue_through_adaptation", func(t *testing.T) {
+		t.Parallel()
+
+		queuePage := &GenerationQueuePage{
+			TaskID:  "queue-normalization-task-1",
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, PreviewableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "queue-normalization-task-1", Platform: "amazon", Slot: "auxiliary", State: "queued"},
+			},
+		}
+
+		normalized := buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromQueuePage(queuePage)
+		if normalized == nil {
+			t.Fatal("normalized = nil, want queue normalization")
+		}
+		if normalized.queuePage != queuePage {
+			t.Fatalf("normalized.queuePage = %+v, want original queue page %+v", normalized.queuePage, queuePage)
+		}
+		if normalized.retryPage != nil {
+			t.Fatalf("normalized.retryPage = %+v, want nil for queue normalization", normalized.retryPage)
+		}
+
+		wantQueue := generationWorkQueueFromPage(queuePage)
+		if !reflect.DeepEqual(normalized.persistenceQueue, wantQueue) {
+			t.Fatalf("normalized.persistenceQueue = %+v, want queue-derived queue %+v", normalized.persistenceQueue, wantQueue)
+		}
+		if normalized.persistenceQueue == nil || len(normalized.persistenceQueue.Items) != 1 {
+			t.Fatalf("normalized.persistenceQueue = %+v, want cloned queue items", normalized.persistenceQueue)
+		}
+		if &normalized.persistenceQueue.Items[0] == &queuePage.Items[0] {
+			t.Fatal("normalized.persistenceQueue.Items reused queuePage.Items backing storage, want copy")
 		}
 	})
 }

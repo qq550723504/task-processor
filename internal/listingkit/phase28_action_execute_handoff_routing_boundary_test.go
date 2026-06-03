@@ -106,6 +106,7 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 		t.Parallel()
 
 		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_result.go")
+		buildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry_result.go", "buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase")
 		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry_result.go", "run")
 		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_retry_result.go", "run")
 
@@ -113,8 +114,12 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase()",
 			"func (p *taskGenerationActionExecuteRequestHandoffRetryResultPhase) run(",
 		})
+		assertSourceContainsAll(t, buildSource, []string{
+			"normalization: buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase(),",
+			"resultShape:   buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),",
+		})
 		assertSourceContainsAll(t, source, []string{
-			"return p.resultShape.fromRetryPage(retryPage)",
+			"return p.resultShape.fromRetryNormalization(p.normalization.fromRetryPage(retryPage))",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"RetryTaskGenerationTasks(",
@@ -128,6 +133,7 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
+			"fromRetryNormalization",
 			"fromRetryPage",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
@@ -147,6 +153,7 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 		t.Parallel()
 
 		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue_result.go")
+		buildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue_result.go", "buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase")
 		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue_result.go", "run")
 		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_queue_result.go", "run")
 
@@ -154,8 +161,12 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"func buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase()",
 			"func (p *taskGenerationActionExecuteRequestHandoffQueueResultPhase) run(",
 		})
+		assertSourceContainsAll(t, buildSource, []string{
+			"normalization: buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase(),",
+			"resultShape:   buildTaskGenerationActionExecuteRequestHandoffResultShapePhase(),",
+		})
 		assertSourceContainsAll(t, source, []string{
-			"return p.resultShape.fromQueuePage(queuePage)",
+			"return p.resultShape.fromQueueNormalization(p.normalization.fromQueuePage(queuePage))",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"RetryTaskGenerationTasks(",
@@ -169,6 +180,7 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
+			"fromQueueNormalization",
 			"fromQueuePage",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
