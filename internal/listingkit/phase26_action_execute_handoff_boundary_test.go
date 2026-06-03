@@ -19,21 +19,21 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 
 		assertSourceContainsAll(t, retryFileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase()",
-			"normalization *taskGenerationActionExecuteRequestHandoffResultNormalizationPhase",
-			"resultShape   *taskGenerationActionExecuteRequestHandoffResultShapePhase",
+			"dispatch *taskGenerationActionExecuteRequestHandoffResultDispatchPhase",
 		})
 		assertSourceContainsAll(t, retryBuildSource, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase()",
-			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
+			"dispatch: buildTaskGenerationActionExecuteRequestHandoffResultDispatchPhase(),",
 		})
 		assertSourceContainsAll(t, retrySource, []string{
-			"return p.resultShape.fromRetryNormalization(p.normalization.fromRetryPage(retryPage))",
+			"return p.dispatch.fromRetryPage(retryPage)",
 		})
 		assertSourceExcludesAll(t, retrySource, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"fromRetryNormalization(",
+			"fromRetryPage(retryPage))",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
 			"persistenceQueueFromRetryPage(",
 			"persistenceQueueFromQueuePage(",
@@ -41,7 +41,6 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, retryCalls, []string{
-			"fromRetryNormalization",
 			"fromRetryPage",
 		})
 		assertFunctionCallsExcludeAll(t, retryCalls, []string{
@@ -50,6 +49,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"fromRetryNormalization",
 			"persistenceQueueFromRetryPage",
 			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",
@@ -58,21 +58,21 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 
 		assertSourceContainsAll(t, queueFileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase()",
-			"normalization *taskGenerationActionExecuteRequestHandoffResultNormalizationPhase",
-			"resultShape   *taskGenerationActionExecuteRequestHandoffResultShapePhase",
+			"dispatch *taskGenerationActionExecuteRequestHandoffResultDispatchPhase",
 		})
 		assertSourceContainsAll(t, queueBuildSource, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase()",
-			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
+			"dispatch: buildTaskGenerationActionExecuteRequestHandoffResultDispatchPhase(),",
 		})
 		assertSourceContainsAll(t, queueSource, []string{
-			"return p.resultShape.fromQueueNormalization(p.normalization.fromQueuePage(queuePage))",
+			"return p.dispatch.fromQueuePage(queuePage)",
 		})
 		assertSourceExcludesAll(t, queueSource, []string{
 			"RetryTaskGenerationTasks(",
 			"cloneRetryGenerationTasksRequest(",
 			"GetTaskGenerationQueue(",
 			"cloneGenerationQueueQuery(",
+			"fromQueueNormalization(",
+			"fromQueuePage(queuePage))",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
 			"persistenceQueueFromRetryPage(",
 			"persistenceQueueFromQueuePage(",
@@ -80,7 +80,6 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"generationWorkQueueFromPage(",
 		})
 		assertFunctionCallsContainAll(t, queueCalls, []string{
-			"fromQueueNormalization",
 			"fromQueuePage",
 		})
 		assertFunctionCallsExcludeAll(t, queueCalls, []string{
@@ -89,6 +88,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultAdaptationBoundary(t *te
 			"GetTaskGenerationQueue",
 			"cloneGenerationQueueQuery",
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
+			"fromQueueNormalization",
 			"persistenceQueueFromRetryPage",
 			"persistenceQueueFromQueuePage",
 			"generationWorkQueueFromRetryPage",

@@ -2433,6 +2433,53 @@ func TestTaskGenerationActionExecuteRequestHandoffResultPhase(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationActionExecuteRequestHandoffResultDispatchPhase(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retry_page_dispatch_routes_through_normalization_and_result_shape", func(t *testing.T) {
+		t.Parallel()
+
+		retryQueue := &GenerationWorkQueue{
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, RetryableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "retry-dispatch-task-1", Platform: "amazon", Slot: "auxiliary", Retryable: true},
+			},
+		}
+		retryPage := &GenerationTaskPage{
+			TaskID:        "retry-dispatch-task-1",
+			ExecutedQueue: retryQueue,
+		}
+
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultDispatchPhase().fromRetryPage(retryPage)
+		wantHandoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromRetryNormalization(
+			buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromRetryPage(retryPage),
+		)
+		if !reflect.DeepEqual(handoff, wantHandoff) {
+			t.Fatalf("handoff = %+v, want retry dispatch handoff %+v", handoff, wantHandoff)
+		}
+	})
+
+	t.Run("queue_page_dispatch_routes_through_normalization_and_result_shape", func(t *testing.T) {
+		t.Parallel()
+
+		queuePage := &GenerationQueuePage{
+			TaskID:  "queue-dispatch-task-1",
+			Summary: &GenerationWorkQueueSummary{TotalItems: 1, PreviewableItems: 1},
+			Items: []GenerationWorkQueueItem{
+				{TaskID: "queue-dispatch-task-1", Platform: "amazon", Slot: "auxiliary", State: "queued"},
+			},
+		}
+
+		handoff := buildTaskGenerationActionExecuteRequestHandoffResultDispatchPhase().fromQueuePage(queuePage)
+		wantHandoff := buildTaskGenerationActionExecuteRequestHandoffResultShapePhase().fromQueueNormalization(
+			buildTaskGenerationActionExecuteRequestHandoffResultNormalizationPhase().fromQueuePage(queuePage),
+		)
+		if !reflect.DeepEqual(handoff, wantHandoff) {
+			t.Fatalf("handoff = %+v, want queue dispatch handoff %+v", handoff, wantHandoff)
+		}
+	})
+}
+
 func TestTaskGenerationActionExecuteRequestHandoffResultShapePhase(t *testing.T) {
 	t.Parallel()
 
