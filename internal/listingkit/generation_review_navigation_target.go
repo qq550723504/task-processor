@@ -46,8 +46,7 @@ func buildGenerationReviewActionNavigationTarget(target *AssetGenerationActionTa
 		ActionTarget: cloneAssetGenerationActionTargetForNavigation(target),
 	}
 	if target.QueueQuery != nil {
-		cloned := *target.QueueQuery
-		navigation.QueueQuery = &cloned
+		navigation.QueueQuery = cloneGenerationQueueQuery(target.QueueQuery)
 	}
 	return applyIdentityToNavigationTarget(navigation)
 }
