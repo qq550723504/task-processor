@@ -53,16 +53,12 @@ func buildGenerationReviewActionNavigationTarget(target *AssetGenerationActionTa
 }
 
 func cloneAssetGenerationActionTargetForNavigation(target *AssetGenerationActionTarget) *AssetGenerationActionTarget {
-	if target == nil {
+	cloned := cloneAssetGenerationActionTarget(target)
+	if cloned == nil {
 		return nil
 	}
-	cloned := *target
-	cloned.Filters = cloneAssetGenerationFilters(target.Filters)
-	cloned.QueueQuery = cloneGenerationQueueQuery(target.QueueQuery)
-	cloned.RetryRequest = cloneRetryGenerationTasksRequest(target.RetryRequest)
-	cloned.ExpectedImpact = cloneAssetGenerationActionImpact(target.ExpectedImpact)
 	cloned.NavigationTarget = nil
-	return &cloned
+	return cloned
 }
 
 func buildGenerationReviewPreviewNavigationTarget(platform, slot, capability string, preview *AssetRenderPreviewSlot) *GenerationReviewNavigationTarget {
