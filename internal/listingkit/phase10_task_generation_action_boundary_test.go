@@ -57,11 +57,16 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 			name: "execute_phase",
 			path: "task_generation_action_execute.go",
 			required: []string{
-				"RetryTaskGenerationTasks(",
-				"GetTaskGenerationQueue(",
+				"buildTaskGenerationActionExecuteRequestHandoffPhase(p.service).run(",
 				"buildGenerationReviewSession(",
+				"handoff.persistenceQueue",
 			},
 			forbidden: []string{
+				"RetryTaskGenerationTasks(",
+				"GetTaskGenerationQueue(",
+				"cloneGenerationQueueQuery(",
+				"cloneRetryGenerationTasksRequest(",
+				"switch target.InteractionMode {",
 				"getCurrentListingKitResult(",
 				"buildActionPlatformRenderPreviews(",
 				"buildGenerationReviewWorkflowResult(",
