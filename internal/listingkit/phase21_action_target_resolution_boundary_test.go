@@ -79,7 +79,7 @@ func TestTaskGenerationActionTargetResolutionEntryBoundary(t *testing.T) {
 func TestTaskGenerationActionTargetResolutionServiceHelperBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readTaskGenerationSourceFile(t, "service_generation_actions.go")
+	source := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
 	assertSourceContainsAll(t, source, []string{
 		"func cloneGenerationQueueQuery(",

@@ -46,7 +46,7 @@ func TestGenerationReviewNavigationQueueCloneBoundary(t *testing.T) {
 		t.Parallel()
 
 		navigationSource := readTaskGenerationSourceFile(t, "generation_review_navigation_target.go")
-		serviceSource := readTaskGenerationSourceFile(t, "service_generation_actions.go")
+		serviceSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
 		assertSourceContainsAll(t, navigationSource, []string{
 			"func buildGenerationReviewActionNavigationTarget(",
