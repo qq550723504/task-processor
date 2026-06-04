@@ -11,7 +11,6 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
-	sheinclient "task-processor/internal/shein/client"
 )
 
 const sheinSubmitInFlightTTL = listingsubmission.InFlightTTL
@@ -226,13 +225,7 @@ func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (she
 	if !apiClient.HasCookies() {
 		return nil, fmt.Errorf("shein other api auth unavailable")
 	}
-	baseAPI := sheinclient.NewBaseAPIClient(
-		apiClient.GetBaseURL(),
-		apiClient.GetTenantID(),
-		storeID,
-		apiClient.GetHTTPClient(),
-	)
-	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	baseAPI := NewSheinRuntimeBaseAPIClient(apiClient, storeID)
 	return sheinother.NewClient(baseAPI), nil
 }
 

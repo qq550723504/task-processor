@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
-	sheinclient "task-processor/internal/shein/client"
 )
 
 type submitRuntimeContextResolver struct {
@@ -51,13 +50,7 @@ func (r *submitRuntimeContextResolver) resolveWarehouseCode(ctx context.Context,
 	if !apiClient.HasCookies() {
 		return ""
 	}
-	baseAPI := sheinclient.NewBaseAPIClient(
-		apiClient.GetBaseURL(),
-		apiClient.GetTenantID(),
-		storeID,
-		apiClient.GetHTTPClient(),
-	)
-	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	baseAPI := NewSheinRuntimeBaseAPIClient(apiClient, storeID)
 	warehouseAPI := sheinwarehouse.NewClient(baseAPI)
 	warehouses, err := warehouseAPI.GetWarehouses()
 	if err != nil || warehouses == nil {
@@ -94,7 +87,7 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 	return storeInfo, nil
 }
 
-func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*sheinclient.APIClient, int64, error) {
+func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {
 	if r == nil || r.service == nil || r.service.sheinAPIClientFactory == nil {
 		return nil, 0, fmt.Errorf("shein api client factory is unavailable")
 	}

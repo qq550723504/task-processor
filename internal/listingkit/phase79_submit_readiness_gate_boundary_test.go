@@ -46,8 +46,8 @@ func TestSheinSubmitReadinessGateBoundary(t *testing.T) {
 	t.Run("shared_gate_seam_owns_base_and_freshness_blocking_contract", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_readiness_gate.go", "validateSheinSubmitReadinessGates")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_readiness_gate.go", "validateSheinSubmitReadinessGates")
+		source := readNamedFunctionSource(t, "submit_readiness_gate_shein.go", "validateSheinSubmitReadinessGates")
+		callNames := readNamedFunctionCallNames(t, "submit_readiness_gate_shein.go", "validateSheinSubmitReadinessGates")
 
 		assertSourceContainsAll(t, source, []string{
 			"if readiness == nil || !readiness.Ready {",

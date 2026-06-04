@@ -29,8 +29,8 @@ func TestSheinSubmitReadinessSummaryBoundary(t *testing.T) {
 	t.Run("freshness_readiness_home_delegates_summary_post_shape_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_freshness.go", "buildSheinSubmitFreshnessReadiness")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_freshness.go", "buildSheinSubmitFreshnessReadiness")
+		source := readNamedFunctionSource(t, "submit_freshness_shein.go", "buildSheinSubmitFreshnessReadiness")
+		callNames := readNamedFunctionCallNames(t, "submit_freshness_shein.go", "buildSheinSubmitFreshnessReadiness")
 
 		assertSourceContainsAll(t, source, []string{
 			"return shapeSheinSubmitReadinessSummary(readiness, sheinSubmitReadinessSummaryShape{",
@@ -50,8 +50,8 @@ func TestSheinSubmitReadinessSummaryBoundary(t *testing.T) {
 	t.Run("shared_summary_seam_owns_summary_post_shape_policy", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_readiness_summary.go", "shapeSheinSubmitReadinessSummary")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_readiness_summary.go", "shapeSheinSubmitReadinessSummary")
+		source := readNamedFunctionSource(t, "submit_readiness_summary_shein.go", "shapeSheinSubmitReadinessSummary")
+		callNames := readNamedFunctionCallNames(t, "submit_readiness_summary_shein.go", "shapeSheinSubmitReadinessSummary")
 
 		assertSourceContainsAll(t, source, []string{
 			"if shape.prependFirstBlocker {",

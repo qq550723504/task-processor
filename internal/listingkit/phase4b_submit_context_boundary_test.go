@@ -66,7 +66,7 @@ func TestSubmitContextResolverFileOwnsCrossCuttingSubmitRuntimeResolution(t *tes
 		"func buildSubmitRuntimeContextResolver(s *service) *submitRuntimeContextResolver {",
 		"func (r *submitRuntimeContextResolver) resolveSubmitSettings(ctx context.Context, task *Task) SheinSettings {",
 		"func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, task *Task) (*SheinStoreInfo, error) {",
-		"func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*sheinclient.APIClient, int64, error) {",
+		"func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_submit_context_resolver.go should contain %q", needle)

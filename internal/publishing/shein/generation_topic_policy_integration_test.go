@@ -18,7 +18,6 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit/tenantctx"
-	"task-processor/internal/shein/submitprep"
 )
 
 func TestAdminGenerationTopicPolicyCreationFlowsIntoPromptAndPreviewSanitizer(t *testing.T) {
@@ -28,7 +27,7 @@ func TestAdminGenerationTopicPolicyCreationFlowsIntoPromptAndPreviewSanitizer(t 
 
 	restorePromptRepo := SetGenerationTopicPolicyRepository(repo)
 	defer restorePromptRepo()
-	restoreSanitizerRepo := submitprep.SetGenerationTopicPolicyRepository(repo)
+	restoreSanitizerRepo := ConfigureSubmitPrepRepositories(nil, repo, nil)
 	defer restoreSanitizerRepo()
 
 	ai := &recordingChatCompleter{
@@ -100,10 +99,8 @@ func TestAdminGenerationTopicOverrideFlowsIntoPromptAndPreviewSanitizer(t *testi
 	defer restorePromptPolicyRepo()
 	restorePromptOverrideRepo := SetGenerationTopicOverrideRepository(overrideRepo)
 	defer restorePromptOverrideRepo()
-	restoreSanitizerPolicyRepo := submitprep.SetGenerationTopicPolicyRepository(policyRepo)
-	defer restoreSanitizerPolicyRepo()
-	restoreSanitizerOverrideRepo := submitprep.SetGenerationTopicOverrideRepository(overrideRepo)
-	defer restoreSanitizerOverrideRepo()
+	restoreSanitizerRepos := ConfigureSubmitPrepRepositories(nil, policyRepo, overrideRepo)
+	defer restoreSanitizerRepos()
 
 	ai := &recordingChatCompleter{
 		response: &openaiclient.ChatCompletionResponse{

@@ -68,6 +68,13 @@ func BuildListingKitStudioBatchRepository(cfg *config.Config, logger *logrus.Log
 	})
 }
 
+func BuildListingKitSheinSyncRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitSheinSyncRepository, func(logger *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit shein sync repository")
+		return listingkitstore.NewMemSheinSyncRepository(), nil, nil
+	})
+}
+
 func BuildListingAdminStoreRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminStoreRepository, func(logger *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit store admin API disabled")
@@ -388,6 +395,23 @@ func newDBListingKitStudioBatchRepository(cfg *config.DatabaseConfig, logger *lo
 		return nil, nil, fmt.Errorf("listingkit studio batch auto-migrate failed: %w", err)
 	}
 	repo := listingkit.NewGormStudioBatchRepository(db)
+	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitSheinSyncRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.SheinSyncRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	if err := listingkitstore.AutoMigrateSheinSyncRepository(db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit shein sync auto-migrate failed: %w", err)
+	}
+	repo := listingkitstore.NewSheinSyncRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

@@ -8,8 +8,8 @@ func TestSheinSaleAttributeFreshnessBoundary(t *testing.T) {
 	t.Run("sale_attribute_freshness_home_routes_context_build_and_resolution_home_only", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_freshness.go", "evaluateSheinSaleAttributeFreshnessWithCustomValidation")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_freshness.go", "evaluateSheinSaleAttributeFreshnessWithCustomValidation")
+		source := readNamedFunctionSource(t, "submit_freshness_shein.go", "evaluateSheinSaleAttributeFreshnessWithCustomValidation")
+		callNames := readNamedFunctionCallNames(t, "submit_freshness_shein.go", "evaluateSheinSaleAttributeFreshnessWithCustomValidation")
 
 		assertSourceContainsAll(t, source, []string{
 			"templateContext, ok := buildSheinSaleAttributeFreshnessTemplateContext(templates)",
@@ -30,8 +30,8 @@ func TestSheinSaleAttributeFreshnessBoundary(t *testing.T) {
 	t.Run("resolution_home_routes_invalid_state_and_message_shape_homes_only", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_sale_attribute_freshness_evaluation.go", "evaluateSheinSaleAttributeFreshnessResolution")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_sale_attribute_freshness_evaluation.go", "evaluateSheinSaleAttributeFreshnessResolution")
+		source := readNamedFunctionSource(t, "submit_sale_attribute_freshness_evaluation_shein.go", "evaluateSheinSaleAttributeFreshnessResolution")
+		callNames := readNamedFunctionCallNames(t, "submit_sale_attribute_freshness_evaluation_shein.go", "evaluateSheinSaleAttributeFreshnessResolution")
 
 		assertSourceContainsAll(t, source, []string{
 			"invalidState := evaluateSheinSaleAttributeFreshnessInvalidState(current, currentResolution, templateContext, api)",
@@ -57,8 +57,8 @@ func TestSheinSaleAttributeFreshnessBoundary(t *testing.T) {
 	t.Run("invalid_state_home_owns_invalid_collection_and_repair_routing", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_sale_attribute_freshness_resolution_repair.go", "evaluateSheinSaleAttributeFreshnessInvalidState")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_sale_attribute_freshness_resolution_repair.go", "evaluateSheinSaleAttributeFreshnessInvalidState")
+		source := readNamedFunctionSource(t, "submit_sale_attribute_freshness_resolution_repair_shein.go", "evaluateSheinSaleAttributeFreshnessInvalidState")
+		callNames := readNamedFunctionCallNames(t, "submit_sale_attribute_freshness_resolution_repair_shein.go", "evaluateSheinSaleAttributeFreshnessInvalidState")
 
 		assertSourceContainsAll(t, source, []string{
 			"collectInvalidSaleAttributes(currentResolution.SKCAttributes, templateContext.byID, customRelationIDs)",
@@ -75,8 +75,8 @@ func TestSheinSaleAttributeFreshnessBoundary(t *testing.T) {
 	t.Run("message_shape_home_owns_issue_aggregation_and_outward_messages", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_sale_attribute_freshness_message_shape.go", "buildSheinSaleAttributeFreshnessResolutionOutcome")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_sale_attribute_freshness_message_shape.go", "buildSheinSaleAttributeFreshnessResolutionOutcome")
+		source := readNamedFunctionSource(t, "submit_sale_attribute_freshness_message_shape_shein.go", "buildSheinSaleAttributeFreshnessResolutionOutcome")
+		callNames := readNamedFunctionCallNames(t, "submit_sale_attribute_freshness_message_shape_shein.go", "buildSheinSaleAttributeFreshnessResolutionOutcome")
 
 		assertSourceContainsAll(t, source, []string{
 			"sort.Strings(invalidState.invalidSKC)",

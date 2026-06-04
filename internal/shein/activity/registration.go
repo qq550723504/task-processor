@@ -19,6 +19,9 @@ type ActivityRegistrationService interface {
 	// RegisterPromotionActivity 根据运营策略报名促销活动（完整流程）
 	RegisterPromotionActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (int, error)
 
+	// RegisterPromotionProducts 使用调用方提供的产品集合执行促销活动报名。
+	RegisterPromotionProducts(ctx context.Context, strategy *managementapi.OperationStrategyDTO, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
+
 	// CreateTimeLimitedDiscountActivity 根据运营策略创建限时折扣活动（完整流程）
 	CreateTimeLimitedDiscountActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (int, error)
 
@@ -26,11 +29,34 @@ type ActivityRegistrationService interface {
 	RegisterMixedActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (promotionCount int, timeLimitedCount int, err error)
 }
 
+type PromotionRegistrationBridge interface {
+	RegisterPromotionProducts(ctx context.Context, strategy *managementapi.OperationStrategyDTO, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
+}
+
 // activityRegistrationServiceImpl 活动报名服务实现
 type activityRegistrationServiceImpl struct {
 	managementClient *management.ClientManager
 	marketingAPI     marketing.MarketingAPI
 	logger           *logrus.Entry
+}
+
+type PromotionRegistrationResult struct {
+	Request  *marketing.SaveConfigRequest
+	Response *marketing.SaveConfigResponse
+}
+
+func (r *PromotionRegistrationResult) GetRequest() *marketing.SaveConfigRequest {
+	if r == nil {
+		return nil
+	}
+	return r.Request
+}
+
+func (r *PromotionRegistrationResult) GetResponse() *marketing.SaveConfigResponse {
+	if r == nil {
+		return nil
+	}
+	return r.Response
 }
 
 // NewActivityRegistrationService 创建活动报名服务
@@ -113,6 +139,29 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 		return 0, nil
 	}
 
+	result, err := s.RegisterPromotionProducts(ctx, strategy, "", products)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil || result.Request == nil {
+		return 0, nil
+	}
+	return len(result.Request.ConfigList), nil
+}
+
+func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
+	ctx context.Context,
+	strategy *managementapi.OperationStrategyDTO,
+	activityKey string,
+	products []marketing.SkcInfo,
+) (*PromotionRegistrationResult, error) {
+	_ = ctx
+	_ = activityKey
+
+	if len(products) == 0 {
+		return &PromotionRegistrationResult{}, nil
+	}
+
 	// 2. 根据定价模式构建活动配置
 	var configList []marketing.ActivityConfig
 
@@ -133,7 +182,7 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 
 	if len(configList) == 0 {
 		s.logger.Info("没有符合条件的产品需要报名")
-		return 0, nil
+		return &PromotionRegistrationResult{}, nil
 	}
 
 	// 3. 调用 SHEIN API 保存活动配置（报名）
@@ -144,13 +193,16 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	response, err := s.marketingAPI.SaveConfig(saveReq)
 	if err != nil {
 		s.logger.Errorf("保存活动配置失败: %v", err)
-		return 0, fmt.Errorf("保存活动配置失败: %w", err)
+		return &PromotionRegistrationResult{Request: saveReq}, fmt.Errorf("保存活动配置失败: %w", err)
 	}
 
 	if response.Code != "0" {
-		return 0, fmt.Errorf("保存活动配置失败: %s", response.Msg)
+		return &PromotionRegistrationResult{Request: saveReq, Response: response}, fmt.Errorf("保存活动配置失败: %s", response.Msg)
 	}
 
 	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
-	return len(configList), nil
+	return &PromotionRegistrationResult{
+		Request:  saveReq,
+		Response: response,
+	}, nil
 }

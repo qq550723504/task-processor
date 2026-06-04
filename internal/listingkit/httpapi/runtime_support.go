@@ -41,6 +41,7 @@ func buildRuntimeSupportRepositories() BuildServiceRepositories {
 			StudioAsyncJob:       BuildListingKitStudioAsyncJobRepository,
 			StudioBatch:          BuildListingKitStudioBatchRepository,
 			StudioBatchRun:       BuildListingKitStudioBatchRunRepository,
+			SheinSync:            BuildListingKitSheinSyncRepository,
 			Subscription:         BuildListingSubscriptionRepository,
 			Asset:                BuildAssetRepository,
 			Review:               BuildListingKitReviewRepository,

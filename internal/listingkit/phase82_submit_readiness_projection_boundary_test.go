@@ -108,8 +108,8 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 	t.Run("shared_projection_seam_owns_readiness_checklist_and_status_projection_contract", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_readiness_projection.go", "buildSheinSubmitReadinessProjectionWithPod")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_readiness_projection.go", "buildSheinSubmitReadinessProjectionWithPod")
+		source := readNamedFunctionSource(t, "submit_readiness_projection_shein.go", "buildSheinSubmitReadinessProjectionWithPod")
+		callNames := readNamedFunctionCallNames(t, "submit_readiness_projection_shein.go", "buildSheinSubmitReadinessProjectionWithPod")
 
 		assertSourceContainsAll(t, source, []string{
 			"readiness := buildSheinSubmitReadinessWithPod(pkg, pod)",

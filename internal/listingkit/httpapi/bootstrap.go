@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -54,11 +55,14 @@ type ServiceBundle struct {
 }
 
 type serviceBundleRuntime struct {
-	temporalWorkerService TemporalWorkerService
-	taskRepository        listingkit.Repository
-	service               moduleService
-	handlerDependencies   listingkitapi.HandlerDependencies
-	closers               []func() error
+	temporalWorkerService  TemporalWorkerService
+	taskRepository         listingkit.Repository
+	service                moduleService
+	sheinSyncService       listingkit.SheinSyncService
+	sheinCandidateService  listingkit.SheinCandidateService
+	sheinEnrollmentService listingkit.SheinEnrollmentService
+	handlerDependencies    listingkitapi.HandlerDependencies
+	closers                []func() error
 }
 
 type TemporalWorkerService interface {
@@ -162,6 +166,7 @@ type CoreRepositoryBuilders struct {
 	StudioAsyncJob       func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
 	StudioBatch          func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
 	StudioBatchRun       func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
+	SheinSync            func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
 	Subscription         func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
 	Asset                func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
 	Review               func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
@@ -206,6 +211,8 @@ func (b CoreRepositoryBuilders) Validate() error {
 		return fmt.Errorf("core repository builder studio batch is required")
 	case b.StudioBatchRun == nil:
 		return fmt.Errorf("core repository builder studio batch run is required")
+	case b.SheinSync == nil:
+		return fmt.Errorf("core repository builder shein sync is required")
 	case b.Subscription == nil:
 		return fmt.Errorf("core repository builder subscription is required")
 	case b.Asset == nil:
@@ -364,6 +371,25 @@ func buildWithClosers[T any](builder func(*config.Config, *logrus.Logger) (T, []
 	return value, nil
 }
 
+func buildNamedWithClosers[T any](name string, builder func(*config.Config, *logrus.Logger) (T, []func() error, error), cfg *config.Config, logger *logrus.Logger, closers *closerStack) (T, error) {
+	startedAt := time.Now()
+	if logger != nil {
+		logger.WithField("component", "listingkit/httpapi").WithField("repository", name).Info("listingkit repository build begin")
+	}
+	value, err := buildWithClosers(builder, cfg, logger, closers)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).WithField("component", "listingkit/httpapi").WithField("repository", name).Warn("listingkit repository build failed")
+		}
+		var zero T
+		return zero, err
+	}
+	if logger != nil {
+		logger.WithField("component", "listingkit/httpapi").WithField("repository", name).WithField("elapsed", time.Since(startedAt)).Info("listingkit repository build done")
+	}
+	return value, nil
+}
+
 func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {
 	configureModuleServicePolicies(input)
 	return configureModuleServiceAuthorization(input, closers)
@@ -456,7 +482,7 @@ func closeTemporalWorkflowClientOnError(err error, temporalCloser func() error) 
 	return err
 }
 
-func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleService, workerService TemporalWorkerService, handlerDependencies listingkitapi.HandlerDependencies, closers []func() error) *ServiceBundle {
+func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleService, runtimeServices sheinSyncRuntimeServices, workerService TemporalWorkerService, handlerDependencies listingkitapi.HandlerDependencies, closers []func() error) *ServiceBundle {
 	return &ServiceBundle{
 		TemporalWorkerService:           workerService,
 		TaskRepository:                  repositories.taskRepository,
@@ -476,18 +502,22 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 		SubscriptionService:             repositories.subscriptionService,
 		Closers:                         closers,
 		runtime: serviceBundleRuntime{
-			temporalWorkerService: workerService,
-			taskRepository:        repositories.taskRepository,
-			service:               moduleSvc,
-			handlerDependencies:   handlerDependencies,
-			closers:               closers,
+			temporalWorkerService:  workerService,
+			taskRepository:         repositories.taskRepository,
+			service:                moduleSvc,
+			sheinSyncService:       runtimeServices.syncService,
+			sheinCandidateService:  runtimeServices.candidateService,
+			sheinEnrollmentService: runtimeServices.enrollmentService,
+			handlerDependencies:    handlerDependencies,
+			closers:                closers,
 		},
 	}
 }
 
-func buildHandlerOptions(handlerDependencies listingkitapi.HandlerDependencies) []listingkitapi.HandlerOption {
+func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
-		listingkitapi.WithDependencies(handlerDependencies),
+		listingkitapi.WithDependencies(runtime.handlerDependencies),
+		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),
 	}
 }
 
@@ -513,6 +543,9 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 	repositories, err := buildRepositories(input, closers)
 	if err != nil {
 		return nil, err
+	}
+	if input.Logger != nil {
+		input.Logger.WithField("component", "listingkit/httpapi").Info("listingkit repositories ready")
 	}
 	return buildServiceRuntime(input, repositories, closers)
 }

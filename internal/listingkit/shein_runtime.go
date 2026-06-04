@@ -6,6 +6,11 @@ import (
 	sheinclient "task-processor/internal/shein/client"
 )
 
+type SheinRuntimeAPIClient = sheinclient.APIClient
+type SheinRuntimeStoreConfig = sheinclient.StoreConfig
+type SheinRuntimeCookieLookupResult = sheinclient.CookieLookupResult
+type SheinRuntimeCookieProvider = sheinclient.CookieProvider
+
 type SheinStoreInfo struct {
 	ID       int64
 	TenantID int64
@@ -23,5 +28,23 @@ type SheinStoreCatalog interface {
 }
 
 type SheinAPIClientFactory interface {
-	NewSheinAPIClient(storeID int64, storeInfo *SheinStoreInfo) *sheinclient.APIClient
+	NewSheinAPIClient(storeID int64, storeInfo *SheinStoreInfo) *SheinRuntimeAPIClient
+}
+
+func NewSheinRuntimeAPIClientWithStoreConfig(storeID int64, storeInfo *SheinRuntimeStoreConfig, cookieProvider SheinRuntimeCookieProvider) *SheinRuntimeAPIClient {
+	return sheinclient.NewAPIClientWithStoreConfig(storeID, storeInfo, cookieProvider)
+}
+
+func NewSheinRuntimeBaseAPIClient(apiClient *SheinRuntimeAPIClient, storeID int64) *sheinclient.BaseAPIClient {
+	if apiClient == nil {
+		return nil
+	}
+	baseAPI := sheinclient.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		storeID,
+		apiClient.GetHTTPClient(),
+	)
+	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
+	return baseAPI
 }

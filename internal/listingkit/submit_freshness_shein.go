@@ -14,7 +14,6 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
-	sheinclient "task-processor/internal/shein/client"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
@@ -874,7 +873,7 @@ type sheinFreshnessRuntimeClientFactory struct {
 	task *Task
 }
 
-func (f sheinFreshnessRuntimeClientFactory) NewAPIClient(ctx context.Context, storeID int64) *sheinclient.APIClient {
+func (f sheinFreshnessRuntimeClientFactory) NewAPIClient(ctx context.Context, storeID int64) *SheinRuntimeAPIClient {
 	if f.svc == nil || f.task == nil {
 		return nil
 	}

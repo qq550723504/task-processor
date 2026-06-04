@@ -16,6 +16,7 @@ type builtRepositories struct {
 	studioAsyncJobRepository          listingkit.StudioAsyncJobRepository
 	studioBatchRepository             listingkit.StudioBatchRepository
 	studioBatchRunRepository          listingkit.StudioBatchRunRepository
+	sheinSyncRepository               listingkit.SheinSyncRepository
 	storeRepository                   listingadmin.StoreRepository
 	storeStatisticsRepository         listingadmin.StoreStatisticsRepository
 	importTaskRepository              listingadmin.ImportTaskRepository
@@ -44,6 +45,7 @@ type builtCoreRepositories struct {
 	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
 	studioBatchRepository    listingkit.StudioBatchRepository
 	studioBatchRunRepository listingkit.StudioBatchRunRepository
+	sheinSyncRepository      listingkit.SheinSyncRepository
 }
 
 type coreTaskRepositories struct {
@@ -54,6 +56,7 @@ type coreAsyncRepositories struct {
 	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
 	studioBatchRepository    listingkit.StudioBatchRepository
 	studioBatchRunRepository listingkit.StudioBatchRunRepository
+	sheinSyncRepository      listingkit.SheinSyncRepository
 }
 
 type builtLateCoreRepositories struct {
@@ -133,11 +136,12 @@ func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*buil
 		studioAsyncJobRepository: asyncRepos.studioAsyncJobRepository,
 		studioBatchRepository:    asyncRepos.studioBatchRepository,
 		studioBatchRunRepository: asyncRepos.studioBatchRunRepository,
+		sheinSyncRepository:      asyncRepos.sheinSyncRepository,
 	}, nil
 }
 
 func buildCoreTaskRepositories(input BuildServiceInput, closers *closerStack) (*coreTaskRepositories, error) {
-	taskRepository, err := buildWithClosers(input.Repositories.Core.Task, input.Config, input.Logger, closers)
+	taskRepository, err := buildNamedWithClosers("core.task", input.Repositories.Core.Task, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -147,15 +151,19 @@ func buildCoreTaskRepositories(input BuildServiceInput, closers *closerStack) (*
 }
 
 func buildCoreAsyncRepositories(input BuildServiceInput, closers *closerStack) (*coreAsyncRepositories, error) {
-	studioAsyncJobRepository, err := buildWithClosers(input.Repositories.Core.StudioAsyncJob, input.Config, input.Logger, closers)
+	studioAsyncJobRepository, err := buildNamedWithClosers("core.studio_async_job", input.Repositories.Core.StudioAsyncJob, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	studioBatchRepository, err := buildWithClosers(input.Repositories.Core.StudioBatch, input.Config, input.Logger, closers)
+	studioBatchRepository, err := buildNamedWithClosers("core.studio_batch", input.Repositories.Core.StudioBatch, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	studioBatchRunRepository, err := buildWithClosers(input.Repositories.Core.StudioBatchRun, input.Config, input.Logger, closers)
+	studioBatchRunRepository, err := buildNamedWithClosers("core.studio_batch_run", input.Repositories.Core.StudioBatchRun, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
+	sheinSyncRepository, err := buildNamedWithClosers("core.shein_sync", input.Repositories.Core.SheinSync, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +171,7 @@ func buildCoreAsyncRepositories(input BuildServiceInput, closers *closerStack) (
 		studioAsyncJobRepository: studioAsyncJobRepository,
 		studioBatchRepository:    studioBatchRepository,
 		studioBatchRunRepository: studioBatchRunRepository,
+		sheinSyncRepository:      sheinSyncRepository,
 	}, nil
 }
 
@@ -189,7 +198,7 @@ func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*
 }
 
 func buildSubscriptionService(input BuildServiceInput, closers *closerStack) (*listingsubscription.Service, error) {
-	subscriptionRepository, err := buildWithClosers(input.Repositories.Core.Subscription, input.Config, input.Logger, closers)
+	subscriptionRepository, err := buildNamedWithClosers("core.subscription", input.Repositories.Core.Subscription, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -203,31 +212,31 @@ func buildSubscriptionService(input BuildServiceInput, closers *closerStack) (*l
 func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *closerStack) (*lateCoreRepositoryDependencies, error) {
 	repoBuilders := input.Repositories.Core
 
-	assetRepository, err := buildWithClosers(repoBuilders.Asset, input.Config, input.Logger, closers)
+	assetRepository, err := buildNamedWithClosers("core.asset", repoBuilders.Asset, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	reviewRepository, err := buildWithClosers(repoBuilders.Review, input.Config, input.Logger, closers)
+	reviewRepository, err := buildNamedWithClosers("core.review", repoBuilders.Review, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	studioSessionRepository, err := buildWithClosers(repoBuilders.StudioSession, input.Config, input.Logger, closers)
+	studioSessionRepository, err := buildNamedWithClosers("core.studio_session", repoBuilders.StudioSession, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	uploadedImageRepository, err := buildWithClosers(repoBuilders.UploadedImage, input.Config, input.Logger, closers)
+	uploadedImageRepository, err := buildNamedWithClosers("core.uploaded_image", repoBuilders.UploadedImage, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	storeProfileRepository, err := buildWithClosers(repoBuilders.StoreProfile, input.Config, input.Logger, closers)
+	storeProfileRepository, err := buildNamedWithClosers("core.store_profile", repoBuilders.StoreProfile, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	storeRoutingSettingsRepository, err := buildWithClosers(repoBuilders.StoreRoutingSettings, input.Config, input.Logger, closers)
+	storeRoutingSettingsRepository, err := buildNamedWithClosers("core.store_routing_settings", repoBuilders.StoreRoutingSettings, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	resolutionCacheStore, err := buildWithClosers(repoBuilders.SheinResolutionCache, input.Config, input.Logger, closers)
+	resolutionCacheStore, err := buildNamedWithClosers("core.shein_resolution_cache", repoBuilders.SheinResolutionCache, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -272,27 +281,27 @@ func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*bui
 func buildAdminCatalogRepositories(input BuildServiceInput, closers *closerStack) (*adminCatalogRepositories, error) {
 	repoBuilders := input.Repositories.Admin
 
-	storeRepository, err := buildWithClosers(repoBuilders.Store, input.Config, input.Logger, closers)
+	storeRepository, err := buildNamedWithClosers("admin.store", repoBuilders.Store, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	storeStatisticsRepository, err := buildWithClosers(repoBuilders.StoreStatistics, input.Config, input.Logger, closers)
+	storeStatisticsRepository, err := buildNamedWithClosers("admin.store_statistics", repoBuilders.StoreStatistics, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	importTaskRepository, err := buildWithClosers(repoBuilders.ImportTask, input.Config, input.Logger, closers)
+	importTaskRepository, err := buildNamedWithClosers("admin.import_task", repoBuilders.ImportTask, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	productImportMappingRepository, err := buildWithClosers(repoBuilders.ProductImportMapping, input.Config, input.Logger, closers)
+	productImportMappingRepository, err := buildNamedWithClosers("admin.product_import_mapping", repoBuilders.ProductImportMapping, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	categoryRepository, err := buildWithClosers(repoBuilders.Category, input.Config, input.Logger, closers)
+	categoryRepository, err := buildNamedWithClosers("admin.category", repoBuilders.Category, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	productDataRepository, err := buildWithClosers(repoBuilders.ProductData, input.Config, input.Logger, closers)
+	productDataRepository, err := buildNamedWithClosers("admin.product_data", repoBuilders.ProductData, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -310,31 +319,31 @@ func buildAdminCatalogRepositories(input BuildServiceInput, closers *closerStack
 func buildAdminRuleRepositories(input BuildServiceInput, closers *closerStack) (*adminRuleRepositories, error) {
 	repoBuilders := input.Repositories.Admin
 
-	filterRuleRepository, err := buildWithClosers(repoBuilders.FilterRule, input.Config, input.Logger, closers)
+	filterRuleRepository, err := buildNamedWithClosers("admin.filter_rule", repoBuilders.FilterRule, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	profitRuleRepository, err := buildWithClosers(repoBuilders.ProfitRule, input.Config, input.Logger, closers)
+	profitRuleRepository, err := buildNamedWithClosers("admin.profit_rule", repoBuilders.ProfitRule, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	pricingRuleRepository, err := buildWithClosers(repoBuilders.PricingRule, input.Config, input.Logger, closers)
+	pricingRuleRepository, err := buildNamedWithClosers("admin.pricing_rule", repoBuilders.PricingRule, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	operationStrategyRepository, err := buildWithClosers(repoBuilders.OperationStrategy, input.Config, input.Logger, closers)
+	operationStrategyRepository, err := buildNamedWithClosers("admin.operation_strategy", repoBuilders.OperationStrategy, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	sensitiveWordRepository, err := buildWithClosers(repoBuilders.SensitiveWord, input.Config, input.Logger, closers)
+	sensitiveWordRepository, err := buildNamedWithClosers("admin.sensitive_word", repoBuilders.SensitiveWord, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	generationTopicOverrideRepository, err := buildWithClosers(repoBuilders.GenerationTopicOverride, input.Config, input.Logger, closers)
+	generationTopicOverrideRepository, err := buildNamedWithClosers("admin.generation_topic_override", repoBuilders.GenerationTopicOverride, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
-	generationTopicPolicyRepository, err := buildWithClosers(repoBuilders.GenerationTopicPolicy, input.Config, input.Logger, closers)
+	generationTopicPolicyRepository, err := buildNamedWithClosers("admin.generation_topic_policy", repoBuilders.GenerationTopicPolicy, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -358,6 +367,7 @@ func applyCoreRepositories(repos *builtRepositories, core *builtCoreRepositories
 	repos.studioAsyncJobRepository = core.studioAsyncJobRepository
 	repos.studioBatchRepository = core.studioBatchRepository
 	repos.studioBatchRunRepository = core.studioBatchRunRepository
+	repos.sheinSyncRepository = core.sheinSyncRepository
 }
 
 func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCoreRepositories) {

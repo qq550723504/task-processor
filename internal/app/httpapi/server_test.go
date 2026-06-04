@@ -882,6 +882,34 @@ func (s *stubListingKitHandler) ListSimpleTenantStores(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []any{}})
 }
 
+func (s *stubListingKitHandler) TriggerSheinStoreSync(c *gin.Context) {
+	c.JSON(http.StatusAccepted, gin.H{"job": gin.H{"status": "queued"}})
+}
+
+func (s *stubListingKitHandler) ListSheinSyncedProducts(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) UpdateSheinSyncedProductCost(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) RefreshSheinActivityCandidates(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"result": gin.H{"eligible_count": 0}})
+}
+
+func (s *stubListingKitHandler) ListSheinActivityCandidates(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) ReviewSheinActivityCandidate(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"candidate": gin.H{"id": c.Param("id")}})
+}
+
+func (s *stubListingKitHandler) ExecuteSheinActivityEnrollment(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"run": gin.H{"status": "queued"}})
+}
+
 type stubPromptTemplateHandler struct{}
 
 func (s *stubPromptTemplateHandler) ListPromptTemplateCatalog(c *gin.Context) {

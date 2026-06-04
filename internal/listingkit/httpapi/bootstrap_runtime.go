@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"time"
 
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/httpbootstrap"
@@ -9,7 +10,6 @@ import (
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
 	sheinpub "task-processor/internal/publishing/shein"
-	"task-processor/internal/shein/submitprep"
 )
 
 type serviceRuntimeModules struct {
@@ -63,7 +63,7 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 	if err != nil {
 		return nil, err
 	}
-	handler, err := listingkitapi.NewHandler(bundle.runtime.service, buildHandlerOptions(bundle.runtime.handlerDependencies)...)
+	handler, err := listingkitapi.NewHandler(bundle.runtime.service, buildHandlerOptions(bundle.runtime)...)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
@@ -123,14 +123,31 @@ func assembleServiceRuntime(input BuildServiceInput, repositories *builtReposito
 }
 
 func buildServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (*ServiceBundle, error) {
-	submitprep.SetSensitiveWordRepository(repositories.sensitiveWordRepository)
-	submitprep.SetGenerationTopicPolicyRepository(repositories.generationTopicPolicyRepository)
-	submitprep.SetGenerationTopicOverrideRepository(repositories.generationTopicOverrideRepository)
+	if input.Logger != nil {
+		input.Logger.WithField("component", "listingkit/httpapi").Info("listingkit service runtime begin")
+	}
+	sheinpub.ConfigureSubmitPrepRepositories(
+		repositories.sensitiveWordRepository,
+		repositories.generationTopicPolicyRepository,
+		repositories.generationTopicOverrideRepository,
+	)
 	sheinpub.SetGenerationTopicPolicyRepository(repositories.generationTopicPolicyRepository)
 	sheinpub.SetGenerationTopicOverrideRepository(repositories.generationTopicOverrideRepository)
+	runtimeAssemblyStartedAt := time.Now()
 	assembly, err := assembleServiceRuntime(input, repositories, closers)
 	if err != nil {
 		return nil, err
 	}
-	return assembleServiceBundle(repositories, assembly.service, assembly.modules.temporal.workerService, assembly.handlerDependencies, closers.Snapshot()), nil
+	if input.Logger != nil {
+		input.Logger.WithField("component", "listingkit/httpapi").WithField("elapsed", time.Since(runtimeAssemblyStartedAt)).Info("listingkit service runtime assembled")
+	}
+	sheinSyncRuntimeStartedAt := time.Now()
+	runtimeServices, err := buildSheinSyncRuntimeServices(input, repositories, closers)
+	if err != nil {
+		return nil, err
+	}
+	if input.Logger != nil {
+		input.Logger.WithField("component", "listingkit/httpapi").WithField("elapsed", time.Since(sheinSyncRuntimeStartedAt)).Info("listingkit shein sync runtime ready")
+	}
+	return assembleServiceBundle(repositories, assembly.service, runtimeServices, assembly.modules.temporal.workerService, assembly.handlerDependencies, closers.Snapshot()), nil
 }

@@ -27,8 +27,8 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 	t.Run("freshness_readiness_builder_delegates_guidance_resolver_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_freshness.go", "buildSheinSubmitFreshnessReadiness")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_freshness.go", "buildSheinSubmitFreshnessReadiness")
+		source := readNamedFunctionSource(t, "submit_freshness_shein.go", "buildSheinSubmitFreshnessReadiness")
+		callNames := readNamedFunctionCallNames(t, "submit_freshness_shein.go", "buildSheinSubmitFreshnessReadiness")
 
 		assertSourceContainsAll(t, source, []string{
 			"buildSheinSubmitReadinessGuidanceResolver(pkg)",
@@ -46,8 +46,8 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 	t.Run("shared_guidance_resolver_seam_owns_guidance_cloning_contract", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "shein_submit_readiness_guidance.go", "buildSheinSubmitReadinessGuidanceResolver")
-		callNames := readNamedFunctionCallNames(t, "shein_submit_readiness_guidance.go", "buildSheinSubmitReadinessGuidanceResolver")
+		source := readNamedFunctionSource(t, "submit_readiness_guidance_shein.go", "buildSheinSubmitReadinessGuidanceResolver")
+		callNames := readNamedFunctionCallNames(t, "submit_readiness_guidance_shein.go", "buildSheinSubmitReadinessGuidanceResolver")
 
 		assertSourceContainsAll(t, source, []string{
 			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",

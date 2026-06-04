@@ -9,7 +9,8 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinclient "task-processor/internal/shein/client"
+	"task-processor/internal/shein/activity"
+	"task-processor/internal/shein/api/marketing"
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/tenantbridge"
 )
@@ -19,8 +20,8 @@ type listingKitSheinAPIClientFactory struct {
 	cookieStore *sheinlogin.RedisStore
 }
 
-func (f listingKitSheinAPIClientFactory) NewSheinAPIClient(storeID int64, storeInfo *listingkit.SheinStoreInfo) *sheinclient.APIClient {
-	return sheinclient.NewAPIClientWithStoreConfig(storeID, toSheinClientStoreConfig(storeInfo), boundSheinCookieProvider{
+func (f listingKitSheinAPIClientFactory) NewSheinAPIClient(storeID int64, storeInfo *listingkit.SheinStoreInfo) *listingkit.SheinRuntimeAPIClient {
+	return listingkit.NewSheinRuntimeAPIClientWithStoreConfig(storeID, toSheinClientStoreConfig(storeInfo), boundSheinCookieProvider{
 		store:    f.cookieStore,
 		tenantID: tenantIDFromListingKitStoreInfo(storeInfo),
 	})
@@ -31,15 +32,15 @@ type listingKitSheinRuntimeFactory struct {
 	cookieStore *sheinlogin.RedisStore
 }
 
-func (f listingKitSheinRuntimeFactory) NewAPIClient(ctx context.Context, storeID int64) *sheinclient.APIClient {
+func (f listingKitSheinRuntimeFactory) NewAPIClient(ctx context.Context, storeID int64) *listingkit.SheinRuntimeAPIClient {
 	storeInfo := f.resolveStoreConfig(ctx, storeID)
-	return sheinclient.NewAPIClientWithStoreConfig(storeID, storeInfo, boundSheinCookieProvider{
+	return listingkit.NewSheinRuntimeAPIClientWithStoreConfig(storeID, storeInfo, boundSheinCookieProvider{
 		store:    f.cookieStore,
 		tenantID: tenantIDFromSheinClientStoreConfig(storeInfo),
 	})
 }
 
-func (f listingKitSheinRuntimeFactory) resolveStoreConfig(ctx context.Context, storeID int64) *sheinclient.StoreConfig {
+func (f listingKitSheinRuntimeFactory) resolveStoreConfig(ctx context.Context, storeID int64) *listingkit.SheinRuntimeStoreConfig {
 	if f.repo == nil || storeID <= 0 {
 		return nil
 	}
@@ -85,12 +86,20 @@ func buildListingKitSheinTranslateAPIBuilder(storeRepo listingadmin.StoreReposit
 	return sheinpub.NewRuntimeTranslateAPIBuilder(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore})
 }
 
+func buildListingKitPromotionRegistrationBridge(apiClient *listingkit.SheinRuntimeAPIClient) activity.PromotionRegistrationBridge {
+	if apiClient == nil {
+		return nil
+	}
+	baseClient := listingkit.NewSheinRuntimeBaseAPIClient(apiClient, apiClient.GetStoreID())
+	return activity.NewActivityRegistrationService(nil, marketing.NewClient(baseClient))
+}
+
 type boundSheinCookieProvider struct {
 	store    *sheinlogin.RedisStore
 	tenantID int64
 }
 
-func (p boundSheinCookieProvider) GetCookie(ctx context.Context, storeID int64) (*sheinclient.CookieLookupResult, error) {
+func (p boundSheinCookieProvider) GetCookie(ctx context.Context, storeID int64) (*listingkit.SheinRuntimeCookieLookupResult, error) {
 	if p.store == nil || p.tenantID <= 0 || storeID <= 0 {
 		return nil, nil
 	}
@@ -105,7 +114,7 @@ func (p boundSheinCookieProvider) GetCookie(ctx context.Context, storeID int64) 
 	if strings.TrimSpace(cookieJSON) == "" {
 		return nil, nil
 	}
-	return &sheinclient.CookieLookupResult{
+	return &listingkit.SheinRuntimeCookieLookupResult{
 		TenantID:   p.tenantID,
 		CookieJSON: cookieJSON,
 	}, nil
@@ -130,18 +139,18 @@ func tenantIDFromListingKitStoreInfo(storeInfo *listingkit.SheinStoreInfo) int64
 	return storeInfo.TenantID
 }
 
-func tenantIDFromSheinClientStoreConfig(storeInfo *sheinclient.StoreConfig) int64 {
+func tenantIDFromSheinClientStoreConfig(storeInfo *listingkit.SheinRuntimeStoreConfig) int64 {
 	if storeInfo == nil {
 		return 0
 	}
 	return storeInfo.TenantID
 }
 
-func toSheinClientStoreConfig(storeInfo *listingkit.SheinStoreInfo) *sheinclient.StoreConfig {
+func toSheinClientStoreConfig(storeInfo *listingkit.SheinStoreInfo) *listingkit.SheinRuntimeStoreConfig {
 	if storeInfo == nil {
 		return nil
 	}
-	return &sheinclient.StoreConfig{
+	return &listingkit.SheinRuntimeStoreConfig{
 		ID:       storeInfo.ID,
 		TenantID: storeInfo.TenantID,
 		StoreID:  strings.TrimSpace(storeInfo.StoreID),
@@ -153,11 +162,11 @@ func toSheinClientStoreConfig(storeInfo *listingkit.SheinStoreInfo) *sheinclient
 	}
 }
 
-func toSheinClientStoreConfigFromListingAdmin(store *listingadmin.Store) *sheinclient.StoreConfig {
+func toSheinClientStoreConfigFromListingAdmin(store *listingadmin.Store) *listingkit.SheinRuntimeStoreConfig {
 	if store == nil {
 		return nil
 	}
-	return &sheinclient.StoreConfig{
+	return &listingkit.SheinRuntimeStoreConfig{
 		ID:       store.ID,
 		TenantID: store.TenantID,
 		StoreID:  strings.TrimSpace(store.StoreID),

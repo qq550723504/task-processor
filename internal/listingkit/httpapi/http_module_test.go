@@ -74,6 +74,20 @@ func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
 	require.Equal(t, "listing_kit", pools[0].Name)
 }
 
+func TestAppendRouteDescriptorsIncludesSheinSyncRoutes(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+	module := NewHTTPModule(stubRouteHandler{})
+
+	require.NoError(t, module.Register(reg))
+
+	keys := routeKeys(reg.Routes())
+	require.Contains(t, keys, "POST /api/v1/listing-kits/shein-sync/stores/:store_id/sync")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-sync/stores/:store_id/products")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/shein-sync/stores/:store_id/enrollments")
+}
+
 type stubStudioSessionRouteHandler struct{}
 
 func (stubStudioSessionRouteHandler) ListStudioSessionGallery(*gin.Context)   {}
@@ -122,6 +136,13 @@ func (stubRouteHandler) SearchSheinCategories(*gin.Context)                     
 func (stubRouteHandler) UpdateSheinFinalDraft(*gin.Context)                       {}
 func (stubRouteHandler) GetSubmissionEvents(*gin.Context)                         {}
 func (stubRouteHandler) ClearSheinResolutionCache(*gin.Context)                   {}
+func (stubRouteHandler) TriggerSheinStoreSync(*gin.Context)                       {}
+func (stubRouteHandler) ListSheinSyncedProducts(*gin.Context)                     {}
+func (stubRouteHandler) UpdateSheinSyncedProductCost(*gin.Context)                {}
+func (stubRouteHandler) RefreshSheinActivityCandidates(*gin.Context)              {}
+func (stubRouteHandler) ListSheinActivityCandidates(*gin.Context)                 {}
+func (stubRouteHandler) ReviewSheinActivityCandidate(*gin.Context)                {}
+func (stubRouteHandler) ExecuteSheinActivityEnrollment(*gin.Context)              {}
 func (stubRouteHandler) ListSettingsNamespaces(*gin.Context)                      {}
 func (stubRouteHandler) GetSettingsNamespaceSchema(*gin.Context)                  {}
 func (stubRouteHandler) GetSettingsNamespace(*gin.Context)                        {}

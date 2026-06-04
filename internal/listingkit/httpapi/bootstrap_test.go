@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -42,6 +44,9 @@ func buildServiceInputFixture() BuildServiceInput {
 					return nil, nil, nil
 				},
 				StudioBatchRun: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
+					return nil, nil, nil
+				},
+				SheinSync: func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
 					return nil, nil, nil
 				},
 				Subscription: func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
@@ -382,7 +387,7 @@ func TestAssembleServiceBundleMapsRuntimeDependenciesAndClosers(t *testing.T) {
 	admin := buildAdminModule(adminModuleInput{})
 	temporal := buildTemporalModule(temporalModuleInput{Service: moduleSvc})
 
-	bundle := assembleServiceBundle(repos, moduleSvc, temporal.workerService, task.handlerDependenciesWithAdmin(admin), closers)
+	bundle := assembleServiceBundle(repos, moduleSvc, sheinSyncRuntimeServices{}, temporal.workerService, task.handlerDependenciesWithAdmin(admin), closers)
 	if bundle == nil {
 		t.Fatal("expected bundle")
 	}
@@ -1017,6 +1022,15 @@ func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
 	if bundle.runtime.handlerDependencies.Admin.StoreRepository != bundle.StoreRepository {
 		t.Fatal("expected runtime handler dependencies to preserve admin store repository")
 	}
+	if bundle.runtime.sheinSyncService == nil {
+		t.Fatal("expected runtime shein sync service to be wired")
+	}
+	if bundle.runtime.sheinCandidateService == nil {
+		t.Fatal("expected runtime shein candidate service to be wired")
+	}
+	if bundle.runtime.sheinEnrollmentService == nil {
+		t.Fatal("expected runtime shein enrollment service to be wired")
+	}
 	if bundle.TemporalWorkerService == nil {
 		t.Fatal("expected temporal worker service to be exposed")
 	}
@@ -1256,6 +1270,30 @@ func TestBuildModuleAssemblesRuntimeFromModuleRegistrars(t *testing.T) {
 	}
 }
 
+func TestBuildModuleWiresSheinSyncServicesIntoHandler(t *testing.T) {
+	t.Parallel()
+
+	module, err := BuildModule(BuildModuleInput{
+		ServiceInput: buildSuccessfulServiceInputFixture(),
+	})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+
+	engine := gin.New()
+	engine.POST("/api/v1/listing-kits/shein-sync/stores/:store_id/sync", module.Handler.TriggerSheinStoreSync)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/shein-sync/stores/2001/sync", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code == http.StatusNotImplemented {
+		t.Fatalf("expected shein sync handler to be wired, got 501 body=%s", resp.Body.String())
+	}
+}
+
 func TestBuildServiceComposesSubmitRegistrarThroughPublicEntryPoint(t *testing.T) {
 	t.Parallel()
 
@@ -1318,6 +1356,9 @@ func buildSuccessfulServiceInputFixture() BuildServiceInput {
 	}
 	input.Repositories.Core.StudioBatchRun = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
 		return listingkit.NewMemStudioBatchRunRepository(), nil, nil
+	}
+	input.Repositories.Core.SheinSync = func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
+		return listingkitstore.NewMemSheinSyncRepository(), nil, nil
 	}
 	input.Repositories.Core.Subscription = func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
 		return listingsubscription.NewMemRepository(), nil, nil

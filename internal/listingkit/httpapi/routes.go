@@ -194,6 +194,16 @@ type studioBatchRunRouteHandler interface {
 	CancelStudioBatchRun(c *gin.Context)
 }
 
+type sheinSyncRouteHandler interface {
+	TriggerSheinStoreSync(c *gin.Context)
+	ListSheinSyncedProducts(c *gin.Context)
+	UpdateSheinSyncedProductCost(c *gin.Context)
+	RefreshSheinActivityCandidates(c *gin.Context)
+	ListSheinActivityCandidates(c *gin.Context)
+	ReviewSheinActivityCandidate(c *gin.Context)
+	ExecuteSheinActivityEnrollment(c *gin.Context)
+}
+
 type RouteHandler interface {
 	TaskRouteHandler
 	SettingsRouteHandler
@@ -202,6 +212,7 @@ type RouteHandler interface {
 	PlatformAdminRouteHandler
 	AdminRouteHandler
 	StudioGenerationRouteHandler
+	sheinSyncRouteHandler
 }
 
 func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler) []httproute.Descriptor {
@@ -219,6 +230,7 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler)
 	routes = appendAdminRouteDescriptors(routes, handler)
 	routes = appendStudioGenerationRouteDescriptors(routes, handler)
 	routes = appendTaskRouteDescriptors(routes, handler)
+	routes = appendSheinSyncRouteDescriptors(routes, handler)
 	return routes
 }
 
@@ -426,5 +438,17 @@ func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler TaskRoute
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/submit", Module: "listing-kit", Handler: handler.SubmitTask},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/submission-status/refresh", Module: "listing-kit", Handler: handler.RefreshSubmissionStatus},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/tasks/:task_id/shein-resolution-cache", Module: "listing-kit", Handler: handler.ClearSheinResolutionCache},
+	)
+}
+
+func appendSheinSyncRouteDescriptors(routes []httproute.Descriptor, handler sheinSyncRouteHandler) []httproute.Descriptor {
+	return append(routes,
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/sync", Module: "listing-kit", Handler: handler.TriggerSheinStoreSync},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/products", Module: "listing-kit", Handler: handler.ListSheinSyncedProducts},
+		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/shein-sync/products/:id/cost", Module: "listing-kit", Handler: handler.UpdateSheinSyncedProductCost},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/candidates/refresh", Module: "listing-kit", Handler: handler.RefreshSheinActivityCandidates},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/candidates", Module: "listing-kit", Handler: handler.ListSheinActivityCandidates},
+		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/shein-sync/candidates/:id/review", Module: "listing-kit", Handler: handler.ReviewSheinActivityCandidate},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/enrollments", Module: "listing-kit", Handler: handler.ExecuteSheinActivityEnrollment},
 	)
 }

@@ -9,7 +9,6 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit/tenantctx"
-	"task-processor/internal/shein/submitprep"
 )
 
 type stubTitleAIClient struct {
@@ -189,7 +188,7 @@ func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
 }
 
 func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
-	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {
 				{TenantID: 101, Language: "en", Word: "amazon", Status: 1},
@@ -215,7 +214,7 @@ func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
 }
 
 func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing.T) {
-	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
 				TenantID: 101,
@@ -250,12 +249,12 @@ func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing
 }
 
 func TestDifferentTenantsLoadDifferentGenerationTopicLexicons(t *testing.T) {
-	restoreRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+	restoreRepo := ConfigureSubmitPrepRepositories(nil, &stubGenerationTopicPolicyRepository{
 		keys: map[int64][]string{
 			101: {"children"},
 			202: {"meals"},
 		},
-	})
+	}, nil)
 	defer restoreRepo()
 
 	copyA := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
@@ -282,13 +281,11 @@ func TestDifferentTenantsLoadDifferentGenerationTopicLexicons(t *testing.T) {
 }
 
 func TestBuildSheinListingCopyLoadsTenantGenerationTopicOverrideLexicon(t *testing.T) {
-	restorePolicyRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
+	restoreRepos := ConfigureSubmitPrepRepositories(nil, &stubGenerationTopicPolicyRepository{
 		keys: map[int64][]string{
 			101: {"children"},
 		},
-	})
-	defer restorePolicyRepo()
-	restoreOverrideRepo := submitprep.SetGenerationTopicOverrideRepository(&stubGenerationTopicOverrideRepository{
+	}, &stubGenerationTopicOverrideRepository{
 		items: map[string]listingadmin.GenerationTopicOverride{
 			overrideRepoKey(101, "shein", "children"): {
 				TenantID: 101,
@@ -301,7 +298,7 @@ func TestBuildSheinListingCopyLoadsTenantGenerationTopicOverrideLexicon(t *testi
 			},
 		},
 	})
-	defer restoreOverrideRepo()
+	defer restoreRepos()
 
 	copy := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
 		Title:       "Toddler Room Curtain",
