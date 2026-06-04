@@ -17,7 +17,6 @@ import {
   clearLocalSheinStudioDraftSnapshot,
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
-  loadLocalSheinStudioDraftSnapshot,
   saveLocalSheinStudioDraftSnapshot,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
@@ -85,7 +84,6 @@ import {
 import {
   buildGroupedSDSSelectionID,
   countSelectionsWithPrimary,
-  type GroupedSDSSelectionEligibility,
   type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -209,7 +207,11 @@ export function SheinStudioWorkbench({
   selection,
 }: SheinStudioWorkbenchProps) {
   const router = useRouter();
-  const [activeBatchId, setActiveBatchId] = useState(() => initialBatchId ?? "");
+  const selectionVariantId = selection?.variantId ?? null;
+  const [activeBatchScope, setActiveBatchScope] = useState(() => ({
+    batchId: initialBatchId ?? "",
+    selectionVariantId,
+  }));
   const [isDedicatedBatchLoaded, setIsDedicatedBatchLoaded] = useState(
     () => !initialBatchId,
   );
@@ -223,6 +225,19 @@ export function SheinStudioWorkbench({
     undefined,
     buildInitialSheinStudioWorkbenchState,
   );
+  const setActiveBatchId = useCallback(
+    (batchId: string) => {
+      setActiveBatchScope({
+        batchId,
+        selectionVariantId,
+      });
+    },
+    [selectionVariantId],
+  );
+  const activeBatchId = initialBatchId ??
+    (activeBatchScope.selectionVariantId === selectionVariantId
+      ? activeBatchScope.batchId
+      : "");
   const setWorkbenchField = useCallback(
     <K extends keyof SheinStudioWorkbenchState>(
       field: K,
@@ -876,7 +891,7 @@ export function SheinStudioWorkbench({
         },
       );
     },
-    [buildDraftInput, initialBatchId, isDedicatedBatchLoaded],
+    [buildDraftInput, initialBatchId],
   );
   const handlePromptChange = useCallback(
     (value: string) => {
@@ -891,15 +906,7 @@ export function SheinStudioWorkbench({
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
     hasCustomizedSdsSelectionRef.current = false;
-    if (!initialBatchId) {
-      setActiveBatchId("");
-    }
-  }, [selection?.variantId]);
-
-  useEffect(() => {
-    setIsDedicatedBatchLoaded(!initialBatchId);
-    setActiveBatchId(initialBatchId ?? "");
-  }, [initialBatchId]);
+  }, [selectionVariantId]);
 
   const focusGenerateStep = useCallback(() => {
     navigateToStep("generate");
@@ -1404,7 +1411,7 @@ export function SheinStudioWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [initialBatchId]);
+  }, [initialBatchId, setQueueMessage, workbenchController]);
 
   const itemizedBatchGenerationInFlight = hasInFlightItemizedBatchGeneration(
     itemizedBatchDetail,
@@ -1609,12 +1616,6 @@ export function SheinStudioWorkbench({
     },
     [savedBatches, selectedRecentBatchHydrations],
   );
-
-  useEffect(() => {
-    if (!isEditingCurrentBatchName) {
-      setCurrentBatchDraftName(currentDedicatedBatch?.name ?? "");
-    }
-  }, [currentDedicatedBatch?.name, isEditingCurrentBatchName]);
 
   const handleRenameCurrentDedicatedBatch = useCallback(async () => {
     if (!initialBatchId) {
@@ -1945,7 +1946,7 @@ export function SheinStudioWorkbench({
     setQueueResumeState(null);
     setSelectedRecentBatchSummaryIds([]);
     setQueueMessage("");
-  }, [setQueueMessage]);
+  }, [setQueueMessage, setSelectedRecentBatchSummaryIds]);
 
   const handleAdvanceBatchQueue = useCallback(() => {
     if (!batchQueueMode) {
@@ -2327,7 +2328,10 @@ export function SheinStudioWorkbench({
                 </>
               ) : (
                 <Button
-                  onClick={() => setIsEditingCurrentBatchName(true)}
+                  onClick={() => {
+                    setCurrentBatchDraftName(currentDedicatedBatch?.name ?? "");
+                    setIsEditingCurrentBatchName(true);
+                  }}
                   size="sm"
                   type="button"
                   variant="ghost"
