@@ -11,6 +11,7 @@ import type {
   SheinStudioDraft,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
+  SheinStudioLegacyCompatibilitySnapshot,
   SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -343,6 +344,15 @@ export function normalizeSelection(selection: unknown) {
   return isSelection(selection) ? selection : undefined;
 }
 
+function resolveLegacyCompatibilitySnapshot(
+  value: unknown,
+): SheinStudioLegacyCompatibilitySnapshot | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as SheinStudioLegacyCompatibilitySnapshot;
+}
+
 function normalizeGroupedWorkspace(
   input: unknown,
 ): SheinStudioGroupedWorkspace | null {
@@ -351,6 +361,7 @@ function normalizeGroupedWorkspace(
   }
   const candidate = input as Partial<SheinStudioGroupedWorkspace> & {
     primarySelection?: unknown;
+    legacyCompatibilitySnapshot?: unknown;
   };
   const primarySelection = normalizeSelection(candidate.primarySelection);
   if (
@@ -364,6 +375,9 @@ function normalizeGroupedWorkspace(
   ) {
     return null;
   }
+  const legacyCompatibilitySnapshot = resolveLegacyCompatibilitySnapshot(
+    candidate.legacyCompatibilitySnapshot,
+  );
   return {
     id: candidate.id.trim(),
     name: candidate.name.trim(),
@@ -396,11 +410,22 @@ function normalizeGroupedWorkspace(
     variationIntensity: normalizeVariationIntensity(candidate.variationIntensity),
     designs: Array.isArray(candidate.designs)
       ? candidate.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+      : Array.isArray(legacyCompatibilitySnapshot?.designs)
+        ? legacyCompatibilitySnapshot.designs
+            .filter(isGeneratedDesign)
+            .map(normalizeGeneratedDesign)
       : [],
     selectedIds: Array.isArray(candidate.selectedIds)
       ? candidate.selectedIds.filter((item): item is string => typeof item === "string")
+      : Array.isArray(legacyCompatibilitySnapshot?.selectedIds)
+        ? legacyCompatibilitySnapshot.selectedIds.filter(
+            (item): item is string => typeof item === "string",
+          )
       : [],
-    createdTasks: normalizeCreatedTasks(candidate.createdTasks),
+    createdTasks: normalizeCreatedTasks(
+      candidate.createdTasks ?? legacyCompatibilitySnapshot?.createdTasks,
+    ),
+    legacyCompatibilitySnapshot: legacyCompatibilitySnapshot ?? undefined,
     updatedAt: candidate.updatedAt,
   } satisfies SheinStudioGroupedWorkspace;
 }
@@ -470,6 +495,9 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     return null;
   }
   const legacyRaw = raw as Partial<SheinStudioDraft> & LegacyBatchStatusCarrier;
+  const legacyCompatibilitySnapshot = resolveLegacyCompatibilitySnapshot(
+    raw.legacyCompatibilitySnapshot,
+  );
 
   const groups = normalizeGroupedWorkspaces(raw.groups);
   const normalizedGroups =
@@ -498,16 +526,33 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     groups: normalizedGroups,
     designs: Array.isArray(raw.designs)
       ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+      : Array.isArray(legacyCompatibilitySnapshot?.designs)
+        ? legacyCompatibilitySnapshot.designs
+            .filter(isGeneratedDesign)
+            .map(normalizeGeneratedDesign)
       : [],
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
+      : Array.isArray(legacyCompatibilitySnapshot?.selectedIds)
+        ? legacyCompatibilitySnapshot.selectedIds.filter(
+            (item): item is string => typeof item === "string",
+          )
       : [],
-    createdTasks: normalizeCreatedTasks(raw.createdTasks),
+    createdTasks: normalizeCreatedTasks(
+      raw.createdTasks ?? legacyCompatibilitySnapshot?.createdTasks,
+    ),
+    legacyCompatibilitySnapshot: legacyCompatibilitySnapshot ?? undefined,
     generationError:
-      typeof raw.generationError === "string" ? raw.generationError : "",
+      typeof raw.generationError === "string"
+        ? raw.generationError
+        : legacyCompatibilitySnapshot?.generationError ?? "",
     generationJobId:
-      typeof raw.generationJobId === "string" ? raw.generationJobId : "",
-    generationJobs: normalizeGenerationJobs(raw.generationJobs),
+      typeof raw.generationJobId === "string"
+        ? raw.generationJobId
+        : legacyCompatibilitySnapshot?.generationJobId ?? "",
+    generationJobs: normalizeGenerationJobs(
+      raw.generationJobs ?? legacyCompatibilitySnapshot?.generationJobs,
+    ),
     batchStatus:
       typeof raw.batchStatus === "string"
         ? raw.batchStatus
@@ -527,6 +572,9 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     return null;
   }
   const legacyRaw = raw as Partial<SheinStudioSavedBatch> & LegacyBatchStatusCarrier;
+  const legacyCompatibilitySnapshot = resolveLegacyCompatibilitySnapshot(
+    raw.legacyCompatibilitySnapshot,
+  );
 
   const groups = normalizeGroupedWorkspaces(raw.groups);
   const normalizedGroups =
@@ -557,16 +605,33 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     groups: normalizedGroups,
     designs: Array.isArray(raw.designs)
       ? raw.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
+      : Array.isArray(legacyCompatibilitySnapshot?.designs)
+        ? legacyCompatibilitySnapshot.designs
+            .filter(isGeneratedDesign)
+            .map(normalizeGeneratedDesign)
       : [],
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
+      : Array.isArray(legacyCompatibilitySnapshot?.selectedIds)
+        ? legacyCompatibilitySnapshot.selectedIds.filter(
+            (item): item is string => typeof item === "string",
+          )
       : [],
-    createdTasks: normalizeCreatedTasks(raw.createdTasks),
+    createdTasks: normalizeCreatedTasks(
+      raw.createdTasks ?? legacyCompatibilitySnapshot?.createdTasks,
+    ),
+    legacyCompatibilitySnapshot: legacyCompatibilitySnapshot ?? undefined,
     generationError:
-      typeof raw.generationError === "string" ? raw.generationError : "",
+      typeof raw.generationError === "string"
+        ? raw.generationError
+        : legacyCompatibilitySnapshot?.generationError ?? "",
     generationJobId:
-      typeof raw.generationJobId === "string" ? raw.generationJobId : "",
-    generationJobs: normalizeGenerationJobs(raw.generationJobs),
+      typeof raw.generationJobId === "string"
+        ? raw.generationJobId
+        : legacyCompatibilitySnapshot?.generationJobId ?? "",
+    generationJobs: normalizeGenerationJobs(
+      raw.generationJobs ?? legacyCompatibilitySnapshot?.generationJobs,
+    ),
     batchStatus:
       typeof raw.batchStatus === "string"
         ? raw.batchStatus

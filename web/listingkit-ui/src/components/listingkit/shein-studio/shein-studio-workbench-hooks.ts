@@ -155,13 +155,16 @@ export function saveLocalSheinStudioDraftSnapshot(
   if (!canUseLocalDraftSnapshot() || !input) {
     return;
   }
-  const draft = {
+  const draft = normalizeDraft({
     ...input,
     updatedAt:
       "updatedAt" in input && typeof input.updatedAt === "string"
         ? input.updatedAt
         : new Date().toISOString(),
-  } satisfies SheinStudioDraft;
+  } as Partial<SheinStudioDraft>);
+  if (!draft) {
+    return;
+  }
   const payload = {
     batchId: options?.batchId?.trim() || undefined,
     draft,

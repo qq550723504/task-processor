@@ -72,6 +72,15 @@ export type SDSGroupedPromptHistoryEntry = {
   createdAt: string;
 };
 
+export type SheinStudioLegacyCompatibilitySnapshot = {
+  designs?: SheinStudioGeneratedDesign[];
+  selectedIds?: string[];
+  createdTasks?: SheinStudioCreatedTask[];
+  generationJobs?: SheinStudioGenerationJob[];
+  generationError?: string;
+  generationJobId?: string;
+};
+
 export type SheinStudioGroupedWorkspace = {
   id: string;
   name: string;
@@ -94,8 +103,44 @@ export type SheinStudioGroupedWorkspace = {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
+  legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
   updatedAt: string;
 };
+
+export type SheinStudioPersistedGroupedWorkspace = Omit<
+  SheinStudioGroupedWorkspace,
+  "designs" | "selectedIds" | "createdTasks"
+> & {
+  legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
+};
+
+export type SheinStudioPersistedBatchView = {
+  prompt: string;
+  styleCount: string;
+  variationIntensity?: SheinStudioVariationIntensity;
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
+  sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  renderSizeImagesWithSds?: boolean;
+  selectionVariantId?: number;
+  selection?: SDSProductVariantSelection;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
+  groups?: SheinStudioPersistedGroupedWorkspace[];
+  legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
+  generationError?: string;
+  generationJobId?: string;
+  batchStatus?: string;
+  draftUpdatedAt?: string;
+  updatedAt: string;
+};
+
+export type SheinStudioPersistedDraft = SheinStudioPersistedBatchView;
 
 export type SheinStudioGenerateRequest = {
   prompt: string;
@@ -142,6 +187,7 @@ export type SheinStudioSavedBatch = {
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
   generationJobs?: SheinStudioGenerationJob[];
+  legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
   generationError?: string;
   generationJobId?: string;
   batchStatus?: string;
@@ -228,13 +274,31 @@ export type SheinStudioBatchDetail = {
   items: SheinStudioItemizedBatchItem[];
 };
 
-export type SheinStudioDraft = Omit<
-  SheinStudioSavedBatch,
-  "id" | "name" | "updatedAt"
-> & {
+export type SheinStudioDraft = {
+  prompt: string;
+  styleCount: string;
+  variationIntensity?: SheinStudioVariationIntensity;
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
+  sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  renderSizeImagesWithSds?: boolean;
+  selectionVariantId?: number;
+  selection?: SDSProductVariantSelection;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
+  groups?: SheinStudioGroupedWorkspace[];
+  designs: SheinStudioGeneratedDesign[];
+  selectedIds: string[];
+  createdTasks: SheinStudioCreatedTask[];
+  generationJobs?: SheinStudioGenerationJob[];
+  legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
   generationError?: string;
   generationJobId?: string;
-  generationJobs?: SheinStudioGenerationJob[];
   batchStatus?: string;
   draftUpdatedAt?: string;
   updatedAt: string;

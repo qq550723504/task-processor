@@ -8,21 +8,22 @@ import { ApiError } from "@/lib/api/client";
 import { getSheinStudioBatchDetail } from "@/lib/api/shein-studio-batches";
 import {
   normalizeBatch,
-  dedupeGeneratedDesignsByID,
   normalizeDraft,
 } from "@/lib/shein-studio/storage-shared";
 import { enqueueSheinStudioSave } from "@/lib/shein-studio/save-queue";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
-  SheinStudioGroupedWorkspace,
+  SheinStudioArtworkModel,
+  SheinStudioBatchDetail,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
-  SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
-  SheinStudioBatchDetail,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
+  SheinStudioLegacyCompatibilitySnapshot,
+  SheinStudioPersistedBatchView,
+  SheinStudioPersistedGroupedWorkspace,
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
@@ -32,29 +33,16 @@ import type {
 const ACTIVE_BATCH_STORAGE_KEY = "listingkit:shein-studio:active-batch-id";
 const LOCAL_DRAFT_SNAPSHOT_KEY = "listingkit:shein-studio:recent-draft";
 
-export type SheinStudioSaveInput = {
+export type SheinStudioSaveInput = Omit<
+  SheinStudioPersistedBatchView,
+  "updatedAt"
+> & {
   id?: string;
-  updatedAt?: string;
   name?: string;
-  prompt: string;
-  styleCount: string;
-  variationIntensity?: SheinStudioVariationIntensity;
-  productImageCount?: string;
-  productImagePrompt?: string;
-  productImagePrompts?: SheinStudioProductImagePrompt[];
-  artworkModel?: SheinStudioArtworkModel;
-  transparentBackground?: boolean;
-  sheinStoreId: string;
-  imageStrategy?: SheinStudioImageStrategy;
-  groupedImageMode?: SheinStudioGroupedImageMode;
-  selectedSdsImages?: SheinStudioSelectedSDSImage[];
-  renderSizeImagesWithSds?: boolean;
-  selection?: SDSProductVariantSelection;
-  groupedSelections?: GroupedSDSSelectionEligibility[];
-  groups?: SheinStudioGroupedWorkspace[];
-  designs: SheinStudioGeneratedDesign[];
-  selectedIds: string[];
-  createdTasks: SheinStudioCreatedTask[];
+  updatedAt?: string;
+  designs?: SheinStudioGeneratedDesign[];
+  selectedIds?: string[];
+  createdTasks?: SheinStudioCreatedTask[];
   generationJobs?: SheinStudioGenerationJob[];
 };
 
@@ -132,7 +120,7 @@ function saveLocalDraftSnapshot(input: SheinStudioSaveInput, batchId?: string) {
   const draft = normalizeDraft({
     ...input,
     updatedAt: input.updatedAt || new Date().toISOString(),
-  });
+  } as Partial<import("@/lib/types/shein-studio").SheinStudioDraft>);
   if (!draft) {
     return null;
   }
@@ -144,6 +132,38 @@ function saveLocalDraftSnapshot(input: SheinStudioSaveInput, batchId?: string) {
     }),
   );
   return draft;
+}
+
+function resolveLegacyCompatibilitySnapshot(
+  input: SheinStudioSaveInput,
+): SheinStudioLegacyCompatibilitySnapshot | undefined {
+  if (input.legacyCompatibilitySnapshot) {
+    return input.legacyCompatibilitySnapshot;
+  }
+
+  const hasDesigns = (input.designs?.length ?? 0) > 0;
+  const hasSelectedIds = (input.selectedIds?.length ?? 0) > 0;
+  const hasCreatedTasks = (input.createdTasks?.length ?? 0) > 0;
+  const hasGenerationJobs = (input.generationJobs?.length ?? 0) > 0;
+  if (
+    !hasDesigns &&
+    !hasSelectedIds &&
+    !hasCreatedTasks &&
+    !hasGenerationJobs &&
+    !input.generationError &&
+    !input.generationJobId
+  ) {
+    return undefined;
+  }
+
+  return {
+    designs: input.designs ?? [],
+    selectedIds: input.selectedIds ?? [],
+    createdTasks: input.createdTasks ?? [],
+    generationJobs: input.generationJobs ?? [],
+    generationError: input.generationError,
+    generationJobId: input.generationJobId,
+  };
 }
 
 export function getActiveSheinStudioBatchId() {
@@ -270,12 +290,9 @@ export async function saveSheinStudioBatch(
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,
       sheinStoreId: input.sheinStoreId,
       selection: input.selection,
+      legacyCompatibilitySnapshot: resolveLegacyCompatibilitySnapshot(input),
       groups: input.groups,
       groupedSelections: input.groupedSelections,
-      approvedDesignIds: input.selectedIds,
-      createdTasks: input.createdTasks,
-      generationJobs: input.generationJobs,
-      designs: dedupeGeneratedDesignsByID(input.designs),
     });
     const saveBatch = async (expectedUpdatedAt?: string) =>
       normalizeBatch(await upsertSheinStudioBatchDraft(buildUpsertInput(expectedUpdatedAt)));

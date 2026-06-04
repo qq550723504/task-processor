@@ -17,6 +17,7 @@ import type {
   SheinStudioBatchItemStatus,
   SheinStudioBatchStatus,
   SheinStudioCreatedTask,
+  SheinStudioGroupedImageMode,
   SheinStudioGroupedWorkspace,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,

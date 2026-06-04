@@ -64,7 +64,7 @@ describe("buildSheinStudioDraftInput", () => {
       designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
       selectedIds: ["design-1"],
       createdTasks: [],
-      generationJobs: [{ jobId: "job-1", status: "queued" }],
+      generationJobs: [{ jobId: "job-1", status: "running" }],
     });
 
     expect(payload.selectedSdsImages).toEqual([
@@ -110,6 +110,12 @@ describe("buildSheinStudioDraftInput", () => {
     expect(payload).not.toHaveProperty("selectedIds");
     expect(payload).not.toHaveProperty("createdTasks");
     expect(payload).not.toHaveProperty("generationJobs");
+    expect(payload.legacyCompatibilitySnapshot).toEqual({
+      designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+      selectedIds: ["design-1"],
+      createdTasks: [],
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+    });
   });
 
   it("omits compatibility-era flat result fields from grouped workspace payloads", () => {
@@ -187,17 +193,12 @@ describe("buildSheinStudioDraftInput", () => {
           artworkModel: "",
           transparentBackground: false,
           variationIntensity: "medium",
-          designs: [],
-          selectedIds: [],
+          designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
+          selectedIds: ["group-design-1"],
           createdTasks: [],
-          generationJobs: [{ jobId: "group-job-1", status: "queued" }],
           updatedAt: "2026-05-26T00:00:00Z",
         },
       ],
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-      generationJobs: [],
     });
 
     expect(payload.groups).toEqual([
@@ -225,5 +226,11 @@ describe("buildSheinStudioDraftInput", () => {
     expect(payload.groups?.[0]).not.toHaveProperty("selectedIds");
     expect(payload.groups?.[0]).not.toHaveProperty("createdTasks");
     expect(payload.groups?.[0]).not.toHaveProperty("generationJobs");
+    expect(payload.groups?.[0]?.legacyCompatibilitySnapshot).toEqual({
+      designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
+      selectedIds: ["group-design-1"],
+      createdTasks: [],
+      generationJobs: [],
+    });
   });
 });

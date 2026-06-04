@@ -420,6 +420,10 @@ export function SDSProductBrowser({
           designs: target.designs,
           selectedIds: target.selectedIds,
           createdTasks: target.createdTasks,
+          generationJobs: target.generationJobs,
+          generationError: target.generationError,
+          generationJobId: target.generationJobId,
+          legacyCompatibilitySnapshot: target.legacyCompatibilitySnapshot,
         }, {
           makeActive: batchId === activeBatchId,
         });

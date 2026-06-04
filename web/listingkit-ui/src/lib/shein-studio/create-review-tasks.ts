@@ -238,7 +238,9 @@ export function resolveApprovedSheinStudioReviewDesigns(
   if (Array.isArray(input.approvedDesigns)) {
     return input.approvedDesigns;
   }
-  return input.designs.filter((design) => input.selectedIds.includes(design.id));
+  const designs = input.designs ?? [];
+  const selectedIds = input.selectedIds ?? [];
+  return designs.filter((design) => selectedIds.includes(design.id));
 }
 
 export async function createSheinReviewTasks(input: {

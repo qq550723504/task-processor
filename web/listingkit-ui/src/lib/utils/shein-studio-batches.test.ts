@@ -5,7 +5,9 @@ import {
   getSheinStudioBatch,
   getSheinStudioHydratedBatch,
   listSheinStudioBatches,
+  loadSheinStudioDraft,
   saveSheinStudioBatch,
+  saveSheinStudioDraft,
 } from "@/lib/utils/shein-studio-batches";
 
 const buildStudioBatchDraftSelectionKey = vi.fn();
@@ -39,6 +41,7 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
 describe("shein studio storage api", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.localStorage.clear();
     buildStudioBatchDraftSelectionKey.mockReset();
     buildStudioBatchDraftSelectionKey.mockReturnValue("");
     listSheinStudioBatchDrafts.mockReset();
@@ -121,7 +124,7 @@ describe("shein studio storage api", () => {
           generationJobs: [
             {
               jobId: "group-job-1",
-              status: "queued",
+              status: "running",
             },
           ],
           updatedAt: "2026-05-26T00:00:00Z",
@@ -138,7 +141,7 @@ describe("shein studio storage api", () => {
       generationJobs: [
         {
           jobId: "job-1",
-          status: "queued",
+          status: "running",
         },
       ],
       updatedAt: "2026-04-24T00:00:00.000Z",
@@ -171,7 +174,7 @@ describe("shein studio storage api", () => {
         generationJobs: [
           {
             jobId: "job-1",
-            status: "queued",
+            status: "running",
           },
         ],
         updatedAt: "2026-04-24T00:00:00.000Z",
@@ -242,32 +245,36 @@ describe("shein studio storage api", () => {
           artworkModel: "",
           transparentBackground: false,
           variationIntensity: "medium",
-          designs: [],
-          selectedIds: [],
-          createdTasks: [],
-          generationJobs: [
-            {
-              jobId: "group-job-1",
-              status: "queued",
-            },
-          ],
+          legacyCompatibilitySnapshot: {
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            generationJobs: [
+              {
+                jobId: "group-job-1",
+                status: "running",
+              },
+            ],
+          },
           updatedAt: "2026-05-26T00:00:00Z",
         },
       ],
-      designs: [
-        {
-          id: "design-1",
-          dataUrl: "data:image/png;base64,abc",
-        },
-      ],
-      selectedIds: ["design-1"],
-      createdTasks: [],
-      generationJobs: [
-        {
-          jobId: "job-1",
-          status: "queued",
-        },
-      ],
+      legacyCompatibilitySnapshot: {
+        designs: [
+          {
+            id: "design-1",
+            dataUrl: "data:image/png;base64,abc",
+          },
+        ],
+        selectedIds: ["design-1"],
+        createdTasks: [],
+        generationJobs: [
+          {
+            jobId: "job-1",
+            status: "running",
+          },
+        ],
+      },
     });
 
     expect(saved?.prompt).toBe("retro cherries");
@@ -281,6 +288,23 @@ describe("shein studio storage api", () => {
     expect(saveInput?.groups?.[0]).not.toHaveProperty("selectedIds");
     expect(saveInput?.groups?.[0]).not.toHaveProperty("createdTasks");
     expect(saveInput?.groups?.[0]).not.toHaveProperty("generationJobs");
+    expect(saveInput?.legacyCompatibilitySnapshot).toEqual({
+      designs: [
+        {
+          id: "design-1",
+          dataUrl: "data:image/png;base64,abc",
+        },
+      ],
+      selectedIds: ["design-1"],
+      createdTasks: [],
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+    });
+    expect(saveInput?.groups?.[0]?.legacyCompatibilitySnapshot).toEqual({
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationJobs: [{ jobId: "group-job-1", status: "running" }],
+    });
     expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         groupedSelections: [
@@ -315,6 +339,117 @@ describe("shein studio storage api", () => {
         }),
       ],
     });
+  });
+
+  it("restores compatibility results from a saved local draft snapshot", async () => {
+    buildStudioBatchDraftSelectionKey.mockImplementation((value) =>
+      value?.variantId ? `selection:${value.variantId}` : "",
+    );
+
+    await saveSheinStudioDraft({
+      prompt: "retro cherries",
+      styleCount: "3",
+      sheinStoreId: "",
+      selection,
+      groupedSelections: [],
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          currentPrompt: "prompt a",
+          promptHistory: [],
+          primarySelection: selection,
+          groupedSelections: [],
+          sheinStoreId: "store-9",
+          imageStrategy: "sds_official",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          legacyCompatibilitySnapshot: {
+            designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
+            selectedIds: ["group-design-1"],
+            createdTasks: [],
+            generationJobId: "group-job-1",
+            generationJobs: [{ jobId: "group-job-1", status: "running" }],
+          },
+          updatedAt: "2026-05-26T00:00:00Z",
+        },
+      ],
+      legacyCompatibilitySnapshot: {
+        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        selectedIds: ["design-1"],
+        createdTasks: [],
+        generationJobs: [{ jobId: "job-1", status: "running" }],
+      },
+    });
+
+    const restored = await loadSheinStudioDraft(selection);
+
+    expect(restored?.designs).toEqual([
+      { id: "design-1", imageUrl: "https://example.com/design.png" },
+    ]);
+    expect(restored?.selectedIds).toEqual(["design-1"]);
+    expect(restored?.generationJobs).toEqual([
+      expect.objectContaining({ jobId: "job-1", status: "running" }),
+    ]);
+    expect(restored?.groups?.[0]?.designs).toEqual([
+      { id: "group-design-1", imageUrl: "https://example.com/group.png" },
+    ]);
+    expect(restored?.groups?.[0]?.legacyCompatibilitySnapshot).toEqual({
+      designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
+      selectedIds: ["group-design-1"],
+      createdTasks: [],
+      generationJobId: "group-job-1",
+      generationJobs: [{ jobId: "group-job-1", status: "running" }],
+    });
+  });
+
+  it("derives a top-level compatibility snapshot for direct batch saves that still use flat fields", async () => {
+    upsertSheinStudioBatchDraft.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "3",
+      sheinStoreId: "",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-24T00:00:00.000Z",
+    });
+
+    await saveSheinStudioBatch({
+      id: "batch-1",
+      prompt: "retro cherries",
+      styleCount: "3",
+      sheinStoreId: "",
+      groupedSelections: [],
+      groups: [],
+      designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+      selectedIds: ["design-1"],
+      createdTasks: [{ id: "task-1", title: "Create task", designId: "design-1" }],
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+      generationError: "legacy-error",
+      generationJobId: "job-1",
+    });
+
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        legacyCompatibilitySnapshot: {
+          designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+          selectedIds: ["design-1"],
+          createdTasks: [{ id: "task-1", title: "Create task", designId: "design-1" }],
+          generationJobs: [{ jobId: "job-1", status: "running" }],
+          generationError: "legacy-error",
+          generationJobId: "job-1",
+        },
+      }),
+    );
   });
 
   it("does not synthesize a default batch name on create", async () => {
@@ -420,9 +555,6 @@ describe("shein studio storage api", () => {
       },
       groupedSelections: [],
       groups: [],
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
     });
 
     expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
@@ -475,9 +607,6 @@ describe("shein studio storage api", () => {
       },
       groupedSelections: [],
       groups: [],
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
     });
 
     expect(saved).toEqual(
@@ -550,9 +679,6 @@ describe("shein studio storage api", () => {
       selection,
       groupedSelections: [],
       groups: [],
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
     });
 
     expect(saved).toEqual(
