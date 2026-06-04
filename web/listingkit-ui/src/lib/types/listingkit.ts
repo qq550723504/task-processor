@@ -1,6 +1,7 @@
 export * from "./listingkit/navigation";
 export * from "./listingkit/preview";
 export * from "./listingkit/revision";
+export * from "./listingkit/shein-enrollment";
 export * from "./listingkit/shein";
 export * from "./listingkit/review";
 export * from "./listingkit/tasks";

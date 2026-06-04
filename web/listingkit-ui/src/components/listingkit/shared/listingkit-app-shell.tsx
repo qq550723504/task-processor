@@ -121,6 +121,12 @@ const OPERATIONS_NAV_ITEMS = [
     children: [
       { label: "我的店铺配置", href: "/listing-kits/stores", icon: Store, match: "prefix" },
       {
+        label: "SHEIN 活动报名",
+        href: "/listing-kits/shein-enrollment",
+        icon: ShoppingBag,
+        match: "prefix",
+      },
+      {
         label: "平台店铺管理",
         href: "/listing-kits/admin/stores",
         icon: Store,
@@ -206,6 +212,12 @@ const OPERATIONS_NAV_ITEMS = [
       {
         label: "SHEIN 登录",
         href: "/listing-kits/shein-login",
+        icon: KeyRound,
+        match: "prefix",
+      },
+      {
+        label: "SDS 登录",
+        href: "/listing-kits/sds-login",
         icon: KeyRound,
         match: "prefix",
       },

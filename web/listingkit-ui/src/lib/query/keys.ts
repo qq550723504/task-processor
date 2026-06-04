@@ -20,6 +20,42 @@ export const listingKitKeys = {
     ["listingkit", "tasks", query] as const,
   storeProfiles: () => ["listingkit", "store-profiles"] as const,
   storeRouting: () => ["listingkit", "store-routing"] as const,
+  sheinEnrollmentProducts: (
+    storeId: number,
+    query: {
+      skc_name?: string;
+      is_active?: boolean;
+      page?: number;
+      page_size?: number;
+    },
+  ) =>
+    [
+      "listingkit",
+      "shein-enrollment",
+      storeId,
+      "products",
+      compactQueryKeyObject(query),
+    ] as const,
+  sheinEnrollmentCandidates: (
+    storeId: number,
+    query: {
+      activity_type: string;
+      activity_key?: string;
+      skc_name?: string;
+      candidate_version?: string;
+      page?: number;
+      page_size?: number;
+    },
+  ) =>
+    [
+      "listingkit",
+      "shein-enrollment",
+      storeId,
+      "candidates",
+      compactQueryKeyObject(query),
+    ] as const,
+  sheinEnrollmentStoreScope: (storeId: number) =>
+    ["listingkit", "shein-enrollment", storeId] as const,
   preview: (taskId: string) => ["listingkit", taskId, "preview"] as const,
   taskResult: (taskId: string) => ["listingkit", taskId, "task-result"] as const,
   sdsProducts: (query: SDSProductsKeyQuery) =>

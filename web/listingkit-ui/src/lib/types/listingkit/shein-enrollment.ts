@@ -1,0 +1,194 @@
+export type SheinSyncTriggerMode = "manual" | "schedule";
+
+export type SheinSyncedProductQuery = {
+  skc_name?: string;
+  is_active?: boolean;
+  page?: number;
+  page_size?: number;
+};
+
+export type SheinActivityCandidateQuery = {
+  activity_type: string;
+  activity_key?: string;
+  skc_name?: string;
+  candidate_version?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export type SheinReviewActivityCandidateInput = {
+  store_id: number;
+  review_status:
+    | "pending_review"
+    | "approved"
+    | "rejected"
+    | "auto_queued"
+    | "enrolled"
+    | "failed";
+  auto_mode_eligible?: boolean;
+  selected_for_run?: boolean;
+};
+
+export type ReviewSheinActivityCandidateInput =
+  SheinReviewActivityCandidateInput;
+
+export type SheinExecuteEnrollmentInput = {
+  activity_type: string;
+  activity_key?: string;
+  trigger_mode?: "manual_confirmed" | "auto_schedule";
+  candidate_ids?: number[];
+};
+
+export type SheinRefreshCandidatesInput = {
+  activity_type: string;
+};
+
+export type SheinUpdateSyncedProductCostInput = {
+  manual_cost_price?: number | null;
+};
+
+export type SheinSyncedProductRecord = {
+  id?: number;
+  tenant_id?: number;
+  store_id?: number;
+  spu_name?: string;
+  spu_code?: string;
+  skc_name?: string;
+  skc_code?: string;
+  supplier_code?: string;
+  category_id?: number;
+  brand_name?: string;
+  product_name_multi?: string;
+  main_image_url?: string;
+  sale_name?: string;
+  shelf_status?: string;
+  publish_time?: string;
+  first_shelf_time?: string;
+  currency?: string;
+  price_snapshot?: string;
+  inventory_snapshot?: string;
+  site_snapshot?: string;
+  auto_cost_price?: number | null;
+  manual_cost_price?: number | null;
+  effective_cost_price?: number | null;
+  cost_price_source?: "none" | "auto" | "manual" | string;
+  sync_version?: string;
+  last_sync_at?: string;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type SheinSyncedProductListResponse = {
+  items?: SheinSyncedProductRecord[];
+  total?: number;
+};
+
+export type SheinSyncJobRecord = {
+  id?: number;
+  tenant_id?: number;
+  store_id?: number;
+  trigger_mode?: "manual" | "schedule" | string;
+  status?:
+    | "pending"
+    | "running"
+    | "succeeded"
+    | "partially_succeeded"
+    | "failed"
+    | string;
+  started_at?: string;
+  finished_at?: string;
+  fetched_count?: number;
+  inserted_count?: number;
+  updated_count?: number;
+  deactivated_count?: number;
+  skipped_count?: number;
+  error_summary?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TriggerSheinStoreSyncResponse = {
+  job?: SheinSyncJobRecord;
+};
+
+export type SheinActivityCandidateRecord = {
+  id?: number;
+  tenant_id?: number;
+  store_id?: number;
+  synced_product_id?: number;
+  activity_type?: string;
+  activity_key?: string;
+  skc_name?: string;
+  candidate_version?: string;
+  effective_cost_price?: number | null;
+  price_snapshot?: string;
+  inventory_snapshot?: string;
+  calculated_profit_rate?: number | null;
+  eligibility_status?: "eligible" | "ineligible" | string;
+  eligibility_reason?: string;
+  review_status?:
+    | "pending_review"
+    | "approved"
+    | "rejected"
+    | "auto_queued"
+    | "enrolled"
+    | "failed"
+    | string;
+  auto_mode_eligible?: boolean;
+  selected_for_run?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type SheinActivityCandidateListResponse = {
+  items?: SheinActivityCandidateRecord[];
+  total?: number;
+};
+
+export type SheinRefreshCandidatesResult = {
+  activity_type?: string;
+  activity_key?: string;
+  candidate_version?: string;
+  processed_count?: number;
+  eligible_count?: number;
+  ineligible_count?: number;
+};
+
+export type RefreshSheinActivityCandidatesResponse = {
+  result?: SheinRefreshCandidatesResult;
+};
+
+export type ReviewSheinActivityCandidateResponse = {
+  candidate?: SheinActivityCandidateRecord;
+};
+
+export type SheinActivityEnrollmentRunRecord = {
+  id?: number;
+  tenant_id?: number;
+  store_id?: number;
+  activity_type?: string;
+  activity_key?: string;
+  trigger_mode?: "manual_confirmed" | "auto_schedule" | string;
+  status?:
+    | "pending"
+    | "running"
+    | "succeeded"
+    | "partially_succeeded"
+    | "failed"
+    | "cancelled"
+    | string;
+  candidate_count?: number;
+  submitted_count?: number;
+  succeeded_count?: number;
+  failed_count?: number;
+  started_at?: string;
+  finished_at?: string;
+  error_summary?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ExecuteSheinActivityEnrollmentResponse = {
+  run?: SheinActivityEnrollmentRunRecord;
+};

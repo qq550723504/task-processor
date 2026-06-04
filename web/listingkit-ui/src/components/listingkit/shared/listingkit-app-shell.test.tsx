@@ -57,6 +57,8 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("button", { name: "订阅计费" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 登录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "SDS 登录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "SHEIN 活动报名" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "当前租户订阅" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "提示词" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "租户订阅管理" })).not.toBeInTheDocument();
@@ -117,6 +119,10 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/stores",
     );
+    expect(screen.getByRole("link", { name: "SHEIN 活动报名" })).toHaveAttribute(
+      "href",
+      "/listing-kits/shein-enrollment",
+    );
     expect(screen.getByRole("link", { name: "平台店铺管理" })).toHaveAttribute(
       "href",
       "/listing-kits/admin/stores",
@@ -135,6 +141,10 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("link", { name: "SHEIN 登录" })).toHaveAttribute(
       "href",
       "/listing-kits/shein-login",
+    );
+    expect(screen.getByRole("link", { name: "SDS 登录" })).toHaveAttribute(
+      "href",
+      "/listing-kits/sds-login",
     );
 
     await user.click(screen.getByRole("button", { name: "系统配置" }));
