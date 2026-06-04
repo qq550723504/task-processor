@@ -9,6 +9,7 @@ import {
   pickActiveSheinStudioGroup,
   projectGroupToWorkbench,
   projectHydratedBatchToWorkbench,
+  projectSavedBatchToWorkbench,
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -283,6 +284,38 @@ describe("shein studio workbench model", () => {
     expect(projection.itemizedBatchDetail?.batch.id).toBe("batch-1");
   });
 
+  it("projects saved-batch compatibility snapshots before hydration", () => {
+    const projection = projectSavedBatchToWorkbench({
+      id: "batch-1",
+      name: "Saved Batch",
+      prompt: "saved prompt",
+      styleCount: "2",
+      sheinStoreId: "42",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationJobs: [],
+      legacyCompatibilitySnapshot: {
+        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        selectedIds: ["design-1"],
+        createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+        generationJobs: [{ jobId: "job-1", status: "running" }],
+        generationError: "legacy-error",
+      },
+      updatedAt: "2026-06-01T10:00:00Z",
+    });
+
+    expect(projection.designs).toEqual([
+      { id: "design-1", imageUrl: "https://example.com/design.png" },
+    ]);
+    expect(projection.selectedIds).toEqual(["design-1"]);
+    expect(projection.createdTasks).toEqual([
+      { id: "task-1", title: "Task 1", designId: "design-1" },
+    ]);
+    expect(projection.generationJobs).toEqual([{ jobId: "job-1", status: "running" }]);
+    expect(projection.generationError).toBe("legacy-error");
+  });
+
   it("preserves a newer saved-batch prompt over stale itemized detail prompt", () => {
     const projection = projectHydratedBatchToWorkbench({
       savedBatch: {
@@ -312,6 +345,93 @@ describe("shein studio workbench model", () => {
     });
 
     expect(projection.prompt).toBe("updated prompt");
+  });
+
+  it("clears saved generation fallback once hydrated detail is no longer in flight", () => {
+    const projection = projectHydratedBatchToWorkbench({
+      savedBatch: {
+        id: "batch-1",
+        name: "Saved Batch",
+        prompt: "saved prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        generationJobs: [{ jobId: "job-1", status: "running" }],
+        generationError: "legacy-error",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "review_ready",
+          prompt: "hydrated prompt",
+          styleCount: "1",
+          sheinStoreId: 869,
+          createdAt: "2026-06-01T10:00:00Z",
+          updatedAt: "2026-06-01T10:12:00Z",
+        },
+        items: [],
+      },
+    });
+
+    expect(projection.generationJobs).toEqual([]);
+    expect(projection.generationError).toBe("");
+  });
+
+  it("preserves hydrated failure errors when detail lands in a failed state", () => {
+    const projection = projectHydratedBatchToWorkbench({
+      savedBatch: {
+        id: "batch-1",
+        name: "Saved Batch",
+        prompt: "saved prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        generationJobs: [{ jobId: "job-1", status: "failed" }],
+        generationError: "generation failed",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "failed",
+          prompt: "hydrated prompt",
+          styleCount: "1",
+          sheinStoreId: 869,
+          createdAt: "2026-06-01T10:00:00Z",
+          updatedAt: "2026-06-01T10:12:00Z",
+        },
+        items: [],
+      },
+    });
+
+    expect(projection.generationJobs).toEqual([]);
+    expect(projection.generationError).toBe("generation failed");
+  });
+
+  it("does not resurrect stale compatibility errors after they have been cleared", () => {
+    const projection = projectSavedBatchToWorkbench({
+      id: "batch-1",
+      name: "Saved Batch",
+      prompt: "saved prompt",
+      styleCount: "2",
+      sheinStoreId: "42",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationJobs: [],
+      generationError: "",
+      legacyCompatibilitySnapshot: {
+        generationError: "old failure",
+      },
+      updatedAt: "2026-06-01T10:00:00Z",
+    });
+
+    expect(projection.generationError).toBe("");
   });
 
   it("projects the current workbench state into a saved-batch fallback shape", () => {

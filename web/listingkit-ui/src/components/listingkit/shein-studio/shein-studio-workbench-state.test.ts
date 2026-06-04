@@ -819,6 +819,14 @@ describe("sheinStudioWorkbenchReducer", () => {
           designs: [{ id: "design-stale", imageUrl: "https://cdn.example.com/stale.png" }],
           selectedIds: [],
           createdTasks: [],
+          generationJobs: [{ jobId: "job-1", status: "running" }],
+          generationError: "stale error",
+          generationJobId: "job-1",
+          legacyCompatibilitySnapshot: {
+            generationJobs: [{ jobId: "job-1", status: "running" }],
+            generationError: "stale error",
+            generationJobId: "job-1",
+          },
           updatedAt: "2026-06-01T10:05:00Z",
         },
       ]),
@@ -836,6 +844,14 @@ describe("sheinStudioWorkbenchReducer", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
+          generationJobs: [{ jobId: "job-1", status: "running" }],
+          generationError: "stale error",
+          generationJobId: "job-1",
+          legacyCompatibilitySnapshot: {
+            generationJobs: [{ jobId: "job-1", status: "running" }],
+            generationError: "stale error",
+            generationJobId: "job-1",
+          },
           draftUpdatedAt: "2026-06-01T10:05:00Z",
           updatedAt: "2026-06-01T10:10:00Z",
         },
@@ -897,6 +913,9 @@ describe("sheinStudioWorkbenchReducer", () => {
       prompt: "fresh prompt",
       styleCount: "2",
       selectedIds: ["design-1"],
+      generationJobs: [],
+      generationError: "",
+      generationJobId: "",
       updatedAt: "2026-06-01T10:10:00Z",
       batchStatus: "review_ready",
     });
@@ -905,5 +924,15 @@ describe("sheinStudioWorkbenchReducer", () => {
       "design-1",
       "design-2",
     ]);
+    expect(next.savedBatches[0]?.legacyCompatibilitySnapshot).toMatchObject({
+      designs: [
+        { id: "design-1", imageUrl: "https://cdn.example.com/design-1.png" },
+        { id: "design-2", imageUrl: "https://cdn.example.com/design-2.png" },
+      ],
+      selectedIds: ["design-1"],
+      generationJobs: [],
+      generationError: "",
+      generationJobId: "",
+    });
   });
 });

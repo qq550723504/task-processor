@@ -80,6 +80,32 @@ export type SheinStudioWorkbenchHydratedBatch = {
   detail: SheinStudioBatchDetail;
 };
 
+function projectSavedBatchCompatibilityFields(savedBatch: SheinStudioSavedBatch) {
+  const compatibility = savedBatch.legacyCompatibilitySnapshot;
+  return {
+    designs:
+      savedBatch.designs.length > 0
+        ? savedBatch.designs
+        : (compatibility?.designs ?? []),
+    selectedIds:
+      savedBatch.selectedIds.length > 0
+        ? savedBatch.selectedIds
+        : (compatibility?.selectedIds ?? []),
+    createdTasks:
+      savedBatch.createdTasks.length > 0
+        ? savedBatch.createdTasks
+        : (compatibility?.createdTasks ?? []),
+    generationJobs:
+      (savedBatch.generationJobs?.length ?? 0) > 0
+        ? (savedBatch.generationJobs ?? [])
+        : (compatibility?.generationJobs ?? []),
+    generationError:
+      savedBatch.generationError !== undefined
+        ? savedBatch.generationError
+        : (compatibility?.generationError ?? ""),
+  };
+}
+
 function projectItemizedBatchCompatibilityFields(
   detail: SheinStudioBatchDetail,
 ) {
@@ -180,64 +206,106 @@ export function hasInFlightItemizedBatchGeneration(
   return ACTIVE_ITEMIZED_BATCH_STATUSES.has(detail.batch.status);
 }
 
+export function projectSavedBatchToWorkbench(savedBatch: SheinStudioSavedBatch) {
+  const compatibility = projectSavedBatchCompatibilityFields(savedBatch);
+
+  return {
+    selection: savedBatch.selection,
+    prompt: savedBatch.prompt,
+    styleCount: savedBatch.styleCount || "1",
+    variationIntensity:
+      savedBatch.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+    productImageCount:
+      savedBatch.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+    productImagePrompt: savedBatch.productImagePrompt ?? "",
+    productImagePrompts: savedBatch.productImagePrompts ?? [],
+    artworkModel:
+      savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+    transparentBackground: savedBatch.transparentBackground ?? false,
+    sheinStoreId: savedBatch.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    imageStrategy:
+      savedBatch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+    groupedImageMode:
+      savedBatch.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
+    selectedSdsImages: savedBatch.selectedSdsImages ?? [],
+    groupedSelections: savedBatch.groupedSelections ?? [],
+    renderSizeImagesWithSds: savedBatch.renderSizeImagesWithSds ?? true,
+    designs: compatibility.designs,
+    selectedIds: compatibility.selectedIds,
+    generationJobs: compatibility.generationJobs,
+    generationError: compatibility.generationError,
+    createdTasks: compatibility.createdTasks,
+    persistedUpdatedAt: savedBatch.draftUpdatedAt ?? savedBatch.updatedAt,
+    itemizedBatchDetail: null,
+  };
+}
+
 export function projectHydratedBatchToWorkbench(
   hydratedBatch: SheinStudioWorkbenchHydratedBatch,
 ) {
   const { savedBatch, detail } = hydratedBatch;
+  const saved = projectSavedBatchToWorkbench(savedBatch);
   const itemized = projectItemizedBatchCompatibilityFields(detail);
   const savedDraftUpdatedAt = savedBatch.draftUpdatedAt || savedBatch.updatedAt;
   const itemizedDraftUpdatedAt =
     detail.batch.draftUpdatedAt || detail.batch.updatedAt;
+  const hasInFlightGeneration = hasInFlightItemizedBatchGeneration(detail);
+  const shouldPreserveSavedGenerationError =
+    detail.batch.status === "failed" || detail.batch.status === "partially_failed";
 
   return {
-    selection: itemized.selection ?? savedBatch.selection,
+    selection: itemized.selection ?? saved.selection,
     prompt: preferSavedBatchDraftValue(
-      savedBatch.prompt,
+      saved.prompt,
       itemized.prompt,
       savedDraftUpdatedAt,
       itemizedDraftUpdatedAt,
     ),
-    styleCount: itemized.styleCount || savedBatch.styleCount || "1",
+    styleCount: itemized.styleCount || saved.styleCount || "1",
     variationIntensity:
       itemized.variationIntensity ??
-      savedBatch.variationIntensity ??
+      saved.variationIntensity ??
       DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
     productImageCount:
-      savedBatch.productImageCount ??
+      saved.productImageCount ??
       DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-    productImagePrompt: savedBatch.productImagePrompt ?? "",
-    productImagePrompts: savedBatch.productImagePrompts ?? [],
+    productImagePrompt: saved.productImagePrompt ?? "",
+    productImagePrompts: saved.productImagePrompts ?? [],
     artworkModel:
       itemized.artworkModel ??
-      savedBatch.artworkModel ??
+      saved.artworkModel ??
       DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground:
       itemized.transparentBackground ??
-      savedBatch.transparentBackground ??
+      saved.transparentBackground ??
       false,
     sheinStoreId:
       itemized.sheinStoreId ||
-      savedBatch.sheinStoreId ||
+      saved.sheinStoreId ||
       DEFAULT_SHEIN_STORE_ID,
     imageStrategy:
-      savedBatch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+      saved.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       itemized.groupedImageMode ??
-      savedBatch.groupedImageMode ??
+      saved.groupedImageMode ??
       DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
     selectedSdsImages:
       itemized.selectedSdsImages.length > 0
         ? itemized.selectedSdsImages
-        : (savedBatch.selectedSdsImages ?? []),
+        : saved.selectedSdsImages,
     groupedSelections:
       itemized.groupedSelections.length > 0
         ? itemized.groupedSelections
-        : (savedBatch.groupedSelections ?? []),
-    renderSizeImagesWithSds: savedBatch.renderSizeImagesWithSds ?? true,
+        : saved.groupedSelections,
+    renderSizeImagesWithSds: saved.renderSizeImagesWithSds ?? true,
     designs: itemized.designs,
     selectedIds: itemized.selectedIds,
-    generationJobs: savedBatch.generationJobs ?? [],
-    createdTasks: savedBatch.createdTasks,
+    generationJobs: hasInFlightGeneration ? saved.generationJobs : [],
+    generationError:
+      hasInFlightGeneration || shouldPreserveSavedGenerationError
+        ? saved.generationError
+        : "",
+    createdTasks: saved.createdTasks,
     persistedUpdatedAt:
       itemizedDraftUpdatedAt ||
       savedDraftUpdatedAt ||
@@ -471,6 +539,7 @@ export function mergeSheinStudioDraftState({
     designs,
     selectedIds,
     generationJobs: draft?.generationJobs ?? [],
+    generationError: draft?.generationError ?? "",
     createdTasks,
     hasCustomizedSdsSelection: (draft?.selectedSdsImages?.length ?? 0) > 0,
     importedGalleryDesign: Boolean(galleryDesign),
