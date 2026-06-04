@@ -104,6 +104,7 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
         let resumableGenerationJobs: SheinStudioGenerationJob[] = [];
+        let restoredGenerationError = "";
         const effectiveDraft =
           hasDedicatedBatchContext
             ? null
@@ -146,14 +147,17 @@ export function useSheinStudioWorkspaceLoader({
             groups: draftState.groups,
             groupedSelections: draftState.groupedSelections,
             renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
-            designs: draftState.designs,
-            selectedIds: draftState.selectedIds,
-            createdTasks: draftState.createdTasks,
             galleryRatioCheck: evaluateImportedGalleryDesigns(
               draftState.designs,
               activeSelectionRef.current,
             ),
           });
+          workbench.setField("designs", draftState.designs);
+          workbench.setField("selectedIds", draftState.selectedIds);
+          workbench.setField("createdTasks", draftState.createdTasks);
+          workbench.setField("generationJobs", draftState.generationJobs);
+          workbench.setField("generationError", draftState.generationError);
+          restoredGenerationError = draftState.generationError;
           nextEffectiveDesignCount = draftState.designCount;
           nextEffectiveCreatedTaskCount = draftState.createdTaskCount;
           const runningGenerationJobs = draft?.generationJobs?.filter(
@@ -189,7 +193,7 @@ export function useSheinStudioWorkspaceLoader({
             }),
           );
         }
-        workbench.setField("generationError", "");
+        workbench.setField("generationError", restoredGenerationError);
         workbench.setField(
           "generationWarning",
           groupedCandidateHandoff?.message ?? "",
@@ -339,7 +343,17 @@ export function useSheinStudioBatchActions({
 }: {
   activeBatchId?: string;
   activeStep: SheinStudioStepKey;
-  buildDraftInput: () => SheinStudioSaveInput;
+  buildDraftInput: (
+    overrides?: Partial<{
+      designs: SheinStudioGeneratedDesign[];
+      groups: SheinStudioGroupedWorkspace[];
+      selectedIds: string[];
+      createdTasks: SheinStudioCreatedTask[];
+      generationJobs: SheinStudioGenerationJob[];
+      generationError: string;
+      generationJobId: string;
+    }>,
+  ) => SheinStudioSaveInput;
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   setActiveBatchId: (batchId: string) => void;

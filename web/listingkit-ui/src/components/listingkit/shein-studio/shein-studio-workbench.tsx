@@ -185,16 +185,6 @@ function mergeDedicatedBatchWithLocalSnapshot(
         savedBatch.groupedSelections,
       ),
       groups: pickLocalArrayValue(localDraft.groups, savedBatch.groups),
-      createdTasks: pickLocalArrayValue(
-        localDraft.createdTasks,
-        savedBatch.createdTasks,
-      ),
-      designs: pickLocalArrayValue(localDraft.designs, savedBatch.designs),
-      selectedIds: pickLocalArrayValue(localDraft.selectedIds, savedBatch.selectedIds),
-      generationJobs: pickLocalArrayValue(
-        localDraft.generationJobs,
-        savedBatch.generationJobs,
-      ),
     },
     detail: hydratedBatch.detail,
   };
@@ -783,6 +773,8 @@ export function SheinStudioWorkbench({
       artworkModel,
       createdTasks,
       designs,
+      generationError,
+      generationJobId: currentActiveBatch?.generationJobId,
       generationJobs,
       groups,
       groupedImageMode,
@@ -811,7 +803,9 @@ export function SheinStudioWorkbench({
       activeSelection,
       artworkModel,
       createdTasks,
+      currentActiveBatch?.generationJobId,
       designs,
+      generationError,
       generationJobs,
       groups,
       groupedImageMode,
@@ -843,6 +837,26 @@ export function SheinStudioWorkbench({
       activeBatchId,
       persistenceEnabled: !initialBatchId || isDedicatedBatchLoaded,
     },
+  );
+  const buildResultBackedDraftInput = useCallback(
+    () =>
+      buildDraftInput({
+        designs,
+        selectedIds,
+        createdTasks,
+        generationJobs,
+        generationError,
+        generationJobId: currentActiveBatch?.generationJobId ?? "",
+      }),
+    [
+      buildDraftInput,
+      createdTasks,
+      currentActiveBatch?.generationJobId,
+      designs,
+      generationError,
+      generationJobs,
+      selectedIds,
+    ],
   );
   const saveDedicatedBatchDraftSnapshot = useCallback(
     (overrides?: Partial<ReturnType<typeof buildDraftInput>>) => {
@@ -1148,7 +1162,14 @@ export function SheinStudioWorkbench({
                   : null;
               const saved = await saveSheinStudioBatch(
                 {
-                  ...buildDraftInput(),
+                  ...buildDraftInput({
+                    designs,
+                    selectedIds,
+                    createdTasks,
+                    generationJobs,
+                    generationError,
+                    generationJobId: currentActiveBatch?.generationJobId ?? "",
+                  }),
                   ...(currentBatchId ? { id: currentBatchId } : {}),
                   updatedAt:
                     latestHydratedBatch?.detail.batch.draftUpdatedAt ||
@@ -1307,7 +1328,7 @@ export function SheinStudioWorkbench({
     useSheinStudioBatchActions({
       activeBatchId,
       activeStep,
-      buildDraftInput,
+      buildDraftInput: buildResultBackedDraftInput,
       hasCustomizedSdsSelectionRef,
       hasLocalWorkflowStateRef,
       setActiveBatchId,
@@ -1461,10 +1482,12 @@ export function SheinStudioWorkbench({
           groups: draftState.groups,
           groupedSelections: draftState.groupedSelections,
           renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
-          designs: draftState.designs,
-          selectedIds: draftState.selectedIds,
-          createdTasks: draftState.createdTasks,
         });
+        workbenchController.setField("designs", draftState.designs);
+        workbenchController.setField("selectedIds", draftState.selectedIds);
+        workbenchController.setField("createdTasks", draftState.createdTasks);
+        workbenchController.setField("generationJobs", draftState.generationJobs);
+        workbenchController.setField("generationError", draftState.generationError);
         setEffectiveStep(targetStep);
         return;
       }
@@ -1542,16 +1565,18 @@ export function SheinStudioWorkbench({
       selectedIds: overrides?.selectedIds ?? batch.selectedIds,
       createdTasks: overrides?.createdTasks ?? batch.createdTasks,
       generationJobs: overrides?.generationJobs ?? batch.generationJobs,
+      generationError: overrides?.generationError ?? batch.generationError,
+      generationJobId: overrides?.generationJobId ?? batch.generationJobId,
     }),
     [],
   );
   const buildSaveInputForCurrentDedicatedBatch = useCallback(
     (name?: string) => ({
-      ...buildDraftInput(),
+      ...buildResultBackedDraftInput(),
       id: initialBatchId,
       name: name?.trim() || undefined,
     }),
-    [buildDraftInput, initialBatchId],
+    [buildResultBackedDraftInput, initialBatchId],
   );
 
   const refreshSavedBatches = useCallback(async () => {

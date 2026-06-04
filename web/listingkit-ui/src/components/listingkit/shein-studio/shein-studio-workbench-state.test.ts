@@ -178,9 +178,6 @@ describe("sheinStudioWorkbenchReducer", () => {
           },
         ],
         renderSizeImagesWithSds: false,
-        designs: [{ id: "design-1", imageUrl: "https://example.com/1.png" }],
-        selectedIds: ["design-1"],
-        createdTasks: [],
         galleryRatioCheck: null,
       }),
     );
@@ -189,6 +186,7 @@ describe("sheinStudioWorkbenchReducer", () => {
     expect(next.activeGroupId).toBe("group-1");
     expect(next.designs).toHaveLength(1);
     expect(next.groups).toHaveLength(1);
+    expect(next.groups[0]?.designs).toHaveLength(1);
     expect(next.groupedSelections).toHaveLength(1);
     expect(next.groupedImageMode).toBe("per_product");
     expect(next.renderSizeImagesWithSds).toBe(false);
@@ -488,9 +486,6 @@ describe("sheinStudioWorkbenchReducer", () => {
         ],
         groupedSelections: [],
         renderSizeImagesWithSds: true,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
         galleryRatioCheck: null,
       }),
     );

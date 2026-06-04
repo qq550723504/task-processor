@@ -106,10 +106,6 @@ export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
   | "activeGroupId"
   | "groupedSelections"
   | "renderSizeImagesWithSds"
-  | "designs"
-  | "selectedIds"
-  | "generationJobs"
-  | "createdTasks"
   | "persistedUpdatedAt"
   | "galleryRatioCheck"
 >>;
@@ -412,13 +408,7 @@ export function sheinStudioWorkbenchReducer(
         {
           ...state,
           ...action.draft,
-          itemizedBatchDetail:
-            "designs" in action.draft ||
-            "selectedIds" in action.draft ||
-            "createdTasks" in action.draft ||
-            "generationJobs" in action.draft
-              ? null
-              : state.itemizedBatchDetail,
+          itemizedBatchDetail: state.itemizedBatchDetail,
           persistedUpdatedAt:
             "updatedAt" in action.draft && typeof action.draft.updatedAt === "string"
               ? action.draft.updatedAt

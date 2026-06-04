@@ -617,6 +617,89 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("approved styles: 1")).toBeInTheDocument();
   });
 
+  it("does not let a newer dedicated-batch local snapshot override hydrated detail results", async () => {
+    saveLocalSheinStudioDraftSnapshot(
+      {
+        prompt: "stale local draft",
+        styleCount: "1",
+        productImageCount: "5",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        artworkModel: "nanobanana",
+        transparentBackground: false,
+        sheinStoreId: "869",
+        imageStrategy: "ai_generated",
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [],
+        renderSizeImagesWithSds: true,
+        designs: [{ id: "legacy-design", imageUrl: "https://example.com/legacy.png" }],
+        selectedIds: ["legacy-design"],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      { batchId: "batch-1" },
+    );
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          id: "batch-1",
+          name: "Hydrated Batch",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        {
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1000x1000",
+                status: "review_ready",
+                selectionCount: 1,
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:01:00.000Z",
+              },
+              designs: [
+                {
+                  id: "design-1",
+                  batchId: "batch-1",
+                  itemId: "item-1",
+                  sourceAttemptId: "attempt-1",
+                  targetGroupKey: "size:1000x1000",
+                  imageUrl: "https://example.com/design-1.png",
+                  reviewStatus: "approved",
+                  createdAt: "2026-05-26T10:00:30.000Z",
+                  updatedAt: "2026-05-26T10:01:00.000Z",
+                },
+                {
+                  id: "design-2",
+                  batchId: "batch-1",
+                  itemId: "item-1",
+                  sourceAttemptId: "attempt-2",
+                  targetGroupKey: "size:1000x1000",
+                  imageUrl: "https://example.com/design-2.png",
+                  reviewStatus: "unreviewed",
+                  createdAt: "2026-05-26T10:00:40.000Z",
+                  updatedAt: "2026-05-26T10:01:00.000Z",
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    );
+
+    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("approved styles: 1")).toBeInTheDocument();
+    expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
+  });
+
   it("creates tasks for a dedicated hydrated batch from approved itemized design ids", async () => {
     getSheinStudioHydratedBatch.mockResolvedValue({
       savedBatch: {
@@ -1889,6 +1972,8 @@ describe("SheinStudioWorkbench", () => {
               updatedAt: "2026-05-26T10:03:00.000Z",
             },
           ],
+          generationError: "legacy warning",
+          generationJobId: "job-1",
           updatedAt: "2026-05-26T10:03:00.000Z",
         },
         {
@@ -1950,6 +2035,8 @@ describe("SheinStudioWorkbench", () => {
           updatedAt: "2026-05-26T10:03:00.000Z",
         },
       ],
+      generationError: "legacy warning",
+      generationJobId: "job-1",
       updatedAt: "2026-05-26T10:03:00.000Z",
     });
 
@@ -1980,6 +2067,8 @@ describe("SheinStudioWorkbench", () => {
               status: "succeeded",
             }),
           ],
+          generationError: "legacy warning",
+          generationJobId: "job-1",
           designs: [
             expect.objectContaining({
               id: "design-1",
