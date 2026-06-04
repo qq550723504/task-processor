@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 
 describe("buildSheinStudioDraftInput", () => {
-  it("builds a save payload with generated designs", () => {
+  it("omits compatibility-era flat result fields from the top-level payload", () => {
     const payload = buildSheinStudioDraftInput({
       prompt: "retro cherries",
       styleCount: "2",
@@ -64,12 +64,9 @@ describe("buildSheinStudioDraftInput", () => {
       designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
       selectedIds: ["design-1"],
       createdTasks: [],
+      generationJobs: [{ jobId: "job-1", status: "queued" }],
     });
 
-    expect(payload.designs).toEqual([
-      { id: "design-1", imageUrl: "https://example.com/design.png" },
-    ]);
-    expect(payload.selectedIds).toEqual(["design-1"]);
     expect(payload.selectedSdsImages).toEqual([
       {
         imageUrl: "https://example.com/sds-main.jpg",
@@ -109,9 +106,13 @@ describe("buildSheinStudioDraftInput", () => {
       }),
     ]);
     expect(payload.groups).toEqual(undefined);
+    expect(payload).not.toHaveProperty("designs");
+    expect(payload).not.toHaveProperty("selectedIds");
+    expect(payload).not.toHaveProperty("createdTasks");
+    expect(payload).not.toHaveProperty("generationJobs");
   });
 
-  it("builds grouped workspace payloads", () => {
+  it("omits compatibility-era flat result fields from grouped workspace payloads", () => {
     const payload = buildSheinStudioDraftInput({
       prompt: "top-level prompt",
       styleCount: "2",
@@ -189,12 +190,14 @@ describe("buildSheinStudioDraftInput", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
+          generationJobs: [{ jobId: "group-job-1", status: "queued" }],
           updatedAt: "2026-05-26T00:00:00Z",
         },
       ],
       designs: [],
       selectedIds: [],
       createdTasks: [],
+      generationJobs: [],
     });
 
     expect(payload.groups).toEqual([
@@ -218,5 +221,9 @@ describe("buildSheinStudioDraftInput", () => {
         ],
       }),
     ]);
+    expect(payload.groups?.[0]).not.toHaveProperty("designs");
+    expect(payload.groups?.[0]).not.toHaveProperty("selectedIds");
+    expect(payload.groups?.[0]).not.toHaveProperty("createdTasks");
+    expect(payload.groups?.[0]).not.toHaveProperty("generationJobs");
   });
 });

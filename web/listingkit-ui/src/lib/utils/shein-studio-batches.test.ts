@@ -118,6 +118,12 @@ describe("shein studio storage api", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
+          generationJobs: [
+            {
+              jobId: "group-job-1",
+              status: "queued",
+            },
+          ],
           updatedAt: "2026-05-26T00:00:00Z",
         },
       ],
@@ -129,6 +135,12 @@ describe("shein studio storage api", () => {
       ],
       selectedIds: ["design-1"],
       createdTasks: [],
+      generationJobs: [
+        {
+          jobId: "job-1",
+          status: "queued",
+        },
+      ],
       updatedAt: "2026-04-24T00:00:00.000Z",
     });
     listSheinStudioBatchDrafts.mockResolvedValue([
@@ -156,6 +168,12 @@ describe("shein studio storage api", () => {
         ],
         selectedIds: ["design-1"],
         createdTasks: [],
+        generationJobs: [
+          {
+            jobId: "job-1",
+            status: "queued",
+          },
+        ],
         updatedAt: "2026-04-24T00:00:00.000Z",
       },
     ]);
@@ -227,6 +245,12 @@ describe("shein studio storage api", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
+          generationJobs: [
+            {
+              jobId: "group-job-1",
+              status: "queued",
+            },
+          ],
           updatedAt: "2026-05-26T00:00:00Z",
         },
       ],
@@ -238,9 +262,25 @@ describe("shein studio storage api", () => {
       ],
       selectedIds: ["design-1"],
       createdTasks: [],
+      generationJobs: [
+        {
+          jobId: "job-1",
+          status: "queued",
+        },
+      ],
     });
 
     expect(saved?.prompt).toBe("retro cherries");
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledTimes(1);
+    const saveInput = upsertSheinStudioBatchDraft.mock.calls[0]?.[0];
+    expect(saveInput).not.toHaveProperty("designs");
+    expect(saveInput).not.toHaveProperty("selectedIds");
+    expect(saveInput).not.toHaveProperty("createdTasks");
+    expect(saveInput).not.toHaveProperty("generationJobs");
+    expect(saveInput?.groups?.[0]).not.toHaveProperty("designs");
+    expect(saveInput?.groups?.[0]).not.toHaveProperty("selectedIds");
+    expect(saveInput?.groups?.[0]).not.toHaveProperty("createdTasks");
+    expect(saveInput?.groups?.[0]).not.toHaveProperty("generationJobs");
     expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         groupedSelections: [
@@ -260,7 +300,21 @@ describe("shein studio storage api", () => {
 
     const batches = await listSheinStudioBatches();
     expect(batches).toHaveLength(1);
-    expect(batches[0]?.prompt).toBe("retro cherries");
+    expect(batches[0]).toMatchObject({
+      prompt: "retro cherries",
+      designs: [
+        expect.objectContaining({
+          id: "design-1",
+        }),
+      ],
+      selectedIds: ["design-1"],
+      createdTasks: [],
+      generationJobs: [
+        expect.objectContaining({
+          jobId: "job-1",
+        }),
+      ],
+    });
   });
 
   it("does not synthesize a default batch name on create", async () => {
