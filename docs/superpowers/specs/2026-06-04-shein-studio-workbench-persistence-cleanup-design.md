@@ -237,3 +237,8 @@ After this cleanup:
 - old local data still restores safely through one adapter
 - hydrated batch detail becomes the clear result-state owner
 - the workbench no longer treats legacy flat fields as first-class truth sources
+
+## Implementation Follow-up
+
+- grouped workspace restore continues to omit result-state ownership and only restores view-oriented group state
+- `generationJobs` and related generation error metadata are still preserved as compatibility snapshot data for autosave and recovery continuity, but hydrated detail remains the only result-state owner

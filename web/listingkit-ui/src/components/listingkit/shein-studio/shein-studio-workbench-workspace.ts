@@ -51,7 +51,6 @@ export function useSheinStudioWorkspaceLoader({
   hasExplicitSelection,
   hasCustomizedSdsSelectionRef,
   hasLocalWorkflowStateRef,
-  persistDraft,
   setEffectiveStep,
   workbench,
 }: {
@@ -62,15 +61,6 @@ export function useSheinStudioWorkspaceLoader({
   hasExplicitSelection: boolean;
   hasCustomizedSdsSelectionRef: MutableRefObject<boolean>;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
-  persistDraft: (
-    overrides?: Partial<{
-      designs: SheinStudioGeneratedDesign[];
-      groups: SheinStudioGroupedWorkspace[];
-      selectedIds: string[];
-      createdTasks: SheinStudioCreatedTask[];
-      generationJobs: SheinStudioGenerationJob[];
-    }>,
-  ) => Promise<unknown>;
   setEffectiveStep: (step: SheinStudioStepKey) => void;
   workbench: SheinStudioWorkbenchController;
 }) {

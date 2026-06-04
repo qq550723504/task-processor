@@ -1074,7 +1074,6 @@ export function SheinStudioWorkbench({
     hasExplicitSelection: Boolean(selection?.variantId),
     hasCustomizedSdsSelectionRef,
     hasLocalWorkflowStateRef,
-    persistDraft,
     setEffectiveStep,
     workbench: workbenchController,
   });
