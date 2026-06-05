@@ -13,6 +13,7 @@ import {
   PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
   PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS,
   PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
+  PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
   PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
   buildListingKitProxyFailureMessage,
@@ -56,6 +57,12 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     expect(
       resolveListingKitProxyTimeoutMs("GET", ["tasks", "123", "shein", "categories"]),
     ).toBe(PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS);
+  });
+
+  it("extends the timeout for shein enrollment dashboard requests", () => {
+    expect(resolveListingKitProxyTimeoutMs("GET", ["shein-sync", "dashboard"])).toBe(
+      PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
+    );
   });
 
   it("extends the timeout for slow admin collection reads", () => {
@@ -389,4 +396,3 @@ describe("verifyZitadelAccessToken", () => {
     );
   });
 });
-

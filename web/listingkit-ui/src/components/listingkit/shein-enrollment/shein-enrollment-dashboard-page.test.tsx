@@ -16,6 +16,8 @@ describe("SheinEnrollmentDashboardPage", () => {
   it("renders shein store workbench entries", async () => {
     mocks.useSheinEnrollmentDashboard.mockReturnValue({
       isLoading: false,
+      isError: false,
+      error: null,
       data: {
         items: [
           {
@@ -34,12 +36,27 @@ describe("SheinEnrollmentDashboardPage", () => {
 
     render(<SheinEnrollmentDashboardPage />);
 
-    expect(await screen.findByText("SHEIN 活动报名")).toBeInTheDocument();
+    expect(await screen.findByText("SHEIN Activity Enrollment")).toBeInTheDocument();
     expect(await screen.findByText("SHEIN US")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open Workbench" })).toHaveAttribute(
       "href",
       "/listing-kits/shein-enrollment/7",
     );
+  });
+
+  it("renders an explicit error state when the dashboard request fails", async () => {
+    mocks.useSheinEnrollmentDashboard.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      error: new Error("ListingKit upstream request timed out after 120000ms"),
+      data: undefined,
+    });
+
+    render(<SheinEnrollmentDashboardPage />);
+
+    expect(
+      await screen.findByText("ListingKit upstream request timed out after 120000ms"),
+    ).toBeInTheDocument();
   });
 });

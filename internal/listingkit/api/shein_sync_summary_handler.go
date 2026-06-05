@@ -3,10 +3,12 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/errgroup"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
@@ -15,6 +17,7 @@ import (
 const (
 	defaultSheinSummaryActivityType = "PROMOTION"
 	sheinSummaryPageSize            = 100
+	sheinSummaryConcurrency         = 8
 )
 
 type sheinSummaryQuery struct {
@@ -46,7 +49,7 @@ func (h *handler) ListSheinEnrollmentDashboard(c *gin.Context) {
 		return
 	}
 	activityType := resolveSheinSummaryActivityType(query.ActivityType)
-	ctx := requestContext(c, strings.TrimSpace(requestTenantID(c)))
+	ctx := requestContext(c, strconv.FormatInt(tenantID, 10))
 
 	stores, err := h.listSheinStores(ctx, tenantID)
 	if err != nil {
@@ -54,14 +57,24 @@ func (h *handler) ListSheinEnrollmentDashboard(c *gin.Context) {
 		return
 	}
 
-	items := make([]*listingkit.SheinEnrollmentStoreSummary, 0, len(stores))
+	items := make([]*listingkit.SheinEnrollmentStoreSummary, len(stores))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(sheinSummaryConcurrency)
 	for i := range stores {
-		summary, summaryErr := h.buildSheinEnrollmentStoreSummary(ctx, tenantID, &stores[i], activityType)
-		if summaryErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_dashboard_list_failed", "message": summaryErr.Error()})
-			return
-		}
-		items = append(items, summary)
+		index := i
+		store := stores[i]
+		group.Go(func() error {
+			summary, summaryErr := h.buildSheinEnrollmentStoreSummary(groupCtx, tenantID, &store, activityType)
+			if summaryErr != nil {
+				return summaryErr
+			}
+			items[index] = summary
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_dashboard_list_failed", "message": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"items":         items,
@@ -148,7 +161,7 @@ func (h *handler) listSheinStores(ctx context.Context, tenantID int64) ([]listin
 	for {
 		storePage, err := h.storeRepository.ListStores(ctx, listingadmin.StoreQuery{
 			TenantID: tenantID,
-			Platform: "shein",
+			Platform: "SHEIN",
 			Page:     page,
 			PageSize: 200,
 		})

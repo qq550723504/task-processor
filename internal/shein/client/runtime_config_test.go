@@ -56,3 +56,29 @@ func TestNewAPIClientWithStoreConfigLoadsCookiesFromProvider(t *testing.T) {
 		t.Fatalf("cookie manager tenant ID = %d, want 227", got)
 	}
 }
+
+func TestNewAPIClientWithStoreConfigLoadsWrappedCookiePayloadFromProvider(t *testing.T) {
+	storeInfo := &StoreConfig{
+		ID:       870,
+		TenantID: 227,
+	}
+	provider := stubCookieProvider{
+		result: &CookieLookupResult{
+			TenantID: 227,
+			CookieJSON: `{
+				"cookies": [
+					{"name":"sid","value":"abc","domain":"sso.geiwohuo.com","path":"/","sameSite":"Lax"}
+				]
+			}`,
+		},
+	}
+
+	apiClient := NewAPIClientWithStoreConfig(870, storeInfo, provider)
+
+	if !apiClient.HasCookies() {
+		t.Fatal("expected wrapped cookies to be loaded from provider")
+	}
+	if got := apiClient.GetCookieCount(); got != 1 {
+		t.Fatalf("cookie count = %d, want 1", got)
+	}
+}

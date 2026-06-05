@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/tenantbridge"
 )
 
 type triggerSheinStoreSyncRequest struct {
@@ -331,7 +332,7 @@ func parseSheinTenantID(c *gin.Context) (int64, error) {
 	if value == "" || value == listingkit.DefaultTenantID {
 		return 0, errors.New("numeric tenant_id is required")
 	}
-	tenantID, err := strconv.ParseInt(value, 10, 64)
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), value)
 	if err != nil || tenantID <= 0 {
 		return 0, errors.New("numeric tenant_id is required")
 	}

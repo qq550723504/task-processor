@@ -1,4 +1,3 @@
-// Package client 提供SHEIN平台的Cookie管理功能
 package client
 
 import (
@@ -9,15 +8,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
 
-// CookieManager SHEIN Cookie管理器（参考TEMU实现）
 type CookieManager struct {
 	storeID             int64
 	cookieProvider      CookieProvider
@@ -26,21 +24,17 @@ type CookieManager struct {
 	resolvedTenantID    int64
 }
 
-// NewCookieManager 创建Cookie管理器
 func NewCookieManager(storeID int64, cookieProvider CookieProvider, storeConfigProvider StoreConfigProvider) *CookieManager {
-	logger := logger.GetGlobalLogger("SheinCookieManager").WithField("storeID", storeID)
-
 	return &CookieManager{
 		storeID:             storeID,
 		cookieProvider:      cookieProvider,
 		storeConfigProvider: storeConfigProvider,
-		logger:              logger,
+		logger:              logger.GetGlobalLogger("SheinCookieManager").WithField("storeID", storeID),
 	}
 }
 
-// LoadCookies 从管理系统加载Cookie
 func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
-	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
+	cm.logger.Debug("loading SHEIN cookies from runtime provider")
 
 	if cm.cookieProvider == nil {
 		cm.logger.Error("cookie provider is nil")
@@ -49,7 +43,7 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 
 	cookieStr, tenantID, err := cm.loadCookieJSONFromSource()
 	if err != nil {
-		cm.logger.WithError(err).Warn("从运行时 cookie provider 读取 SHEIN Cookie 失败")
+		cm.logger.WithError(err).Warn("failed to read SHEIN cookie payload from runtime provider")
 		return nil, err
 	}
 	if strings.TrimSpace(cookieStr) == "" {
@@ -60,13 +54,12 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.resolvedTenantID = tenantID
 	cookies, parseErr := cm.parseCookieString(cookieStr)
 	if parseErr != nil {
-		cm.logger.WithError(parseErr).Error("解析 Redis Cookie 字符串失败")
-		return nil, fmt.Errorf("解析 Redis Cookie 字符串失败: %w", parseErr)
+		cm.logger.WithError(parseErr).Error("failed to parse SHEIN cookie payload")
+		return nil, fmt.Errorf("parse SHEIN cookie payload: %w", parseErr)
 	}
 	return cookies, nil
 }
 
-// CookieData JSON格式的Cookie数据结构
 type CookieData struct {
 	Name     string  `json:"name"`
 	Value    string  `json:"value"`
@@ -78,110 +71,106 @@ type CookieData struct {
 	SameSite string  `json:"sameSite"`
 }
 
-// parseCookieString 解析Cookie字符串为http.Cookie对象（导出方法供ClientManager使用）
+type cookiePayload struct {
+	Cookies []CookieData `json:"cookies"`
+}
+
 func (cm *CookieManager) ParseCookieString(cookieStr string) ([]*http.Cookie, error) {
 	return cm.parseCookieString(cookieStr)
 }
 
-// parseCookieString 解析Cookie字符串为http.Cookie对象（内部方法）
 func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, error) {
 	if cookieStr == "" {
 		return nil, nil
 	}
 
-	var cookies []*http.Cookie
-
-	// 尝试解析JSON格式的Cookie数据
 	var cookieDataList []CookieData
 	if err := jsonx.UnmarshalString(cookieStr, &cookieDataList, ""); err == nil {
-		// JSON格式解析成功
-		for _, cookieData := range cookieDataList {
-			cookie := &http.Cookie{
-				Name:     cookieData.Name,
-				Value:    cookieData.Value,
-				Domain:   cookieData.Domain,
-				Path:     cookieData.Path,
-				HttpOnly: cookieData.HttpOnly,
-				Secure:   cookieData.Secure,
-			}
-
-			// 处理过期时间
-			if cookieData.Expires > 0 {
-				cookie.Expires = time.Unix(int64(cookieData.Expires), 0)
-			}
-
-			// 处理SameSite属性
-			switch strings.ToLower(cookieData.SameSite) {
-			case "strict":
-				cookie.SameSite = http.SameSiteStrictMode
-			case "lax":
-				cookie.SameSite = http.SameSiteLaxMode
-			case "none":
-				cookie.SameSite = http.SameSiteNoneMode
-			default:
-				cookie.SameSite = http.SameSiteDefaultMode
-			}
-
-			cookies = append(cookies, cookie)
-		}
-		return cookies, nil
+		return buildCookiesFromJSON(cookieDataList), nil
 	}
 
-	// 如果JSON解析失败，尝试传统的Cookie字符串格式
-	cookiePairs := strings.Split(cookieStr, ";")
+	var payload cookiePayload
+	if err := jsonx.UnmarshalString(cookieStr, &payload, ""); err == nil && len(payload.Cookies) > 0 {
+		return buildCookiesFromJSON(payload.Cookies), nil
+	}
 
+	cookiePairs := strings.Split(cookieStr, ";")
+	cookies := make([]*http.Cookie, 0, len(cookiePairs))
 	for _, pair := range cookiePairs {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
 		}
 
-		// 分割name=value
 		parts := strings.SplitN(pair, "=", 2)
 		if len(parts) != 2 {
-			cm.logger.Warnf("跳过无效的Cookie格式: %s", pair)
+			cm.logger.Warnf("skip invalid cookie format: %s", pair)
 			continue
 		}
 
 		name := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
-
 		if name == "" {
 			continue
 		}
 
-		// 根据不同的域名设置Cookie域
-		var domain string
+		domain := ".shein.com"
 		switch {
-		case strings.Contains(name, "sso") || strings.Contains(name, "geiwohuo"):
+		case strings.Contains(name, "sso"), strings.Contains(name, "geiwohuo"):
 			domain = ".geiwohuo.com"
-		default:
-			domain = ".shein.com"
 		}
 
-		cookie := &http.Cookie{
+		cookies = append(cookies, &http.Cookie{
 			Name:   name,
 			Value:  value,
 			Domain: domain,
 			Path:   "/",
-		}
-
-		cookies = append(cookies, cookie)
+		})
 	}
 
 	return cookies, nil
 }
 
-// RefreshCookies 刷新Cookie（重新从管理系统获取）
+func buildCookiesFromJSON(cookieDataList []CookieData) []*http.Cookie {
+	cookies := make([]*http.Cookie, 0, len(cookieDataList))
+	for _, cookieData := range cookieDataList {
+		cookie := &http.Cookie{
+			Name:     cookieData.Name,
+			Value:    cookieData.Value,
+			Domain:   cookieData.Domain,
+			Path:     cookieData.Path,
+			HttpOnly: cookieData.HttpOnly,
+			Secure:   cookieData.Secure,
+		}
+		if cookieData.Expires > 0 {
+			cookie.Expires = time.Unix(int64(cookieData.Expires), 0)
+		}
+
+		switch strings.ToLower(cookieData.SameSite) {
+		case "strict":
+			cookie.SameSite = http.SameSiteStrictMode
+		case "lax":
+			cookie.SameSite = http.SameSiteLaxMode
+		case "none":
+			cookie.SameSite = http.SameSiteNoneMode
+		default:
+			cookie.SameSite = http.SameSiteDefaultMode
+		}
+
+		cookies = append(cookies, cookie)
+	}
+	return cookies
+}
+
 func (cm *CookieManager) RefreshCookies() ([]*http.Cookie, error) {
-	cm.logger.Info("刷新Cookie")
+	cm.logger.Info("refreshing cookies")
 	return cm.LoadCookies()
 }
 
 func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 	tenantID := cm.forceLoginTenantID()
 	if tenantID <= 0 {
-		return nil, fmt.Errorf("无法确定 SHEIN 店铺 %d 的 tenant_id，无法自动重新登录", cm.storeID)
+		return nil, fmt.Errorf("cannot determine tenant for SHEIN store %d", cm.storeID)
 	}
 
 	if localRefresher := loadLocalLoginRefresher(); localRefresher != nil {
@@ -196,7 +185,7 @@ func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 	if cm.cookieProvider != nil {
 		cookieStr, refreshedTenantID, err := cm.loadCookieJSONFromSource()
 		if err != nil {
-			return nil, fmt.Errorf("重新登录后读取 SHEIN Cookie 失败: %w", err)
+			return nil, fmt.Errorf("read SHEIN cookie after refresh: %w", err)
 		}
 		if refreshedTenantID > 0 {
 			cm.resolvedTenantID = refreshedTenantID
@@ -204,7 +193,7 @@ func (cm *CookieManager) ForceRefreshCookies() ([]*http.Cookie, error) {
 		if strings.TrimSpace(cookieStr) != "" {
 			cookies, parseErr := cm.parseCookieString(cookieStr)
 			if parseErr != nil {
-				return nil, fmt.Errorf("解析重新登录后的 SHEIN Cookie 失败: %w", parseErr)
+				return nil, fmt.Errorf("parse SHEIN cookie after refresh: %w", parseErr)
 			}
 			return cookies, nil
 		}
@@ -301,6 +290,7 @@ var sheinLoginServiceConfigOverride sheinLoginAccountConfig
 func ConfigureLoginAccount(account ...string) {
 	sheinLoginServiceConfigMu.Lock()
 	defer sheinLoginServiceConfigMu.Unlock()
+
 	tenantID := ""
 	identifier := ""
 	if len(account) > 0 {
@@ -349,21 +339,18 @@ func firstNonEmptyEnv(keys ...string) string {
 	return ""
 }
 
-// TestConnection 测试管理系统连接和认证状态
 func (cm *CookieManager) TestConnection() error {
-	cm.logger.Debug("测试管理系统连接")
-
+	cm.logger.Debug("testing store config connection")
 	if cm.storeConfigProvider == nil {
 		return fmt.Errorf("store config provider is nil")
 	}
 
-	_, err := cm.storeConfigProvider.GetStoreConfig(context.Background(), cm.storeID)
-	if err != nil {
-		cm.logger.WithError(err).Error("管理系统连接测试失败")
-		return fmt.Errorf("管理系统连接测试失败: %w", err)
+	if _, err := cm.storeConfigProvider.GetStoreConfig(context.Background(), cm.storeID); err != nil {
+		cm.logger.WithError(err).Error("store config connection test failed")
+		return fmt.Errorf("store config connection test failed: %w", err)
 	}
 
-	cm.logger.Debug("管理系统连接测试成功")
+	cm.logger.Debug("store config connection test succeeded")
 	return nil
 }
 
