@@ -24,10 +24,14 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
     mocks.useSheinActivityEnrollmentRuns(...args),
   useTriggerSheinStoreSync: (...args: unknown[]) => mocks.useTriggerSheinStoreSync(...args),
-  useRefreshSheinActivityCandidates: (...args: unknown[]) => mocks.useRefreshSheinActivityCandidates(...args),
-  useUpdateSheinSyncedProductCost: (...args: unknown[]) => mocks.useUpdateSheinSyncedProductCost(...args),
-  useReviewSheinActivityCandidate: (...args: unknown[]) => mocks.useReviewSheinActivityCandidate(...args),
-  useExecuteSheinActivityEnrollment: (...args: unknown[]) => mocks.useExecuteSheinActivityEnrollment(...args),
+  useRefreshSheinActivityCandidates: (...args: unknown[]) =>
+    mocks.useRefreshSheinActivityCandidates(...args),
+  useUpdateSheinSyncedProductCost: (...args: unknown[]) =>
+    mocks.useUpdateSheinSyncedProductCost(...args),
+  useReviewSheinActivityCandidate: (...args: unknown[]) =>
+    mocks.useReviewSheinActivityCandidate(...args),
+  useExecuteSheinActivityEnrollment: (...args: unknown[]) =>
+    mocks.useExecuteSheinActivityEnrollment(...args),
 }));
 
 function resolvedMutation() {
@@ -37,42 +41,111 @@ function resolvedMutation() {
   };
 }
 
+function renderWorkbench({
+  initialTab,
+  products = [],
+  candidates = [],
+}: {
+  initialTab?: string;
+  products?: Array<Record<string, unknown>>;
+  candidates?: Array<Record<string, unknown>>;
+}) {
+  mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
+    data: {
+      summary: {
+        store_id: 12,
+        store_name: "SHEIN US",
+        store_username: "shein-us",
+        platform: "SHEIN",
+        region: "US",
+      },
+    },
+  });
+  mocks.useSheinSyncedProducts.mockReturnValue({
+    data: { items: products },
+    isLoading: false,
+  });
+  mocks.useSheinActivityCandidates.mockReturnValue({
+    data: { items: candidates },
+    isLoading: false,
+  });
+  mocks.useSheinActivityEnrollmentRuns.mockReturnValue({
+    data: { items: [] },
+    isLoading: false,
+  });
+  mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
+  mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
+  mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
+  mocks.useReviewSheinActivityCandidate.mockReturnValue(resolvedMutation());
+  mocks.useExecuteSheinActivityEnrollment.mockReturnValue(resolvedMutation());
+
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <SheinEnrollmentStoreWorkbench initialTab={initialTab} storeId={12} />
+    </QueryClientProvider>,
+  );
+}
+
 describe("SheinEnrollmentStoreWorkbench", () => {
   it("defaults to the candidates tab and carries activityType in links", async () => {
-    mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
-      data: {
-        summary: {
-          store_id: 12,
-          store_name: "SHEIN US",
-          store_username: "shein-us",
-          platform: "SHEIN",
-          region: "US",
-        },
-      },
-    });
-    mocks.useSheinSyncedProducts.mockReturnValue({ data: { items: [] }, isLoading: false });
-    mocks.useSheinActivityCandidates.mockReturnValue({ data: { items: [] }, isLoading: false });
-    mocks.useSheinActivityEnrollmentRuns.mockReturnValue({ data: { items: [] }, isLoading: false });
-    mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
-    mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
-    mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
-    mocks.useReviewSheinActivityCandidate.mockReturnValue(resolvedMutation());
-    mocks.useExecuteSheinActivityEnrollment.mockReturnValue(resolvedMutation());
-
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={client}>
-        <SheinEnrollmentStoreWorkbench storeId={12} />
-      </QueryClientProvider>,
-    );
+    renderWorkbench({});
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "候选池" })).toHaveAttribute(
       "href",
       "/listing-kits/shein-enrollment/12?tab=candidates&activityType=PROMOTION",
     );
-    expect(screen.getByText("当前活动类型下暂无候选商品。")).toBeInTheDocument();
+  });
+
+  it("renders dense product details in the synced products tab", async () => {
+    renderWorkbench({
+      initialTab: "products",
+      products: [
+        {
+          id: 8,
+          main_image_url: "https://example.com/item.png",
+          skc_name: "SKC-8",
+          spu_code: "spu-123",
+          product_name_multi: "Dress",
+          supplier_code: "J0529021001",
+          sale_name: "White",
+          price_snapshot: "USD 29.99",
+          effective_cost_price: 12.5,
+          cost_price_source: "manual",
+          inventory_snapshot: '{"total_inventory":999,"saleable_inventory":999}',
+          shelf_status: "ON_SHELF",
+          created_at: "2026-06-01 01:38:43",
+          publish_time: "2026-06-02 02:58:40",
+          first_shelf_time: "2026-06-02 21:04:59",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(screen.getByText("$29.99")).toBeInTheDocument();
+    expect(screen.getByText("SPU: spu-123")).toBeInTheDocument();
+    expect(screen.getByText("货号: J0529021001")).toBeInTheDocument();
+    expect(screen.getByText("总库存 999")).toBeInTheDocument();
+  });
+
+  it("renders price snapshot in the candidates tab", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-18",
+          review_status: "pending_review",
+          effective_cost_price: 12.5,
+          price_snapshot: "USD 29.99",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
   });
 });

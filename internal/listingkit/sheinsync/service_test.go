@@ -57,6 +57,32 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 				},
 			}, 101),
 		},
+		queryPriceResp: makePriceQueryResponse([]sheinproduct.SkcPriceData{
+			{
+				SkcName: "skc-1",
+				SkuInfoList: []sheinproduct.SkuPriceInfo{
+					{
+						SkuCode: "SKU001",
+						PriceInfoList: []sheinproduct.SkuPriceDetail{
+							{Currency: "USD", ShopPrice: 34.17},
+						},
+					},
+				},
+			},
+		}),
+		queryInventoryResp: makeInventoryQueryResponse([]sheinproduct.SkcInventory{
+			{
+				SkcName: "skc-1",
+				SkuInfo: []sheinproduct.SkuInventory{
+					{
+						SkuCode: "SKU001",
+						InventoryInfo: []sheinproduct.WarehouseInventory{
+							{InventoryQuantity: 999, UsableInventory: 321},
+						},
+					},
+				},
+			},
+		}),
 	}
 	costResolver := &sheinSyncServiceCostResolverStub{
 		autoCosts: map[string]resolvedSheinCost{
@@ -93,6 +119,8 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	require.Equal(t, "USD", rows[0].Currency)
 	require.NotNil(t, rows[0].PublishTime)
 	require.NotNil(t, rows[0].FirstShelfTime)
+	require.JSONEq(t, `{"sale_price":34.17,"currency":"USD","sub_site":""}`, rows[0].PriceSnapshot)
+	require.JSONEq(t, `{"total":999,"available":321}`, rows[0].InventorySnapshot)
 }
 
 func TestSyncSheinOnShelfProductsManualOverrideWinsOverAutoCost(t *testing.T) {
@@ -655,6 +683,10 @@ type sheinSyncServiceProductAPIStub struct {
 	listResponses      []*sheinproduct.ProductListResponse
 	listErr            error
 	listCalls          []sheinProductListCall
+	queryPriceResp     *sheinproduct.PriceQueryResponse
+	queryPriceErr      error
+	queryInventoryResp *sheinproduct.InventoryQueryResponse
+	queryInventoryErr  error
 	queryCostPriceResp *sheinproduct.CostPriceQueryResponse
 	queryCostPriceErr  error
 }
@@ -721,7 +753,7 @@ func (s *sheinSyncServiceProductAPIStub) QueryStock(*sheinproduct.StockQueryRequ
 }
 
 func (s *sheinSyncServiceProductAPIStub) QueryInventory(string) (*sheinproduct.InventoryQueryResponse, error) {
-	return nil, errors.New("not implemented")
+	return s.queryInventoryResp, s.queryInventoryErr
 }
 
 func (s *sheinSyncServiceProductAPIStub) UpdateInventory(*sheinproduct.InventoryUpdateRequest) error {
@@ -729,7 +761,7 @@ func (s *sheinSyncServiceProductAPIStub) UpdateInventory(*sheinproduct.Inventory
 }
 
 func (s *sheinSyncServiceProductAPIStub) QueryPrice(string) (*sheinproduct.PriceQueryResponse, error) {
-	return nil, errors.New("not implemented")
+	return s.queryPriceResp, s.queryPriceErr
 }
 
 func (s *sheinSyncServiceProductAPIStub) QueryCostPrice(string, []string) (*sheinproduct.CostPriceQueryResponse, error) {
@@ -767,6 +799,19 @@ func makeProductListResponse(items []sheinproduct.ProductListItem, total int) *s
 	resp := &sheinproduct.ProductListResponse{Code: "0", Msg: "ok"}
 	resp.Info.Data = append(resp.Info.Data, items...)
 	resp.Info.Meta.Count = total
+	return resp
+}
+
+func makePriceQueryResponse(items []sheinproduct.SkcPriceData) *sheinproduct.PriceQueryResponse {
+	resp := &sheinproduct.PriceQueryResponse{Code: "0", Msg: "ok"}
+	resp.Info.Data = append(resp.Info.Data, items...)
+	resp.Info.Meta.Count = len(items)
+	return resp
+}
+
+func makeInventoryQueryResponse(items []sheinproduct.SkcInventory) *sheinproduct.InventoryQueryResponse {
+	resp := &sheinproduct.InventoryQueryResponse{Code: "0", Msg: "ok"}
+	resp.Info.SkcInfo = append(resp.Info.SkcInfo, items...)
 	return resp
 }
 
