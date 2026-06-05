@@ -127,6 +127,14 @@ func NewSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBuilder 
 	return sheinsync.NewSheinSyncServiceWithBuilder(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver)
 }
 
+func NewAsyncSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver) SheinSyncService {
+	return sheinsync.NewAsyncSheinSyncService(repo, productAPI, costResolver)
+}
+
+func NewAsyncSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBuilder sheinSyncProductAPIBuilder, costResolver SheinCostResolver) SheinSyncService {
+	return sheinsync.NewAsyncSheinSyncServiceWithBuilder(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver)
+}
+
 type sheinSyncProductAPIBuilderBridge struct {
 	builder sheinSyncProductAPIBuilder
 }

@@ -339,6 +339,63 @@ func TestSheinCostResolverReturnsClearErrorWhenQueryCostPriceResponseIsNil(t *te
 	require.ErrorContains(t, err, "returned nil response")
 }
 
+func TestSyncSheinOnShelfProductsResolvesCostsConcurrentlyWithinPage(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	productAPI := &sheinSyncServiceProductAPIStub{
+		listResponses: []*sheinproduct.ProductListResponse{
+			makeProductListResponse([]sheinproduct.ProductListItem{
+				{
+					SpuName:          "spu-1",
+					ProductNameMulti: "Product One",
+					ShelfStatus:      "ON_SHELF",
+					SkcInfoList: []sheinproduct.SkcInfoItem{
+						{SkcName: "skc-1", SupplierCode: "SUP-1"},
+					},
+				},
+				{
+					SpuName:          "spu-2",
+					ProductNameMulti: "Product Two",
+					ShelfStatus:      "ON_SHELF",
+					SkcInfoList: []sheinproduct.SkcInfoItem{
+						{SkcName: "skc-2", SupplierCode: "SUP-2"},
+					},
+				},
+				{
+					SpuName:          "spu-3",
+					ProductNameMulti: "Product Three",
+					ShelfStatus:      "ON_SHELF",
+					SkcInfoList: []sheinproduct.SkcInfoItem{
+						{SkcName: "skc-3", SupplierCode: "SUP-3"},
+					},
+				},
+			}, 3),
+		},
+	}
+	costResolver := newBlockingConcurrentCostResolver(3)
+	service := NewSheinSyncService(repo, productAPI, costResolver)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.SyncSheinOnShelfProducts(context.Background(), 12, 34, SheinSyncTriggerModeManual)
+		done <- err
+	}()
+
+	require.Eventually(t, func() bool {
+		return costResolver.startedCount() == 3
+	}, time.Second, 10*time.Millisecond)
+
+	costResolver.releaseAll()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("sync did not finish after releasing concurrent cost resolver")
+	}
+}
+
 type sheinSyncServiceRepoStub struct {
 	mu       sync.RWMutex
 	nextID   int64
@@ -347,6 +404,53 @@ type sheinSyncServiceRepoStub struct {
 	jobs     map[int64]SheinSyncJobRecord
 
 	saveFailedJobErr error
+}
+
+type blockingConcurrentCostResolver struct {
+	mu        sync.Mutex
+	started   int
+	release   chan struct{}
+	autoCosts map[string]resolvedSheinCost
+}
+
+func newBlockingConcurrentCostResolver(expected int) *blockingConcurrentCostResolver {
+	autoCosts := make(map[string]resolvedSheinCost, expected)
+	for i := 1; i <= expected; i++ {
+		autoCosts[fmt.Sprintf("spu-%d|skc-%d", i, i)] = resolvedSheinCost{
+			CostPrice: float64Ptr(float64(10 + i)),
+			Currency:  "USD",
+		}
+	}
+	return &blockingConcurrentCostResolver{
+		release:   make(chan struct{}),
+		autoCosts: autoCosts,
+	}
+}
+
+func (r *blockingConcurrentCostResolver) ResolveAutoCosts(_ context.Context, product sheinproduct.ProductListItem) (map[string]resolvedSheinCost, error) {
+	r.mu.Lock()
+	r.started++
+	r.mu.Unlock()
+
+	<-r.release
+
+	resolved := map[string]resolvedSheinCost{}
+	for _, skc := range product.SkcInfoList {
+		if cost, ok := r.autoCosts[product.SpuName+"|"+skc.SkcName]; ok {
+			resolved[skc.SkcName] = cost
+		}
+	}
+	return resolved, nil
+}
+
+func (r *blockingConcurrentCostResolver) startedCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.started
+}
+
+func (r *blockingConcurrentCostResolver) releaseAll() {
+	close(r.release)
 }
 
 func newSheinSyncServiceRepoStub() *sheinSyncServiceRepoStub {

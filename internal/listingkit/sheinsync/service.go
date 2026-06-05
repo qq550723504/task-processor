@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 const sheinSyncPageSize = 100
+const sheinSyncCostResolutionConcurrency = 8
 
 type SheinSyncService interface {
 	SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error)
@@ -27,14 +29,19 @@ type sheinSyncService struct {
 }
 
 func NewSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver) SheinSyncService {
-	if costResolver == nil {
+	return newSheinSyncService(repo, productAPI, nil, costResolver)
+}
+
+func newSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, productAPIBuilder SheinSyncProductAPIBuilder, costResolver SheinCostResolver) *sheinSyncService {
+	if costResolver == nil && productAPI != nil {
 		costResolver = NewSheinCostResolver(productAPI)
 	}
 	return &sheinSyncService{
-		repo:         repo,
-		productAPI:   productAPI,
-		costResolver: costResolver,
-		pageSize:     sheinSyncPageSize,
+		repo:              repo,
+		productAPI:        productAPI,
+		productAPIBuilder: productAPIBuilder,
+		costResolver:      costResolver,
+		pageSize:          sheinSyncPageSize,
 	}
 }
 
@@ -43,12 +50,7 @@ type SheinSyncProductAPIBuilder interface {
 }
 
 func NewSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBuilder SheinSyncProductAPIBuilder, costResolver SheinCostResolver) SheinSyncService {
-	return &sheinSyncService{
-		repo:              repo,
-		productAPIBuilder: productAPIBuilder,
-		costResolver:      costResolver,
-		pageSize:          sheinSyncPageSize,
-	}
+	return newSheinSyncService(repo, nil, productAPIBuilder, costResolver)
 }
 
 func (s *sheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
@@ -56,6 +58,14 @@ func (s *sheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantI
 		return nil, err
 	}
 
+	job, err := s.createPendingSyncJob(ctx, tenantID, storeID, triggerMode)
+	if err != nil {
+		return nil, err
+	}
+	return s.runSyncJob(ctx, job)
+}
+
+func (s *sheinSyncService) createPendingSyncJob(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
 	job := &SheinSyncJobRecord{
 		TenantID:    tenantID,
 		StoreID:     storeID,
@@ -65,7 +75,13 @@ func (s *sheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantI
 	if err := s.repo.SaveSyncJob(ctx, job); err != nil {
 		return nil, err
 	}
+	return job, nil
+}
 
+func (s *sheinSyncService) runSyncJob(ctx context.Context, job *SheinSyncJobRecord) (*SheinSyncJobRecord, error) {
+	if job == nil {
+		return nil, fmt.Errorf("SHEIN sync job is required")
+	}
 	startedAt := time.Now().UTC()
 	job.StartedAt = &startedAt
 	job.Status = SheinSyncJobStatusRunning
@@ -73,18 +89,18 @@ func (s *sheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantI
 		return nil, err
 	}
 
-	existingProducts, err := s.listExistingProducts(ctx, tenantID, storeID)
+	existingProducts, err := s.listExistingProducts(ctx, job.TenantID, job.StoreID)
 	if err != nil {
 		return nil, s.failSyncJob(ctx, job, fmt.Errorf("list existing synced products: %w", err))
 	}
 
-	productAPI, err := s.resolveProductAPI(ctx, storeID)
+	productAPI, err := s.resolveProductAPI(ctx, job.StoreID)
 	if err != nil {
 		return nil, s.failSyncJob(ctx, job, err)
 	}
 	costResolver := s.resolveCostResolver(productAPI)
 
-	records, activeSKCNames, fetchedCount, err := s.fetchOnShelfProducts(ctx, tenantID, storeID, existingProducts, productAPI, costResolver)
+	records, activeSKCNames, fetchedCount, err := s.fetchOnShelfProducts(ctx, job.TenantID, job.StoreID, existingProducts, productAPI, costResolver)
 	if err != nil {
 		return nil, s.failSyncJob(ctx, job, err)
 	}
@@ -95,7 +111,7 @@ func (s *sheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantI
 	if err := s.repo.UpsertSyncedProducts(ctx, records); err != nil {
 		return nil, s.failSyncJob(ctx, job, fmt.Errorf("persist synced products: %w", err))
 	}
-	if err := s.repo.MarkMissingSyncedProductsInactive(ctx, tenantID, storeID, activeSKCNames); err != nil {
+	if err := s.repo.MarkMissingSyncedProductsInactive(ctx, job.TenantID, job.StoreID, activeSKCNames); err != nil {
 		return nil, s.failSyncJob(ctx, job, fmt.Errorf("mark missing synced products inactive: %w", err))
 	}
 
@@ -176,11 +192,29 @@ func (s *sheinSyncService) fetchOnShelfProducts(
 			return nil, nil, 0, fmt.Errorf("list SHEIN on-shelf products page %d returned nil response", page)
 		}
 
-		for _, product := range response.Info.Data {
-			resolvedCosts, resolveErr := costResolver.ResolveAutoCosts(ctx, product)
-			if resolveErr != nil {
-				return nil, nil, 0, fmt.Errorf("resolve SHEIN cost price for spu %s: %w", product.SpuName, resolveErr)
-			}
+		resolvedCostsByProduct := make([]map[string]resolvedSheinCost, len(response.Info.Data))
+		resolveGroup, resolveCtx := errgroup.WithContext(ctx)
+		resolveGroup.SetLimit(sheinSyncCostResolutionConcurrency)
+
+		for idx, product := range response.Info.Data {
+			idx := idx
+			product := product
+			resolveGroup.Go(func() error {
+				resolvedCosts, resolveErr := costResolver.ResolveAutoCosts(resolveCtx, product)
+				if resolveErr != nil {
+					return fmt.Errorf("resolve SHEIN cost price for spu %s: %w", product.SpuName, resolveErr)
+				}
+				resolvedCostsByProduct[idx] = resolvedCosts
+				return nil
+			})
+		}
+
+		if err := resolveGroup.Wait(); err != nil {
+			return nil, nil, 0, err
+		}
+
+		for idx, product := range response.Info.Data {
+			resolvedCosts := resolvedCostsByProduct[idx]
 			for _, skc := range product.SkcInfoList {
 				if skc.SkcName == "" {
 					continue

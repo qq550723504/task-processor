@@ -25,7 +25,7 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 	}
 
 	productAPIBuilder := input.Hooks.SheinProductAPIBuilderFactory(repositories.storeRepository)
-	syncService := listingkit.NewSheinSyncServiceWithBuilder(repositories.sheinSyncRepository, productAPIBuilder, nil)
+	syncService := listingkit.NewAsyncSheinSyncServiceWithBuilder(repositories.sheinSyncRepository, productAPIBuilder, nil)
 	candidateService := listingkit.NewSheinCandidateService(repositories.sheinSyncRepository)
 
 	strategyProvider, err := buildSheinPromotionStrategyProvider(input, closers)
