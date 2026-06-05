@@ -186,6 +186,18 @@ go run ./cmd/amazon-listing -config config/config-dev.yaml
 go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
 ```
 
+ListingKit 本地如果希望把 schema 初始化从 API 启动链路中拿掉，可以先显式执行：
+
+```bash
+go run ./cmd/product-listing-api-schema-migrate -config config/config-dev.yaml
+go run ./cmd/listingkit-schema-migrate -config config/config-dev.yaml
+```
+
+之后再启动 `product-listing-api`，并按需设置
+`TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false` 以及
+`TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE=false` 来跳过运行时
+schema auto-migrate。
+
 `shein-listing` / `temu-listing` / `amazon-listing` 仍兼容旧参数 `-app-config`；同时传入时 `-config` 优先生效。
 
 ### 整体业务架构

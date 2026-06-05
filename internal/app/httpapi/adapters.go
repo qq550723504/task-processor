@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	"task-processor/internal/amazonlisting"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
@@ -20,6 +23,41 @@ import (
 	productimagestore "task-processor/internal/productimage/store"
 	"task-processor/internal/prompt"
 )
+
+func shouldAutoMigrateProductListingAPIRuntime() bool {
+	raw := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"))
+	if raw == "" {
+		return true
+	}
+	switch strings.ToLower(raw) {
+	case "0", "false", "no", "n", "off", "disabled":
+		return false
+	default:
+		return true
+	}
+}
+
+func AutoMigrateProductListingAPIRuntimeSchema(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
+		return fmt.Errorf("openai credential auto-migrate failed: %w", err)
+	}
+	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
+		return fmt.Errorf("tenant prompt auto-migrate failed: %w", err)
+	}
+	if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
+		return fmt.Errorf("productenrich auto-migrate failed: %w", err)
+	}
+	if err := db.AutoMigrate(&productimage.Task{}); err != nil {
+		return fmt.Errorf("productimage auto-migrate failed: %w", err)
+	}
+	if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
+		return fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
+	}
+	return nil
+}
 
 func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
 	manager, err := newOpenAIManager(cfg)
@@ -45,8 +83,10 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
-		return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
+	if shouldAutoMigrateProductListingAPIRuntime() {
+		if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
+			return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
+		}
 	}
 	resolver := openaiclient.NewGormCredentialResolver(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -54,6 +94,19 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 }
 
 func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (prompt.TenantPromptStore, func() error, error) {
+	if !shouldAutoMigrateProductListingAPIRuntime() {
+		if cfg == nil {
+			return nil, nil, fmt.Errorf("database config is nil")
+		}
+		db, err := database.NewSharedDatabaseFromConfig(cfg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+		}
+		logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+		store := prompt.NewGormTenantPromptStore(db)
+		closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+		return store, closer, nil
+	}
 	return bootstrapresources.NewDBTenantPromptStore(cfg, logger)
 }
 
@@ -88,8 +141,10 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
-	if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
-		return nil, nil, fmt.Errorf("database auto-migrate failed: %w", err)
+	if shouldAutoMigrateProductListingAPIRuntime() {
+		if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
+			return nil, nil, fmt.Errorf("database auto-migrate failed: %w", err)
+		}
 	}
 
 	repo := store.NewTaskRepository(db)
@@ -107,8 +162,10 @@ func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
-	if err := db.AutoMigrate(&productimage.Task{}); err != nil {
-		return nil, nil, fmt.Errorf("productimage auto-migrate failed: %w", err)
+	if shouldAutoMigrateProductListingAPIRuntime() {
+		if err := db.AutoMigrate(&productimage.Task{}); err != nil {
+			return nil, nil, fmt.Errorf("productimage auto-migrate failed: %w", err)
+		}
 	}
 
 	repo := productimagestore.NewTaskRepository(db)
@@ -126,8 +183,10 @@ func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
-	if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
-		return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
+	if shouldAutoMigrateProductListingAPIRuntime() {
+		if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
+			return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
+		}
 	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)

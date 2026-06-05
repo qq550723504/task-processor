@@ -12,6 +12,30 @@ import (
 	"task-processor/internal/productimage"
 )
 
+func TestShouldAutoMigrateProductListingAPIRuntimeDefaultsTrue(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "")
+
+	if !shouldAutoMigrateProductListingAPIRuntime() {
+		t.Fatal("expected product listing API runtime auto-migrate to default to true")
+	}
+}
+
+func TestShouldAutoMigrateProductListingAPIRuntimeHonorsFalse(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
+
+	if shouldAutoMigrateProductListingAPIRuntime() {
+		t.Fatal("expected product listing API runtime auto-migrate to honor false")
+	}
+}
+
+func TestAutoMigrateProductListingAPIRuntimeSchemaRejectsNilDB(t *testing.T) {
+	t.Parallel()
+
+	if err := AutoMigrateProductListingAPIRuntimeSchema(nil); err == nil {
+		t.Fatal("expected nil db to fail")
+	}
+}
+
 func TestTaskModelsUseDistinctTableNames(t *testing.T) {
 	t.Parallel()
 

@@ -72,12 +72,14 @@
 .\scripts\start-listingkit-local-api.ps1
 ```
 
-这个脚本会固定做 4 件事：
+这个脚本会固定做 6 件事：
 
 1. 清掉当前占用 `8085` 的旧进程，避免误连到上一次残留实例
 2. 重新构建本地 `product-listing-api`
 3. 用固定端口 `8085` 启动新实例，并把日志写到 `.local/tmp/listingkit-local-api/logs/`
 4. 对这次本地进程强制注入 `TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY=1`
+5. 对这次本地进程默认注入 `TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false`
+6. 对这次本地进程默认注入 `TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE=false`
 
 第 4 点是这轮联调里非常关键的一步。
 原因不是“兼容”，而是根因上本地开发机通常访问不到店铺在远端环境里配置的代理地址；
@@ -94,6 +96,17 @@
 ```powershell
 .\scripts\start-listingkit-local-api.ps1 -Port 8085 -ConfigPath config/config-dev.yaml -LogLevel info
 ```
+
+如果本地库还没做过 ListingKit schema 初始化，先单独执行一次：
+
+```powershell
+go run ./cmd/product-listing-api-schema-migrate -config config/config-dev.yaml
+go run ./cmd/listingkit-schema-migrate -config config/config-dev.yaml
+```
+
+这样可以把 `product-listing-api` 自己的 task/credential/prompt schema 初始化，
+以及 ListingKit 的 schema auto-migrate，一起从 API 启动路径里摘出去，
+避免每次本地重启都重复承担这段成本。
 
 这里仍然建议把数据库、Redis、cookie Redis 这些连接信息固定写在仓库根目录的 [`.env`](/D:/code/task-processor/.env)，
 不要每次在当前 PowerShell 窗口里临时敲一遍环境变量。
@@ -166,6 +179,54 @@ http://localhost:3000
 
 本地 UI 现在也必须走真实 ZITADEL 登录；
 真正决定“读的是本地还是远端”的仍然是上面的 API 环境变量。
+
+### 本地稳定启动建议
+
+如果你在 `http://localhost:3000` 打开页面时看到“页面一直刷新”，
+先不要怀疑业务代码。
+
+这轮联调里已经确认过一种真实情况：
+
+- `product-listing-api` 正常
+- `listingkit-ui` 页面路由正常
+- 但本地 `next dev` 进程下的 `/api/*` route 会异常返回 `404`
+- 登录门禁依赖 `/api/zitadel-auth/session`
+- 结果就会变成“登录态检查失败 -> 回当前页 -> 再检查”，肉眼看起来像一直刷新
+
+也就是说：
+
+- `k8s` 上同样代码正常，不代表本地 `next dev` 运行态也一定正常
+- 如果本地出现持续刷新，更可能是 UI 开发服务的 API route 运行异常，不是 SHEIN / ListingKit 业务逻辑本身有问题
+
+建议先用下面两个请求自检：
+
+```powershell
+Invoke-WebRequest -Uri http://localhost:3000/api/version -UseBasicParsing
+Invoke-WebRequest -Uri http://localhost:3000/api/zitadel-auth/session -UseBasicParsing
+```
+
+预期：
+
+- `/api/version` 应该返回 `200`
+- `/api/zitadel-auth/session` 在未登录时应该返回 `401`
+
+如果这两个地址返回 `404`，说明本地 UI 运行态已经不可信，
+不要继续在这条 `next dev` 进程上联调。
+
+这种情况下，优先改用稳定启动方式：
+
+```powershell
+Set-Location web/listingkit-ui
+$env:PORT='3000'
+$env:HOSTNAME='0.0.0.0'
+node .next/standalone/server.js
+```
+
+注意：
+
+- 这要求你之前已经做过一次 `npm run build`
+- 独立启动 `server.js` 时，仍然要保证 `.env.local` 里的 ZITADEL 配置和 API 地址是完整的
+- 启动成功后，访问 `/` 的正常表现应该是跳到 `/login`，而不是无限刷新
 
 ## 适合复验的内容
 

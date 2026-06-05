@@ -13,6 +13,60 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func TestShouldAutoMigrateListingKitRuntimeDefaultsTrue(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE", "")
+
+	if !shouldAutoMigrateListingKitRuntime() {
+		t.Fatal("expected listingkit runtime auto-migrate to default to true")
+	}
+}
+
+func TestShouldAutoMigrateListingKitRuntimeHonorsFalse(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE", "false")
+
+	if shouldAutoMigrateListingKitRuntime() {
+		t.Fatal("expected listingkit runtime auto-migrate to honor false")
+	}
+}
+
+func TestAutoMigrateListingKitRuntimeSchemaRejectsNilDB(t *testing.T) {
+	t.Parallel()
+
+	err := AutoMigrateListingKitRuntimeSchema(nil)
+	if err == nil {
+		t.Fatal("expected nil db to fail")
+	}
+}
+
+func TestRepositorySchemaBootstrapperRunsMigrationOncePerDatabase(t *testing.T) {
+	t.Parallel()
+
+	bootstrapper := newRepositorySchemaBootstrapper()
+	cfg := &config.DatabaseConfig{
+		Host:     "127.0.0.1",
+		Port:     5432,
+		User:     "tester",
+		Database: "listingkit",
+	}
+
+	migrationRuns := 0
+	runMigration := func() error {
+		migrationRuns++
+		return nil
+	}
+
+	if err := bootstrapper.ensure(cfg, runMigration); err != nil {
+		t.Fatalf("first ensure() error = %v", err)
+	}
+	if err := bootstrapper.ensure(cfg, runMigration); err != nil {
+		t.Fatalf("second ensure() error = %v", err)
+	}
+
+	if migrationRuns != 1 {
+		t.Fatalf("migration runs = %d, want 1", migrationRuns)
+	}
+}
+
 func TestBuildListingKitTaskRepositoryFallsBackToInMemoryWithoutDatabase(t *testing.T) {
 	t.Parallel()
 

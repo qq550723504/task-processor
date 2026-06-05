@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/sirupsen/logrus"
@@ -22,6 +24,160 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/tenantbridge"
 )
+
+type repositorySchemaBootstrapper struct {
+	mu      sync.Mutex
+	entries map[string]*repositorySchemaBootstrapEntry
+}
+
+type repositorySchemaBootstrapEntry struct {
+	once sync.Once
+	err  error
+}
+
+func newRepositorySchemaBootstrapper() *repositorySchemaBootstrapper {
+	return &repositorySchemaBootstrapper{
+		entries: make(map[string]*repositorySchemaBootstrapEntry),
+	}
+}
+
+func (b *repositorySchemaBootstrapper) ensure(cfg *config.DatabaseConfig, run func() error) error {
+	if b == nil || run == nil {
+		return nil
+	}
+
+	key := repositorySchemaKey(cfg)
+
+	b.mu.Lock()
+	entry := b.entries[key]
+	if entry == nil {
+		entry = &repositorySchemaBootstrapEntry{}
+		b.entries[key] = entry
+	}
+	b.mu.Unlock()
+
+	entry.once.Do(func() {
+		entry.err = run()
+	})
+	return entry.err
+}
+
+func repositorySchemaKey(cfg *config.DatabaseConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%s:%s", cfg.Host, cfg.Port, cfg.User, cfg.Database)
+}
+
+var listingKitRepositorySchemaBootstrapper = newRepositorySchemaBootstrapper()
+
+func ensureListingKitRepositorySchema(cfg *config.DatabaseConfig, db *gorm.DB) error {
+	if !shouldAutoMigrateListingKitRuntime() {
+		return nil
+	}
+	return listingKitRepositorySchemaBootstrapper.ensure(cfg, func() error {
+		return runListingKitRepositoryAutoMigrations(db)
+	})
+}
+
+func shouldAutoMigrateListingKitRuntime() bool {
+	raw := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE"))
+	if raw == "" {
+		return true
+	}
+	switch strings.ToLower(raw) {
+	case "0", "false", "no", "n", "off", "disabled":
+		return false
+	default:
+		return true
+	}
+}
+
+func AutoMigrateListingKitRuntimeSchema(db *gorm.DB) error {
+	return runListingKitRepositoryAutoMigrations(db)
+}
+
+func runListingKitRepositoryAutoMigrations(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	if err := autoMigrateListingKitTaskRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit task repository: %w", err)
+	}
+	if err := listingkit.AutoMigrateStudioAsyncJobRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit studio async job repository: %w", err)
+	}
+	if err := listingkit.AutoMigrateStudioBatchRunRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit studio batch run repository: %w", err)
+	}
+	if err := listingkit.AutoMigrateStudioBatchRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit studio batch repository: %w", err)
+	}
+	if err := listingkitstore.AutoMigrateSheinSyncRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit shein sync repository: %w", err)
+	}
+	if err := listingkit.AutoMigrateUploadedImageRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit uploaded image repository: %w", err)
+	}
+	if err := listingkit.AutoMigrateStoreProfileRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit store profile repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateStoreRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin store repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateStoreStatisticsRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin store statistics repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateImportTaskRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin import task repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateFilterRuleRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin filter rule repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateProfitRuleRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin profit rule repository: %w", err)
+	}
+	if err := listingadmin.AutoMigratePricingRuleRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin pricing rule repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateOperationStrategyRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin operation strategy repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateSensitiveWordRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin sensitive word repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateGenerationTopicPolicyRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin generation topic policy repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateGenerationTopicOverrideRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin generation topic override repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateProductImportMappingRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin product import mapping repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateCategoryRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin category repository: %w", err)
+	}
+	if err := listingadmin.AutoMigrateProductDataRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin product data repository: %w", err)
+	}
+	if err := db.AutoMigrate(&sheinpub.SheinResolutionCacheEntry{}); err != nil {
+		return fmt.Errorf("migrate shein resolution cache store: %w", err)
+	}
+	if err := db.AutoMigrate(&assetrepo.InventorySnapshot{}, &assetrepo.GenerationTaskSnapshot{}); err != nil {
+		return fmt.Errorf("migrate asset repository: %w", err)
+	}
+	if err := db.AutoMigrate(&reviewstore.ReviewRecord{}); err != nil {
+		return fmt.Errorf("migrate listingkit review repository: %w", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SheinStudioSession{}, &listingkit.SheinStudioDesign{}); err != nil {
+		return fmt.Errorf("migrate listingkit studio session repository: %w", err)
+	}
+	if err := listingsubscription.AutoMigrateRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit subscription repository: %w", err)
+	}
+	return nil
+}
 
 func buildRepositoryWithFallback[T any](
 	cfg *config.Config,
@@ -332,8 +488,8 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := autoMigrateListingKitTaskRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkitstore.NewTaskRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -357,8 +513,8 @@ func newDBListingKitStudioAsyncJobRepository(cfg *config.DatabaseConfig, logger 
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkit.AutoMigrateStudioAsyncJobRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit studio async job auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormStudioAsyncJobRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -374,8 +530,8 @@ func newDBListingKitStudioBatchRunRepository(cfg *config.DatabaseConfig, logger 
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkit.AutoMigrateStudioBatchRunRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit studio batch run auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormStudioBatchRunRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -391,8 +547,8 @@ func newDBListingKitStudioBatchRepository(cfg *config.DatabaseConfig, logger *lo
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkit.AutoMigrateStudioBatchRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit studio batch auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormStudioBatchRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -408,8 +564,8 @@ func newDBListingKitSheinSyncRepository(cfg *config.DatabaseConfig, logger *logr
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkitstore.AutoMigrateSheinSyncRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit shein sync auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkitstore.NewSheinSyncRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -425,8 +581,8 @@ func newDBListingKitUploadedImageRepository(cfg *config.DatabaseConfig, logger *
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkit.AutoMigrateUploadedImageRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit uploaded image auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormUploadedImageRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -442,8 +598,8 @@ func newDBListingKitStoreProfileRepository(cfg *config.DatabaseConfig, logger *l
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkit.AutoMigrateStoreProfileRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit store profile auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormStoreProfileRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -459,8 +615,8 @@ func newDBListingKitStoreRoutingSettingsRepository(cfg *config.DatabaseConfig, l
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingkit.AutoMigrateStoreProfileRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit store routing auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormStoreRoutingSettingsRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -476,8 +632,8 @@ func newDBListingAdminStoreRepository(cfg *config.DatabaseConfig, logger *logrus
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateStoreRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin store auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormStoreRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -493,8 +649,8 @@ func newDBListingAdminStoreStatisticsRepository(cfg *config.DatabaseConfig, logg
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateStoreStatisticsRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin store statistics auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormStoreStatisticsRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -510,8 +666,8 @@ func newDBListingAdminImportTaskRepository(cfg *config.DatabaseConfig, logger *l
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateImportTaskRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin import task auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormImportTaskRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -527,8 +683,8 @@ func newDBListingAdminFilterRuleRepository(cfg *config.DatabaseConfig, logger *l
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateFilterRuleRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin filter rule auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormFilterRuleRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -544,8 +700,8 @@ func newDBListingAdminProfitRuleRepository(cfg *config.DatabaseConfig, logger *l
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateProfitRuleRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin profit rule auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormProfitRuleRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -561,8 +717,8 @@ func newDBListingAdminPricingRuleRepository(cfg *config.DatabaseConfig, logger *
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigratePricingRuleRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin pricing rule auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormPricingRuleRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -578,8 +734,8 @@ func newDBListingAdminOperationStrategyRepository(cfg *config.DatabaseConfig, lo
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateOperationStrategyRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin operation strategy auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormOperationStrategyRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -595,8 +751,8 @@ func newDBListingAdminSensitiveWordRepository(cfg *config.DatabaseConfig, logger
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateSensitiveWordRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin sensitive word auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormSensitiveWordRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -612,8 +768,8 @@ func newDBListingAdminGenerationTopicPolicyRepository(cfg *config.DatabaseConfig
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateGenerationTopicPolicyRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin generation topic policy auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormGenerationTopicPolicyRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -629,8 +785,8 @@ func newDBListingAdminGenerationTopicOverrideRepository(cfg *config.DatabaseConf
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateGenerationTopicOverrideRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin generation topic override auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormGenerationTopicOverrideRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -646,8 +802,8 @@ func newDBListingAdminProductImportMappingRepository(cfg *config.DatabaseConfig,
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateProductImportMappingRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin product import mapping auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormProductImportMappingRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -663,8 +819,8 @@ func newDBListingAdminCategoryRepository(cfg *config.DatabaseConfig, logger *log
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateCategoryRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin category auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormCategoryRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -680,8 +836,8 @@ func newDBListingAdminProductDataRepository(cfg *config.DatabaseConfig, logger *
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingadmin.AutoMigrateProductDataRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listing admin product data auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingadmin.NewGormProductDataRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -697,8 +853,8 @@ func newDBSheinResolutionCacheStore(cfg *config.DatabaseConfig, logger *logrus.L
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&sheinpub.SheinResolutionCacheEntry{}); err != nil {
-		return nil, nil, fmt.Errorf("shein resolution cache auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	store := sheinpub.NewGormResolutionCacheStore(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -714,8 +870,8 @@ func newDBAssetRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (as
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&assetrepo.InventorySnapshot{}, &assetrepo.GenerationTaskSnapshot{}); err != nil {
-		return nil, nil, fmt.Errorf("asset inventory auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := assetrepo.NewGormRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -731,8 +887,8 @@ func newDBListingKitReviewRepository(cfg *config.DatabaseConfig, logger *logrus.
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&reviewstore.ReviewRecord{}); err != nil {
-		return nil, nil, fmt.Errorf("listingkit review auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := reviewstore.NewGormRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -748,8 +904,8 @@ func newDBListingKitStudioSessionRepository(cfg *config.DatabaseConfig, logger *
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&listingkit.SheinStudioSession{}, &listingkit.SheinStudioDesign{}); err != nil {
-		return nil, nil, fmt.Errorf("listingkit studio session auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := studiostore.NewGormRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
@@ -765,8 +921,8 @@ func newDBListingSubscriptionRepository(cfg *config.DatabaseConfig, logger *logr
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := listingsubscription.AutoMigrateRepository(db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit subscription auto-migrate failed: %w", err)
+	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
+		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingsubscription.NewGormRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }

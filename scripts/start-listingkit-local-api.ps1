@@ -179,6 +179,8 @@ if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force 
 
 $env:TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY = "1"
 $env:TASK_PROCESSOR_BROWSER_PROXYSERVER = ""
+$env:TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE = "false"
+$env:TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE = "false"
 Initialize-ListingKitObjectStorageEnvFromK8s
 
 Write-Host "Building local product-listing-api..." -ForegroundColor Cyan
@@ -228,6 +230,8 @@ Write-Host "  stdout: $stdoutLog"
 Write-Host "  stderr: $stderrLog"
 Write-Host "  shein proxy: ignored for this local process (TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY=1)"
 Write-Host "  browser proxy: cleared for this local process (TASK_PROCESSOR_BROWSER_PROXYSERVER='')"
+Write-Host "  api runtime auto-migrate: disabled for this local process (TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false)"
+Write-Host "  listingkit auto-migrate: disabled for this local process (TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE=false)"
 Write-Host ""
 Write-Host "Stop command:" -ForegroundColor Yellow
 Write-Host "  Stop-Process -Id $($process.Id)"
