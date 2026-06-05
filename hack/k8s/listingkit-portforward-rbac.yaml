@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: allow-listingkit-portforward
+  namespace: yudao-cloud
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/portforward"]
+  verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: allow-listingkit-portforward-for-k3s-cloud-controller-manager
+  namespace: yudao-cloud
+subjects:
+- kind: User
+  name: k3s-cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: allow-listingkit-portforward
+  apiGroup: rbac.authorization.k8s.io
