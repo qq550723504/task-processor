@@ -5,6 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   executeSheinActivityEnrollment,
   getSheinActivityCandidates,
+  getSheinActivityEnrollmentRuns,
+  getSheinEnrollmentDashboard,
+  getSheinEnrollmentStoreSummary,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
@@ -14,12 +17,34 @@ import {
 import { listingKitKeys } from "@/lib/query/keys";
 import type {
   SheinActivityCandidateQuery,
+  SheinEnrollmentRunQuery,
+  SheinEnrollmentSummaryQuery,
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
   SheinReviewActivityCandidateInput,
   SheinSyncedProductQuery,
   SheinSyncTriggerMode,
 } from "@/lib/types/listingkit/shein-enrollment";
+
+export function useSheinEnrollmentDashboard(
+  query: SheinEnrollmentSummaryQuery,
+) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinEnrollmentDashboard(query),
+    queryFn: () => getSheinEnrollmentDashboard(query),
+  });
+}
+
+export function useSheinEnrollmentStoreSummary(
+  storeId: number,
+  query: SheinEnrollmentSummaryQuery,
+) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinEnrollmentStoreSummary(storeId, query),
+    queryFn: () => getSheinEnrollmentStoreSummary(storeId, query),
+    enabled: Number.isFinite(storeId) && storeId > 0,
+  });
+}
 
 export function useSheinSyncedProducts(
   storeId: number,
@@ -40,6 +65,17 @@ export function useSheinActivityCandidates(
     queryKey: listingKitKeys.sheinEnrollmentCandidates(storeId, query),
     queryFn: () => getSheinActivityCandidates(storeId, query),
     enabled: Number.isFinite(storeId) && storeId > 0 && query.activity_type.trim().length > 0,
+  });
+}
+
+export function useSheinActivityEnrollmentRuns(
+  storeId: number,
+  query: SheinEnrollmentRunQuery,
+) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinEnrollmentRuns(storeId, query),
+    queryFn: () => getSheinActivityEnrollmentRuns(storeId, query),
+    enabled: Number.isFinite(storeId) && storeId > 0,
   });
 }
 

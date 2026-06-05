@@ -5,9 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-workbench";
 
 const mocks = vi.hoisted(() => ({
-  getTenantListingStores: vi.fn(),
+  useSheinEnrollmentStoreSummary: vi.fn(),
   useSheinSyncedProducts: vi.fn(),
   useSheinActivityCandidates: vi.fn(),
+  useSheinActivityEnrollmentRuns: vi.fn(),
   useTriggerSheinStoreSync: vi.fn(),
   useRefreshSheinActivityCandidates: vi.fn(),
   useUpdateSheinSyncedProductCost: vi.fn(),
@@ -15,13 +16,13 @@ const mocks = vi.hoisted(() => ({
   useExecuteSheinActivityEnrollment: vi.fn(),
 }));
 
-vi.mock("@/lib/api/tenant-stores", () => ({
-  getTenantListingStores: (...args: unknown[]) => mocks.getTenantListingStores(...args),
-}));
-
 vi.mock("@/lib/query/use-shein-enrollment", () => ({
+  useSheinEnrollmentStoreSummary: (...args: unknown[]) =>
+    mocks.useSheinEnrollmentStoreSummary(...args),
   useSheinSyncedProducts: (...args: unknown[]) => mocks.useSheinSyncedProducts(...args),
   useSheinActivityCandidates: (...args: unknown[]) => mocks.useSheinActivityCandidates(...args),
+  useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
+    mocks.useSheinActivityEnrollmentRuns(...args),
   useTriggerSheinStoreSync: (...args: unknown[]) => mocks.useTriggerSheinStoreSync(...args),
   useRefreshSheinActivityCandidates: (...args: unknown[]) => mocks.useRefreshSheinActivityCandidates(...args),
   useUpdateSheinSyncedProductCost: (...args: unknown[]) => mocks.useUpdateSheinSyncedProductCost(...args),
@@ -38,22 +39,20 @@ function resolvedMutation() {
 
 describe("SheinEnrollmentStoreWorkbench", () => {
   it("defaults to the candidates tab and carries activityType in links", async () => {
-    mocks.getTenantListingStores.mockResolvedValue({
-      items: [
-        {
-          id: 12,
-          name: "SHEIN US",
-          username: "shein-us",
+    mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
+      data: {
+        summary: {
+          store_id: 12,
+          store_name: "SHEIN US",
+          store_username: "shein-us",
           platform: "SHEIN",
           region: "US",
         },
-      ],
-      total: 1,
-      page: 1,
-      page_size: 100,
+      },
     });
     mocks.useSheinSyncedProducts.mockReturnValue({ data: { items: [] }, isLoading: false });
     mocks.useSheinActivityCandidates.mockReturnValue({ data: { items: [] }, isLoading: false });
+    mocks.useSheinActivityEnrollmentRuns.mockReturnValue({ data: { items: [] }, isLoading: false });
     mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
     mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
     mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());

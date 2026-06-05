@@ -322,6 +322,45 @@ func (r *MemSheinSyncRepository) UpdateEnrollmentRun(_ context.Context, run *lis
 	return nil
 }
 
+func (r *MemSheinSyncRepository) ListEnrollmentRuns(_ context.Context, query *listingkit.SheinEnrollmentRunQuery) ([]listingkit.SheinActivityEnrollmentRunRecord, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]listingkit.SheinActivityEnrollmentRunRecord, 0, len(r.enrollmentRuns))
+	for _, row := range r.enrollmentRuns {
+		if !matchesSheinEnrollmentRunQuery(row, query) {
+			continue
+		}
+		items = append(items, cloneSheinEnrollmentRunRecord(row))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := items[i].StartedAt
+		right := items[j].StartedAt
+		switch {
+		case left == nil && right != nil:
+			return false
+		case left != nil && right == nil:
+			return true
+		case left != nil && right != nil && !left.Equal(*right):
+			return left.After(*right)
+		default:
+			return items[i].ID > items[j].ID
+		}
+	})
+
+	total := int64(len(items))
+	page, pageSize := sheinEnrollmentRunQueryPage(query)
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return []listingkit.SheinActivityEnrollmentRunRecord{}, total, nil
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], total, nil
+}
+
 func (r *MemSheinSyncRepository) SaveEnrollmentItems(_ context.Context, items []*listingkit.SheinActivityEnrollmentItemRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -431,6 +470,28 @@ func matchesSheinActivityCandidateQuery(row listingkit.SheinActivityCandidateRec
 		if !found {
 			return false
 		}
+	}
+	return true
+}
+
+func matchesSheinEnrollmentRunQuery(row listingkit.SheinActivityEnrollmentRunRecord, query *listingkit.SheinEnrollmentRunQuery) bool {
+	if query == nil {
+		return true
+	}
+	if query.TenantID > 0 && row.TenantID != query.TenantID {
+		return false
+	}
+	if query.StoreID > 0 && row.StoreID != query.StoreID {
+		return false
+	}
+	if query.ActivityType != "" && row.ActivityType != query.ActivityType {
+		return false
+	}
+	if query.ActivityKey != "" && row.ActivityKey != query.ActivityKey {
+		return false
+	}
+	if query.Status != nil && row.Status != *query.Status {
+		return false
 	}
 	return true
 }

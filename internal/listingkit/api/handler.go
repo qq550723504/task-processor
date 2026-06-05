@@ -23,9 +23,11 @@ type handler struct {
 	studioSessionService       studioSessionAsyncJobService
 	uploadedImageDeleteService uploadedImageDeleteService
 	storeAdminService          listingkit.StoreAdminService
+	storeRepository            listingadmin.StoreRepository
 	sheinSyncService           listingkit.SheinSyncService
 	sheinCandidateService      listingkit.SheinCandidateService
 	sheinEnrollmentService     listingkit.SheinEnrollmentService
+	sheinSyncRepository        listingkit.SheinSyncRepository
 	studioAsyncJobs            *studioAsyncJobStore
 	initErr                    error
 	adminHandlers
@@ -192,6 +194,12 @@ func WithSheinSyncServices(
 		h.sheinSyncService = syncService
 		h.sheinCandidateService = candidateService
 		h.sheinEnrollmentService = enrollmentService
+	})
+}
+
+func WithSheinSyncRepository(repo listingkit.SheinSyncRepository) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.sheinSyncRepository = repo
 	})
 }
 

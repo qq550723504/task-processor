@@ -4,6 +4,9 @@ import { apiRequest } from "@/lib/api/client";
 import {
   executeSheinActivityEnrollment,
   getSheinActivityCandidates,
+  getSheinActivityEnrollmentRuns,
+  getSheinEnrollmentDashboard,
+  getSheinEnrollmentStoreSummary,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
@@ -37,6 +40,22 @@ describe("shein enrollment api", () => {
       {
         method: "POST",
         body: {},
+      },
+    );
+  });
+
+  it("routes dashboard and store summary APIs through the listingkit shein sync endpoints", async () => {
+    await getSheinEnrollmentDashboard({ activity_type: "PROMOTION" });
+    await getSheinEnrollmentStoreSummary(12, { activity_type: "PROMOTION" });
+
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(1, "/shein-sync/dashboard", {
+      query: { activity_type: "PROMOTION" },
+    });
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      2,
+      "/shein-sync/stores/12/summary",
+      {
+        query: { activity_type: "PROMOTION" },
       },
     );
   });
@@ -103,6 +122,12 @@ describe("shein enrollment api", () => {
       trigger_mode: "manual_confirmed",
       candidate_ids: [66, 67],
     });
+    await getSheinActivityEnrollmentRuns(12, {
+      activity_type: "flash_sale",
+      activity_key: "flash_sale#12",
+      page: 1,
+      page_size: 20,
+    });
 
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       1,
@@ -149,6 +174,18 @@ describe("shein enrollment api", () => {
           activity_key: "flash_sale#12",
           trigger_mode: "manual_confirmed",
           candidate_ids: [66, 67],
+        },
+      },
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      5,
+      "/shein-sync/stores/12/enrollment-runs",
+      {
+        query: {
+          activity_type: "flash_sale",
+          activity_key: "flash_sale#12",
+          page: 1,
+          page_size: 20,
         },
       },
     );

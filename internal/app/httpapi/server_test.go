@@ -882,8 +882,16 @@ func (s *stubListingKitHandler) ListSimpleTenantStores(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []any{}})
 }
 
+func (s *stubListingKitHandler) ListSheinEnrollmentDashboard(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
 func (s *stubListingKitHandler) TriggerSheinStoreSync(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"job": gin.H{"status": "queued"}})
+}
+
+func (s *stubListingKitHandler) GetSheinEnrollmentStoreSummary(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"summary": gin.H{"store_id": c.Param("store_id")}})
 }
 
 func (s *stubListingKitHandler) ListSheinSyncedProducts(c *gin.Context) {
@@ -908,6 +916,10 @@ func (s *stubListingKitHandler) ReviewSheinActivityCandidate(c *gin.Context) {
 
 func (s *stubListingKitHandler) ExecuteSheinActivityEnrollment(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"run": gin.H{"status": "queued"}})
+}
+
+func (s *stubListingKitHandler) ListSheinActivityEnrollmentRuns(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
 }
 
 type stubPromptTemplateHandler struct{}

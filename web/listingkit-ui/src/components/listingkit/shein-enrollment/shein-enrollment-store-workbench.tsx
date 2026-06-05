@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import {
   parseSheinActivityType,
@@ -16,12 +15,13 @@ import { SheinEnrollmentRunsTable } from "@/components/listingkit/shein-enrollme
 import { SheinEnrollmentStoreHeader } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-header";
 import { SheinSyncedProductsTable } from "@/components/listingkit/shein-enrollment/shein-synced-products-table";
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
-import { getTenantListingStores } from "@/lib/api/tenant-stores";
 import {
   useExecuteSheinActivityEnrollment,
   useRefreshSheinActivityCandidates,
   useReviewSheinActivityCandidate,
   useSheinActivityCandidates,
+  useSheinActivityEnrollmentRuns,
+  useSheinEnrollmentStoreSummary,
   useSheinSyncedProducts,
   useTriggerSheinStoreSync,
   useUpdateSheinSyncedProductCost,
@@ -41,20 +41,9 @@ export function SheinEnrollmentStoreWorkbench({
     parseSheinActivityType(initialActivityType),
   );
   const [productKeyword, setProductKeyword] = useState("");
-
-  const stores = useQuery({
-    queryKey: ["listingkit", "tenant-stores", "shein-enrollment-workbench"],
-    queryFn: () =>
-      getTenantListingStores({
-        page: 1,
-        page_size: 100,
-        platform: "SHEIN",
-      }),
+  const summary = useSheinEnrollmentStoreSummary(storeId, {
+    activity_type: activityType,
   });
-  const store = useMemo(
-    () => (stores.data?.items ?? []).find((item) => item.id === storeId),
-    [storeId, stores.data?.items],
-  );
 
   const products = useSheinSyncedProducts(storeId, {
     skc_name: productKeyword || undefined,
@@ -71,6 +60,11 @@ export function SheinEnrollmentStoreWorkbench({
   const updateCostMutation = useUpdateSheinSyncedProductCost(storeId);
   const reviewMutation = useReviewSheinActivityCandidate(storeId);
   const enrollMutation = useExecuteSheinActivityEnrollment(storeId);
+  const runs = useSheinActivityEnrollmentRuns(storeId, {
+    activity_type: activityType,
+    page: 1,
+    page_size: 100,
+  });
 
   return (
     <ListingKitPageShell backgroundClassName="overflow-hidden rounded-lg bg-zinc-50" contentClassName="gap-5 px-4 py-4 sm:px-6 sm:py-6">
@@ -79,7 +73,7 @@ export function SheinEnrollmentStoreWorkbench({
           SHEIN 活动报名
         </Link>
         <span>/</span>
-        <span>{store?.name || `店铺 ${storeId}`}</span>
+        <span>{summary.data?.summary?.store_name || `店铺 ${storeId}`}</span>
       </div>
 
       <SheinEnrollmentStoreHeader
@@ -90,7 +84,7 @@ export function SheinEnrollmentStoreWorkbench({
         }
         onSync={() => void syncMutation.mutateAsync({ trigger_mode: "manual" })}
         refreshPending={refreshMutation.isPending}
-        store={store}
+        summary={summary.data?.summary}
         syncPending={syncMutation.isPending}
       />
 
@@ -171,7 +165,12 @@ export function SheinEnrollmentStoreWorkbench({
         />
       ) : null}
 
-      {tab === "runs" ? <SheinEnrollmentRunsTable /> : null}
+      {tab === "runs" ? (
+        <SheinEnrollmentRunsTable
+          isLoading={runs.isLoading}
+          items={runs.data?.items ?? []}
+        />
+      ) : null}
     </ListingKitPageShell>
   );
 }

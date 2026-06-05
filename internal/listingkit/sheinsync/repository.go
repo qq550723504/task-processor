@@ -37,6 +37,16 @@ type SheinActivityCandidateQuery struct {
 	PageSize         int
 }
 
+type SheinEnrollmentRunQuery struct {
+	TenantID     int64
+	StoreID      int64
+	ActivityType string
+	ActivityKey  string
+	Status       *SheinEnrollmentRunStatus
+	Page         int
+	PageSize     int
+}
+
 type SheinSyncedProductRepository interface {
 	UpsertSyncedProducts(ctx context.Context, records []*SheinSyncedProductRecord) error
 	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
@@ -57,6 +67,7 @@ type SheinActivityCandidateRepository interface {
 type SheinActivityEnrollmentRunRepository interface {
 	CreateEnrollmentRun(ctx context.Context, run *SheinActivityEnrollmentRunRecord) error
 	UpdateEnrollmentRun(ctx context.Context, run *SheinActivityEnrollmentRunRecord) error
+	ListEnrollmentRuns(ctx context.Context, query *SheinEnrollmentRunQuery) ([]SheinActivityEnrollmentRunRecord, int64, error)
 }
 
 type SheinActivityEnrollmentItemRepository interface {

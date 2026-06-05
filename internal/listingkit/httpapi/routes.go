@@ -195,13 +195,16 @@ type studioBatchRunRouteHandler interface {
 }
 
 type sheinSyncRouteHandler interface {
+	ListSheinEnrollmentDashboard(c *gin.Context)
 	TriggerSheinStoreSync(c *gin.Context)
+	GetSheinEnrollmentStoreSummary(c *gin.Context)
 	ListSheinSyncedProducts(c *gin.Context)
 	UpdateSheinSyncedProductCost(c *gin.Context)
 	RefreshSheinActivityCandidates(c *gin.Context)
 	ListSheinActivityCandidates(c *gin.Context)
 	ReviewSheinActivityCandidate(c *gin.Context)
 	ExecuteSheinActivityEnrollment(c *gin.Context)
+	ListSheinActivityEnrollmentRuns(c *gin.Context)
 }
 
 type RouteHandler interface {
@@ -443,12 +446,15 @@ func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler TaskRoute
 
 func appendSheinSyncRouteDescriptors(routes []httproute.Descriptor, handler sheinSyncRouteHandler) []httproute.Descriptor {
 	return append(routes,
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/dashboard", Module: "listing-kit", Handler: handler.ListSheinEnrollmentDashboard},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/sync", Module: "listing-kit", Handler: handler.TriggerSheinStoreSync},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/summary", Module: "listing-kit", Handler: handler.GetSheinEnrollmentStoreSummary},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/products", Module: "listing-kit", Handler: handler.ListSheinSyncedProducts},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/shein-sync/products/:id/cost", Module: "listing-kit", Handler: handler.UpdateSheinSyncedProductCost},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/candidates/refresh", Module: "listing-kit", Handler: handler.RefreshSheinActivityCandidates},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/candidates", Module: "listing-kit", Handler: handler.ListSheinActivityCandidates},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/shein-sync/candidates/:id/review", Module: "listing-kit", Handler: handler.ReviewSheinActivityCandidate},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/enrollments", Module: "listing-kit", Handler: handler.ExecuteSheinActivityEnrollment},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/enrollment-runs", Module: "listing-kit", Handler: handler.ListSheinActivityEnrollmentRuns},
 	)
 }

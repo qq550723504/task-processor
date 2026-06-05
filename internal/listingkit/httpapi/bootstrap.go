@@ -58,6 +58,7 @@ type serviceBundleRuntime struct {
 	temporalWorkerService  TemporalWorkerService
 	taskRepository         listingkit.Repository
 	service                moduleService
+	sheinSyncRepository    listingkit.SheinSyncRepository
 	sheinSyncService       listingkit.SheinSyncService
 	sheinCandidateService  listingkit.SheinCandidateService
 	sheinEnrollmentService listingkit.SheinEnrollmentService
@@ -505,6 +506,7 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 			temporalWorkerService:  workerService,
 			taskRepository:         repositories.taskRepository,
 			service:                moduleSvc,
+			sheinSyncRepository:    repositories.sheinSyncRepository,
 			sheinSyncService:       runtimeServices.syncService,
 			sheinCandidateService:  runtimeServices.candidateService,
 			sheinEnrollmentService: runtimeServices.enrollmentService,
@@ -517,6 +519,7 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
 		listingkitapi.WithDependencies(runtime.handlerDependencies),
+		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),
 	}
 }

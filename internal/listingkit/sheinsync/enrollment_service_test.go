@@ -414,6 +414,15 @@ func (r *sheinEnrollmentRepoStub) UpdateEnrollmentRun(_ context.Context, run *Sh
 	return nil
 }
 
+func (r *sheinEnrollmentRepoStub) ListEnrollmentRuns(_ context.Context, _ *SheinEnrollmentRunQuery) ([]SheinActivityEnrollmentRunRecord, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	items := append([]SheinActivityEnrollmentRunRecord(nil), r.createdRuns...)
+	items = append(items, r.updatedRuns...)
+	return items, int64(len(items)), nil
+}
+
 func (r *sheinEnrollmentRepoStub) SaveEnrollmentItems(_ context.Context, items []*SheinActivityEnrollmentItemRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

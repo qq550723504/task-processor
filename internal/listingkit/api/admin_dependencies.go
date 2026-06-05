@@ -40,8 +40,12 @@ func withCatalogAdminDependencies(deps AdminHandlerDependencies) HandlerOption {
 }
 
 func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
-	return withAdminDependency(repo, func(repo listingadmin.StoreRepository, admin *adminHandlers) {
-		admin.storeHandler = listingadmin.NewStoreHandler(repo)
+	return withHandlerState(func(h *handler) {
+		if repo == nil {
+			return
+		}
+		h.storeRepository = repo
+		h.adminHandlers.storeHandler = listingadmin.NewStoreHandler(repo)
 	})
 }
 

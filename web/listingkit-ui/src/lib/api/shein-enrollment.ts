@@ -5,6 +5,11 @@ import type {
   ReviewSheinActivityCandidateResponse,
   SheinActivityCandidateListResponse,
   SheinActivityCandidateQuery,
+  SheinEnrollmentDashboardResponse,
+  SheinEnrollmentRunListResponse,
+  SheinEnrollmentRunQuery,
+  SheinEnrollmentStoreSummaryResponse,
+  SheinEnrollmentSummaryQuery,
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
   SheinReviewActivityCandidateInput,
@@ -14,6 +19,14 @@ import type {
   SheinUpdateSyncedProductCostInput,
   TriggerSheinStoreSyncResponse,
 } from "@/lib/types/listingkit/shein-enrollment";
+
+export async function getSheinEnrollmentDashboard(
+  query: SheinEnrollmentSummaryQuery = {},
+): Promise<SheinEnrollmentDashboardResponse> {
+  return apiRequest<SheinEnrollmentDashboardResponse>("/shein-sync/dashboard", {
+    query,
+  });
+}
 
 export async function triggerSheinStoreSync(
   storeId: number,
@@ -34,6 +47,18 @@ export async function getSheinSyncedProducts(
 ): Promise<SheinSyncedProductListResponse> {
   return apiRequest<SheinSyncedProductListResponse>(
     `/shein-sync/stores/${storeId}/products`,
+    {
+      query,
+    },
+  );
+}
+
+export async function getSheinEnrollmentStoreSummary(
+  storeId: number,
+  query: SheinEnrollmentSummaryQuery = {},
+): Promise<SheinEnrollmentStoreSummaryResponse> {
+  return apiRequest<SheinEnrollmentStoreSummaryResponse>(
+    `/shein-sync/stores/${storeId}/summary`,
     {
       query,
     },
@@ -100,6 +125,18 @@ export async function executeSheinActivityEnrollment(
     {
       method: "POST",
       body: input,
+    },
+  );
+}
+
+export async function getSheinActivityEnrollmentRuns(
+  storeId: number,
+  query: SheinEnrollmentRunQuery,
+): Promise<SheinEnrollmentRunListResponse> {
+  return apiRequest<SheinEnrollmentRunListResponse>(
+    `/shein-sync/stores/${storeId}/enrollment-runs`,
+    {
+      query,
     },
   );
 }

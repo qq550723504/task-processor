@@ -535,6 +535,10 @@ func (r *sheinSyncServiceRepoStub) UpdateEnrollmentRun(_ context.Context, _ *She
 	return nil
 }
 
+func (r *sheinSyncServiceRepoStub) ListEnrollmentRuns(_ context.Context, _ *SheinEnrollmentRunQuery) ([]SheinActivityEnrollmentRunRecord, int64, error) {
+	return nil, 0, nil
+}
+
 func (r *sheinSyncServiceRepoStub) SaveEnrollmentItems(_ context.Context, _ []*SheinActivityEnrollmentItemRecord) error {
 	return nil
 }

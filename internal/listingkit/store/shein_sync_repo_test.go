@@ -241,6 +241,32 @@ func TestSheinSyncRepositoryListMethodsHandleNilQueryWithDefaultPagination(t *te
 			if len(jobs) != 20 {
 				t.Fatalf("ListSyncJobs(nil) len = %d, want 20 default page size", len(jobs))
 			}
+
+			for i := 0; i < 25; i++ {
+				run := &listingkit.SheinActivityEnrollmentRunRecord{
+					TenantID:     1,
+					StoreID:      int64(100 + i),
+					ActivityType: "PROMOTION",
+					ActivityKey:  "PROMOTION:1:101",
+					TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+					Status:       listingkit.SheinEnrollmentRunStatusSucceeded,
+					StartedAt:    sheinTimePtr(startedAt.Add(time.Duration(i) * time.Minute)),
+				}
+				if err := harness.repo.CreateEnrollmentRun(ctx, run); err != nil {
+					t.Fatalf("seed enrollment run %d: %v", i, err)
+				}
+			}
+
+			runs, total, err := harness.repo.ListEnrollmentRuns(ctx, nil)
+			if err != nil {
+				t.Fatalf("ListEnrollmentRuns(nil): %v", err)
+			}
+			if total != 25 {
+				t.Fatalf("ListEnrollmentRuns(nil) total = %d, want 25", total)
+			}
+			if len(runs) != 20 {
+				t.Fatalf("ListEnrollmentRuns(nil) len = %d, want 20 default page size", len(runs))
+			}
 		})
 	}
 }
@@ -668,6 +694,115 @@ func TestSheinSyncRepositorySaveEnrollmentItemsPreservesRunHistory(t *testing.T)
 			}
 			if savedItems[0].RunID == savedItems[1].RunID {
 				t.Fatalf("saved items share run id unexpectedly: %+v", savedItems)
+			}
+		})
+	}
+}
+
+func TestSheinSyncRepositoryListEnrollmentRunsSupportsFilteringAndPagination(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			startedAt := time.Date(2026, 6, 5, 9, 0, 0, 0, time.UTC)
+			failedStatus := listingkit.SheinEnrollmentRunStatusFailed
+
+			seedRuns := []*listingkit.SheinActivityEnrollmentRunRecord{
+				{
+					TenantID:     1,
+					StoreID:      101,
+					ActivityType: "PROMOTION",
+					ActivityKey:  "PROMOTION:1:101",
+					TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+					Status:       listingkit.SheinEnrollmentRunStatusSucceeded,
+					StartedAt:    sheinTimePtr(startedAt),
+				},
+				{
+					TenantID:     1,
+					StoreID:      101,
+					ActivityType: "PROMOTION",
+					ActivityKey:  "PROMOTION:1:101",
+					TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+					Status:       listingkit.SheinEnrollmentRunStatusFailed,
+					StartedAt:    sheinTimePtr(startedAt.Add(time.Minute)),
+				},
+				{
+					TenantID:     1,
+					StoreID:      101,
+					ActivityType: "TIME_LIMITED",
+					ActivityKey:  "TIME_LIMITED:1:101",
+					TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeAutoSchedule,
+					Status:       listingkit.SheinEnrollmentRunStatusSucceeded,
+					StartedAt:    sheinTimePtr(startedAt.Add(2 * time.Minute)),
+				},
+				{
+					TenantID:     2,
+					StoreID:      101,
+					ActivityType: "PROMOTION",
+					ActivityKey:  "PROMOTION:2:101",
+					TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+					Status:       listingkit.SheinEnrollmentRunStatusSucceeded,
+					StartedAt:    sheinTimePtr(startedAt.Add(3 * time.Minute)),
+				},
+			}
+			for _, run := range seedRuns {
+				if err := harness.repo.CreateEnrollmentRun(ctx, run); err != nil {
+					t.Fatalf("seed enrollment run: %v", err)
+				}
+			}
+
+			rows, total, err := harness.repo.ListEnrollmentRuns(ctx, &listingkit.SheinEnrollmentRunQuery{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				Status:       &failedStatus,
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("ListEnrollmentRuns(filter): %v", err)
+			}
+			if total != 1 || len(rows) != 1 {
+				t.Fatalf("ListEnrollmentRuns(filter) total=%d len=%d, want 1", total, len(rows))
+			}
+			if rows[0].Status != listingkit.SheinEnrollmentRunStatusFailed {
+				t.Fatalf("filtered run status = %q, want failed", rows[0].Status)
+			}
+
+			rows, total, err = harness.repo.ListEnrollmentRuns(ctx, &listingkit.SheinEnrollmentRunQuery{
+				TenantID: 1,
+				StoreID:  101,
+				Page:     1,
+				PageSize: 2,
+			})
+			if err != nil {
+				t.Fatalf("ListEnrollmentRuns(page1): %v", err)
+			}
+			if total != 3 || len(rows) != 2 {
+				t.Fatalf("ListEnrollmentRuns(page1) total=%d len=%d, want total 3 len 2", total, len(rows))
+			}
+			if rows[0].ActivityType != "TIME_LIMITED" {
+				t.Fatalf("page1 first activity_type = %q, want TIME_LIMITED", rows[0].ActivityType)
+			}
+
+			rows, total, err = harness.repo.ListEnrollmentRuns(ctx, &listingkit.SheinEnrollmentRunQuery{
+				TenantID: 1,
+				StoreID:  101,
+				Page:     2,
+				PageSize: 2,
+			})
+			if err != nil {
+				t.Fatalf("ListEnrollmentRuns(page2): %v", err)
+			}
+			if total != 3 || len(rows) != 1 {
+				t.Fatalf("ListEnrollmentRuns(page2) total=%d len=%d, want total 3 len 1", total, len(rows))
+			}
+			if rows[0].StartedAt == nil || !rows[0].StartedAt.Equal(startedAt) {
+				t.Fatalf("page2 run started_at = %v, want %v", rows[0].StartedAt, startedAt)
 			}
 		})
 	}

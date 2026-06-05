@@ -324,6 +324,27 @@ func (r *GormSheinSyncRepository) UpdateEnrollmentRun(ctx context.Context, run *
 	return nil
 }
 
+func (r *GormSheinSyncRepository) ListEnrollmentRuns(ctx context.Context, query *listingkit.SheinEnrollmentRunQuery) ([]listingkit.SheinActivityEnrollmentRunRecord, int64, error) {
+	page, pageSize := sheinEnrollmentRunQueryPage(query)
+	db := r.db.WithContext(ctx).Model(&listingkit.SheinActivityEnrollmentRunRecord{})
+	db = applySheinEnrollmentRunFilters(db, query)
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []listingkit.SheinActivityEnrollmentRunRecord
+	if err := db.
+		Order("started_at DESC, id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
 func (r *GormSheinSyncRepository) SaveEnrollmentItems(ctx context.Context, items []*listingkit.SheinActivityEnrollmentItemRecord) error {
 	for _, item := range items {
 		if item == nil {
@@ -409,6 +430,13 @@ func sheinActivityCandidateQueryPage(query *listingkit.SheinActivityCandidateQue
 	return normalizeSheinSyncPage(query.Page, query.PageSize)
 }
 
+func sheinEnrollmentRunQueryPage(query *listingkit.SheinEnrollmentRunQuery) (int, int) {
+	if query == nil {
+		return normalizeSheinSyncPage(0, 0)
+	}
+	return normalizeSheinSyncPage(query.Page, query.PageSize)
+}
+
 func applySheinSyncedProductFilters(db *gorm.DB, query *listingkit.SheinSyncedProductQuery) *gorm.DB {
 	if query == nil {
 		return db
@@ -477,6 +505,28 @@ func applySheinActivityCandidateFilters(db *gorm.DB, query *listingkit.SheinActi
 	}
 	if len(query.CandidateIDs) > 0 {
 		db = db.Where("id IN ?", query.CandidateIDs)
+	}
+	return db
+}
+
+func applySheinEnrollmentRunFilters(db *gorm.DB, query *listingkit.SheinEnrollmentRunQuery) *gorm.DB {
+	if query == nil {
+		return db
+	}
+	if query.TenantID > 0 {
+		db = db.Where("tenant_id = ?", query.TenantID)
+	}
+	if query.StoreID > 0 {
+		db = db.Where("store_id = ?", query.StoreID)
+	}
+	if query.ActivityType != "" {
+		db = db.Where("activity_type = ?", query.ActivityType)
+	}
+	if query.ActivityKey != "" {
+		db = db.Where("activity_key = ?", query.ActivityKey)
+	}
+	if query.Status != nil {
+		db = db.Where("status = ?", *query.Status)
 	}
 	return db
 }

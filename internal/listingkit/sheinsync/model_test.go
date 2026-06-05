@@ -19,6 +19,10 @@ func (sheinEnrollmentRunRepositoryStub) UpdateEnrollmentRun(_ context.Context, _
 	return nil
 }
 
+func (sheinEnrollmentRunRepositoryStub) ListEnrollmentRuns(_ context.Context, _ *SheinEnrollmentRunQuery) ([]SheinActivityEnrollmentRunRecord, int64, error) {
+	return nil, 0, nil
+}
+
 type sheinSyncRepositoryStub struct{}
 
 func (sheinSyncRepositoryStub) UpsertSyncedProducts(_ context.Context, _ []*SheinSyncedProductRecord) error {
@@ -59,6 +63,10 @@ func (sheinSyncRepositoryStub) CreateEnrollmentRun(_ context.Context, _ *SheinAc
 
 func (sheinSyncRepositoryStub) UpdateEnrollmentRun(_ context.Context, _ *SheinActivityEnrollmentRunRecord) error {
 	return nil
+}
+
+func (sheinSyncRepositoryStub) ListEnrollmentRuns(_ context.Context, _ *SheinEnrollmentRunQuery) ([]SheinActivityEnrollmentRunRecord, int64, error) {
+	return nil, 0, nil
 }
 
 func (sheinSyncRepositoryStub) SaveEnrollmentItems(_ context.Context, _ []*SheinActivityEnrollmentItemRecord) error {

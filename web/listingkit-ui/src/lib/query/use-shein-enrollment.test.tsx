@@ -7,14 +7,20 @@ import {
   useRefreshSheinActivityCandidates,
   useReviewSheinActivityCandidate,
   useSheinActivityCandidates,
+  useSheinActivityEnrollmentRuns,
+  useSheinEnrollmentDashboard,
+  useSheinEnrollmentStoreSummary,
   useSheinSyncedProducts,
   useTriggerSheinStoreSync,
   useUpdateSheinSyncedProductCost,
 } from "@/lib/query/use-shein-enrollment";
 
 const mocks = vi.hoisted(() => ({
+  getSheinEnrollmentDashboard: vi.fn(),
+  getSheinEnrollmentStoreSummary: vi.fn(),
   getSheinSyncedProducts: vi.fn(),
   getSheinActivityCandidates: vi.fn(),
+  getSheinActivityEnrollmentRuns: vi.fn(),
   triggerSheinStoreSync: vi.fn(),
   updateSheinSyncedProductCost: vi.fn(),
   refreshSheinActivityCandidates: vi.fn(),
@@ -23,10 +29,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api/shein-enrollment", () => ({
+  getSheinEnrollmentDashboard: (...args: unknown[]) =>
+    mocks.getSheinEnrollmentDashboard(...args),
+  getSheinEnrollmentStoreSummary: (...args: unknown[]) =>
+    mocks.getSheinEnrollmentStoreSummary(...args),
   getSheinSyncedProducts: (...args: unknown[]) =>
     mocks.getSheinSyncedProducts(...args),
   getSheinActivityCandidates: (...args: unknown[]) =>
     mocks.getSheinActivityCandidates(...args),
+  getSheinActivityEnrollmentRuns: (...args: unknown[]) =>
+    mocks.getSheinActivityEnrollmentRuns(...args),
   triggerSheinStoreSync: (...args: unknown[]) =>
     mocks.triggerSheinStoreSync(...args),
   updateSheinSyncedProductCost: (...args: unknown[]) =>
@@ -48,13 +60,24 @@ function createWrapper(client: QueryClient) {
 }
 
 describe("use-shein-enrollment", () => {
-  it("loads synced products and activity candidates through react query", async () => {
+  it("loads dashboard, store summary, products, candidates, and runs through react query", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    mocks.getSheinEnrollmentDashboard.mockResolvedValue({ items: [], total: 0 });
+    mocks.getSheinEnrollmentStoreSummary.mockResolvedValue({ summary: { store_id: 5 } });
     mocks.getSheinSyncedProducts.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinActivityCandidates.mockResolvedValue({ items: [], total: 0 });
+    mocks.getSheinActivityEnrollmentRuns.mockResolvedValue({ items: [], total: 0 });
 
+    const { result: dashboard } = renderHook(
+      () => useSheinEnrollmentDashboard({ activity_type: "PROMOTION" }),
+      { wrapper: createWrapper(client) },
+    );
+    const { result: summary } = renderHook(
+      () => useSheinEnrollmentStoreSummary(5, { activity_type: "PROMOTION" }),
+      { wrapper: createWrapper(client) },
+    );
     const { result: products } = renderHook(
       () =>
         useSheinSyncedProducts(5, {
@@ -73,16 +96,39 @@ describe("use-shein-enrollment", () => {
         }),
       { wrapper: createWrapper(client) },
     );
+    const { result: runs } = renderHook(
+      () =>
+        useSheinActivityEnrollmentRuns(5, {
+          activity_type: "flash_sale",
+          page: 1,
+          page_size: 20,
+        }),
+      { wrapper: createWrapper(client) },
+    );
 
+    await waitFor(() => expect(dashboard.current.isSuccess).toBe(true));
+    await waitFor(() => expect(summary.current.isSuccess).toBe(true));
     await waitFor(() => expect(products.current.isSuccess).toBe(true));
     await waitFor(() => expect(candidates.current.isSuccess).toBe(true));
+    await waitFor(() => expect(runs.current.isSuccess).toBe(true));
 
+    expect(mocks.getSheinEnrollmentDashboard).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+    });
+    expect(mocks.getSheinEnrollmentStoreSummary).toHaveBeenCalledWith(5, {
+      activity_type: "PROMOTION",
+    });
     expect(mocks.getSheinSyncedProducts).toHaveBeenCalledWith(5, {
       skc_name: "dress",
       page: 1,
       page_size: 20,
     });
     expect(mocks.getSheinActivityCandidates).toHaveBeenCalledWith(5, {
+      activity_type: "flash_sale",
+      page: 1,
+      page_size: 20,
+    });
+    expect(mocks.getSheinActivityEnrollmentRuns).toHaveBeenCalledWith(5, {
       activity_type: "flash_sale",
       page: 1,
       page_size: 20,

@@ -16,6 +16,19 @@ export type SheinActivityCandidateQuery = {
   page_size?: number;
 };
 
+export type SheinEnrollmentSummaryQuery = {
+  activity_type?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export type SheinEnrollmentRunQuery = {
+  activity_type?: string;
+  activity_key?: string;
+  page?: number;
+  page_size?: number;
+};
+
 export type SheinReviewActivityCandidateInput = {
   store_id: number;
   review_status:
@@ -187,6 +200,40 @@ export type SheinActivityEnrollmentRunRecord = {
   error_summary?: string;
   created_at?: string;
   updated_at?: string;
+};
+
+export type SheinEnrollmentStoreSummary = {
+  store_id?: number;
+  store_name?: string;
+  store_username?: string;
+  platform?: string;
+  region?: string;
+  enable_auto_listing?: boolean;
+  activity_type?: string;
+  synced_product_count?: number;
+  missing_cost_count?: number;
+  pending_review_count?: number;
+  ready_to_enroll_count?: number;
+  last_sync_at?: string;
+  last_sync_status?: string;
+  last_sync_job?: SheinSyncJobRecord;
+  last_enrollment_at?: string;
+  last_enrollment_run?: SheinActivityEnrollmentRunRecord;
+};
+
+export type SheinEnrollmentDashboardResponse = {
+  items?: SheinEnrollmentStoreSummary[];
+  total?: number;
+  activity_type?: string;
+};
+
+export type SheinEnrollmentStoreSummaryResponse = {
+  summary?: SheinEnrollmentStoreSummary;
+};
+
+export type SheinEnrollmentRunListResponse = {
+  items?: SheinActivityEnrollmentRunRecord[];
+  total?: number;
 };
 
 export type ExecuteSheinActivityEnrollmentResponse = {
