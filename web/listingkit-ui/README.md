@@ -96,6 +96,51 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Local Runtime Note
+
+在这套本地联调环境里，如果你发现浏览器打开 `http://localhost:3000`
+后一直刷新，先检查是不是 UI 开发服务本身出了运行态问题，而不是业务代码问题。
+
+这类现象通常表现为：
+
+- 页面路由能打开
+- 但 `/api/version`、`/api/zitadel-auth/session` 等本地 API route 返回 `404`
+- 登录门禁不断重试 session 校验
+- 最终看起来像“页面一直在自动刷新”
+
+建议先快速自检：
+
+```bash
+curl -i http://localhost:3000/api/version
+curl -i http://localhost:3000/api/zitadel-auth/session
+```
+
+预期：
+
+- `/api/version` 返回 `200`
+- `/api/zitadel-auth/session` 在未登录时返回 `401`
+
+如果它们返回 `404`，不要继续使用当前 `next dev` 进程联调。
+这更像是本地 `Next.js` 开发运行态问题，不是 ListingKit 或 SHEIN 业务代码问题。
+
+这时优先改用稳定模式：
+
+```bash
+npm run build
+PORT=3000 HOSTNAME=0.0.0.0 node .next/standalone/server.js
+```
+
+在 Windows PowerShell 下：
+
+```powershell
+$env:PORT='3000'
+$env:HOSTNAME='0.0.0.0'
+node .next/standalone/server.js
+```
+
+只要 `.env.local` 里的 ZITADEL 配置完整，稳定模式下访问 `/`
+的正常表现应该是跳到 `/login`，而不是无限刷新。
+
 ## Routes
 
 - `/` task launcher
