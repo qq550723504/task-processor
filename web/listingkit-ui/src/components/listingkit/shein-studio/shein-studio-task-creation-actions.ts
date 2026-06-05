@@ -2,7 +2,10 @@ import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { evaluateImportedGalleryDesigns } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
+import {
+  createSheinStudioBatchTasks,
+  type SheinStudioBatchTaskCreationResult,
+} from "@/lib/api/shein-studio-batches";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import {
   createGroupedSheinReviewTasks,
@@ -132,7 +135,14 @@ export function useSheinStudioTaskCreationAction({
     try {
       let created: SheinStudioCreatedTask[] = [];
       let creationWarnings: GroupedSheinTaskCreationWarning[] = [];
-      if (groupedSelections.length > 0) {
+      if (itemizedBatchContext) {
+        const result = await createSheinStudioBatchTasks(
+          itemizedBatchContext.batchId,
+          approved.map((design) => design.id),
+        );
+        created = result.createdTasks;
+        itemizedBatchContext.onCreated(result);
+      } else if (groupedSelections.length > 0) {
         const result = await createGroupedSheinReviewTasks({
               prompt,
               groupedImageMode,
