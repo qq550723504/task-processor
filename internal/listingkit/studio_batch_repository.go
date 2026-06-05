@@ -266,7 +266,7 @@ func (r *MemStudioBatchRepository) ReplaceStudioItemMaterializedDesigns(ctx cont
 			row.TargetGroupLabel = item.TargetGroupLabel
 		}
 		if row.ReviewStatus == "" {
-			row.ReviewStatus = StudioMaterializedDesignReviewStatusUnreviewed
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusApproved
 		}
 		r.designs[row.ID] = row
 	}
@@ -776,7 +776,7 @@ func (r *GormStudioBatchRepository) ReplaceStudioItemMaterializedDesigns(ctx con
 			row.TargetGroupLabel = item.TargetGroupLabel
 		}
 		if row.ReviewStatus == "" {
-			row.ReviewStatus = StudioMaterializedDesignReviewStatusUnreviewed
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusApproved
 		}
 		rows = append(rows, row)
 	}
@@ -1034,7 +1034,7 @@ func prepareStudioBatchGraph(ctx context.Context, batch *StudioBatchRecord, item
 		row.TenantID = batchRow.TenantID
 		row.UserID = batchRow.UserID
 		if row.ReviewStatus == "" {
-			row.ReviewStatus = StudioMaterializedDesignReviewStatusUnreviewed
+			row.ReviewStatus = StudioMaterializedDesignReviewStatusApproved
 		}
 		designRows = append(designRows, row)
 	}

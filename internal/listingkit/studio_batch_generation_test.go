@@ -194,6 +194,13 @@ func TestRecoverAwaitingMaterializationReusesAttemptResult(t *testing.T) {
 	if detail.DesignsByItem["item-1"][0].SourceAttemptID != "attempt-1" {
 		t.Fatalf("design source attempt = %q, want attempt-1", detail.DesignsByItem["item-1"][0].SourceAttemptID)
 	}
+	if detail.DesignsByItem["item-1"][0].ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
+		t.Fatalf(
+			"design review status = %q, want %q",
+			detail.DesignsByItem["item-1"][0].ReviewStatus,
+			StudioMaterializedDesignReviewStatusApproved,
+		)
+	}
 }
 
 func TestStartStudioBatchGenerationRerunRefreshesLatestSessionDraftInput(t *testing.T) {

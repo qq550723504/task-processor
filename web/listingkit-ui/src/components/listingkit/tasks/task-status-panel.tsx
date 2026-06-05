@@ -6,6 +6,14 @@ import { presentTaskStatus } from "@/components/listingkit/shared/status-present
 import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
+function hasFailedSDSChildTask(task?: ListingKitTaskResult | null) {
+  return (
+    task?.result?.child_tasks?.some(
+      (child) => child.kind === "sds_design_sync" && child.status === "failed",
+    ) ?? false
+  );
+}
+
 function primaryTaskError(task: ListingKitTaskResult) {
   const blockingIssue = task.result?.workflow_issues?.find(
     (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
@@ -65,11 +73,15 @@ export function TaskStatusPanel({
   onRetryChildTask?: (kind: string) => void;
   retryingChildTaskKind?: string | null;
 }) {
-  if (!task?.status || task.status === "completed") {
+  const keepsActionableFailureVisible =
+    task?.status === "completed" && hasFailedSDSChildTask(task);
+  if (!task?.status || (task.status === "completed" && !keepsActionableFailureVisible)) {
     return null;
   }
 
-  const presentation = presentTaskStatus(task.status);
+  const presentation = presentTaskStatus(
+    keepsActionableFailureVisible ? "needs_review" : task.status,
+  );
   const tone =
     presentation.tone === "danger"
       ? {

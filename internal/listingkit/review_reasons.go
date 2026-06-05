@@ -41,6 +41,11 @@ func reviewReasonsFromResult(result *ListingKitResult) []string {
 			return reasons
 		}
 	}
+	if result.PodExecution != nil && result.PodExecution.Status == podStatusFailedBlocking {
+		if reasons := normalizeReviewReasons([]string{result.PodExecution.FailureReason}); len(reasons) > 0 {
+			return reasons
+		}
+	}
 	return reviewReasonsFromPlatformPackages(result)
 }
 

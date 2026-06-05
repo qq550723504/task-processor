@@ -27,6 +27,12 @@ type bootstrapMaterial struct {
 	source    string
 }
 
+type authSnapshot struct {
+	accessToken string
+	outToken    string
+	cookies     []string
+}
+
 func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 	if c == nil || c.config == nil || !c.config.AuthBootstrap.HasSource() {
 		return false, nil
@@ -57,14 +63,30 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 		return true, nil
 	}
 
+	beforeLoginService := captureAuthSnapshot(c)
+	loginServiceMaterial, err := c.loadLoginServiceBootstrap(ctx)
+	if err != nil {
+		return appliedAny, err
+	}
+	appliedLoginServiceMaterial := false
+	if loginServiceMaterial != nil {
+		if c.applyBootstrapMaterial(loginServiceMaterial) {
+			appliedAny = true
+			appliedLoginServiceMaterial = true
+		}
+	}
+	if appliedLoginServiceMaterial && c.hasUsableAuthState() && authSnapshotChanged(beforeLoginService, captureAuthSnapshot(c)) {
+		return true, nil
+	}
+
 	if force {
 		if err := c.triggerLoginServiceLogin(ctx, true); err != nil {
 			return appliedAny, err
 		}
-	}
-	loginServiceMaterial, err := c.loadLoginServiceBootstrap(ctx)
-	if err != nil {
-		return appliedAny, err
+		loginServiceMaterial, err = c.loadLoginServiceBootstrap(ctx)
+		if err != nil {
+			return appliedAny, err
+		}
 	}
 	if loginServiceMaterial == nil && !force && c.hasLoginServiceBootstrap() {
 		if err := c.triggerLoginServiceLogin(ctx, false); err != nil {
@@ -194,6 +216,38 @@ func (c *Client) triggerLoginServiceLogin(ctx context.Context, force bool) error
 	}
 
 	return nil
+}
+
+func captureAuthSnapshot(c *Client) authSnapshot {
+	if c == nil {
+		return authSnapshot{}
+	}
+	snapshot := authSnapshot{}
+	if c.authState != nil {
+		snapshot.accessToken = strings.TrimSpace(c.authState.AccessToken)
+		snapshot.outToken = strings.TrimSpace(c.authState.OutToken)
+	}
+	for _, cookie := range c.cookies {
+		if cookie == nil || strings.TrimSpace(cookie.Name) == "" {
+			continue
+		}
+		snapshot.cookies = append(snapshot.cookies, cookie.Name+"="+cookie.Value)
+	}
+	return snapshot
+}
+
+func authSnapshotChanged(before, after authSnapshot) bool {
+	if before.accessToken != after.accessToken ||
+		before.outToken != after.outToken ||
+		len(before.cookies) != len(after.cookies) {
+		return true
+	}
+	for idx := range before.cookies {
+		if before.cookies[idx] != after.cookies[idx] {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) loginServiceHeadless() bool {

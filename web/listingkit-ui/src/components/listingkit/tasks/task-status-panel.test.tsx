@@ -65,6 +65,33 @@ describe("TaskStatusPanel", () => {
     expect(onRetryChildTask).toHaveBeenCalledWith("sds_design_sync");
   });
 
+  it("still shows retry for completed tasks when the SDS child task failed", () => {
+    const onRetryChildTask = vi.fn();
+
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "completed",
+          result: {
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                task_id: "child-1",
+                status: "failed",
+                error: "sync failed",
+              },
+            ],
+          },
+        }}
+        onRetryChildTask={onRetryChildTask}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重试子任务" }));
+
+    expect(onRetryChildTask).toHaveBeenCalledWith("sds_design_sync");
+  });
+
   it("renders failed workflow stages and blocking issues", () => {
     render(
       <TaskStatusPanel

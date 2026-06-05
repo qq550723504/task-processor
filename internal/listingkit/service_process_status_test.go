@@ -199,6 +199,34 @@ func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testi
 	}
 }
 
+func TestDeriveProcessTerminalStatusMarksNeedsReviewWhenRequiredPODExecutionFails(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		TaskID: "listingkit-sds-failed-1",
+		Summary: &GenerationSummary{
+			Warnings: []string{"SDS render failed for selected color variants: white"},
+		},
+		PodExecution: &PodExecutionSummary{
+			Provider:       podProviderSDS,
+			DependencyMode: podDependencyModeRequired,
+			Status:         podStatusFailedBlocking,
+			FailureReason:  "SDS render failed for selected color variants: white",
+		},
+	}
+
+	if status := deriveProcessTerminalStatus(result); status != TaskStatusNeedsReview {
+		t.Fatalf("deriveProcessTerminalStatus() = %q, want %q", status, TaskStatusNeedsReview)
+	}
+	applied := applyProcessTerminalResult(result, TaskStatusNeedsReview)
+	if applied.Status != string(TaskStatusNeedsReview) {
+		t.Fatalf("result status = %q, want %q", applied.Status, TaskStatusNeedsReview)
+	}
+	if got := applied.ReviewReasons; len(got) != 1 || !strings.Contains(got[0], "SDS render failed") {
+		t.Fatalf("review reasons = %#v, want SDS failure reason", got)
+	}
+}
+
 func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.T) {
 	t.Parallel()
 

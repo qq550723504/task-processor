@@ -3,10 +3,23 @@ package listingkit
 import "context"
 
 func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {
-	if result != nil && result.Summary != nil && result.Summary.NeedsReview {
+	if resultRequiresTerminalReview(result) {
 		return TaskStatusNeedsReview
 	}
 	return TaskStatusCompleted
+}
+
+func resultRequiresTerminalReview(result *ListingKitResult) bool {
+	if result == nil {
+		return false
+	}
+	if result.Summary != nil && result.Summary.NeedsReview {
+		return true
+	}
+	if result.PodExecution != nil && result.PodExecution.Status == podStatusFailedBlocking {
+		return true
+	}
+	return false
 }
 
 func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *ListingKitResult {

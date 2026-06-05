@@ -119,7 +119,7 @@ type StudioMaterializedDesignRecord struct {
 	TargetGroupKey   string                               `json:"target_group_key,omitempty" gorm:"type:varchar(255);index"`
 	TargetGroupLabel string                               `json:"target_group_label,omitempty" gorm:"type:varchar(255)"`
 	ImageURL         string                               `json:"image_url,omitempty" gorm:"type:text"`
-	ReviewStatus     StudioMaterializedDesignReviewStatus `json:"review_status" gorm:"type:varchar(32);index;not null;default:'unreviewed'"`
+	ReviewStatus     StudioMaterializedDesignReviewStatus `json:"review_status" gorm:"type:varchar(32);index;not null;default:'approved'"`
 	SortOrder        int                                  `json:"sort_order" gorm:"index:idx_listingkit_studio_materialized_designs_item_sort,priority:2;not null;default:0"`
 	ReviewNote       string                               `json:"review_note,omitempty" gorm:"type:text"`
 	CreatedAt        time.Time                            `json:"created_at"`

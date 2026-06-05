@@ -137,7 +137,7 @@ func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testi
 	if err != nil {
 		t.Fatalf("ListStudioMaterializedDesignsByIDs() error = %v", err)
 	}
-	if len(designs) != 2 || designs[0].ID != "design-1" || designs[0].ReviewStatus != StudioMaterializedDesignReviewStatusApproved || designs[1].ID != "design-2" || designs[1].ReviewStatus != StudioMaterializedDesignReviewStatusUnreviewed {
+	if len(designs) != 2 || designs[0].ID != "design-1" || designs[0].ReviewStatus != StudioMaterializedDesignReviewStatusApproved || designs[1].ID != "design-2" || designs[1].ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
 		t.Fatalf("ListStudioMaterializedDesignsByIDs() = %+v, want ordered review-status designs", designs)
 	}
 
@@ -426,7 +426,7 @@ func TestGormStudioBatchRepositoryOwnerScopeAndPublicAccessorsAndUpdate(t *testi
 	if err != nil {
 		t.Fatalf("ListStudioMaterializedDesignsByIDs() error = %v", err)
 	}
-	if len(designs) != 2 || designs[0].ID != "design-1" || designs[0].ReviewStatus != StudioMaterializedDesignReviewStatusApproved || designs[1].ID != "design-2" || designs[1].ReviewStatus != StudioMaterializedDesignReviewStatusUnreviewed {
+	if len(designs) != 2 || designs[0].ID != "design-1" || designs[0].ReviewStatus != StudioMaterializedDesignReviewStatusApproved || designs[1].ID != "design-2" || designs[1].ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
 		t.Fatalf("ListStudioMaterializedDesignsByIDs() = %+v, want ordered review-status designs", designs)
 	}
 
