@@ -9,6 +9,7 @@ describe("shouldPollTaskResult", () => {
     expect(shouldPollTaskResult("processing")).toBe(true);
     expect(shouldPollTaskResult("queued")).toBe(true);
     expect(shouldPollTaskResult("running")).toBe(true);
+    expect(shouldPollTaskResult("blocked_retryable")).toBe(true);
   });
 
   it("stops polling terminal tasks", () => {

@@ -15,6 +15,7 @@ import (
 
 type handler struct {
 	taskLifecycleService       listingkit.TaskLifecycleService
+	taskRecoveryService        listingkit.TaskRecoveryService
 	sdsBaselineWarmService     sdsBaselineWarmService
 	generationTaskService      listingkit.GenerationTaskService
 	childTaskRetryService      childTaskRetryService
@@ -217,6 +218,9 @@ func newHandlerWithDefaults(service HandlerService, studioAsyncJobs *studioAsync
 func (h *handler) attachOptionalServices(service HandlerService) {
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
+	}
+	if recoveryService, ok := any(service).(listingkit.TaskRecoveryService); ok {
+		h.taskRecoveryService = recoveryService
 	}
 	if sessionService, ok := service.(studioSessionAsyncJobService); ok {
 		h.studioSessionService = sessionService

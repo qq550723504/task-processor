@@ -32,6 +32,31 @@ describe("listingkit response schemas", () => {
       }),
     ).toMatchObject({ task_id: "task-1" });
 
+    expect(
+      parseTaskResultResponse({
+        task_id: "task-2",
+        status: "blocked_retryable",
+        retryable_block: {
+          reason_code: "worker_queue_backpressure",
+          reason_message: "Worker queue is temporarily full.",
+          blocked_at: "2026-06-06T04:00:00Z",
+          next_retry_at: "2026-06-06T04:15:00Z",
+          retry_attempts: 2,
+          max_auto_retry_attempts: 5,
+          recovery_scope: "task",
+          auto_resume_enabled: true,
+        },
+      }),
+    ).toMatchObject({
+      task_id: "task-2",
+      status: "blocked_retryable",
+      retryable_block: {
+        reason_code: "worker_queue_backpressure",
+        next_retry_at: "2026-06-06T04:15:00Z",
+        retry_attempts: 2,
+      },
+    });
+
     expect(() =>
       parseTaskResultResponse({ task_id: 123, status: "completed" }),
     ).toThrow("unexpected task result response");

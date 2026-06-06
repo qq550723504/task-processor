@@ -96,12 +96,18 @@ export function QueueTaskNavigation({ taskId }: { taskId: string }) {
   );
 }
 
+function canBulkRecoverBlockedTasks(task?: ListingKitTaskResult) {
+  return task?.status === "blocked_retryable";
+}
+
 export function QueueScreenBody({
   filters,
   onAction,
   onApplyFilters,
+  onBulkRecoverBlockedTasks,
   onChangePage,
   onExecuteAction,
+  bulkRecovering,
   onSelectNavigation,
   onSelectRecovery,
   queueData,
@@ -111,7 +117,9 @@ export function QueueScreenBody({
   filters: QueueFilterValue;
   onAction: (item: QueueItem) => void;
   onApplyFilters: (nextFilters: QueueFilterValue) => void;
+  onBulkRecoverBlockedTasks?: () => void;
   onChangePage: (page: number, pageSize?: number) => void;
+  bulkRecovering?: boolean;
   onExecuteAction: (request: ActionExecutionRequest) => void;
   onSelectRecovery: (descriptor: RecoveryDescriptor) => void;
   onSelectNavigation: (target?: NavigationTarget | null) => void;
@@ -130,7 +138,28 @@ export function QueueScreenBody({
 
   return (
     <div className="space-y-6">
-      <QueueTaskNavigation taskId={taskId} />
+      <div className="flex flex-col gap-3">
+        <QueueTaskNavigation taskId={taskId} />
+        {canBulkRecoverBlockedTasks(taskResult) ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-amber-900">检测到可恢复阻塞任务</p>
+              <p className="mt-1 text-sm text-amber-800">
+                如果依赖已经恢复，可以批量恢复当前已到重试时间的阻塞任务。
+              </p>
+            </div>
+            <Button
+              className="w-full sm:w-auto"
+              disabled={!onBulkRecoverBlockedTasks || bulkRecovering}
+              onClick={onBulkRecoverBlockedTasks}
+              type="button"
+              variant="secondary"
+            >
+              {bulkRecovering ? "恢复中..." : "批量恢复到期任务"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
       <WorkspaceHeader
         title={`任务队列 ${taskId}`}
         summary={

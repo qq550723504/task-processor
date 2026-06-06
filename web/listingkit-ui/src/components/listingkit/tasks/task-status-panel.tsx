@@ -64,13 +64,25 @@ function ruleLabel(kind?: string) {
   }
 }
 
+function blockedRetryableReason(task?: ListingKitTaskResult | null) {
+  return task?.retryable_block?.reason_message || primaryTaskError(task as ListingKitTaskResult);
+}
+
+function isBlockedRetryable(task?: ListingKitTaskResult | null) {
+  return task?.status === "blocked_retryable";
+}
+
 export function TaskStatusPanel({
   task,
+  onRecoverNow,
   onRetryChildTask,
+  recoveringNow,
   retryingChildTaskKind,
 }: {
   task?: ListingKitTaskResult | null;
+  onRecoverNow?: () => void;
   onRetryChildTask?: (kind: string) => void;
+  recoveringNow?: boolean;
   retryingChildTaskKind?: string | null;
 }) {
   const keepsActionableFailureVisible =
@@ -79,9 +91,13 @@ export function TaskStatusPanel({
     return null;
   }
 
-  const presentation = presentTaskStatus(
-    keepsActionableFailureVisible ? "needs_review" : task.status,
-  );
+  const presentation = isBlockedRetryable(task)
+    ? {
+        label: "等待依赖恢复",
+        title: "等待依赖恢复",
+        tone: "warning" as const,
+      }
+    : presentTaskStatus(keepsActionableFailureVisible ? "needs_review" : task.status);
   const tone =
     presentation.tone === "danger"
       ? {
@@ -102,7 +118,9 @@ export function TaskStatusPanel({
               "border border-emerald-200 bg-emerald-50 text-emerald-800",
           };
   const Icon = tone.icon;
-  const error = primaryTaskError(task);
+  const error = isBlockedRetryable(task)
+    ? blockedRetryableReason(task)
+    : primaryTaskError(task);
   const reviewReasons = extractTaskReviewReasons(task);
   const failedStages =
     task.result?.workflow_stages?.filter((stage) => stage.status === "failed") ?? [];
@@ -114,6 +132,8 @@ export function TaskStatusPanel({
   const updatedAt = formatTaskDate(task.result?.updated_at ?? task.completed_at);
   const taskIdentifier = task.task_id ?? task.result?.task_id;
   const storeResolution = task.result?.shein_store_resolution;
+  const retryableBlock = task.retryable_block;
+  const nextRetryAt = formatTaskDate(retryableBlock?.next_retry_at);
 
   return (
     <Card className="border-zinc-200 bg-white/90 p-5">
@@ -164,6 +184,54 @@ export function TaskStatusPanel({
                   已创建
                 </div>
                 <p className="text-sm text-zinc-700">{createdAt}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isBlockedRetryable(task) && retryableBlock ? (
+          <div className="grid gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                恢复原因
+              </div>
+              <p className="text-sm text-zinc-700">
+                {retryableBlock.reason_message ?? retryableBlock.reason_code ?? "等待上游依赖恢复"}
+              </p>
+            </div>
+            {nextRetryAt ? (
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  下次重试
+                </div>
+                <p className="text-sm text-zinc-700">{nextRetryAt}</p>
+              </div>
+            ) : null}
+            <div className="space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                自动恢复
+              </div>
+              <p className="text-sm text-zinc-700">
+                {retryableBlock.auto_retry_paused
+                  ? "已暂停"
+                  : retryableBlock.auto_resume_enabled
+                    ? "已开启"
+                    : "未开启"}
+              </p>
+            </div>
+            {onRecoverNow ? (
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  恢复操作
+                </div>
+                <Button
+                  disabled={recoveringNow}
+                  onClick={onRecoverNow}
+                  type="button"
+                  variant="secondary"
+                >
+                  {recoveringNow ? "恢复中..." : "立即恢复"}
+                </Button>
               </div>
             ) : null}
           </div>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -69,6 +70,30 @@ func (r *stubProcessorRepo) MarkNeedsReview(context.Context, string, *ListingKit
 	return nil
 }
 func (r *stubProcessorRepo) MarkFailed(context.Context, string, string) error { return nil }
+func (r *stubProcessorRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	if r.task == nil || r.task.ID != taskID {
+		return ErrTaskNotFound
+	}
+	r.task.Status = TaskStatusBlockedRetryable
+	r.task.RetryableBlock = block
+	r.task.Error = errorMsg
+	return nil
+}
+func (r *stubProcessorRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
+	return []Task{}, nil
+}
+func (r *stubProcessorRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, _ time.Time) error {
+	if r.task == nil || r.task.ID != taskID {
+		return ErrTaskNotFound
+	}
+	r.task.Status = TaskStatusPending
+	r.task.RetryableBlock = nil
+	r.task.Error = ""
+	return nil
+}
+func (r *stubProcessorRepo) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
+	return 0, nil
+}
 func (r *stubProcessorRepo) PrepareRetry(_ context.Context, taskID string) error {
 	r.prepareRetryCalls++
 	r.prepareRetryTaskID = taskID

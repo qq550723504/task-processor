@@ -85,6 +85,36 @@ func (r *stubSubmitRepo) MarkNeedsReview(ctx context.Context, taskID string, res
 func (r *stubSubmitRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return nil
 }
+func (r *stubSubmitRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.task == nil || r.task.ID != taskID {
+		return ErrTaskNotFound
+	}
+	r.task.Status = TaskStatusBlockedRetryable
+	r.task.RetryableBlock = block
+	r.task.Error = errorMsg
+	r.task.UpdatedAt = time.Now()
+	return nil
+}
+func (r *stubSubmitRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
+	return []Task{}, nil
+}
+func (r *stubSubmitRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.task == nil || r.task.ID != taskID {
+		return ErrTaskNotFound
+	}
+	r.task.Status = TaskStatusPending
+	r.task.RetryableBlock = nil
+	r.task.Error = ""
+	r.task.UpdatedAt = recoveredAt
+	return nil
+}
+func (r *stubSubmitRepo) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
+	return 0, nil
+}
 func (r *stubSubmitRepo) PrepareRetry(ctx context.Context, taskID string) error { return nil }
 func (r *stubSubmitRepo) IncrementRetryCount(ctx context.Context, taskID string) error {
 	return nil

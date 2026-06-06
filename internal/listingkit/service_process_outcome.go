@@ -1,6 +1,10 @@
 package listingkit
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
 func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {
 	if resultRequiresTerminalReview(result) {
@@ -33,11 +37,17 @@ func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *Li
 	return result
 }
 
-func (s *service) persistProcessFailure(ctx context.Context, taskID string, result *ListingKitResult, err error) {
+func (s *service) persistProcessFailure(ctx context.Context, taskID string, result *ListingKitResult, err error) error {
+	var persistErrors []error
 	if result != nil {
-		_ = s.repo.SaveTaskResult(ctx, taskID, result)
+		if saveErr := s.repo.SaveTaskResult(ctx, taskID, result); saveErr != nil {
+			persistErrors = append(persistErrors, fmt.Errorf("save partial result: %w", saveErr))
+		}
 	}
-	_ = s.repo.MarkFailed(ctx, taskID, err.Error())
+	if persistErr := persistClassifiedTaskFailure(ctx, s.repo, taskID, err.Error(), err); persistErr != nil {
+		persistErrors = append(persistErrors, fmt.Errorf("persist failure state: %w", persistErr))
+	}
+	return errors.Join(persistErrors...)
 }
 
 func (s *service) persistProcessSuccess(ctx context.Context, taskID string, result *ListingKitResult) error {

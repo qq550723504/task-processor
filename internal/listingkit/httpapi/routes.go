@@ -23,6 +23,8 @@ type TaskActionRouteHandler interface {
 	GetStudioAsyncJob(c *gin.Context)
 	RegenerateSheinDataImage(c *gin.Context)
 	GetTaskResult(c *gin.Context)
+	RecoverTaskNow(c *gin.Context)
+	BulkRecoverTasks(c *gin.Context)
 	GetTaskPreview(c *gin.Context)
 	GetTaskGenerationTasks(c *gin.Context)
 	GetTaskGenerationQueue(c *gin.Context)
@@ -420,6 +422,8 @@ func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler TaskRoute
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/sds/baselines/readiness", Module: "listing-kit", Handler: handler.GetSDSBaselineReadiness},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/sds/baselines/warm", Module: "listing-kit", Handler: handler.WarmSDSBaseline},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id", Module: "listing-kit", Handler: handler.GetTaskResult},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/recover", Module: "listing-kit", Handler: handler.RecoverTaskNow},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/recovery/recover", Module: "listing-kit", Handler: handler.BulkRecoverTasks},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/preview", Module: "listing-kit", Handler: handler.GetTaskPreview},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-tasks", Module: "listing-kit", Handler: handler.GetTaskGenerationTasks},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-queue", Module: "listing-kit", Handler: handler.GetTaskGenerationQueue},

@@ -92,6 +92,41 @@ describe("TaskStatusPanel", () => {
     expect(onRetryChildTask).toHaveBeenCalledWith("sds_design_sync");
   });
 
+  it("renders blocked retryable diagnostics and recover-now action", () => {
+    const onRecoverNow = vi.fn();
+
+    render(
+      <TaskStatusPanel
+        task={{
+          task_id: "task-123",
+          status: "blocked_retryable",
+          retryable_block: {
+            reason_code: "worker_queue_backpressure",
+            reason_message: "Worker queue is temporarily full.",
+            blocked_at: "2026-06-06T04:00:00Z",
+            next_retry_at: "2026-06-06T04:15:00Z",
+            retry_attempts: 2,
+            max_auto_retry_attempts: 5,
+            recovery_scope: "task",
+            auto_resume_enabled: true,
+          },
+        }}
+        onRecoverNow={onRecoverNow}
+      />,
+    );
+
+    expect(screen.getAllByText("等待依赖恢复").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Worker queue is temporarily full.").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("下次重试")).toBeInTheDocument();
+    expect(screen.getByText("自动恢复")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "立即恢复" }));
+
+    expect(onRecoverNow).toHaveBeenCalledTimes(1);
+  });
+
   it("renders failed workflow stages and blocking issues", () => {
     render(
       <TaskStatusPanel

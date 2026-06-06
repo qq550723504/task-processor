@@ -64,6 +64,21 @@ const taskResultSchema = z
     shein_latest_submission_status: z.string().optional(),
     shein_latest_submission_error: z.string().optional(),
     shein_submission_remote_status: z.string().optional(),
+    retryable_block: z
+      .object({
+        reason_code: z.string().optional(),
+        reason_message: z.string().optional(),
+        blocked_at: z.string().optional(),
+        last_retry_at: z.string().optional(),
+        next_retry_at: z.string().optional(),
+        retry_attempts: z.coerce.number().optional(),
+        max_auto_retry_attempts: z.coerce.number().optional(),
+        recovery_scope: z.string().optional(),
+        auto_resume_enabled: z.boolean().optional(),
+        auto_retry_paused: z.boolean().optional(),
+      })
+      .passthrough()
+      .optional(),
     result: taskResultDataSchema.optional(),
     error: z.string().optional(),
     review_reasons: z.array(z.string()).optional(),

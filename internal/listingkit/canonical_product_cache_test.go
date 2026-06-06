@@ -237,6 +237,42 @@ func (r *canonicalProductCacheTestRepo) MarkFailed(_ context.Context, taskID str
 	return nil
 }
 
+func (r *canonicalProductCacheTestRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	task.Status = TaskStatusBlockedRetryable
+	task.RetryableBlock = block
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *canonicalProductCacheTestRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
+	return []Task{}, nil
+}
+
+func (r *canonicalProductCacheTestRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	task.Status = TaskStatusPending
+	task.RetryableBlock = nil
+	task.Error = ""
+	task.UpdatedAt = recoveredAt
+	return nil
+}
+
+func (r *canonicalProductCacheTestRepo) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
+	return 0, nil
+}
+
 func (r *canonicalProductCacheTestRepo) PrepareRetry(_ context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

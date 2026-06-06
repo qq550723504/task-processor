@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"time"
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/catalog/canonical"
@@ -38,6 +39,14 @@ type Repository interface {
 	MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error
 	MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error
 	MarkFailed(ctx context.Context, taskID string, errorMsg string) error
+	MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error
+	ListRecoverableTasks(ctx context.Context, query *RecoverableTaskQuery) ([]Task, error)
+	RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error
+	// BulkRecoverBlockedTasks is a persistence-only repository helper that clears
+	// blocked state for due tasks. It does not submit recovered tasks back to the
+	// queue and must not be treated as the authoritative recovery flow.
+	// TaskRecoveryService owns the full recover-and-submit semantics.
+	BulkRecoverBlockedTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error)
 	PrepareRetry(ctx context.Context, taskID string) error
 	IncrementRetryCount(ctx context.Context, taskID string) error
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
@@ -81,6 +90,18 @@ type TaskLifecycleService interface {
 	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
 	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
 	RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error)
+}
+
+type TaskRecoveryService interface {
+	// RecoverTaskNow is the authoritative high-level recovery path. It validates
+	// task recoverability, performs repository state transitions, re-submits the
+	// task, and restores durable blocked/failed state if submission recovery
+	// persistence encounters errors. This path is intended for explicit user
+	// action and forces immediate recovery for blocked_retryable tasks without
+	// waiting for next_retry_at.
+	RecoverTaskNow(ctx context.Context, taskID string) (*Task, error)
+	RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error)
+	BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error)
 }
 
 type GenerationTaskService interface {
@@ -136,6 +157,7 @@ type WorkflowClientConfigurer interface {
 
 type Service interface {
 	TaskLifecycleService
+	TaskRecoveryService
 	GenerationTaskService
 	StudioBatchRunService
 	StudioMediaService

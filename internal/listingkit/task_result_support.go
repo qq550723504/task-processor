@@ -2,8 +2,25 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
+
+func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID string, errorMsg string, cause error) error {
+	if repo == nil {
+		return fmt.Errorf("repository is nil")
+	}
+	if block, ok := classifyRetryableTaskFailure(cause); ok {
+		if err := repo.MarkBlockedRetryable(ctx, taskID, block, errorMsg); err != nil {
+			return fmt.Errorf("mark blocked retryable: %w", err)
+		}
+		return nil
+	}
+	if err := repo.MarkFailed(ctx, taskID, errorMsg); err != nil {
+		return fmt.Errorf("mark failed: %w", err)
+	}
+	return nil
+}
 
 func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*ListingKitResult, error) {
 	if task == nil || task.Result == nil {
@@ -49,8 +66,9 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 			Error:     effectiveError,
 			CreatedAt: task.CreatedAt,
 		},
-		Result:        resultPayload,
-		ReviewReasons: reviewReasons,
+		Result:         resultPayload,
+		ReviewReasons:  reviewReasons,
+		RetryableBlock: cloneRetryableBlock(task.RetryableBlock),
 	}
 	if resultPayload != nil && resultPayload.Shein != nil {
 		applySheinSubmissionStatusFields(&result.SheinSubmissionStatusFields, resultPayload.Shein)

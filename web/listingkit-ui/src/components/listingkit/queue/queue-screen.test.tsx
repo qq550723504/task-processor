@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   useListingKitTaskResult: vi.fn(),
   useDispatchNavigation: vi.fn(() => ({ mutate: vi.fn() })),
   useExecuteAction: vi.fn(() => ({ mutate: vi.fn() })),
+  useBulkRecoverTasks: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -33,6 +34,10 @@ vi.mock("@/lib/query/use-dispatch", () => ({
 
 vi.mock("@/lib/query/use-action", () => ({
   useExecuteAction: () => mocks.useExecuteAction(),
+}));
+
+vi.mock("@/lib/query/use-task-recovery", () => ({
+  useBulkRecoverTasks: () => mocks.useBulkRecoverTasks(),
 }));
 
 describe("QueueScreen", () => {

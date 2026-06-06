@@ -101,6 +101,19 @@ export type ListingKitTaskResultData = {
   updated_at?: string;
 };
 
+export type RetryableBlock = {
+  reason_code?: string;
+  reason_message?: string;
+  blocked_at?: string;
+  last_retry_at?: string;
+  next_retry_at?: string;
+  retry_attempts?: number;
+  max_auto_retry_attempts?: number;
+  recovery_scope?: string;
+  auto_resume_enabled?: boolean;
+  auto_retry_paused?: boolean;
+};
+
 export type ListingKitTaskResult = {
   task_id?: string;
   tenant_id?: string;
@@ -110,10 +123,33 @@ export type ListingKitTaskResult = {
   shein_latest_submission_error?: string;
   shein_submission_remote_status?: string;
   result?: ListingKitTaskResultData;
+  retryable_block?: RetryableBlock;
   error?: string;
   review_reasons?: string[];
   created_at?: string;
   completed_at?: string;
+};
+
+export type RecoverTaskNowResponse = {
+  task?: {
+    id?: string;
+    tenant_id?: string;
+    status?: string;
+    retryable_block?: RetryableBlock;
+    error?: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+};
+
+export type BulkRecoverTasksRequest = {
+  due_before?: string;
+  recover_at?: string;
+  limit?: number;
+};
+
+export type BulkRecoverTasksResponse = {
+  recovered_count: number;
 };
 
 export type ListingKitTaskListQuery = {

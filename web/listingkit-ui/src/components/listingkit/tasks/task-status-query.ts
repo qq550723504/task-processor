@@ -3,6 +3,7 @@ export function shouldPollTaskResult(status?: string) {
     status === "pending" ||
     status === "processing" ||
     status === "queued" ||
-    status === "running"
+    status === "running" ||
+    status === "blocked_retryable"
   );
 }

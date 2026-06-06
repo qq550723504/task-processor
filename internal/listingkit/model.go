@@ -4,6 +4,8 @@ import "errors"
 
 var ErrTaskNotFound = errors.New("task not found")
 var ErrTaskNotPending = errors.New("task is not pending")
+var ErrTaskNotRecoverable = errors.New("task is not recoverable")
+var ErrTaskRecoveryUnavailable = errors.New("task recovery submitter is unavailable")
 var ErrGenerationTaskNotFound = errors.New("generation task not found")
 var ErrGenerationTaskNotRetryable = errors.New("generation task is not retryable")
 var ErrGenerationActionNotFound = errors.New("generation action not found")
@@ -20,9 +22,10 @@ var ErrInvalidSheinCategorySearchQuery = errors.New("invalid shein category sear
 type TaskStatus string
 
 const (
-	TaskStatusPending     TaskStatus = "pending"
-	TaskStatusProcessing  TaskStatus = "processing"
-	TaskStatusCompleted   TaskStatus = "completed"
-	TaskStatusNeedsReview TaskStatus = "needs_review"
-	TaskStatusFailed      TaskStatus = "failed"
+	TaskStatusPending          TaskStatus = "pending"
+	TaskStatusProcessing       TaskStatus = "processing"
+	TaskStatusCompleted        TaskStatus = "completed"
+	TaskStatusNeedsReview      TaskStatus = "needs_review"
+	TaskStatusFailed           TaskStatus = "failed"
+	TaskStatusBlockedRetryable TaskStatus = "blocked_retryable"
 )

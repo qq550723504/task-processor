@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useExecuteAction } from "@/lib/query/use-action";
 import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
+import { useRecoverTaskNow } from "@/lib/query/use-task-recovery";
 import {
   sheinSubmissionRemoteStatusLabel,
   sheinWorkflowStatusLabel,
@@ -78,6 +79,7 @@ export function TaskStatusScreen({
   const router = useRouter();
   const layerAction = useExecuteAction(taskId, {});
   const childTaskRetry = useRetryChildTask(taskId);
+  const taskRecovery = useRecoverTaskNow(taskId);
   const isTerminal =
     task?.status === "completed" ||
     task?.status === "failed" ||
@@ -147,6 +149,10 @@ export function TaskStatusScreen({
     });
   };
 
+  const handleRecoverTaskNow = () => {
+    taskRecovery.mutate();
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <Card className="p-6">
@@ -207,7 +213,9 @@ export function TaskStatusScreen({
 
       <TaskStatusPanel
         task={task}
+        onRecoverNow={handleRecoverTaskNow}
         onRetryChildTask={handleRetrySDSDesignSync}
+        recoveringNow={taskRecovery.isPending}
         retryingChildTaskKind={childTaskRetry.isPending ? "sds_design_sync" : null}
       />
       <ReviewReasonsCard task={task} taskId={taskId} />

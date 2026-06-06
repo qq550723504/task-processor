@@ -118,6 +118,8 @@ func (stubRouteHandler) StartStudioAsyncJob(*gin.Context)                       
 func (stubRouteHandler) GetStudioAsyncJob(*gin.Context)                           {}
 func (stubRouteHandler) RegenerateSheinDataImage(*gin.Context)                    {}
 func (stubRouteHandler) GetTaskResult(*gin.Context)                               {}
+func (stubRouteHandler) RecoverTaskNow(*gin.Context)                              {}
+func (stubRouteHandler) BulkRecoverTasks(*gin.Context)                            {}
 func (stubRouteHandler) GetTaskPreview(*gin.Context)                              {}
 func (stubRouteHandler) GetTaskGenerationTasks(*gin.Context)                      {}
 func (stubRouteHandler) GetTaskGenerationQueue(*gin.Context)                      {}

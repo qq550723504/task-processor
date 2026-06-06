@@ -9,6 +9,7 @@ const revisionHistoryMock = vi.fn();
 const revisionHistoryDetailMock = vi.fn();
 const executeActionMutate = vi.fn();
 const retryChildTaskMutate = vi.fn();
+const recoverTaskNowMutate = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -35,6 +36,17 @@ vi.mock("@/lib/query/use-child-task-retry", () => ({
   }),
 }));
 
+vi.mock("@/lib/query/use-task-recovery", () => ({
+  useRecoverTaskNow: () => ({
+    mutate: recoverTaskNowMutate,
+    isPending: false,
+  }),
+  useBulkRecoverTasks: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 describe("TaskStatusScreen", () => {
   beforeEach(() => {
     push.mockReset();
@@ -42,6 +54,7 @@ describe("TaskStatusScreen", () => {
     revisionHistoryDetailMock.mockReset();
     executeActionMutate.mockReset();
     retryChildTaskMutate.mockReset();
+    recoverTaskNowMutate.mockReset();
     revisionHistoryMock.mockReturnValue({
       data: { items: [] },
       isLoading: false,
@@ -379,5 +392,30 @@ describe("TaskStatusScreen", () => {
     expect(retryChildTaskMutate).toHaveBeenCalledWith({
       kind: "sds_design_sync",
     });
+  });
+
+  it("can recover a blocked retryable task from the status screen", () => {
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "blocked_retryable",
+          retryable_block: {
+            reason_code: "worker_queue_backpressure",
+            reason_message: "Worker queue is temporarily full.",
+            blocked_at: "2026-06-06T04:00:00Z",
+            next_retry_at: "2026-06-06T04:15:00Z",
+            retry_attempts: 1,
+            auto_resume_enabled: true,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("等待依赖恢复").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "立即恢复" }));
+
+    expect(recoverTaskNowMutate).toHaveBeenCalledTimes(1);
   });
 });

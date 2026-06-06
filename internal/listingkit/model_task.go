@@ -18,6 +18,7 @@ type Task struct {
 	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
 	Status                       TaskStatus                    `json:"status" gorm:"type:varchar(20);index"`
 	Result                       *ListingKitResult             `json:"result,omitempty" gorm:"type:text"`
+	RetryableBlock               *RetryableBlock               `json:"retryable_block,omitempty" gorm:"type:text"`
 	Error                        string                        `json:"error,omitempty" gorm:"type:text"`
 	CreatedAt                    time.Time                     `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt                    time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
@@ -28,8 +29,9 @@ type TaskResult struct {
 	TaskIdentityFields
 	TaskResultLifecycleFields
 	SheinSubmissionStatusFields
-	Result        *ListingKitResult `json:"result,omitempty"`
-	ReviewReasons []string          `json:"review_reasons,omitempty"`
+	Result         *ListingKitResult `json:"result,omitempty"`
+	ReviewReasons  []string          `json:"review_reasons,omitempty"`
+	RetryableBlock *RetryableBlock   `json:"retryable_block,omitempty"`
 }
 
 type TaskListQuery struct {
@@ -44,6 +46,17 @@ type TaskListQuery struct {
 	IncludeSummary      bool   `form:"include_summary" json:"include_summary,omitempty"`
 	Page                int    `form:"page" json:"page,omitempty"`
 	PageSize            int    `form:"page_size" json:"page_size,omitempty"`
+}
+
+type RecoverableTaskQuery struct {
+	DueBefore time.Time `form:"due_before" json:"due_before"`
+	Limit     int       `form:"limit" json:"limit,omitempty"`
+}
+
+type RecoverBlockedTasksQuery struct {
+	DueBefore time.Time `form:"due_before" json:"due_before"`
+	RecoverAt time.Time `form:"recover_at" json:"recover_at,omitempty"`
+	Limit     int       `form:"limit" json:"limit,omitempty"`
 }
 
 type TaskListItem struct {

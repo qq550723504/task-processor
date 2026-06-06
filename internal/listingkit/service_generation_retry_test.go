@@ -110,6 +110,22 @@ func (r *recordingRetryPersistenceServiceRepo) MarkFailed(ctx context.Context, t
 	return r.delegate.MarkFailed(ctx, taskID, errorMsg)
 }
 
+func (r *recordingRetryPersistenceServiceRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	return r.delegate.MarkBlockedRetryable(ctx, taskID, block, errorMsg)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) ListRecoverableTasks(ctx context.Context, query *RecoverableTaskQuery) ([]Task, error) {
+	return r.delegate.ListRecoverableTasks(ctx, query)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {
+	return r.delegate.RecoverBlockedTaskNow(ctx, taskID, recoveredAt)
+}
+
+func (r *recordingRetryPersistenceServiceRepo) BulkRecoverBlockedTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error) {
+	return r.delegate.BulkRecoverBlockedTasks(ctx, query)
+}
+
 func (r *recordingRetryPersistenceServiceRepo) PrepareRetry(ctx context.Context, taskID string) error {
 	return r.delegate.PrepareRetry(ctx, taskID)
 }
@@ -169,6 +185,47 @@ func (r *sequencedTaskSnapshotsRepo) MarkNeedsReview(ctx context.Context, taskID
 
 func (r *sequencedTaskSnapshotsRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	if len(r.snapshots) == 0 {
+		return ErrTaskNotFound
+	}
+	latest := r.snapshots[len(r.snapshots)-1]
+	if latest == nil || latest.ID != taskID {
+		return ErrTaskNotFound
+	}
+	copied := *latest
+	copied.Status = TaskStatusBlockedRetryable
+	copied.RetryableBlock = block
+	copied.Error = errorMsg
+	r.snapshots[len(r.snapshots)-1] = &copied
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
+	return []Task{}, nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
+	if len(r.snapshots) == 0 {
+		return ErrTaskNotFound
+	}
+	latest := r.snapshots[len(r.snapshots)-1]
+	if latest == nil || latest.ID != taskID {
+		return ErrTaskNotFound
+	}
+	copied := *latest
+	copied.Status = TaskStatusPending
+	copied.RetryableBlock = nil
+	copied.Error = ""
+	copied.UpdatedAt = recoveredAt
+	r.snapshots[len(r.snapshots)-1] = &copied
+	return nil
+}
+
+func (r *sequencedTaskSnapshotsRepo) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
+	return 0, nil
 }
 
 func (r *sequencedTaskSnapshotsRepo) PrepareRetry(ctx context.Context, taskID string) error {

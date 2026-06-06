@@ -25,7 +25,10 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	result, err := f.service.runWorkflow(ctx, task)
 	if err != nil {
 		log.WithError(err).Error("listing kit workflow failed")
-		f.service.persistProcessFailure(ctx, task.ID, result, err)
+		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, err); persistErr != nil {
+			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
+			return nil, errors.Join(err, persistErr)
+		}
 		return nil, err
 	}
 	log.WithFields(logrus.Fields{

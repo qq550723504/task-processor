@@ -2,11 +2,13 @@ package listingkit
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -486,6 +488,95 @@ func TestCreateGenerateTaskStartsStandardProductTemporalWhenEnabled(t *testing.T
 	}
 }
 
+func TestCreateGenerateTaskRetriesQueueFullAsynchronously(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	submitter := &retryQueueFullTaskSubmitter{
+		results: []error{worker.ErrQueueFull, nil},
+		calls:   make(chan int, 2),
+	}
+	svc := &service{
+		repo:          repo,
+		taskSubmitter: submitter,
+	}
+
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+		Text:      "async retry task",
+		Platforms: []string{"amazon"},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask error = %v, want nil when queue is temporarily full", err)
+	}
+	if task.Status != TaskStatusPending {
+		t.Fatalf("task status = %q, want pending while waiting for async enqueue retry", task.Status)
+	}
+
+	select {
+	case <-submitter.calls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for initial submit attempt")
+	}
+
+	select {
+	case <-submitter.calls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for async enqueue retry")
+	}
+
+	stored, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("GetTask error = %v", getErr)
+	}
+	if stored.Status != TaskStatusPending {
+		t.Fatalf("stored task status = %q, want pending after async retry scheduling", stored.Status)
+	}
+	if stored.Error != "" {
+		t.Fatalf("stored task error = %q, want empty because queue-full should not fail the task", stored.Error)
+	}
+}
+
+func TestCreateGenerateTaskKeepsTaskPendingWhileQueueRemainsFull(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	submitter := &retryQueueFullTaskSubmitter{
+		results: []error{worker.ErrQueueFull},
+		calls:   make(chan int, 8),
+	}
+	svc := &service{
+		repo:          repo,
+		taskSubmitter: submitter,
+	}
+
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+		Text:      "persistent queue full task",
+		Platforms: []string{"amazon"},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask error = %v, want nil while queue stays full", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		select {
+		case <-submitter.calls:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for submit attempt %d", i+1)
+		}
+	}
+
+	stored, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("GetTask error = %v", getErr)
+	}
+	if stored.Status != TaskStatusPending {
+		t.Fatalf("stored task status = %q, want pending while async retry continues", stored.Status)
+	}
+	if stored.Error != "" {
+		t.Fatalf("stored task error = %q, want empty while queue remains full", stored.Error)
+	}
+}
+
 type stubTaskListRepo struct {
 	tasks      []Task
 	lastQuery  *TaskListQuery
@@ -570,6 +661,18 @@ func (r *stubTaskListRepo) MarkNeedsReview(context.Context, string, *ListingKitR
 	return nil
 }
 func (r *stubTaskListRepo) MarkFailed(context.Context, string, string) error  { return nil }
+func (r *stubTaskListRepo) MarkBlockedRetryable(context.Context, string, *RetryableBlock, string) error {
+	return nil
+}
+func (r *stubTaskListRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
+	return []Task{}, nil
+}
+func (r *stubTaskListRepo) RecoverBlockedTaskNow(context.Context, string, time.Time) error {
+	return nil
+}
+func (r *stubTaskListRepo) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
+	return 0, nil
+}
 func (r *stubTaskListRepo) PrepareRetry(context.Context, string) error        { return nil }
 func (r *stubTaskListRepo) IncrementRetryCount(context.Context, string) error { return nil }
 func (r *stubTaskListRepo) SaveTaskResult(_ context.Context, _ string, result *ListingKitResult) error {
@@ -770,6 +873,32 @@ func (r *stubInlineTaskRepo) MarkFailed(_ context.Context, taskID string, errorM
 	return nil
 }
 
+func (r *stubInlineTaskRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	task := r.tasks[taskID]
+	task.Status = TaskStatusBlockedRetryable
+	task.RetryableBlock = block
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubInlineTaskRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
+	return []Task{}, nil
+}
+
+func (r *stubInlineTaskRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
+	task := r.tasks[taskID]
+	task.Status = TaskStatusPending
+	task.RetryableBlock = nil
+	task.Error = ""
+	task.UpdatedAt = recoveredAt
+	return nil
+}
+
+func (r *stubInlineTaskRepo) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
+	return 0, nil
+}
+
 func (r *stubInlineTaskRepo) PrepareRetry(context.Context, string) error        { return nil }
 func (r *stubInlineTaskRepo) IncrementRetryCount(context.Context, string) error { return nil }
 func (r *stubInlineTaskRepo) SaveTaskResult(_ context.Context, taskID string, result *ListingKitResult) error {
@@ -841,4 +970,29 @@ func (r *stubInlineTaskRepo) MutateTaskResult(_ context.Context, taskID string, 
 	task.UpdatedAt = time.Now()
 	copied := *task
 	return &copied, nil
+}
+
+type retryQueueFullTaskSubmitter struct {
+	mu      sync.Mutex
+	results []error
+	calls   chan int
+	count   int
+}
+
+func (s *retryQueueFullTaskSubmitter) Submit(string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.count++
+	if s.calls != nil {
+		s.calls <- s.count
+	}
+	if len(s.results) == 0 {
+		return nil
+	}
+	result := s.results[0]
+	if len(s.results) > 1 {
+		s.results = s.results[1:]
+	}
+	return result
 }

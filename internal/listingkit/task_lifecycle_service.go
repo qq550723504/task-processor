@@ -2,11 +2,19 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	"task-processor/internal/infra/worker"
+)
+
+const (
+	listingKitAsyncEnqueueRetryDelay    = 250 * time.Millisecond
+	listingKitAsyncEnqueueRetryMaxDelay = 5 * time.Second
 )
 
 type taskLifecycleServiceConfig struct {
@@ -222,7 +230,9 @@ func (s *taskLifecycleService) enqueueGenerateTask(ctx context.Context, task *Ta
 				TaskID:      strings.TrimSpace(task.ID),
 				RequestedAt: time.Now().UTC(),
 			}); err != nil {
-				_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to start standard product workflow: %v", err))
+				if persistErr := s.persistEnqueueFailure(ctx, task.ID, fmt.Sprintf("failed to start standard product workflow: %v", err), err); persistErr != nil {
+					return errors.Join(fmt.Errorf("failed to start standard product workflow: %w", err), fmt.Errorf("failed to persist task failure: %w", persistErr))
+				}
 				return fmt.Errorf("failed to start standard product workflow: %w", err)
 			}
 			return nil
@@ -232,8 +242,49 @@ func (s *taskLifecycleService) enqueueGenerateTask(ctx context.Context, task *Ta
 		return nil
 	}
 	if err := s.taskSubmitter().Submit(task.ID); err != nil {
-		_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err))
+		if errors.Is(err, worker.ErrQueueFull) {
+			s.scheduleAsyncEnqueueRetry(DetachedRequestContext(ctx), task.ID)
+			return nil
+		}
+		if persistErr := s.persistEnqueueFailure(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err), err); persistErr != nil {
+			return errors.Join(fmt.Errorf("failed to submit task: %w", err), fmt.Errorf("failed to persist task failure: %w", persistErr))
+		}
 		return fmt.Errorf("failed to submit task: %w", err)
 	}
 	return nil
+}
+
+func (s *taskLifecycleService) scheduleAsyncEnqueueRetry(ctx context.Context, taskID string) {
+	if strings.TrimSpace(taskID) == "" || s.taskSubmitter == nil {
+		return
+	}
+	submitter := s.taskSubmitter()
+	if submitter == nil {
+		return
+	}
+
+	go func() {
+		delay := listingKitAsyncEnqueueRetryDelay
+		for {
+			time.Sleep(delay)
+			if err := submitter.Submit(taskID); err != nil {
+				if errors.Is(err, worker.ErrQueueFull) {
+					if delay < listingKitAsyncEnqueueRetryMaxDelay {
+						delay *= 2
+						if delay > listingKitAsyncEnqueueRetryMaxDelay {
+							delay = listingKitAsyncEnqueueRetryMaxDelay
+						}
+					}
+					continue
+				}
+				_ = s.persistEnqueueFailure(ctx, taskID, fmt.Sprintf("failed to submit task: %v", err), err)
+				return
+			}
+			return
+		}
+	}()
+}
+
+func (s *taskLifecycleService) persistEnqueueFailure(ctx context.Context, taskID string, errorMsg string, cause error) error {
+	return persistClassifiedTaskFailure(ctx, s.repo, taskID, errorMsg, cause)
 }

@@ -32,8 +32,14 @@ func (r *MemTaskRepository) CreateTask(ctx context.Context, task *listingkit.Tas
 	if task.TenantID == "" {
 		task.TenantID = tenantctx.TenantIDFromContext(ctx)
 	}
+	if task.UserID == "" {
+		task.UserID = listingkit.ResolveTaskUserID(task)
+	}
 	if task.Request != nil && task.Request.TenantID == "" {
 		task.Request.TenantID = task.TenantID
+	}
+	if task.Request != nil && task.Request.UserID == "" {
+		task.Request.UserID = task.UserID
 	}
 	copied := *task
 	r.tasks[task.ID] = &copied
@@ -44,7 +50,7 @@ func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*listin
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	task, ok := r.tasks[taskID]
-	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+	if !ok || !matchesTenantScope(ctx, task.TenantID) || !taskVisibleToUser(ctx, task) {
 		return nil, listingkit.ErrTaskNotFound
 	}
 	copied := *task
@@ -157,6 +163,118 @@ func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, error
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
+}
+
+func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return listingkit.ErrTaskNotFound
+	}
+	task.Status = listingkit.TaskStatusBlockedRetryable
+	task.RetryableBlock = copyRetryableBlock(block)
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	dueBefore := time.Time{}
+	if query != nil {
+		dueBefore = query.DueBefore
+	}
+	items := make([]listingkit.Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if !matchesTenantScope(ctx, task.TenantID) {
+			continue
+		}
+		if !taskIsRecoverable(task, dueBefore, false) {
+			continue
+		}
+		copied := *task
+		items = append(items, copied)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left := items[i].RetryableBlock.NextRetryAt
+		right := items[j].RetryableBlock.NextRetryAt
+		switch {
+		case left == nil && right == nil:
+			return items[i].CreatedAt.Before(items[j].CreatedAt)
+		case left == nil:
+			return false
+		case right == nil:
+			return true
+		case !left.Equal(*right):
+			return left.Before(*right)
+		case !items[i].CreatedAt.Equal(items[j].CreatedAt):
+			return items[i].CreatedAt.Before(items[j].CreatedAt)
+		default:
+			return items[i].ID < items[j].ID
+		}
+	})
+	limit := normalizeRecoverableTaskLimit(query)
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func (r *MemTaskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return listingkit.ErrTaskNotFound
+	}
+	force := recoveredAt.IsZero()
+	effectiveRecoveredAt := normalizeRecoverTimestamp(recoveredAt)
+	if !taskIsRecoverable(task, effectiveRecoveredAt, force) {
+		return listingkit.ErrTaskNotRecoverable
+	}
+	block := copyRetryableBlock(task.RetryableBlock)
+	if block == nil {
+		block = &listingkit.RetryableBlock{}
+	}
+	block.LastRetryAt = timestampPointer(effectiveRecoveredAt)
+	block.NextRetryAt = nil
+	block.AutoRetryPaused = false
+	task.Status = listingkit.TaskStatusPending
+	task.RetryableBlock = block
+	task.Error = ""
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *MemTaskRepository) BulkRecoverBlockedTasks(ctx context.Context, query *listingkit.RecoverBlockedTasksQuery) (int64, error) {
+	listQuery := &listingkit.RecoverableTaskQuery{}
+	if query != nil {
+		listQuery.DueBefore = query.DueBefore
+		listQuery.Limit = normalizeRecoverableTaskLimitFromValue(query.Limit)
+	}
+	items, err := r.ListRecoverableTasks(ctx, listQuery)
+	if err != nil {
+		return 0, err
+	}
+	recoverAt := time.Now().UTC()
+	if query != nil && !query.RecoverAt.IsZero() {
+		recoverAt = query.RecoverAt
+	}
+	recoverAt = normalizeRecoverTimestamp(recoverAt)
+	var recovered int64
+	for i := range items {
+		if err := r.RecoverBlockedTaskNow(ctx, items[i].ID, recoverAt); err != nil {
+			if err == listingkit.ErrTaskNotRecoverable {
+				continue
+			}
+			return recovered, err
+		}
+		recovered++
+	}
+	return recovered, nil
 }
 
 func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) error {
@@ -311,6 +429,9 @@ func (r *MemTaskRepository) collectFilteredTasksLocked(ctx context.Context, quer
 	items := make([]listingkit.Task, 0, len(r.tasks))
 	for _, task := range r.tasks {
 		if !matchesTenantScope(ctx, task.TenantID) {
+			continue
+		}
+		if !taskVisibleToUser(ctx, task) {
 			continue
 		}
 		if !listingkit.TaskMatchesListQuery(task, query) {
