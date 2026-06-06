@@ -406,7 +406,7 @@ func sheinStudioPricingSKUAlias(value string) string {
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if looksLikeStudioSubmitRequestToken(part) {
+		if looksLikeStudioSubmitRequestToken(part) || looksLikeStudioSubmitTaskToken(part) {
 			continue
 		}
 		filtered = append(filtered, part)
@@ -422,6 +422,21 @@ func looksLikeStudioSubmitRequestToken(token string) bool {
 	for _, r := range token[1:] {
 		switch {
 		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func looksLikeStudioSubmitTaskToken(token string) bool {
+	token = strings.TrimSpace(strings.ToUpper(token))
+	if len(token) != 9 || !strings.HasPrefix(token, "T") {
+		return false
+	}
+	for _, r := range token[1:] {
+		switch {
+		case r >= '0' && r <= '9', r >= 'A' && r <= 'F':
 		default:
 			return false
 		}

@@ -467,6 +467,76 @@ func TestNormalizeSheinStudioSubmitSupplierSKUsReconcilesStalePricingKeys(t *tes
 	}
 }
 
+func TestNormalizeSheinStudioSubmitSupplierSKUsReconcilesStaleTaskAndRequestPricingKeys(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	task.ID = "0779976b-083e-4c10-83fd-c43b53a55acb"
+	task.Request.Options = &GenerateOptions{
+		SheinStudio: &SheinStudioOptions{StyleID: "5BEFE980"},
+		SDS: &SDSSyncOptions{
+			ProductSKU: "JJ0531103002",
+			StyleID:    "5BEFE980",
+			Variants: []SDSSyncVariantOption{
+				{VariantID: 181983, VariantSKU: "JJ0531103002"},
+			},
+		},
+	}
+
+	currentSKU := "JJ0531103002-V181983-T0779976B-R1CBED-5BEFE980"
+	staleSKU := "JJ0531103002-V181983-T9417B9C5-RD81A7-5BEFE980"
+	task.Result.TaskID = task.ID
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU = currentSKU
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].Currency = "USD"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice = "12.80"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SitePriceList = []sheinpub.SitePrice{{
+		SubSite: "US", BasePrice: "12.80", Currency: "USD",
+	}}
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].Attributes = map[string]string{
+		"source_sds_sku": "JJ0531103002",
+	}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SupplierSKU = currentSKU
+	task.Result.Shein.SkcList[0].SKUs[0].SKU = currentSKU
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		ManualPriceOverrides: map[string]float64{staleSKU: 52},
+	}
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		Ready:           true,
+		ManualOverrides: map[string]float64{staleSKU: 52},
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU: staleSKU,
+			FinalPrice:  52,
+			Currency:    "USD",
+			Manual:      true,
+		}},
+	}
+
+	pkg := &sheinpub.Package{
+		RequestDraft:   task.Result.Shein.RequestDraft,
+		PreviewProduct: task.Result.Shein.PreviewProduct,
+		SkcList:        task.Result.Shein.SkcList,
+		FinalDraft:     task.Result.Shein.FinalDraft,
+		Pricing:        task.Result.Shein.Pricing,
+	}
+
+	changed := normalizeSheinStudioSubmitSupplierSKUs(task, pkg, "1cbed8c5-fa8a-481e-85be-13a0d7c70059")
+	if !changed {
+		t.Fatal("expected stale task and request pricing keys to be reconciled")
+	}
+	if got := pkg.Pricing.SKUPrices[0].SupplierSKU; got != currentSKU {
+		t.Fatalf("pricing supplier sku = %q, want %q", got, currentSKU)
+	}
+	if got := pkg.Pricing.ManualOverrides[currentSKU]; got != 52 {
+		t.Fatalf("pricing manual overrides = %#v, want current sku price 52", pkg.Pricing.ManualOverrides)
+	}
+	if got := pkg.FinalDraft.ManualPriceOverrides[currentSKU]; got != 52 {
+		t.Fatalf("final draft manual overrides = %#v, want current sku price 52", pkg.FinalDraft.ManualPriceOverrides)
+	}
+	if _, exists := pkg.FinalDraft.ManualPriceOverrides[staleSKU]; exists {
+		t.Fatalf("final draft manual overrides still contains stale sku %q", staleSKU)
+	}
+}
+
 func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	t.Parallel()
 
