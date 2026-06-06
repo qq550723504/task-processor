@@ -5,12 +5,22 @@ export const PROXY_REVISION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS = 60_000;
 export const PROXY_STUDIO_UPSTREAM_TIMEOUT_MS = 60_000;
+export const PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS = 120_000;
 
 export function resolveListingKitProxyTimeoutMs(
   method: string,
   path: string[],
 ) {
+  if (
+    method.toUpperCase() === "POST" &&
+    path.length === 4 &&
+    path[0] === "studio" &&
+    path[1] === "batches" &&
+    path[3] === "tasks"
+  ) {
+    return PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS;
+  }
   if (path[0] === "studio") {
     return PROXY_STUDIO_UPSTREAM_TIMEOUT_MS;
   }

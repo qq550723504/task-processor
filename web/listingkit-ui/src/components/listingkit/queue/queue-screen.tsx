@@ -19,6 +19,7 @@ import {
 import { useExecuteAction } from "@/lib/query/use-action";
 import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import { useGenerationQueue } from "@/lib/query/use-queue";
+import { useBulkRecoverTasks } from "@/lib/query/use-task-recovery";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
 import type { QueueQuery } from "@/lib/types/listingkit";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
@@ -50,6 +51,7 @@ export function QueueScreen({ taskId }: { taskId: string }) {
   const taskResult = useListingKitTaskResult(taskId);
   const dispatch = useDispatchNavigation(taskId, queueQuery);
   const action = useExecuteAction(taskId, queueQuery);
+  const bulkRecovery = useBulkRecoverTasks();
   const { handleNavigationTarget, handleRecovery, handleReview } =
     useQueueScreenActions({
       action,
@@ -94,7 +96,14 @@ export function QueueScreen({ taskId }: { taskId: string }) {
       filters={filters}
       onAction={handleReview}
       onApplyFilters={handleApply}
+      onBulkRecoverBlockedTasks={() =>
+        bulkRecovery.mutate({
+          due_before: new Date().toISOString(),
+          limit: 20,
+        })
+      }
       onChangePage={updateQueuePage}
+      bulkRecovering={bulkRecovery.isPending}
       onExecuteAction={(request) => action.mutate(request)}
       onSelectNavigation={handleNavigationTarget}
       onSelectRecovery={handleRecovery}

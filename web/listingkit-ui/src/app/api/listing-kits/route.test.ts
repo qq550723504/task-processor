@@ -15,6 +15,7 @@ import {
   PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
+  PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS,
   PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
   buildListingKitProxyFailureMessage,
   resolveListingKitProxyTimeoutMs,
@@ -90,6 +91,12 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batches"])).toBe(
       PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
     );
+  });
+
+  it("extends the timeout for studio batch task creation routes", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("POST", ["studio", "batches", "batch-1", "tasks"]),
+    ).toBe(PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS);
   });
 });
 

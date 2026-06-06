@@ -62,6 +62,7 @@ export function SheinEnrollmentDashboardPage() {
                     {store.store_name}
                   </h2>
                   <p className="text-sm text-zinc-500">{store.store_username}</p>
+                  <p className="text-xs text-zinc-400">Store ID: {store.store_id}</p>
                 </div>
                 <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600">
                   {store.last_sync_status || "Not synced"}

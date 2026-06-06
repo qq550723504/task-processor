@@ -38,6 +38,7 @@ describe("SheinEnrollmentDashboardPage", () => {
 
     expect(await screen.findByText("SHEIN Activity Enrollment")).toBeInTheDocument();
     expect(await screen.findByText("SHEIN US")).toBeInTheDocument();
+    expect(screen.getByText("Store ID: 7")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Workbench" })).toHaveAttribute(
       "href",

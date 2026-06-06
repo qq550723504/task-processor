@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { formatSheinPriceSnapshot } from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SheinActivityCandidateRecord } from "@/lib/types/listingkit/shein-enrollment";
@@ -73,7 +74,8 @@ export function SheinCandidatesTable({
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
                     状态 {item.review_status || "-"} · 成本 {item.effective_cost_price ?? "-"} ·
-                    利润率 {item.calculated_profit_rate ?? "-"}
+                    售价 {formatSheinPriceSnapshot(item.price_snapshot)} · 利润率{" "}
+                    {item.calculated_profit_rate ?? "-"}
                   </p>
                 </div>
               </label>
