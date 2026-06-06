@@ -46,8 +46,7 @@ func TestGenerationReviewNavigationQueueCloneBoundary(t *testing.T) {
 		t.Parallel()
 
 		navigationSource := readTaskGenerationSourceFile(t, "generation_review_navigation_target.go")
-		queueCloneSource := readTaskGenerationSourceFile(t, "generation_queue_query_clone.go")
-		retryCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
+		sharedCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
 		assertSourceContainsAll(t, navigationSource, []string{
 			"func buildGenerationReviewActionNavigationTarget(",
@@ -59,16 +58,13 @@ func TestGenerationReviewNavigationQueueCloneBoundary(t *testing.T) {
 			"func cloneRetryGenerationTasksRequest(",
 		})
 
-		assertSourceContainsAll(t, queueCloneSource, []string{
+		assertSourceContainsAll(t, sharedCloneSource, []string{
 			"func cloneGenerationQueueQuery(",
-		})
-		assertSourceExcludesAll(t, queueCloneSource, []string{
 			"func cloneRetryGenerationTasksRequest(",
+		})
+		assertSourceExcludesAll(t, sharedCloneSource, []string{
 			"func buildGenerationReviewActionNavigationTarget(",
 			"func cloneAssetGenerationActionTargetForNavigation(",
-		})
-		assertSourceContainsAll(t, retryCloneSource, []string{
-			"func cloneRetryGenerationTasksRequest(",
 		})
 	})
 }

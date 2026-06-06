@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 type taskGenerationQueueReadResponsePhase struct{}
 
 func buildTaskGenerationQueueReadResponsePhase() *taskGenerationQueueReadResponsePhase {
@@ -11,7 +13,7 @@ func (p *taskGenerationQueueReadResponsePhase) run(taskID string, page *Generati
 		page = &GenerationQueuePage{TaskID: taskID}
 	}
 	page.DeltaToken = buildGenerationQueueDeltaToken(page, query)
-	if isGenerationReviewReadNotModified(query, page.DeltaToken) {
+	if query != nil && listinggeneration.IsReadNotModified(query.DeltaToken, query.IfMatch, page.DeltaToken) {
 		return applyGenerationConditionalStateToQueuePage(&GenerationQueuePage{
 			TaskID:      page.TaskID,
 			DeltaToken:  page.DeltaToken,

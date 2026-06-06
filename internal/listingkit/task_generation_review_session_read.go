@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 type taskGenerationReviewSessionReadPhase struct{}
 
 func buildTaskGenerationReviewSessionReadPhase() *taskGenerationReviewSessionReadPhase {
@@ -19,12 +21,12 @@ func (p *taskGenerationReviewSessionReadPhase) run(taskID string, snapshot *task
 		return applyGenerationConditionalStateToReviewSessionResponse(&GenerationReviewSessionResponse{TaskID: taskID})
 	}
 
-	deltaToken := buildGenerationReviewReadDeltaToken(session)
+	deltaToken := buildGenerationReviewDeltaToken(session)
 	responseMode := normalizeGenerationActionResponseMode("")
 	if query != nil {
 		responseMode = normalizeGenerationActionResponseMode(query.ResponseMode)
 	}
-	if isGenerationReviewReadNotModified(query, deltaToken) {
+	if query != nil && listinggeneration.IsReadNotModified(query.DeltaToken, query.IfMatch, deltaToken) {
 		return applyGenerationConditionalStateToReviewSessionResponse(&GenerationReviewSessionResponse{
 			TaskID:       taskID,
 			DeltaToken:   deltaToken,
@@ -49,4 +51,24 @@ func (p *taskGenerationReviewSessionReadPhase) run(taskID string, snapshot *task
 
 	response.Session = session
 	return applyGenerationConditionalStateToReviewSessionResponse(response)
+}
+
+func buildGenerationReviewSessionBaseQuery(query *GenerationQueueQuery) *GenerationQueueQuery {
+	if query == nil {
+		return nil
+	}
+	base := *query
+	if query.FromPlatform != "" || query.FromSlot != "" || query.FromCapability != "" || query.FromSectionKey != "" {
+		base.Platform = query.FromPlatform
+		base.Slot = query.FromSlot
+		base.PreviewCapability = query.FromCapability
+	}
+	base.DeltaToken = ""
+	base.IfMatch = ""
+	base.ResponseMode = ""
+	base.FromPlatform = ""
+	base.FromSlot = ""
+	base.FromCapability = ""
+	base.FromSectionKey = ""
+	return &base
 }

@@ -1163,7 +1163,7 @@ func TestTaskGenerationReviewSessionReadPhaseRunNormalizesResponseModeAndShortCi
 	if current == nil {
 		t.Fatal("current session = nil, want baseline review session for not-modified test")
 	}
-	query.DeltaToken = buildGenerationReviewReadDeltaToken(current)
+	query.DeltaToken = buildGenerationReviewDeltaToken(current)
 
 	response := buildTaskGenerationReviewSessionReadPhase().run(snapshot.taskID, snapshot, query)
 	if response == nil {
@@ -1227,7 +1227,7 @@ func TestTaskGenerationReviewSessionReadPhaseRunBuildsFullResponseDeltaToken(t *
 	if response.Patch != nil {
 		t.Fatalf("response.Patch = %+v, want full response without patch payload", response.Patch)
 	}
-	if response.DeltaToken == "" || response.DeltaToken != buildGenerationReviewReadDeltaToken(response.Session) {
+	if response.DeltaToken == "" || response.DeltaToken != buildGenerationReviewDeltaToken(response.Session) {
 		t.Fatalf("response = %+v, want full response delta token derived from session", response)
 	}
 }
@@ -1285,8 +1285,8 @@ func TestTaskGenerationReviewPreviewReadPhaseRunBuildsPreviewFromSessionBaseline
 	if response == nil {
 		t.Fatal("response = nil, want preview read response")
 	}
-	if response.DeltaToken != buildGenerationReviewReadDeltaToken(session) {
-		t.Fatalf("response.DeltaToken = %q, want %q", response.DeltaToken, buildGenerationReviewReadDeltaToken(session))
+	if response.DeltaToken != buildGenerationReviewDeltaToken(session) {
+		t.Fatalf("response.DeltaToken = %q, want %q", response.DeltaToken, buildGenerationReviewDeltaToken(session))
 	}
 	if response.Viewer == nil || wantViewer == nil || response.Viewer.AssetID != wantViewer.AssetID || response.Viewer.AssetRevision != wantViewer.AssetRevision || response.Viewer.PreviewRevision != wantViewer.PreviewRevision || response.Viewer.TaskRevision != wantViewer.TaskRevision {
 		t.Fatalf("response.Viewer = %+v, want baseline viewer %+v", response.Viewer, wantViewer)
@@ -1344,7 +1344,7 @@ func TestTaskGenerationReviewPreviewReadPhaseRunShortCircuitsNotModifiedBeforePr
 	if session == nil {
 		t.Fatal("session = nil, want preview session baseline for not_modified test")
 	}
-	query.DeltaToken = buildGenerationReviewReadDeltaToken(session)
+	query.DeltaToken = buildGenerationReviewDeltaToken(session)
 
 	response := buildTaskGenerationReviewPreviewReadPhase().run(snapshot.taskID, snapshot, query)
 	if response == nil {

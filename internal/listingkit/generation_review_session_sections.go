@@ -2,6 +2,13 @@ package listingkit
 
 import "strings"
 
+type generationReviewSectionSpec struct {
+	SectionKey  string
+	Title       string
+	Description string
+	EmptyState  string
+}
+
 func buildGenerationReviewSession(result *ListingKitResult, queue *GenerationWorkQueue, query *GenerationQueueQuery) *GenerationReviewSession {
 	if result == nil && queue == nil {
 		return nil
@@ -73,6 +80,33 @@ func focusedPreviewAssetID(preview *AssetRenderPreviewSlot) string {
 		return ""
 	}
 	return preview.AssetID
+}
+
+func generationReviewSectionSpecForCapability(capability string) generationReviewSectionSpec {
+	cfg := generationReviewSectionConfigForCapability(capability)
+	return generationReviewSectionSpec{
+		SectionKey:  generationReviewSectionKey(capability),
+		Title:       cfg.Title,
+		Description: cfg.Description,
+		EmptyState:  cfg.EmptyState,
+	}
+}
+
+func generationPreviewCapabilityLabel(capability string) string {
+	switch capability {
+	case "detail_preview":
+		return "Detail Preview"
+	case "measurement_preview":
+		return "Measurement Preview"
+	case "badge_preview":
+		return "Badge Preview"
+	case "copy_preview":
+		return "Copy Preview"
+	case "subject_preview":
+		return "Subject Preview"
+	default:
+		return capability
+	}
 }
 
 func buildGenerationReviewSections(queue *GenerationWorkQueue, selectedPlatform, focusCapability string, previews []PlatformAssetRenderPreviews, reviewState *generationReviewState) []GenerationReviewSection {

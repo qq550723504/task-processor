@@ -1,6 +1,9 @@
 package listingkit
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 func buildGenerationRecoverySummaryFromQueue(queue *GenerationWorkQueue) *GenerationRecoverySummary {
 	if queue == nil {
@@ -63,6 +66,115 @@ func cloneGenerationPanelResourceDescriptors(items []GenerationPanelResourceDesc
 		out = append(out, *cloned)
 	}
 	return out
+}
+
+func buildGenerationPanelRecoverySelections(items []GenerationPanelResourceDescriptor) (*GenerationPanelResourceDescriptor, []GenerationPanelResourceDescriptor) {
+	primary, recommended := selectGenerationPanelRecoveryDescriptors(items)
+	return primary, recommended
+}
+
+func selectGenerationPanelRecoveryDescriptors(items []GenerationPanelResourceDescriptor) (*GenerationPanelResourceDescriptor, []GenerationPanelResourceDescriptor) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	recoverable := make([]GenerationPanelResourceDescriptor, 0, len(items))
+	for _, item := range items {
+		if !isGenerationPanelResourceRecoverable(item) {
+			continue
+		}
+		recoverable = append(recoverable, item)
+	}
+	if len(recoverable) == 0 {
+		return nil, nil
+	}
+	sort.SliceStable(recoverable, func(i, j int) bool {
+		li := generationPanelRecoveryPriority(recoverable[i])
+		lj := generationPanelRecoveryPriority(recoverable[j])
+		if li != lj {
+			return li < lj
+		}
+		if recoverable[i].Role != recoverable[j].Role {
+			return recoverable[i].Role < recoverable[j].Role
+		}
+		return generationPanelResourceCacheKey(recoverable[i]) < generationPanelResourceCacheKey(recoverable[j])
+	})
+	primary := recoverable[0]
+	return &primary, recoverable
+}
+
+func isGenerationPanelResourceRecoverable(item GenerationPanelResourceDescriptor) bool {
+	if item.RecoveryHint == "" {
+		return false
+	}
+	return item.RecoveryTarget != nil || item.Retryable
+}
+
+func generationPanelRecoveryPriority(item GenerationPanelResourceDescriptor) int {
+	return generationRecoveryProfileForHint(item.RecoveryHint).Priority
+}
+
+func generationPanelResourceCacheKey(item GenerationPanelResourceDescriptor) string {
+	if item.Descriptor == nil {
+		return ""
+	}
+	return item.Descriptor.CacheKey
+}
+
+func applyGenerationPanelResourceRecovery(item *GenerationPanelResourceDescriptor) {
+	if item == nil || item.RecoveryHint == "" {
+		return
+	}
+	target, actionKey := buildGenerationPanelResourceRecoveryTarget(item)
+	item.RecoveryActionKey = actionKey
+	item.RecoveryTarget = target
+	if target != nil && target.Descriptor != nil {
+		item.RecoveryDispatchPlan = cloneGenerationNavigationDispatchPlan(target.Descriptor.DispatchPlan)
+	}
+	applyGenerationPanelResourceRecoveryPresentation(item)
+}
+
+func buildGenerationPanelResourceRecoveryTarget(item *GenerationPanelResourceDescriptor) (*GenerationReviewNavigationTarget, string) {
+	if item == nil {
+		return nil, ""
+	}
+	switch item.RecoveryHint {
+	case "review_fallback":
+		target := buildGenerationReviewNavigationTarget(item.Platform, item.Slot, item.Capability, nil)
+		return target, reviewActionKeyForCapability(item.Capability)
+	case "retry_dispatch":
+		actionKey := assetGenerationActionRetrySectionGeneration
+		actionTarget := &AssetGenerationActionTarget{
+			ActionKey:       actionKey,
+			InteractionMode: "review_only",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          item.Platform,
+				Slot:              item.Slot,
+				PreviewCapability: item.Capability,
+			},
+		}
+		return buildGenerationReviewActionNavigationTarget(actionTarget), actionKey
+	case "refresh_revision", "wait_for_generation":
+		return applyIdentityToNavigationTarget(&GenerationReviewNavigationTarget{
+			DispatchKind: "queue",
+			QueueQuery: &GenerationQueueQuery{
+				Platform:          item.Platform,
+				Slot:              item.Slot,
+				PreviewCapability: item.Capability,
+			},
+		}), ""
+	default:
+		return nil, ""
+	}
+}
+
+func applyGenerationPanelResourceRecoveryPresentation(item *GenerationPanelResourceDescriptor) {
+	if item == nil {
+		return
+	}
+	profile := generationRecoveryProfileForHint(item.RecoveryHint)
+	item.RecoverySeverity = profile.Severity
+	item.RecoveryUrgency = profile.Urgency
+	item.RecoveryCTAKind = profile.CTAKind
 }
 
 func applyGenerationRecoverySummaryToQueuePage(page *GenerationQueuePage) *GenerationQueuePage {

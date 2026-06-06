@@ -5,27 +5,16 @@ import "testing"
 func TestTaskGenerationSharedCloneHelperBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("shared_clone_homes_keep_queue_and_retry_clone_helpers_separate", func(t *testing.T) {
+	t.Run("shared_clone_home_owns_queue_and_retry_clone_helpers_together", func(t *testing.T) {
 		t.Parallel()
 
-		queueCloneSource := readTaskGenerationSourceFile(t, "generation_queue_query_clone.go")
-		retryCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
+		sharedCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 
-		assertSourceContainsAll(t, queueCloneSource, []string{
+		assertSourceContainsAll(t, sharedCloneSource, []string{
 			"func cloneGenerationQueueQuery(",
-		})
-		assertSourceExcludesAll(t, queueCloneSource, []string{
-			"func cloneRetryGenerationTasksRequest(",
-			"func ExecuteTaskGenerationAction(",
-			"func resolveLayerTemporalPlatform(",
-			"func cloneAssetGenerationActionTarget(",
-		})
-
-		assertSourceContainsAll(t, retryCloneSource, []string{
 			"func cloneRetryGenerationTasksRequest(",
 		})
-		assertSourceExcludesAll(t, retryCloneSource, []string{
-			"func cloneGenerationQueueQuery(",
+		assertSourceExcludesAll(t, sharedCloneSource, []string{
 			"func ExecuteTaskGenerationAction(",
 			"func resolveLayerTemporalPlatform(",
 			"func cloneAssetGenerationActionTarget(",

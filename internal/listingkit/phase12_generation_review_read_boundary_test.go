@@ -11,8 +11,8 @@ func TestTaskGenerationReviewReadServiceBoundary(t *testing.T) {
 	assertSourceExcludesAll(t, sessionSource, []string{
 		"getCurrentListingKitResult(",
 		"buildGenerationReviewSession(",
-		"buildGenerationReviewReadDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"buildGenerationReviewDeltaToken(",
+		"listinggeneration.IsReadNotModified(",
 		"normalizeGenerationActionResponseMode(",
 		"buildGenerationReviewSessionBaseQuery(",
 		"buildGenerationReviewSessionPatch(",
@@ -28,8 +28,8 @@ func TestTaskGenerationReviewReadServiceBoundary(t *testing.T) {
 	assertSourceExcludesAll(t, previewSource, []string{
 		"getCurrentListingKitResult(",
 		"buildGenerationReviewSession(",
-		"buildGenerationReviewReadDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"buildGenerationReviewDeltaToken(",
+		"listinggeneration.IsReadNotModified(",
 		"normalizeGenerationActionResponseMode(",
 		"buildGenerationReviewSessionBaseQuery(",
 		"buildGenerationReviewSessionPatch(",
@@ -52,8 +52,8 @@ func TestTaskGenerationReviewReadSnapshotPhaseBoundary(t *testing.T) {
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"buildGenerationReviewSession(",
-		"buildGenerationReviewReadDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"buildGenerationReviewDeltaToken(",
+		"listinggeneration.IsReadNotModified(",
 		"normalizeGenerationActionResponseMode(",
 		"applyGenerationConditionalStateToReviewSessionResponse(",
 		"resolveGenerationReviewPreviewResponse(",
@@ -70,9 +70,9 @@ func TestTaskGenerationReviewSessionReadPhaseBoundary(t *testing.T) {
 
 	assertSourceContainsAll(t, source, []string{
 		"buildGenerationReviewSession(",
-		"buildGenerationReviewReadDeltaToken(",
+		"buildGenerationReviewDeltaToken(",
 		"normalizeGenerationActionResponseMode(",
-		"isGenerationReviewReadNotModified(",
+		"listinggeneration.IsReadNotModified(",
 		"buildGenerationReviewSessionBaseQuery(",
 		"buildGenerationReviewSessionPatch(",
 		"applyGenerationConditionalStateToReviewSessionResponse(",
@@ -94,8 +94,8 @@ func TestTaskGenerationReviewPreviewReadPhaseBoundary(t *testing.T) {
 
 	assertSourceContainsAll(t, source, []string{
 		"buildGenerationReviewSession(",
-		"buildGenerationReviewReadDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"buildGenerationReviewDeltaToken(",
+		"listinggeneration.IsReadNotModified(",
 		"resolveGenerationReviewPreviewResponse(",
 		"resolveGenerationReviewPreviewRevisionStatus(",
 		"applyGenerationConditionalStateToReviewPreviewResponse(",

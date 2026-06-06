@@ -30,7 +30,7 @@ func TestTaskGenerationQueueReadServiceBoundaryGuardrails(t *testing.T) {
 		"paginateGenerationQueueItems(",
 		"attachReviewSummaryToGenerationQueuePage(",
 		"buildGenerationQueueDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"listinggeneration.IsReadNotModified(",
 		"applyGenerationConditionalStateToQueuePage(",
 	})
 }
@@ -55,7 +55,7 @@ func TestTaskGenerationQueueReadSnapshotPhaseBoundary(t *testing.T) {
 		"paginateGenerationQueueItems(",
 		"attachReviewSummaryToGenerationQueuePage(",
 		"buildGenerationQueueDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"listinggeneration.IsReadNotModified(",
 		"applyGenerationConditionalStateToQueuePage(",
 	})
 }
@@ -81,7 +81,7 @@ func TestTaskGenerationQueueReadPagePhaseBoundary(t *testing.T) {
 		"listGenerationReviews(",
 		"withListingKitResultGenerationAndReview(",
 		"buildGenerationQueueDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"listinggeneration.IsReadNotModified(",
 		"applyGenerationConditionalStateToQueuePage(",
 	})
 }
@@ -93,7 +93,7 @@ func TestTaskGenerationQueueReadResponsePhaseBoundary(t *testing.T) {
 
 	assertSourceContainsAll(t, source, []string{
 		"buildGenerationQueueDeltaToken(",
-		"isGenerationReviewReadNotModified(",
+		"listinggeneration.IsReadNotModified(",
 		"applyGenerationConditionalStateToQueuePage(",
 	})
 	assertSourceExcludesAll(t, source, []string{
