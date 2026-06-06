@@ -405,4 +405,70 @@ describe("GenerationTopicPolicyAdminPage", () => {
       expect(screen.getByText("适合禁止出现刀具、刀刃、knife、blade 这类锐器或刀具表达。")).toBeInTheDocument();
     });
   });
+
+  it("falls back to the first visible topic when filters hide the previous selection", async () => {
+    vi.spyOn(
+      generationTopicPoliciesApi,
+      "getListingGenerationTopicPolicies",
+    ).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    vi.spyOn(
+      generationTopicOverridesApi,
+      "getListingGenerationTopicCatalog",
+    ).mockResolvedValue({
+      items: [
+        {
+          key: "children",
+          priority: 10,
+          promptDirectives: ["Do not mention children."],
+          lexiconByLanguage: { en: ["child"] },
+          tenantOverride: null,
+          effectiveDefinition: {
+            promptDirectives: ["Do not mention children."],
+            lexiconByLanguage: { en: ["child"] },
+          },
+        },
+        {
+          key: "knives",
+          priority: 30,
+          promptDirectives: ["Do not mention knives."],
+          lexiconByLanguage: { en: ["knife"] },
+          tenantOverride: null,
+          effectiveDefinition: {
+            promptDirectives: ["Do not mention knives."],
+            lexiconByLanguage: { en: ["knife"] },
+          },
+        },
+      ],
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GenerationTopicPolicyAdminPage />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: /children/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /knives/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText("Do not mention knives.")).toHaveLength(2);
+    });
+
+    fireEvent.change(screen.getByLabelText("筛选 Topic"), {
+      target: { value: "child" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Do not mention children.")).toHaveLength(2);
+    });
+    expect(screen.queryByText("Do not mention knives.")).not.toBeInTheDocument();
+  });
 });

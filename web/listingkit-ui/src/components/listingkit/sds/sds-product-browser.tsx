@@ -44,6 +44,20 @@ import {
 import { saveSDSGroupedCandidateHandoff } from "@/lib/utils/sds-grouped-candidate-handoff";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
+type TargetBatchFlowState = {
+  addedCount: number;
+  feedback: string;
+  error: string;
+  blockedSelection: SDSProductVariantSelection | null;
+};
+
+const EMPTY_TARGET_BATCH_FLOW_STATE: TargetBatchFlowState = {
+  addedCount: 0,
+  feedback: "",
+  error: "",
+  blockedSelection: null,
+};
+
 export function SDSProductBrowser({
   initialKeyword = "",
   initialPage = 1,
@@ -58,13 +72,11 @@ export function SDSProductBrowser({
   const searchParams = useLiveSearchParams();
   const recentVariants = useSDSRecentVariants();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
-  const [addedToTargetBatchCount, setAddedToTargetBatchCount] = useState(0);
   const [isAddingToTargetBatch, setIsAddingToTargetBatch] = useState(false);
   const [isWarmingBlockedBaseline, setIsWarmingBlockedBaseline] = useState(false);
-  const [targetBatchFeedback, setTargetBatchFeedback] = useState("");
-  const [targetBatchError, setTargetBatchError] = useState("");
-  const [blockedBaselineSelection, setBlockedBaselineSelection] =
-    useState<SDSProductVariantSelection | null>(null);
+  const [targetBatchFlowStateByBatchId, setTargetBatchFlowStateByBatchId] = useState<
+    Record<string, TargetBatchFlowState>
+  >({});
   const [recentBatches, setRecentBatches] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -132,10 +144,30 @@ export function SDSProductBrowser({
   const effectiveTargetBatchId = targetBatchId || activeBatchId;
   const isTargetingExistingBatchFlow =
     pathname === "/listing-kits/sds/new" && Boolean(targetBatchId);
+  const currentTargetBatchFlowState = targetBatchId
+    ? (targetBatchFlowStateByBatchId[targetBatchId] ?? EMPTY_TARGET_BATCH_FLOW_STATE)
+    : EMPTY_TARGET_BATCH_FLOW_STATE;
+  const addedToTargetBatchCount = currentTargetBatchFlowState.addedCount;
+  const targetBatchFeedback = currentTargetBatchFlowState.feedback;
+  const targetBatchError = currentTargetBatchFlowState.error;
+  const blockedBaselineSelection = currentTargetBatchFlowState.blockedSelection;
 
   function setCurrentTargetBatch(batchId: string) {
     setActiveSheinStudioBatchId(batchId);
     setActiveBatchId(batchId);
+  }
+
+  function updateTargetBatchFlowState(
+    batchId: string,
+    updater: (current: TargetBatchFlowState) => TargetBatchFlowState,
+  ) {
+    if (!batchId) {
+      return;
+    }
+    setTargetBatchFlowStateByBatchId((current) => ({
+      ...current,
+      [batchId]: updater(current[batchId] ?? EMPTY_TARGET_BATCH_FLOW_STATE),
+    }));
   }
 
   async function refreshRecentBatches(options?: { preserveCurrentOnError?: boolean }) {
@@ -187,13 +219,6 @@ export function SDSProductBrowser({
     return () => {
       cancelled = true;
     };
-  }, [targetBatchId]);
-
-  useEffect(() => {
-    setAddedToTargetBatchCount(0);
-    setTargetBatchFeedback("");
-    setTargetBatchError("");
-    setBlockedBaselineSelection(null);
   }, [targetBatchId]);
 
   function updateQuery(next: Record<string, string | undefined>) {
@@ -255,8 +280,11 @@ export function SDSProductBrowser({
   }
 
   function openVariantPicker(productId: number) {
-    setTargetBatchError("");
-    setBlockedBaselineSelection(null);
+    updateTargetBatchFlowState(targetBatchId, (current) => ({
+      ...current,
+      error: "",
+      blockedSelection: null,
+    }));
     setPickerProductId(productId);
   }
 
@@ -288,9 +316,12 @@ export function SDSProductBrowser({
     saveRecentSDSVariant(selection);
     if (isTargetingExistingBatchFlow && effectiveTargetBatchId) {
       setPickerProductId(undefined);
-      setTargetBatchFeedback("");
-      setBlockedBaselineSelection(selection);
-      setTargetBatchError(`这款商品还没有加入当前批次。${message}`);
+      updateTargetBatchFlowState(targetBatchId, (current) => ({
+        ...current,
+        feedback: "",
+        blockedSelection: selection,
+        error: `这款商品还没有加入当前批次。${message}`,
+      }));
       return;
     }
     applySelection(selection);
@@ -301,30 +332,38 @@ export function SDSProductBrowser({
       return;
     }
     setIsWarmingBlockedBaseline(true);
-    setTargetBatchFeedback("");
-    setTargetBatchError("");
+    updateTargetBatchFlowState(targetBatchId, (current) => ({
+      ...current,
+      feedback: "",
+      error: "",
+    }));
     try {
       const readiness = await warmSDSBaselineForSelection(blockedBaselineSelection);
       if (readiness.status === "ready") {
-        setBlockedBaselineSelection(null);
-        setTargetBatchFeedback("baseline 已通过校验，正在加入当前批次...");
+        updateTargetBatchFlowState(targetBatchId, (current) => ({
+          ...current,
+          blockedSelection: null,
+          feedback: "baseline 已通过校验，正在加入当前批次...",
+        }));
         await handleAddCandidateToBatch(blockedBaselineSelection, effectiveTargetBatchId, {
           stayOnPageAfterAdd: true,
           skipBaselineGate: true,
         });
         return;
       }
-      setTargetBatchError(
-        `这款商品还没有加入当前批次。${
+      updateTargetBatchFlowState(targetBatchId, (current) => ({
+        ...current,
+        error: `这款商品还没有加入当前批次。${
           readiness.reason ||
           getSDSBaselineReasonMessage(readiness.reasonCode) ||
           "baseline 预热与校验已发起，请稍后再试。"
         }`,
-      );
+      }));
     } catch (error) {
-      setTargetBatchError(
-        error instanceof Error ? error.message : "baseline 预热失败，请重试。",
-      );
+      updateTargetBatchFlowState(targetBatchId, (current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "baseline 预热失败，请重试。",
+      }));
     } finally {
       setIsWarmingBlockedBaseline(false);
     }
@@ -375,13 +414,19 @@ export function SDSProductBrowser({
     batchId: string,
     options?: { stayOnPageAfterAdd?: boolean; skipBaselineGate?: boolean },
   ) {
-    setTargetBatchError("");
-    setTargetBatchFeedback("");
+    updateTargetBatchFlowState(targetBatchId, (current) => ({
+      ...current,
+      error: "",
+      feedback: "",
+    }));
     setIsAddingToTargetBatch(true);
     try {
       const target = await getSheinStudioBatch(batchId);
       if (!target) {
-        setTargetBatchError("没有找到目标批次，请返回批次页重试。");
+        updateTargetBatchFlowState(targetBatchId, (current) => ({
+          ...current,
+          error: "没有找到目标批次，请返回批次页重试。",
+        }));
         return;
       }
       const persistSelection = async () => {
@@ -431,14 +476,21 @@ export function SDSProductBrowser({
           // Preserve the successful add flow even if the recent-batches sidebar
           // refresh flakes; the batch save above is the source of truth.
         });
-        setBlockedBaselineSelection(null);
         if (saved?.id && options?.stayOnPageAfterAdd) {
           setCurrentTargetBatch(saved.id);
           setPickerProductId(undefined);
-          setAddedToTargetBatchCount((current) => current + 1);
-          setTargetBatchFeedback(`已加入 1 款商品到批次 ${target.name}，可以继续选下一款。`);
+          updateTargetBatchFlowState(targetBatchId, (current) => ({
+            ...current,
+            addedCount: current.addedCount + 1,
+            blockedSelection: null,
+            feedback: `已加入 1 款商品到批次 ${target.name}，可以继续选下一款。`,
+          }));
           return;
         }
+        updateTargetBatchFlowState(targetBatchId, (current) => ({
+          ...current,
+          blockedSelection: null,
+        }));
         if (saved?.id && batchId === activeBatchId) {
           setCurrentTargetBatch(saved.id);
         }
@@ -449,9 +501,10 @@ export function SDSProductBrowser({
         await withGroupedBaselineGate(selection, persistSelection);
       }
     } catch (error) {
-      setTargetBatchError(
-        error instanceof Error ? error.message : "加入当前批次失败，请重试。",
-      );
+      updateTargetBatchFlowState(targetBatchId, (current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "加入当前批次失败，请重试。",
+      }));
     } finally {
       setIsAddingToTargetBatch(false);
     }

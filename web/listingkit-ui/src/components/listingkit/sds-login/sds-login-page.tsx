@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,6 @@ import {
   getSDSLoginStatus,
   manualSDSLogin,
   triggerSDSLogin,
-  type SDSLoginAuthState,
   type SDSLoginStatus,
 } from "@/lib/api/sds-login";
 
@@ -56,9 +56,6 @@ function summarizeStatus(status: SDSLoginStatus | null) {
 }
 
 export function SdsLoginPage() {
-  const [status, setStatus] = useState<SDSLoginStatus | null>(null);
-  const [authState, setAuthState] = useState<SDSLoginAuthState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isTriggeringLogin, setIsTriggeringLogin] = useState(false);
   const [isSubmittingManualLogin, setIsSubmittingManualLogin] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -70,37 +67,33 @@ export function SdsLoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setError("");
-    try {
-      const [nextStatus, nextAuthState] = await Promise.all([
+  const loginStateQuery = useQuery({
+    queryKey: ["listingkit-sds-login-state"],
+    queryFn: async () => {
+      const [status, authState] = await Promise.all([
         getSDSLoginStatus(),
         getSDSLoginAuthState(),
       ]);
-      setStatus(nextStatus);
-      setAuthState(nextAuthState);
-      setTenantID((current) => current || nextStatus.tenant_id || nextAuthState?.tenant_id || "");
-      setIdentifier(
-        (current) => current || nextStatus.identifier || nextAuthState?.identifier || "",
-      );
-      setMerchantName(
-        (current) =>
-          current || nextStatus.merchant_name || nextAuthState?.merchant_name || "",
-      );
-      setUsername(
-        (current) => current || nextStatus.username || nextAuthState?.username || "",
-      );
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
-    } finally {
-      setIsLoading(false);
+      return { status, authState };
+    },
+  });
+  const status = loginStateQuery.data?.status ?? null;
+  const authState = loginStateQuery.data?.authState ?? null;
+  const isLoading = loginStateQuery.isLoading || loginStateQuery.isFetching;
+  const refresh = useCallback(async () => {
+    setError("");
+    const result = await loginStateQuery.refetch();
+    if (result.error) {
+      setError(result.error instanceof Error ? result.error.message : String(result.error));
     }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    return result;
+  }, [loginStateQuery]);
+  const tenantIDValue = tenantID || status?.tenant_id || authState?.tenant_id || "";
+  const identifierValue =
+    identifier || status?.identifier || authState?.identifier || "";
+  const merchantNameValue =
+    merchantName || status?.merchant_name || authState?.merchant_name || "";
+  const usernameValue = username || status?.username || authState?.username || "";
 
   const handleTriggerLogin = useCallback(async () => {
     setIsTriggeringLogin(true);
@@ -138,10 +131,10 @@ export function SdsLoginPage() {
     setError("");
     try {
       await manualSDSLogin({
-        tenantID: tenantID.trim(),
-        identifier: identifier.trim(),
-        merchantName: merchantName.trim(),
-        username: username.trim(),
+        tenantID: tenantIDValue.trim(),
+        identifier: identifierValue.trim(),
+        merchantName: merchantNameValue.trim(),
+        username: usernameValue.trim(),
         password,
       });
       setPassword("");
@@ -152,7 +145,14 @@ export function SdsLoginPage() {
     } finally {
       setIsSubmittingManualLogin(false);
     }
-  }, [identifier, merchantName, password, refresh, tenantID, username]);
+  }, [
+    identifierValue,
+    merchantNameValue,
+    password,
+    refresh,
+    tenantIDValue,
+    usernameValue,
+  ]);
 
   return (
     <ListingKitPageShell contentClassName="mx-auto w-full max-w-5xl px-4 lg:px-6">
@@ -284,7 +284,7 @@ export function SdsLoginPage() {
                 <Input
                   id="sds-login-tenant-id"
                   onChange={(event) => setTenantID(event.target.value)}
-                  value={tenantID}
+                  value={tenantIDValue}
                 />
               </label>
               <label className="space-y-2">
@@ -292,7 +292,7 @@ export function SdsLoginPage() {
                 <Input
                   id="sds-login-identifier"
                   onChange={(event) => setIdentifier(event.target.value)}
-                  value={identifier}
+                  value={identifierValue}
                 />
               </label>
               <label className="space-y-2">
@@ -300,7 +300,7 @@ export function SdsLoginPage() {
                 <Input
                   id="sds-login-merchant-name"
                   onChange={(event) => setMerchantName(event.target.value)}
-                  value={merchantName}
+                  value={merchantNameValue}
                 />
               </label>
               <label className="space-y-2">
@@ -308,7 +308,7 @@ export function SdsLoginPage() {
                 <Input
                   id="sds-login-username"
                   onChange={(event) => setUsername(event.target.value)}
-                  value={username}
+                  value={usernameValue}
                 />
               </label>
               <label className="space-y-2 md:col-span-2">

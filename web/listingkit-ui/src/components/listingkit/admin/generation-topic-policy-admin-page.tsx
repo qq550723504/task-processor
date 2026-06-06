@@ -2,7 +2,7 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import {
   ChevronRight,
   Plus,
@@ -88,9 +88,14 @@ export function GenerationTopicPolicyAdminPage() {
     queryFn: () => getListingGenerationTopicCatalog({ platform }),
   });
 
-  const items: ListingGenerationTopicPolicy[] = policyQuery.data?.items ?? [];
-  const catalogItems: ListingGenerationTopicCatalogItem[] =
-    catalogQuery.data?.items ?? [];
+  const items = useMemo<ListingGenerationTopicPolicy[]>(
+    () => policyQuery.data?.items ?? [],
+    [policyQuery.data?.items],
+  );
+  const catalogItems = useMemo<ListingGenerationTopicCatalogItem[]>(
+    () => catalogQuery.data?.items ?? [],
+    [catalogQuery.data?.items],
+  );
   const total = policyQuery.data?.total ?? 0;
   const loading = policyQuery.isLoading || policyQuery.isFetching;
   const catalogLoading = catalogQuery.isLoading || catalogQuery.isFetching;
@@ -154,34 +159,27 @@ export function GenerationTopicPolicyAdminPage() {
     }),
     [sortedCatalogItems],
   );
-  const selectedCatalogItem = useMemo(() => {
+  const activeSelectedTopicKey = useMemo(() => {
     if (!sortedCatalogItems.length) {
+      return "";
+    }
+    if (sortedCatalogItems.some((item) => item.key === selectedTopicKey)) {
+      return selectedTopicKey;
+    }
+    return sortedCatalogItems[0].key;
+  }, [sortedCatalogItems, selectedTopicKey]);
+  const selectedCatalogItem = useMemo(() => {
+    if (!activeSelectedTopicKey) {
       return null;
     }
     return (
-      sortedCatalogItems.find((item) => item.key === selectedTopicKey) ??
-      sortedCatalogItems[0]
+      sortedCatalogItems.find((item) => item.key === activeSelectedTopicKey) ?? null
     );
-  }, [sortedCatalogItems, selectedTopicKey]);
+  }, [activeSelectedTopicKey, sortedCatalogItems]);
   const visibleError =
     error ||
     (policyQuery.error instanceof Error ? policyQuery.error.message : "") ||
     (catalogQuery.error instanceof Error ? catalogQuery.error.message : "");
-
-  useEffect(() => {
-    if (!sortedCatalogItems.length) {
-      if (selectedTopicKey) {
-        setSelectedTopicKey("");
-      }
-      return;
-    }
-    if (
-      !selectedTopicKey ||
-      !sortedCatalogItems.some((item) => item.key === selectedTopicKey)
-    ) {
-      setSelectedTopicKey(sortedCatalogItems[0].key);
-    }
-  }, [sortedCatalogItems, selectedTopicKey]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -499,7 +497,7 @@ export function GenerationTopicPolicyAdminPage() {
                 </div>
               ) : (
                 sortedCatalogItems.map((item) => {
-                  const active = item.key === selectedCatalogItem?.key;
+                  const active = item.key === activeSelectedTopicKey;
                   const statusTone = getTopicStatusTone(item);
                   return (
                     <button
