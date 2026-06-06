@@ -33,12 +33,14 @@ func TestRegularActionKeyFilterMutationBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"if applyAssetGenerationRetryOrientedFilterMutation(actionKey, filters) {",
+			"if applyAssetGenerationFailedRetryFilterMutation(actionKey, filters) {",
+			"if applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters) {",
 			"if applyAssetGenerationReviewReadyFilterMutation(actionKey, filters) {",
 			"applyAssetGenerationMissingSlotFilterMutation(actionKey, filters)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationRetryOrientedFilterMutation",
+			"applyAssetGenerationFailedRetryFilterMutation",
+			"applyAssetGenerationProvisionalRetryFilterMutation",
 			"applyAssetGenerationReviewReadyFilterMutation",
 			"applyAssetGenerationMissingSlotFilterMutation",
 		})

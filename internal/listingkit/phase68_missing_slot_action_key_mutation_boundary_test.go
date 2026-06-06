@@ -12,7 +12,8 @@ func TestMissingSlotActionKeyMutationBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"if applyAssetGenerationRetryOrientedFilterMutation(actionKey, filters) {",
+			"if applyAssetGenerationFailedRetryFilterMutation(actionKey, filters) {",
+			"if applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters) {",
 			"if applyAssetGenerationReviewReadyFilterMutation(actionKey, filters) {",
 			"applyAssetGenerationMissingSlotFilterMutation(actionKey, filters)",
 		})
@@ -20,7 +21,8 @@ func TestMissingSlotActionKeyMutationBoundary(t *testing.T) {
 			"case \"generate_missing_assets\", \"review_missing_slots\":",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationRetryOrientedFilterMutation",
+			"applyAssetGenerationFailedRetryFilterMutation",
+			"applyAssetGenerationProvisionalRetryFilterMutation",
 			"applyAssetGenerationReviewReadyFilterMutation",
 			"applyAssetGenerationMissingSlotFilterMutation",
 		})

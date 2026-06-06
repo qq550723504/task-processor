@@ -5,15 +5,15 @@ import "testing"
 func TestFailedVsProvisionalRetryActionKeyMutationBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("retry_oriented_home_routes_failed_and_provisional_retry_homes", func(t *testing.T) {
+	t.Run("regular_action_key_home_routes_failed_and_provisional_retry_homes", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_retry_oriented_mutation.go", "applyAssetGenerationRetryOrientedFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_retry_oriented_mutation.go", "applyAssetGenerationRetryOrientedFilterMutation")
+		source := readNamedFunctionSource(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationFailedRetryFilterMutation(actionKey, filters) {",
-			"return applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters)",
+			"if applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters) {",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"case \"retry_failed_generation\", \"inspect_failed_renderer_tasks\":",

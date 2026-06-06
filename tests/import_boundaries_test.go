@@ -328,8 +328,6 @@ func TestListingKitRootGenerationFilesStayAllowlisted(t *testing.T) {
 		"generation_action_filters_preview_capability_mutation.go": {},
 		"generation_action_filters_provisional_retry_mutation.go":  {},
 		"generation_action_filters_regular_mutation.go":            {},
-		"generation_action_filters_retry_oriented_mutation.go":     {},
-		"generation_action_filters_review_ready_mutation.go":       {},
 		"generation_action_filters_section_retry_mutation.go":      {},
 		"generation_action_impact.go":                              {},
 		"generation_action_keys.go":                                {},
