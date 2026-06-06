@@ -731,6 +731,14 @@ func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
 }
 
+func (s *stubListingKitHandler) RecoverTaskNow(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "pending"})
+}
+
+func (s *stubListingKitHandler) BulkRecoverTasks(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"recovered_count": 0})
+}
+
 func (s *stubListingKitHandler) GetTaskPreview(c *gin.Context) {
 	s.getPreviewCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "selected_platform": c.Query("platform")})
