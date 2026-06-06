@@ -47,6 +47,7 @@ type browserEventTracer struct {
 }
 
 func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browserRunConfig) (*AuthPayload, bool, error) {
+	startedAt := time.Now()
 	profileDir, err := resolveProfileDir(cfg.ProfileRoot, account)
 	if err != nil {
 		return nil, false, err
@@ -58,6 +59,16 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 	staleLocks := clearProfileLockFiles(profileDir)
 	log := logger.GetGlobalLogger("sdslogin/browser")
 	log.Infof("sds login starting tenant=%s identifier=%s profile_dir=%s headless=%t", account.TenantID, account.Identifier, profileDir, cfg.Headless)
+	log.Infof(
+		"sds login config tenant=%s identifier=%s browser_path=%s cloak_enabled=%t artifact_dir=%s chrome_download_dir=%s wait_timeout=%s",
+		account.TenantID,
+		account.Identifier,
+		strings.TrimSpace(cfg.BrowserPath),
+		cfg.UseCloakBrowser,
+		strings.TrimSpace(cfg.ArtifactDir),
+		strings.TrimSpace(cfg.ChromeDownloadDir),
+		cfg.WaitTimeout,
+	)
 	if staleProcesses > 0 || staleLocks {
 		log.Infof("sds login profile preflight tenant=%s identifier=%s killed_processes=%d cleared_locks=%t", account.TenantID, account.Identifier, staleProcesses, staleLocks)
 	}
@@ -85,24 +96,30 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 	if !cfg.UseCloakBrowser {
 		manager.SetFingerprint(manager.GenerateStableFingerprint(account.Identifier))
 	}
+	log.Infof("sds login installing browser tenant=%s identifier=%s", account.TenantID, account.Identifier)
 	if err := manager.Install(); err != nil {
 		log.WithError(err).Warnf("sds login browser install failed tenant=%s identifier=%s", account.TenantID, account.Identifier)
 		return nil, false, err
 	}
+	log.Infof("sds login browser install completed tenant=%s identifier=%s elapsed=%s", account.TenantID, account.Identifier, time.Since(startedAt))
+	log.Infof("sds login launching browser tenant=%s identifier=%s", account.TenantID, account.Identifier)
 	if err := launchManagerWithProfileRecovery(manager, profileDir); err != nil {
 		log.WithError(err).Warnf("sds login browser launch failed tenant=%s identifier=%s", account.TenantID, account.Identifier)
 		manager.Close()
 		return nil, false, err
 	}
+	log.Infof("sds login browser launched tenant=%s identifier=%s elapsed=%s", account.TenantID, account.Identifier, time.Since(startedAt))
 	defer closeManagerWithTimeout(log, manager, profileDir)
 	tracer := newBrowserEventTracer(account)
 	tracer.attachContext(manager.GetContext())
 
+	log.Infof("sds login acquiring page tenant=%s identifier=%s", account.TenantID, account.Identifier)
 	page, err := acquireLoginPage(ctx, manager)
 	if err != nil {
 		log.WithError(err).Warnf("sds login acquire page failed tenant=%s identifier=%s", account.TenantID, account.Identifier)
 		return nil, false, err
 	}
+	log.Infof("sds login page acquired tenant=%s identifier=%s elapsed=%s", account.TenantID, account.Identifier, time.Since(startedAt))
 	tracer.attachPage(page, "login-root")
 	defer closePageWithTimeout(log, page)
 
@@ -110,22 +127,25 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 	if loginURL == "" {
 		loginURL = "https://www.sdsdiy.com/user/login?redirect=%2Fadmin%2Fmaterial"
 	}
+	log.Infof("sds login navigating tenant=%s identifier=%s url=%s", account.TenantID, account.Identifier, loginURL)
 	if err = gotoWithTimeout(ctx, page, loginURL, 90*time.Second); err != nil {
 		log.WithError(err).Warnf("sds login goto failed tenant=%s identifier=%s url=%s", account.TenantID, account.Identifier, loginURL)
 		return nil, false, err
 	}
-	log.Infof("sds login page loaded tenant=%s identifier=%s url=%s", account.TenantID, account.Identifier, page.URL())
+	log.Infof("sds login page loaded tenant=%s identifier=%s url=%s elapsed=%s", account.TenantID, account.Identifier, page.URL(), time.Since(startedAt))
 
+	log.Infof("sds login prefilling form tenant=%s identifier=%s", account.TenantID, account.Identifier)
 	if err := prefillLoginForm(page, account); err != nil {
 		log.WithError(err).Warnf("sds login prefill failed tenant=%s identifier=%s", account.TenantID, account.Identifier)
 		return nil, false, err
 	}
-	log.Infof("sds login form prefilled tenant=%s identifier=%s", account.TenantID, account.Identifier)
+	log.Infof("sds login form prefilled tenant=%s identifier=%s elapsed=%s", account.TenantID, account.Identifier, time.Since(startedAt))
+	log.Infof("sds login clicking submit tenant=%s identifier=%s", account.TenantID, account.Identifier)
 	clicked, clickErr := clickLoginIfPossible(page)
 	if clickErr != nil {
 		log.WithError(clickErr).Warnf("sds login click failed tenant=%s identifier=%s", account.TenantID, account.Identifier)
 	} else {
-		log.Infof("sds login click attempted tenant=%s identifier=%s clicked=%t", account.TenantID, account.Identifier, clicked)
+		log.Infof("sds login click attempted tenant=%s identifier=%s clicked=%t elapsed=%s", account.TenantID, account.Identifier, clicked, time.Since(startedAt))
 	}
 
 	waitTimeout := cfg.WaitTimeout
@@ -171,7 +191,7 @@ func runBrowserLogin(ctx context.Context, account configuredAccount, cfg browser
 			}
 		}
 		if err == nil && hasUsableLoginState(state) {
-			log.Infof("sds login completed tenant=%s identifier=%s url=%s merchant_id=%d user_id=%d", account.TenantID, account.Identifier, state.Href, state.MerchantID, state.UserID)
+			log.Infof("sds login completed tenant=%s identifier=%s url=%s merchant_id=%d user_id=%d elapsed=%s", account.TenantID, account.Identifier, state.Href, state.MerchantID, state.UserID, time.Since(startedAt))
 			return buildPayload(account, state, "fresh_login"), false, nil
 		}
 	}
