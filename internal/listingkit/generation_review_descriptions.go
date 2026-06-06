@@ -23,3 +23,20 @@ func generationReviewSectionSpecForCapability(capability string) generationRevie
 		EmptyState:  cfg.EmptyState,
 	}
 }
+
+func generationPreviewCapabilityLabel(capability string) string {
+	switch capability {
+	case "detail_preview":
+		return "Detail Preview"
+	case "measurement_preview":
+		return "Measurement Preview"
+	case "badge_preview":
+		return "Badge Preview"
+	case "copy_preview":
+		return "Copy Preview"
+	case "subject_preview":
+		return "Subject Preview"
+	default:
+		return capability
+	}
+}

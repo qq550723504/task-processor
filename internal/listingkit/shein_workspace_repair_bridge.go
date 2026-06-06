@@ -1,17 +1,17 @@
 // Adapter-only bridge. Keep domain rules in internal/workspace/shein.
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import listingworkspace "task-processor/internal/listingkit/workspace/shein"
 
-type SheinRepairCenter = sheinworkspace.RepairCenter[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]
-type SheinRepairCenterStats = sheinworkspace.RepairCenterStats
-type SheinRepairCenterSection = sheinworkspace.RepairCenterSection
-type SheinRepairCenterAction = sheinworkspace.RepairCenterAction[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]
-type SheinRepairPlan = sheinworkspace.RepairPlan
-type SheinRepairPlanStep = sheinworkspace.RepairPlanStep
-type SheinRepairApplyQueue = sheinworkspace.RepairApplyQueue[ApplyRevisionRequest, SheinRepairValidationPreview]
-type SheinRepairApplyQueueItem = sheinworkspace.RepairApplyQueueItem[ApplyRevisionRequest, SheinRepairValidationPreview]
-type SheinRepairSession = sheinworkspace.RepairSession
-type SheinRepairResumeState = sheinworkspace.RepairResumeState
-type SheinRepairCompletionSnapshot = sheinworkspace.RepairCompletionSnapshot
-type SheinRepairRunbookStep = sheinworkspace.RepairRunbookStep
+type SheinRepairCenter = listingworkspace.RepairCenter[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]
+type SheinRepairCenterStats = listingworkspace.RepairCenterStats
+type SheinRepairCenterSection = listingworkspace.RepairCenterSection
+type SheinRepairCenterAction = listingworkspace.RepairCenterAction[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]
+type SheinRepairPlan = listingworkspace.RepairPlan
+type SheinRepairPlanStep = listingworkspace.RepairPlanStep
+type SheinRepairApplyQueue = listingworkspace.RepairApplyQueue[ApplyRevisionRequest, SheinRepairValidationPreview]
+type SheinRepairApplyQueueItem = listingworkspace.RepairApplyQueueItem[ApplyRevisionRequest, SheinRepairValidationPreview]
+type SheinRepairSession = listingworkspace.RepairSession
+type SheinRepairResumeState = listingworkspace.RepairResumeState
+type SheinRepairCompletionSnapshot = listingworkspace.RepairCompletionSnapshot
+type SheinRepairRunbookStep = listingworkspace.RepairRunbookStep

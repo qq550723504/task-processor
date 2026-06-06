@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -196,11 +197,18 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 		if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
 			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
 		}
-		appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, startedAt, "刷新 SHEIN 远端提交状态", nil))
+		appendSheinSubmissionEvent(pkg, listingsubmission.BuildRefreshConfirmRemoteRunningEvent(taskID, action, requestID, startedAt))
 		if confirmation.event != nil {
-			appendSheinSubmissionEvent(pkg, *confirmation.event)
+			listingsubmission.ApplyConfirmRemoteParts(pkg, action, requestID, listingsubmission.ConfirmRemoteParts{
+				RemoteStatus: confirmation.remoteStatus,
+				Record:       confirmation.record,
+				CheckedAt:    confirmation.checkedAt,
+				Message:      confirmation.message,
+				Event:        *confirmation.event,
+			})
+		} else {
+			setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
 		}
-		setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
 		task.Result.UpdatedAt = time.Now()
 		return nil
 	})

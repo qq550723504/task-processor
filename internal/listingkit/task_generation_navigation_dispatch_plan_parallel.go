@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -109,4 +110,54 @@ func (p *taskGenerationNavigationDispatchPlanParallelPhase) replayDeduplicatedSo
 		stepResult.NotModified = sourceResult.NotModified
 		stepResult.NoChanges = sourceResult.NoChanges
 	}
+}
+
+func generationNavigationDispatchStepDeduplicationKey(step GenerationNavigationDispatchStep, responseMode string) string {
+	query := cloneGenerationQueueQuery(step.Query)
+	if query != nil && strings.TrimSpace(query.ResponseMode) == "" {
+		query.ResponseMode = firstNonEmpty(step.ResponseMode, responseMode)
+	}
+	return hashRenderRevision(
+		strings.ToLower(strings.TrimSpace(step.Kind)),
+		firstNonEmpty(step.ResponseMode, responseMode),
+		firstNonEmpty(step.CachePreference, ""),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.Platform }), "")),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.Slot }), "")),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.PreviewCapability }), "")),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.AssetID }), "")),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.AssetRevision }), "")),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.PreviewRevision }), "")),
+		strings.TrimSpace(firstNonEmpty(queryValue(query, func(q *GenerationQueueQuery) string { return q.TaskRevision }), "")),
+	)
+}
+
+func generationNavigationDispatchExecutionPendingStep(step GenerationNavigationDispatchStep, dedupeKey string, responseMode string) *GenerationNavigationDispatchExecutionStep {
+	return &GenerationNavigationDispatchExecutionStep{
+		Kind:               step.Kind,
+		ResponseMode:       firstNonEmpty(step.ResponseMode, responseMode),
+		CachePreference:    step.CachePreference,
+		RequiresRevalidate: step.RequiresRevalidate,
+		DeduplicationKey:   dedupeKey,
+		Status:             "pending",
+	}
+}
+
+func generationNavigationDispatchPlanDeduplicatedStep(step GenerationNavigationDispatchStep, dedupeKey string, sourceIndex int) GenerationNavigationDispatchExecutionStep {
+	return GenerationNavigationDispatchExecutionStep{
+		Kind:               step.Kind,
+		ResponseMode:       step.ResponseMode,
+		CachePreference:    step.CachePreference,
+		RequiresRevalidate: step.RequiresRevalidate,
+		Status:             "deduplicated",
+		DeduplicationKey:   dedupeKey,
+		DeduplicatedFrom:   sourceIndex,
+		Skipped:            true,
+	}
+}
+
+func queryValue(query *GenerationQueueQuery, selector func(*GenerationQueueQuery) string) string {
+	if query == nil || selector == nil {
+		return ""
+	}
+	return selector(query)
 }

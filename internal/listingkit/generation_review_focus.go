@@ -81,6 +81,16 @@ func matchesReviewPreviewCapability(slot AssetRenderPreviewSlot, capability stri
 	return false
 }
 
+func flattenPlatformRenderPreviewSlots(group PlatformAssetRenderPreviews) []AssetRenderPreviewSlot {
+	out := make([]AssetRenderPreviewSlot, 0, 1+len(group.Gallery)+len(group.Auxiliary))
+	if group.Main != nil {
+		out = append(out, *group.Main)
+	}
+	out = append(out, group.Gallery...)
+	out = append(out, group.Auxiliary...)
+	return out
+}
+
 func firstRenderPreviewCapability(slot AssetRenderPreviewSlot) string {
 	capabilities := buildRenderPreviewCapabilitiesForSlot(slot)
 	if len(capabilities) == 0 {

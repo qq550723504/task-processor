@@ -9,3 +9,7 @@ func generationQualityGrade(value string) string {
 func generationQualityGradeLabel(value string) string {
 	return listinggeneration.QualityGradeLabel(value)
 }
+
+func generationExecutionQualityLabel(value string) string {
+	return listinggeneration.ExecutionQualityLabel(value)
+}

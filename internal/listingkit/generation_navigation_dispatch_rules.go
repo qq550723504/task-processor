@@ -1,20 +1,5 @@
 package listingkit
 
-import "errors"
-
-func classifyGenerationNavigationDispatchStepError(err error) string {
-	switch {
-	case err == nil:
-		return ""
-	case errors.Is(err, ErrTaskNotFound), errors.Is(err, ErrGenerationTaskNotFound), errors.Is(err, ErrGenerationActionNotFound):
-		return "not_found"
-	case errors.Is(err, ErrTaskNotPending), errors.Is(err, ErrGenerationTaskNotRetryable):
-		return "conflict"
-	default:
-		return "internal"
-	}
-}
-
 func applyGenerationNavigationDispatchExecutionRules(plan *GenerationNavigationDispatchPlan, execution *GenerationNavigationDispatchExecution) {
 	if plan == nil || execution == nil {
 		return
@@ -107,6 +92,29 @@ func bestGenerationNavigationDispatchExecutionStep(execution *GenerationNavigati
 	return winner
 }
 
+func bestGenerationNavigationDispatchExecutionStepWithIndex(execution *GenerationNavigationDispatchExecution, kind string) (*GenerationNavigationDispatchExecutionStep, int) {
+	if execution == nil {
+		return nil, -1
+	}
+	bestScore := -1
+	bestIndex := -1
+	for index := range execution.Steps {
+		step := &execution.Steps[index]
+		if step.Kind != kind {
+			continue
+		}
+		score := generationNavigationDispatchStepWinnerScore(step)
+		if score > bestScore {
+			bestScore = score
+			bestIndex = index
+		}
+	}
+	if bestIndex < 0 || bestScore <= 0 {
+		return nil, -1
+	}
+	return &execution.Steps[bestIndex], bestIndex
+}
+
 func generationNavigationDispatchStepWinnerScore(step *GenerationNavigationDispatchExecutionStep) int {
 	if step == nil {
 		return 0
@@ -151,4 +159,38 @@ func hasGenerationNavigationDispatchFailure(execution *GenerationNavigationDispa
 		}
 	}
 	return false
+}
+
+func applyGenerationNavigationDispatchRecovery(step *GenerationNavigationDispatchExecutionStep) {
+	if step == nil {
+		return
+	}
+	if step.FallbackApplied || step.FallbackCandidate {
+		step.Retryable = false
+		step.RetryHint = "review_fallback"
+		return
+	}
+	switch step.Status {
+	case "failed":
+		switch step.ErrorKind {
+		case "internal":
+			step.Retryable = true
+			step.RetryHint = "retry_dispatch"
+		case "conflict":
+			step.Retryable = false
+			step.RetryHint = "refresh_revision"
+		case "not_found":
+			step.Retryable = false
+			step.RetryHint = "wait_for_generation"
+		default:
+			step.Retryable = false
+			step.RetryHint = "no_retry"
+		}
+	case "completed", "not_modified", "deduplicated", "skipped":
+		step.Retryable = false
+		step.RetryHint = "no_retry"
+	default:
+		step.Retryable = false
+		step.RetryHint = "no_retry"
+	}
 }

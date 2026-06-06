@@ -8,10 +8,10 @@ func TestGenerationReviewNavigationCloneAggregateBoundary(t *testing.T) {
 	t.Run("aggregate_navigation_clone_shape_owner_delegates_nested_clone_shaping", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "generation_review_navigation_target_clone_shape.go")
-		buildSource := readNamedFunctionSource(t, "generation_review_navigation_target_clone_shape.go", "buildGenerationReviewNavigationTargetCloneShapePhase")
-		source := readNamedFunctionSource(t, "generation_review_navigation_target_clone_shape.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_review_navigation_target_clone_shape.go", "run")
+		fileSource := readTaskGenerationSourceFile(t, "generation_review_navigation_target.go")
+		buildSource := readNamedFunctionSource(t, "generation_review_navigation_target.go", "buildGenerationReviewNavigationTargetCloneShapePhase")
+		source := readNamedFunctionSource(t, "generation_review_navigation_target.go", "run")
+		callNames := readNamedFunctionCallNames(t, "generation_review_navigation_target.go", "run")
 
 		assertSourceContainsAll(t, fileSource, []string{
 			"type generationReviewNavigationTargetCloneShapePhase struct{}",

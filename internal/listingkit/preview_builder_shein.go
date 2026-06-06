@@ -3,8 +3,8 @@ package listingkit
 import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, canonical *canonical.Product, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {

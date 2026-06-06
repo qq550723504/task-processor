@@ -3,7 +3,7 @@ package listingkit
 import (
 	"sort"
 
-	sheinworkspace "task-processor/internal/workspace/shein"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
 
 type sheinRepairActionCandidate struct {

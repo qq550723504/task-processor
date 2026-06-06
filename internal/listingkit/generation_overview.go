@@ -284,7 +284,7 @@ func cloneAssetGenerationFilters(filters *AssetGenerationRecommendedFilters) *As
 		return nil
 	}
 	cloned := *filters
-	applyAssetGenerationFiltersCloneShape(filters, &cloned)
+	applyAssetGenerationFiltersPlatformsClone(filters, &cloned)
 	return &cloned
 }
 

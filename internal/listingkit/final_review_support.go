@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Product, readiness *SheinSubmitReadiness) *SheinFinalReview {

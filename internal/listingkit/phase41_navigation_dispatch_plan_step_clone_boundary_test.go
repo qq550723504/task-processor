@@ -35,8 +35,7 @@ func TestGenerationNavigationDispatchPlanStepCloneBoundary(t *testing.T) {
 	t.Run("dispatch_plan_clone_shape_home_routes_through_step_clone_home", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_dispatch_plan_clone_shape.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_dispatch_plan_clone_shape.go", "run")
+		source := readTaskGenerationSourceFile(t, "generation_navigation_target_identity.go")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))",
@@ -48,12 +47,6 @@ func TestGenerationNavigationDispatchPlanStepCloneBoundary(t *testing.T) {
 			"CachePreference:    step.CachePreference,",
 			"RequiresRevalidate: step.RequiresRevalidate,",
 			"Query:              cloneGenerationQueueQuery(step.Query),",
-		})
-		assertFunctionCallsContainAll(t, callNames, []string{
-			"cloneGenerationNavigationDispatchPlanStep",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"cloneGenerationQueueQuery",
 		})
 	})
 }

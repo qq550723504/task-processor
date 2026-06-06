@@ -18,3 +18,20 @@ func (p *taskGenerationNavigationDispatchProjectionPhase) run(response *Generati
 
 	return finalizeGenerationReviewNavigationDispatchResponse(response)
 }
+
+func applyExecutedPlanToDispatchResponse(response *GenerationReviewNavigationDispatchResponse, execution *GenerationNavigationDispatchExecution) {
+	applyGenerationNavigationDispatchExecutionMerge(response, execution)
+}
+
+func finalizeGenerationReviewNavigationDispatchResponse(response *GenerationReviewNavigationDispatchResponse) *GenerationReviewNavigationDispatchResponse {
+	if response == nil {
+		return nil
+	}
+	response.PanelUpdate = buildGenerationReviewPanelUpdateFromDispatch(response)
+	if (response.ReviewPreview != nil && response.ReviewPreview.NotModified) ||
+		(response.Queue != nil && response.Queue.NotModified) ||
+		(response.PanelUpdate != nil && response.PanelUpdate.NoChanges) {
+		response.NotModified = true
+	}
+	return applyGenerationConditionalStateToNavigationDispatchResponse(response)
+}

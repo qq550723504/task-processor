@@ -13,24 +13,24 @@ func TestActionTargetFiltersCloneBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned := *filters",
-			"applyAssetGenerationFiltersCloneShape(filters, &cloned)",
+			"applyAssetGenerationFiltersPlatformsClone(filters, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.Platforms = append([]string(nil), filters.Platforms...)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationFiltersCloneShape",
+			"applyAssetGenerationFiltersPlatformsClone",
 		})
 	})
 
-	t.Run("action_target_filters_clone_shape_home_owns_platforms_slice_clone", func(t *testing.T) {
+	t.Run("action_target_filters_clone_home_routes_platforms_slice_through_local_home", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_filters_clone_shape.go", "applyAssetGenerationFiltersCloneShape")
-		callNames := readNamedFunctionCallNames(t, "generation_filters_clone_shape.go", "applyAssetGenerationFiltersCloneShape")
+		source := readNamedFunctionSource(t, "generation_overview.go", "cloneAssetGenerationFilters")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "cloneAssetGenerationFilters")
 
 		assertSourceContainsAll(t, source, []string{
-			"applyAssetGenerationFiltersPlatformsClone(filters, cloned)",
+			"applyAssetGenerationFiltersPlatformsClone(filters, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.Platforms = append([]string(nil), filters.Platforms...)",
@@ -39,7 +39,6 @@ func TestActionTargetFiltersCloneBoundary(t *testing.T) {
 			"applyAssetGenerationFiltersPlatformsClone",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"cloneAssetGenerationFilters",
 			"cloneGenerationQueueQuery",
 			"cloneRetryGenerationTasksRequest",
 		})

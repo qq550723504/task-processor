@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+
+	"task-processor/internal/catalog"
 )
 
 func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID string, errorMsg string, cause error) error {
@@ -40,6 +43,16 @@ func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*List
 		}
 	}
 	return copied, nil
+}
+
+func effectiveCatalogProduct(result *ListingKitResult) *catalog.Product {
+	if result == nil {
+		return nil
+	}
+	if result.CatalogProduct != nil {
+		return result.CatalogProduct
+	}
+	return catalog.BuildProduct(result.CanonicalProduct)
 }
 
 func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
@@ -175,4 +188,30 @@ func filterOutWorkflowIssuesByStage(items []WorkflowIssue, stage string) []Workf
 		return nil
 	}
 	return filtered
+}
+
+func markTaskCompleted(task *Task) {
+	if task == nil {
+		return
+	}
+	task.Status = TaskStatusCompleted
+	task.Error = ""
+	if task.Result == nil {
+		return
+	}
+	task.Result.Status = string(TaskStatusCompleted)
+	task.Result.ReviewReasons = nil
+	clearWorkflowIssuesForStage(task.Result, "shein_review")
+	task.Result.UpdatedAt = time.Now()
+}
+
+func clearWorkflowIssuesForStage(result *ListingKitResult, stage string) {
+	if result == nil {
+		return
+	}
+	result.WorkflowIssues = filterOutWorkflowIssuesByStage(result.WorkflowIssues, stage)
+	if result.Summary != nil {
+		result.Summary.NeedsReview = false
+	}
+	newWorkflowRecorder(result).FinalizeSummary()
 }

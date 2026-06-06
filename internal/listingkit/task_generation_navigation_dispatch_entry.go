@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"fmt"
+	"strings"
 )
 
 type taskGenerationNavigationDispatchEntry struct{}
@@ -29,4 +30,13 @@ func (e *taskGenerationNavigationDispatchEntry) run(req *GenerationReviewNavigat
 		responseMode: normalizeGenerationActionResponseMode(req.ResponseMode),
 		planMode:     normalizeGenerationNavigationDispatchPlanMode(req.PlanMode),
 	}, nil
+}
+
+func normalizeGenerationNavigationDispatchPlanMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "execute_plan":
+		return "execute_plan"
+	default:
+		return "primary_only"
+	}
 }

@@ -1,5 +1,15 @@
 package listingkit
 
+type generationNavigationFocusedSource struct {
+	Kind           string
+	StepIndex      int
+	ViaFallback    bool
+	FallbackReason string
+	Target         *GenerationReviewTarget
+	Preview        *AssetRenderPreviewSlot
+	Toolbar        *GenerationReviewToolbarInput
+}
+
 func applyGenerationNavigationDispatchExecutionMerge(response *GenerationReviewNavigationDispatchResponse, execution *GenerationNavigationDispatchExecution) {
 	if response == nil || execution == nil {
 		return
@@ -88,6 +98,155 @@ func applyGenerationNavigationDispatchExecutionMerge(response *GenerationReviewN
 				}
 			}
 		}
+	}
+}
+
+func buildGenerationNavigationFocusedSource(response *GenerationReviewNavigationDispatchResponse, execution *GenerationNavigationDispatchExecution) *generationNavigationFocusedSource {
+	if execution == nil {
+		return nil
+	}
+	if winner, index := bestGenerationNavigationDispatchExecutionStepWithIndex(execution, "preview"); winner != nil {
+		preview := firstReviewPreviewResponse(firstReviewPreviewStep(winner), responseReviewPreview(response))
+		return &generationNavigationFocusedSource{
+			Kind:           "preview",
+			StepIndex:      index,
+			ViaFallback:    winner.FallbackApplied,
+			FallbackReason: winner.FallbackReason,
+			Target:         previewReviewTarget(preview),
+			Preview:        previewSlot(preview),
+			Toolbar:        previewToolbar(preview),
+		}
+	}
+	if winner, index := bestGenerationNavigationDispatchExecutionStepWithIndex(execution, "session"); winner != nil {
+		session := firstReviewSessionResponse(firstReviewSessionStep(winner), responseReviewSession(response))
+		return &generationNavigationFocusedSource{
+			Kind:           "session",
+			StepIndex:      index,
+			ViaFallback:    winner.FallbackApplied,
+			FallbackReason: firstNonEmpty(winner.FallbackReason, "session_focus_fallback"),
+			Target:         sessionFocusedTarget(session),
+			Preview:        sessionFocusedPreview(session),
+			Toolbar:        sessionFocusedToolbar(session),
+		}
+	}
+	return nil
+}
+
+func firstReviewPreviewResponse(candidates ...*GenerationReviewPreviewResponse) *GenerationReviewPreviewResponse {
+	for _, candidate := range candidates {
+		if candidate != nil {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func firstReviewSessionResponse(candidates ...*GenerationReviewSessionResponse) *GenerationReviewSessionResponse {
+	for _, candidate := range candidates {
+		if candidate != nil {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func firstReviewPreviewStep(step *GenerationNavigationDispatchExecutionStep) *GenerationReviewPreviewResponse {
+	if step == nil {
+		return nil
+	}
+	return step.ReviewPreview
+}
+
+func firstReviewSessionStep(step *GenerationNavigationDispatchExecutionStep) *GenerationReviewSessionResponse {
+	if step == nil {
+		return nil
+	}
+	return step.ReviewSession
+}
+
+func responseReviewPreview(response *GenerationReviewNavigationDispatchResponse) *GenerationReviewPreviewResponse {
+	if response == nil {
+		return nil
+	}
+	return response.ReviewPreview
+}
+
+func responseReviewSession(response *GenerationReviewNavigationDispatchResponse) *GenerationReviewSessionResponse {
+	if response == nil {
+		return nil
+	}
+	return response.ReviewSession
+}
+
+func previewReviewTarget(response *GenerationReviewPreviewResponse) *GenerationReviewTarget {
+	if response == nil {
+		return nil
+	}
+	return response.ReviewTarget
+}
+
+func previewSlot(response *GenerationReviewPreviewResponse) *AssetRenderPreviewSlot {
+	if response == nil {
+		return nil
+	}
+	return response.Preview
+}
+
+func previewToolbar(response *GenerationReviewPreviewResponse) *GenerationReviewToolbarInput {
+	if response == nil {
+		return nil
+	}
+	return response.Toolbar
+}
+
+func sessionFocusedTarget(response *GenerationReviewSessionResponse) *GenerationReviewTarget {
+	if response == nil {
+		return nil
+	}
+	if response.Session != nil && response.Session.FocusedTarget != nil {
+		return response.Session.FocusedTarget
+	}
+	if response.Patch != nil && response.Patch.FocusedTarget != nil {
+		return response.Patch.FocusedTarget
+	}
+	return nil
+}
+
+func sessionFocusedPreview(response *GenerationReviewSessionResponse) *AssetRenderPreviewSlot {
+	if response == nil {
+		return nil
+	}
+	if response.Session != nil && response.Session.FocusedRenderPreview != nil {
+		return response.Session.FocusedRenderPreview
+	}
+	if response.Patch != nil && response.Patch.FocusedRenderPreview != nil {
+		return response.Patch.FocusedRenderPreview
+	}
+	return nil
+}
+
+func sessionFocusedToolbar(response *GenerationReviewSessionResponse) *GenerationReviewToolbarInput {
+	if response == nil {
+		return nil
+	}
+	if response.Session != nil && response.Session.FocusedToolbar != nil {
+		return response.Session.FocusedToolbar
+	}
+	if response.Patch != nil && response.Patch.FocusedToolbar != nil {
+		return response.Patch.FocusedToolbar
+	}
+	return nil
+}
+
+func buildGenerationNavigationDispatchResolution(focused *generationNavigationFocusedSource) *GenerationNavigationDispatchResolution {
+	if focused == nil {
+		return nil
+	}
+	return &GenerationNavigationDispatchResolution{
+		SourceKind:     focused.Kind,
+		SourceStep:     focused.StepIndex,
+		ViaFallback:    focused.ViaFallback,
+		FallbackReason: focused.FallbackReason,
 	}
 }
 

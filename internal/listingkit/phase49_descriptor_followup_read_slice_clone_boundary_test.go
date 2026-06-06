@@ -5,11 +5,11 @@ import "testing"
 func TestGenerationNavigationDescriptorFollowUpReadSliceCloneBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("followup_read_slice_clone_home_owns_slice_orchestration", func(t *testing.T) {
+	t.Run("descriptor_clone_shape_pairing_home_owns_slice_orchestration", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_followup_read_slice_clone.go", "cloneGenerationNavigationFollowUpReadSlice")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_followup_read_slice_clone.go", "cloneGenerationNavigationFollowUpReadSlice")
+		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpReadSlice")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpReadSlice")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned := make([]GenerationNavigationFollowUpRead, 0, len(items))",
@@ -26,11 +26,11 @@ func TestGenerationNavigationDescriptorFollowUpReadSliceCloneBoundary(t *testing
 		})
 	})
 
-	t.Run("followup_read_routing_pairing_home_routes_through_slice_clone_home", func(t *testing.T) {
+	t.Run("descriptor_clone_shape_pairing_home_routes_through_local_slice_clone", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_followup_read_routing_pairing.go", "applyGenerationNavigationDescriptorFollowUpReadRoutingPairing")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_followup_read_routing_pairing.go", "applyGenerationNavigationDescriptorFollowUpReadRoutingPairing")
+		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.FollowUpReads = cloneGenerationNavigationFollowUpReadSlice(descriptor.FollowUpReads)",

@@ -3,14 +3,7 @@ package listingkit
 import (
 	"sort"
 	"strings"
-	"time"
 )
-
-type generationQueueListPage struct {
-	Page     int
-	PageSize int
-	Total    int
-}
 
 func filterGenerationQueueItems(items []GenerationWorkQueueItem, query *GenerationQueueQuery) []GenerationWorkQueueItem {
 	if len(items) == 0 || query == nil {
@@ -117,49 +110,21 @@ func queueItemHasPreviewCapability(item GenerationWorkQueueItem, capability stri
 	return false
 }
 
-func paginateGenerationQueueItems(items []GenerationWorkQueueItem, query *GenerationQueueQuery) ([]GenerationWorkQueueItem, generationQueueListPage) {
-	page := defaultGenerationTaskPage
-	pageSize := defaultGenerationTaskPageSize
-	if query != nil {
-		if query.Page > 0 {
-			page = query.Page
-		}
-		if query.PageSize > 0 {
-			pageSize = query.PageSize
-		}
+func resolveGenerationQueuePage(query *GenerationQueueQuery) int {
+	if query != nil && query.Page > 0 {
+		return query.Page
 	}
-	if pageSize > maxGenerationTaskPageSize {
-		pageSize = maxGenerationTaskPageSize
-	}
-	total := len(items)
-	if total == 0 {
-		return nil, generationQueueListPage{Page: page, PageSize: pageSize, Total: 0}
-	}
-	start := (page - 1) * pageSize
-	if start >= total {
-		return nil, generationQueueListPage{Page: page, PageSize: pageSize, Total: total}
-	}
-	end := start + pageSize
-	if end > total {
-		end = total
-	}
-	return append([]GenerationWorkQueueItem(nil), items[start:end]...), generationQueueListPage{
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}
+	return defaultGenerationTaskPage
 }
 
-func buildGenerationQueuePage(taskID string, updatedAt time.Time, filtered []GenerationWorkQueueItem, paged []GenerationWorkQueueItem, page generationQueueListPage) *GenerationQueuePage {
-	return &GenerationQueuePage{
-		TaskID:    taskID,
-		Summary:   buildGenerationWorkQueueSummary(filtered),
-		Page:      page.Page,
-		PageSize:  page.PageSize,
-		Total:     page.Total,
-		Items:     append([]GenerationWorkQueueItem(nil), paged...),
-		UpdatedAt: updatedAt,
+func resolveGenerationQueuePageSize(query *GenerationQueueQuery) int {
+	if query != nil && query.PageSize > 0 {
+		if query.PageSize > maxGenerationTaskPageSize {
+			return maxGenerationTaskPageSize
+		}
+		return query.PageSize
 	}
+	return defaultGenerationTaskPageSize
 }
 
 func compareQueueSortValue(left, right, leftID, rightID string) bool {

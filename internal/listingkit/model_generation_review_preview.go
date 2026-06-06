@@ -42,6 +42,13 @@ type GenerationReviewPreviewViewer struct {
 	PreviewQuery     *GenerationQueueQuery             `json:"preview_query,omitempty"`
 }
 
+func (in *GenerationReviewToolbarInput) GetViewer() *GenerationReviewPreviewViewer {
+	if in == nil {
+		return nil
+	}
+	return in.PreviewViewer
+}
+
 type GenerationReviewWorkflowResult struct {
 	ActionKey  string `json:"action_key,omitempty"`
 	Status     string `json:"status,omitempty"`

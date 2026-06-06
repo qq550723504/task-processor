@@ -1,53 +1,53 @@
 // Adapter-only bridge. Keep domain rules in internal/workspace/shein.
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import listingworkspace "task-processor/internal/listingkit/workspace/shein"
 
-type SheinEditorRecommendationMeta = sheinworkspace.EditorRecommendationMeta
-type SheinEditorAttributeSuggestion = sheinworkspace.EditorAttributeSuggestion
-type SheinEditorSaleCandidateSuggestion = sheinworkspace.EditorSaleCandidateSuggestion
-type SheinEditorEffect = sheinworkspace.EditorEffect
-type SheinEditorProgress = sheinworkspace.EditorProgress
-type SheinEditorProgressSection = sheinworkspace.EditorProgressSection
-type SheinEditorDirtyHints = sheinworkspace.EditorDirtyHints
-type SheinEditorDirtyHintSection = sheinworkspace.EditorDirtyHintSection
+type SheinEditorRecommendationMeta = listingworkspace.EditorRecommendationMeta
+type SheinEditorAttributeSuggestion = listingworkspace.EditorAttributeSuggestion
+type SheinEditorSaleCandidateSuggestion = listingworkspace.EditorSaleCandidateSuggestion
+type SheinEditorEffect = listingworkspace.EditorEffect
+type SheinEditorProgress = listingworkspace.EditorProgress
+type SheinEditorProgressSection = listingworkspace.EditorProgressSection
+type SheinEditorDirtyHints = listingworkspace.EditorDirtyHints
+type SheinEditorDirtyHintSection = listingworkspace.EditorDirtyHintSection
 
 func buildSheinCategoryRecommendationMeta(pkg *SheinPackage) *SheinEditorRecommendationMeta {
-	return sheinworkspace.BuildCategoryRecommendationMeta(pkg)
+	return listingworkspace.BuildCategoryRecommendationMeta(pkg)
 }
 
 func buildSheinAttributeRecommendationMeta(pkg *SheinPackage) *SheinEditorRecommendationMeta {
-	return sheinworkspace.BuildAttributeRecommendationMeta(pkg)
+	return listingworkspace.BuildAttributeRecommendationMeta(pkg)
 }
 
 func buildSheinSaleRecommendationMeta(pkg *SheinPackage) *SheinEditorRecommendationMeta {
-	return sheinworkspace.BuildSaleRecommendationMeta(pkg)
+	return listingworkspace.BuildSaleRecommendationMeta(pkg)
 }
 
 func buildSheinAttributeSuggestions(pkg *SheinPackage) []SheinEditorAttributeSuggestion {
-	return sheinworkspace.BuildAttributeSuggestions(pkg)
+	return listingworkspace.BuildAttributeSuggestions(pkg)
 }
 
 func buildSheinSaleCandidateSuggestions(pkg *SheinPackage) []SheinEditorSaleCandidateSuggestion {
-	return sheinworkspace.BuildSaleCandidateSuggestions(pkg)
+	return listingworkspace.BuildSaleCandidateSuggestions(pkg)
 }
 
 func buildSheinCategoryEffects() []SheinEditorEffect {
-	return sheinworkspace.BuildCategoryEffects()
+	return listingworkspace.BuildCategoryEffects()
 }
 
 func buildSheinAttributeEffects() []SheinEditorEffect {
-	return sheinworkspace.BuildAttributeEffects()
+	return listingworkspace.BuildAttributeEffects()
 }
 
 func buildSheinSaleAttributeEffects() []SheinEditorEffect {
-	return sheinworkspace.BuildSaleAttributeEffects()
+	return listingworkspace.BuildSaleAttributeEffects()
 }
 
 func buildSheinEditorProgress(pkg *SheinPackage, checklist *SheinSubmitChecklist) *SheinEditorProgress {
-	return sheinworkspace.BuildEditorProgress(pkg, sheinworkspace.ChecklistItemCount(checklist))
+	return listingworkspace.BuildEditorProgress(pkg, checklist)
 }
 
 func buildSheinEditorDirtyHints(pkg *SheinPackage) *SheinEditorDirtyHints {
-	return sheinworkspace.BuildEditorDirtyHints(pkg)
+	return listingworkspace.BuildEditorDirtyHints(pkg)
 }

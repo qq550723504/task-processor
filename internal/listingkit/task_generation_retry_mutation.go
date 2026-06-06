@@ -3,6 +3,7 @@ package listingkit
 import (
 	asset "task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 type retryGenerationMutationPhase struct{}
@@ -26,8 +27,8 @@ func (p *retryGenerationMutationPhase) run(
 		return updatedTasks
 	}
 
-	retriedTargets := generationTaskTargets(selectedTasks)
-	inventory.Records = replaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchResult.Assets)
+	retriedTargets := listinggeneration.TaskTargets(selectedTasks)
+	inventory.Records = listinggeneration.ReplaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchResult.Assets)
 	inventory.Summary = rebuildInventorySummary(inventory)
 	return updatedTasks
 }

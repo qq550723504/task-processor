@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -109,6 +110,19 @@ func (p *taskGenerationNavigationDispatchStepExecutionPhase) failedResult(result
 	return result
 }
 
+func classifyGenerationNavigationDispatchStepError(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, ErrTaskNotFound), errors.Is(err, ErrGenerationTaskNotFound), errors.Is(err, ErrGenerationActionNotFound):
+		return "not_found"
+	case errors.Is(err, ErrTaskNotPending), errors.Is(err, ErrGenerationTaskNotRetryable):
+		return "conflict"
+	default:
+		return "internal"
+	}
+}
+
 func (p *taskGenerationNavigationDispatchStepExecutionPhase) applyReadState(result *GenerationNavigationDispatchExecutionStep, deltaToken string, notModified bool) {
 	if result == nil {
 		return
@@ -140,4 +154,61 @@ func sessionReadState(session *GenerationReviewSessionResponse) (string, bool) {
 		return "", false
 	}
 	return session.DeltaToken, session.NotModified
+}
+
+func shouldStopGenerationNavigationDispatchPlan(plan *GenerationNavigationDispatchPlan, step *GenerationNavigationDispatchExecutionStep) bool {
+	if plan == nil || step == nil {
+		return false
+	}
+	if plan.StopOnNotModified && step.NotModified {
+		return true
+	}
+	if plan.StopOnFirstSuccess && step.Executed && !step.NotModified {
+		return true
+	}
+	return false
+}
+
+func generationNavigationDispatchPlanStopReason(plan *GenerationNavigationDispatchPlan, step *GenerationNavigationDispatchExecutionStep) string {
+	if plan == nil || step == nil {
+		return ""
+	}
+	if plan.StopOnNotModified && step.NotModified {
+		return "not_modified"
+	}
+	if plan.StopOnFirstSuccess && step.Executed && !step.NotModified {
+		return "first_success"
+	}
+	return ""
+}
+
+func generationNavigationDispatchPlanSkippedStep(step GenerationNavigationDispatchStep, stopReason string) GenerationNavigationDispatchExecutionStep {
+	return GenerationNavigationDispatchExecutionStep{
+		Kind:               step.Kind,
+		ResponseMode:       step.ResponseMode,
+		CachePreference:    step.CachePreference,
+		RequiresRevalidate: step.RequiresRevalidate,
+		Status:             "skipped",
+		Error:              stopReason,
+		Skipped:            true,
+	}
+}
+
+func applyGenerationNavigationDispatchExecutionStats(execution *GenerationNavigationDispatchExecution, step *GenerationNavigationDispatchExecutionStep) {
+	if execution == nil || step == nil {
+		return
+	}
+	switch step.Status {
+	case "failed":
+		execution.FailedSteps++
+		execution.Partial = true
+	case "deduplicated":
+		execution.DedupedSteps++
+	case "skipped":
+		execution.Partial = true
+	default:
+		if step.Executed {
+			execution.CompletedSteps++
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	assetgeneration "task-processor/internal/asset/generation"
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 func mergedGenerationQueueTasks(result *ListingKitResult) []assetgeneration.Task {
@@ -43,7 +44,7 @@ func mergeGenerationTaskIntoQueue(items *[]GenerationWorkQueueItem, index map[ge
 		item.State = state
 		item.SatisfiedBy = firstNonEmpty(task.SatisfiedBy, item.SatisfiedBy)
 		item.IsFallback = item.IsFallback || state == "stubbed" || strings.EqualFold(task.SatisfiedBy, "fallback_asset")
-		item.Retryable = generationTaskRetryable(task)
+		item.Retryable = listinggeneration.TaskRetryable(task)
 		item.RecipeID = firstNonEmpty(task.RecipeID, item.RecipeID)
 		item.TemplateLabel = firstNonEmpty(task.TemplateLabel, item.TemplateLabel)
 		item.RenderProfile = firstNonEmpty(task.RenderProfile, item.RenderProfile)
@@ -68,7 +69,7 @@ func mergeGenerationTaskIntoQueue(items *[]GenerationWorkQueueItem, index map[ge
 		State:                 state,
 		SatisfiedBy:           task.SatisfiedBy,
 		IsFallback:            state == "stubbed" || strings.EqualFold(task.SatisfiedBy, "fallback_asset"),
-		Retryable:             generationTaskRetryable(task),
+		Retryable:             listinggeneration.TaskRetryable(task),
 		RecipeID:              task.RecipeID,
 		TemplateLabel:         task.TemplateLabel,
 		RenderProfile:         task.RenderProfile,
@@ -104,4 +105,54 @@ func generationQueueStateFromTask(task assetgeneration.Task) string {
 		}
 		return "queued"
 	}
+}
+
+func generationQueueTaskStateReason(task assetgeneration.Task) string {
+	switch strings.ToLower(strings.TrimSpace(task.ExecutionStatus)) {
+	case "failed":
+		return "generation task failed"
+	case "running", "processing", "in_progress":
+		return "generation task is running"
+	case "planned", "pending", "queued":
+		return "generation task is queued"
+	case "completed":
+		if task.ExecutionMode == assetgeneration.ExecutionModeDeferredStub {
+			return "completed with stub fallback"
+		}
+		if task.ExecutionMode == assetgeneration.ExecutionModeRendererBacked {
+			return "completed with renderer output"
+		}
+		return "generation task completed"
+	}
+	return ""
+}
+
+func generationQueueTaskExecutionQuality(task assetgeneration.Task) string {
+	switch task.ExecutionMode {
+	case assetgeneration.ExecutionModeRendererBacked:
+		if strings.EqualFold(strings.TrimSpace(task.ExecutionStatus), "completed") {
+			return "renderer_output"
+		}
+	case assetgeneration.ExecutionModeDeferredStub:
+		if strings.EqualFold(strings.TrimSpace(task.ExecutionStatus), "completed") {
+			return "stub_fallback"
+		}
+	case assetgeneration.ExecutionModePipelineBacked:
+		if strings.EqualFold(strings.TrimSpace(task.ExecutionStatus), "completed") {
+			return "pipeline_output"
+		}
+	case assetgeneration.ExecutionModeNativeAlias:
+		if strings.EqualFold(strings.TrimSpace(task.ExecutionStatus), "completed") {
+			return "alias_output"
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(task.ExecutionStatus)) {
+	case "failed":
+		return "failed"
+	case "running", "processing", "in_progress":
+		return "running"
+	case "planned", "pending", "queued":
+		return "queued"
+	}
+	return ""
 }

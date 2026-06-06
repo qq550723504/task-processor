@@ -130,6 +130,15 @@ func FindRecordByRequestID(pkg *sheinpub.Package, action, requestID string) *she
 	return record
 }
 
+func SubmissionSucceeded(pkg *sheinpub.Package, action string) bool {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
+		return false
+	}
+	record := RecordForAction(pkg.SubmissionState, action)
+	return record != nil && record.Status == sheinpub.SubmissionStatusSuccess
+}
+
 func FindActiveAttempt(pkg *sheinpub.Package, action string, now time.Time, ttl time.Duration) *sheinpub.SubmissionReport {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {

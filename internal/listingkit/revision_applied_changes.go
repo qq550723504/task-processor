@@ -3,8 +3,8 @@ package listingkit
 import (
 	"strings"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func buildAppliedChangesPreview(platform string, before, after *ListingKitResult) *RevisionDiffPreview {

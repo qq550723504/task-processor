@@ -4,6 +4,7 @@ import (
 	"time"
 
 	assetgeneration "task-processor/internal/asset/generation"
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 type AssetGenerationSummary struct {
@@ -96,4 +97,18 @@ type RetryGenerationTasksRequest struct {
 	QualityGradeLabel     string   `json:"quality_grade_label,omitempty"`
 	FallbackOnly          bool     `json:"fallback_only,omitempty"`
 	RendererOnly          bool     `json:"renderer_only,omitempty"`
+}
+
+func buildAssetGenerationSummary(tasks []assetgeneration.Task) *AssetGenerationSummary {
+	stats := listinggeneration.SummarizeTasks(tasks)
+	return &AssetGenerationSummary{
+		TotalTasks:          stats.TotalTasks,
+		PlannedTasks:        stats.PlannedTasks,
+		CompletedTasks:      stats.CompletedTasks,
+		FailedTasks:         stats.FailedTasks,
+		RendererBackedTasks: stats.RendererBackedTasks,
+		FallbackTasks:       stats.FallbackTasks,
+		RetryableTasks:      stats.RetryableTasks,
+		Platforms:           stats.Platforms,
+	}
 }

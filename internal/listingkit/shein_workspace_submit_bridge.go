@@ -1,14 +1,14 @@
 // Adapter-only bridge. Keep domain rules in internal/workspace/shein.
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import listingworkspace "task-processor/internal/listingkit/workspace/shein"
 
-type SheinSubmitReadiness = sheinworkspace.SubmitReadiness[SheinReadinessReason, SheinRepairHint]
-type SheinReadinessItem = sheinworkspace.ReadinessItem[SheinReadinessReason, SheinRepairHint]
-type SheinReadinessCheck = sheinworkspace.ReadinessCheck[SheinReadinessReason, SheinRepairHint]
-type SheinSubmitChecklist = sheinworkspace.SubmitChecklist[SheinReadinessReason, SheinRepairHint]
-type SheinChecklistGroupItem = sheinworkspace.ChecklistGroupItem[SheinReadinessReason, SheinRepairHint]
+type SheinSubmitReadiness = listingworkspace.SubmitReadiness[SheinReadinessReason, SheinRepairHint]
+type SheinReadinessItem = listingworkspace.ReadinessItem[SheinReadinessReason, SheinRepairHint]
+type SheinReadinessCheck = listingworkspace.ReadinessCheck[SheinReadinessReason, SheinRepairHint]
+type SheinSubmitChecklist = listingworkspace.SubmitChecklist[SheinReadinessReason, SheinRepairHint]
+type SheinChecklistGroupItem = listingworkspace.ChecklistGroupItem[SheinReadinessReason, SheinRepairHint]
 
 func buildSheinSubmitChecklist(readiness *SheinSubmitReadiness) *SheinSubmitChecklist {
-	return sheinworkspace.BuildSubmitChecklist(readiness, sheinworkspace.SubmitChecklistGroupForKey)
+	return listingworkspace.BuildSubmitChecklist(readiness)
 }

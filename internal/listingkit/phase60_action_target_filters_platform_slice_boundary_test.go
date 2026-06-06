@@ -15,7 +15,6 @@ func TestActionTargetFiltersPlatformSliceBoundary(t *testing.T) {
 			"cloned.Platforms = append([]string(nil), filters.Platforms...)",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"applyAssetGenerationFiltersCloneShape",
 			"cloneAssetGenerationFilters",
 			"cloneGenerationQueueQuery",
 		})

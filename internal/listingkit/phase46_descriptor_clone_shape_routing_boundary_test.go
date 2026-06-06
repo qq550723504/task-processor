@@ -5,53 +5,46 @@ import "testing"
 func TestGenerationNavigationDescriptorCloneShapeRoutingBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("descriptor_followup_read_routing_home_owns_only_followup_read_slice_routing", func(t *testing.T) {
+	t.Run("descriptor_followup_read_routing_pairing_home_owns_only_followup_read_slice_routing", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_followup_read_routing.go", "applyGenerationNavigationDescriptorFollowUpReadCloneRouting")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_followup_read_routing.go", "applyGenerationNavigationDescriptorFollowUpReadCloneRouting")
+		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
 
 		assertSourceContainsAll(t, source, []string{
-			"applyGenerationNavigationDescriptorFollowUpReadRoutingPairing(descriptor, cloned)",
+			"cloned.FollowUpReads = cloneGenerationNavigationFollowUpReadSlice(descriptor.FollowUpReads)",
 		})
 		assertSourceExcludesAll(t, source, []string{
-			"applyGenerationNavigationDescriptorResidualCloneShape(",
-			"cloneGenerationConditionalState(",
-			"cloneGenerationNavigationDispatchPlan(",
+			"applyGenerationNavigationDescriptorResidualClonePairing(",
 			"if len(descriptor.FollowUpReads) == 0 {",
 			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",
 			"cloned.FollowUpReads = append(cloned.FollowUpReads, cloneGenerationNavigationFollowUpRead(item))",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyGenerationNavigationDescriptorFollowUpReadRoutingPairing",
+			"cloneGenerationNavigationFollowUpReadSlice",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneGenerationNavigationFollowUpRead",
-			"applyGenerationNavigationDescriptorResidualCloneShape",
-			"cloneGenerationConditionalState",
-			"cloneGenerationNavigationDispatchPlan",
+			"applyGenerationNavigationDescriptorResidualClonePairing",
 		})
 	})
 
 	t.Run("descriptor_clone_shape_home_routes_through_local_routing_homes", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape.go", "run")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "run")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "run")
 
 		assertSourceContainsAll(t, source, []string{
 			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
-			"applyGenerationNavigationDescriptorResidualCloneShape(descriptor, cloned)",
-			"applyGenerationNavigationDescriptorFollowUpReadCloneRouting(descriptor, cloned)",
+			"cloned.FollowUpReads = cloneGenerationNavigationFollowUpReadSlice(descriptor.FollowUpReads)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"applyGenerationNavigationDescriptorCloneShapePairing",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"applyGenerationNavigationDescriptorResidualCloneShape",
-			"applyGenerationNavigationDescriptorFollowUpReadCloneRouting",
 			"cloneGenerationNavigationFollowUpRead",
 		})
 	})

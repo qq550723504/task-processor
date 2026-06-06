@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 type sheinBuildValidation struct {

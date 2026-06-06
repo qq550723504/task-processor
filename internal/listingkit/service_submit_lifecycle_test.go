@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -1297,7 +1298,7 @@ func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(
 		Success: true,
 		SPUName: "SPU-123",
 	}, nil, now)
-	appendSheinSubmissionEvent(task.Result.Shein, buildSheinSubmissionEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
+	appendSheinSubmissionEvent(task.Result.Shein, listingsubmission.BuildEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}

@@ -28,3 +28,25 @@ func buildAssetGenerationProjection(result *ListingKitResult, tasks []assetgener
 		Overview: buildAssetGenerationOverview(queue),
 	}
 }
+
+func decorateListingKitResultGeneration(result *ListingKitResult, tasks []assetgeneration.Task) {
+	if result == nil {
+		return
+	}
+	projection := buildAssetGenerationProjection(result, tasks)
+	result.AssetGenerationTasks = projection.Tasks
+	result.AssetGenerationSummary = projection.Summary
+	result.AssetGenerationQueue = projection.Queue
+	result.AssetGenerationOverview = projection.Overview
+}
+
+func withListingKitResultGeneration(result *ListingKitResult, tasks []assetgeneration.Task) *ListingKitResult {
+	if result == nil {
+		return &ListingKitResult{
+			AssetGenerationTasks: cloneGenerationTasks(tasks),
+		}
+	}
+	cloned := *result
+	decorateListingKitResultGeneration(&cloned, tasks)
+	return &cloned
+}

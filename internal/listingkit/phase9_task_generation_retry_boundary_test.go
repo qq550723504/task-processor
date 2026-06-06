@@ -65,7 +65,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 			file: "task_generation_retry_mutation.go",
 			shouldOwn: []string{
 				"mergeGenerationTasks(",
-				"replaceGeneratedAssetsForTargets(",
+				"listinggeneration.ReplaceGeneratedAssetsForTargets(",
 				"rebuildInventorySummary(",
 			},
 			shouldAvoid: []string{

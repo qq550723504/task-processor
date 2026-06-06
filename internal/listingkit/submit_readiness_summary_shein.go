@@ -3,7 +3,7 @@ package listingkit
 import (
 	"strings"
 
-	sheinworkspace "task-processor/internal/workspace/shein"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
 
 type sheinSubmitReadinessSummaryShape struct {

@@ -8,10 +8,10 @@ func TestGenerationNavigationDescriptorCloneAggregateBoundary(t *testing.T) {
 	t.Run("aggregate_descriptor_clone_shape_owner_delegates_nested_clone_shaping", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "generation_navigation_descriptor_clone_shape.go")
-		buildSource := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape.go", "buildGenerationNavigationDescriptorCloneShapePhase")
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape.go", "run")
+		fileSource := readTaskGenerationSourceFile(t, "generation_navigation_target_identity.go")
+		buildSource := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "buildGenerationNavigationDescriptorCloneShapePhase")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "run")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "run")
 
 		assertSourceContainsAll(t, fileSource, []string{
 			"type generationNavigationDescriptorCloneShapePhase struct{}",

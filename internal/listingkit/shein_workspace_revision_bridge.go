@@ -1,34 +1,28 @@
 // Adapter-only bridge. Keep domain rules in internal/workspace/shein.
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import listingworkspace "task-processor/internal/listingkit/workspace/shein"
 
-type SheinRevisionInput = sheinworkspace.RevisionInput
-type SheinCategoryResolutionPatch = sheinworkspace.CategoryResolutionPatch
-type SheinAttributeResolutionPatch = sheinworkspace.AttributeResolutionPatch
-type SheinSaleAttributeResolutionPatch = sheinworkspace.SaleAttributeResolutionPatch
-type SheinSKCRevisionPatch = sheinworkspace.SKCRevisionPatch
-type SheinSKURevisionPatch = sheinworkspace.SKURevisionPatch
-type SheinEditorRevisionSkeleton = sheinworkspace.EditorRevisionSkeleton
+type SheinRevisionInput = listingworkspace.RevisionInput
+type SheinCategoryResolutionPatch = listingworkspace.CategoryResolutionPatch
+type SheinAttributeResolutionPatch = listingworkspace.AttributeResolutionPatch
+type SheinSaleAttributeResolutionPatch = listingworkspace.SaleAttributeResolutionPatch
+type SheinSKCRevisionPatch = listingworkspace.SKCRevisionPatch
+type SheinSKURevisionPatch = listingworkspace.SKURevisionPatch
+type SheinEditorRevisionSkeleton = listingworkspace.EditorRevisionSkeleton
 
 func buildSheinEditorRevisionSkeleton(pkg *SheinPackage) *SheinEditorRevisionSkeleton {
-	return sheinworkspace.BuildEditorRevisionSkeleton(
-		pkg,
-		buildSheinCategoryResolutionPatch(pkg),
-		buildSheinAttributeResolutionPatch(pkg),
-		buildSheinSaleAttributeResolutionPatch(pkg),
-		buildSheinEditorSKCPatches(pkg),
-	)
+	return listingworkspace.BuildEditorRevisionSkeleton(pkg)
 }
 
 func buildSheinMinimalRevisionSkeleton(pkg *SheinPackage) *SheinEditorRevisionSkeleton {
-	return sheinworkspace.BuildMinimalRevisionSkeleton(buildSheinEditorRevisionSkeleton(pkg))
+	return listingworkspace.BuildMinimalRevisionSkeleton(pkg)
 }
 
 func pruneSheinRevisionInput(input *SheinRevisionInput) *SheinRevisionInput {
-	return sheinworkspace.PruneRevisionInput(input)
+	return listingworkspace.PruneRevisionInput(input)
 }
 
 func isEmptySheinRevisionInput(input *SheinRevisionInput) bool {
-	return sheinworkspace.IsEmptyRevisionInput(input)
+	return listingworkspace.IsEmptyRevisionInput(input)
 }

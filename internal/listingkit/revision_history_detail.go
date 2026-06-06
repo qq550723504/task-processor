@@ -3,7 +3,7 @@ package listingkit
 import (
 	"errors"
 
-	sheinworkspace "task-processor/internal/workspace/shein"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
 
 var ErrRevisionHistoryRecordNotFound = errors.New("revision history record not found")

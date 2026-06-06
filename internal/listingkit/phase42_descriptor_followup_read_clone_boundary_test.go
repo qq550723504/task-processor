@@ -8,8 +8,8 @@ func TestGenerationNavigationDescriptorFollowUpReadCloneBoundary(t *testing.T) {
 	t.Run("followup_read_clone_home_owns_only_read_specific_shaping", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_followup_read_clone.go", "cloneGenerationNavigationFollowUpRead")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_followup_read_clone.go", "cloneGenerationNavigationFollowUpRead")
+		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpRead")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpRead")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned := item",
@@ -37,8 +37,8 @@ func TestGenerationNavigationDescriptorFollowUpReadCloneBoundary(t *testing.T) {
 	t.Run("descriptor_clone_shape_home_routes_followup_reads_through_read_clone_home", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape.go", "run")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "run")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "run")
 
 		assertSourceContainsAll(t, source, []string{
 			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",

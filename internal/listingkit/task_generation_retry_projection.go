@@ -55,3 +55,24 @@ func (p *retryGenerationProjectionPhase) run(
 	page.ExecutedQueue = buildMatchedGenerationQueue(rebuiltResult.AssetGenerationQueue, dispatchResult.Tasks)
 	return &rebuiltResult, page
 }
+
+func buildMatchedGenerationQueue(queue *GenerationWorkQueue, tasks []assetgeneration.Task) *GenerationWorkQueue {
+	if queue == nil || len(tasks) == 0 {
+		return &GenerationWorkQueue{Summary: buildGenerationWorkQueueSummary(nil)}
+	}
+	keys := make(map[generationQueueKey]struct{}, len(tasks))
+	for _, task := range tasks {
+		keys[generationQueueItemKey(task.Platform, task.RecipeID, task.Slot)] = struct{}{}
+	}
+	items := make([]GenerationWorkQueueItem, 0, len(tasks))
+	for _, item := range queue.Items {
+		if _, ok := keys[generationQueueItemKey(item.Platform, item.RecipeID, item.Slot)]; !ok {
+			continue
+		}
+		items = append(items, item)
+	}
+	return &GenerationWorkQueue{
+		Summary: buildGenerationWorkQueueSummary(items),
+		Items:   items,
+	}
+}

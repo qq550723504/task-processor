@@ -64,7 +64,7 @@ func (s *taskSubmissionRecoveryService) beginSheinSubmitLease(ctx context.Contex
 		if pkg.SubmissionState != nil && (sameRequestNeedsRecovery || sheinSubmitAttemptNeedsRemoteRecovery(pkg.SubmissionState, action, startedAt)) {
 			record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 			if record != nil && strings.TrimSpace(record.SupplierCode) != "" {
-				appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, pkg.SubmissionState.CurrentPhase, sheinpub.SubmissionStatusRunning, requestID, startedAt, "远端可能已收到，正在刷新诊断状态", nil))
+				appendSheinSubmissionEvent(pkg, listingsubmission.BuildPhaseEvent(taskID, action, pkg.SubmissionState.CurrentPhase, sheinpub.SubmissionStatusRunning, requestID, startedAt, "远端可能已收到，正在刷新诊断状态", nil))
 				return errSheinSubmitRecoverRemote
 			}
 		}
@@ -80,8 +80,8 @@ func (s *taskSubmissionRecoveryService) beginSheinSubmitLease(ctx context.Contex
 				LeaseExpiresAt: active.LeaseExpiresAt,
 			}
 		}
-		beginSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt)
-		appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseValidate, sheinpub.SubmissionStatusRunning, requestID, startedAt, "", nil))
+		_, event := listingsubmission.BeginAttemptAndBuildEvent(pkg, taskID, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt, sheinSubmitInFlightTTL)
+		appendSheinSubmissionEvent(pkg, event)
 		task.Result.UpdatedAt = startedAt
 		return nil
 	})
@@ -136,10 +136,10 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	if response == nil {
 		response = report.LastResult
 	}
-	if sheinSubmissionResponseAccepted(response) || (action == "save_draft" && saveDraftSucceeded(action, response)) {
-		appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, requestID, now, "恢复本地提交完成状态", nil))
-		record = completeSheinSubmitAttempt(pkg, action, requestID, response, nil, time.Now())
-		appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
+	if sheinSubmissionResponseAccepted(response) || (action == "save_draft" && listingsubmission.SaveDraftSucceeded(action, response)) {
+		appendSheinSubmissionEvent(pkg, listingsubmission.BuildPhaseEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, requestID, now, "恢复本地提交完成状态", nil))
+		_, completionEvent := listingsubmission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, requestID, response, nil, record.StartedAt, time.Now())
+		appendSheinSubmissionEvent(pkg, completionEvent)
 		if s.rememberSheinSubmitted != nil {
 			s.rememberSheinSubmitted(task, action)
 		}
@@ -155,15 +155,14 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	advanceSheinSubmitPhase(pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote)
-	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(task.ID, action, sheinpub.SubmissionPhaseConfirmRemote, sheinpub.SubmissionStatusRunning, requestID, now, "远端可能已收到，正在刷新诊断状态", nil))
+	appendSheinSubmissionEvent(pkg, listingsubmission.AdvancePhaseAndBuildEvent(pkg, task.ID, action, requestID, sheinpub.SubmissionPhaseConfirmRemote, now, sheinSubmitInFlightTTL))
 	event, remoteErr := s.refreshSheinSubmitRemoteStatus(ctx, task, task.ID, pkg, productAPI, action, requestID, record.SupplierCode, now)
 	if event != nil {
 		appendSheinSubmissionEvent(pkg, *event)
 	}
 	if remoteErr != nil {
-		record = failSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
-		appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, remoteErr, record.StartedAt))
+		_, failureEvent := listingsubmission.FailAttemptAndBuildEvent(pkg, task.ID, action, requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
+		appendSheinSubmissionEvent(pkg, failureEvent)
 		task.Result.UpdatedAt = time.Now()
 		if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
 			return nil, err
@@ -174,11 +173,11 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	if response == nil && report.LastResult != nil {
 		response = report.LastResult
 	}
-	record = completeSheinSubmitAttempt(pkg, action, requestID, response, nil, time.Now())
+	record, completionEvent := listingsubmission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, requestID, response, nil, record.StartedAt, time.Now())
 	if record.Result == nil {
 		record.Status = sheinpub.SubmissionStatusSuccess
 	}
-	appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(task.ID, action, record, record.Result, nil, record.StartedAt))
+	appendSheinSubmissionEvent(pkg, completionEvent)
 	if s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, action)
 	}
@@ -204,7 +203,8 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 			detail = "SHEIN accepted publish request, but supplier code is unavailable for remote confirmation"
 		}
 		setSheinSubmitRemoteRecord(pkg, action, requestID, remoteStatus, nil, now, detail)
-		return ptrSheinSubmissionEvent(buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, remoteStatus, requestID, startedAt, detail, nil)), nil
+		event := listingsubmission.BuildConfirmRemoteEvent(taskID, action, remoteStatus, requestID, startedAt, detail, nil)
+		return &event, nil
 	}
 	var otherAPI sheinother.OtherAPI
 	if s.buildSheinSubmitOtherAPI != nil && task != nil {
@@ -213,10 +213,6 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 	confirmation, err := s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
 	setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
 	return confirmation.event, err
-}
-
-func ptrSheinSubmissionEvent(event sheinpub.SubmissionEvent) *sheinpub.SubmissionEvent {
-	return &event
 }
 
 func (s *taskSubmissionRecoveryService) clearSheinSubmitLease(ctx context.Context, taskID, action, requestID string) error {
@@ -254,7 +250,7 @@ func (s *taskSubmissionRecoveryService) clearSheinSubmitLeaseAfterStartFailure(c
 				record.Error = startErr.Error()
 			}
 			listingsubmission.ApplyRecord(pkg, record)
-			appendSheinSubmissionEvent(pkg, buildSheinSubmissionEvent(taskID, action, record, nil, startErr, record.StartedAt))
+			appendSheinSubmissionEvent(pkg, listingsubmission.BuildEvent(taskID, action, record, nil, startErr, record.StartedAt))
 		}
 		clearSheinSubmitInFlight(pkg.SubmissionState, action, requestID)
 		task.Result.UpdatedAt = time.Now()
@@ -276,6 +272,16 @@ type sheinRemoteConfirmation struct {
 	checkedAt    time.Time
 	message      string
 	event        *sheinpub.SubmissionEvent
+}
+
+func newSheinRemoteConfirmation(parts listingsubmission.ConfirmRemoteParts) *sheinRemoteConfirmation {
+	return &sheinRemoteConfirmation{
+		remoteStatus: parts.RemoteStatus,
+		record:       parts.Record,
+		checkedAt:    parts.CheckedAt,
+		message:      parts.Message,
+		event:        &parts.Event,
+	}
 }
 
 func (s *taskSubmissionRecoveryService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {

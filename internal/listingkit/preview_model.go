@@ -7,10 +7,10 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/catalog"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 type ListingKitPreview struct {

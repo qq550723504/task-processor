@@ -1,11 +1,11 @@
 package listingkit
 
 import (
+	listingworkspace "task-processor/internal/listingkit/workspace/shein"
 	common "task-processor/internal/publishing/common"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
-type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]
+type SheinRepairValidationPreview = listingworkspace.RepairValidationPreview[RevisionFieldError]
 
 type SheinRepairPatchPayload struct {
 	CategoryResolution      *SheinCategoryResolutionPatch      `json:"category_resolution,omitempty"`
@@ -258,7 +258,7 @@ func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, 
 		valid = false
 		fieldErrors = append([]RevisionFieldError(nil), validationErr.Fields...)
 	}
-	return sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)
+	return listingworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)
 }
 
 func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {

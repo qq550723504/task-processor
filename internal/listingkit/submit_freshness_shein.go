@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 const (

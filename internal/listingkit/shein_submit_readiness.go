@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	listingsubmission "task-processor/internal/listingkit/submission"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {

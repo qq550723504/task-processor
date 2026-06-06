@@ -8,8 +8,8 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 	t.Run("result_generation_decorator_delegates_bundle_projection_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "service_generation_assets.go", "decorateListingKitResultGeneration")
-		callNames := readNamedFunctionCallNames(t, "service_generation_assets.go", "decorateListingKitResultGeneration")
+		source := readNamedFunctionSource(t, "asset_generation_projection.go", "decorateListingKitResultGeneration")
+		callNames := readNamedFunctionCallNames(t, "asset_generation_projection.go", "decorateListingKitResultGeneration")
 
 		assertSourceContainsAll(t, source, []string{
 			"projection := buildAssetGenerationProjection(result, tasks)",

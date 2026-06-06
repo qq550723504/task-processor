@@ -2,9 +2,9 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -54,14 +54,5 @@ func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSn
 }
 
 func appendSheinSubmissionEvent(pkg *sheinpub.Package, event sheinpub.SubmissionEvent) {
-	if pkg == nil {
-		return
-	}
-	if event.ID == "" {
-		event.ID = fmt.Sprintf("%s-%d", event.Action, time.Now().UnixNano())
-	}
-	pkg.SubmissionEvents = append([]sheinpub.SubmissionEvent{event}, pkg.SubmissionEvents...)
-	if len(pkg.SubmissionEvents) > 30 {
-		pkg.SubmissionEvents = pkg.SubmissionEvents[:30]
-	}
+	listingsubmission.AppendEvent(pkg, event)
 }

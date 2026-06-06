@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -16,10 +17,10 @@ func (s *service) retrySheinSensitiveWordSubmit(ctx context.Context, taskID stri
 		return response, responseErr, false
 	}
 
-	appendSheinSubmissionEvent(pkg, buildSheinPhaseSubmissionEvent(taskID, action, sheinpub.SubmissionPhaseSubmitRemote, sheinpub.SubmissionStatusRunning, requestID, time.Now(), "检测到敏感词，已自动清理并重试提交", nil))
+	appendSheinSubmissionEvent(pkg, listingsubmission.BuildPhaseEvent(taskID, action, sheinpub.SubmissionPhaseSubmitRemote, sheinpub.SubmissionStatusRunning, requestID, time.Now(), "检测到敏感词，已自动清理并重试提交", nil))
 	retryResponse, retryErr := executeSheinSubmitRemote(productAPI, action, submitProduct)
 	if retryErr == nil {
-		retryErr = buildSheinSubmitResponseError(action, retryResponse)
+		retryErr = listingsubmission.BuildResponseError(action, retryResponse)
 	}
 	return retryResponse, retryErr, true
 }

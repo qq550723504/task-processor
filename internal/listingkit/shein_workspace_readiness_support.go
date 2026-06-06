@@ -1,8 +1,8 @@
 package listingkit
 
 import (
+	listingworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 type SheinReadinessReason struct {
@@ -31,7 +31,7 @@ type sheinReadinessGuidance struct {
 	repairHints []SheinRepairHint
 }
 
-func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {
+func buildSheinReadinessReason(spec *listingworkspace.ReadinessReasonSpec) *SheinReadinessReason {
 	if spec == nil {
 		return nil
 	}
@@ -70,7 +70,7 @@ func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepair
 	}
 }
 
-func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths []string, hint sheinworkspace.ReadinessHintSpec, patch *SheinRepairPatchPayload) SheinRepairHint {
+func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths []string, hint listingworkspace.ReadinessHintSpec, patch *SheinRepairPatchPayload) SheinRepairHint {
 	artifacts := buildSheinRepairArtifacts(pkg, action, hint.EditorSection, patch)
 	return SheinRepairHint{
 		Action:        action,
@@ -89,7 +89,7 @@ func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths 
 }
 
 func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinReadinessGuidance {
-	spec := sheinworkspace.BuildReadinessGuidanceSpec(key, warningOnly)
+	spec := listingworkspace.BuildReadinessGuidanceSpec(key, warningOnly)
 	if spec == nil || spec.Reason == nil {
 		return sheinReadinessGuidance{}
 	}

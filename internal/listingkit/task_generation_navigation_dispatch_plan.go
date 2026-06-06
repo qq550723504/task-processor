@@ -33,3 +33,10 @@ func (p *taskGenerationNavigationDispatchPlanPhase) run(ctx context.Context, tas
 	applyGenerationNavigationDispatchExecutionRules(plan, execution)
 	return execution, nil
 }
+
+func generationNavigationDispatchPlanRunsInParallel(plan *GenerationNavigationDispatchPlan) bool {
+	if plan == nil {
+		return false
+	}
+	return !plan.StopOnError && !plan.StopOnFirstSuccess && !plan.StopOnNotModified && len(plan.Steps) > 1
+}

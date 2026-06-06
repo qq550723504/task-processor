@@ -1,5 +1,7 @@
 package listingkit
 
+import "strings"
+
 func buildGenerationRecoverySummaryFromQueue(queue *GenerationWorkQueue) *GenerationRecoverySummary {
 	if queue == nil {
 		return nil
@@ -61,4 +63,182 @@ func cloneGenerationPanelResourceDescriptors(items []GenerationPanelResourceDesc
 		out = append(out, *cloned)
 	}
 	return out
+}
+
+func applyGenerationRecoverySummaryToQueuePage(page *GenerationQueuePage) *GenerationQueuePage {
+	if page == nil {
+		return nil
+	}
+	page.RecoverySummary = buildGenerationRecoverySummaryFromDescriptors(page.ResourceDescriptors)
+	return page
+}
+
+func applyGenerationRecoverySummaryToReviewSessionResponse(response *GenerationReviewSessionResponse) *GenerationReviewSessionResponse {
+	if response == nil {
+		return nil
+	}
+	response.RecoverySummary = buildGenerationRecoverySummaryFromDescriptors(response.ResourceDescriptors)
+	return response
+}
+
+func applyGenerationRecoverySummaryToReviewPreviewResponse(response *GenerationReviewPreviewResponse) *GenerationReviewPreviewResponse {
+	if response == nil {
+		return nil
+	}
+	response.RecoverySummary = buildGenerationRecoverySummaryFromDescriptors(response.ResourceDescriptors)
+	return response
+}
+
+func applyGenerationRecoverySummaryToActionResult(result *GenerationActionExecutionResult) *GenerationActionExecutionResult {
+	if result == nil {
+		return nil
+	}
+	result.RecoverySummary = buildGenerationRecoverySummaryFromDescriptors(result.ResourceDescriptors)
+	return result
+}
+
+type generationRecoveryProfile struct {
+	Hint       string
+	Priority   int
+	Severity   string
+	Urgency    string
+	CTAKind    string
+	Title      string
+	Summary    string
+	TitleKey   string
+	SummaryKey string
+}
+
+var generationRecoveryProfiles = map[string]generationRecoveryProfile{
+	"review_fallback": {
+		Hint:       "review_fallback",
+		Priority:   0,
+		Severity:   "medium",
+		Urgency:    "now",
+		CTAKind:    "review",
+		Title:      "Review Fallback Path",
+		Summary:    "A fallback result is available and should be reviewed before retrying generation.",
+		TitleKey:   "generation.recovery.review_fallback.title",
+		SummaryKey: "generation.recovery.review_fallback.summary",
+	},
+	"retry_dispatch": {
+		Hint:       "retry_dispatch",
+		Priority:   1,
+		Severity:   "high",
+		Urgency:    "now",
+		CTAKind:    "retry",
+		Title:      "Retry Generation Step",
+		Summary:    "A recoverable generation step failed and can be retried now.",
+		TitleKey:   "generation.recovery.retry_dispatch.title",
+		SummaryKey: "generation.recovery.retry_dispatch.summary",
+	},
+	"refresh_revision": {
+		Hint:       "refresh_revision",
+		Priority:   2,
+		Severity:   "medium",
+		Urgency:    "soon",
+		CTAKind:    "refresh",
+		Title:      "Refresh Resource Revision",
+		Summary:    "The current revision is stale and should be refreshed before continuing.",
+		TitleKey:   "generation.recovery.refresh_revision.title",
+		SummaryKey: "generation.recovery.refresh_revision.summary",
+	},
+	"wait_for_generation": {
+		Hint:       "wait_for_generation",
+		Priority:   3,
+		Severity:   "low",
+		Urgency:    "later",
+		CTAKind:    "monitor",
+		Title:      "Wait For Generation",
+		Summary:    "The asset is not ready yet. Refresh the queue after generation progresses.",
+		TitleKey:   "generation.recovery.wait_for_generation.title",
+		SummaryKey: "generation.recovery.wait_for_generation.summary",
+	},
+}
+
+var defaultGenerationRecoveryProfile = generationRecoveryProfile{
+	Priority:   4,
+	Title:      "Review Recovery Options",
+	Summary:    "Review available recovery actions for the current resource set.",
+	TitleKey:   "generation.recovery.default.title",
+	SummaryKey: "generation.recovery.default.summary",
+}
+
+func generationRecoveryProfileForHint(hint string) generationRecoveryProfile {
+	normalized := strings.TrimSpace(strings.ToLower(hint))
+	if profile, ok := generationRecoveryProfiles[normalized]; ok {
+		return profile
+	}
+	return defaultGenerationRecoveryProfile
+}
+
+func applyGenerationRecoveryArbitrationToOverview(overview *AssetGenerationOverview) *AssetGenerationOverview {
+	if overview == nil {
+		return nil
+	}
+	overview.RecoverySummary = cloneGenerationRecoverySummary(overview.RecoverySummary)
+	overview.PrimaryCTAKind = "generation_action"
+	if overview.PrimaryActionTarget != nil {
+		overview.PrimaryNavigationTarget = cloneGenerationReviewNavigationTarget(overview.PrimaryActionTarget.NavigationTarget)
+	}
+	if !shouldPreferRecoveryAsPrimaryCTA(overview.PrimaryActionKey, overview.RecoverySummary) {
+		return overview
+	}
+	overview.PrimaryCTAKind = "recovery"
+	overview.PrimaryNavigationTarget = cloneGenerationReviewNavigationTarget(overview.RecoverySummary.PrimaryDescriptor.RecoveryTarget)
+	if strings.TrimSpace(overview.PrimaryActionReason) == "" {
+		overview.PrimaryActionReason = overview.RecoverySummary.Summary
+	} else if !strings.Contains(overview.PrimaryActionReason, overview.RecoverySummary.Summary) {
+		overview.PrimaryActionReason = overview.RecoverySummary.Summary + " " + overview.PrimaryActionReason
+	}
+	overview.ResolvedActionSummary = buildGenerationResolvedActionSummaryFromOverview(overview)
+	return overview
+}
+
+func finalizeGenerationOverviewActionSummary(overview *AssetGenerationOverview) *AssetGenerationOverview {
+	if overview == nil {
+		return nil
+	}
+	overview.ResolvedActionSummary = buildGenerationResolvedActionSummaryFromOverview(overview)
+	return overview
+}
+
+func applyGenerationRecoveryArbitrationToPlatformCard(card *ListingKitPlatformCard) {
+	if card == nil {
+		return
+	}
+	card.RecoverySummary = cloneGenerationRecoverySummary(card.RecoverySummary)
+	card.PrimaryCTAKind = "generation_action"
+	if card.PrimaryActionTarget != nil {
+		card.PrimaryNavigationTarget = cloneGenerationReviewNavigationTarget(card.PrimaryActionTarget.NavigationTarget)
+	}
+	if !shouldPreferRecoveryAsPrimaryCTA(card.PrimaryActionKey, card.RecoverySummary) {
+		card.ResolvedActionSummary = buildGenerationResolvedActionSummaryFromPlatformCard(card)
+		return
+	}
+	card.PrimaryCTAKind = "recovery"
+	card.PrimaryNavigationTarget = cloneGenerationReviewNavigationTarget(card.RecoverySummary.PrimaryDescriptor.RecoveryTarget)
+	card.ResolvedActionSummary = buildGenerationResolvedActionSummaryFromPlatformCard(card)
+}
+
+func shouldPreferRecoveryAsPrimaryCTA(primaryActionKey string, summary *GenerationRecoverySummary) bool {
+	if summary == nil || summary.PrimaryDescriptor == nil || summary.PrimaryDescriptor.RecoveryTarget == nil {
+		return false
+	}
+	if strings.TrimSpace(summary.Urgency) != "now" {
+		return false
+	}
+	switch strings.TrimSpace(primaryActionKey) {
+	case "",
+		assetGenerationActionReviewReadyAssets,
+		assetGenerationActionContinuePublishReview,
+		assetGenerationActionReviewDetailPreviews,
+		assetGenerationActionReviewMeasurementPreviews,
+		assetGenerationActionReviewBadgePreviews,
+		assetGenerationActionReviewCopyPreviews,
+		assetGenerationActionReviewSubjectPreviews:
+		return true
+	default:
+		return false
+	}
 }

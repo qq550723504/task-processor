@@ -1,42 +1,34 @@
-package listingkit
+package submission
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-func buildSheinSubmissionRecord(action string, result *sheinpub.SubmissionResponse, submitErr error) *sheinpub.SubmissionRecord {
+func BuildRecord(action string, result *sheinpub.SubmissionResponse, submitErr error) *sheinpub.SubmissionRecord {
 	record := &sheinpub.SubmissionRecord{
 		Action:      action,
 		SubmittedAt: time.Now(),
 		Result:      result,
 	}
 	if submitErr != nil {
-		record.Status = "failed"
+		record.Status = sheinpub.SubmissionStatusFailed
 		record.Error = submitErr.Error()
 		return record
 	}
-	if result != nil && (result.Success || saveDraftSucceeded(action, result)) {
-		record.Status = "success"
-	} else {
-		record.Status = "unknown"
+	if result != nil && (result.Success || SaveDraftSucceeded(action, result)) {
+		record.Status = sheinpub.SubmissionStatusSuccess
+		return record
 	}
+	record.Status = "unknown"
 	return record
 }
 
-func saveDraftSucceeded(action string, result *sheinpub.SubmissionResponse) bool {
-	if action != "save_draft" || result == nil {
-		return false
-	}
-	return strings.TrimSpace(result.Code) == "0"
-}
-
-func buildSheinSubmitResponseError(action string, result *sheinpub.SubmissionResponse) error {
-	if result == nil || result.Success || saveDraftSucceeded(action, result) {
+func BuildResponseError(action string, result *sheinpub.SubmissionResponse) error {
+	if result == nil || result.Success || SaveDraftSucceeded(action, result) {
 		return nil
 	}
 	if action != "publish" {
@@ -55,11 +47,7 @@ func buildSheinSubmitResponseError(action string, result *sheinpub.SubmissionRes
 	return fmt.Errorf("SHEIN publish did not complete: %s", message)
 }
 
-func applySheinSubmissionRecord(pkg *sheinpub.Package, record *sheinpub.SubmissionRecord) {
-	listingsubmission.ApplyRecord(pkg, record)
-}
-
-func buildSheinSubmissionEvent(taskID, action string, record *sheinpub.SubmissionRecord, response *sheinpub.SubmissionResponse, submitErr error, startedAt time.Time) sheinpub.SubmissionEvent {
+func BuildEvent(taskID, action string, record *sheinpub.SubmissionRecord, response *sheinpub.SubmissionResponse, submitErr error, startedAt time.Time) sheinpub.SubmissionEvent {
 	finishedAt := time.Now()
 	event := sheinpub.SubmissionEvent{
 		TaskID:     taskID,
@@ -83,13 +71,13 @@ func buildSheinSubmissionEvent(taskID, action string, record *sheinpub.Submissio
 		event.ValidationNotes = append([]string(nil), event.Response.ValidationNotes...)
 	}
 	if submitErr != nil {
-		event.Status = "failed"
+		event.Status = sheinpub.SubmissionStatusFailed
 		event.ErrorMessage = submitErr.Error()
 	}
 	return event
 }
 
-func buildSheinPhaseSubmissionEvent(taskID, action, phase, status, requestID string, startedAt time.Time, detail string, err error) sheinpub.SubmissionEvent {
+func BuildPhaseEvent(taskID, action, phase, status, requestID string, startedAt time.Time, detail string, err error) sheinpub.SubmissionEvent {
 	finishedAt := time.Now()
 	event := sheinpub.SubmissionEvent{
 		TaskID:     taskID,
@@ -109,12 +97,22 @@ func buildSheinPhaseSubmissionEvent(taskID, action, phase, status, requestID str
 		event.ErrorMessage = err.Error()
 	}
 	if event.Detail == "" {
-		event.Detail = sheinSubmitPhaseDetail(action, phase)
+		event.Detail = SheinSubmitPhaseDetail(action, phase)
 	}
 	return event
 }
 
-func sheinSubmitPhaseDetail(action, phase string) string {
+func BuildConfirmRemoteEvent(taskID, action, status, requestID string, startedAt time.Time, detail string, err error) sheinpub.SubmissionEvent {
+	return BuildPhaseEvent(taskID, action, sheinpub.SubmissionPhaseConfirmRemote, status, requestID, startedAt, detail, err)
+}
+
+func BuildConfirmRemoteEventForRecord(taskID, action, status, requestID string, startedAt time.Time, detail string, err error, remoteRecordID string) sheinpub.SubmissionEvent {
+	event := BuildConfirmRemoteEvent(taskID, action, status, requestID, startedAt, detail, err)
+	event.RemoteRecordID = remoteRecordID
+	return event
+}
+
+func SheinSubmitPhaseDetail(action, phase string) string {
 	switch phase {
 	case sheinpub.SubmissionPhaseValidate:
 		return "检查 SHEIN 提交前状态"
@@ -138,17 +136,15 @@ func sheinSubmitPhaseDetail(action, phase string) string {
 	}
 }
 
-func firstSubmitReadinessMessage(readiness *SheinSubmitReadiness) string {
-	if readiness == nil {
-		return "SHEIN 提交前状态尚未就绪"
+func AppendEvent(pkg *sheinpub.Package, event sheinpub.SubmissionEvent) {
+	if pkg == nil {
+		return
 	}
-	for _, line := range readiness.Summary {
-		if value := strings.TrimSpace(line); value != "" {
-			return value
-		}
+	if event.ID == "" {
+		event.ID = fmt.Sprintf("%s-%d", event.Action, time.Now().UnixNano())
 	}
-	if len(readiness.BlockingItems) > 0 {
-		return strings.TrimSpace(readiness.BlockingItems[0].Message)
+	pkg.SubmissionEvents = append([]sheinpub.SubmissionEvent{event}, pkg.SubmissionEvents...)
+	if len(pkg.SubmissionEvents) > 30 {
+		pkg.SubmissionEvents = pkg.SubmissionEvents[:30]
 	}
-	return "SHEIN 提交前状态尚未就绪"
 }
