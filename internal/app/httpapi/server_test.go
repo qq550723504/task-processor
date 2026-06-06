@@ -731,6 +731,10 @@ func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
 }
 
+func (s *stubListingKitHandler) RequeuePendingTasks(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"requeued_count": 0})
+}
+
 func (s *stubListingKitHandler) RecoverTaskNow(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "pending"})
 }
