@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { extractTaskFixes, inferTaskDraftFocus } from "@/components/listingkit/tasks/task-fixes";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
+import { ReviewReasonsCard } from "@/components/listingkit/review/review-reasons-card";
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskPodExecutionCard } from "@/components/listingkit/tasks/task-pod-execution-card";
 import { loadTaskCreateDraft } from "@/components/listingkit/tasks/task-create-draft";
@@ -209,6 +210,7 @@ export function TaskStatusScreen({
         onRetryChildTask={handleRetrySDSDesignSync}
         retryingChildTaskKind={childTaskRetry.isPending ? "sds_design_sync" : null}
       />
+      <ReviewReasonsCard task={task} taskId={taskId} />
       <Card className="p-6">
         <div className="space-y-4">
           <div className="space-y-1">

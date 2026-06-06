@@ -85,7 +85,7 @@ describe("TaskStatusScreen", () => {
           task_id: "task_123",
           status: "needs_review",
           error:
-            "The product type is 'Unknown Product'.\nThe title is 'Unknown Product'.",
+            "SHEIN 类目解析尚未命中真实 category_id；SHEIN 属性模板尚未完成真实 attribute_id 映射；SHEIN 销售属性尚未完成真实 sale attribute 映射",
         }}
       />,
     );
@@ -97,6 +97,10 @@ describe("TaskStatusScreen", () => {
     expect(
       screen.getByText("1.5 秒后会自动进入工作台，你也可以先留在这里查看状态。"),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "去确认类目" })).toHaveAttribute(
+      "href",
+      "/listing-kits/task_123/workspace?platform=shein&section_key=general_review#shein-category-review-card",
+    );
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1500);
     setTimeoutSpy.mockRestore();
   });

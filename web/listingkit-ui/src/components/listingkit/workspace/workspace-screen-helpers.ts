@@ -75,6 +75,8 @@ export function hasSheinCategoryReviewSignal(
   return Boolean(
     currentCategory?.category_id ||
       currentCategory?.category_path?.length ||
+      currentCategory?.status ||
+      currentCategory?.review_notes?.length ||
       currentCategory?.suggested_category?.category_id ||
       currentSale?.recommend_category_review ||
       revisionSale?.recommend_category_review,

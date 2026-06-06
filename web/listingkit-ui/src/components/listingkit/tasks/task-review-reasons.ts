@@ -1,4 +1,5 @@
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
+import { buildSheinGeneralReviewHref } from "@/components/listingkit/shein/shein-workspace-actions";
 
 function primaryTaskError(task?: ListingKitTaskResult | null) {
   if (!task) return undefined;
@@ -60,4 +61,84 @@ export function extractTaskReviewReasons(task?: ListingKitTaskResult | null) {
         .filter(Boolean),
     ),
   );
+}
+
+type SheinReviewActionKey = "category" | "attributes" | "sale_attributes";
+
+export type TaskReviewActionLink = {
+  key: SheinReviewActionKey;
+  label: string;
+  href: string;
+};
+
+function inferSheinReviewActionKeys(reasons: string[]) {
+  const keys = new Set<SheinReviewActionKey>();
+
+  for (const reason of reasons) {
+    const normalized = reason.toLowerCase();
+
+    if (
+      reason.includes("销售属性") ||
+      reason.includes("变体规格") ||
+      normalized.includes("sale attribute")
+    ) {
+      keys.add("sale_attributes");
+    }
+
+    if (
+      reason.includes("类目") ||
+      normalized.includes("category_id") ||
+      normalized.includes("category path")
+    ) {
+      keys.add("category");
+    }
+
+    if (
+      reason.includes("普通属性") ||
+      reason.includes("属性模板") ||
+      normalized.includes("attribute_id")
+    ) {
+      keys.add("attributes");
+    }
+  }
+
+  return keys;
+}
+
+export function buildTaskReviewActionLinks(
+  taskId: string,
+  task?: ListingKitTaskResult | null,
+): TaskReviewActionLink[] {
+  const reasons = extractTaskReviewReasons(task);
+  const actionKeys = inferSheinReviewActionKeys(reasons);
+  const orderedKeys: SheinReviewActionKey[] = [
+    "category",
+    "attributes",
+    "sale_attributes",
+  ];
+
+  return orderedKeys
+    .filter((key) => actionKeys.has(key))
+    .map((key) => {
+      switch (key) {
+        case "category":
+          return {
+            key,
+            label: "去确认类目",
+            href: buildSheinGeneralReviewHref(taskId, "shein-category-review-card"),
+          };
+        case "attributes":
+          return {
+            key,
+            label: "去确认普通属性",
+            href: buildSheinGeneralReviewHref(taskId, "shein-attribute-review-card"),
+          };
+        case "sale_attributes":
+          return {
+            key,
+            label: "去确认销售属性",
+            href: buildSheinGeneralReviewHref(taskId, "shein-sale-attribute-review-card"),
+          };
+      }
+    });
 }

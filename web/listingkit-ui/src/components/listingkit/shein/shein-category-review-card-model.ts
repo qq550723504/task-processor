@@ -39,6 +39,8 @@ export function buildSheinCategoryReviewModel(
   const categoryReviewReason =
     currentSale?.category_review_reason ??
     revisionSale?.category_review_reason ??
+    currentCategory?.review_notes?.[0] ??
+    currentCategory?.status ??
     "";
   const suggestedCategory = currentCategory?.suggested_category;
   const isSuggestionApplied =
@@ -48,6 +50,8 @@ export function buildSheinCategoryReviewModel(
   if (
     !currentCategory?.category_id &&
     !currentCategory?.category_path?.length &&
+    !currentCategory?.status &&
+    !(currentCategory?.review_notes?.length ?? 0) &&
     !recommendCategoryReview &&
     !categoryReviewReason &&
     !suggestedCategory?.category_id

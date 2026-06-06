@@ -1,14 +1,22 @@
 "use client";
 
+import Link from "next/link";
+
 import { Card } from "@/components/ui/card";
-import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
+import { Button } from "@/components/ui/button";
+import {
+  buildTaskReviewActionLinks,
+  extractTaskReviewReasons,
+} from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 export function ReviewReasonsCard({
   task,
+  taskId,
   limit = 4,
 }: {
   task?: ListingKitTaskResult | null;
+  taskId?: string;
   limit?: number;
 }) {
   if (task?.status !== "needs_review") {
@@ -22,6 +30,7 @@ export function ReviewReasonsCard({
 
   const visibleReasons = reasons.slice(0, limit);
   const hiddenCount = Math.max(reasons.length - visibleReasons.length, 0);
+  const actionLinks = taskId ? buildTaskReviewActionLinks(taskId, task) : [];
 
   return (
     <Card className="border-amber-200 bg-amber-50/60 p-5">
@@ -44,6 +53,15 @@ export function ReviewReasonsCard({
             </li>
           ))}
         </ul>
+        {actionLinks.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {actionLinks.map((action) => (
+              <Button asChild key={action.key} size="sm" variant="secondary">
+                <Link href={action.href}>{action.label}</Link>
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {hiddenCount > 0 ? (
           <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
             还有 {hiddenCount} 条待确认原因，请在任务详情中继续查看

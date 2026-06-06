@@ -153,7 +153,7 @@ export function QueueScreenBody({
         onSelectRecovery={onSelectRecovery}
       />
       <TaskStatusPanel task={taskResult} />
-      <ReviewReasonsCard task={taskResult} />
+      <ReviewReasonsCard task={taskResult} taskId={taskId} />
       <TaskProgressNotice task={taskResult} />
       <QueueSummaryStrip summary={queueData.summary} />
       <QueueFiltersBar value={filters} onApply={onApplyFilters} />
