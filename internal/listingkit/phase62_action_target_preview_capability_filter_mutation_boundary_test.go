@@ -8,8 +8,8 @@ func TestActionTargetPreviewCapabilityFilterMutationBoundary(t *testing.T) {
 	t.Run("preview_capability_filter_mutation_home_owns_capability_specialization", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_preview_capability_mutation.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_preview_capability_mutation.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
+		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"spec := listinggeneration.PreviewCapabilityActionSpecForKey(actionKey)",
@@ -34,8 +34,8 @@ func TestActionTargetPreviewCapabilityFilterMutationBoundary(t *testing.T) {
 	t.Run("broader_filter_mutation_home_routes_preview_specialization_only", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
+		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationActionFiltersMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationActionFiltersMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationPreviewCapabilityFilterMutation(actionKey, filters) {",

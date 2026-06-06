@@ -279,6 +279,33 @@ func buildSecondaryActionTargets(queue *GenerationWorkQueue, actionKeys []string
 	return out
 }
 
+func buildAssetGenerationActionImpact(queue *GenerationWorkQueue, query *GenerationQueueQuery) *AssetGenerationActionImpact {
+	if queue == nil {
+		return &AssetGenerationActionImpact{}
+	}
+	items := queue.Items
+	if query != nil {
+		items = filterGenerationQueueItems(items, query)
+	}
+	impactItems := make([]listinggeneration.ActionImpactItem, 0, len(items))
+	for _, item := range items {
+		impactItems = append(impactItems, listinggeneration.ActionImpactItem{
+			Platform:     item.Platform,
+			QualityGrade: item.QualityGrade,
+			State:        item.State,
+			Retryable:    item.Retryable,
+		})
+	}
+	impact := listinggeneration.BuildActionImpact(impactItems)
+	return &AssetGenerationActionImpact{
+		MatchedItems:   impact.MatchedItems,
+		RetryableItems: impact.RetryableItems,
+		Platforms:      impact.Platforms,
+		QualityGrades:  impact.QualityGrades,
+		States:         impact.States,
+	}
+}
+
 func cloneAssetGenerationFilters(filters *AssetGenerationRecommendedFilters) *AssetGenerationRecommendedFilters {
 	if filters == nil {
 		return nil
@@ -286,6 +313,13 @@ func cloneAssetGenerationFilters(filters *AssetGenerationRecommendedFilters) *As
 	cloned := *filters
 	applyAssetGenerationFiltersPlatformsClone(filters, &cloned)
 	return &cloned
+}
+
+func applyAssetGenerationFiltersPlatformsClone(filters *AssetGenerationRecommendedFilters, cloned *AssetGenerationRecommendedFilters) {
+	if filters == nil || cloned == nil {
+		return
+	}
+	cloned.Platforms = append([]string(nil), filters.Platforms...)
 }
 
 func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilters) *AssetGenerationRecommendedFilters {
@@ -299,4 +333,110 @@ func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilte
 
 func actionInteractionMode(actionKey string) string {
 	return listinggeneration.ActionInteractionMode(actionKey)
+}
+
+func buildPreviewCapabilitySecondaryActions(summary *GenerationWorkQueueSummary) ([]string, []string) {
+	if summary == nil {
+		return nil, nil
+	}
+	return listinggeneration.PreviewCapabilitySecondaryActions(summary.PreviewCapabilityCounts)
+}
+
+func applyAssetGenerationActionFiltersMutation(actionKey string, filters *AssetGenerationRecommendedFilters) {
+	if filters == nil {
+		return
+	}
+	if applyAssetGenerationPreviewCapabilityFilterMutation(actionKey, filters) {
+		return
+	}
+	applyAssetGenerationRegularActionKeyFilterMutation(actionKey, filters)
+}
+
+func applyAssetGenerationPreviewCapabilityFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {
+	spec := listinggeneration.PreviewCapabilityActionSpecForKey(actionKey)
+	if spec == nil {
+		return false
+	}
+	filters.ExecutionQuality = ""
+	filters.RetryableOnly = false
+	filters.RenderPreviewAvailable = true
+	filters.PreviewCapability = spec.Capability
+	applyAssetGenerationIdealReviewFilters(filters)
+	return true
+}
+
+func applyAssetGenerationIdealReviewFilters(filters *AssetGenerationRecommendedFilters) {
+	if strings.TrimSpace(filters.QualityGrade) != "" {
+		return
+	}
+	filters.QualityGrade = "ideal"
+	filters.QualityGradeLabel = generationQualityGradeLabel("ideal")
+}
+
+func applyAssetGenerationReviewReadyFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {
+	switch actionKey {
+	case "review_ready_assets", "continue_publish_review":
+		applyAssetGenerationIdealReviewFilters(filters)
+		filters.ExecutionQuality = ""
+		filters.RetryableOnly = false
+		return true
+	case "defer_section_review", "approve_section_review":
+		applyAssetGenerationIdealReviewFilters(filters)
+		filters.ExecutionQuality = ""
+		filters.RetryableOnly = false
+		return true
+	default:
+		return false
+	}
+}
+
+func applyAssetGenerationRegularActionKeyFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) {
+	switch {
+	case applyAssetGenerationFailedRetryFilterMutation(actionKey, filters):
+		return
+	case applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters):
+		return
+	case applyAssetGenerationReviewReadyFilterMutation(actionKey, filters):
+		return
+	}
+	switch actionKey {
+	case "generate_missing_assets", "review_missing_slots":
+		filters.QualityGrade = "missing"
+		filters.QualityGradeLabel = generationQualityGradeLabel("missing")
+		if actionKey == "generate_missing_assets" {
+			filters.RetryableOnly = true
+		}
+		filters.ExecutionQuality = ""
+	}
+}
+
+func applyAssetGenerationFailedRetryFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {
+	switch actionKey {
+	case "retry_failed_generation", "inspect_failed_renderer_tasks":
+		filters.QualityGrade = "provisional"
+		filters.QualityGradeLabel = generationQualityGradeLabel("provisional")
+		filters.ExecutionQuality = "failed"
+		filters.RetryableOnly = true
+		return true
+	default:
+		return false
+	}
+}
+
+func applyAssetGenerationProvisionalRetryFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {
+	switch actionKey {
+	case "retry_section_generation":
+		filters.QualityGrade = "provisional"
+		filters.QualityGradeLabel = generationQualityGradeLabel("provisional")
+		filters.RetryableOnly = true
+		return true
+	case "upgrade_fallback_assets", "retry_provisional_slots":
+		filters.QualityGrade = "provisional"
+		filters.QualityGradeLabel = generationQualityGradeLabel("provisional")
+		filters.ExecutionQuality = ""
+		filters.RetryableOnly = true
+		return true
+	default:
+		return false
+	}
 }

@@ -8,8 +8,8 @@ func TestGenerationNavigationDescriptorResidualPairingBoundary(t *testing.T) {
 	t.Run("descriptor_residual_pairing_home_owns_only_conditional_invalidates_pairing", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "applyGenerationNavigationDescriptorCloneShapePairing")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "applyGenerationNavigationDescriptorCloneShapePairing")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)",

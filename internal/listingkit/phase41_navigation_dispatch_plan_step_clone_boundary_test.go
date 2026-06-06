@@ -8,8 +8,8 @@ func TestGenerationNavigationDispatchPlanStepCloneBoundary(t *testing.T) {
 	t.Run("dispatch_plan_step_clone_home_owns_only_step_specific_shaping", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_dispatch_plan_step_clone.go", "cloneGenerationNavigationDispatchPlanStep")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_dispatch_plan_step_clone.go", "cloneGenerationNavigationDispatchPlanStep")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDispatchPlanStep")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDispatchPlanStep")
 
 		assertSourceContainsAll(t, source, []string{
 			"Kind:               step.Kind,",
@@ -41,12 +41,6 @@ func TestGenerationNavigationDispatchPlanStepCloneBoundary(t *testing.T) {
 			"cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))",
 			"cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))",
 		})
-		assertSourceExcludesAll(t, source, []string{
-			"Kind:               step.Kind,",
-			"ResponseMode:       step.ResponseMode,",
-			"CachePreference:    step.CachePreference,",
-			"RequiresRevalidate: step.RequiresRevalidate,",
-			"Query:              cloneGenerationQueueQuery(step.Query),",
-		})
+		assertSourceOccurrenceCount(t, source, "cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))", 1)
 	})
 }

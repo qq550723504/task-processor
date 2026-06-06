@@ -8,8 +8,8 @@ func TestGenerationNavigationDescriptorCloneShapePairingBoundary(t *testing.T) {
 	t.Run("descriptor_clone_shape_pairing_home_owns_only_local_home_pairing", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "applyGenerationNavigationDescriptorCloneShapePairing")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "applyGenerationNavigationDescriptorCloneShapePairing")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "applyGenerationNavigationDescriptorCloneShapePairing")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)",
@@ -34,8 +34,8 @@ func TestGenerationNavigationDescriptorCloneShapePairingBoundary(t *testing.T) {
 	t.Run("descriptor_clone_shape_pairing_home_keeps_slice_clone_local", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpReadSlice")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpReadSlice")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationFollowUpReadSlice")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationFollowUpReadSlice")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned := make([]GenerationNavigationFollowUpRead, 0, len(items))",

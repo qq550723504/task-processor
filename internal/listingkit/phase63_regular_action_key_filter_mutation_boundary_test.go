@@ -8,8 +8,8 @@ func TestRegularActionKeyFilterMutationBoundary(t *testing.T) {
 	t.Run("broader_filter_mutation_home_routes_regular_action_key_rules_only", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
+		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationActionFiltersMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationActionFiltersMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationPreviewCapabilityFilterMutation(actionKey, filters) {",
@@ -29,20 +29,20 @@ func TestRegularActionKeyFilterMutationBoundary(t *testing.T) {
 	t.Run("regular_action_key_mutation_home_routes_retry_review_ready_and_missing_slot_homes", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
+		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationRegularActionKeyFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationRegularActionKeyFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"if applyAssetGenerationFailedRetryFilterMutation(actionKey, filters) {",
-			"if applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters) {",
-			"if applyAssetGenerationReviewReadyFilterMutation(actionKey, filters) {",
-			"applyAssetGenerationMissingSlotFilterMutation(actionKey, filters)",
+			"switch {",
+			"case applyAssetGenerationFailedRetryFilterMutation(actionKey, filters):",
+			"case applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters):",
+			"case applyAssetGenerationReviewReadyFilterMutation(actionKey, filters):",
+			"case \"generate_missing_assets\", \"review_missing_slots\":",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"applyAssetGenerationFailedRetryFilterMutation",
 			"applyAssetGenerationProvisionalRetryFilterMutation",
 			"applyAssetGenerationReviewReadyFilterMutation",
-			"applyAssetGenerationMissingSlotFilterMutation",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"applyAssetGenerationPreviewCapabilityFilterMutation",

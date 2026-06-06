@@ -31,8 +31,8 @@ func TestActionTargetFilterMutationBoundary(t *testing.T) {
 	t.Run("action_target_filter_mutation_shape_home_routes_preview_and_regular_action_key_homes", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_mutation.go", "applyAssetGenerationActionFiltersMutation")
+		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationActionFiltersMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationActionFiltersMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"if applyAssetGenerationPreviewCapabilityFilterMutation(actionKey, filters) {",

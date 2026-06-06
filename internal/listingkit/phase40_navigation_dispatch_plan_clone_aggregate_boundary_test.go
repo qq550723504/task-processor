@@ -10,11 +10,11 @@ func TestGenerationNavigationDispatchPlanCloneAggregateBoundary(t *testing.T) {
 
 		fileSource := readTaskGenerationSourceFile(t, "generation_navigation_target_identity.go")
 		buildSource := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "buildGenerationNavigationDispatchPlanCloneShapePhase")
-
 		assertSourceContainsAll(t, fileSource, []string{
 			"type generationNavigationDispatchPlanCloneShapePhase struct{}",
 			"func buildGenerationNavigationDispatchPlanCloneShapePhase()",
 			"func (p *generationNavigationDispatchPlanCloneShapePhase) run(",
+			"func cloneGenerationNavigationDispatchPlanStep(",
 			"if plan == nil || cloned == nil {",
 			"if len(plan.Steps) == 0 {",
 			"cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))",
@@ -23,14 +23,9 @@ func TestGenerationNavigationDispatchPlanCloneAggregateBoundary(t *testing.T) {
 		assertSourceContainsAll(t, buildSource, []string{
 			"return &generationNavigationDispatchPlanCloneShapePhase{}",
 		})
+		assertSourceOccurrenceCount(t, fileSource, "cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))", 1)
 		assertSourceExcludesAll(t, fileSource, []string{
-			"func cloneGenerationNavigationDispatchPlanStep(",
 			"buildTaskGenerationNavigationDispatchPlanPhase(",
-			"Kind:               step.Kind,",
-			"ResponseMode:       step.ResponseMode,",
-			"CachePreference:    step.CachePreference,",
-			"RequiresRevalidate: step.RequiresRevalidate,",
-			"Query:              cloneGenerationQueueQuery(step.Query),",
 		})
 	})
 }

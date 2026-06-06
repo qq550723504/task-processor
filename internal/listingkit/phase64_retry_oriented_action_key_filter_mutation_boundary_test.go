@@ -8,14 +8,15 @@ func TestRetryOrientedActionKeyFilterMutationBoundary(t *testing.T) {
 	t.Run("regular_action_key_home_routes_retry_oriented_family", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_action_filters_regular_mutation.go", "applyAssetGenerationRegularActionKeyFilterMutation")
+		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationRegularActionKeyFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationRegularActionKeyFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
-			"if applyAssetGenerationFailedRetryFilterMutation(actionKey, filters) {",
-			"if applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters) {",
-			"if applyAssetGenerationReviewReadyFilterMutation(actionKey, filters) {",
-			"applyAssetGenerationMissingSlotFilterMutation(actionKey, filters)",
+			"switch {",
+			"case applyAssetGenerationFailedRetryFilterMutation(actionKey, filters):",
+			"case applyAssetGenerationProvisionalRetryFilterMutation(actionKey, filters):",
+			"case applyAssetGenerationReviewReadyFilterMutation(actionKey, filters):",
+			"case \"generate_missing_assets\", \"review_missing_slots\":",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"case \"retry_failed_generation\", \"inspect_failed_renderer_tasks\":",
@@ -26,7 +27,6 @@ func TestRetryOrientedActionKeyFilterMutationBoundary(t *testing.T) {
 			"applyAssetGenerationFailedRetryFilterMutation",
 			"applyAssetGenerationProvisionalRetryFilterMutation",
 			"applyAssetGenerationReviewReadyFilterMutation",
-			"applyAssetGenerationMissingSlotFilterMutation",
 		})
 	})
 }

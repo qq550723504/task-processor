@@ -8,8 +8,8 @@ func TestGenerationNavigationDescriptorFollowUpReadCloneBoundary(t *testing.T) {
 	t.Run("followup_read_clone_home_owns_only_read_specific_shaping", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpRead")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_descriptor_clone_shape_pairing.go", "cloneGenerationNavigationFollowUpRead")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationFollowUpRead")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationFollowUpRead")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned := item",
