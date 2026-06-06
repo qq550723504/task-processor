@@ -34,12 +34,15 @@ type StudioBatchService interface {
 	PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
+	PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 }
 
 type StudioBatchDetail struct {
-	Batch *StudioBatchRecord      `json:"batch,omitempty"`
-	Items []StudioBatchItemDetail `json:"items,omitempty"`
+	Batch        *StudioBatchRecord       `json:"batch,omitempty"`
+	Items        []StudioBatchItemDetail  `json:"items,omitempty"`
+	CreatedTasks []SheinStudioCreatedTask `json:"created_tasks,omitempty"`
+	FailedTasks  []SheinStudioFailedTask  `json:"failed_tasks,omitempty"`
 }
 
 type StudioBatchItemDetail struct {
@@ -56,12 +59,15 @@ type CreateStudioBatchTasksResult struct {
 	Batch        *StudioBatchRecord       `json:"batch,omitempty"`
 	Items        []StudioBatchItemDetail  `json:"items,omitempty"`
 	CreatedTasks []SheinStudioCreatedTask `json:"created_tasks,omitempty"`
+	FailedTasks  []SheinStudioFailedTask  `json:"failed_tasks,omitempty"`
 }
 
 type taskStudioBatchServiceConfig struct {
-	repo              StudioBatchRepository
-	studioSessionRepo studioBatchSeedSessionRepository
-	generator         studioBatchGenerator
+	repo               StudioBatchRepository
+	studioSessionRepo  studioBatchSeedSessionRepository
+	generator          studioBatchGenerator
+	createGenerateTask func(ctx context.Context, req *GenerateRequest) (*Task, error)
+	getTask            func(ctx context.Context, taskID string) (*Task, error)
 }
 
 func (s *service) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
@@ -96,6 +102,10 @@ func (s *service) CreateStudioBatchTasks(ctx context.Context, batchID string, re
 	return s.taskStudioBatchOrDefault().CreateStudioBatchTasks(ctx, batchID, req)
 }
 
+func (s *service) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
+	return s.taskStudioBatchOrDefault().PrepareCreateStudioBatchTasks(ctx, batchID, req)
+}
+
 func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {
 	if s.taskStudioBatch != nil {
 		return s.taskStudioBatch
@@ -108,6 +118,10 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 	if s == nil {
 		return taskStudioBatchServiceConfig{}
 	}
+	var getTask func(context.Context, string) (*Task, error)
+	if s.repo != nil {
+		getTask = s.repo.GetTask
+	}
 	return taskStudioBatchServiceConfig{
 		repo:              s.studioBatchRepo,
 		studioSessionRepo: s.studioSessionRepo,
@@ -117,5 +131,7 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 				return ExecuteStudioDesignBatch(ctx, s, input)
 			},
 		}),
+		createGenerateTask: s.CreateGenerateTask,
+		getTask:            getTask,
 	}
 }

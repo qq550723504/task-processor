@@ -75,6 +75,7 @@ import { getCurrentSubscription } from "@/lib/api/subscription";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import { approveSheinStudioBatchDesigns } from "@/lib/api/shein-studio-batches";
+import { useToast } from "@/components/providers/toast-provider";
 import {
   getSheinStudioHydratedBatch,
   listSheinStudioBatches,
@@ -206,6 +207,7 @@ export function SheinStudioWorkbench({
   initialBatchId,
   selection,
 }: SheinStudioWorkbenchProps) {
+  const toast = useToast();
   const router = useRouter();
   const selectionVariantId = selection?.variantId ?? null;
   const [activeBatchScope, setActiveBatchScope] = useState(() => ({
@@ -457,6 +459,7 @@ export function SheinStudioWorkbench({
   );
   const recentBatchOpenRequestVersionRef = useRef(0);
   const batchQueueRequestVersionRef = useRef(0);
+  const taskCreationToastSignatureRef = useRef("");
   const [baselineStatuses, setBaselineStatuses] = useReducer(
     (
       _current: Record<
@@ -1270,15 +1273,22 @@ export function SheinStudioWorkbench({
         activeBatchId && itemizedBatchDetail
           ? {
               batchId: activeBatchId,
+              tenantId: itemizedBatchDetail.batch.tenantId ?? currentActiveBatch?.tenantId,
               detail: itemizedBatchDetail,
               onCreated: (result) => {
                 const nextDetail = {
                   batch: result.batch,
                   items: result.items,
+                  createdTasks: result.createdTasks,
+                  failedTasks: result.failedTasks,
                 };
                 const nextSavedBatch: SheinStudioSavedBatch = {
                   ...(currentActiveBatch ?? {}),
                   id: activeBatchId,
+                  tenantId:
+                    result.batch.tenantId ??
+                    itemizedBatchDetail.batch.tenantId ??
+                    currentActiveBatch?.tenantId,
                   name: currentActiveBatch?.name ?? "未命名批次",
                   prompt,
                   styleCount,
@@ -1443,6 +1453,87 @@ export function SheinStudioWorkbench({
       window.clearInterval(timer);
     };
   }, [activeBatchId, initialBatchId, itemizedBatchGenerationInFlight]);
+
+  useEffect(() => {
+    if (!itemizedBatchDetail) {
+      return;
+    }
+    const failedTasks = itemizedBatchDetail.failedTasks ?? [];
+    const createdBatchTasks = itemizedBatchDetail.createdTasks ?? [];
+    const completionSignature = `${itemizedBatchDetail.batch.id}:${itemizedBatchDetail.batch.status}:${createdBatchTasks.length}:${failedTasks.length}`;
+    if (itemizedBatchDetail.batch.status === "tasks_creating") {
+      workbenchController.setField("isCreatingTasks", true);
+      if (!creatingMessage.trim()) {
+        workbenchController.setField(
+          "creatingMessage",
+          "已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。",
+        );
+      }
+      if (taskCreationToastSignatureRef.current !== completionSignature) {
+        taskCreationToastSignatureRef.current = completionSignature;
+      }
+      return;
+    }
+    if (!isCreatingTasks) {
+      return;
+    }
+    if (itemizedBatchDetail.batch.status !== "tasks_created") {
+      return;
+    }
+    workbenchController.setField("isCreatingTasks", false);
+    if (failedTasks.length > 0) {
+      const preview = failedTasks
+        .slice(0, 3)
+        .map((task) => `${task.title}: ${task.message}`)
+        .join("；");
+      const suffix =
+        failedTasks.length > 3
+          ? ` 等 ${failedTasks.length} 个任务`
+          : "";
+      workbenchController.setField(
+        "creatingWarning",
+        `部分任务创建失败：${preview}${suffix}`,
+      );
+      workbenchController.setField(
+        "creatingMessage",
+        createdBatchTasks.length > 0
+          ? `后台已完成创建：成功 ${createdBatchTasks.length} 个，失败 ${failedTasks.length} 个。`
+          : "后台任务创建已结束，但本次没有成功创建任务。",
+      );
+      if (taskCreationToastSignatureRef.current !== completionSignature) {
+        taskCreationToastSignatureRef.current = completionSignature;
+        if (createdBatchTasks.length > 0) {
+          toast.warning(
+            "SHEIN 资料已部分创建",
+            `成功 ${createdBatchTasks.length} 个，失败 ${failedTasks.length} 个。`,
+            8000,
+          );
+        } else {
+          toast.error("SHEIN 资料创建失败", "本次没有成功创建任务。", 8000);
+        }
+      }
+      return;
+    }
+    workbenchController.setField("creatingWarning", "");
+    workbenchController.setField(
+      "creatingMessage",
+      `后台已完成创建，共生成 ${createdBatchTasks.length} 个 SHEIN 任务。`,
+    );
+    if (taskCreationToastSignatureRef.current !== completionSignature) {
+      taskCreationToastSignatureRef.current = completionSignature;
+      toast.success(
+        "SHEIN 资料创建完成",
+        `共生成 ${createdBatchTasks.length} 个任务。`,
+        7000,
+      );
+    }
+  }, [
+    creatingMessage,
+    isCreatingTasks,
+    itemizedBatchDetail,
+    toast,
+    workbenchController,
+  ]);
 
   const stepForRecentBatchAction = useCallback(
     (action?: "generate" | "review" | "tasks"): SheinStudioStepKey => {
@@ -2110,10 +2201,19 @@ export function SheinStudioWorkbench({
       }
       void (async () => {
         try {
-          const nextDetail = await approveSheinStudioBatchDesigns(
-            activeBatchId,
-            nextSelectedIds,
-          );
+          const batchTenantId =
+            itemizedBatchDetail.batch.tenantId?.trim() ??
+            currentActiveBatch?.tenantId?.trim();
+          const nextDetail = batchTenantId
+            ? await approveSheinStudioBatchDesigns(
+                activeBatchId,
+                nextSelectedIds,
+                { tenantId: batchTenantId },
+              )
+            : await approveSheinStudioBatchDesigns(
+                activeBatchId,
+                nextSelectedIds,
+              );
           workbenchController.setField("creatingWarning", "");
           if (nextDetail) {
             applyItemizedBatchDetail(nextDetail);
@@ -2183,7 +2283,7 @@ export function SheinStudioWorkbench({
     regeneratingId,
   });
   useSheinStudioPendingNavigationGuard({
-    enabled: Boolean(effectiveIsGenerating || isCreatingTasks || regeneratingId),
+    enabled: Boolean(effectiveIsGenerating || regeneratingId),
     message:
       "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
   });
@@ -2355,6 +2455,8 @@ export function SheinStudioWorkbench({
       {isRecentBatchesHomepage ? null : (
         <>
           <SheinStudioWorkbenchAlerts
+            creatingError={creatingError}
+            creatingMessage={creatingMessage}
             draftWarning={draftWarning}
             creatingWarning={creatingWarning}
             generationWarning={generationWarning}

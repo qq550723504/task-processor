@@ -54,6 +54,12 @@ export type SheinStudioCreatedTask = {
   designId: string;
 };
 
+export type SheinStudioFailedTask = {
+  designId: string;
+  title: string;
+  message: string;
+};
+
 export type SheinStudioGenerationJobStatus =
   | "running"
   | "succeeded"
@@ -165,6 +171,7 @@ export type SheinStudioGenerateResponse = {
 
 export type SheinStudioSavedBatch = {
   id: string;
+  tenantId?: string;
   name: string;
   prompt: string;
   styleCount: string;
@@ -202,6 +209,7 @@ export type SheinStudioBatchStatus =
   | "review_ready"
   | "partially_failed"
   | "failed"
+  | "tasks_creating"
   | "tasks_created";
 
 export type SheinStudioMaterializedDesignReviewStatus =
@@ -218,6 +226,7 @@ export type SheinStudioBatchItemStatus =
 
 export type SheinStudioBatchRecord = {
   id: string;
+  tenantId?: string;
   status: SheinStudioBatchStatus;
   prompt: string;
   styleCount: string;
@@ -272,6 +281,8 @@ export type SheinStudioItemizedBatchItem = {
 export type SheinStudioBatchDetail = {
   batch: SheinStudioBatchRecord;
   items: SheinStudioItemizedBatchItem[];
+  createdTasks?: SheinStudioCreatedTask[];
+  failedTasks?: SheinStudioFailedTask[];
 };
 
 export type SheinStudioDraft = {

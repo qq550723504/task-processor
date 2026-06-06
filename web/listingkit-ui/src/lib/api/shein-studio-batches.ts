@@ -12,9 +12,11 @@ import type {
   SheinStudioBatchRecord,
   SheinStudioBatchStatus,
   SheinStudioCreatedTask,
+  SheinStudioFailedTask,
   SheinStudioItemizedBatchItem,
   SheinStudioMaterializedDesign,
 } from "@/lib/types/shein-studio";
+import type { QueueQuery } from "@/lib/types/listingkit";
 import { z } from "zod";
 
 const studioBatchStatusSchema = z.enum([
@@ -24,6 +26,7 @@ const studioBatchStatusSchema = z.enum([
   "review_ready",
   "partially_failed",
   "failed",
+  "tasks_creating",
   "tasks_created",
 ]);
 
@@ -94,13 +97,6 @@ const studioBatchDetailItemSchema = z
   })
   .passthrough();
 
-const studioBatchDetailResponseSchema = z
-  .object({
-    batch: studioBatchSchema,
-    items: z.array(studioBatchDetailItemSchema).optional(),
-  })
-  .passthrough();
-
 const studioCreatedTaskSchema = z
   .object({
     id: z.string().optional(),
@@ -110,16 +106,36 @@ const studioCreatedTaskSchema = z
   })
   .passthrough();
 
+const studioFailedTaskSchema = z
+  .object({
+    designId: z.string().optional(),
+    design_id: z.string().optional(),
+    title: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+
+const studioBatchDetailResponseSchema = z
+  .object({
+    batch: studioBatchSchema,
+    items: z.array(studioBatchDetailItemSchema).optional(),
+    created_tasks: z.array(studioCreatedTaskSchema).optional(),
+    failed_tasks: z.array(studioFailedTaskSchema).optional(),
+  })
+  .passthrough();
+
 const studioBatchTaskCreationResponseSchema = z
   .object({
     batch: studioBatchSchema,
     items: z.array(studioBatchDetailItemSchema).optional(),
     created_tasks: z.array(studioCreatedTaskSchema).optional(),
+    failed_tasks: z.array(studioFailedTaskSchema).optional(),
   })
   .passthrough();
 
 export type SheinStudioBatchTaskCreationResult = SheinStudioBatchDetail & {
   createdTasks: SheinStudioCreatedTask[];
+  failedTasks: SheinStudioFailedTask[];
 };
 
 function mapStudioBatch(
@@ -130,6 +146,7 @@ function mapStudioBatch(
   );
   return {
     id: payload.id,
+    tenantId: typeof payload.tenant_id === "string" ? payload.tenant_id.trim() || undefined : undefined,
     status: payload.status as SheinStudioBatchStatus,
     prompt: payload.prompt ?? "",
     styleCount: payload.style_count ?? "1",
@@ -162,6 +179,15 @@ function mapStudioBatch(
     draftUpdatedAt: payload.draft_updated_at,
     updatedAt: payload.updated_at,
   };
+}
+
+type SheinStudioBatchRequestOptions = {
+  tenantId?: string;
+};
+
+function buildStudioBatchQuery(options?: SheinStudioBatchRequestOptions) {
+  const tenantId = options?.tenantId?.trim();
+  return tenantId ? ({ tenant_id: tenantId } as QueueQuery) : undefined;
 }
 
 function mapStudioBatchItem(
@@ -229,6 +255,26 @@ function mapStudioCreatedTasks(
     .filter((item): item is SheinStudioCreatedTask => Boolean(item));
 }
 
+function mapStudioFailedTasks(
+  payload: z.infer<typeof studioFailedTaskSchema>[],
+): SheinStudioFailedTask[] {
+  return payload
+    .map((item) => {
+      const designId = item.designId?.trim() || item.design_id?.trim() || "";
+      const title = item.title?.trim() || "";
+      const message = item.message?.trim() || "";
+      if (!designId || !title || !message) {
+        return null;
+      }
+      return {
+        designId,
+        title,
+        message,
+      } satisfies SheinStudioFailedTask;
+    })
+    .filter((item): item is SheinStudioFailedTask => Boolean(item));
+}
+
 export function parseSheinStudioBatchDetailResponse(
   payload: unknown,
 ): SheinStudioBatchDetail {
@@ -241,6 +287,8 @@ export function parseSheinStudioBatchDetailResponse(
   return {
     batch: mapStudioBatch(parsed.batch),
     items: (parsed.items ?? []).map(mapStudioBatchDetailItem),
+    createdTasks: mapStudioCreatedTasks(parsed.created_tasks ?? []),
+    failedTasks: mapStudioFailedTasks(parsed.failed_tasks ?? []),
   };
 }
 
@@ -257,24 +305,30 @@ export function parseSheinStudioBatchTaskCreationResponse(
     batch: mapStudioBatch(parsed.batch),
     items: (parsed.items ?? []).map(mapStudioBatchDetailItem),
     createdTasks: mapStudioCreatedTasks(parsed.created_tasks ?? []),
+    failedTasks: mapStudioFailedTasks(parsed.failed_tasks ?? []),
   };
 }
 
 export async function getSheinStudioBatchDetail(
   batchId: string,
+  options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchDetail> {
-  const payload = await apiRequest<unknown>(`/studio/batches/${batchId}`);
+  const payload = await apiRequest<unknown>(`/studio/batches/${batchId}`, {
+    query: buildStudioBatchQuery(options),
+  });
   return parseSheinStudioBatchDetailResponse(payload);
 }
 
 export async function approveSheinStudioBatchDesigns(
   batchId: string,
   designIds: string[],
+  options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchDetail> {
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/design-approvals`,
     {
       method: "POST",
+      query: buildStudioBatchQuery(options),
       body: { design_ids: designIds },
     },
   );
@@ -283,11 +337,13 @@ export async function approveSheinStudioBatchDesigns(
 
 export async function generateSheinStudioBatch(
   batchId: string,
+  options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchDetail> {
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/generate`,
     {
       method: "POST",
+      query: buildStudioBatchQuery(options),
       body: {},
     },
   );
@@ -297,11 +353,13 @@ export async function generateSheinStudioBatch(
 export async function retrySheinStudioBatchItems(
   batchId: string,
   itemIds: string[],
+  options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchDetail> {
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/items/retry`,
     {
       method: "POST",
+      query: buildStudioBatchQuery(options),
       body: { item_ids: itemIds },
     },
   );
@@ -311,14 +369,15 @@ export async function retrySheinStudioBatchItems(
 export async function createSheinStudioBatchTasks(
   batchId: string,
   designIds: string[],
+  options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchTaskCreationResult> {
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/tasks`,
     {
       method: "POST",
+      query: buildStudioBatchQuery(options),
       body: { design_ids: designIds },
     },
   );
   return parseSheinStudioBatchTaskCreationResponse(payload);
 }
-

@@ -42,6 +42,12 @@ type CreateStudioBatchTasksRequest struct {
 	DesignIDs []string `json:"design_ids,omitempty"`
 }
 
+type SheinStudioFailedTask struct {
+	DesignID string `json:"design_id,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Message  string `json:"message,omitempty"`
+}
+
 type StudioSessionGalleryResponse struct {
 	Items []SheinStudioSessionGalleryItem `json:"items,omitempty"`
 	Total int                             `json:"total"`

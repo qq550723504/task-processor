@@ -12,14 +12,16 @@ import {
   type GroupedSheinTaskCreationWarning,
   createSheinReviewTasks,
 } from "@/lib/shein-studio/create-review-tasks";
+import { useToast } from "@/components/providers/toast-provider";
+import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   GroupedSDSSelectionEligibility,
   SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
-import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
-  SheinStudioCreatedTask,
   SheinStudioBatchDetail,
+  SheinStudioCreatedTask,
+  SheinStudioFailedTask,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -95,25 +97,31 @@ export function useSheinStudioTaskCreationAction({
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   itemizedBatchContext?: {
     batchId: string;
+    tenantId?: string;
     detail: SheinStudioBatchDetail;
     onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
   };
 }) {
+  const toast = useToast();
+
   async function handleCreateTasks() {
     if (!activeSelection?.variantId) {
       setCreatingError("请先选择 SDS 变体。");
       setCreatingWarning("");
+      toast.error("无法创建 SHEIN 资料", "请先选择 SDS 变体。");
       return;
     }
     if (!sheinStoreId.trim()) {
       setCreatingError("请先选择批次店铺。");
       setCreatingWarning("");
+      toast.error("无法创建 SHEIN 资料", "请先选择批次店铺。");
       return;
     }
     const approved = designs.filter((design) => selectedIds.includes(design.id));
     if (approved.length === 0) {
       setCreatingError("请至少批准 1 个款式后再创建 SHEIN 任务。");
       setCreatingWarning("");
+      toast.error("无法创建 SHEIN 资料", "请至少批准 1 个款式后再创建 SHEIN 任务。");
       return;
     }
     const latestRatioCheck = evaluateImportedGalleryDesigns(
@@ -124,6 +132,7 @@ export function useSheinStudioTaskCreationAction({
     if (latestRatioCheck?.status === "blocking") {
       setCreatingError(latestRatioCheck.message);
       setCreatingWarning("");
+      toast.error("无法创建 SHEIN 资料", latestRatioCheck.message);
       return;
     }
 
@@ -131,79 +140,131 @@ export function useSheinStudioTaskCreationAction({
     setCreatingMessage("正在开始生成 SHEIN 资料...");
     setCreatingWarning("");
     setIsCreatingTasks(true);
+    let keepCreatingState = false;
 
     try {
       let created: SheinStudioCreatedTask[] = [];
       let creationWarnings: GroupedSheinTaskCreationWarning[] = [];
+      let batchTaskFailures: SheinStudioFailedTask[] = [];
+
       if (itemizedBatchContext) {
-        const result = await createSheinStudioBatchTasks(
-          itemizedBatchContext.batchId,
-          approved.map((design) => design.id),
-        );
+        const batchTenantId = itemizedBatchContext.tenantId?.trim();
+        const result = batchTenantId
+          ? await createSheinStudioBatchTasks(
+              itemizedBatchContext.batchId,
+              approved.map((design) => design.id),
+              { tenantId: batchTenantId },
+            )
+          : await createSheinStudioBatchTasks(
+              itemizedBatchContext.batchId,
+              approved.map((design) => design.id),
+            );
         created = result.createdTasks;
+        batchTaskFailures = result.failedTasks ?? [];
         itemizedBatchContext.onCreated(result);
+        setCreatingMessage("已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。");
+        setCreatingWarning("");
+        toast.info(
+          "已开始后台创建 SHEIN 资料",
+          "可离开当前页面，结果会自动刷新。",
+          7000,
+        );
+        keepCreatingState = result.batch.status === "tasks_creating";
+        return;
       } else if (groupedSelections.length > 0) {
         const result = await createGroupedSheinReviewTasks({
-              prompt,
-              groupedImageMode,
-              imageStrategy,
-              selectedSdsImages,
-              productImageCount,
-              productImagePrompt,
-              productImagePrompts,
-              renderSizeImagesWithSds,
-              onProgress: setCreatingMessage,
-              groups: [
+          prompt,
+          groupedImageMode,
+          imageStrategy,
+          selectedSdsImages,
+          productImageCount,
+          productImagePrompt,
+          productImagePrompts,
+          renderSizeImagesWithSds,
+          onProgress: setCreatingMessage,
+          groups: [
+            {
+              sheinStoreId,
+              selections: [
                 {
-                  sheinStoreId,
-                  selections: [
-                    {
-                      selection: activeSelection,
-                      baselineStatus: activeSelectionBaselineStatus,
-                      baselineReason: activeSelectionBaselineReason,
-                      eligible: true,
-                    },
-                  ],
-                  approvedDesigns: approved,
+                  selection: activeSelection,
+                  baselineStatus: activeSelectionBaselineStatus,
+                  baselineReason: activeSelectionBaselineReason,
+                  eligible: true,
                 },
-                ...groupSelectionsByStore(groupedSelections).map((group) => ({
-                  sheinStoreId: group.sheinStoreId,
-                  selections: group.items.map((item) => ({
-                    selection: item.selection,
-                    baselineStatus: item.baselineStatus,
-                    baselineReason: item.baselineReason,
-                    eligible: item.eligible,
-                    eligibilityReason: item.eligibilityReason,
-                  })),
-                  approvedDesigns: approved,
-                })),
               ],
-            });
+              approvedDesigns: approved,
+            },
+            ...groupSelectionsByStore(groupedSelections).map((group) => ({
+              sheinStoreId: group.sheinStoreId,
+              selections: group.items.map((item) => ({
+                selection: item.selection,
+                baselineStatus: item.baselineStatus,
+                baselineReason: item.baselineReason,
+                eligible: item.eligible,
+                eligibilityReason: item.eligibilityReason,
+              })),
+              approvedDesigns: approved,
+            })),
+          ],
+        });
         created = result.created;
         creationWarnings = result.warnings;
       } else {
         created = await createSheinReviewTasks({
-              prompt,
-              sheinStoreId,
-              imageStrategy,
-              selectedSdsImages,
-              productImageCount,
-              productImagePrompt,
-              productImagePrompts,
-              renderSizeImagesWithSds,
-              selection: activeSelection,
-              approvedDesigns: approved,
-              onProgress: setCreatingMessage,
-            });
+          prompt,
+          sheinStoreId,
+          imageStrategy,
+          selectedSdsImages,
+          productImageCount,
+          productImagePrompt,
+          productImagePrompts,
+          renderSizeImagesWithSds,
+          selection: activeSelection,
+          approvedDesigns: approved,
+          onProgress: setCreatingMessage,
+        });
       }
+
       hasLocalWorkflowStateRef.current = true;
       setCreatedTasks(created);
-      setCreatingMessage(
-        groupedSelections.length > 0
-          ? `已为 ${created.length} 个 SDS 商品生成 SHEIN 资料任务。请在下方打开并审核。`
-          : `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
-      );
-      setCreatingWarning(buildGroupedTaskCreationWarningSummary(creationWarnings));
+
+      if (batchTaskFailures.length > 0) {
+        const failedSummary = buildBatchTaskCreationFailureSummary(batchTaskFailures);
+        setCreatingWarning(failedSummary);
+        if (created.length > 0) {
+          setCreatingMessage(
+            `已成功生成 ${created.length} 个 SHEIN 资料任务，另有 ${batchTaskFailures.length} 个任务创建失败。`,
+          );
+          toast.warning(
+            "SHEIN 资料已部分创建",
+            `成功 ${created.length} 个，失败 ${batchTaskFailures.length} 个。`,
+            8000,
+          );
+        } else {
+          setCreatingError(failedSummary);
+          setCreatingMessage("");
+          toast.error("SHEIN 资料创建失败", failedSummary, 8000);
+          return;
+        }
+      } else {
+        setCreatingMessage(
+          groupedSelections.length > 0
+            ? `已为 ${created.length} 个 SDS 商品生成 SHEIN 资料任务。请在下方打开并审核。`
+            : `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
+        );
+        setCreatingWarning(buildGroupedTaskCreationWarningSummary(creationWarnings));
+        toast.success(
+          "SHEIN 资料创建完成",
+          `共生成 ${created.length} 个任务。`,
+          7000,
+        );
+      }
+
+      if (created.length === 0) {
+        return;
+      }
+
       navigateToStep("tasks");
       void persistDraft(
         { createdTasks: created },
@@ -213,15 +274,33 @@ export function useSheinStudioTaskCreationAction({
         },
       ).catch(() => undefined);
     } catch (error) {
-      setCreatingError(formatSubscriptionApiError(error));
+      const message = formatSubscriptionApiError(error);
+      setCreatingError(message);
       setCreatingMessage("");
       setCreatingWarning("");
+      toast.error("SHEIN 资料创建失败", message, 8000);
     } finally {
-      setIsCreatingTasks(false);
+      if (!keepCreatingState) {
+        setIsCreatingTasks(false);
+      }
     }
   }
 
   return { handleCreateTasks };
+}
+
+function buildBatchTaskCreationFailureSummary(
+  failedTasks: SheinStudioFailedTask[],
+) {
+  if (failedTasks.length === 0) {
+    return "";
+  }
+  const preview = failedTasks
+    .slice(0, 3)
+    .map((task) => `${task.title}: ${task.message}`)
+    .join("；");
+  const suffix = failedTasks.length > 3 ? ` 等 ${failedTasks.length} 个任务` : "";
+  return `部分任务创建失败：${preview}${suffix}`;
 }
 
 function buildGroupedTaskCreationWarningSummary(
@@ -233,7 +312,11 @@ function buildGroupedTaskCreationWarningSummary(
   const labels = warnings.map((warning) => warning.label.trim()).filter(Boolean);
   const preview = labels.slice(0, 5).join("、");
   const suffix =
-    labels.length > 5 ? ` 等 ${labels.length} 款商品` : labels.length > 1 ? ` 共 ${labels.length} 款商品` : "";
+    labels.length > 5
+      ? ` 等 ${labels.length} 款商品`
+      : labels.length > 1
+        ? ` 共 ${labels.length} 款商品`
+        : "";
   return `有 ${warnings.length} 款商品因为没有匹配到自己的款式图而被跳过：${preview}${suffix}。这些商品不会创建错误任务，你可以回到生成区补图后再重试。`;
 }
 

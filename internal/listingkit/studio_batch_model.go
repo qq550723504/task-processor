@@ -11,6 +11,7 @@ const (
 	StudioBatchStatusReviewReady           StudioBatchStatus = "review_ready"
 	StudioBatchStatusPartiallyFailed       StudioBatchStatus = "partially_failed"
 	StudioBatchStatusFailed                StudioBatchStatus = "failed"
+	StudioBatchStatusTasksCreating         StudioBatchStatus = "tasks_creating"
 	StudioBatchStatusTasksCreated          StudioBatchStatus = "tasks_created"
 )
 

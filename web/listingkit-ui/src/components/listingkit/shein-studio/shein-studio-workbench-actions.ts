@@ -113,6 +113,7 @@ type UseSheinStudioDesignActionsParams = {
   };
   itemizedBatchContext?: {
     batchId: string;
+    tenantId?: string;
     detail: SheinStudioBatchDetail;
     onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
   };
@@ -297,6 +298,15 @@ export function useSheinStudioDesignActions({
             .filter((entry) => entry.item.status === "failed")
             .map((entry) => entry.item.id) ?? [];
         const detail =
+          savedBatch.tenantId?.trim()
+            ? failedItemIDs.length > 0
+              ? await retrySheinStudioBatchItems(savedBatch.id, failedItemIDs, {
+                  tenantId: savedBatch.tenantId,
+                })
+              : await generateSheinStudioBatch(savedBatch.id, {
+                  tenantId: savedBatch.tenantId,
+                })
+            :
           failedItemIDs.length > 0
             ? await retrySheinStudioBatchItems(savedBatch.id, failedItemIDs)
             : await generateSheinStudioBatch(savedBatch.id);

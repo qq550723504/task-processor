@@ -106,6 +106,7 @@ type RawStudioGenerationJob = StudioBatchDraftRecordResponse["generation_jobs"];
 type StudioBatchListResponse = {
   items?: Array<{
     id: string;
+    tenant_id?: string;
     batch_name?: string;
     prompt?: string;
     style_count?: string;
@@ -428,6 +429,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
   const normalizedDesigns = legacyCompatibilitySnapshot?.designs ?? [];
   return {
     id: item.id,
+    tenantId: item.tenant_id?.trim() || undefined,
     name: item.batch_name ?? deriveBatchName(item.prompt ?? ""),
     prompt: item.prompt ?? "",
     styleCount: item.style_count ?? "1",

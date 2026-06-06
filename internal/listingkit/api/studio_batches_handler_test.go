@@ -15,45 +15,50 @@ import (
 )
 
 type stubStudioBatchActionService struct {
-	getBatchDetailCtx     context.Context
-	getBatchDetailBatchID string
-	getBatchDetailResult  *listingkit.StudioBatchDetail
-	getBatchDetailErr     error
-	prepareGenerateCtx    context.Context
-	prepareGenerateBatchID string
-	prepareGenerateResult *listingkit.StudioBatchDetail
-	prepareGenerateErr    error
-	prepareRetryCtx       context.Context
-	prepareRetryBatchID   string
-	prepareRetryReq       *listingkit.RetryStudioBatchItemsRequest
-	prepareRetryResult    *listingkit.StudioBatchDetail
-	prepareRetryErr       error
-	resumeCtx            context.Context
-	resumeBatchID        string
-	resumeResult         *listingkit.StudioBatchDetail
-	resumeErr            error
-	resumeCalled         chan struct{}
-	resumeBlock          chan struct{}
-	resumeCalls          int
-	startCtx              context.Context
-	startBatchID          string
-	startResult           *listingkit.StudioBatchDetail
-	startErr              error
-	retryCtx              context.Context
-	retryBatchID          string
-	retryReq              *listingkit.RetryStudioBatchItemsRequest
-	retryResult           *listingkit.StudioBatchDetail
-	retryErr              error
-	approveCtx            context.Context
-	approveBatchID        string
-	approveReq            *listingkit.ApproveStudioBatchDesignsRequest
-	approveResult         *listingkit.StudioBatchDetail
-	approveErr            error
-	createTasksCtx        context.Context
-	createTasksBatchID    string
-	createTasksReq        *listingkit.CreateStudioBatchTasksRequest
-	createTasksResult     *listingkit.CreateStudioBatchTasksResult
-	createTasksErr        error
+	getBatchDetailCtx         context.Context
+	getBatchDetailBatchID     string
+	getBatchDetailResult      *listingkit.StudioBatchDetail
+	getBatchDetailErr         error
+	prepareGenerateCtx        context.Context
+	prepareGenerateBatchID    string
+	prepareGenerateResult     *listingkit.StudioBatchDetail
+	prepareGenerateErr        error
+	prepareRetryCtx           context.Context
+	prepareRetryBatchID       string
+	prepareRetryReq           *listingkit.RetryStudioBatchItemsRequest
+	prepareRetryResult        *listingkit.StudioBatchDetail
+	prepareRetryErr           error
+	resumeCtx                 context.Context
+	resumeBatchID             string
+	resumeResult              *listingkit.StudioBatchDetail
+	resumeErr                 error
+	resumeCalled              chan struct{}
+	resumeBlock               chan struct{}
+	resumeCalls               int
+	startCtx                  context.Context
+	startBatchID              string
+	startResult               *listingkit.StudioBatchDetail
+	startErr                  error
+	retryCtx                  context.Context
+	retryBatchID              string
+	retryReq                  *listingkit.RetryStudioBatchItemsRequest
+	retryResult               *listingkit.StudioBatchDetail
+	retryErr                  error
+	approveCtx                context.Context
+	approveBatchID            string
+	approveReq                *listingkit.ApproveStudioBatchDesignsRequest
+	approveResult             *listingkit.StudioBatchDetail
+	approveErr                error
+	createTasksCtx            context.Context
+	createTasksBatchID        string
+	createTasksReq            *listingkit.CreateStudioBatchTasksRequest
+	createTasksResult         *listingkit.CreateStudioBatchTasksResult
+	createTasksErr            error
+	prepareCreateTasksCtx     context.Context
+	prepareCreateTasksBatchID string
+	prepareCreateTasksReq     *listingkit.CreateStudioBatchTasksRequest
+	prepareCreateTasksResult  *listingkit.CreateStudioBatchTasksResult
+	prepareCreateTasksErr     error
 }
 
 func (s *stubStudioBatchActionService) ListStudioSessionGallery(context.Context, int) (*listingkit.StudioSessionGalleryResponse, error) {
@@ -137,6 +142,13 @@ func (s *stubStudioBatchActionService) CreateStudioBatchTasks(ctx context.Contex
 	s.createTasksBatchID = batchID
 	s.createTasksReq = req
 	return s.createTasksResult, s.createTasksErr
+}
+
+func (s *stubStudioBatchActionService) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *listingkit.CreateStudioBatchTasksRequest) (*listingkit.CreateStudioBatchTasksResult, error) {
+	s.prepareCreateTasksCtx = ctx
+	s.prepareCreateTasksBatchID = batchID
+	s.prepareCreateTasksReq = req
+	return s.prepareCreateTasksResult, s.prepareCreateTasksErr
 }
 
 func TestStudioBatchGenerateHandlerStartsItemizedGeneration(t *testing.T) {
@@ -352,7 +364,7 @@ func TestStudioBatchTasksHandlerUsesApprovedDesignOwnership(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioBatchActionService{
-		createTasksResult: &listingkit.CreateStudioBatchTasksResult{
+		prepareCreateTasksResult: &listingkit.CreateStudioBatchTasksResult{
 			Batch: &listingkit.StudioBatchRecord{ID: "batch-1", Status: listingkit.StudioBatchStatusTasksCreated},
 			CreatedTasks: []listingkit.SheinStudioCreatedTask{{
 				ID:       "task-1",
@@ -360,6 +372,7 @@ func TestStudioBatchTasksHandlerUsesApprovedDesignOwnership(t *testing.T) {
 				Title:    "Style 1",
 			}},
 		},
+		resumeCalled: make(chan struct{}),
 	}
 	h := &studioSessionHandler{service: svc}
 	router := gin.New()
@@ -370,13 +383,18 @@ func TestStudioBatchTasksHandlerUsesApprovedDesignOwnership(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 body=%s", rec.Code, rec.Body.String())
 	}
-	if svc.createTasksBatchID != "batch-1" {
-		t.Fatalf("create tasks batch id = %q, want batch-1", svc.createTasksBatchID)
+	if svc.prepareCreateTasksBatchID != "batch-1" {
+		t.Fatalf("prepare create tasks batch id = %q, want batch-1", svc.prepareCreateTasksBatchID)
 	}
-	if svc.createTasksReq == nil || len(svc.createTasksReq.DesignIDs) != 1 || svc.createTasksReq.DesignIDs[0] != "design-1" {
-		t.Fatalf("create tasks req = %+v, want bound design id", svc.createTasksReq)
+	if svc.prepareCreateTasksReq == nil || len(svc.prepareCreateTasksReq.DesignIDs) != 1 || svc.prepareCreateTasksReq.DesignIDs[0] != "design-1" {
+		t.Fatalf("prepare create tasks req = %+v, want bound design id", svc.prepareCreateTasksReq)
+	}
+	select {
+	case <-svc.resumeCalled:
+	case <-time.After(time.Second):
+		t.Fatal("background resume was not launched for task creation")
 	}
 }

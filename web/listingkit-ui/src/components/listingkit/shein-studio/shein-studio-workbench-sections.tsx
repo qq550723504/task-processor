@@ -12,12 +12,16 @@ import type {
 } from "@/lib/types/shein-studio";
 
 export function SheinStudioWorkbenchAlerts({
+  creatingError,
+  creatingMessage,
   creatingWarning,
   draftWarning,
   generationWarning,
   generationWarningAction,
   galleryRatioCheck,
 }: {
+  creatingError: string;
+  creatingMessage: string;
   creatingWarning: string;
   draftWarning: string;
   generationWarning: string;
@@ -32,6 +36,18 @@ export function SheinStudioWorkbenchAlerts({
 }) {
   return (
     <>
+      {creatingError ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
+          {creatingError}
+        </div>
+      ) : null}
+
+      {creatingMessage ? (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
+          {creatingMessage}
+        </div>
+      ) : null}
+
       {creatingWarning ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
           {creatingWarning}

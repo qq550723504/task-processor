@@ -156,8 +156,11 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           },
         ],
         createdAt: "2026-06-01T10:00:00Z",
+        draftUpdatedAt: undefined,
         updatedAt: "2026-06-01T10:05:00Z",
       },
+      createdTasks: [],
+      failedTasks: [],
       items: [
         {
           item: {
@@ -319,6 +322,41 @@ describe("shein studio batches API", () => {
     });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/listing-kits/studio/batches/batch-1");
+  });
+
+  it("includes tenant id when loading a scoped batch detail", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            tenant_id: "tenant-9",
+            status: "review_ready",
+            prompt: "botanical",
+            style_count: "3",
+            shein_store_id: 7,
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:05:00Z",
+          },
+          items: [],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getSheinStudioBatchDetail("batch-1", { tenantId: "tenant-9" }),
+    ).resolves.toMatchObject({
+      batch: { id: "batch-1", tenantId: "tenant-9" },
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/batches/batch-1?tenant_id=tenant-9",
+    );
   });
 
   it("posts approval requests by design ids", async () => {
@@ -544,5 +582,39 @@ describe("shein studio batches API", () => {
       method: "POST",
       body: JSON.stringify({ design_ids: ["design-1"] }),
     });
+  });
+
+  it("includes tenant id when creating scoped batch tasks", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            tenant_id: "tenant-9",
+            status: "tasks_creating",
+            prompt: "botanical",
+            style_count: "3",
+            shein_store_id: 7,
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+          created_tasks: [],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSheinStudioBatchTasks("batch-1", ["design-1"], {
+      tenantId: "tenant-9",
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/batches/batch-1/tasks?tenant_id=tenant-9",
+    );
   });
 });

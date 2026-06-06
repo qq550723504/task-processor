@@ -182,6 +182,7 @@ export function getApprovedItemizedBatchDesignIDs(
 
 const ACTIVE_ITEMIZED_BATCH_STATUSES = new Set<SheinStudioBatchStatus>([
   "generating",
+  "tasks_creating",
 ]);
 
 const ACTIVE_ITEMIZED_BATCH_ITEM_STATUSES = new Set<SheinStudioBatchItemStatus>([
@@ -246,6 +247,7 @@ export function projectHydratedBatchToWorkbench(
   const { savedBatch, detail } = hydratedBatch;
   const saved = projectSavedBatchToWorkbench(savedBatch);
   const itemized = projectItemizedBatchCompatibilityFields(detail);
+  const detailCreatedTasks = detail.createdTasks ?? [];
   const savedDraftUpdatedAt = savedBatch.draftUpdatedAt || savedBatch.updatedAt;
   const itemizedDraftUpdatedAt =
     detail.batch.draftUpdatedAt || detail.batch.updatedAt;
@@ -305,7 +307,8 @@ export function projectHydratedBatchToWorkbench(
       hasInFlightGeneration || shouldPreserveSavedGenerationError
         ? saved.generationError
         : "",
-    createdTasks: saved.createdTasks,
+    createdTasks:
+      detailCreatedTasks.length > 0 ? detailCreatedTasks : saved.createdTasks,
     persistedUpdatedAt:
       itemizedDraftUpdatedAt ||
       savedDraftUpdatedAt ||
@@ -632,9 +635,6 @@ export function sheinStudioBusyMessage({
   }
   if (regeneratingId) {
     return "正在重新生成图片";
-  }
-  if (isCreatingTasks) {
-    return "正在生成商品图和 SHEIN 资料";
   }
   return "";
 }

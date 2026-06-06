@@ -177,12 +177,14 @@ func (h *studioSessionHandler) CreateStudioBatchTasks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	result, err := h.service.CreateStudioBatchTasks(requestContext(c), c.Param("batch_id"), &req)
+	batchID := c.Param("batch_id")
+	result, err := h.service.PrepareCreateStudioBatchTasks(requestContext(c), batchID, &req)
 	if err != nil {
 		writeStudioBatchActionError(c, "studio_batch_tasks_failed", err)
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	h.launchBatchResume(c, batchID)
+	c.JSON(http.StatusAccepted, result)
 }
 
 func (h *studioSessionHandler) UpsertStudioBatch(c *gin.Context) {

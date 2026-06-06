@@ -8,12 +8,13 @@ import (
 type SheinStudioSessionStatus string
 
 const (
-	SheinStudioSessionStatusSelecting    SheinStudioSessionStatus = "selecting"
-	SheinStudioSessionStatusGenerating   SheinStudioSessionStatus = "generating"
-	SheinStudioSessionStatusGenerated    SheinStudioSessionStatus = "generated"
-	SheinStudioSessionStatusReviewing    SheinStudioSessionStatus = "reviewing"
-	SheinStudioSessionStatusFailed       SheinStudioSessionStatus = "failed"
-	SheinStudioSessionStatusTasksCreated SheinStudioSessionStatus = "tasks_created"
+	SheinStudioSessionStatusSelecting     SheinStudioSessionStatus = "selecting"
+	SheinStudioSessionStatusGenerating    SheinStudioSessionStatus = "generating"
+	SheinStudioSessionStatusGenerated     SheinStudioSessionStatus = "generated"
+	SheinStudioSessionStatusReviewing     SheinStudioSessionStatus = "reviewing"
+	SheinStudioSessionStatusFailed        SheinStudioSessionStatus = "failed"
+	SheinStudioSessionStatusTasksCreating SheinStudioSessionStatus = "tasks_creating"
+	SheinStudioSessionStatusTasksCreated  SheinStudioSessionStatus = "tasks_created"
 )
 
 type SheinStudioSelectionVariant struct {
@@ -164,6 +165,16 @@ func (value *SheinStudioCreatedTaskList) Scan(input any) error {
 	return unmarshalStudioSessionJSON(input, value)
 }
 
+type SheinStudioFailedTaskList []SheinStudioFailedTask
+
+func (value SheinStudioFailedTaskList) Value() (driver.Value, error) {
+	return marshalStudioSessionJSON(value)
+}
+
+func (value *SheinStudioFailedTaskList) Scan(input any) error {
+	return unmarshalStudioSessionJSON(input, value)
+}
+
 type SheinStudioGenerationJobList []SheinStudioGenerationJob
 
 func (value SheinStudioGenerationJobList) Value() (driver.Value, error) {
@@ -217,8 +228,10 @@ type SheinStudioSession struct {
 	GenerationJobs          SheinStudioGenerationJobList      `json:"generation_jobs,omitempty" gorm:"type:text"`
 	GenerationError         string                            `json:"generation_error,omitempty" gorm:"type:text"`
 	ApprovedDesignIDs       SheinStudioStringList             `json:"approved_design_ids,omitempty" gorm:"type:text"`
+	PendingTaskDesignIDs    SheinStudioStringList             `json:"pending_task_design_ids,omitempty" gorm:"type:text"`
 	CreatedTaskIDs          SheinStudioStringList             `json:"created_task_ids,omitempty" gorm:"type:text"`
 	CreatedTasks            SheinStudioCreatedTaskList        `json:"created_tasks,omitempty" gorm:"type:text"`
+	FailedTasks             SheinStudioFailedTaskList         `json:"failed_tasks,omitempty" gorm:"type:text"`
 	SavedAsBatch            bool                              `json:"saved_as_batch,omitempty" gorm:"index"`
 	BatchName               string                            `json:"batch_name,omitempty" gorm:"type:varchar(255)"`
 	CreatedAt               time.Time                         `json:"created_at"`

@@ -245,7 +245,6 @@ export async function getSheinStudioHydratedBatch(
     return inFlight;
   }
   const pending = (async () => {
-    const detail = await getSheinStudioBatchDetail(normalizedBatchID);
     const savedBatch = (await listSheinStudioBatches()).find(
       (item) => item.id === normalizedBatchID,
     );
@@ -254,6 +253,9 @@ export async function getSheinStudioHydratedBatch(
         `Saved batch context unavailable for ${normalizedBatchID}.`,
       );
     }
+    const detail = await getSheinStudioBatchDetail(normalizedBatchID, {
+      tenantId: savedBatch.tenantId,
+    });
     return {
       savedBatch: normalizeBatch(
         mergeBatchDetailWithSavedBatchContext(detail, savedBatch),
@@ -413,8 +415,10 @@ function mergeBatchDetailWithSavedBatchContext(
   savedBatch?: SheinStudioSavedBatch,
 ): SheinStudioSavedBatch {
   const itemized = projectItemizedBatchSavedBatchCompatibility(detail);
+  const detailCreatedTasks = detail.createdTasks ?? [];
   return {
     id: detail.batch.id,
+    tenantId: detail.batch.tenantId ?? savedBatch?.tenantId,
     name: savedBatch?.name ?? deriveBatchName(detail.batch.prompt),
     prompt: itemized.prompt || savedBatch?.prompt || "",
     styleCount: itemized.styleCount || savedBatch?.styleCount || "1",
@@ -445,7 +449,10 @@ function mergeBatchDetailWithSavedBatchContext(
     groups: savedBatch?.groups ?? [],
     designs: itemized.designs,
     selectedIds: itemized.selectedIds,
-    createdTasks: savedBatch?.createdTasks ?? [],
+    createdTasks:
+      detailCreatedTasks.length > 0
+        ? detailCreatedTasks
+        : (savedBatch?.createdTasks ?? []),
     generationJobs: savedBatch?.generationJobs ?? [],
     generationError: savedBatch?.generationError,
     generationJobId: savedBatch?.generationJobId,
@@ -466,4 +473,3 @@ function deriveBatchName(prompt: string) {
   }
   return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
 }
-

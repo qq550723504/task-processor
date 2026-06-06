@@ -582,6 +582,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
 
   return {
     id: raw.id,
+    tenantId: typeof raw.tenantId === "string" ? raw.tenantId : undefined,
     name: raw.name,
     prompt: raw.prompt ?? "",
     styleCount: raw.styleCount ?? "4",

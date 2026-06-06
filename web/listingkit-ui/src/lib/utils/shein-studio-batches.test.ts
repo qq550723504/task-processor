@@ -876,6 +876,7 @@ describe("shein studio storage api", () => {
     listSheinStudioBatchDrafts.mockResolvedValue([
       {
         id: "batch-1",
+        tenantId: "tenant-9",
         name: "869全品类",
         prompt: "server batch prompt",
         styleCount: "4",
@@ -929,6 +930,7 @@ describe("shein studio storage api", () => {
     await expect(getSheinStudioHydratedBatch("batch-1")).resolves.toMatchObject({
       savedBatch: expect.objectContaining({
         id: "batch-1",
+        tenantId: "tenant-9",
         name: "869全品类",
         prompt: "server batch prompt",
         styleCount: "4",
@@ -944,6 +946,9 @@ describe("shein studio storage api", () => {
           }),
         ],
       }),
+    });
+    expect(getSheinStudioBatchDetail).toHaveBeenCalledWith("batch-1", {
+      tenantId: "tenant-9",
     });
   });
 
@@ -1241,4 +1246,3 @@ describe("shein studio storage api", () => {
   });
 
 });
-
