@@ -104,6 +104,10 @@ type TaskRecoveryService interface {
 	BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error)
 }
 
+type TaskRequeueService interface {
+	RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error)
+}
+
 type GenerationTaskService interface {
 	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
 	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
@@ -158,6 +162,7 @@ type WorkflowClientConfigurer interface {
 type Service interface {
 	TaskLifecycleService
 	TaskRecoveryService
+	TaskRequeueService
 	GenerationTaskService
 	StudioBatchRunService
 	StudioMediaService

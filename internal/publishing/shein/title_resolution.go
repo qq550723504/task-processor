@@ -68,13 +68,16 @@ func resolveListingTitle(ctx context.Context, canonical *canonical.Product, fall
 		if extracted := extractPromptTitleWithLLM(ctx, value, canonical, fallbackTitle, aiClient); extracted != "" {
 			return buildResolvedTitle(extracted, "prompt_extracted_llm", "prompt-like "+candidate.source+" replaced by llm-extracted title", true, canonical, fallbackTitle)
 		}
+		return titleResolution{
+			title:       "",
+			source:      "unresolved_prompt_title",
+			note:        "prompt-like title candidates could not be safely resolved; llm title extraction unavailable or unsafe",
+			contaminate: true,
+			skcBase:     "",
+		}
 	}
 	title := structuredFallbackTitle(canonical, fallbackTitle)
-	note := ""
-	if contaminated {
-		note = "prompt-like title candidates fell back to structured title"
-	}
-	return buildResolvedTitle(title, "structured_fallback", note, contaminated, canonical, fallbackTitle)
+	return buildResolvedTitle(title, "structured_fallback", "", false, canonical, fallbackTitle)
 }
 
 func enrichResolvedListingTitle(ctx context.Context, resolution titleResolution, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {

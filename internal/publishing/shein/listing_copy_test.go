@@ -2,6 +2,7 @@ package shein
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -13,9 +14,13 @@ import (
 
 type stubTitleAIClient struct {
 	response string
+	err      error
 }
 
 func (s stubTitleAIClient) CreateChatCompletion(ctx context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
 	return &openaiclient.ChatCompletionResponse{
 		Choices: []openaiclient.ChatCompletionChoice{{
 			Message: openaiclient.ChatCompletionMessage{Content: s.response},
@@ -24,6 +29,9 @@ func (s stubTitleAIClient) CreateChatCompletion(ctx context.Context, req *openai
 }
 
 func (s stubTitleAIClient) Generate(ctx context.Context, prompt string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
 	return s.response, nil
 }
 
@@ -91,7 +99,7 @@ func TestBuildSheinListingCopyUsesLLMWhenRuleExtractionCannotRecover(t *testing.
 	}
 }
 
-func TestBuildSheinListingCopyFallsBackWhenLLMReturnsPromptLikeTitle(t *testing.T) {
+func TestBuildSheinListingCopyLeavesPromptTitleUnresolvedWhenLLMReturnsPromptLikeTitle(t *testing.T) {
 	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
 		Attributes: map[string]canonical.Attribute{
@@ -103,14 +111,52 @@ func TestBuildSheinListingCopyFallsBackWhenLLMReturnsPromptLikeTitle(t *testing.
 	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
 		response: `{"title":"Please design a floral image for this floor mat with 3D graphics"}`,
 	})
-	if copy.Title == "" || copy.Title == canonical.Attributes["product_english_name"].Value {
-		t.Fatalf("title = %q, want non-empty fallback title", copy.Title)
+	if copy.Title != "" {
+		t.Fatalf("title = %q, want empty unresolved title", copy.Title)
 	}
-	if isPromptLikeTitle(copy.Title) {
-		t.Fatalf("title = %q, want non prompt-like fallback", copy.Title)
+	if copy.SKCTitleBase != "" {
+		t.Fatalf("skc base title = %q, want empty unresolved skc base", copy.SKCTitleBase)
 	}
-	if copy.TitleDiagnostics == nil || !copy.TitleDiagnostics.PromptContaminated {
+	if copy.TitleDiagnostics == nil {
+		t.Fatal("title diagnostics = nil, want contamination note")
+	}
+	if !copy.TitleDiagnostics.PromptContaminated {
 		t.Fatalf("title diagnostics = %+v, want contamination note", copy.TitleDiagnostics)
+	}
+	if copy.TitleDiagnostics.Source != "unresolved_prompt_title" {
+		t.Fatalf("title diagnostics source = %q, want unresolved_prompt_title", copy.TitleDiagnostics.Source)
+	}
+}
+
+func TestBuildSheinListingCopyDoesNotFallbackWhenPromptTitleNeedsLLMButLLMUnavailable(t *testing.T) {
+	canonical := &canonical.Product{
+		Title: "Flannel non-slip floor mat",
+		Attributes: map[string]canonical.Attribute{
+			"product_english_name": {Value: "Please design an image for my floor mat with floral artwork and inspirational text, 3000 pixels"},
+			"material":             {Value: "polyester"},
+		},
+	}
+
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, stubTitleAIClient{
+		err: errors.New("OpenAI API error: insufficient credits in account balance"),
+	})
+	if copy.Title != "" {
+		t.Fatalf("title = %q, want empty when prompt-like title cannot be safely resolved", copy.Title)
+	}
+	if copy.SKCTitleBase != "" {
+		t.Fatalf("skc base title = %q, want empty when prompt-like title cannot be safely resolved", copy.SKCTitleBase)
+	}
+	if copy.TitleDiagnostics == nil {
+		t.Fatal("title diagnostics = nil, want prompt contamination diagnostics")
+	}
+	if copy.TitleDiagnostics.Source != "unresolved_prompt_title" {
+		t.Fatalf("title diagnostics source = %q, want unresolved_prompt_title", copy.TitleDiagnostics.Source)
+	}
+	if !copy.TitleDiagnostics.PromptContaminated {
+		t.Fatalf("title diagnostics = %+v, want prompt contamination preserved", copy.TitleDiagnostics)
+	}
+	if !strings.Contains(copy.TitleDiagnostics.ResolutionNote, "llm title extraction unavailable") {
+		t.Fatalf("resolution note = %q, want llm extraction unavailability note", copy.TitleDiagnostics.ResolutionNote)
 	}
 }
 

@@ -25,6 +25,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 
@@ -118,6 +119,7 @@ func (stubRouteHandler) StartStudioAsyncJob(*gin.Context)                       
 func (stubRouteHandler) GetStudioAsyncJob(*gin.Context)                           {}
 func (stubRouteHandler) RegenerateSheinDataImage(*gin.Context)                    {}
 func (stubRouteHandler) GetTaskResult(*gin.Context)                               {}
+func (stubRouteHandler) RequeuePendingTasks(*gin.Context)                         {}
 func (stubRouteHandler) RecoverTaskNow(*gin.Context)                              {}
 func (stubRouteHandler) BulkRecoverTasks(*gin.Context)                            {}
 func (stubRouteHandler) GetTaskPreview(*gin.Context)                              {}

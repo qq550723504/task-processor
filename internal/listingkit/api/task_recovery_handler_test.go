@@ -19,10 +19,12 @@ import (
 type stubTaskRecoveryHandlerService struct {
 	task           *listingkit.Task
 	recoveredCount int64
+	requeueResult  *listingkit.RequeuePendingTasksResult
 	err            error
 
 	lastRecoveredTaskID string
 	lastRecoverQuery    *listingkit.RecoverBlockedTasksQuery
+	lastRequeueRequest  *listingkit.RequeuePendingTasksRequest
 }
 
 func (s *stubTaskRecoveryHandlerService) CreateGenerateTask(context.Context, *listingkit.GenerateRequest) (*listingkit.Task, error) {

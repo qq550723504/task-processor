@@ -704,6 +704,8 @@ func buildStudioBatchTaskGenerateRequest(
 		strings.TrimSpace(design.ID),
 	)
 	req := &GenerateRequest{
+		TenantID:     strings.TrimSpace(session.TenantID),
+		UserID:       strings.TrimSpace(session.UserID),
 		Text:         strings.TrimSpace(session.Prompt),
 		ImageURLs:    []string{strings.TrimSpace(design.ImageURL)},
 		Platforms:    []string{"shein"},

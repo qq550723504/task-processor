@@ -34,6 +34,7 @@ func (taskOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)              {}
 func (taskOnlyRouteHandler) GetStudioAsyncJob(c *gin.Context)                {}
 func (taskOnlyRouteHandler) RegenerateSheinDataImage(c *gin.Context)         {}
 func (taskOnlyRouteHandler) GetTaskResult(c *gin.Context)                    {}
+func (taskOnlyRouteHandler) RequeuePendingTasks(c *gin.Context)              {}
 func (taskOnlyRouteHandler) RecoverTaskNow(c *gin.Context)                   {}
 func (taskOnlyRouteHandler) BulkRecoverTasks(c *gin.Context)                 {}
 func (taskOnlyRouteHandler) GetTaskPreview(c *gin.Context)                   {}
