@@ -57,7 +57,18 @@ func buildSDSSyncSummary(options *SDSSyncOptions, designResult *design.PrepareSy
 			summary.Diagnostics.RenderedCount = len(summary.MockupImageURLs)
 		}
 	}
-	attachRenderedDiagnostics(summary, designResult)
+	if summary != nil && designResult != nil {
+		attachRenderedVariantDiagnostics(summary, designResult, summary.ProductID)
+		if summary.Diagnostics != nil && len(summary.Diagnostics.SensitiveWords) == 0 {
+			for _, hits := range designResult.RenderedSensitiveWords {
+				if len(hits) == 0 {
+					continue
+				}
+				summary.Diagnostics.SensitiveWords = convertSensitiveWordHits(hits)
+				break
+			}
+		}
+	}
 	if len(summary.MockupImageURLs) == 0 {
 		summary.Status = "render_unavailable"
 		summary.Error = buildRenderedImageUnavailableError(summary.Diagnostics)
@@ -92,7 +103,10 @@ func buildSDSVariantSyncSummaries(options *SDSSyncOptions, variants []SDSSyncVar
 			VariantColor:     strings.TrimSpace(variant.Color),
 			MockupImageURLs:  uniqueNonEmptyStrings(byProduct[variant.VariantID]),
 			Status:           "completed",
-			Diagnostics:      cloneSDSSyncDiagnostics(base.Diagnostics),
+		}
+		if base.Diagnostics != nil {
+			diagnostics := *base.Diagnostics
+			summary.Diagnostics = &diagnostics
 		}
 		if summary.Diagnostics != nil && variant.VariantID != base.ProductID {
 			summary.Diagnostics.FinishedProduct = nil
@@ -112,33 +126,6 @@ func buildSDSVariantSyncSummaries(options *SDSSyncOptions, variants []SDSSyncVar
 		summaries = append(summaries, summary)
 	}
 	return summaries
-}
-
-func cloneSDSSyncDiagnostics(input *SDSSyncDiagnostics) *SDSSyncDiagnostics {
-	if input == nil {
-		return nil
-	}
-	copy := *input
-	return &copy
-}
-
-func attachRenderedDiagnostics(summary *SDSSyncSummary, designResult *design.PrepareSyncDesignResult) {
-	if summary == nil || designResult == nil {
-		return
-	}
-	attachRenderedVariantDiagnostics(summary, designResult, summary.ProductID)
-	if summary.Diagnostics == nil {
-		return
-	}
-	if len(summary.Diagnostics.SensitiveWords) == 0 {
-		for _, hits := range designResult.RenderedSensitiveWords {
-			if len(hits) == 0 {
-				continue
-			}
-			summary.Diagnostics.SensitiveWords = convertSensitiveWordHits(hits)
-			break
-		}
-	}
 }
 
 func attachRenderedVariantDiagnostics(summary *SDSSyncSummary, designResult *design.PrepareSyncDesignResult, variantID int64) {
