@@ -8,10 +8,17 @@ WORKDIR /src
 
 RUN apk add --no-cache git make
 
+# Copy go.mod and go.sum first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
+# Copy only the necessary source files for compilation
+COPY cmd/product-listing-api/ cmd/product-listing-api/
+COPY internal/ internal/
+COPY config/ config/
+COPY prompts/ prompts/
+
+# Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api ./cmd/product-listing-api/main.go
 
 FROM ${API_RUNTIME_BASE_IMAGE}
