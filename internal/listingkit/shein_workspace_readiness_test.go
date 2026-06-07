@@ -747,6 +747,59 @@ func TestBuildSheinSubmitReadinessBlocksWhenResolvedSaleAttributesLackValueIDs(t
 	}
 }
 
+func TestBuildSheinSubmitReadinessBlocksWhenMultipleSKUsLackSaleAttributes(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID = 0
+	task.Result.Shein.SaleAttributeResolution.SKUAttributes = nil
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList = append(
+		task.Result.Shein.RequestDraft.SKCList[0].SKUList,
+		SheinSKUDraft{
+			SupplierSKU: "SKU-2",
+		},
+	)
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes = nil
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS = append(
+		task.Result.Shein.PreviewProduct.SKCList[0].SKUS,
+		sheinproduct.SKU{
+			SupplierSKU: "SKU-2",
+		},
+	)
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList = nil
+	task.Result.Shein.SkcList[0].SKUs = append(
+		task.Result.Shein.SkcList[0].SKUs,
+		PlatformVariant{
+			SKU: "SKU-2",
+			Attributes: map[string]string{
+				"颜色": "Black",
+				"尺码": "40",
+			},
+		},
+	)
+
+	readiness := buildSheinSubmitReadiness(task.Result.Shein)
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
+	}
+	found := false
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "sale_attributes" {
+			found = true
+			if item.Reason == nil || item.Reason.Code != "sale_attributes_unresolved" {
+				t.Fatalf("sale attribute reason = %+v", item.Reason)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected sale_attributes blocker, got %+v", readiness.BlockingItems)
+	}
+}
+
 func TestBuildSheinSubmitReadinessBlocksWhenRequiredDisplayAttributesArePending(t *testing.T) {
 	t.Parallel()
 

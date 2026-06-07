@@ -27,9 +27,9 @@ func TestTaskGenerationSharedCloneHelperBoundary(t *testing.T) {
 	t.Run("direct_consumers_keep_using_shared_clone_home", func(t *testing.T) {
 		t.Parallel()
 
-		actionTargetCloneShapeSource := readTaskGenerationSourceFile(t, "task_generation_action_target_clone_shape.go")
+		actionTargetCloneShapeSource := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionTarget")
 		reviewNavigationSource := readTaskGenerationSourceFile(t, "generation_review_navigation_target.go")
-		retryRequestSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_request.go")
+		retryRequestSource := readExactMethodSource(t, "task_generation_action_execute_request_handoff_retry.go", "func (p *taskGenerationActionExecuteRequestHandoffRetryRequestPhase) run(")
 		queueRequestSource := readExactMethodSource(t, "task_generation_action_execute_request_handoff_queue.go", "func (p *taskGenerationActionExecuteRequestHandoffQueueRequestPhase) run(")
 
 		assertSourceContainsAll(t, actionTargetCloneShapeSource, []string{

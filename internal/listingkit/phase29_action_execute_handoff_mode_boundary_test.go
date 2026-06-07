@@ -8,8 +8,7 @@ func TestTaskGenerationActionExecuteRequestHandoffModeBoundary(t *testing.T) {
 	t.Run("top_level_handoff_routes_through_local_mode_routing_seam", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff.go", "run")
+		source := readExactMethodSource(t, "task_generation_action_execute_request_handoff.go", "func (p *taskGenerationActionExecuteRequestHandoffPhase) run(")
 
 		assertSourceContainsAll(t, source, []string{
 			"return buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(p.service).run(ctx, taskID, target)",
@@ -21,24 +20,13 @@ func TestTaskGenerationActionExecuteRequestHandoffModeBoundary(t *testing.T) {
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
 			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase().run(queuePage)",
 		})
-		assertFunctionCallsContainAll(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
-			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
-			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
-			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
-		})
 	})
 
 	t.Run("mode_routing_seam_routes_interaction_modes_through_local_mode_pairing_seam", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_routing.go")
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
-
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff.go")
+		source := readExactMethodSource(t, "task_generation_action_execute_request_handoff.go", "func (p *taskGenerationActionExecuteRequestHandoffModeRoutingPhase) run(")
 		assertSourceContainsAll(t, fileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(",
 			"func (p *taskGenerationActionExecuteRequestHandoffModeRoutingPhase) run(",
@@ -65,30 +53,6 @@ func TestTaskGenerationActionExecuteRequestHandoffModeBoundary(t *testing.T) {
 			"generationWorkQueueFromRetryPage(",
 			"generationWorkQueueFromPage(",
 			"buildGenerationReviewSession(",
-		})
-		assertFunctionCallsContainAll(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffModePairingPhase",
-			"runRetryable",
-			"runQueue",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",
-			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase",
-			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase",
-			"buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase",
-			"RetryTaskGenerationTasks",
-			"cloneRetryGenerationTasksRequest",
-			"GetTaskGenerationQueue",
-			"cloneGenerationQueueQuery",
-			"buildTaskGenerationActionExecuteRequestHandoffResultShapePhase",
-			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase",
-			"fromRetryPage",
-			"fromQueuePage",
-			"persistenceQueueFromRetryPage",
-			"persistenceQueueFromQueuePage",
-			"generationWorkQueueFromRetryPage",
-			"generationWorkQueueFromPage",
-			"buildGenerationReviewSession",
 		})
 	})
 }

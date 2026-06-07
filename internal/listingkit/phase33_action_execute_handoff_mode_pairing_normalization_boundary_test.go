@@ -73,12 +73,12 @@ func TestTaskGenerationActionExecuteHandoffModePairingNormalizationBoundary(t *t
 	t.Run("mode_pairing_normalization_owner_defers_branch_result_work_to_branch_local_result_seams", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_pairing_normalization.go")
-		buildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing_normalization.go", "buildTaskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase")
-		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing_normalization.go", "fromRetryPage")
-		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_pairing_normalization.go", "fromRetryPage")
-		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing_normalization.go", "fromQueuePage")
-		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_pairing_normalization.go", "fromQueuePage")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_mode_pairing.go")
+		buildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "buildTaskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase")
+		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "fromRetryPage")
+		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "fromRetryPage")
+		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "fromQueuePage")
+		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_pairing.go", "fromQueuePage")
 
 		assertSourceContainsAll(t, fileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffModePairingNormalizationPhase()",

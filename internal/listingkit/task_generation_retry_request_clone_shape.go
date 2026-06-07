@@ -4,5 +4,6 @@ func applyRetryGenerationTasksRequestCloneShape(req *RetryGenerationTasksRequest
 	if req == nil || cloned == nil {
 		return
 	}
-	applyRetryGenerationTasksRequestSliceClone(req, cloned)
+	applyRetryGenerationTasksRequestTaskIDClone(req, cloned)
+	applyRetryGenerationTasksRequestSlotClone(req, cloned)
 }

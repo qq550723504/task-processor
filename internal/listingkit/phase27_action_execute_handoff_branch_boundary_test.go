@@ -92,7 +92,7 @@ func TestTaskGenerationActionExecuteRequestHandoffBranchBoundary(t *testing.T) {
 
 		retrySource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry.go")
 		queueSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue.go")
-		retryRequestSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_request.go")
+		retryRequestSource := readExactMethodSource(t, "task_generation_action_execute_request_handoff_retry.go", "func (p *taskGenerationActionExecuteRequestHandoffRetryRequestPhase) run(")
 		queueRequestSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue.go")
 		sharedCloneSource := readTaskGenerationSourceFile(t, "task_generation_shared_clone.go")
 

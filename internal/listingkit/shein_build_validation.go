@@ -71,6 +71,13 @@ func sheinHasBlockingPendingAttributes(pkg *SheinPackage) bool {
 	return false
 }
 
+func sheinCategoryReviewPending(pkg *SheinPackage) bool {
+	if pkg == nil || pkg.SaleAttributeResolution == nil {
+		return false
+	}
+	return pkg.SaleAttributeResolution.RecommendCategoryReview
+}
+
 func sheinSaleAttributeReviewPending(pkg *SheinPackage) bool {
 	return pkg != nil && pkg.SaleAttributeResolution != nil && pkg.SaleAttributeResolution.RecommendCategoryReview
 }
@@ -100,10 +107,13 @@ func sheinSaleAttributesReadinessFailureReasons(pkg *SheinPackage) []string {
 		reasons = append(reasons, "draft payload skc_list is empty")
 		return uniqueStrings(reasons)
 	}
-	requireSKUAttributes := pkg.SaleAttributeResolution != nil && len(pkg.SaleAttributeResolution.SKUAttributes) > 0
 	for _, skc := range pkg.DraftPayload.SKCList {
 		if !sheinResolvedSaleAttributeReady(skc.SaleAttribute) {
 			reasons = append(reasons, fmt.Sprintf("skc %q is missing a resolved sale attribute value id", skc.SupplierCode))
+		}
+		requireSKUAttributes := len(skc.SKUList) > 1
+		if !requireSKUAttributes && pkg.SaleAttributeResolution != nil {
+			requireSKUAttributes = pkg.SaleAttributeResolution.SecondaryAttributeID > 0 || len(pkg.SaleAttributeResolution.SKUAttributes) > 0
 		}
 		if requireSKUAttributes {
 			if len(skc.SKUList) == 0 {

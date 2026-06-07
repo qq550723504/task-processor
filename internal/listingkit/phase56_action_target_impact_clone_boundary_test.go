@@ -13,7 +13,9 @@ func TestActionTargetImpactCloneBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned := *impact",
-			"applyAssetGenerationActionImpactCloneShape(impact, &cloned)",
+			"applyAssetGenerationActionImpactPlatformsClone(impact, &cloned)",
+			"applyAssetGenerationActionImpactQualityGradesClone(impact, &cloned)",
+			"applyAssetGenerationActionImpactStatesClone(impact, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.Platforms = append([]string(nil), impact.Platforms...)",
@@ -21,18 +23,22 @@ func TestActionTargetImpactCloneBoundary(t *testing.T) {
 			"cloned.States = append([]string(nil), impact.States...)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationActionImpactCloneShape",
+			"applyAssetGenerationActionImpactPlatformsClone",
+			"applyAssetGenerationActionImpactQualityGradesClone",
+			"applyAssetGenerationActionImpactStatesClone",
 		})
 	})
 
-	t.Run("action_target_impact_shape_home_owns_slice_clone_shaping", func(t *testing.T) {
+	t.Run("action_target_impact_clone_home_owns_platform_quality_state_clone_shaping", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_impact_clone_shape.go", "applyAssetGenerationActionImpactCloneShape")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_impact_clone_shape.go", "applyAssetGenerationActionImpactCloneShape")
+		source := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionImpact")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_target_clone.go", "cloneAssetGenerationActionImpact")
 
 		assertSourceContainsAll(t, source, []string{
-			"applyAssetGenerationActionImpactSliceClone(impact, cloned)",
+			"applyAssetGenerationActionImpactPlatformsClone(impact, &cloned)",
+			"applyAssetGenerationActionImpactQualityGradesClone(impact, &cloned)",
+			"applyAssetGenerationActionImpactStatesClone(impact, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.Platforms = append([]string(nil), impact.Platforms...)",
@@ -40,7 +46,9 @@ func TestActionTargetImpactCloneBoundary(t *testing.T) {
 			"cloned.States = append([]string(nil), impact.States...)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"applyAssetGenerationActionImpactSliceClone",
+			"applyAssetGenerationActionImpactPlatformsClone",
+			"applyAssetGenerationActionImpactQualityGradesClone",
+			"applyAssetGenerationActionImpactStatesClone",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneGenerationQueueQuery",

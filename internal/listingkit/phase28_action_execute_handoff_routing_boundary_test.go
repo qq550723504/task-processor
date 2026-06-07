@@ -107,10 +107,9 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 	t.Run("retry_and_queue_result_owners_defer_to_local_result_dispatch_home", func(t *testing.T) {
 		t.Parallel()
 
-		retryFileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry_result.go")
-		retryBuildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry_result.go", "buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase")
-		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry_result.go", "run")
-		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_retry_result.go", "run")
+		retryFileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_retry.go")
+		retryBuildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_retry.go", "buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase")
+		retrySource := readExactMethodSource(t, "task_generation_action_execute_request_handoff_retry.go", "func (p *taskGenerationActionExecuteRequestHandoffRetryResultPhase) run(")
 		queueFileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue.go")
 		queueBuildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue.go", "buildTaskGenerationActionExecuteRequestHandoffQueueResultPhase")
 		queueSource := readExactMethodSource(t, "task_generation_action_execute_request_handoff_queue.go", "func (p *taskGenerationActionExecuteRequestHandoffQueueResultPhase) run(")
@@ -136,19 +135,6 @@ func TestTaskGenerationActionExecuteRequestHandoffRoutingBoundary(t *testing.T) 
 			"persistenceQueueFromRetryPage(",
 			"persistenceQueueFromQueuePage(",
 		})
-		assertFunctionCallsContainAll(t, retryCalls, []string{"fromRetryPage"})
-		assertFunctionCallsExcludeAll(t, retryCalls, []string{
-			"fromQueuePage",
-			"fromRetryNormalization",
-			"fromQueueNormalization",
-			"RetryTaskGenerationTasks",
-			"cloneRetryGenerationTasksRequest",
-			"GetTaskGenerationQueue",
-			"cloneGenerationQueueQuery",
-			"persistenceQueueFromRetryPage",
-			"persistenceQueueFromQueuePage",
-		})
-
 		assertSourceContainsAll(t, queueFileSource, []string{
 			"dispatch *taskGenerationActionExecuteRequestHandoffResultDispatchPhase",
 		})

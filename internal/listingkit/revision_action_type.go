@@ -5,6 +5,13 @@ const (
 	RevisionActionTypeRestore = "restore"
 )
 
+func revisionRestoreSourceID(req *ApplyRevisionRequest) string {
+	if req == nil {
+		return ""
+	}
+	return req.RestoreFromRevisionID
+}
+
 func revisionActionType(req *ApplyRevisionRequest) string {
 	if revisionRestoreSourceID(req) != "" {
 		return RevisionActionTypeRestore

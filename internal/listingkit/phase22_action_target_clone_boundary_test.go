@@ -23,25 +23,20 @@ func TestTaskGenerationActionTargetCloneOwnershipBoundary(t *testing.T) {
 			"func requestedAssetGenerationActionKey(",
 		})
 		assertSourceContainsAll(t, source, []string{
-			"buildTaskGenerationActionTargetCloneShapePhase().run(target, &cloned)",
-		})
-		assertSourceExcludesAll(t, source, []string{
-			"cloneAssetGenerationFilters(target.Filters)",
-			"cloneGenerationQueueQuery(target.QueueQuery)",
-			"cloneRetryGenerationTasksRequest(target.RetryRequest)",
-			"cloneAssetGenerationActionImpact(target.ExpectedImpact)",
-			"cloneGenerationReviewNavigationTarget(target.NavigationTarget)",
+			"cloned.Filters = cloneAssetGenerationFilters(target.Filters)",
+			"cloned.QueueQuery = cloneGenerationQueueQuery(target.QueueQuery)",
+			"cloned.RetryRequest = cloneRetryGenerationTasksRequest(target.RetryRequest)",
+			"cloned.ExpectedImpact = cloneAssetGenerationActionImpact(target.ExpectedImpact)",
+			"cloned.NavigationTarget = cloneGenerationReviewNavigationTarget(target.NavigationTarget)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"buildTaskGenerationActionTargetCloneShapePhase",
-			"run",
-		})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"cloneAssetGenerationFilters",
 			"cloneGenerationQueueQuery",
 			"cloneRetryGenerationTasksRequest",
 			"cloneAssetGenerationActionImpact",
 			"cloneGenerationReviewNavigationTarget",
+		})
+		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"resolveAssetGenerationActionTarget",
 			"requestedAssetGenerationActionKey",
 		})

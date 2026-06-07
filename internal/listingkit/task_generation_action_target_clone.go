@@ -5,7 +5,11 @@ func cloneAssetGenerationActionTarget(target *AssetGenerationActionTarget) *Asse
 		return nil
 	}
 	cloned := *target
-	buildTaskGenerationActionTargetCloneShapePhase().run(target, &cloned)
+	cloned.Filters = cloneAssetGenerationFilters(target.Filters)
+	cloned.QueueQuery = cloneGenerationQueueQuery(target.QueueQuery)
+	cloned.RetryRequest = cloneRetryGenerationTasksRequest(target.RetryRequest)
+	cloned.ExpectedImpact = cloneAssetGenerationActionImpact(target.ExpectedImpact)
+	cloned.NavigationTarget = cloneGenerationReviewNavigationTarget(target.NavigationTarget)
 	return &cloned
 }
 
@@ -14,6 +18,8 @@ func cloneAssetGenerationActionImpact(impact *AssetGenerationActionImpact) *Asse
 		return nil
 	}
 	cloned := *impact
-	applyAssetGenerationActionImpactCloneShape(impact, &cloned)
+	applyAssetGenerationActionImpactPlatformsClone(impact, &cloned)
+	applyAssetGenerationActionImpactQualityGradesClone(impact, &cloned)
+	applyAssetGenerationActionImpactStatesClone(impact, &cloned)
 	return &cloned
 }

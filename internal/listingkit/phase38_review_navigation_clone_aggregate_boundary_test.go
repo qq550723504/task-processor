@@ -5,33 +5,28 @@ import "testing"
 func TestGenerationReviewNavigationCloneAggregateBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("aggregate_navigation_clone_shape_owner_delegates_nested_clone_shaping", func(t *testing.T) {
+	t.Run("aggregate_navigation_clone_owner_delegates_nested_clone_shaping", func(t *testing.T) {
 		t.Parallel()
 
 		fileSource := readTaskGenerationSourceFile(t, "generation_review_navigation_target.go")
-		buildSource := readNamedFunctionSource(t, "generation_review_navigation_target.go", "buildGenerationReviewNavigationTargetCloneShapePhase")
-		source := readNamedFunctionSource(t, "generation_review_navigation_target.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_review_navigation_target.go", "run")
+		source := readNamedFunctionSource(t, "generation_review_navigation_target.go", "cloneGenerationReviewNavigationTarget")
+		callNames := readNamedFunctionCallNames(t, "generation_review_navigation_target.go", "cloneGenerationReviewNavigationTarget")
 
 		assertSourceContainsAll(t, fileSource, []string{
-			"type generationReviewNavigationTargetCloneShapePhase struct{}",
-			"func buildGenerationReviewNavigationTargetCloneShapePhase()",
-			"func (p *generationReviewNavigationTargetCloneShapePhase) run(",
-		})
-		assertSourceContainsAll(t, buildSource, []string{
-			"return &generationReviewNavigationTargetCloneShapePhase{}",
+			"func cloneGenerationReviewNavigationTarget(",
 		})
 		assertSourceContainsAll(t, source, []string{
-			"if target == nil || cloned == nil {",
+			"if target == nil {",
+			"cloned := *target",
 			"cloned.Conditional = cloneGenerationConditionalState(target.Conditional)",
 			"cloned.Descriptor = cloneGenerationNavigationDescriptor(target.Descriptor)",
 			"cloned.QueueQuery = cloneGenerationQueueQuery(target.QueueQuery)",
 			"cloned.SessionQuery = cloneGenerationQueueQuery(target.SessionQuery)",
 			"cloned.PreviewQuery = cloneGenerationQueueQuery(target.PreviewQuery)",
 			"cloned.ActionTarget = cloneAssetGenerationActionTarget(target.ActionTarget)",
+			"return applyIdentityToNavigationTarget(&cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
-			"func cloneGenerationReviewNavigationTarget(",
 			"buildGenerationReviewActionNavigationTarget(",
 			"cloneAssetGenerationActionTargetForNavigation(",
 		})

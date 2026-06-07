@@ -54,6 +54,14 @@ func shouldSyncSDS(req *GenerateRequest) bool {
 	return listingworkflow.ShouldSyncSDS(buildWorkflowRequestPolicyInput(req))
 }
 
+func shouldRunStudioInline(req *GenerateRequest) bool {
+	return listingworkflow.ShouldRunStudioInline(buildWorkflowRequestPolicyInput(req))
+}
+
+func shouldRunRemoteSDSDesignSync(req *GenerateRequest) bool {
+	return listingworkflow.ShouldRunRemoteSDSDesignSync(buildWorkflowRequestPolicyInput(req))
+}
+
 func buildWorkflowRequestPolicyInput(req *GenerateRequest) listingworkflow.RequestPolicyInput {
 	if req == nil || req.Options == nil {
 		return listingworkflow.RequestPolicyInput{}

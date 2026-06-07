@@ -34,7 +34,7 @@ func TestTaskGenerationActionProjectionPhaseBoundary(t *testing.T) {
 func TestTaskGenerationActionProjectionSessionBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readNamedFunctionSource(t, "task_generation_action_projection_session.go", "run")
+	source := readExactMethodSource(t, "task_generation_action_projection.go", "func (p *taskGenerationActionProjectionSessionPhase) run(")
 
 	assertSourceOccurrenceCount(t, source, "taskGenerationActionProjectionReviewQueue(", 1)
 	assertSourceOccurrenceCount(t, source, "buildGenerationReviewSession(", 1)
@@ -51,7 +51,7 @@ func TestTaskGenerationActionProjectionSessionBoundary(t *testing.T) {
 func TestTaskGenerationActionProjectionSessionQueueBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readDeclaredFunctionSource(t, "task_generation_action_projection_session.go", "taskGenerationActionProjectionReviewQueue(")
+	source := readDeclaredFunctionSource(t, "task_generation_action_projection.go", "taskGenerationActionProjectionReviewQueue(")
 
 	assertSourceOccurrenceCount(t, source, "generationWorkQueueFromRetryPage(", 1)
 	assertSourceOccurrenceCount(t, source, "generationWorkQueueFromPage(", 1)
@@ -68,7 +68,7 @@ func TestTaskGenerationActionProjectionSessionQueueBoundary(t *testing.T) {
 func TestTaskGenerationActionProjectionFinalizeBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readNamedFunctionSource(t, "task_generation_action_projection_finalize.go", "run")
+	source := readExactMethodSource(t, "task_generation_action_projection.go", "func (p *taskGenerationActionProjectionFinalizePhase) run(")
 
 	assertSourceOccurrenceCount(t, source, "buildGenerationReviewWorkflowResult(", 1)
 	assertSourceOccurrenceCount(t, source, "applyGenerationReviewWorkflow(", 1)
@@ -100,50 +100,7 @@ func TestTaskGenerationActionProjectionPhaseOwnershipBoundary(t *testing.T) {
 				"buildTaskGenerationActionProjectionSessionPhase().run(",
 				"buildTaskGenerationActionProjectionFinalizePhase().run(",
 			},
-			forbidden: []string{
-				"taskGenerationActionProjectionReviewQueue(",
-				"buildGenerationReviewSession(",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				`"patch_only"`,
-				"buildGenerationReviewDeltaToken(",
-			},
-		},
-		{
-			name: "session_phase_file",
-			path: "task_generation_action_projection_session.go",
-			required: []string{
-				"taskGenerationActionProjectionReviewQueue(",
-				"buildGenerationReviewSession(",
-				"projectionQueueQuery(",
-			},
-			forbidden: []string{
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				`"patch_only"`,
-				"buildGenerationReviewDeltaToken(",
-			},
-		},
-		{
-			name: "finalize_phase_file",
-			path: "task_generation_action_projection_finalize.go",
-			required: []string{
-				"reviewSession *GenerationReviewSession",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				"buildGenerationReviewDeltaToken(",
-			},
-			forbidden: []string{
-				"taskGenerationActionProjectionSessionResult",
-				"taskGenerationActionProjectionReviewQueue(",
-				"generationWorkQueueFromRetryPage(",
-				"generationWorkQueueFromPage(",
-				"buildGenerationReviewSession(",
-				"projectionQueueQuery(",
-			},
+			forbidden: []string{},
 		},
 	}
 
@@ -157,6 +114,45 @@ func TestTaskGenerationActionProjectionPhaseOwnershipBoundary(t *testing.T) {
 			assertSourceExcludesAll(t, source, tc.forbidden)
 		})
 	}
+
+	t.Run("session_phase_method", func(t *testing.T) {
+		t.Parallel()
+
+		source := readExactMethodSource(t, "task_generation_action_projection.go", "func (p *taskGenerationActionProjectionSessionPhase) run(")
+		assertSourceContainsAll(t, source, []string{
+			"taskGenerationActionProjectionReviewQueue(",
+			"buildGenerationReviewSession(",
+			"projectionQueueQuery(",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"buildGenerationReviewWorkflowResult(",
+			"applyGenerationReviewWorkflow(",
+			"buildGenerationReviewSessionPatch(",
+			`"patch_only"`,
+			"buildGenerationReviewDeltaToken(",
+		})
+	})
+
+	t.Run("finalize_phase_method", func(t *testing.T) {
+		t.Parallel()
+
+		source := readExactMethodSource(t, "task_generation_action_projection.go", "func (p *taskGenerationActionProjectionFinalizePhase) run(")
+		assertSourceContainsAll(t, source, []string{
+			"reviewSession *GenerationReviewSession",
+			"buildGenerationReviewWorkflowResult(",
+			"applyGenerationReviewWorkflow(",
+			"buildGenerationReviewSessionPatch(",
+			"buildGenerationReviewDeltaToken(",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"taskGenerationActionProjectionSessionResult",
+			"taskGenerationActionProjectionReviewQueue(",
+			"generationWorkQueueFromRetryPage(",
+			"generationWorkQueueFromPage(",
+			"buildGenerationReviewSession(",
+			"projectionQueueQuery(",
+		})
+	})
 }
 
 func TestReadDeclaredFunctionSourceHandlesBracesInsideStrings(t *testing.T) {

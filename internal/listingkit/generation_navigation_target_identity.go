@@ -23,7 +23,7 @@ func cloneGenerationNavigationDescriptor(descriptor *GenerationNavigationDescrip
 		return nil
 	}
 	cloned := *descriptor
-	buildGenerationNavigationDescriptorCloneShapePhase().run(descriptor, &cloned)
+	applyGenerationNavigationDescriptorCloneShapePairing(descriptor, &cloned)
 	return &cloned
 }
 
@@ -32,21 +32,13 @@ func cloneGenerationNavigationDispatchPlan(plan *GenerationNavigationDispatchPla
 		return nil
 	}
 	cloned := *plan
-	buildGenerationNavigationDispatchPlanCloneShapePhase().run(plan, &cloned)
-	return &cloned
-}
-
-type generationNavigationDescriptorCloneShapePhase struct{}
-
-func buildGenerationNavigationDescriptorCloneShapePhase() *generationNavigationDescriptorCloneShapePhase {
-	return &generationNavigationDescriptorCloneShapePhase{}
-}
-
-func (p *generationNavigationDescriptorCloneShapePhase) run(descriptor *GenerationNavigationDescriptor, cloned *GenerationNavigationDescriptor) {
-	if descriptor == nil || cloned == nil {
-		return
+	if len(plan.Steps) > 0 {
+		cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))
+		for _, step := range plan.Steps {
+			cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))
+		}
 	}
-	applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)
+	return &cloned
 }
 
 func applyGenerationNavigationDescriptorCloneShapePairing(descriptor *GenerationNavigationDescriptor, cloned *GenerationNavigationDescriptor) {
@@ -83,25 +75,6 @@ func applyGenerationNavigationFollowUpReadCloneShape(item GenerationNavigationFo
 		return
 	}
 	cloned.Query = cloneGenerationQueueQuery(item.Query)
-}
-
-type generationNavigationDispatchPlanCloneShapePhase struct{}
-
-func buildGenerationNavigationDispatchPlanCloneShapePhase() *generationNavigationDispatchPlanCloneShapePhase {
-	return &generationNavigationDispatchPlanCloneShapePhase{}
-}
-
-func (p *generationNavigationDispatchPlanCloneShapePhase) run(plan *GenerationNavigationDispatchPlan, cloned *GenerationNavigationDispatchPlan) {
-	if plan == nil || cloned == nil {
-		return
-	}
-	if len(plan.Steps) == 0 {
-		return
-	}
-	cloned.Steps = make([]GenerationNavigationDispatchStep, 0, len(plan.Steps))
-	for _, step := range plan.Steps {
-		cloned.Steps = append(cloned.Steps, cloneGenerationNavigationDispatchPlanStep(step))
-	}
 }
 
 func cloneGenerationNavigationDispatchPlanStep(step GenerationNavigationDispatchStep) GenerationNavigationDispatchStep {

@@ -27,7 +27,7 @@ func TestTaskGenerationActionRefreshDelegationBoundary(t *testing.T) {
 func TestTaskGenerationActionRefreshExtractOwnershipBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_action_refresh_extract.go", "func (p *taskGenerationActionRefreshExtractPhase) run(")
+	source := readExactMethodSource(t, "task_generation_action_refresh.go", "func (p *taskGenerationActionRefreshExtractPhase) run(")
 
 	assertSourceOccurrenceCount(t, source, "p.service.getCurrentListingKitResult(", 1)
 	assertSourceOccurrenceCount(t, source, "buildActionPlatformRenderPreviews(", 1)
@@ -48,7 +48,7 @@ func TestTaskGenerationActionRefreshExtractOwnershipBoundary(t *testing.T) {
 func TestTaskGenerationActionRefreshHydrationOwnershipBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_action_refresh_hydration.go", "func (p *taskGenerationActionRefreshHydrationPhase) run(")
+	source := readExactMethodSource(t, "task_generation_action_refresh.go", "func (p *taskGenerationActionRefreshHydrationPhase) run(")
 
 	assertSourceOccurrenceCount(t, source, "buildActionPlatformRenderPreviews(baseResult, p.query)", 1)
 	assertSourceOrderedContains(t, source, []string{
