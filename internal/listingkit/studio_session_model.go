@@ -44,6 +44,7 @@ type SheinStudioSelection struct {
 	VariantID              int64                         `json:"variant_id,omitempty"`
 	PrototypeGroupID       int64                         `json:"prototype_group_id,omitempty"`
 	LayerID                string                        `json:"layer_id,omitempty"`
+	DesignType             string                        `json:"design_type,omitempty"`
 	ProductName            string                        `json:"product_name,omitempty"`
 	VariantLabel           string                        `json:"variant_label,omitempty"`
 	PrintableWidth         int                           `json:"printable_width,omitempty"`

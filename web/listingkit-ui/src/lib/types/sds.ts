@@ -73,6 +73,7 @@ export type SDSProductVariantSelection = {
   selectedVariantIds?: number[];
   prototypeGroupId: number;
   layerId: string;
+  designType?: string;
   productName: string;
   variantLabel: string;
   printableWidth?: number;

@@ -34,6 +34,7 @@ export function mergeSDSSelectionMetadata(
 
   return {
     ...selection,
+    designType: "material",
     variants: metadata.variants?.length
       ? metadata.variants.map(toSelectedVariant)
       : selection.variants,

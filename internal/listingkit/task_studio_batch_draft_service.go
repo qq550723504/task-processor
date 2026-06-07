@@ -81,6 +81,11 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 		return nil, fmt.Errorf("selection is required")
 	}
 
+	// Ensure DesignType has a default value for backward compatibility
+	if strings.TrimSpace(req.Selection.DesignType) == "" {
+		req.Selection.DesignType = "material"
+	}
+
 	var session *SheinStudioSession
 	var err error
 	isCreate := strings.TrimSpace(req.ID) == ""
