@@ -1200,7 +1200,7 @@ func TestCloneSheinRepairArtifacts(t *testing.T) {
 	}
 }
 
-func TestCloneSheinRepairFields(t *testing.T) {
+func TestCloneSheinRepairPatchPayload(t *testing.T) {
 	t.Parallel()
 
 	categoryID := 3001
@@ -1214,14 +1214,17 @@ func TestCloneSheinRepairFields(t *testing.T) {
 		ReviewNotes: []string{"manual review"},
 	}
 
-	fields := cloneSheinRepairFields(payload)
-	if fields.categoryResolution == nil || fields.categoryResolution.CategoryID == nil || *fields.categoryResolution.CategoryID != 3001 {
-		t.Fatalf("category fields = %+v", fields.categoryResolution)
+	cloned := cloneSheinRepairPatchPayload(payload)
+	if cloned == nil {
+		t.Fatal("cloneSheinRepairPatchPayload() = nil, want clone")
 	}
-	if fields.images == nil || fields.images.MainImage != "https://cdn.example.com/main.jpg" {
-		t.Fatalf("image fields = %+v", fields.images)
+	if cloned.CategoryResolution == nil || cloned.CategoryResolution.CategoryID == nil || *cloned.CategoryResolution.CategoryID != 3001 {
+		t.Fatalf("category resolution = %+v", cloned.CategoryResolution)
 	}
-	if len(fields.reviewNotes) != 1 || fields.reviewNotes[0] != "manual review" {
-		t.Fatalf("review notes = %+v", fields.reviewNotes)
+	if cloned.Images == nil || cloned.Images.MainImage != "https://cdn.example.com/main.jpg" {
+		t.Fatalf("images = %+v", cloned.Images)
+	}
+	if len(cloned.ReviewNotes) != 1 || cloned.ReviewNotes[0] != "manual review" {
+		t.Fatalf("review notes = %+v", cloned.ReviewNotes)
 	}
 }
