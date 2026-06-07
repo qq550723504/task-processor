@@ -200,7 +200,6 @@ func TestStudioBatchGetHandlerReturnsItemizedDetail(t *testing.T) {
 				Item: listingkit.StudioBatchItemRecord{ID: "item-1"},
 			}},
 		},
-		resumeCalled: make(chan struct{}),
 	}
 	h := &studioSessionHandler{service: svc}
 	router := gin.New()
@@ -212,14 +211,6 @@ func TestStudioBatchGetHandlerReturnsItemizedDetail(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-	select {
-	case <-svc.resumeCalled:
-	case <-time.After(time.Second):
-		t.Fatal("resume flow was not triggered")
-	}
-	if svc.resumeBatchID != "batch-1" {
-		t.Fatalf("resume batch id = %q, want batch-1", svc.resumeBatchID)
 	}
 	if svc.getBatchDetailBatchID != "batch-1" {
 		t.Fatalf("detail batch id = %q, want handler to return current detail", svc.getBatchDetailBatchID)
@@ -237,8 +228,6 @@ func TestStudioBatchGetHandlerCoalescesConcurrentResumeLaunches(t *testing.T) {
 		getBatchDetailResult: &listingkit.StudioBatchDetail{
 			Batch: &listingkit.StudioBatchRecord{ID: "batch-1"},
 		},
-		resumeCalled: make(chan struct{}),
-		resumeBlock:  make(chan struct{}),
 	}
 	h := &studioSessionHandler{
 		service:          svc,
@@ -251,10 +240,8 @@ func TestStudioBatchGetHandlerCoalescesConcurrentResumeLaunches(t *testing.T) {
 	rec1 := httptest.NewRecorder()
 	router.ServeHTTP(rec1, req1)
 
-	select {
-	case <-svc.resumeCalled:
-	case <-time.After(time.Second):
-		t.Fatal("first resume launch was not triggered")
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", rec1.Code)
 	}
 
 	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/batches/batch-1", nil)
@@ -264,11 +251,6 @@ func TestStudioBatchGetHandlerCoalescesConcurrentResumeLaunches(t *testing.T) {
 	if rec1.Code != http.StatusOK || rec2.Code != http.StatusOK {
 		t.Fatalf("statuses = %d/%d, want 200/200", rec1.Code, rec2.Code)
 	}
-	if svc.resumeCalls != 1 {
-		t.Fatalf("resume call count = %d, want 1 coalesced launch", svc.resumeCalls)
-	}
-
-	close(svc.resumeBlock)
 }
 
 func TestStudioBatchApproveDesignsHandlerBindsIDs(t *testing.T) {

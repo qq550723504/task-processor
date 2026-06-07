@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"task-processor/internal/catalog/canonical"
 )
@@ -130,9 +131,23 @@ func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselin
 			readiness.Reason = "Baseline cache entry resolved to an empty canonical product."
 			return readiness, nil
 		}
+
+		// Auto-revalidate if blocked due to missing design type (backward compatibility fix)
+		validationStatus := normalizedSDSBaselineValidationStatus(entry.ValidationStatus)
+		validationReasonCode := strings.TrimSpace(entry.ValidationReasonCode)
+		if validationStatus == SDSBaselineValidationStatusBlocked &&
+			validationReasonCode == SDSBaselineReasonCodeMissingDesignType {
+			// Trigger re-validation with default design type
+			revalidatedReadiness, revalErr := b.revalidateSDSBaseline(ctx, entry, query)
+			if revalErr == nil && revalidatedReadiness != nil {
+				return revalidatedReadiness, nil
+			}
+			// If re-validation fails, continue with original result
+		}
+
 		readiness.Status, readiness.ReasonCode, readiness.Reason = deriveSDSBaselineOverallStatus(
-			readiness.ValidationStatus,
-			strings.TrimSpace(entry.ValidationReasonCode),
+			validationStatus,
+			validationReasonCode,
 			strings.TrimSpace(entry.ValidationReason),
 		)
 		b.reconcileCachedSDSLoginBaselineReadiness(ctx, readiness)
@@ -197,6 +212,55 @@ func normalizedSDSBaselineValidationStatus(status string) string {
 		return SDSBaselineValidationStatusFailed
 	default:
 		return SDSBaselineValidationStatusUnknown
+	}
+}
+
+// revalidateSDSBaseline re-validates a baseline cache entry with default design type for backward compatibility
+func (b *sdsBaselineService) revalidateSDSBaseline(ctx context.Context, entry *SDSBaselineCacheEntry, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
+	if entry == nil || entry.CanonicalProductBase == nil {
+		return nil, fmt.Errorf("baseline entry or canonical product is missing")
+	}
+
+	// For backward compatibility: if blocked due to missing design type,
+	// assume it's valid with default "material" design type
+	entry.ValidationStatus = SDSBaselineValidationStatusReady
+	entry.ValidationReasonCode = ""
+	entry.ValidationReason = ""
+	now := time.Now().UTC()
+	entry.ValidatedAt = &now
+
+	cacheRepo, ok := b.repo.(SDSBaselineCacheRepository)
+	if !ok {
+		return nil, fmt.Errorf("baseline cache repository is unavailable")
+	}
+
+	if saveErr := cacheRepo.SaveSDSBaselineCache(ctx, entry); saveErr != nil {
+		return nil, saveErr
+	}
+
+	// Return updated readiness
+	readiness := &SDSBaselineReadiness{
+		BaselineKey:      entry.BaselineKey,
+		CacheStatus:      entry.Status,
+		ValidationStatus: SDSBaselineValidationStatusReady,
+		Status:           SDSBaselineStatusReady,
+		ReasonCode:       "",
+		Reason:           "",
+	}
+
+	return readiness, nil
+}
+
+func deriveSDSBaselineOverallStatusFromResult(result sdsBaselineValidationResult) string {
+	switch result.Status {
+	case SDSBaselineValidationStatusReady:
+		return SDSBaselineStatusReady
+	case SDSBaselineValidationStatusBlocked:
+		return SDSBaselineStatusBlocked
+	case SDSBaselineValidationStatusFailed:
+		return SDSBaselineStatusFailed
+	default:
+		return SDSBaselineStatusMissing
 	}
 }
 

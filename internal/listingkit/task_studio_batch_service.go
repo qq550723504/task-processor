@@ -123,6 +123,7 @@ func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batch
 	if err != nil {
 		return nil, err
 	}
+	
 	draftUpdatedAt, createdTasks, failedTasks, draftErr := s.loadStudioBatchDraftState(ctx, normalizedBatchID)
 	if draftErr != nil {
 		return nil, draftErr
@@ -738,6 +739,7 @@ func buildStudioBatchTaskSDSOptions(
 		ParentProductID:  selection.ParentProductID,
 		PrototypeGroupID: selection.PrototypeGroupID,
 		LayerID:          selection.LayerID,
+		DesignType:       "material", // Default design type
 		ProductName:      selection.ProductName,
 		BlankDesignURL:   selection.BlankDesignURL,
 		TemplateImageURL: selection.TemplateImageURL,

@@ -116,7 +116,6 @@ func (h *studioSessionHandler) ListStudioBatches(c *gin.Context) {
 
 func (h *studioSessionHandler) GetStudioBatch(c *gin.Context) {
 	batchID := c.Param("batch_id")
-	h.launchBatchResume(c, batchID)
 
 	detail, err := h.service.GetStudioBatchDetail(requestContext(c), batchID)
 	if err != nil {
