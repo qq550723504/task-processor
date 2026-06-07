@@ -8,7 +8,10 @@ func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingK
 	}
 
 	actionType := revisionActionType(req)
-	headline := buildRevisionApplyHeadline(req)
+	headline := "更新 SHEIN 资料"
+	if actionType == RevisionActionTypeRestore {
+		headline = "恢复历史版本"
+	}
 	changeCount := 0
 	if appliedChanges != nil {
 		changeCount = appliedChanges.ChangeCount
@@ -65,14 +68,4 @@ func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingK
 			appliedChanges,
 		),
 	}
-}
-
-func buildRevisionApplyHeadline(req *ApplyRevisionRequest) string {
-	if req == nil {
-		return ""
-	}
-	if revisionActionType(req) == RevisionActionTypeRestore {
-		return "恢复历史版本"
-	}
-	return "更新 SHEIN 资料"
 }
