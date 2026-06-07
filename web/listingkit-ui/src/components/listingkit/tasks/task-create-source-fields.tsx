@@ -30,7 +30,7 @@ export function TaskTitleField({
 }) {
   return (
     <Label className="block space-y-2">
-      <span className="text-sm font-medium text-zinc-700">{titleCopy.label}</span>
+      <span className="text-sm font-medium text-muted-foreground">{titleCopy.label}</span>
       <Input
         aria-label="商品标题"
         className="rounded-2xl px-4 py-3"
@@ -41,7 +41,7 @@ export function TaskTitleField({
           registration.ref(element);
         }}
       />
-      <p className="text-sm leading-6 text-zinc-500">{titleCopy.helper}</p>
+      <p className="text-sm leading-6 text-muted-foreground">{titleCopy.helper}</p>
       {errors.text ? (
         <p className="text-sm text-red-600">{errors.text.message}</p>
       ) : null}
@@ -89,12 +89,12 @@ export function TaskImageUrlField({
 }) {
   return (
     <Label className="block space-y-2">
-      <span className="text-sm font-medium text-zinc-700">图片链接</span>
-      <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-4">
+      <span className="text-sm font-medium text-muted-foreground">图片链接</span>
+      <div className="rounded-2xl border border-dashed border-border bg-muted px-4 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <Input
             aria-label="上传图片"
-            className="block text-sm text-zinc-600 file:mr-4 file:rounded-xl file:border-0 file:bg-zinc-950 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+            className="block text-sm text-muted-foreground file:mr-4 file:rounded-xl file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-foreground"
             multiple
             onChange={(event) => {
               const files = Array.from(event.target.files ?? []);
@@ -125,11 +125,11 @@ export function TaskImageUrlField({
             {uploadImages.isPending ? "上传中..." : "上传所选图片"}
           </Button>
         </div>
-        <p className="mt-3 text-sm leading-6 text-zinc-500">
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
           可以先上传本地图片，系统会把返回的图片链接自动补到下方输入框里。
         </p>
         {selectedFiles.length > 0 ? (
-          <p className="mt-2 text-sm text-zinc-700">
+          <p className="mt-2 text-sm text-foreground">
             已选择 {selectedFiles.length} 个文件：
             {selectedFiles.map((file) => file.name).join(", ")}
           </p>
@@ -147,7 +147,7 @@ export function TaskImageUrlField({
           registration.ref(element);
         }}
       />
-      <p className="text-sm leading-6 text-zinc-500">{helperText}</p>
+      <p className="text-sm leading-6 text-muted-foreground">{helperText}</p>
       {errors.imageUrls ? (
         <p className="text-sm text-red-600">{errors.imageUrls.message}</p>
       ) : null}
@@ -176,7 +176,7 @@ export function TaskProductUrlField({
 }) {
   return (
     <Label className="block space-y-2">
-      <span className="text-sm font-medium text-zinc-700">商品链接</span>
+      <span className="text-sm font-medium text-muted-foreground">商品链接</span>
       <Input
         aria-label="商品链接"
         className="rounded-2xl px-4 py-3"
@@ -187,7 +187,7 @@ export function TaskProductUrlField({
           registration.ref(element);
         }}
       />
-      <p className="text-sm leading-6 text-zinc-500">
+      <p className="text-sm leading-6 text-muted-foreground">
         适合已有原始商品页的场景。支持 1688 等商品链接，系统会从原始商品资料开始处理。
       </p>
       {fieldIssues?.includes("productUrl") ? (

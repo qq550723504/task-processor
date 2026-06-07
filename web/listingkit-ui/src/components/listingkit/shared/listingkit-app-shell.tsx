@@ -28,6 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { ThemeToggleButton } from "@/components/listingkit/shared/theme-toggle-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -543,60 +544,63 @@ export function ListingKitAppShell({
                 </Badge>
               </p>
             </div>
-            <div className="relative">
-              <Button
-                aria-expanded={accountMenuOpen}
-                aria-haspopup="menu"
-                className="h-auto min-w-[200px] justify-between rounded-xl px-3 py-2"
-                onClick={() => setAccountMenuOpen((current) => !current)}
-                size="sm"
-                variant="outline"
-              >
-                <span className="flex min-w-0 flex-col items-start text-left">
-                  <span className="truncate text-sm font-medium text-foreground">
-                    {summarizeIdentity(identity)}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {summarizeTenant(identity)}
-                  </span>
-                </span>
-                <UserCog className="size-4 shrink-0 text-muted-foreground" />
-              </Button>
-              {accountMenuOpen ? (
-                <div
-                  className="absolute right-0 top-full z-50 mt-2 w-[280px] rounded-2xl border border-border bg-background p-3 shadow-[0_16px_40px_rgba(24,24,27,0.12)]"
-                  role="menu"
+            <div className="flex items-center gap-2">
+              <ThemeToggleButton />
+              <div className="relative">
+                <Button
+                  aria-expanded={accountMenuOpen}
+                  aria-haspopup="menu"
+                  className="h-auto min-w-[200px] justify-between rounded-xl px-3 py-2"
+                  onClick={() => setAccountMenuOpen((current) => !current)}
+                  size="sm"
+                  variant="outline"
                 >
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        当前账号
-                      </p>
-                      <p className="text-sm font-medium text-foreground">{summarizeIdentity(identity)}</p>
+                  <span className="flex min-w-0 flex-col items-start text-left">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {summarizeIdentity(identity)}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {summarizeTenant(identity)}
+                    </span>
+                  </span>
+                  <UserCog className="size-4 shrink-0 text-muted-foreground" />
+                </Button>
+                {accountMenuOpen ? (
+                  <div
+                    className="absolute right-0 top-full z-50 mt-2 w-[280px] rounded-2xl border border-border bg-background p-3 shadow-xl"
+                    role="menu"
+                  >
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          当前账号
+                        </p>
+                        <p className="text-sm font-medium text-foreground">{summarizeIdentity(identity)}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          当前租户
+                        </p>
+                        <p className="break-all text-sm text-foreground">{summarizeTenant(identity)}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          角色
+                        </p>
+                        <p className="break-all text-sm text-foreground">
+                          {identity?.roles?.length ? identity.roles.join(", ") : "未识别角色"}
+                        </p>
+                      </div>
+                      <Button asChild className="w-full justify-center" size="sm" variant="outline">
+                        <a href="/api/zitadel-auth/logout">
+                          <LogOut data-icon="inline-start" />
+                          <span>退出登录</span>
+                        </a>
+                      </Button>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        当前租户
-                      </p>
-                      <p className="break-all text-sm text-foreground">{summarizeTenant(identity)}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        角色
-                      </p>
-                      <p className="break-all text-sm text-foreground">
-                        {identity?.roles?.length ? identity.roles.join(", ") : "未识别角色"}
-                      </p>
-                    </div>
-                    <Button asChild className="w-full justify-center" size="sm" variant="outline">
-                      <a href="/api/zitadel-auth/logout">
-                        <LogOut data-icon="inline-start" />
-                        <span>退出登录</span>
-                      </a>
-                    </Button>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

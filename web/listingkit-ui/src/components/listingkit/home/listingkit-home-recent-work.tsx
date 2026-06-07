@@ -119,7 +119,7 @@ function summaryTileTone(severity?: string) {
     case "negative":
       return "border-rose-200 bg-rose-50 text-rose-900";
     default:
-      return "border-slate-200 bg-white text-slate-900";
+      return "border-border bg-card text-foreground";
   }
 }
 
@@ -137,7 +137,7 @@ function QueueSummaryBlock({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white/88 p-4 shadow-[0_14px_36px_rgba(39,39,42,0.05)]">
+    <div className="rounded-2xl border border-border bg-card/95 p-4 shadow-lg">
       <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
         {title}
       </p>
@@ -173,10 +173,10 @@ export function ListingKitHomeRecentWork({
         aria-label="最近任务加载中"
         className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"
       >
-        <Skeleton className="h-44 rounded-2xl border border-slate-200 bg-white/80" />
+        <Skeleton className="h-44 rounded-2xl border border-border bg-card/80" />
         <div className="grid gap-4">
-          <Skeleton className="h-32 rounded-2xl border border-slate-200 bg-white/80" />
-          <Skeleton className="h-32 rounded-2xl border border-slate-200 bg-white/80" />
+          <Skeleton className="h-32 rounded-2xl border border-border bg-card/80" />
+          <Skeleton className="h-32 rounded-2xl border border-border bg-card/80" />
         </div>
       </section>
     );
@@ -343,7 +343,7 @@ export function ListingKitHomeRecentWork({
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white/88 p-3 shadow-[0_14px_36px_rgba(39,39,42,0.05)]">
+        <div className="rounded-2xl border border-border bg-card/95 p-3 shadow-lg">
           <div className="flex flex-col gap-2 px-2 py-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
               最近任务

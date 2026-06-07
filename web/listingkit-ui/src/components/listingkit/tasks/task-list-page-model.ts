@@ -83,10 +83,10 @@ const HOME_ACTION_QUEUE_PRIORITY = [
 ];
 
 export const primaryLinkClass =
-  "inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800";
+  "inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90";
 
 export const secondaryLinkClass =
-  "inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100";
+  "inline-flex h-10 items-center justify-center rounded-xl bg-background px-4 text-sm font-medium text-foreground ring-1 ring-border transition hover:bg-muted";
 
 export function formatDate(value?: string) {
   if (!value) {
@@ -115,7 +115,7 @@ export function statusTone(status?: string) {
     case "processing":
       return "border-sky-200 bg-sky-50 text-sky-700";
     default:
-      return "border-zinc-200 bg-zinc-50 text-zinc-600";
+      return "border-border bg-muted text-muted-foreground";
   }
 }
 
@@ -207,7 +207,7 @@ export function queueTone(severity?: string) {
     case "negative":
       return "border-rose-200 bg-rose-50 text-rose-700";
     default:
-      return "border-zinc-200 bg-zinc-50 text-zinc-600";
+      return "border-border bg-muted text-muted-foreground";
   }
 }
 

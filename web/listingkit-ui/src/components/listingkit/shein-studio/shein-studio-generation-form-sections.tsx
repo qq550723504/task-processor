@@ -62,36 +62,36 @@ export function ArtworkGenerationSettings({
   variationIntensity: SheinStudioVariationIntensity;
 }) {
   return (
-    <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4">
+    <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4 dark:border-emerald-500/25 dark:bg-emerald-950/15">
       <SectionHeading
         eyebrow="款式图"
         title="生成 POD 款式图"
         description="这里生成的是用于印刷的平面图案。商品场景图在下一块设置。"
       />
       <Label className="space-y-2">
-        <span className="text-sm font-medium text-zinc-700">
+        <span className="text-sm font-medium text-foreground">
           主题提示词 <span className="text-rose-600">*</span>
         </span>
         <Textarea
-          className="min-h-40 rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+          className="min-h-40 rounded-2xl border-emerald-200 bg-background/90 px-4 py-3 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
           disabled={disabled}
           onChange={(event) => setPrompt(event.target.value)}
           placeholder="例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"
           ref={promptInputRef}
           value={prompt}
         />
-        <p className="text-xs leading-6 text-zinc-600">
+        <p className="text-xs leading-6 text-muted-foreground">
           系统会优先生成适合 POD 印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
         </p>
         {promptHistory.length > 0 ? (
-          <div className="rounded-2xl border border-emerald-200/80 bg-white/70 px-3 py-3">
+          <div className="rounded-2xl border border-emerald-200/80 bg-background/80 px-3 py-3 dark:border-emerald-500/20 dark:bg-card/90">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-900/70">
               最近使用过的提示词
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {promptHistory.map((entry) => (
                 <button
-                  className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-left text-xs text-emerald-950 transition hover:border-emerald-400 hover:bg-emerald-100"
+                  className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-left text-xs text-emerald-950 transition hover:border-emerald-400 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100 dark:hover:bg-emerald-950/45"
                   key={entry.createdAt}
                   onClick={() => restorePrompt(entry.prompt)}
                   type="button"
@@ -112,9 +112,9 @@ export function ArtworkGenerationSettings({
         value={styleCount}
       />
       <Label className="space-y-2">
-        <span className="text-sm font-medium text-zinc-700">分组出图策略</span>
+        <span className="text-sm font-medium text-foreground">分组出图策略</span>
         <Select
-          className="h-11 rounded-2xl border-emerald-200 bg-white/80 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-white"
+          className="h-11 rounded-2xl border-emerald-200 bg-background/90 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
           disabled={disabled}
           onChange={(event) =>
             setGroupedImageMode(
@@ -126,15 +126,15 @@ export function ArtworkGenerationSettings({
           <option value="shared_by_size">同尺寸共图（推荐）</option>
           <option value="per_product">每商品独立出图</option>
         </Select>
-        <p className="text-xs leading-6 text-zinc-600">
+        <p className="text-xs leading-6 text-muted-foreground">
           同尺寸共图会按 printable size 自动复用款式图；每商品独立出图会为每个 SDS 商品分别生成。
         </p>
       </Label>
       {showVariationIntensity ? (
         <Label className="space-y-2">
-          <span className="text-sm font-medium text-zinc-700">变化强度</span>
+          <span className="text-sm font-medium text-foreground">变化强度</span>
           <Select
-            className="h-11 rounded-2xl border-emerald-200 bg-white/80 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-white"
+            className="h-11 rounded-2xl border-emerald-200 bg-background/90 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
             disabled={disabled}
             onChange={(event) =>
               setVariationIntensity(
@@ -147,16 +147,16 @@ export function ArtworkGenerationSettings({
             <option value="medium">中变化</option>
             <option value="strong">强变化</option>
           </Select>
-          <p className="text-xs leading-6 text-zinc-600">
+          <p className="text-xs leading-6 text-muted-foreground">
             只影响款式图批量生成。系统会保持同一核心卖点和视觉风格，同时按强度拉开构图和元素差异。
           </p>
         </Label>
       ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Label className="space-y-2">
-          <span className="text-sm font-medium text-zinc-700">款式图模型</span>
+          <span className="text-sm font-medium text-foreground">款式图模型</span>
           <Input
-            className="rounded-2xl border-emerald-200 bg-white/80 px-4 py-3 focus:border-emerald-900 focus:bg-white"
+            className="rounded-2xl border-emerald-200 bg-background/90 px-4 py-3 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
             disabled={disabled}
             list="shein-studio-artwork-models"
             onChange={(event) => {
@@ -175,11 +175,11 @@ export function ArtworkGenerationSettings({
             <option value="nano-banana-fast" />
             <option value="gpt-image-1" />
           </datalist>
-          <p className="text-xs leading-6 text-zinc-600">
+          <p className="text-xs leading-6 text-muted-foreground">
             不再固定为前端两个选项。留空时使用设置页里 `image` client 保存的默认模型，也可以直接手填覆盖。
           </p>
         </Label>
-        <Label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-white/75 px-4 py-3">
+        <Label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-background/80 px-4 py-3 dark:border-emerald-500/25 dark:bg-card/90">
           <Checkbox
             checked={transparentBackground}
             className="mt-1 border-emerald-300"
@@ -237,7 +237,7 @@ export function ProductImageGenerationSettings({
   showRenderSizeImagesWithSdsOption: boolean;
 }) {
   return (
-    <div className="space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
+    <div className="space-y-4 rounded-[1.5rem] border border-border bg-muted px-4 py-4">
       <SectionHeading
         eyebrow="商品图"
         title="设置上架商品图生成"
@@ -256,7 +256,7 @@ export function ProductImageGenerationSettings({
       ) : null}
 
       <Label className="space-y-2">
-        <span className="text-sm font-medium text-zinc-700">图片策略</span>
+        <span className="text-sm font-medium text-foreground">图片策略</span>
         <Select
           className="h-11 rounded-2xl px-4 py-2 leading-5"
           onChange={(event) =>
@@ -268,7 +268,7 @@ export function ProductImageGenerationSettings({
           <option value="sds_official">SDS 官方渲染</option>
           <option value="hybrid">混合：SDS 主图 + AI 图库</option>
         </Select>
-        <p className="text-xs leading-6 text-zinc-500">
+        <p className="text-xs leading-6 text-muted-foreground">
           AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图；
           混合模式先用 SDS 图，再追加 AI 商品图。
         </p>
@@ -303,7 +303,7 @@ export function ProductImageGenerationSettings({
       {imageStrategy === "ai_generated" ? (
         <>
           <Label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-700">
+            <span className="text-sm font-medium text-foreground">
               全局商品图提示词
             </span>
             <Textarea
@@ -312,7 +312,7 @@ export function ProductImageGenerationSettings({
               placeholder="可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"
               value={productImagePrompt}
             />
-            <p className="text-xs leading-6 text-zinc-500">
+            <p className="text-xs leading-6 text-muted-foreground">
               会追加到后端默认的亚马逊合规商品图模板中。
             </p>
           </Label>
@@ -346,24 +346,24 @@ export function BatchStoreSettings({
       className={`rounded-2xl px-4 py-4 ${
         requiredMessage
           ? "border border-rose-200 bg-rose-50/80"
-          : "border border-zinc-200 bg-zinc-50/80"
+          : "border border-border bg-muted/80"
       }`}
     >
       <div className="space-y-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             批次店铺
           </p>
-          <p className="mt-1 text-sm text-zinc-600">
+          <p className="mt-1 text-sm text-muted-foreground">
             批次内商品默认跟随这里，生成和建任务前也需要先确定它。
           </p>
         </div>
         {requiredMessage ? (
-          <div className="rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm leading-6 text-rose-700">
+          <div className="rounded-2xl border border-rose-200 bg-background px-4 py-3 text-sm leading-6 text-rose-700 dark:border-rose-500/30 dark:bg-card">
             请先设置批次店铺，否则当前不能生成或创建 SHEIN 资料。
           </div>
         ) : currentStoreLabel ? (
-          <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3">
+          <div className="rounded-2xl border border-emerald-200 bg-background px-4 py-3 dark:border-emerald-500/25 dark:bg-card">
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
               当前默认跟随
             </div>
@@ -373,7 +373,7 @@ export function BatchStoreSettings({
           </div>
         ) : null}
         <Label className="space-y-2">
-          <span className="text-sm font-medium text-zinc-700">选择批次店铺</span>
+          <span className="text-sm font-medium text-foreground">选择批次店铺</span>
           <Select
             aria-label="批次店铺"
             className="h-11 rounded-2xl px-4 py-2 leading-5"

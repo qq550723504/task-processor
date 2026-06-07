@@ -100,7 +100,7 @@ export function AIClientSettingsCard() {
       description="每个租户或当前登录用户可以配置自己的 OpenAI 兼容 endpoint、API Key 和默认模型。任务运行时会优先使用当前登录用户配置，再回退到当前租户配置。"
       actions={
         <>
-          <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-medium text-zinc-600">
+          <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-medium text-muted-foreground">
             <KeyRound className="h-4 w-4" />
             {settings.data?.api_key_set ? "密钥已配置" : "密钥未配置"}
           </span>
@@ -133,7 +133,7 @@ export function AIClientSettingsCard() {
               <div
                 className={[
                   "mt-1 text-xs leading-5",
-                  active ? "text-white/78" : "text-zinc-500",
+                  active ? "text-white/78" : "text-muted-foreground",
                 ].join(" ")}
               >
                 {option.description}
@@ -143,14 +143,14 @@ export function AIClientSettingsCard() {
         })}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4">
+      <div className="mt-4 rounded-2xl border border-border bg-muted/70 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
-            <div className="text-sm font-semibold text-zinc-950">{selectedClient.label}</div>
-            <div className="mt-1 text-sm text-zinc-600">{selectedClient.description}</div>
+            <div className="text-sm font-semibold text-foreground">{selectedClient.label}</div>
+            <div className="mt-1 text-sm text-muted-foreground">{selectedClient.description}</div>
           </div>
-          <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">
-            client_name: <span className="font-semibold text-zinc-800">{selectedClient.name}</span>
+          <div className="rounded-xl border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+            client_name: <span className="font-semibold text-foreground">{selectedClient.name}</span>
           </div>
         </div>
         <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
@@ -160,7 +160,7 @@ export function AIClientSettingsCard() {
 
         <div className="mt-4 grid gap-3 lg:grid-cols-[180px_1fr_1fr]">
           <Label className="space-y-1">
-            <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
+            <span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground">
               配置范围
             </span>
             <Select
@@ -175,7 +175,7 @@ export function AIClientSettingsCard() {
               <option value="tenant">当前租户</option>
               <option value="user">当前登录用户</option>
             </Select>
-            <span className="block text-[11px] leading-4 text-zinc-500">
+            <span className="block text-[11px] leading-4 text-muted-foreground">
               当前登录用户配置优先于当前租户配置
             </span>
           </Label>
@@ -245,7 +245,7 @@ function Input({
 }) {
   return (
     <Label className="space-y-1">
-      <span className="text-[10px] font-semibold tracking-[0.12em] text-zinc-500">
+      <span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground">
         {label}
       </span>
       <TextInput
@@ -255,7 +255,7 @@ function Input({
         onChange={(event) => onChange(event.target.value)}
       />
       {hint ? (
-        <span className="block text-[11px] leading-4 text-zinc-500">{hint}</span>
+        <span className="block text-[11px] leading-4 text-muted-foreground">{hint}</span>
       ) : null}
     </Label>
   );

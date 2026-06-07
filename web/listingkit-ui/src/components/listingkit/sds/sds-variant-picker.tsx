@@ -184,8 +184,8 @@ export function SDSVariantPicker({
     ) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-4 backdrop-blur-sm md:items-center">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-[linear-gradient(180deg,_rgba(255,255,255,0.97),_rgba(244,244,245,0.95))] shadow-[0_24px_96px_rgba(24,24,27,0.24)]">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 p-4 backdrop-blur-sm md:items-center">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-background/95 shadow-[0_24px_96px_rgba(24,24,27,0.24)]">
         <SDSVariantPickerHeader onClose={onClose} product={product} />
 
         <div className="overflow-auto px-5 py-5 md:px-6">
@@ -228,7 +228,7 @@ export function SDSVariantPicker({
                 useSelectedVariants={useSelectedVariants}
               />
               {showBatchPicker && batchOptions.length > 0 ? (
-                <div className="flex flex-wrap gap-2 rounded-[1.25rem] border border-zinc-200 bg-white px-4 py-3">
+                <div className="flex flex-wrap gap-2 rounded-[1.25rem] border border-border bg-card px-4 py-3">
                   {batchOptions.map((batch) => (
                     <Button
                       key={batch.id}

@@ -12,21 +12,21 @@ function GuidanceRow({ item }: { item: GuidanceItem }) {
   const ready = item.current >= item.recommended;
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-3">
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-background px-4 py-3">
       <div className="flex items-start gap-3">
         {ready ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
         ) : (
-          <Circle className="mt-0.5 h-4 w-4 text-zinc-400" />
+          <Circle className="mt-0.5 h-4 w-4 text-muted-foreground" />
         )}
         <div className="space-y-1">
-          <div className="text-sm font-medium text-zinc-900">{item.label}</div>
-          <p className="text-xs leading-5 text-zinc-600">
+          <div className="text-sm font-medium text-foreground">{item.label}</div>
+          <p className="text-xs leading-5 text-muted-foreground">
             输入更完整，任务首次成功率通常会更高。
           </p>
         </div>
       </div>
-      <div className="text-sm font-medium text-zinc-700">
+      <div className="text-sm font-medium text-muted-foreground">
         {item.current} / {item.recommended} {ready ? "已满足" : "建议值"}
       </div>
     </div>
@@ -49,14 +49,14 @@ export function TaskInputGuidance({
       className={
         embedded
           ? "space-y-4"
-          : "space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4"
+          : "space-y-4 rounded-2xl border border-border bg-muted/70 p-4"
       }
     >
       <div className="space-y-1">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           输入建议
         </h2>
-        <p className="text-sm leading-6 text-zinc-600">
+        <p className="text-sm leading-6 text-muted-foreground">
           这些是当前流程里最常见的通过门槛。若你有商品链接，也可以用它补强来源信息。
         </p>
       </div>

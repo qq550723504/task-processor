@@ -83,7 +83,7 @@ function metricCards(items: SheinLoginAccountStatus[]) {
       label: "店铺数",
       value: items.length,
       note: "当前可管理账户",
-      tone: "text-zinc-950",
+      tone: "text-foreground",
     },
     {
       label: "Cookie 可用",
@@ -151,7 +151,7 @@ function summaryTone(item: SheinLoginAccountStatus) {
   if (item.has_cookie || (item.cookie_ttl ?? 0) > 0) {
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
   }
-  return "border-zinc-200 bg-zinc-50 text-zinc-700";
+  return "border-border bg-muted text-muted-foreground";
 }
 
 function actionTone(item: SheinLoginAccountStatus, kind: "login" | "code" | "failure" | "cookie") {
@@ -250,7 +250,7 @@ function runbookItems(items: SheinLoginAccountStatus[]) {
       tone:
         verifyCount > 0
           ? "border-amber-200 bg-amber-50 text-amber-900"
-          : "border-zinc-200 bg-zinc-50 text-zinc-700",
+          : "border-border bg-muted text-foreground",
     },
     {
       title: "再检查失败记录",
@@ -261,7 +261,7 @@ function runbookItems(items: SheinLoginAccountStatus[]) {
       tone:
         failureCount > 0
           ? "border-rose-200 bg-rose-50 text-rose-900"
-          : "border-zinc-200 bg-zinc-50 text-zinc-700",
+          : "border-border bg-muted text-foreground",
     },
     {
       title: "最后补新 Cookie",
@@ -272,7 +272,7 @@ function runbookItems(items: SheinLoginAccountStatus[]) {
       tone:
         emptyCookieCount > 0
           ? "border-sky-200 bg-sky-50 text-sky-900"
-          : "border-zinc-200 bg-zinc-50 text-zinc-700",
+          : "border-border bg-muted text-foreground",
     },
   ];
 }
@@ -331,14 +331,14 @@ function VerifyCodeDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4">
-      <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white p-6 shadow-[0_28px_80px_rgba(24,24,27,0.22)]">
+      <div className="w-full max-w-md rounded-3xl border border-border/70 bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
               Verify Code
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-zinc-950">提交验证码</h2>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">店铺 {storeID} 当前停在验证码阶段，提交后会刷新登录状态。</p>
+            <h2 className="mt-2 text-xl font-semibold text-foreground">提交验证码</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">店铺 {storeID} 当前停在验证码阶段，提交后会刷新登录状态。</p>
           </div>
           <Button variant="ghost" className="h-9 px-3" onClick={onClose} disabled={pending}>
             关闭
@@ -346,7 +346,7 @@ function VerifyCodeDialog({
         </div>
 
         <Label className="mt-5 grid gap-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             验证码
           </span>
           <Input
@@ -406,14 +406,14 @@ function FailureDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6">
-      <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-[0_28px_80px_rgba(24,24,27,0.22)]">
-        <div className="flex items-start justify-between gap-4 border-b border-zinc-200 px-6 py-5">
+      <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
               Failure Detail
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-zinc-950">店铺 {storeID} 失败详情</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <h2 className="mt-2 text-xl font-semibold text-foreground">店铺 {storeID} 失败详情</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               {detail?.error_code || "最近失败记录"} {detail?.captured_at ? `· ${formatDateTime(detail.captured_at)}` : ""}
             </p>
           </div>
@@ -424,11 +424,11 @@ function FailureDialog({
 
         <div className="grid gap-4 overflow-auto px-6 py-5">
           {isLoading ? (
-            <div className="flex min-h-40 items-center justify-center text-zinc-500">
+            <div className="flex min-h-40 items-center justify-center text-muted-foreground">
               <LoaderCircle className="h-5 w-5 animate-spin" />
             </div>
           ) : !detail ? (
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm text-zinc-600">
+            <div className="rounded-2xl border border-border bg-muted p-5 text-sm text-muted-foreground">
               没有最近失败记录。
             </div>
           ) : (
@@ -444,50 +444,50 @@ function FailureDialog({
                   ["Artifact", detail.artifact_path],
                   ["页面错误", detail.login_error],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                  <div key={label} className="rounded-2xl border border-border bg-muted p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       {label}
                     </div>
-                    <div className="mt-2 break-all text-sm text-zinc-900">{value || "-"}</div>
+                    <div className="mt-2 break-all text-sm text-foreground">{value || "-"}</div>
                   </div>
                 ))}
               </div>
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {boolRows.map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                  <div key={label} className="rounded-2xl border border-border bg-background p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       {label}
                     </div>
-                    <div className="mt-2 text-sm font-medium text-zinc-900">{value ? "是" : "否"}</div>
+                    <div className="mt-2 text-sm font-medium text-foreground">{value ? "是" : "否"}</div>
                   </div>
                 ))}
               </div>
 
-              <Card className="border-zinc-200 bg-zinc-50 p-4">
-                <h3 className="text-sm font-semibold text-zinc-900">建议说明</h3>
-                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-700">
+              <Card className="border-border bg-muted p-4">
+                <h3 className="text-sm font-semibold text-foreground">建议说明</h3>
+                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
                   {detail.action_message || "-"}
                 </pre>
               </Card>
 
-              <Card className="border-zinc-200 bg-zinc-50 p-4">
-                <h3 className="text-sm font-semibold text-zinc-900">选择器状态</h3>
-                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-700">
+              <Card className="border-border bg-muted p-4">
+                <h3 className="text-sm font-semibold text-foreground">选择器状态</h3>
+                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
                   {JSON.stringify(detail.selector_states ?? {}, null, 2)}
                 </pre>
               </Card>
 
-              <Card className="border-zinc-200 bg-zinc-50 p-4">
-                <h3 className="text-sm font-semibold text-zinc-900">登录相关网络请求</h3>
-                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-700">
+              <Card className="border-border bg-muted p-4">
+                <h3 className="text-sm font-semibold text-foreground">登录相关网络请求</h3>
+                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
                   {JSON.stringify(detail.network_payloads ?? [], null, 2) || "[]"}
                 </pre>
               </Card>
 
-              <Card className="border-zinc-200 bg-zinc-50 p-4">
-                <h3 className="text-sm font-semibold text-zinc-900">页面文本</h3>
-                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-700">
+              <Card className="border-border bg-muted p-4">
+                <h3 className="text-sm font-semibold text-foreground">页面文本</h3>
+                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
                   {detail.body_text || "-"}
                 </pre>
               </Card>
@@ -537,25 +537,25 @@ export function SheinLoginPage() {
     <ListingKitPageShell backgroundClassName="isolate bg-[linear-gradient(180deg,#fbfaf6_0%,#efeee8_100%)]">
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
         <div className="grid gap-4">
-          <section className="rounded-[2rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_90px_rgba(39,39,42,0.10)]">
+          <section className="rounded-[2rem] border border-border/70 bg-card/90 p-6 shadow-xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
                   SHEIN Login
                 </p>
-                <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-zinc-950">
+                <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
                   店铺登录管理
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                   先处理验证码和失败，再决定是否重登或清理 Cookie。页面只保留登录管理需要的信息，不再把调试细节直接铺在首屏。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge
-                  className="h-10 rounded-full border-zinc-200 bg-white px-4 text-sm text-zinc-600"
+                  className="h-10 rounded-full border-border bg-background px-4 text-sm text-muted-foreground"
                   variant="outline"
                 >
-                  <Clock3 className="mr-2 h-4 w-4 text-zinc-400" />
+                  <Clock3 className="mr-2 h-4 w-4 text-muted-foreground" />
                   自动刷新 15s
                 </Badge>
                 <Button variant="secondary" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
@@ -566,23 +566,23 @@ export function SheinLoginPage() {
             </div>
           </section>
 
-          <Card className="border-white/70 bg-white/88 p-0 shadow-[0_14px_36px_rgba(39,39,42,0.06)]">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 px-6 py-5">
+          <Card className="border-border/70 bg-card/95 p-0 shadow-lg">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-6 py-5">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-950">店铺列表</h2>
-                <p className="mt-1 text-sm text-zinc-500">
+                <h2 className="text-lg font-semibold text-foreground">店铺列表</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
                   {focusedStoreID
                     ? `当前仅显示店铺 ${focusedStoreID}，方便直接处理登录。`
                     : "按异常优先级筛选，再对单店铺执行登录、验证码或清理动作。"}
                 </p>
               </div>
-              <div className="text-sm text-zinc-500">
+              <div className="text-sm text-muted-foreground">
                 {accounts.isFetching ? "正在刷新..." : `显示 ${filteredAccounts.length} / ${accountItems.length}`}
               </div>
             </div>
 
             {focusedStoreID ? null : (
-              <div className="flex flex-wrap gap-2 border-b border-zinc-200 px-6 py-4">
+              <div className="flex flex-wrap gap-2 border-b border-border px-6 py-4">
                 {filters.map((filter) => {
                   const active = filter.key === activeFilter;
                   return (
@@ -591,7 +591,7 @@ export function SheinLoginPage() {
                       type="button"
                       variant={active ? "default" : "outline"}
                       onClick={() => setActiveFilter(filter.key)}
-                      className={cn("h-auto rounded-full px-3 py-1.5 text-xs", !active && "text-zinc-700")}
+                      className={cn("h-auto rounded-full px-3 py-1.5 text-xs", !active && "text-muted-foreground")}
                     >
                       {filter.label} · {filter.count}
                     </Button>
@@ -601,7 +601,7 @@ export function SheinLoginPage() {
             )}
 
             {accounts.isLoading ? (
-              <div className="flex min-h-60 items-center justify-center text-zinc-500">
+              <div className="flex min-h-60 items-center justify-center text-muted-foreground">
                 <LoaderCircle className="h-6 w-6 animate-spin" />
               </div>
             ) : accounts.isError ? (
@@ -612,20 +612,20 @@ export function SheinLoginPage() {
               </div>
             ) : !accountItems.length ? (
               <div className="px-6 py-8">
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm text-zinc-600">
+                <div className="rounded-2xl border border-border bg-muted p-5 text-sm text-muted-foreground">
                   当前没有可管理的 SHEIN 店铺。
                 </div>
               </div>
             ) : !filteredAccounts.length ? (
               <div className="px-6 py-8">
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm text-zinc-600">
+                <div className="rounded-2xl border border-border bg-muted p-5 text-sm text-muted-foreground">
                   当前筛选下没有匹配店铺。
                 </div>
               </div>
             ) : (
               <Table className="min-w-[980px]">
                 <TableHeader>
-                  <TableRow className="bg-zinc-50/90 text-[11px] uppercase tracking-[0.16em] hover:bg-zinc-50/90">
+                  <TableRow className="bg-muted/90 text-[11px] uppercase tracking-[0.16em] hover:bg-muted/90">
                     <TableHead className="px-6 py-4">店铺</TableHead>
                     <TableHead className="px-6 py-4">当前状态</TableHead>
                     <TableHead className="px-6 py-4">建议动作</TableHead>
@@ -638,17 +638,17 @@ export function SheinLoginPage() {
                       key={item.account.store_id}
                       className={cn(
                         "align-top",
-                        focusedStoreID === item.account.store_id && "bg-amber-50/70",
+                        focusedStoreID === item.account.store_id && "bg-amber-100/70 dark:bg-amber-950/30",
                       )}
                     >
                       <TableCell className="px-6 py-5">
                         <div className="flex items-start gap-3">
-                          <div className="mt-0.5 rounded-xl bg-zinc-100 p-2 text-zinc-700">
+                          <div className="mt-0.5 rounded-xl bg-muted p-2 text-muted-foreground">
                             <Store className="h-4 w-4" />
                           </div>
                           <div>
-                            <div className="font-semibold text-zinc-950">{storeDisplay(item)}</div>
-                            <div className="mt-1 text-sm text-zinc-500">
+                            <div className="font-semibold text-foreground">{storeDisplay(item)}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
                               账号 {item.account.username || "-"} · ID {item.account.store_id}
                               {item.account.proxy ? " · 已配置代理" : ""}
                             </div>
@@ -657,7 +657,7 @@ export function SheinLoginPage() {
                                 href={item.account.login_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 transition hover:text-zinc-900"
+                                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition hover:text-foreground"
                               >
                                 登录页
                                 <ArrowUpRight className="h-3.5 w-3.5" />
@@ -686,9 +686,9 @@ export function SheinLoginPage() {
                               </Badge>
                             ) : null}
                           </div>
-                          <p className="text-sm text-zinc-500">{storeStatusNote(item)}</p>
+                          <p className="text-sm text-muted-foreground">{storeStatusNote(item)}</p>
                           {item.last_failure ? (
-                            <p className="text-xs text-zinc-500">
+                            <p className="text-xs text-muted-foreground">
                               {[formatDateTime(item.last_failure.captured_at), item.last_failure.stage]
                                 .filter(Boolean)
                                 .join(" · ")}
@@ -700,19 +700,19 @@ export function SheinLoginPage() {
                         {item.recommended_action?.key || item.recommended_action?.message ? (
                           <div className="grid gap-2">
                             <div className="flex items-start gap-2">
-                              <ChevronRight className="mt-0.5 h-4 w-4 text-zinc-400" />
+                              <ChevronRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
                               <div className="grid gap-1">
                                 {item.recommended_action?.key ? (
-                                  <div className="font-semibold text-zinc-900">{item.recommended_action.key}</div>
+                                  <div className="font-semibold text-foreground">{item.recommended_action.key}</div>
                                 ) : null}
                                 {item.recommended_action?.message ? (
-                                  <p className="text-sm text-zinc-500">{item.recommended_action.message}</p>
+                                  <p className="text-sm text-muted-foreground">{item.recommended_action.message}</p>
                                 ) : null}
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-sm text-zinc-400">无建议动作</span>
+                          <span className="text-sm text-muted-foreground">无建议动作</span>
                         )}
                       </TableCell>
                       <TableCell className="px-6 py-5">
@@ -768,26 +768,26 @@ export function SheinLoginPage() {
 
         <aside className="xl:sticky xl:top-4">
           <div className="grid gap-4">
-            <Card className="border-white/70 bg-white/88 p-5 shadow-[0_14px_36px_rgba(39,39,42,0.06)]">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <Card className="border-border/70 bg-card/95 p-5 shadow-lg">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 <ShieldAlert className="h-4 w-4" />
                 当前概况
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 {summary.map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                  <div key={item.label} className="rounded-2xl border border-border bg-muted px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       {item.label}
                     </div>
                     <div className={cn("mt-2 text-2xl font-semibold leading-none", item.tone)}>{item.value}</div>
-                    <div className="mt-2 text-sm text-zinc-500">{item.note}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">{item.note}</div>
                   </div>
                 ))}
               </div>
             </Card>
 
-            <Card className="border-white/70 bg-white/88 p-5 shadow-[0_14px_36px_rgba(39,39,42,0.06)]">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <Card className="border-border/70 bg-card/95 p-5 shadow-lg">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 <CheckCircle2 className="h-4 w-4" />
                 处理顺序
               </div>
@@ -801,12 +801,12 @@ export function SheinLoginPage() {
               </div>
             </Card>
 
-            <Card className="border-white/70 bg-white/88 p-5 shadow-[0_14px_36px_rgba(39,39,42,0.06)]">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <Card className="border-border/70 bg-card/95 p-5 shadow-lg">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 <RefreshCw className={cn("h-4 w-4", accounts.isFetching && "animate-spin")} />
                 同步状态
               </div>
-              <p className="mt-4 text-sm leading-6 text-zinc-600">{statusNote}</p>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">{statusNote}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button variant="secondary" className="h-9 px-3" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
                   立即刷新

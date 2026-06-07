@@ -14,15 +14,15 @@ export function SDSVariantPickerHeader({
   product?: SDSProductSummary;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-zinc-200/80 px-5 py-5 md:px-6">
+    <div className="flex items-start justify-between gap-4 border-b border-border/80 px-5 py-5 md:px-6">
       <div className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
           变体选择
         </p>
-        <div className="text-xl font-semibold tracking-[-0.03em] text-zinc-950">
+        <div className="text-xl font-semibold tracking-[-0.03em] text-foreground">
           {product?.name ?? "选择具体子 SKU"}
         </div>
-        <div className="flex flex-wrap gap-2 text-sm text-zinc-500">
+        <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
           {product?.sku ? <span>SKU {product.sku}</span> : null}
           {product?.issuingBayArea?.name ? (
             <span>{product.issuingBayArea.name}</span>
@@ -50,7 +50,7 @@ export function SDSVariantPickerStatus({
 }) {
   if (isLoading) {
     return (
-      <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
+      <div className="rounded-[1.25rem] border border-border bg-muted px-4 py-8 text-sm text-muted-foreground">
         正在加载变体...
       </div>
     );
@@ -64,7 +64,7 @@ export function SDSVariantPickerStatus({
   }
   if (variantCount === 0) {
     return (
-      <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
+      <div className="rounded-[1.25rem] border border-border bg-muted px-4 py-8 text-sm text-muted-foreground">
         这个商品没有返回子变体。
       </div>
     );
@@ -90,7 +90,7 @@ export function SDSVariantFilters({
   sizeOptions: string[];
 }) {
   return (
-    <div className="grid gap-3 rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+    <div className="grid gap-3 rounded-[1.25rem] border border-border/80 bg-background px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <Select
         className="h-11 rounded-2xl px-4"
         onChange={(event) => setSizeFilter(event.target.value)}
@@ -115,7 +115,7 @@ export function SDSVariantFilters({
           </option>
         ))}
       </Select>
-      <div className="flex items-center text-sm text-zinc-500">
+      <div className="flex items-center text-sm text-muted-foreground">
         {filteredCount} 个变体
       </div>
     </div>
@@ -248,7 +248,7 @@ export function SDSVariantGrid({
         ))}
       </div>
       {filteredVariants.length === 0 ? (
-        <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
+        <div className="rounded-[1.25rem] border border-border bg-muted px-4 py-8 text-sm text-muted-foreground">
           当前尺码或颜色筛选下没有匹配变体。
         </div>
       ) : null}
@@ -276,7 +276,7 @@ function SDSVariantCard({
       className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${
         active
           ? "border-emerald-800 bg-[linear-gradient(135deg,_#052e2b,_#115e59)] text-white"
-          : "border-zinc-200 bg-white"
+          : "border-border bg-card"
       }`}
     >
       <div className="space-y-3">
@@ -292,7 +292,7 @@ function SDSVariantCard({
               </span>
             </Label>
           </div>
-          <div className={active ? "text-emerald-100" : "text-zinc-500"}>
+          <div className={active ? "text-emerald-100" : "text-muted-foreground"}>
             变体 ID {variant.id} · SKU {variant.sku ?? "-"}
           </div>
         </div>
@@ -323,7 +323,7 @@ function SDSVariantCard({
           {variant.issuingBayArea?.name ? (
             <span
               className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                active ? "bg-white/12 text-white" : "bg-zinc-100 text-zinc-700"
+                active ? "bg-white/12 text-white" : "bg-muted text-muted-foreground"
               }`}
             >
               {variant.issuingBayArea.name}
@@ -333,7 +333,7 @@ function SDSVariantCard({
 
         <div
           className={`space-y-1 text-sm ${
-            active ? "text-emerald-100" : "text-zinc-500"
+            active ? "text-emerald-100" : "text-muted-foreground"
           }`}
         >
           <div>模板组 {variant.designPrototype?.prototypeGroupId ?? "-"}</div>

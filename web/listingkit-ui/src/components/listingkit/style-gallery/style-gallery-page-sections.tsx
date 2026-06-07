@@ -27,15 +27,15 @@ import type {
 
 export function StyleGalleryHero() {
   return (
-    <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/80 p-5 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur sm:p-6 xl:grid-cols-[1fr_auto] xl:items-end">
+    <section className="grid gap-5 rounded-[2rem] border border-border/70 bg-card/90 p-5 shadow-xl backdrop-blur sm:p-6 xl:grid-cols-[1fr_auto] xl:items-end">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-sky-700">
           ListingKit 款式图库
         </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-zinc-950">
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-foreground">
           款式图库
         </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           只展示 AI 生成的原始款式图，不混入 SDS mockup、平台草稿图或上架资料图。上架资料仍会在任务工作台中使用官方 mockup。
         </p>
       </div>
@@ -46,7 +46,7 @@ export function StyleGalleryHero() {
         </Button>
         <Link
           href="/listing-kits/sds"
-          className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 sm:w-auto"
+          className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90 sm:w-auto"
         >
           从 POD 生成
         </Link>
@@ -75,11 +75,11 @@ export function StyleGalleryMetrics({
 
 function MetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <Card className="border-white/70 bg-white/82 p-5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
+    <Card className="border-border/70 bg-card/95 p-5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
         {label}
       </p>
-      <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-zinc-950">
+      <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
         {value}
       </div>
     </Card>
@@ -106,9 +106,9 @@ export function StyleGalleryDimensionFilters({
   visibleCount: number;
 }) {
   return (
-    <section className="grid gap-3 rounded-[1.25rem] border border-white/70 bg-white/82 p-4 shadow-sm lg:grid-cols-[minmax(12rem,0.8fr)_minmax(10rem,0.45fr)_minmax(10rem,0.45fr)_auto] lg:items-end">
+    <section className="grid gap-3 rounded-[1.25rem] border border-border/70 bg-card/95 p-4 shadow-sm lg:grid-cols-[minmax(12rem,0.8fr)_minmax(10rem,0.45fr)_minmax(10rem,0.45fr)_auto] lg:items-end">
       <Label className="space-y-1.5 text-sm">
-        <span className="block text-xs font-semibold text-zinc-600">
+        <span className="block text-xs font-semibold text-muted-foreground">
           尺寸筛选
         </span>
         <Select
@@ -127,7 +127,7 @@ export function StyleGalleryDimensionFilters({
         </Select>
       </Label>
       <Label className="space-y-1.5 text-sm">
-        <span className="block text-xs font-semibold text-zinc-600">
+        <span className="block text-xs font-semibold text-muted-foreground">
           最小宽度
         </span>
         <Input
@@ -142,7 +142,7 @@ export function StyleGalleryDimensionFilters({
         />
       </Label>
       <Label className="space-y-1.5 text-sm">
-        <span className="block text-xs font-semibold text-zinc-600">
+        <span className="block text-xs font-semibold text-muted-foreground">
           最小高度
         </span>
         <Input
@@ -156,7 +156,7 @@ export function StyleGalleryDimensionFilters({
           onChange={(event) => setMinHeight(event.target.value)}
         />
       </Label>
-      <p className="text-sm text-zinc-500 lg:pb-2">
+      <p className="text-sm text-muted-foreground lg:pb-2">
         显示 {visibleCount} / {itemCount}
       </p>
     </section>
@@ -165,10 +165,10 @@ export function StyleGalleryDimensionFilters({
 
 export function StyleGalleryEmptyState() {
   return (
-    <Card className="flex min-h-72 flex-col items-center justify-center border-white/70 bg-white/82 p-8 text-center">
-      <ImageIcon className="h-8 w-8 text-zinc-400" />
-      <h2 className="mt-4 text-lg font-semibold text-zinc-950">暂无款式图</h2>
-      <p className="mt-2 max-w-md text-sm text-zinc-500">
+    <Card className="flex min-h-72 flex-col items-center justify-center border-border/70 bg-card/95 p-8 text-center">
+      <ImageIcon className="h-8 w-8 text-muted-foreground" />
+      <h2 className="mt-4 text-lg font-semibold text-foreground">暂无款式图</h2>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
         先从 POD 生成款式，或创建 ListingKit 任务后再回来查看。
       </p>
     </Card>
@@ -181,11 +181,11 @@ export function StyleGalleryLoadError({
   message: string;
 }) {
   return (
-    <Card className="flex min-h-72 flex-col items-center justify-center border-rose-200 bg-rose-50/80 p-8 text-center">
+    <Card className="flex min-h-72 flex-col items-center justify-center border-rose-300/70 bg-rose-100/80 p-8 text-center dark:border-rose-900 dark:bg-rose-950/50">
       <ImageIcon className="h-8 w-8 text-rose-400" />
-      <h2 className="mt-4 text-lg font-semibold text-zinc-950">图库加载失败</h2>
-      <p className="mt-2 max-w-md text-sm text-zinc-600">{message}</p>
-      <p className="mt-2 max-w-md text-xs text-zinc-500">
+      <h2 className="mt-4 text-lg font-semibold text-foreground">图库加载失败</h2>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">{message}</p>
+      <p className="mt-2 max-w-md text-xs text-muted-foreground">
         这通常不是“没有生成图片”，而是图库取数失败。可以先刷新一次再看。
       </p>
     </Card>
@@ -198,12 +198,12 @@ export function StyleGalleryNoResults({
   hasActiveDimensionFilter: boolean;
 }) {
   return (
-    <Card className="flex min-h-64 flex-col items-center justify-center border-white/70 bg-white/82 p-8 text-center">
-      <ImageIcon className="h-8 w-8 text-zinc-400" />
-      <h2 className="mt-4 text-lg font-semibold text-zinc-950">
+    <Card className="flex min-h-64 flex-col items-center justify-center border-border/70 bg-card/95 p-8 text-center">
+      <ImageIcon className="h-8 w-8 text-muted-foreground" />
+      <h2 className="mt-4 text-lg font-semibold text-foreground">
         没有符合尺寸的款式图
       </h2>
-      <p className="mt-2 max-w-md text-sm text-zinc-500">
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
         {hasActiveDimensionFilter
           ? "调整尺寸筛选条件，或等待图片尺寸读取完成。"
           : "当前没有可展示的款式图。"}
@@ -251,9 +251,9 @@ function GalleryCard({
   }
 
   return (
-    <Card className="group overflow-hidden border-white/70 bg-white/90 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
+    <Card className="group overflow-hidden border-border/70 bg-card/95 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl">
       <a href={item.imageUrl} target="_blank" rel="noreferrer" className="block">
-        <div className="relative aspect-square overflow-hidden bg-zinc-100">
+        <div className="relative aspect-square overflow-hidden bg-muted">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={item.imageUrl}
@@ -277,7 +277,7 @@ function GalleryCard({
             }}
           />
           {dimensions.label ? (
-            <span className="absolute bottom-2 left-2 rounded-full bg-zinc-950/75 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
+            <span className="absolute bottom-2 left-2 rounded-full bg-foreground/75 px-2.5 py-1 text-[11px] font-medium text-background backdrop-blur">
               {dimensions.label}
             </span>
           ) : null}
@@ -301,20 +301,20 @@ function GalleryCard({
           ) : null}
         </div>
         <div>
-          <h2 className="line-clamp-1 text-base font-semibold text-zinc-950">
+          <h2 className="line-clamp-1 text-base font-semibold text-foreground">
             {item.title}
           </h2>
-          <p className="mt-1 line-clamp-1 text-xs text-zinc-500">
+          <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
             {item.productName || item.prompt || item.fileName || item.id}
           </p>
         </div>
-        <div className="flex flex-col gap-2 text-xs text-zinc-500 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <span>{formatDate(item.updatedAt ?? item.createdAt)}</span>
           {dimensions.label ? <span className="shrink-0">{dimensions.label}</span> : null}
           {item.taskId ? (
             <Link
               href={`/listing-kits/${item.taskId}/workspace?platform=shein`}
-              className="inline-flex items-center gap-1 font-medium text-zinc-900 hover:underline"
+              className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
             >
               工作区
               <ExternalLink className="h-3 w-3" />
@@ -325,7 +325,7 @@ function GalleryCard({
           href="/listing-kits/sds"
           prefetch={false}
           onClick={handleUseForListingTask}
-          className="inline-flex h-9 w-full items-center justify-center rounded-xl bg-zinc-950 px-3 text-sm font-medium text-white transition hover:bg-zinc-800"
+          className="inline-flex h-9 w-full items-center justify-center rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:opacity-90"
         >
           <Send className="mr-2 h-4 w-4" />
           用于生成任务

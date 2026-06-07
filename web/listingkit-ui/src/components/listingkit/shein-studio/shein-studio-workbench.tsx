@@ -2350,16 +2350,16 @@ export function SheinStudioWorkbench({
       ) : null}
 
       {queueMessage ? (
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+        <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
           {queueMessage}
         </div>
       ) : null}
 
       {initialBatchId ? (
-        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card px-4 py-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 当前批次
               </p>
               {isEditingCurrentBatchName ? (
@@ -2367,17 +2367,17 @@ export function SheinStudioWorkbench({
                   <span className="sr-only">当前批次名称</span>
                   <input
                     aria-label="当前批次名称"
-                    className="w-full min-w-[280px] rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+                    className="w-full min-w-[280px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
                     onChange={(event) => setCurrentBatchDraftName(event.target.value)}
                     value={currentBatchDraftName}
                   />
                 </label>
               ) : (
-                <p className="text-lg font-semibold text-zinc-950">
+                <p className="text-lg font-semibold text-foreground">
                   {currentDedicatedBatch?.name || "未命名批次"}
                 </p>
               )}
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-muted-foreground">
                 在这里可以管理当前这一个批次；批量管理仍然保留在最近批次首页。
               </p>
               <div className="pt-3">

@@ -45,27 +45,27 @@ export function WorkspaceHeader({
     <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
       <div className="min-w-0 space-y-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             ListingKit 工作台
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <Link
               href="/listing-kits"
-              className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+              className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition hover:border-ring hover:text-foreground"
             >
               返回任务列表
             </Link>
             {showSheinStudioLink ? (
               <Link
                 href="/listing-kits/sds"
-                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+                className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition hover:border-ring hover:text-foreground"
               >
                 返回 POD 工作室
               </Link>
             ) : null}
             {showLayerActions ? (
-              <details className="rounded-full border border-zinc-200 bg-white px-3 py-1.5">
-                <summary className="cursor-pointer list-none text-sm font-medium text-zinc-700">
+              <details className="rounded-full border border-border bg-background px-3 py-1.5">
+                <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground">
                   高级操作
                 </summary>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -89,27 +89,27 @@ export function WorkspaceHeader({
               </details>
             ) : null}
           </div>
-          <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
+          <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             {title}
           </h1>
           {statusLabel || updatedAtLabel ? (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-600">
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
               {statusLabel ? (
                 <Badge className="gap-2 rounded-full px-3 py-1.5" variant="neutral">
-                  <span className="font-semibold text-zinc-700">任务状态</span>
+                  <span className="font-semibold text-foreground">任务状态</span>
                   <span>{statusLabel}</span>
                 </Badge>
               ) : null}
               {updatedAtLabel ? (
                 <Badge className="gap-2 rounded-full px-3 py-1.5" variant="neutral">
-                  <span className="font-semibold text-zinc-700">最近更新</span>
+                  <span className="font-semibold text-foreground">最近更新</span>
                   <span>{updatedAtLabel}</span>
                 </Badge>
               ) : null}
             </div>
           ) : null}
           {subtitle ? (
-            <p className="mt-2 break-all text-xs text-zinc-500">
+            <p className="mt-2 break-all text-xs text-muted-foreground">
               {subtitle}
             </p>
           ) : null}

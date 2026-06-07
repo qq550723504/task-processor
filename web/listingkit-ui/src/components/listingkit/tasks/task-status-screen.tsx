@@ -157,13 +157,13 @@ export function TaskStatusScreen({
     <div className="mx-auto max-w-4xl space-y-6">
       <Card className="p-6">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             任务状态
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
             查看当前任务进度
           </h1>
-          <p className="text-sm leading-6 text-zinc-600">
+          <p className="text-sm leading-6 text-muted-foreground">
             创建任务后，可以先在这里查看当前进度，再决定进入工作台、队列或返回修改。
           </p>
           {task.shein_workflow_status || task.shein_submission_remote_status ? (
@@ -182,27 +182,27 @@ export function TaskStatusScreen({
           ) : null}
           <div className="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 任务 ID
               </p>
-              <p className="mt-1 break-all text-sm text-zinc-700">{taskId}</p>
+              <p className="mt-1 break-all text-sm text-foreground">{taskId}</p>
             </div>
             {formatStatusDate(task.result?.updated_at ?? task.completed_at) ? (
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   最近更新
                 </p>
-                <p className="mt-1 text-sm text-zinc-700">
+                <p className="mt-1 text-sm text-foreground">
                   {formatStatusDate(task.result?.updated_at ?? task.completed_at)}
                 </p>
               </div>
             ) : null}
             {formatStatusDate(task.created_at) ? (
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   创建时间
                 </p>
-                <p className="mt-1 text-sm text-zinc-700">
+                <p className="mt-1 text-sm text-foreground">
                   {formatStatusDate(task.created_at)}
                 </p>
               </div>
@@ -222,8 +222,8 @@ export function TaskStatusScreen({
       <Card className="p-6">
         <div className="space-y-4">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-zinc-950">分层 Temporal 执行</h2>
-            <p className="text-sm leading-6 text-zinc-600">
+            <h2 className="text-lg font-semibold text-foreground">分层 Temporal 执行</h2>
+            <p className="text-sm leading-6 text-muted-foreground">
               标准商品层和平台适配层现在可以分别手动触发。标准层会产出稳定的标准商品快照，平台层会基于这个快照继续做 SHEIN 等平台适配。
             </p>
           </div>
@@ -257,11 +257,11 @@ export function TaskStatusScreen({
       {task.status === "failed" && taskFixes.length > 0 ? (
         <Card className="p-6">
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-950">建议先处理这些问题</h2>
-            <ul className="space-y-2 text-sm leading-6 text-zinc-700">
+            <h2 className="text-lg font-semibold text-foreground">建议先处理这些问题</h2>
+            <ul className="space-y-2 text-sm leading-6 text-foreground">
               {taskFixes.map((fix) => (
                 <li
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                  className="rounded-2xl border border-border bg-muted px-4 py-3"
                   key={fix}
                 >
                   {fix}
@@ -287,11 +287,11 @@ export function TaskStatusScreen({
       {isTerminal ? (
         <Card className="p-6">
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-950">{terminalStatusTitle(task)}</h2>
-            <p className="text-sm leading-6 text-zinc-600">{terminalStatusDescription(task)}</p>
+            <h2 className="text-lg font-semibold text-foreground">{terminalStatusTitle(task)}</h2>
+            <p className="text-sm leading-6 text-muted-foreground">{terminalStatusDescription(task)}</p>
             {task.status === "completed" || task.status === "needs_review" ? (
               <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm leading-6 text-zinc-500">
+                <p className="text-sm leading-6 text-muted-foreground">
                   {autoOpenEnabled
                     ? "1.5 秒后会自动进入工作台，你也可以先留在这里查看状态。"
                     : "已暂停自动跳转。"}

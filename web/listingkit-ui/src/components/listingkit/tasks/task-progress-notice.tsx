@@ -40,12 +40,12 @@ export function TaskProgressNotice({
   const Icon = copy.icon;
 
   return (
-    <Card className="border-sky-200 bg-sky-50/60 p-4">
+    <Card className="border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900 dark:bg-sky-950/30">
       <div className="flex items-start gap-3">
         <Icon className={`mt-0.5 h-5 w-5 ${copy.iconClassName}`} />
         <div className="space-y-1">
-          <p className="text-sm font-semibold text-zinc-950">{copy.title}</p>
-          <p className="text-sm leading-6 text-zinc-600">{copy.description}</p>
+          <p className="text-sm font-semibold text-foreground">{copy.title}</p>
+          <p className="text-sm leading-6 text-muted-foreground">{copy.description}</p>
         </div>
       </div>
     </Card>

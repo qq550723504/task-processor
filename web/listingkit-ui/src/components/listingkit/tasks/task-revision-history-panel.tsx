@@ -83,18 +83,18 @@ function StoreResolutionAudit({
     return null;
   }
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+    <div className="rounded-2xl border border-border bg-muted p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             店铺快照
           </p>
-          <p className="mt-1 text-sm font-medium text-zinc-900">
+          <p className="mt-1 text-sm font-medium text-foreground">
             SHEIN 店铺 {resolution.store_id}
             {resolution.site ? ` · ${resolution.site}` : ""}
           </p>
           {resolution.reason ? (
-            <p className="mt-1 text-sm leading-6 text-zinc-600">{resolution.reason}</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">{resolution.reason}</p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -115,7 +115,7 @@ function StoreResolutionAudit({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         {resolution.matched_profile_id ? (
           <span>Profile #{resolution.matched_profile_id}</span>
         ) : null}
@@ -124,7 +124,7 @@ function StoreResolutionAudit({
         ) : null}
       </div>
       {resolution.matched_rule_kinds?.length ? (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-muted-foreground">
           命中规则：
           {resolution.matched_rule_kinds.map(storeRuleLabel).filter(Boolean).join(" / ")}
         </p>
@@ -180,7 +180,7 @@ export function TaskRevisionHistoryPanel({
   if (historyQuery.isLoading) {
     return (
       <Card className="p-6">
-        <p className="text-sm text-zinc-600">正在加载修订历史...</p>
+        <p className="text-sm text-muted-foreground">正在加载修订历史...</p>
       </Card>
     );
   }
@@ -194,11 +194,11 @@ export function TaskRevisionHistoryPanel({
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
               修订历史
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-zinc-950">最近的编辑与恢复记录</h2>
-            <p className="mt-1 text-sm leading-6 text-zinc-600">
+            <h2 className="mt-1 text-lg font-semibold text-foreground">最近的编辑与恢复记录</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
               这里展示最近的 revision 以及当时绑定的店铺快照，方便对齐编辑历史与提交历史。
             </p>
           </div>
@@ -243,12 +243,12 @@ export function TaskRevisionHistoryPanel({
                     key={item.revision_id}
                     type="button"
                     variant="outline"
-                    className={`h-auto w-full justify-start rounded-2xl px-4 py-3 text-left ${selected ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
+                    className={`h-auto w-full justify-start rounded-2xl px-4 py-3 text-left ${selected ? "border-foreground bg-muted" : "border-border bg-background"}`}
                     onClick={() => setManualSelectedRevisionId(item.revision_id ?? "")}
                   >
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-zinc-900">
+                        <span className="text-sm font-medium text-foreground">
                           {item.timeline?.headline || "SHEIN 修订"}
                         </span>
                         {refreshRevision ? (
@@ -260,14 +260,14 @@ export function TaskRevisionHistoryPanel({
                           {actionTypeLabel(item.action_type)}
                         </Badge>
                       </div>
-                      <p className="text-xs text-zinc-500">{formatRevisionTime(item.updated_at)}</p>
+                      <p className="text-xs text-muted-foreground">{formatRevisionTime(item.updated_at)}</p>
                       {item.timeline?.relation_text ? (
-                        <p className="text-xs text-zinc-500">
+                        <p className="text-xs text-muted-foreground">
                           {item.timeline.relation_text}
                         </p>
                       ) : null}
                       {item.store_resolution?.store_id ? (
-                        <p className="text-xs text-zinc-500">
+                        <p className="text-xs text-muted-foreground">
                           店铺 {item.store_resolution.store_id}
                           {item.store_resolution.site ? ` · ${item.store_resolution.site}` : ""}
                         </p>
@@ -281,9 +281,9 @@ export function TaskRevisionHistoryPanel({
             <div className="space-y-4">
               {detailRecord ? (
                 <>
-                  <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                  <div className="rounded-2xl border border-border bg-background p-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-zinc-950">
+                      <p className="text-base font-semibold text-foreground">
                         {detailRecord.timeline?.headline || "SHEIN 修订"}
                       </p>
                       {isRefreshRevision(detailRecord) ? (
@@ -295,7 +295,7 @@ export function TaskRevisionHistoryPanel({
                         {actionTypeLabel(detailRecord.action_type)}
                       </Badge>
                     </div>
-                    <div className="mt-2 space-y-1 text-sm text-zinc-600">
+                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                       <p>修订时间：{formatRevisionTime(detailRecord.updated_at)}</p>
                       {detailRecord.timeline?.relation_text ? (
                         <p>影响范围：{detailRecord.timeline.relation_text}</p>
@@ -310,12 +310,12 @@ export function TaskRevisionHistoryPanel({
                   <StoreResolutionAudit record={detailRecord} />
                 </>
               ) : (
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                <div className="rounded-2xl border border-border bg-muted p-4 text-sm text-muted-foreground">
                   {filteredItems.length === 0 ? "当前筛选下暂无修订记录。" : "暂无可展示的修订详情。"}
                 </div>
               )}
               {detailQuery.isLoading ? (
-                <p className="text-xs text-zinc-500">正在加载修订详情...</p>
+                <p className="text-xs text-muted-foreground">正在加载修订详情...</p>
               ) : null}
             </div>
           </div>

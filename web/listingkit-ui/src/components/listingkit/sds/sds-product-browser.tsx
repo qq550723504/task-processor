@@ -582,17 +582,17 @@ export function SDSProductBrowser({
   const pickerOpen = Boolean(pickerProductId);
 
   return (
-    <Card className="min-w-0 w-full overflow-hidden rounded-lg border-zinc-200 bg-white p-0 shadow-sm">
+    <Card className="min-w-0 w-full overflow-hidden rounded-lg border-border bg-card p-0 shadow-sm">
       <div className="space-y-4 p-4 lg:p-5">
-        <div className="flex flex-col gap-3 border-b border-zinc-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
               1. SDS 商品库
             </p>
-            <h2 className="text-xl font-semibold tracking-tight text-zinc-950">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">
               选择底版商品和子 SKU
             </h2>
-            <p className="max-w-2xl text-sm leading-6 text-zinc-600">
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
               按发货地、分类、重量、生产周期和 SKU 搜索。选择变体后会进入下一步生成流程。
             </p>
           </div>
@@ -626,7 +626,7 @@ export function SDSProductBrowser({
         />
 
         {recentBatches.length > 0 ? (
-          <div className="rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
+          <div className="rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-900 dark:bg-emerald-950/30">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
@@ -669,7 +669,7 @@ export function SDSProductBrowser({
               <div className="flex w-full flex-col gap-2 sm:max-w-sm">
                 <Select
                   aria-label="当前接收批次"
-                  className="h-11 rounded-2xl border-emerald-300 bg-white px-4"
+                  className="h-11 rounded-2xl border-emerald-300 bg-background px-4"
                   onChange={(event) => setCurrentTargetBatch(event.target.value)}
                   value={activeBatchId}
                 >
@@ -731,15 +731,15 @@ export function SDSProductBrowser({
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 px-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
               商品列表
             </div>
-            <div className="text-sm text-zinc-500">
+            <div className="text-sm text-muted-foreground">
               {products.data?.totalCount ?? 0} 个商品 · {activeShipmentAreaLabel} · {activeCategoryLabel}
             </div>
           </div>
           {products.isLoading ? (
-            <div className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
+            <div className="rounded-[1.5rem] border border-border bg-muted px-4 py-8 text-sm text-muted-foreground">
               正在加载 SDS 商品...
             </div>
           ) : products.error ? (

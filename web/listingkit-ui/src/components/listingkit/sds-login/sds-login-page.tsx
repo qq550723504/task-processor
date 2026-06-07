@@ -158,22 +158,22 @@ export function SdsLoginPage() {
     <ListingKitPageShell contentClassName="mx-auto w-full max-w-5xl px-4 lg:px-6">
       <div className="space-y-6">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             SDS Login
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             处理 SDS 登录状态
           </h1>
-          <p className="max-w-3xl text-sm leading-7 text-zinc-600">
+          <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
             当 baseline 校验提示缺少 access token 时，先在这里恢复 SDS 登录态，再回到批次继续生成或校验。
           </p>
         </div>
 
-        <Card className="space-y-4 rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <Card className="space-y-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-zinc-950">当前状态</h2>
-              <p className="text-sm text-zinc-600">
+              <h2 className="text-lg font-semibold text-foreground">当前状态</h2>
+              <p className="text-sm text-muted-foreground">
                 {isLoading ? "正在同步 SDS 登录状态..." : summarizeStatus(status)}
               </p>
             </div>
@@ -211,70 +211,70 @@ export function SdsLoginPage() {
           ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-sm text-zinc-700">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-4 text-sm text-foreground">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">Access token</span>
+                  <span className="text-muted-foreground">Access token</span>
                   <span>{status?.has_access_token ? "可用" : "缺失"}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">登录进行中</span>
+                  <span className="text-muted-foreground">登录进行中</span>
                   <span>{status?.login_in_progress ? "是" : "否"}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">验证码等待</span>
+                  <span className="text-muted-foreground">验证码等待</span>
                   <span>{status?.waiting_for_verify_code ? "是" : "否"}</span>
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-sm text-zinc-700">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-4 text-sm text-foreground">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">租户</span>
+                  <span className="text-muted-foreground">租户</span>
                   <span>{status?.tenant_id || "未配置"}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">Identifier</span>
+                  <span className="text-muted-foreground">Identifier</span>
                   <span>{status?.identifier || "未配置"}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">商家名</span>
+                  <span className="text-muted-foreground">商家名</span>
                   <span>{status?.merchant_name || "未知"}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">签发时间</span>
+                  <span className="text-muted-foreground">签发时间</span>
                   <span>{formatDateTime(status?.issued_at)}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4">
-            <p className="text-sm font-medium text-zinc-900">最近持有的认证信息</p>
-            <div className="mt-3 grid gap-2 text-sm text-zinc-700 md:grid-cols-2">
+          <div className="rounded-2xl border border-border bg-background px-4 py-4">
+            <p className="text-sm font-medium text-foreground">最近持有的认证信息</p>
+            <div className="mt-3 grid gap-2 text-sm text-foreground md:grid-cols-2">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500">Access token</span>
+                <span className="text-muted-foreground">Access token</span>
                 <span>{authState?.access_token ? "已缓存" : "无"}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500">Cookie 数量</span>
+                <span className="text-muted-foreground">Cookie 数量</span>
                 <span>{authState?.cookies?.length ?? 0}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500">来源</span>
+                <span className="text-muted-foreground">来源</span>
                 <span>{authState?.source || "未知"}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500">当前 URL</span>
+                <span className="text-muted-foreground">当前 URL</span>
                 <span className="truncate text-right">{authState?.current_url || "未知"}</span>
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+          <div className="rounded-2xl border border-border bg-muted px-4 py-4">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-900">手动登录 SDS</p>
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm font-medium text-foreground">手动登录 SDS</p>
+              <p className="text-sm text-muted-foreground">
                 当自动登录因为本地未配置账号而不可用时，可以在这里直接提交一组全局 SDS 登录凭证。
               </p>
             </div>

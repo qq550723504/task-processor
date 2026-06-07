@@ -69,31 +69,31 @@ export function WorkspaceOverviewPanel({
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
       {visibleOverviewMetrics.map((metric) => (
         <Card className="p-4" key={metric.key}>
-          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             {metric.label}
           </p>
-          <p className="mt-2 text-2xl font-semibold text-zinc-950">
+          <p className="mt-2 text-2xl font-semibold text-foreground">
             {overview?.[metric.key] ?? 0}
           </p>
         </Card>
       ))}
       {visibleReviewMetrics.map((metric) => (
         <Card className="p-4" key={`review-${metric.key}`}>
-          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             {metric.label}
           </p>
-          <p className="mt-2 text-2xl font-semibold text-zinc-950">
+          <p className="mt-2 text-2xl font-semibold text-foreground">
             {reviewSummary?.[metric.key] ?? 0}
           </p>
         </Card>
       ))}
       {hasResolvedAction ? (
         <Card className="p-4 sm:col-span-2 xl:col-span-2 2xl:col-span-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             当前建议
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <p className="text-lg font-semibold text-zinc-950">
+            <p className="text-lg font-semibold text-foreground">
               {presentResolvedActionTitle(resolvedActionSummary?.title)}
             </p>
             <Badge
@@ -104,7 +104,7 @@ export function WorkspaceOverviewPanel({
             </Badge>
           </div>
           {resolvedActionSummary?.summary ? (
-            <p className="mt-2 text-sm leading-6 text-zinc-600">
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {presentResolvedActionSummary(resolvedActionSummary.summary)}
             </p>
           ) : null}
@@ -118,19 +118,19 @@ export function WorkspaceOverviewPanel({
           }
 
           return (
-            <Card className="border-amber-200 bg-amber-50/60 p-4 sm:col-span-2 xl:col-span-2 2xl:col-span-3">
+            <Card className="border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/30 sm:col-span-2 xl:col-span-2 2xl:col-span-3">
               <p className="text-xs uppercase tracking-[0.18em] text-amber-700">
                 恢复重点
               </p>
-              <p className="mt-2 text-lg font-semibold text-zinc-950">
+              <p className="mt-2 text-lg font-semibold text-foreground">
                 {recovery.title}
               </p>
               {recovery.summary ? (
-                <p className="mt-2 text-sm leading-6 text-zinc-700">
+                <p className="mt-2 text-sm leading-6 text-foreground">
                   {recovery.summary}
                 </p>
               ) : null}
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
                 <span>{recovery.metaLabel}</span>
                 <Badge
                   className="rounded-full px-2 py-1 text-[10px] tracking-[0.16em]"

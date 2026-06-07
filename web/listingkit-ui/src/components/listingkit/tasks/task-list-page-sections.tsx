@@ -61,15 +61,15 @@ export type FilterKey =
 
 export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
   return (
-    <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/78 p-5 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur sm:p-6 xl:grid-cols-[1fr_auto] xl:items-end">
+    <section className="grid gap-5 rounded-[2rem] border border-border/70 bg-card/90 p-5 shadow-xl backdrop-blur sm:p-6 xl:grid-cols-[1fr_auto] xl:items-end">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
           任务总览
         </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-zinc-950">
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-foreground">
           任务列表
         </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           查看最近生成、审核和提交到 SHEIN 的任务。这里直接读取后端任务仓储，不再靠你手动记 task id。
         </p>
       </div>
@@ -320,7 +320,7 @@ export function TaskListFilters({
   };
 
   return (
-    <Card className="border-white/70 bg-white/82 p-4">
+    <Card className="border-border/70 bg-card/95 p-4">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         <Select
           className="h-11 w-full rounded-2xl px-4 text-sm"
@@ -405,14 +405,14 @@ export function TaskListFilters({
             ))}
           </Select>
         ) : null}
-        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 md:col-span-2 xl:col-span-4 2xl:col-span-6 xl:justify-end">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground md:col-span-2 xl:col-span-4 2xl:col-span-6 xl:justify-end">
           <Boxes className="h-4 w-4" />
           {total} 个任务
         </div>
       </div>
       {activeFilters.length ? (
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             当前筛选
           </p>
           {activeFilters.map((filter) => (
@@ -421,7 +421,7 @@ export function TaskListFilters({
               type="button"
               variant="outline"
               onClick={() => updateFilter(filter.key, "")}
-              className="h-auto rounded-full bg-zinc-50 px-3 py-1 text-xs text-zinc-700"
+              className="h-auto rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
             >
               {filter.label}
             </Button>
@@ -441,7 +441,7 @@ export function TaskListFilters({
                   status: null,
                 })
               }
-              className="h-auto px-2 py-1 text-xs text-zinc-500"
+              className="h-auto px-2 py-1 text-xs text-muted-foreground"
             >
               清空全部
             </Button>
@@ -453,7 +453,7 @@ export function TaskListFilters({
           {summarySections.map((section) => (
             <div key={section.filterKey} className="grid gap-2">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   {section.title}
                 </p>
                 {activeFacetValueByKey[section.filterKey] ? (
@@ -463,7 +463,7 @@ export function TaskListFilters({
                     onClick={() =>
                       updateFilter(section.filterKey, "")
                     }
-                    className="h-auto px-2 py-1 text-[11px] text-zinc-500"
+                    className="h-auto px-2 py-1 text-[11px] text-muted-foreground"
                   >
                     清除
                   </Button>
@@ -520,8 +520,8 @@ export function TaskListContent({
 }) {
   if (isLoading) {
     return (
-      <Card className="flex min-h-72 items-center justify-center border-white/70 bg-white/80">
-        <LoaderCircle className="h-6 w-6 animate-spin text-zinc-500" />
+      <Card className="flex min-h-72 items-center justify-center border-border/70 bg-card/90">
+        <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
       </Card>
     );
   }
@@ -562,11 +562,11 @@ export function TaskListContent({
         <TaskRow key={task.task_id} task={task} taxonomy={taxonomy} />
       ))}
       {totalPages > 1 ? (
-        <Card className="border-white/70 bg-white/82 p-4">
+        <Card className="border-border/70 bg-card/95 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-zinc-500">
+            <div className="text-sm text-muted-foreground">
               第 {page} / {totalPages} 页
-              <span className="ml-2 text-zinc-400">
+              <span className="ml-2 text-muted-foreground">
                 {startItem}-{endItem} / {total}
               </span>
             </div>
@@ -618,7 +618,7 @@ function TaskRow({
   const podAuditTitle = podExecutionHistorySummary(task.pod_execution);
 
   return (
-    <Card className="group border-white/70 bg-white/88 p-5 shadow-[0_16px_44px_rgba(39,39,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(39,39,42,0.11)]">
+    <Card className="group border-border/70 bg-card/95 p-5 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl">
       <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -703,21 +703,21 @@ function TaskRow({
               </Badge>
             ))}
           </div>
-          <h2 className="mt-3 line-clamp-2 break-words text-xl font-semibold tracking-tight text-zinc-950">
+          <h2 className="mt-3 line-clamp-2 break-words text-xl font-semibold tracking-tight text-foreground">
             {taskTitle(task)}
           </h2>
-          <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+          <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
             任务 ID
           </p>
-          <p className="mt-1 break-all text-sm text-zinc-500">{task.task_id}</p>
+          <p className="mt-1 break-all text-sm text-muted-foreground">{task.task_id}</p>
           {task.shein_store_id ? (
-            <p className="mt-1 text-sm text-zinc-500" title={storeResolutionAuditTitle(task)}>
+            <p className="mt-1 text-sm text-muted-foreground" title={storeResolutionAuditTitle(task)}>
               SHEIN 店铺 {task.shein_store_id}
               {task.shein_store_site ? ` · ${task.shein_store_site}` : ""}
             </p>
           ) : null}
           {task.shein_store_profile_id || task.shein_store_resolved_at ? (
-            <p className="mt-1 text-xs text-zinc-400" title={storeResolutionAuditTitle(task)}>
+            <p className="mt-1 text-xs text-muted-foreground" title={storeResolutionAuditTitle(task)}>
               {task.shein_store_strategy
                 ? `路由 ${storeResolutionStrategyLabel(task.shein_store_strategy)}`
                 : ""}
@@ -738,20 +738,20 @@ function TaskRow({
             </p>
           ) : null}
           {task.variant_label ? (
-            <p className="mt-1 line-clamp-2 break-all text-sm text-zinc-500">
+            <p className="mt-1 line-clamp-2 break-all text-sm text-muted-foreground">
               {task.variant_label}
             </p>
           ) : null}
           {sheinOverview?.headline ? (
-            <p className="mt-2 text-sm font-medium text-zinc-700">
+            <p className="mt-2 text-sm font-medium text-foreground">
               {sheinOverview.headline}
             </p>
           ) : null}
           {sheinOverview?.subheadline ? (
-            <p className="mt-1 text-sm text-zinc-500">{sheinOverview.subheadline}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{sheinOverview.subheadline}</p>
           ) : null}
           {sheinOverview ? (
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
               {typeof sheinOverview.blocking_count === "number" ? (
                 <span>阻断 {sheinOverview.blocking_count}</span>
               ) : null}
@@ -774,13 +774,13 @@ function TaskRow({
               {task.shein_latest_submission_error}
             </p>
           ) : task.shein_latest_submission_status ? (
-            <p className="mt-2 text-sm text-zinc-500">
+            <p className="mt-2 text-sm text-muted-foreground">
               最近提交：
               {sheinSubmissionStatusLabel(task.shein_latest_submission_status)}
             </p>
           ) : null}
           {task.shein_submission_remote_status ? (
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-1 text-sm text-muted-foreground">
               SHEIN 远端：
               {sheinSubmissionRemoteStatusLabel(
                 task.shein_submission_remote_status,
@@ -794,20 +794,20 @@ function TaskRow({
         </div>
 
         <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
-          <div className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 sm:w-auto">
+          <div className="w-full rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground sm:w-auto">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
               创建于 {formatDate(task.created_at)}
             </div>
-            <div className="mt-1 text-xs text-zinc-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               最近更新 {formatDate(task.updated_at ?? task.created_at)}
             </div>
             {task.completed_at ? (
-              <div className="mt-1 text-xs text-zinc-500">
+              <div className="mt-1 text-xs text-muted-foreground">
                 完成时间 {formatDate(task.completed_at)}
               </div>
             ) : null}
-            <div className="mt-1 text-xs text-zinc-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               {task.image_count ?? 0} 张图片
             </div>
           </div>

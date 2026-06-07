@@ -20,9 +20,9 @@ function Field({
 }) {
   return (
     <Label className="block space-y-2">
-      <span className="text-sm font-medium text-zinc-700">{label}</span>
+      <span className="text-sm font-medium text-muted-foreground">{label}</span>
       {children}
-      <p className="text-sm leading-6 text-zinc-500">{hint}</p>
+      <p className="text-sm leading-6 text-muted-foreground">{hint}</p>
     </Label>
   );
 }
@@ -53,15 +53,15 @@ export function TaskSDSOptions({
   resizeModeRegistration: SDSFieldRegistration;
 }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+    <section className="space-y-4 rounded-2xl border border-border bg-muted px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium text-zinc-900">SDS 同步设置</h2>
-          <p className="text-sm leading-6 text-zinc-500">
+          <h2 className="text-sm font-medium text-foreground">SDS 同步设置</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
             如果你需要把设计素材回写到 SDS，可以在这里补充对应的商品和图层信息。
           </p>
         </div>
-        <Label className="inline-flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
+        <Label className="inline-flex items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground">
           <Checkbox
             checked={enabled}
             onChange={(event) => onEnabledChange(event.target.checked)}
@@ -153,7 +153,7 @@ export function TaskSDSOptions({
             />
           </Field>
 
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900 md:col-span-2">
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100 md:col-span-2">
             Verified SDS test values: variant <span className="font-mono">89764</span>,
             parent product <span className="font-mono">89763</span>, prototype group{" "}
             <span className="font-mono">14555</span>, layer{" "}

@@ -65,10 +65,10 @@ function StatusPill({
       className={`rounded-xl border px-3 py-3 ${
         tone === "positive"
           ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-          : "border-zinc-200 bg-white text-zinc-900"
+          : "border-border bg-background text-foreground"
       }`}
     >
-      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </span>
       <span className="mt-1 block text-sm font-semibold sm:mt-0 sm:inline sm:pl-2">{value}</span>
@@ -86,12 +86,12 @@ function ChecklistStat({
   helper: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+    <div className="rounded-xl border border-border bg-muted px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 text-base font-semibold text-zinc-950">{value}</div>
-      <div className="mt-1 text-xs leading-5 text-zinc-500">{helper}</div>
+      <div className="mt-1 text-base font-semibold text-foreground">{value}</div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">{helper}</div>
     </div>
   );
 }
@@ -258,22 +258,22 @@ export function TaskCreateForm({
     <Card
       className={
         variant === "sds"
-          ? "w-full rounded-lg border-zinc-200 bg-white p-5 shadow-sm"
-          : "w-full rounded-[1.5rem] border-zinc-200 bg-white shadow-sm"
+          ? "w-full rounded-lg border-border bg-card p-5 shadow-sm"
+          : "w-full rounded-[1.5rem] border-border bg-card shadow-sm"
       }
     >
       <form
         className={variant === "sds" ? "space-y-6" : "space-y-0"}
         onSubmit={handleSubmit(handleCreateTask)}
       >
-        <div className="border-b border-zinc-200 bg-zinc-50/60 px-6 py-5 sm:px-8">
+        <div className="border-b border-border bg-muted/60 px-6 py-5 sm:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="space-y-2">
               <p
                 className={
                   variant === "sds"
                     ? "text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700"
-                    : "text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500"
+                    : "text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground"
                 }
               >
                 {pageCopy.eyebrow}
@@ -281,13 +281,13 @@ export function TaskCreateForm({
               <h1
                 className={
                   variant === "sds"
-                    ? "text-xl font-semibold tracking-tight text-zinc-950"
-                    : "text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl"
+                    ? "text-xl font-semibold tracking-tight text-foreground"
+                    : "text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
                 }
               >
                 {pageCopy.title}
               </h1>
-              <p className="max-w-2xl text-sm leading-6 text-zinc-600">
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                 {pageCopy.description}
               </p>
             </div>
@@ -309,7 +309,7 @@ export function TaskCreateForm({
 
         <div className="grid gap-6 px-6 py-6 sm:px-8 2xl:grid-cols-[minmax(0,1.35fr)_360px]">
           <div className="space-y-6">
-            <section className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <section className="space-y-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
               <TaskSourceTabs
                 activeTab={activeSourceTab}
                 embedded
@@ -321,8 +321,8 @@ export function TaskCreateForm({
               <Separator />
               <div>
                 <div className="mb-4">
-                  <h2 className="text-base font-semibold text-zinc-950">来源信息</h2>
-                  <p className="mt-1 text-sm text-zinc-500">
+                  <h2 className="text-base font-semibold text-foreground">来源信息</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
                     先把最核心的商品来源补齐，再决定平台和高级参数。
                   </p>
                 </div>
@@ -408,14 +408,14 @@ export function TaskCreateForm({
           </div>
 
           <aside className="xl:sticky xl:top-6 xl:self-start">
-            <section className="space-y-5 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                   <Store className="h-4 w-4" />
                 </span>
                 <div>
-                  <h2 className="text-base font-semibold text-zinc-950">发布目标</h2>
-                  <p className="text-sm text-zinc-500">先确定输出平台，再补充店铺信息。</p>
+                  <h2 className="text-base font-semibold text-foreground">发布目标</h2>
+                  <p className="text-sm text-muted-foreground">先确定输出平台，再补充店铺信息。</p>
                 </div>
               </div>
 
@@ -435,12 +435,12 @@ export function TaskCreateForm({
               <Separator />
               <div>
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                     <Sparkles className="h-4 w-4" />
                   </span>
                   <div>
-                    <h2 className="text-base font-semibold text-zinc-950">创建检查</h2>
-                    <p className="text-sm text-zinc-500">把常见缺口放在提交前一次看完。</p>
+                    <h2 className="text-base font-semibold text-foreground">创建检查</h2>
+                    <p className="text-sm text-muted-foreground">把常见缺口放在提交前一次看完。</p>
                   </div>
                 </div>
 
@@ -473,7 +473,7 @@ export function TaskCreateForm({
                 </div>
 
                 {selectedPlatforms?.includes("shein") ? (
-                  <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                  <div className="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
                     SHEIN 已启用时，如有多个店铺共用环境，建议补充店铺 ID。
                   </div>
                 ) : null}
@@ -486,8 +486,8 @@ export function TaskCreateForm({
                     <CheckCircle2 className="h-4 w-4" />
                   </span>
                   <div>
-                    <h2 className="text-base font-semibold text-zinc-950">创建动作</h2>
-                    <p className="text-sm text-zinc-500">确认后直接进入任务状态页。</p>
+                    <h2 className="text-base font-semibold text-foreground">创建动作</h2>
+                    <p className="text-sm text-muted-foreground">确认后直接进入任务状态页。</p>
                   </div>
                 </div>
                 <TaskCreateFormActions

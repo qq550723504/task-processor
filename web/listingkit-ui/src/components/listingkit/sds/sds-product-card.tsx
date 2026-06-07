@@ -6,7 +6,7 @@ import type { SDSProductSummary } from "@/lib/types/sds";
 function ProductThumb({ imageUrl }: { imageUrl?: string }) {
   if (!imageUrl) {
     return (
-      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
+      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-muted text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         SDS
       </div>
     );
@@ -14,7 +14,7 @@ function ProductThumb({ imageUrl }: { imageUrl?: string }) {
 
   return (
     <div
-      className="h-16 w-16 rounded-md bg-zinc-100 bg-cover bg-center"
+      className="h-16 w-16 rounded-md bg-muted bg-cover bg-center"
       style={{ backgroundImage: `url(${imageUrl})` }}
     />
   );
@@ -38,7 +38,7 @@ export function SDSProductCard({
       className={`rounded-lg border px-4 py-4 shadow-sm transition ${
         isSelected
           ? "border-emerald-700 bg-emerald-950 text-white"
-          : "border-zinc-200 bg-white text-zinc-900 hover:-translate-y-0.5 hover:border-zinc-400 hover:shadow-md"
+          : "border-border bg-card text-foreground hover:-translate-y-0.5 hover:border-foreground/30 hover:shadow-md"
       }`}
     >
       <div className="flex items-start gap-4">
@@ -66,7 +66,7 @@ export function SDSProductCard({
             {product.issuingBayArea?.name ? (
               <span
                 className={`rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                  isSelected ? "bg-white/12 text-white" : "bg-zinc-100 text-zinc-700"
+                  isSelected ? "bg-white/12 text-white" : "bg-muted text-muted-foreground"
                 }`}
               >
                 {product.issuingBayArea.name}
@@ -74,14 +74,16 @@ export function SDSProductCard({
             ) : null}
           </div>
           <div className="line-clamp-2 text-sm font-semibold leading-6">{product.name}</div>
-          <div className={isSelected ? "text-emerald-100" : "text-zinc-500"}>
+          <div className={isSelected ? "text-emerald-100" : "text-muted-foreground"}>
             SKU {product.sku ?? "-"} · {formatSDSPrice(product.currentPrice ?? product.min_price)}
           </div>
-          <div className={isSelected ? "text-emerald-100" : "text-zinc-500"}>
+          <div className={isSelected ? "text-emerald-100" : "text-muted-foreground"}>
             重量 {formatWeight(product)} · 生产周期 {formatProductionCycle(product)}
           </div>
           {product.categories?.length ? (
-            <div className={`line-clamp-2 text-sm ${isSelected ? "text-emerald-100" : "text-zinc-500"}`}>
+            <div
+              className={`line-clamp-2 text-sm ${isSelected ? "text-emerald-100" : "text-muted-foreground"}`}
+            >
               {product.categories.map((category) => category.name).join(" / ")}
             </div>
           ) : null}
@@ -105,7 +107,7 @@ export function SDSProductCard({
             </Button>
           </div>
           {!isVariantSelected ? (
-            <div className={isSelected ? "text-xs text-emerald-100" : "text-xs text-zinc-400"}>
+            <div className={isSelected ? "text-xs text-emerald-100" : "text-xs text-muted-foreground"}>
               打开尺码/颜色选择器，并锁定具体 SDS 子 SKU。
             </div>
           ) : null}

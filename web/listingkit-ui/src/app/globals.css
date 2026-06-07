@@ -33,6 +33,40 @@
   --radius: 0.5rem;
   --font-geist-sans: "Aptos", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-geist-mono: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", "Consolas", monospace;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --card: #18181b;
+  --card-foreground: #f4f4f5;
+  --popover: #18181b;
+  --popover-foreground: #f4f4f5;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #18181b;
+  --secondary-foreground: #f4f4f5;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #f4f4f5;
+  --destructive: #fb7185;
+  --destructive-foreground: #fff1f2;
+  --success: #052e16;
+  --success-foreground: #86efac;
+  --warning: #451a03;
+  --warning-foreground: #fcd34d;
+  --border: #27272a;
+  --input: #3f3f46;
+  --ring: #71717a;
+  --sidebar: #111827;
+  --sidebar-foreground: #e4e4e7;
+  --sidebar-accent: #1f2937;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #27272a;
+  --sidebar-ring: #52525b;
+  color-scheme: dark;
 }
 
 @theme inline {

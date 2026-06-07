@@ -29,14 +29,14 @@ export function TaskSourceTabs({
       className={
         embedded
           ? "space-y-4"
-          : "space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4"
+          : "space-y-3 rounded-2xl border border-border bg-muted/70 p-4"
       }
     >
       <div className="space-y-1">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           任务来源
         </h2>
-        <p className="text-sm leading-6 text-zinc-600">{sourceCopy(activeTab)}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{sourceCopy(activeTab)}</p>
       </div>
 
       <div
@@ -58,7 +58,7 @@ export function TaskSourceTabs({
               variant={selected ? "default" : "outline"}
               className={cn(
                 "h-auto min-h-[76px] justify-start gap-3 rounded-xl px-4 py-3 text-left",
-                selected ? "text-white" : "text-zinc-800",
+                selected ? "text-white" : "text-foreground",
               )}
               key={tab.key}
               onClick={() => onTabChange(tab.key as TaskSourceTab)}
@@ -68,7 +68,7 @@ export function TaskSourceTabs({
               <span
                 className={cn(
                   "mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg",
-                  selected ? "bg-white/12 text-white" : "bg-zinc-100 text-zinc-700",
+                  selected ? "bg-white/12 text-white" : "bg-muted text-muted-foreground",
                 )}
                 aria-hidden="true"
               >
@@ -81,7 +81,7 @@ export function TaskSourceTabs({
                   aria-hidden="true"
                   className={cn(
                     "mt-1 block text-xs leading-5",
-                    selected ? "text-zinc-300" : "text-zinc-500",
+                    selected ? "text-zinc-300" : "text-muted-foreground",
                   )}
                 >
                   {tab.description}

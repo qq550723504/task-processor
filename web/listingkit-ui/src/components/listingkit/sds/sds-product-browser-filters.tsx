@@ -76,7 +76,7 @@ export function SDSProductBrowserFilters({
   return (
     <>
       <form
-        className="grid gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 shadow-sm md:grid-cols-2 xl:grid-cols-6"
+        className="grid gap-3 rounded-lg border border-border bg-muted p-3 shadow-sm md:grid-cols-2 xl:grid-cols-6"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault();
           const formData = new FormData(event.currentTarget);

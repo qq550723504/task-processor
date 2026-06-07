@@ -10,17 +10,17 @@ export function SheinStudioTasksStep({
   return (
     <div
       id="shein-created-tasks"
-      className="scroll-mt-6 rounded-[1.75rem] border border-zinc-200/80 bg-white p-5 shadow-sm"
+      className="scroll-mt-6 rounded-[1.75rem] border border-border/80 bg-card p-5 shadow-sm"
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
             第 4 步 · SHEIN 任务
           </p>
-          <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
+          <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-foreground">
             审核已生成的工作区
           </h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600">
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
             打开每个任务的工作区，完成最终图片、价格、属性和提交确认。
           </p>
         </div>

@@ -27,17 +27,17 @@ const WORKFLOW_STEPS = [
 
 export function ListingKitHomeHero() {
   return (
-    <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
+    <section className="overflow-hidden rounded-lg border border-border bg-card p-5 shadow-sm sm:p-8">
       <div className="grid gap-7 xl:grid-cols-[0.92fr_1.08fr] xl:items-center">
         <div className="space-y-5">
           <p className="text-[11px] font-semibold uppercase text-teal-700">
             ListingKit
           </p>
           <div className="space-y-3">
-            <h1 className="max-w-3xl text-3xl font-semibold text-zinc-950 sm:text-5xl">
+            <h1 className="max-w-3xl text-3xl font-semibold text-foreground sm:text-5xl">
               从商品源信息生成多平台上架资料
             </h1>
-            <p className="max-w-2xl text-sm leading-7 text-zinc-600 sm:text-base">
+            <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
               ListingKit 的主流程是先把 1688、图片、文案或 SDS 商品资料整理成
               标准商品，再按平台模板生成可审核、可提交的上架资料。
             </p>
@@ -46,7 +46,7 @@ export function ListingKitHomeHero() {
             {SOURCE_CHIPS.map((chip) => (
               <span
                 key={chip}
-                className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700"
+                className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
               >
                 {chip}
               </span>
@@ -55,13 +55,13 @@ export function ListingKitHomeHero() {
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/listing-kits/new"
-              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-zinc-800 sm:w-auto"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:opacity-90 sm:w-auto"
             >
               开始生成商品资料
             </Link>
             <Link
               href="/listing-kits/canonical-products"
-              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-white px-5 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100 sm:w-auto"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-background px-5 text-sm font-medium text-foreground ring-1 ring-border transition hover:bg-muted sm:w-auto"
             >
               查看标准商品
             </Link>
@@ -72,12 +72,12 @@ export function ListingKitHomeHero() {
           {WORKFLOW_STEPS.map((item) => (
             <div
               key={item.step}
-              className="rounded-lg border border-zinc-200 bg-zinc-50 p-4"
+              className="rounded-lg border border-border bg-muted p-4"
             >
               <p className="text-xs font-semibold text-teal-700">{item.step}</p>
               <div className="mt-3 space-y-1.5">
-                <p className="text-base font-semibold text-zinc-950">{item.title}</p>
-                <p className="text-sm leading-6 text-zinc-600">{item.description}</p>
+                <p className="text-base font-semibold text-foreground">{item.title}</p>
+                <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
               </div>
             </div>
           ))}

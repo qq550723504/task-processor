@@ -9,7 +9,7 @@ export function SheinStudioBatchPageShell({
   batchId: string;
 }) {
   return (
-    <section className="flex flex-1 flex-col bg-zinc-50">
+    <section className="flex flex-1 flex-col bg-background">
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-6 lg:px-6">
         <div className="flex w-full flex-col gap-3">
           <SdsRouteHeader

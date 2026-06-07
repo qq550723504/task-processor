@@ -49,13 +49,13 @@ export function TaskSceneSettingsSection({
       className={
         embedded
           ? "space-y-4"
-          : "space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4"
+          : "space-y-3 rounded-2xl border border-border bg-muted px-4 py-4"
       }
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium text-zinc-900">场景生成设置</h2>
-          <p className="text-sm leading-6 text-zinc-500">
+          <h2 className="text-sm font-medium text-foreground">场景生成设置</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
             如果你希望更精细地控制画面风格，可以在这里补充场景偏好。
           </p>
         </div>
@@ -100,13 +100,13 @@ export function TaskSceneSettingsSection({
         ) : null}
       </div>
       {sceneSummary ? (
-        <p className="text-sm leading-6 text-zinc-500">{sceneSummary}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{sceneSummary}</p>
       ) : null}
 
       {sceneFieldsVisible ? (
         <div className="grid gap-4 md:grid-cols-2">
           <Label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">场景类目</span>
+            <span className="text-sm font-medium text-muted-foreground">场景类目</span>
             <Select
               aria-label="场景类目"
               className="rounded-2xl px-4 py-3"
@@ -121,7 +121,7 @@ export function TaskSceneSettingsSection({
           </Label>
 
           <Label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">场景风格</span>
+            <span className="text-sm font-medium text-muted-foreground">场景风格</span>
             <Select
               aria-label="场景风格"
               className="rounded-2xl px-4 py-3"
@@ -136,7 +136,7 @@ export function TaskSceneSettingsSection({
           </Label>
 
           <Label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">背景色调</span>
+            <span className="text-sm font-medium text-muted-foreground">背景色调</span>
             <Select
               aria-label="背景色调"
               className="rounded-2xl px-4 py-3"
@@ -151,7 +151,7 @@ export function TaskSceneSettingsSection({
           </Label>
 
           <Label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">构图方式</span>
+            <span className="text-sm font-medium text-muted-foreground">构图方式</span>
             <Select
               aria-label="构图方式"
               className="rounded-2xl px-4 py-3"
@@ -166,7 +166,7 @@ export function TaskSceneSettingsSection({
           </Label>
 
           <Label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">道具强度</span>
+            <span className="text-sm font-medium text-muted-foreground">道具强度</span>
             <Select
               aria-label="道具强度"
               className="rounded-2xl px-4 py-3"
@@ -181,7 +181,7 @@ export function TaskSceneSettingsSection({
           </Label>
 
           <Label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">风格倾向</span>
+            <span className="text-sm font-medium text-muted-foreground">风格倾向</span>
             <Select
               aria-label="风格倾向"
               className="rounded-2xl px-4 py-3"
@@ -196,7 +196,7 @@ export function TaskSceneSettingsSection({
           </Label>
 
           <Label className="block space-y-2 md:col-span-2">
-            <span className="text-sm font-medium text-zinc-700">自定义场景说明</span>
+            <span className="text-sm font-medium text-muted-foreground">自定义场景说明</span>
             <Textarea
               aria-label="自定义场景说明"
               className="min-h-28 rounded-2xl px-4 py-3"

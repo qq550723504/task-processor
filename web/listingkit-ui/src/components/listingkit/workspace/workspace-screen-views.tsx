@@ -35,15 +35,15 @@ function WorkspaceStageSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="rounded-[1.75rem] border border-border bg-card p-5 shadow-sm">
       <div className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-zinc-500">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-muted-foreground">
           {eyebrow}
         </p>
-        <h3 className="text-xl font-semibold tracking-tight text-zinc-950">
+        <h3 className="text-xl font-semibold tracking-tight text-foreground">
           {title}
         </h3>
-        <p className="text-sm leading-6 text-zinc-600">{description}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
       <div className="mt-4 space-y-4">{children}</div>
     </section>
@@ -66,22 +66,22 @@ export function SheinFinalReviewWorkspaceView({
   return (
     <section className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       <main className="min-w-0 space-y-4">
-        <div className="rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm">
+        <div className="rounded-[1.75rem] border border-border bg-card p-5 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-zinc-500">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-muted-foreground">
                 最终确认模式
               </p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
                 确认图片、价格和 SKU 后再提交
               </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                 这里是客户提交前的主视图。只保留最终会影响 SHEIN
                 提交的数据；如果有阻断项，点击“去处理”回到对应修复卡片。
               </p>
             </div>
             <Link
-              className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100 sm:w-auto"
+              className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-background px-4 text-sm font-medium text-foreground ring-1 ring-border transition hover:bg-muted sm:w-auto"
               href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
             >
               打开完整审核
@@ -169,7 +169,7 @@ export function WorkspaceReviewView({
             {!previewSuggestionProps.suggestion &&
             (reviewSectionTabsProps.sections?.length ?? 0) <= 1 &&
             selectedPlatform !== "shein" ? (
-              <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 px-4 py-3 text-sm leading-6 text-zinc-600">
+              <div className="rounded-2xl border border-dashed border-border bg-muted/70 px-4 py-3 text-sm leading-6 text-muted-foreground">
                 当前没有额外的审核阻断，可以直接继续检查预览和提交准备。
               </div>
             ) : null}
@@ -202,21 +202,21 @@ export function WorkspaceReviewView({
           >
             <details
               id="shein-general-final-review-details"
-              className="rounded-[1.5rem] border border-zinc-200 bg-white p-4 shadow-sm"
+              className="rounded-[1.5rem] border border-border bg-background p-4 shadow-sm"
             >
               <summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     最终确认草稿
                   </p>
-                  <h4 className="mt-1 text-lg font-semibold text-zinc-950">
+                  <h4 className="mt-1 text-lg font-semibold text-foreground">
                     提交前价格、SKU 和最终图片
                   </h4>
-                  <p className="mt-1 text-sm leading-6 text-zinc-600">
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
                     审核页里默认收起；只有处理价格、库存或最终提交细节时再展开。
                   </p>
                 </div>
-                <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-600">
+                <span className="rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
                   点击展开
                 </span>
               </summary>
@@ -236,18 +236,18 @@ export function WorkspaceReviewView({
 
       <aside className="min-w-0 space-y-4 2xl:sticky 2xl:top-6 2xl:self-start">
         <ReviewToolbar {...reviewToolbarProps} />
-        <details className="rounded-[1.25rem] border border-zinc-200 bg-white p-4 shadow-sm">
+        <details className="rounded-[1.25rem] border border-border bg-background p-4 shadow-sm">
           <summary className="cursor-pointer list-none">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   更多诊断
                 </p>
-                <p className="mt-1 text-sm leading-6 text-zinc-600">
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
                   查看提交时间线、场景预设和恢复建议。
                 </p>
               </div>
-              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-600">
+              <span className="rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
                 点击展开
               </span>
             </div>

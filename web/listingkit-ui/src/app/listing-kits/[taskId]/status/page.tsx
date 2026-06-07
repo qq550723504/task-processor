@@ -35,7 +35,7 @@ export default function ListingKitTaskStatusPage({
               刷新当前页面
             </Button>
             <a
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-background px-4 text-sm font-medium text-foreground ring-1 ring-border transition hover:bg-muted"
               href="/listing-kits"
             >
               返回任务列表
@@ -57,7 +57,7 @@ export default function ListingKitTaskStatusPage({
               重新加载
             </Button>
             <a
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-background px-4 text-sm font-medium text-foreground ring-1 ring-border transition hover:bg-muted"
               href="/listing-kits"
             >
               返回任务列表

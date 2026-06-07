@@ -22,11 +22,11 @@ export function TaskPlatformFieldset({
 }) {
   return (
     <fieldset className="space-y-3">
-      <legend className="text-sm font-medium text-zinc-700">目标平台</legend>
+      <legend className="text-sm font-medium text-muted-foreground">目标平台</legend>
       <div className="grid gap-2">
         {platformOptions.map((platform) => (
           <Label
-            className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 transition hover:border-zinc-300"
+            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground transition hover:border-ring"
             key={platform.value}
           >
             <span className="flex items-center gap-3">
@@ -38,13 +38,13 @@ export function TaskPlatformFieldset({
               />
               <span className="font-medium">{platform.label}</span>
             </span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted-foreground">
               {selectedPlatforms?.includes(platform.value) ? "已选择" : "可启用"}
             </span>
           </Label>
         ))}
       </div>
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-muted-foreground">
         已选择 {selectedPlatforms?.length ?? 0} 个平台
       </p>
       {errors.platforms ? (
@@ -90,7 +90,7 @@ export function TaskSheinStoreField({
 
   return (
     <Label className="block space-y-2">
-      <span className="text-sm font-medium text-zinc-700">SHEIN 店铺</span>
+      <span className="text-sm font-medium text-muted-foreground">SHEIN 店铺</span>
       <Select
         aria-label="SHEIN 店铺"
         className="rounded-xl px-4 py-3"
@@ -106,11 +106,11 @@ export function TaskSheinStoreField({
           </option>
         ))}
       </Select>
-      <p className="text-sm leading-6 text-zinc-500">
+      <p className="text-sm leading-6 text-muted-foreground">
         不选时交给后端路由自动选店；只在需要固定到某个店铺时手工指定。
       </p>
       {routing.data?.selection_strategy ? (
-        <p className="text-sm leading-6 text-zinc-500">
+        <p className="text-sm leading-6 text-muted-foreground">
           当前默认策略：
           {routeStrategyLabel(routing.data.selection_strategy)}
           {recommendedReason ? `。${recommendedReason}` : ""}
@@ -206,11 +206,11 @@ export function TaskAdvancedSettingsToggle({
   variant?: "default" | "sds";
 }) {
   return (
-    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-4">
+    <section className="space-y-3 rounded-2xl border border-border bg-muted/70 px-4 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium text-zinc-900">高级设置</h2>
-          <p className="text-sm leading-6 text-zinc-500">
+          <h2 className="text-sm font-medium text-foreground">高级设置</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
             {variant === "sds"
               ? "先填写基础信息；SDS 和场景等高级配置可以稍后再补充。"
               : "先填写基础信息；场景等高级配置可以稍后再补充。"}

@@ -59,8 +59,8 @@ export function SheinStudioStepTabs({
     <nav
       className={
         compact
-          ? "grid gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm sm:grid-cols-2 xl:grid-cols-4"
-          : "grid gap-3 rounded-[1.75rem] border border-white/70 bg-white/82 p-3 shadow-sm backdrop-blur sm:grid-cols-2 xl:grid-cols-4"
+          ? "grid gap-2 rounded-lg border border-border bg-card p-2 shadow-sm sm:grid-cols-2 xl:grid-cols-4"
+          : "grid gap-3 rounded-[1.75rem] border border-border/80 bg-background/82 p-3 shadow-sm backdrop-blur sm:grid-cols-2 xl:grid-cols-4"
       }
     >
       {steps.map((step) => {
@@ -77,7 +77,7 @@ export function SheinStudioStepTabs({
               compact
                 ? "rounded-lg px-3 py-2"
                 : "rounded-[1.25rem] px-4 py-3",
-              active ? "text-white shadow-sm" : "text-zinc-900",
+              active ? "text-white shadow-sm" : "text-foreground",
               locked ? "pointer-events-none opacity-45" : "",
             ].join(" ")}
             key={step.key}
@@ -93,7 +93,7 @@ export function SheinStudioStepTabs({
             <div
               className={[
                 compact ? "mt-0.5 text-xs leading-5" : "mt-1 text-xs leading-5",
-                active ? "text-zinc-300" : "text-zinc-500",
+                active ? "text-zinc-300" : "text-muted-foreground",
               ].join(" ")}
             >
               {locked ? "请先选择商品。" : step.description}

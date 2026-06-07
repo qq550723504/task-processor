@@ -48,11 +48,11 @@ export function TaskSourceSummary({
   return (
     <Card className="p-6">
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
           任务来源
         </p>
-        <h2 className="text-lg font-semibold text-zinc-950">{source.title}</h2>
-        <p className="text-sm leading-6 text-zinc-600">{source.summary}</p>
+        <h2 className="text-lg font-semibold text-foreground">{source.title}</h2>
+        <p className="text-sm leading-6 text-muted-foreground">{source.summary}</p>
       </div>
     </Card>
   );

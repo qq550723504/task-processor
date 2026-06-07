@@ -39,14 +39,14 @@ export function ListingKitHomeQuickTools() {
           aria-label={tool.title}
           className="group block"
         >
-          <Card className="h-full rounded-lg border-zinc-200 bg-white p-5 shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md">
+          <Card className="h-full rounded-lg border-border bg-card p-5 shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md">
             <div className="space-y-3">
-              <p className="text-[11px] font-semibold uppercase text-zinc-500">
+              <p className="text-[11px] font-semibold uppercase text-muted-foreground">
                 {tool.eyebrow}
               </p>
               <div className="space-y-2">
-                <p className="text-lg font-semibold text-zinc-950">{tool.title}</p>
-                <p className="text-sm leading-6 text-zinc-600">
+                <p className="text-lg font-semibold text-foreground">{tool.title}</p>
+                <p className="text-sm leading-6 text-muted-foreground">
                   {tool.description}
                 </p>
               </div>

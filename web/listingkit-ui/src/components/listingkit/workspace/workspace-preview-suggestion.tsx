@@ -23,16 +23,16 @@ export function WorkspacePreviewSuggestionCard({
   }
 
   return (
-    <Card className="border-amber-200 bg-amber-50/70 p-4">
+    <Card className="border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/30">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
             预览建议
           </p>
-          <h3 className="text-sm font-semibold text-zinc-950">
+          <h3 className="text-sm font-semibold text-foreground">
             {suggestion.title}
           </h3>
-          <p className="text-sm leading-6 text-zinc-700">{suggestion.summary}</p>
+          <p className="text-sm leading-6 text-foreground">{suggestion.summary}</p>
         </div>
         <Button variant="secondary" onClick={() => onSelect(suggestion.slot)}>
           {suggestion.ctaLabel}

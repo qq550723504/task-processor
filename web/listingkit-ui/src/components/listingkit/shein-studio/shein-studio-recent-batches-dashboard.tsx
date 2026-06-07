@@ -1079,11 +1079,11 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
       ) : null}
 
       {summaries.length > 0 ? (
-        <div className="space-y-3 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 px-4 py-4">
+        <div className="space-y-3 rounded-3xl border border-border/80 bg-muted/80 px-4 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-medium text-zinc-900">按状态筛选</p>
-              <p className="mt-1 text-xs text-zinc-500">
+              <p className="text-xs font-medium text-foreground">按状态筛选</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 当前显示 {filteredSummaries.length} / {summaries.length} 个批次
               </p>
             </div>
@@ -1109,7 +1109,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
             </div>
           </div>
           {riskCounts.length > 0 ? (
-            <div className="flex flex-wrap gap-2 border-t border-zinc-200/80 pt-3">
+            <div className="flex flex-wrap gap-2 border-t border-border/80 pt-3">
               {riskCounts.map((item) => (
                 <Button
                   key={item.label}
@@ -1142,7 +1142,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
               ))}
             </div>
           ) : null}
-          <div className="flex flex-wrap gap-2 border-t border-zinc-200/80 pt-3">
+          <div className="flex flex-wrap gap-2 border-t border-border/80 pt-3">
             {resultFilterOptions.map((option) => (
               <Button
                 key={option.value}
@@ -1169,7 +1169,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
           {statusFilter === "risk" &&
           activeRiskLabel &&
           activeRiskReasonCounts.length > 0 ? (
-            <div className="flex flex-wrap gap-2 border-t border-zinc-200/80 pt-3">
+            <div className="flex flex-wrap gap-2 border-t border-border/80 pt-3">
               {activeRiskReasonCounts.map((item) => (
                 <Button
                   key={item.reasonCode}
@@ -1218,7 +1218,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
             </div>
           ) : null}
           {restoredResultFilterNote ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-700">
+            <div className="rounded-2xl border border-border bg-background px-3 py-3 text-sm text-foreground">
               {restoredResultFilterNote}
             </div>
           ) : null}
@@ -1226,7 +1226,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
       ) : null}
 
       {summaries.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-8 text-sm text-zinc-600">
+        <div className="rounded-3xl border border-dashed border-border bg-muted px-5 py-8 text-sm text-muted-foreground">
           <p>还没有可继续的最近批次，建议先新建一个批次再开始选品。</p>
           <div className="mt-4">
             <Button onClick={onCreateBatch} type="button">
@@ -1235,7 +1235,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
           </div>
         </div>
       ) : filteredSummaries.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-8 text-sm text-zinc-600">
+        <div className="rounded-3xl border border-dashed border-border bg-muted px-5 py-8 text-sm text-muted-foreground">
           当前筛选下还没有匹配的批次。可以切回其他状态继续查看。
         </div>
       ) : (
@@ -1256,12 +1256,12 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                 className={`rounded-3xl border px-4 py-4 transition ${
                   isSelected
                     ? "border-emerald-400 bg-emerald-50/60"
-                    : "border-zinc-200 bg-zinc-50"
+                    : "border-border bg-muted"
                 }`}
                 key={summaryKey}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <label className="inline-flex items-center gap-2 text-xs text-zinc-500">
+                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <input
                       aria-label={`select ${summary.id}`}
                       checked={isSelected}
@@ -1306,11 +1306,11 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
 
                 {isEditing ? (
                   <div className="mt-3 space-y-2">
-                    <label className="block text-sm text-zinc-700">
+                    <label className="block text-sm text-muted-foreground">
                       <span className="mb-1 block">批次名称</span>
                       <input
                         aria-label="批次名称"
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
                         onChange={(event) => setDraftName(event.target.value)}
                         value={draftName}
                       />
@@ -1349,14 +1349,14 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                     >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-zinc-950">
+                        <p className="truncate text-sm font-semibold text-foreground">
                           {summary.title}
                         </p>
-                        <p className="mt-1 text-xs text-zinc-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {summary.isRecoverableDraft ? "未保存草稿" : "已保存批次"}
                         </p>
                       </div>
-                      <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-white">
+                      <span className="rounded-full bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground">
                         {summary.productCount} 款商品
                       </span>
                     </div>
@@ -1376,14 +1376,14 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                         className={`rounded-full px-2.5 py-1 ${
                           hasTasks
                             ? "bg-sky-100 text-sky-700"
-                            : "bg-zinc-200 text-zinc-700"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {hasTasks
                           ? `已建 ${summary.createdTaskCount} 个任务`
                           : "待创建任务"}
                       </span>
-                      <span className="rounded-full bg-zinc-200 px-2.5 py-1 text-zinc-700">
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
                         更新于 {formatRecentBatchTimestamp(summary.updatedAt)}
                       </span>
                     </div>
@@ -1401,7 +1401,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                           ))}
                         </div>
                         {summary.alerts.some((alert) => alert.detail?.trim()) ? (
-                          <div className="mt-3 space-y-1 text-xs text-zinc-600">
+                          <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                             {summary.alerts.map((alert, index) =>
                               alert.detail?.trim() ? (
                                 <p key={`${summaryKey}:alert-detail:${index}`}>
@@ -1434,33 +1434,33 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                         ))}
                       </div>
                     ) : null}
-                    <dl className="mt-4 space-y-2 text-sm text-zinc-700">
+                    <dl className="mt-4 space-y-2 text-sm text-foreground">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                        <dt className="text-zinc-500">商品</dt>
+                        <dt className="text-muted-foreground">商品</dt>
                         <dd className="break-words text-left sm:text-right">{summary.primaryProductName}</dd>
                       </div>
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                        <dt className="text-zinc-500">店铺分发</dt>
+                        <dt className="text-muted-foreground">店铺分发</dt>
                         <dd className="break-words text-left sm:text-right">{summary.storeSummary}</dd>
                       </div>
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                        <dt className="text-zinc-500">设计/任务</dt>
+                        <dt className="text-muted-foreground">设计/任务</dt>
                         <dd className="text-left sm:text-right">
                           {summary.designCount} 图 / {summary.createdTaskCount} 任务
                         </dd>
                       </div>
                     </dl>
-                    <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/70 px-3 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                    <div className="mt-4 rounded-2xl border border-border/80 bg-background/70 px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                         最近提示词
                       </p>
-                      <p className="mt-2 line-clamp-2 text-sm text-zinc-600">
+                      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                         {summary.promptPreview}
                       </p>
                     </div>
                     {summary.recentResults?.length ? (
-                      <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/70 px-3 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                      <div className="mt-4 rounded-2xl border border-border/80 bg-background/70 px-3 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                           最近处理结果
                         </p>
                         <div className="mt-2 space-y-2">

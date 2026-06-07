@@ -136,18 +136,18 @@ export function TaskStatusPanel({
   const nextRetryAt = formatTaskDate(retryableBlock?.next_retry_at);
 
   return (
-    <Card className="border-zinc-200 bg-white/90 p-5">
+    <Card className="border-border bg-card/95 p-5">
       <div className="space-y-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <Icon className={`mt-0.5 h-5 w-5 ${tone.iconClassName}`} />
             <div className="space-y-1">
-              <div className="text-sm font-semibold text-zinc-950">
+              <div className="text-sm font-semibold text-foreground">
                 {presentation.title}
               </div>
-              <p className="text-sm leading-6 text-zinc-600">
+              <p className="text-sm leading-6 text-muted-foreground">
                 当前状态：
-                <span className="ml-1 font-medium text-zinc-900">
+                <span className="ml-1 font-medium text-foreground">
                   {presentation.label}
                 </span>
               </p>
@@ -161,29 +161,29 @@ export function TaskStatusPanel({
         </div>
 
         {taskIdentifier || createdAt || updatedAt ? (
-          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 rounded-2xl border border-border bg-muted p-4 sm:grid-cols-2 xl:grid-cols-3">
             {taskIdentifier ? (
               <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   任务标识
                 </div>
-                <p className="break-all text-sm text-zinc-700">{taskIdentifier}</p>
+                <p className="break-all text-sm text-foreground">{taskIdentifier}</p>
               </div>
             ) : null}
             {updatedAt ? (
               <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   最近更新
                 </div>
-                <p className="text-sm text-zinc-700">{updatedAt}</p>
+                <p className="text-sm text-foreground">{updatedAt}</p>
               </div>
             ) : null}
             {createdAt ? (
               <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   已创建
                 </div>
-                <p className="text-sm text-zinc-700">{createdAt}</p>
+                <p className="text-sm text-foreground">{createdAt}</p>
               </div>
             ) : null}
           </div>
@@ -195,7 +195,7 @@ export function TaskStatusPanel({
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
                 恢复原因
               </div>
-              <p className="text-sm text-zinc-700">
+              <p className="text-sm text-foreground">
                 {retryableBlock.reason_message ?? retryableBlock.reason_code ?? "等待上游依赖恢复"}
               </p>
             </div>
@@ -204,14 +204,14 @@ export function TaskStatusPanel({
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
                   下次重试
                 </div>
-                <p className="text-sm text-zinc-700">{nextRetryAt}</p>
+                <p className="text-sm text-foreground">{nextRetryAt}</p>
               </div>
             ) : null}
             <div className="space-y-1">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
                 自动恢复
               </div>
-              <p className="text-sm text-zinc-700">
+              <p className="text-sm text-foreground">
                 {retryableBlock.auto_retry_paused
                   ? "已暂停"
                   : retryableBlock.auto_resume_enabled
@@ -238,28 +238,28 @@ export function TaskStatusPanel({
         ) : null}
 
         {storeResolution?.store_id ? (
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="rounded-2xl border border-border bg-muted p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   店铺解析
                 </div>
-                <p className="text-sm font-medium text-zinc-900">
+                <p className="text-sm font-medium text-foreground">
                   SHEIN 店铺 {storeResolution.store_id}
                   {storeResolution.site ? ` · ${storeResolution.site}` : ""}
                 </p>
                 {storeResolution.reason ? (
-                  <p className="text-sm leading-6 text-zinc-600">{storeResolution.reason}</p>
+                  <p className="text-sm leading-6 text-muted-foreground">{storeResolution.reason}</p>
                 ) : null}
               </div>
               {storeResolution.strategy ? (
-                <span className="inline-flex rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700">
+                <span className="inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
                   {routeStrategyLabel(storeResolution.strategy)}
                 </span>
               ) : null}
             </div>
             {storeResolution.matched_rule_kinds?.length ? (
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="mt-2 text-xs text-muted-foreground">
                 命中规则：
                 {storeResolution.matched_rule_kinds
                   .map(ruleLabel)
@@ -268,7 +268,7 @@ export function TaskStatusPanel({
               </p>
             ) : null}
             {storeResolution.matched_profile_id || storeResolution.resolved_at ? (
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {storeResolution.matched_profile_id ? (
                   <span>Profile #{storeResolution.matched_profile_id}</span>
                 ) : null}
@@ -281,30 +281,30 @@ export function TaskStatusPanel({
         ) : null}
 
         {task.status === "needs_review" && reviewReasons.length > 0 ? null : error ? (
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-700 whitespace-pre-wrap">
+          <div className="rounded-2xl border border-border bg-muted p-4 text-sm leading-6 text-foreground whitespace-pre-wrap">
             {error}
           </div>
         ) : null}
 
         {failedStages.length > 0 ? (
           <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               失败的流程阶段
             </div>
             <div className="space-y-2">
               {failedStages.map((stage) => (
                 <div
                   key={`${stage.kind}-${stage.task_id}-${stage.started_at}`}
-                  className="rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700"
+                  className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground"
                 >
-                  <div className="font-medium text-zinc-900">
+                  <div className="font-medium text-foreground">
                     {stage.kind ?? "workflow_stage"}
                   </div>
                   {stage.task_id ? (
-                    <div className="mt-1 text-zinc-600">{stage.task_id}</div>
+                    <div className="mt-1 text-muted-foreground">{stage.task_id}</div>
                   ) : null}
                   {stage.error ? (
-                    <div className="mt-1 text-zinc-600">{stage.error}</div>
+                    <div className="mt-1 text-muted-foreground">{stage.error}</div>
                   ) : null}
                 </div>
               ))}
@@ -312,19 +312,19 @@ export function TaskStatusPanel({
           </div>
         ) : failedChildren.length > 0 ? (
           <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               失败的子任务
             </div>
             <div className="space-y-2">
               {failedChildren.map((child) => (
                 <div
                   key={`${child.kind}-${child.task_id}`}
-                  className="rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700"
+                  className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground"
                 >
-                  <div className="font-medium text-zinc-900">
+                  <div className="font-medium text-foreground">
                     {child.kind ?? "child_task"}
                   </div>
-                  <div className="mt-1 text-zinc-600">{child.task_id}</div>
+                  <div className="mt-1 text-muted-foreground">{child.task_id}</div>
                   {child.kind === "sds_design_sync" && onRetryChildTask ? (
                     <div className="mt-3">
                       <Button

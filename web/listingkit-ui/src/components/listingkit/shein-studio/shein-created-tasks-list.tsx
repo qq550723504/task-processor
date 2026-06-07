@@ -17,24 +17,24 @@ export function SheinCreatedTasksList({
   }
 
   return (
-    <div className="rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
+    <div className="rounded-[1.25rem] border border-emerald-200/70 bg-emerald-50/90 px-4 py-4 dark:border-emerald-500/30 dark:bg-emerald-950/25">
       <div className="text-sm font-semibold text-emerald-900">
         SHEIN 资料任务已创建
       </div>
-      <p className="mt-1 text-sm leading-6 text-emerald-800">
+      <p className="mt-1 text-sm leading-6 text-emerald-800 dark:text-emerald-100/90">
         打开工作区确认 SHEIN 资料、价格和提交状态；如果需要处理生成/审核队列，可进入队列页。
       </p>
       <div className="mt-3 grid gap-3">
         {tasks.map((task) => (
           <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-white/80 px-4 py-3"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-background/90 px-4 py-3 dark:border-emerald-500/20 dark:bg-card/95"
             key={task.id}
           >
             <div className="space-y-1">
-              <div className="text-sm font-semibold text-zinc-950">
+              <div className="text-sm font-semibold text-foreground">
                 {task.title}
               </div>
-              <div className="text-xs text-zinc-500">{task.id}</div>
+              <div className="text-xs text-muted-foreground">{task.id}</div>
             </div>
             <div className="flex gap-2">
               <Button

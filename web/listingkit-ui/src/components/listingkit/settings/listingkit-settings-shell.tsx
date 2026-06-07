@@ -29,18 +29,18 @@ export function ListingKitSettingsShell({
 }: ListingKitSettingsShellProps) {
   return (
     <ListingKitPageShell backgroundClassName={backgroundClassName}>
-      <section className="rounded-[2rem] border border-white/70 bg-white/78 p-5 shadow-[0_24px_90px_rgba(39,39,42,0.10)] sm:p-6">
+      <section className="rounded-[2rem] border border-border/70 bg-card/90 p-5 shadow-xl sm:p-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-teal-700">
           {eyebrow}
         </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-zinc-950">{title}</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">{description}</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-foreground">{title}</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
         {sections.length > 0 ? (
           <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
             {sections.map((section) => (
               <a
                 key={section.id}
-                className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-ring hover:text-foreground"
                 href={`#${section.id}`}
               >
                 {section.label}
@@ -53,11 +53,11 @@ export function ListingKitSettingsShell({
       {sections.map((section) => (
         <div key={section.id} data-testid={`settings-section-${section.id}`}>
           <div className="mb-2 flex flex-col items-start gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-center">
-            <span className="text-xs font-medium text-zinc-600">{section.summary}</span>
+            <span className="text-xs font-medium text-muted-foreground">{section.summary}</span>
             {section.badges?.map((badge) => (
               <span
                 key={badge}
-                className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-500"
+                className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
               >
                 {badge}
               </span>

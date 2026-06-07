@@ -160,25 +160,25 @@ export function TaskPodExecutionCard({
   const podHistory = [...(pod?.history ?? [])].reverse();
 
   return (
-    <Card className="border-zinc-200 bg-white/90 p-5">
+    <Card className="border-border bg-card/95 p-5">
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <Icon className={`mt-0.5 h-5 w-5 ${presentation.iconClassName}`} />
             <div className="space-y-1">
-              <div className="text-sm font-semibold text-zinc-950">
+              <div className="text-sm font-semibold text-foreground">
                 {presentation.title}
               </div>
-              <p className="text-sm leading-6 text-zinc-600">
+              <p className="text-sm leading-6 text-muted-foreground">
                 {podSummary ||
                   (sync?.variant_id ? (
                     <>
-                      Variant <span className="font-mono text-zinc-900">{sync.variant_id}</span>
+                      Variant <span className="font-mono text-foreground">{sync.variant_id}</span>
                       {sync.product_id ? (
                         <>
                           {" "}
                           synced to product{" "}
-                          <span className="font-mono text-zinc-900">{sync.product_id}</span>
+                          <span className="font-mono text-foreground">{sync.product_id}</span>
                         </>
                       ) : null}
                       .
@@ -198,51 +198,51 @@ export function TaskPodExecutionCard({
 
         {sync?.variant_id ? (
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Variant
               </div>
-              <div className="mt-2 font-mono text-sm font-medium text-zinc-900">
+              <div className="mt-2 font-mono text-sm font-medium text-foreground">
                 {sync.variant_id}
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Product
               </div>
-              <div className="mt-2 font-mono text-sm font-medium text-zinc-900">
+              <div className="mt-2 font-mono text-sm font-medium text-foreground">
                 {sync.product_id ?? "Pending"}
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Prototype group
               </div>
-              <div className="mt-2 text-sm font-medium text-zinc-900">
+              <div className="mt-2 text-sm font-medium text-foreground">
                 {sync.prototype_group_id ?? "Auto"}
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Layer
               </div>
-              <div className="mt-2 break-all font-mono text-sm text-zinc-900">
+              <div className="mt-2 break-all font-mono text-sm text-foreground">
                 {sync.layer_id ?? "Auto"}
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Material ID
               </div>
-              <div className="mt-2 text-sm font-medium text-zinc-900">
+              <div className="mt-2 text-sm font-medium text-foreground">
                 {sync.material_id ?? "Pending"}
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Workflow stage
               </div>
-              <div className="mt-2 text-sm font-medium text-zinc-900">
+              <div className="mt-2 text-sm font-medium text-foreground">
                 {workflowStage?.status ??
                   task?.result?.child_tasks?.find((child) => child.kind === "sds_design_sync")
                     ?.status ??
@@ -253,28 +253,28 @@ export function TaskPodExecutionCard({
         ) : null}
 
         {podHistory.length ? (
-          <details className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
-            <summary className="cursor-pointer list-none text-sm font-semibold text-zinc-800">
+          <details className="rounded-2xl border border-border bg-muted/80 p-4">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-foreground">
               查看处理轨迹（{podHistory.length}）
             </summary>
             <div className="mt-3 space-y-3">
               {podHistory.map((event, index) => (
                 <article
-                  className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3"
+                  className="rounded-2xl border border-border/80 bg-background px-4 py-3"
                   key={`${event.kind ?? "event"}-${event.occurred_at ?? "time"}-${index}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-zinc-900">
+                    <div className="text-sm font-medium text-foreground">
                       {podAuditTitle(event)}
                     </div>
                     {event.occurred_at ? (
-                      <div className="text-xs text-zinc-500">
+                      <div className="text-xs text-muted-foreground">
                         {formatAuditTime(event.occurred_at)}
                       </div>
                     ) : null}
                   </div>
                   {podAuditDetail(event) ? (
-                    <p className="mt-1 text-xs leading-5 text-zinc-600">
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       {podAuditDetail(event)}
                     </p>
                   ) : null}
@@ -303,7 +303,7 @@ export function TaskPodExecutionCard({
             <AlertDescription>{sync.error}</AlertDescription>
           </Alert>
         ) : warning ? (
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
+          <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-foreground">
             {warning}
           </div>
         ) : null}

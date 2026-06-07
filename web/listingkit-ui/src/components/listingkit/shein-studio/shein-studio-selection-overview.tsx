@@ -18,16 +18,16 @@ export function SheinStudioSelectionOverview({
   selection?: SDSProductVariantSelection;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/90 px-4 py-4">
+    <div className="rounded-2xl border border-dashed border-border bg-muted/80 px-4 py-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="max-w-2xl">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             入口商品
           </p>
-          <p className="mt-1 text-sm font-medium text-zinc-900">
+          <p className="mt-1 text-sm font-medium text-foreground">
             {selection?.productName ?? "这款商品是创建该批次时最先带入的规格。"}
           </p>
-          <p className="mt-1 text-xs leading-6 text-zinc-500">
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
             这款商品是创建该批次时最先带入的规格，用于记录批次起点，不代表当前批次只围绕它生成。
           </p>
         </div>
@@ -45,18 +45,18 @@ export function SheinStudioSelectionOverview({
           />
         </div>
       </div>
-      {footer ? <div className="mt-4 border-t border-zinc-200/80 pt-3">{footer}</div> : null}
+      {footer ? <div className="mt-4 border-t border-border/80 pt-3">{footer}</div> : null}
     </div>
   );
 }
 
 function OverviewMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+    <div className="rounded-2xl border border-border bg-card px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-zinc-900">{value}</div>
+      <div className="mt-1 text-sm font-semibold text-foreground">{value}</div>
     </div>
   );
 }

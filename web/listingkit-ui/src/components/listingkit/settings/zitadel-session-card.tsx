@@ -67,48 +67,48 @@ export function ZitadelSessionCard() {
 
       {session.data ? (
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
-            <p className="text-xs font-medium text-zinc-500">登录名</p>
-            <p className="mt-1 break-all font-mono text-sm text-zinc-950">
+          <div className="rounded-lg border border-border bg-muted px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground">登录名</p>
+            <p className="mt-1 break-all font-mono text-sm text-foreground">
               {stringify(session.data.username)}
             </p>
           </div>
-          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
-            <p className="text-xs font-medium text-zinc-500">用户 ID</p>
-            <p className="mt-1 break-all font-mono text-sm text-zinc-950">
+          <div className="rounded-lg border border-border bg-muted px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground">用户 ID</p>
+            <p className="mt-1 break-all font-mono text-sm text-foreground">
               {stringify(session.data.userId)}
             </p>
           </div>
-          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
-            <p className="text-xs font-medium text-zinc-500">租户 ID</p>
-            <p className="mt-1 break-all font-mono text-sm text-zinc-950">
+          <div className="rounded-lg border border-border bg-muted px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground">租户 ID</p>
+            <p className="mt-1 break-all font-mono text-sm text-foreground">
               {stringify(session.data.tenantId)}
             </p>
           </div>
-          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 md:col-span-3">
-            <p className="text-xs font-medium text-zinc-500">身份类型</p>
-            <p className="mt-1 break-all font-mono text-sm text-zinc-950">
+          <div className="rounded-lg border border-border bg-muted px-3 py-2 md:col-span-3">
+            <p className="text-xs font-medium text-muted-foreground">身份类型</p>
+            <p className="mt-1 break-all font-mono text-sm text-foreground">
               {stringify(session.data.userType)}
             </p>
           </div>
-          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 md:col-span-3">
-            <p className="text-xs font-medium text-zinc-500">角色</p>
+          <div className="rounded-lg border border-border bg-muted px-3 py-2 md:col-span-3">
+            <p className="text-xs font-medium text-muted-foreground">角色</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {roles.length > 0 ? (
                 roles.map((role) => (
                   <span
                     key={role}
-                    className="rounded-full bg-white px-2.5 py-1 font-mono text-xs text-zinc-800 ring-1 ring-zinc-200"
+                    className="rounded-full bg-background px-2.5 py-1 font-mono text-xs text-foreground ring-1 ring-border"
                   >
                     {role}
                   </span>
                 ))
               ) : (
-                <span className="text-sm text-zinc-500">未返回角色</span>
+                <span className="text-sm text-muted-foreground">未返回角色</span>
               )}
             </div>
             {!hasPlatformAccess ? (
-              <p className="mt-3 text-sm text-zinc-600">
+              <p className="mt-3 text-sm text-muted-foreground">
                 需要在 ZITADEL 给当前用户配置 `platform_admin`、`listingkit_admin`
                 或 `admin` 之一，才能访问租户订阅管理和套餐管理。
               </p>
