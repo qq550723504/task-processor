@@ -28,8 +28,8 @@ func TestSharedRetryRequestSliceCloneBoundary(t *testing.T) {
 	t.Run("retry_request_taskid_clone_home_owns_only_taskid_slice_clone", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_retry_request_taskid_clone.go", "applyRetryGenerationTasksRequestTaskIDClone")
-		callNames := readNamedFunctionCallNames(t, "task_generation_retry_request_taskid_clone.go", "applyRetryGenerationTasksRequestTaskIDClone")
+		source := readNamedFunctionSource(t, "task_generation_retry_request_clone_shape.go", "applyRetryGenerationTasksRequestTaskIDClone")
+		callNames := readNamedFunctionCallNames(t, "task_generation_retry_request_clone_shape.go", "applyRetryGenerationTasksRequestTaskIDClone")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.TaskIDs = append([]string(nil), req.TaskIDs...)",
