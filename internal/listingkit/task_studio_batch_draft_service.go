@@ -84,6 +84,10 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	var session *SheinStudioSession
 	var err error
 	isCreate := strings.TrimSpace(req.ID) == ""
+	normalizedReq := req
+	if isCreate {
+		normalizedReq = sanitizeStudioBatchCreateRequest(req)
+	}
 	if strings.TrimSpace(req.ID) != "" {
 		session, err = s.repo.GetSession(ctx, req.ID)
 		if err != nil {
@@ -105,37 +109,37 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	}
 	existingBatchName := strings.TrimSpace(session.BatchName)
 
-	session.SelectionKey = buildStudioSelectionKey(req.Selection)
-	session.Status = deriveBatchStatus(req)
-	session.ProductID = req.Selection.ProductID
-	session.ParentProductID = req.Selection.ParentProductID
-	session.VariantID = req.Selection.VariantID
-	session.PrototypeGroupID = req.Selection.PrototypeGroupID
-	session.LayerID = req.Selection.LayerID
-	session.PrintableWidth = req.Selection.PrintableWidth
-	session.PrintableHeight = req.Selection.PrintableHeight
-	session.SelectedVariantIDs = append(SheinStudioInt64List(nil), req.Selection.SelectedVariantIDs...)
-	session.Selection = SheinStudioSelectionSnapshot(*req.Selection)
-	session.Prompt = req.Prompt
-	session.StyleCount = req.StyleCount
-	session.VariationIntensity = req.VariationIntensity
-	session.ProductImageCount = req.ProductImageCount
-	session.ProductImagePrompt = req.ProductImagePrompt
-	session.ProductImagePrompts = toStudioProductImagePromptList(req.ProductImagePrompts)
-	session.ArtworkModel = req.ArtworkModel
-	session.ImageStrategy = req.ImageStrategy
-	session.GroupedImageMode = req.GroupedImageMode
-	session.SelectedSDSImages = toStudioSelectedSDSImageList(req.SelectedSDSImages)
-	session.GroupedSelections = toStudioGroupedSelectionList(req.GroupedSelections)
-	session.TransparentBackground = req.TransparentBackground
-	session.RenderSizeImagesWithSDS = req.RenderSizeImagesWithSDS
-	session.SheinStoreID = req.SheinStoreID
-	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), req.ApprovedDesignIDs...)
-	session.CreatedTasks = toStudioCreatedTaskList(req.CreatedTasks)
-	session.CreatedTaskIDs = buildCreatedTaskIDs(req.CreatedTasks)
-	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
+	session.SelectionKey = buildStudioSelectionKey(normalizedReq.Selection)
+	session.Status = deriveBatchStatus(normalizedReq)
+	session.ProductID = normalizedReq.Selection.ProductID
+	session.ParentProductID = normalizedReq.Selection.ParentProductID
+	session.VariantID = normalizedReq.Selection.VariantID
+	session.PrototypeGroupID = normalizedReq.Selection.PrototypeGroupID
+	session.LayerID = normalizedReq.Selection.LayerID
+	session.PrintableWidth = normalizedReq.Selection.PrintableWidth
+	session.PrintableHeight = normalizedReq.Selection.PrintableHeight
+	session.SelectedVariantIDs = append(SheinStudioInt64List(nil), normalizedReq.Selection.SelectedVariantIDs...)
+	session.Selection = SheinStudioSelectionSnapshot(*normalizedReq.Selection)
+	session.Prompt = normalizedReq.Prompt
+	session.StyleCount = normalizedReq.StyleCount
+	session.VariationIntensity = normalizedReq.VariationIntensity
+	session.ProductImageCount = normalizedReq.ProductImageCount
+	session.ProductImagePrompt = normalizedReq.ProductImagePrompt
+	session.ProductImagePrompts = toStudioProductImagePromptList(normalizedReq.ProductImagePrompts)
+	session.ArtworkModel = normalizedReq.ArtworkModel
+	session.ImageStrategy = normalizedReq.ImageStrategy
+	session.GroupedImageMode = normalizedReq.GroupedImageMode
+	session.SelectedSDSImages = toStudioSelectedSDSImageList(normalizedReq.SelectedSDSImages)
+	session.GroupedSelections = toStudioGroupedSelectionList(normalizedReq.GroupedSelections)
+	session.TransparentBackground = normalizedReq.TransparentBackground
+	session.RenderSizeImagesWithSDS = normalizedReq.RenderSizeImagesWithSDS
+	session.SheinStoreID = normalizedReq.SheinStoreID
+	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), normalizedReq.ApprovedDesignIDs...)
+	session.CreatedTasks = toStudioCreatedTaskList(normalizedReq.CreatedTasks)
+	session.CreatedTaskIDs = buildCreatedTaskIDs(normalizedReq.CreatedTasks)
+	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), normalizedReq.GenerationJobs...)
 	session.SavedAsBatch = true
-	session.BatchName = strings.TrimSpace(req.BatchName)
+	session.BatchName = strings.TrimSpace(normalizedReq.BatchName)
 	if session.BatchName == "" {
 		switch {
 		case !isCreate && existingBatchName != "":
@@ -155,7 +159,7 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	} else if err := s.repo.UpdateSession(ctx, session); err != nil {
 		return nil, err
 	}
-	if err := s.repo.ReplaceDesigns(ctx, session.ID, req.ApprovedDesignIDs, req.Designs); err != nil {
+	if err := s.repo.ReplaceDesigns(ctx, session.ID, normalizedReq.ApprovedDesignIDs, normalizedReq.Designs); err != nil {
 		return nil, err
 	}
 	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
@@ -163,14 +167,23 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 		"batch_name":              session.BatchName,
 		"is_create":               isCreate,
 		"status":                  session.Status,
-		"design_count":            len(req.Designs),
-		"approved_design_count":   len(req.ApprovedDesignIDs),
-		"created_task_count":      len(req.CreatedTasks),
-		"generation_jobs_count":   len(req.GenerationJobs),
-		"grouped_selection_count": len(req.GroupedSelections),
+		"design_count":            len(normalizedReq.Designs),
+		"approved_design_count":   len(normalizedReq.ApprovedDesignIDs),
+		"created_task_count":      len(normalizedReq.CreatedTasks),
+		"generation_jobs_count":   len(normalizedReq.GenerationJobs),
+		"grouped_selection_count": len(normalizedReq.GroupedSelections),
 		"shein_store_id":          session.SheinStoreID,
 	})).Info("studio batch upserted")
 	return s.loadStudioBatchDraftDetail(ctx, session)
+}
+
+func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest) *UpsertStudioBatchRequest {
+	if req == nil || len(req.GenerationJobs) == 0 {
+		return req
+	}
+	cloned := *req
+	cloned.GenerationJobs = nil
+	return &cloned
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {

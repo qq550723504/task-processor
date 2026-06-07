@@ -75,6 +75,17 @@ describe("buildDuplicatedSheinStudioBatchInput", () => {
           status: "running",
         },
       ],
+      generationError: "still running",
+      generationJobId: "job-1",
+      batchStatus: "generating",
+      legacyCompatibilitySnapshot: {
+        designs: [{ id: "legacy-design-1", imageUrl: "https://example.com/legacy.png" }],
+        selectedIds: ["legacy-design-1"],
+        createdTasks: [{ id: "legacy-task-1", title: "Legacy Task 1", designId: "legacy-design-1" }],
+        generationJobs: [{ jobId: "legacy-job-1", status: "running" }],
+        generationError: "legacy running",
+        generationJobId: "legacy-job-1",
+      },
       updatedAt: "2026-05-29T21:10:00.000Z",
     });
 
@@ -92,6 +103,10 @@ describe("buildDuplicatedSheinStudioBatchInput", () => {
       selectedIds: [],
       createdTasks: [],
       generationJobs: [],
+      generationError: "",
+      generationJobId: "",
+      batchStatus: "draft",
+      legacyCompatibilitySnapshot: undefined,
       groups: [
         {
           primarySelection: { variantId: 123 },
@@ -99,6 +114,7 @@ describe("buildDuplicatedSheinStudioBatchInput", () => {
           designs: [],
           selectedIds: [],
           createdTasks: [],
+          legacyCompatibilitySnapshot: undefined,
         },
       ],
     });

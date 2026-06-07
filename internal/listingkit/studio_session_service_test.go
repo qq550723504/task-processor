@@ -371,6 +371,47 @@ func TestStudioSessionServiceTracksMultipleGenerationJobs(t *testing.T) {
 	}
 }
 
+func TestStudioSessionServiceCreateBatchIgnoresInFlightGenerationState(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:       "retro cherries",
+		StyleCount:   "2",
+		SheinStoreID: "store-1",
+		Selection:    testStudioSelection(),
+		BatchName:    "retro cherries copy",
+		GenerationJobs: []SheinStudioGenerationJob{
+			{
+				JobID:            "job-primary",
+				TargetGroupKey:   "primary",
+				TargetGroupLabel: "当前商品",
+				Status:           StudioAsyncJobStatusRunning,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert batch: %v", err)
+	}
+	if detail.Batch == nil {
+		t.Fatalf("batch = nil, want saved batch draft")
+	}
+	if detail.Batch.Status != SheinStudioSessionStatusSelecting {
+		t.Fatalf("status = %q, want selecting when creating a new batch copy", detail.Batch.Status)
+	}
+	if len(detail.Batch.GenerationJobs) != 0 {
+		t.Fatalf("generation jobs = %#v, want empty on create", detail.Batch.GenerationJobs)
+	}
+
+	loaded, err := svc.GetStudioBatch(ctx, detail.Batch.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	if len(loaded.Batch.GenerationJobs) != 0 {
+		t.Fatalf("loaded generation jobs = %#v, want empty on create", loaded.Batch.GenerationJobs)
+	}
+}
+
 func TestStudioSessionServicePersistsGroupedSelections(t *testing.T) {
 	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()

@@ -10,10 +10,8 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
   loadLocalSheinStudioDraftSnapshot,
-  saveLocalSheinStudioDraftSnapshot,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
-import { resumeSheinStudioDesignGeneration } from "@/lib/api/shein-studio";
 import {
   consumeSheinStudioGalleryHandoff,
   galleryHandoffToDesign,
@@ -93,7 +91,6 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveDesignCount = 0;
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
-        let resumableGenerationJobs: SheinStudioGenerationJob[] = [];
         let restoredGenerationError = "";
         const effectiveDraft =
           hasDedicatedBatchContext
@@ -150,24 +147,6 @@ export function useSheinStudioWorkspaceLoader({
           restoredGenerationError = draftState.generationError;
           nextEffectiveDesignCount = draftState.designCount;
           nextEffectiveCreatedTaskCount = draftState.createdTaskCount;
-          const runningGenerationJobs = draft?.generationJobs?.filter(
-            (job) => job.status === "running" && job.jobId.trim(),
-          );
-          resumableGenerationJobs =
-            draft?.batchStatus === "generating" ||
-            (draft?.generationJobs?.length ?? 0) > 0 ||
-            Boolean(draft?.generationJobId)
-              ? runningGenerationJobs && runningGenerationJobs.length > 0
-                ? runningGenerationJobs
-                : draft?.generationJobId
-                  ? [
-                      {
-                        jobId: draft.generationJobId,
-                        status: "running" as const,
-                      },
-                    ]
-                  : []
-              : [];
           if (draftState.importedGalleryDesign) {
             hasLocalWorkflowStateRef.current = true;
             importedGalleryDesign = true;
@@ -203,100 +182,6 @@ export function useSheinStudioWorkspaceLoader({
         workbench.setField("saveMessage", "");
         workbench.setField("draftWarning", "");
 
-        if (resumableGenerationJobs.length > 0) {
-          workbench.setField("isGenerating", true);
-          workbench.setField("generationJobs", resumableGenerationJobs);
-          workbench.setField("generationError", "");
-          workbench.setField(
-            "generationWarning",
-            "已恢复之前发起的生成任务，正在继续等待结果。",
-          );
-          workbench.setField("generationWarningAction", null);
-          try {
-            let nextDesigns = effectiveDraft?.designs ?? [];
-            let nextSelectedIds = effectiveDraft?.selectedIds ?? [];
-            let pendingJobs = [...resumableGenerationJobs];
-            const warningMessages: string[] = [];
-
-            for (const job of resumableGenerationJobs) {
-              const response = await resumeSheinStudioDesignGeneration(job.jobId);
-              if (cancelled) {
-                return;
-              }
-              const images = response.images.map((image) => ({
-                ...image,
-                targetGroupKey: job.targetGroupKey,
-                targetGroupLabel: job.targetGroupLabel,
-              }));
-              nextDesigns = [
-                ...nextDesigns.filter(
-                  (design) =>
-                    !images.some((incoming) => incoming.id === design.id),
-                ),
-                ...images,
-              ];
-              nextSelectedIds = Array.from(
-                new Set([...nextSelectedIds, ...images.map((image) => image.id)]),
-              );
-              pendingJobs = pendingJobs.filter(
-                (candidate) => candidate.jobId !== job.jobId,
-              );
-              hasLocalWorkflowStateRef.current = true;
-              workbench.setField("designs", nextDesigns);
-              workbench.setField("selectedIds", nextSelectedIds);
-              workbench.setField("createdTasks", []);
-              workbench.setField("generationJobs", pendingJobs);
-              if (effectiveDraft) {
-                saveLocalSheinStudioDraftSnapshot({
-                  ...effectiveDraft,
-                  designs: nextDesigns,
-                  selectedIds: nextSelectedIds,
-                  createdTasks: [],
-                  generationJobs: pendingJobs,
-                  updatedAt: new Date().toISOString(),
-                });
-              }
-              if (response.warnings?.length) {
-                warningMessages.push(...response.warnings);
-              }
-            }
-            if (nextDesigns.length === 0) {
-              throw new Error(
-                "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
-              );
-            }
-            workbench.setField(
-              "galleryRatioCheck",
-              evaluateImportedGalleryDesigns(
-                nextDesigns,
-                activeSelectionRef.current,
-              ),
-            );
-            workbench.setField("generationJobs", []);
-            workbench.setField(
-              "generationWarning",
-              warningMessages.length
-                ? `已恢复之前的生成任务。${warningMessages.join(" ")}`
-                : "",
-            );
-            workbench.setField("generationWarningAction", null);
-            setEffectiveStep("review");
-          } catch (error) {
-            if (cancelled) {
-              return;
-            }
-            workbench.setField(
-              "generationError",
-              error instanceof Error ? error.message : String(error),
-            );
-            workbench.setField("generationWarning", "");
-            workbench.setField("generationWarningAction", null);
-          } finally {
-            if (!cancelled) {
-              workbench.setField("isGenerating", false);
-            }
-          }
-        }
       } finally {
         if (!cancelled) {
           workbench.setField("isLoadingWorkspace", false);

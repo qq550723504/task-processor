@@ -12,6 +12,7 @@ function resetGroupedWorkspaceProgress(
     designs: [],
     selectedIds: [],
     createdTasks: [],
+    legacyCompatibilitySnapshot: undefined,
   }));
 }
 
@@ -41,5 +42,9 @@ export function buildDuplicatedSheinStudioBatchInput(
     selectedIds: [],
     createdTasks: [],
     generationJobs: [],
+    generationError: "",
+    generationJobId: "",
+    batchStatus: "draft",
+    legacyCompatibilitySnapshot: undefined,
   };
 }

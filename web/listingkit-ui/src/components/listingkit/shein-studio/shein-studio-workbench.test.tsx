@@ -3584,7 +3584,7 @@ describe("SheinStudioWorkbench", () => {
     anchor.remove();
   });
 
-  it("resumes an in-flight generation job after returning to the page", async () => {
+  it("does not auto-resume an in-flight generation job after returning to the page", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
       styleCount: "1",
@@ -3606,24 +3606,18 @@ describe("SheinStudioWorkbench", () => {
       batchStatus: "generating",
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    resumeSheinStudioDesignGeneration.mockResolvedValue({
-      warnings: [],
-      images: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
-    });
-
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
     await waitFor(() =>
-      expect(resumeSheinStudioDesignGeneration).toHaveBeenCalledWith("job-123"),
+      expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
     );
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
+    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
+    expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
   });
 
-  it("resumes every in-flight generation job after returning to the page", async () => {
+  it("does not auto-resume multiple in-flight generation jobs after returning to the page", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
       styleCount: "1",
@@ -3659,27 +3653,13 @@ describe("SheinStudioWorkbench", () => {
       batchStatus: "generating",
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
-    resumeSheinStudioDesignGeneration.mockImplementation(async (jobId: string) => ({
-      warnings: [],
-      images: [
-        {
-          id: `design-${jobId}`,
-          imageUrl: `https://example.com/${jobId}.png`,
-        },
-      ],
-    }));
-
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
     await waitFor(() =>
-      expect(resumeSheinStudioDesignGeneration).toHaveBeenCalledWith("job-123"),
+      expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
     );
-    await waitFor(() =>
-      expect(resumeSheinStudioDesignGeneration).toHaveBeenCalledWith("job-456"),
-    );
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
-    );
+    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
+    expect(screen.queryByText("review grid: 2")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
   });
