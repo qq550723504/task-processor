@@ -9,11 +9,7 @@ import (
 func TestWorkflowPlatformFinalizePhaseFileDelegatesToFinalizeSubSeams(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("workflow_platform_finalize_phase.go")
-	if err != nil {
-		t.Fatalf("ReadFile(workflow_platform_finalize_phase.go) error = %v", err)
-	}
-	content := string(src)
+	content := readExactMethodSource(t, "workflow_platform_finalize_phase.go", "func (p *platformFinalizePhase) run(")
 
 	for _, needle := range []string{
 		"buildPlatformPostprocessPhase(p.service).run(",
@@ -81,6 +77,35 @@ func TestWorkflowPlatformFinalizeCoverageGuardStaysInFinalizePhase(t *testing.T)
 				t.Fatalf("%s should contain %q", tc.file, coverageGuardCall)
 			}
 			t.Fatalf("%s should not contain %q", tc.file, coverageGuardCall)
+		}
+	}
+}
+
+func TestWorkflowPlatformPostprocessPhaseOwnsSheinPostprocessCompatibility(t *testing.T) {
+	t.Parallel()
+
+	content := readExactMethodSource(t, "workflow_platform_finalize_phase.go", "func (p *platformPostprocessPhase) run(")
+
+	for _, needle := range []string{
+		"sheinpub.OptimizePackageReviewContent(",
+		"p.service.applyDefaultSheinPricing(",
+		"applySDSOfficialImagesToShein(",
+		"applySheinSizeReferenceImages(",
+		"applySheinStudioAIImagesToShein(",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("platform postprocess phase should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"buildPlatformAssetDispatchPhase(",
+		"buildPlatformSummaryPhase(",
+		"applySheinInspectionReviewToSummary(",
+		"applySheinVariantImageCoverageGuard(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("platform postprocess phase should not contain %q", needle)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	sheinpub "task-processor/internal/publishing/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -44,6 +45,59 @@ func (p *platformFinalizePhase) run(
 		enableAssetGeneration,
 	)
 	return buildPlatformSummaryPhase().run(task, final)
+}
+
+type platformPostprocessPhase struct {
+	service *service
+}
+
+func buildPlatformPostprocessPhase(s *service) *platformPostprocessPhase {
+	return &platformPostprocessPhase{service: s}
+}
+
+func (p *platformPostprocessPhase) run(
+	ctx context.Context,
+	task *Task,
+	final *ListingKitResult,
+	sdsOptions *SDSSyncOptions,
+) {
+	if final.Shein != nil {
+		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, p.service.sheinContentOptimizer); err != nil {
+			appendWarning(final, "shein content optimization skipped: "+err.Error())
+		}
+	}
+	p.service.applyDefaultSheinPricing(task.Request, final.Shein)
+	if shouldUseSDSOfficialImages(task.Request) {
+		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSDesignResult, sdsOptions)
+		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSDesignResult))
+	}
+	if shouldUseSheinStudioAIImages(task.Request) {
+		applySheinStudioAIImagesToShein(final.Shein, task.Request, final.SDSDesignResult)
+	}
+}
+
+type platformReviewPhase struct{}
+
+func buildPlatformReviewPhase() *platformReviewPhase {
+	return &platformReviewPhase{}
+}
+
+func (p *platformReviewPhase) run(
+	final *ListingKitResult,
+	snapshot *StandardProductSnapshot,
+) {
+	if final.Summary == nil {
+		final.Summary = &GenerationSummary{}
+	}
+	if snapshot != nil && snapshot.Summary != nil {
+		final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, snapshot.Summary.Warnings...))
+	}
+
+	sheinReviewStage := newWorkflowRecorder(final).Start("shein_review", "")
+	applySheinInspectionReviewToSummary(final)
+	applySheinVariantCoverageReviewToSummary(final)
+	addSheinReviewWorkflowIssues(final)
+	sheinReviewStage.Complete()
 }
 
 type platformSummaryPhase struct{}

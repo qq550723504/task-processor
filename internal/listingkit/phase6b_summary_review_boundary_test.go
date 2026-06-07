@@ -40,6 +40,36 @@ func TestWorkflowPlatformSummaryPhaseFileOwnsCompletionNotReviewCompatibility(t 
 	}
 }
 
+func TestWorkflowPlatformReviewPhaseOwnsReviewCompatibility(t *testing.T) {
+	t.Parallel()
+
+	content := readExactMethodSource(t, "workflow_platform_finalize_phase.go", "func (p *platformReviewPhase) run(")
+
+	for _, needle := range []string{
+		"newWorkflowRecorder(final).Start(\"shein_review\", \"\")",
+		"applySheinInspectionReviewToSummary(final)",
+		"applySheinVariantCoverageReviewToSummary(final)",
+		"addSheinReviewWorkflowIssues(final)",
+		"sheinReviewStage.Complete()",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("platform review phase should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"sheinpub.OptimizePackageReviewContent(",
+		"applySDSOfficialImagesToShein(",
+		"applySheinVariantImageCoverageGuard(",
+		"buildPlatformAssetDispatchPhase(",
+		"buildPlatformSummaryPhase(",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("platform review phase should not contain %q", needle)
+		}
+	}
+}
+
 func orderedNeedlesOutOfSequence(source string, first string, second string) bool {
 	firstIndex := strings.Index(source, first)
 	secondIndex := strings.Index(source, second)
