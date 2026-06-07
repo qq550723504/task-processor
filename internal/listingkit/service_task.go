@@ -24,12 +24,47 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	return s.taskLifecycleOrDefault().GetTaskResult(ctx, taskID)
 }
 
+func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	export, err := buildListingKitExport(task, platform)
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
+	if err != nil {
+		return nil, err
+	}
+	projection := buildAssetGenerationProjection(task.Result, tasks)
+	export.AssetGenerationSummary = projection.Summary
+	export.AssetGenerationTasks = projection.Tasks
+	if len(export.AssetRenderPreviews) == 0 && task.Result != nil {
+		export.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
+	}
+	if len(export.PlatformAssetRenderPreviews) == 0 && task.Result != nil {
+		export.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
+	}
+	export.AssetGenerationQueue = projection.Queue
+	export.AssetGenerationOverview = projection.Overview
+	return export, nil
+}
+
 func (s *service) GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error) {
 	return s.taskRevisionOrDefault().GetTaskRevisionHistory(ctx, taskID, query)
 }
 
 func (s *service) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {
 	return s.taskRevisionOrDefault().GetTaskRevisionHistoryDetail(ctx, taskID, revisionID, query)
+}
+
+func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error) {
+	return s.taskRevisionOrDefault().ApplyTaskRevision(ctx, taskID, req)
+}
+
+func (s *service) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {
+	return s.taskRevisionOrDefault().ValidateTaskRevision(ctx, taskID, req)
 }
 
 func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {
@@ -42,6 +77,24 @@ func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselin
 
 func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {
 	return s.warmSDSBaseline(ctx, req)
+}
+
+func (s *service) taskRevisionOrDefault() *taskRevisionService {
+	if s.taskRevision != nil {
+		return s.taskRevision
+	}
+	s.taskRevision = newTaskRevisionService(taskRevisionServiceConfig{
+		repo: s.repo,
+		resolveManualSheinSaleAttributeValueIDs: func(ctx context.Context, task *Task, req *ApplyRevisionRequest) error {
+			return s.resolveManualSheinSaleAttributeValueIDs(ctx, task, req)
+		},
+		mutateTaskResult: s.mutateTaskResult,
+		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
+			s.refreshSheinDerivedState(task, req)
+		},
+		buildTaskPreview: s.buildTaskPreview,
+	})
+	return s.taskRevision
 }
 
 func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
