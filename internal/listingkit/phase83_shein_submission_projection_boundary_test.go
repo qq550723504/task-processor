@@ -8,8 +8,8 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 	t.Run("status_fields_adapter_delegates_to_shared_submission_projection", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "submission_state_support.go", "applySheinSubmissionStatusFields")
-		callNames := readNamedFunctionCallNames(t, "submission_state_support.go", "applySheinSubmissionStatusFields")
+		source := readNamedFunctionSource(t, "submission_projection_shein.go", "applySheinSubmissionStatusFields")
+		callNames := readNamedFunctionCallNames(t, "submission_projection_shein.go", "applySheinSubmissionStatusFields")
 
 		assertSourceContainsAll(t, source, []string{
 			"projection := buildSheinSubmissionProjection(pkg)",
@@ -28,8 +28,8 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 	t.Run("task_list_remote_summary_adapter_delegates_to_shared_submission_projection", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "submission_state_support.go", "applySheinSubmissionRemoteSummary")
-		callNames := readNamedFunctionCallNames(t, "submission_state_support.go", "applySheinSubmissionRemoteSummary")
+		source := readNamedFunctionSource(t, "submission_projection_shein.go", "applySheinSubmissionRemoteSummary")
+		callNames := readNamedFunctionCallNames(t, "submission_projection_shein.go", "applySheinSubmissionRemoteSummary")
 
 		assertSourceContainsAll(t, source, []string{
 			"projection := buildSheinSubmissionProjection(pkg)",
