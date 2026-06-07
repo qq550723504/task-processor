@@ -164,8 +164,8 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 	return nil
 }
 
-func (s *taskSubmissionExecutionService) preValidateSheinSubmitProduct(submitProduct *sheinproduct.Product) error {
-	return sheinpub.PreValidateSubmitProduct(submitProduct)
+func (s *taskSubmissionExecutionService) preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
+	return sheinpub.PreValidateSubmitProductWithOptions(submitProduct, !sheinSecondarySaleAttributeRequired(pkg))
 }
 
 func (s *taskSubmissionExecutionService) executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {

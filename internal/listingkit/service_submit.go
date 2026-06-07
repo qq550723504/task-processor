@@ -280,8 +280,8 @@ func (s *service) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *
 	return s.taskSubmissionExecutionOrDefault().uploadSheinSubmitImages(ctx, task, pkg, submitProduct)
 }
 
-func preValidateSheinSubmitProduct(submitProduct *sheinproduct.Product) error {
-	return defaultTaskSubmissionExecutionService.preValidateSheinSubmitProduct(submitProduct)
+func preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
+	return defaultTaskSubmissionExecutionService.preValidateSheinSubmitProduct(pkg, submitProduct)
 }
 
 func executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {

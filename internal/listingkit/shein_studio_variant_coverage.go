@@ -38,16 +38,16 @@ func enforceSheinVariantImageCoverage(pkg *sheinpub.Package, req *GenerateReques
 	if pkg == nil || req == nil || req.Options == nil || req.Options.SheinStudio == nil {
 		return "", false
 	}
-	skcCount := len(pkg.DraftPayload.SKCList)
-	if skcCount <= 1 {
+	requiredGroupCount := sheinVariantImageGroupCount(pkg)
+	if requiredGroupCount <= 1 {
 		return "", false
 	}
 	distinctImageCount := sheinDistinctSKCMainImageCount(pkg)
-	if distinctImageCount >= skcCount {
+	if distinctImageCount >= requiredGroupCount {
 		return "", false
 	}
 	coverageCount := sheinVariantImageCoverageCount(req, sdsSummary)
-	if coverageCount >= skcCount {
+	if coverageCount >= requiredGroupCount {
 		return "", false
 	}
 	warning := "变体图片覆盖不完整：当前颜色规格多于可用变体图，已阻止将同一张图复用到所有 SKC，请补齐每个颜色的商品图后再提交"
@@ -55,6 +55,47 @@ func enforceSheinVariantImageCoverage(pkg *sheinpub.Package, req *GenerateReques
 		warning = warning + "；" + strings.TrimSpace(sdsSummary.Error)
 	}
 	return warning, true
+}
+
+func sheinVariantImageGroupCount(pkg *sheinpub.Package) int {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.DraftPayload == nil {
+		return 0
+	}
+	groups := map[string]struct{}{}
+	unnamed := 0
+	for _, skc := range pkg.DraftPayload.SKCList {
+		if key := sheinVariantImageGroupKey(skc); key != "" {
+			groups[key] = struct{}{}
+			continue
+		}
+		unnamed++
+	}
+	return len(groups) + unnamed
+}
+
+func sheinVariantImageGroupKey(skc sheinpub.SKCRequestDraft) string {
+	for _, sku := range skc.SKUList {
+		for _, candidate := range []string{
+			sku.Attributes["Color"],
+			sku.Attributes["color"],
+			sku.Attributes["variant_color"],
+		} {
+			if key := normalizeVariantImageKey(candidate); key != "" {
+				return key
+			}
+		}
+	}
+	for _, candidate := range []string{
+		skc.SaleName,
+		skc.SkcName,
+		saleAttributeValue(skc.SaleAttribute),
+	} {
+		if key := normalizeVariantImageKey(candidate); key != "" {
+			return key
+		}
+	}
+	return ""
 }
 
 func setSheinVariantImageCoverageMetadata(pkg *sheinpub.Package, warning string, blocked bool) {

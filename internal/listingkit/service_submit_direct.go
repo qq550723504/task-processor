@@ -40,7 +40,7 @@ func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID st
 	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePreValidate); err != nil {
 		return nil, err
 	}
-	if err := preValidateSheinSubmitProduct(submitProduct); err != nil {
+	if err := preValidateSheinSubmitProduct(pkg, submitProduct); err != nil {
 		return nil, s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	return submitProduct, nil

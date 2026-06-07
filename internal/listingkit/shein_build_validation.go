@@ -111,7 +111,7 @@ func sheinSaleAttributesReadinessFailureReasons(pkg *SheinPackage) []string {
 		if !sheinResolvedSaleAttributeReady(skc.SaleAttribute) {
 			reasons = append(reasons, fmt.Sprintf("skc %q is missing a resolved sale attribute value id", skc.SupplierCode))
 		}
-		requireSKUAttributes := len(skc.SKUList) > 1
+		requireSKUAttributes := len(skc.SKUList) > 1 && sheinSecondarySaleAttributeRequired(pkg)
 		if !requireSKUAttributes && pkg.SaleAttributeResolution != nil {
 			requireSKUAttributes = pkg.SaleAttributeResolution.SecondaryAttributeID > 0 || len(pkg.SaleAttributeResolution.SKUAttributes) > 0
 		}

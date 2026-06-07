@@ -6,8 +6,13 @@ import (
 )
 
 func PreValidateSubmitProduct(product *sheinproduct.Product) error {
+	return PreValidateSubmitProductWithOptions(product, false)
+}
+
+func PreValidateSubmitProductWithOptions(product *sheinproduct.Product, allowPrimaryOnlyMultiSKU bool) error {
 	validator := sheinpublish.NewPublishProductValidator()
 	return validator.PreValidateProductData(nil, &sheinpublish.ValidationInput{
-		ProductData: product,
+		ProductData:              product,
+		AllowPrimaryOnlyMultiSKU: allowPrimaryOnlyMultiSKU,
 	})
 }

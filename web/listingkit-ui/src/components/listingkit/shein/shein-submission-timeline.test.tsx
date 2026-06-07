@@ -115,6 +115,44 @@ describe("SheinSubmissionTimeline", () => {
     expect(screen.getByRole("button", { name: "刷新状态" })).toHaveClass("w-full");
   });
 
+  it("renders duplicate event ids without duplicate key warnings", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(
+      <SheinSubmissionTimeline
+        events={[
+          {
+            id: "submit_phase-1780802991416744600",
+            action: "submit_phase",
+            phase: "prepare_payload",
+            status: "success",
+            started_at: "2026-04-27T10:00:00Z",
+          },
+          {
+            id: "submit_phase-1780802991416744600",
+            action: "submit_phase",
+            phase: "confirm_remote",
+            status: "confirmed",
+            started_at: "2026-04-27T10:01:00Z",
+            request_id: "submit-123",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("prepare_payload")).toBeInTheDocument();
+    expect(screen.getByText("确认远端记录")).toBeInTheDocument();
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call.some((arg) =>
+          typeof arg === "string" && arg.includes("Encountered two children with the same key"),
+        ),
+      ),
+    ).toBe(false);
+
+    consoleError.mockRestore();
+  });
+
   it("renders nothing without events", () => {
     const { container } = render(<SheinSubmissionTimeline events={[]} />);
 

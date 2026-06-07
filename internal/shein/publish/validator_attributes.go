@@ -49,7 +49,7 @@ func (v *PublishProductValidator) validateResolvedSaleAttributes(input *Validati
 			}
 		}
 
-		requireSKUSaleAttribute := len(skc.SKUS) > 1
+		requireSKUSaleAttribute := len(skc.SKUS) > 1 && !input.AllowPrimaryOnlyMultiSKU
 		for skuIndex, sku := range skc.SKUS {
 			if !requireSKUSaleAttribute && len(sku.SaleAttributeList) == 0 {
 				continue

@@ -70,10 +70,13 @@ func hasResolvedSaleAttributeDraft(pkg *sheinpub.Package) bool {
 	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
 		return false
 	}
-	requireSecondary := pkg.SaleAttributeResolution != nil && pkg.SaleAttributeResolution.SecondaryAttributeID > 0
 	for _, skc := range pkg.RequestDraft.SKCList {
 		if skc.SaleAttribute == nil || skc.SaleAttribute.AttributeID <= 0 || skc.SaleAttribute.AttributeValueID == nil || *skc.SaleAttribute.AttributeValueID <= 0 {
 			return false
+		}
+		requireSecondary := len(skc.SKUList) > 1
+		if !requireSecondary && pkg.SaleAttributeResolution != nil {
+			requireSecondary = pkg.SaleAttributeResolution.SecondaryAttributeID > 0
 		}
 		if requireSecondary {
 			if len(skc.SKUList) == 0 {

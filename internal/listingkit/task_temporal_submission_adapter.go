@@ -187,7 +187,7 @@ func (s *taskTemporalSubmissionAdapter) PreValidateSheinPublish(ctx context.Cont
 	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhasePreValidate); err != nil {
 		return err
 	}
-	return preValidateSheinSubmitProduct(in.Product)
+	return preValidateSheinSubmitProduct(pkg, in.Product)
 }
 
 func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {

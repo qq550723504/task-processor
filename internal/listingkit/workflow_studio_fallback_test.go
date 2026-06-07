@@ -1122,6 +1122,57 @@ func TestEnforceSheinVariantImageCoverageAllowsCompleteVariantImages(t *testing.
 	}
 }
 
+func TestEnforceSheinVariantImageCoverageAllowsFallbackSplitSKCsForSameColor(t *testing.T) {
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					SkcName:      "white",
+					SaleName:     "white",
+					SupplierCode: "SKU-WHITE-30-STYLE",
+					ImageInfo:    &sheinpub.ImageDraft{MainImage: "https://cdn.example.com/white-shared.png"},
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "SKU-WHITE-30",
+						MainImage:   "https://cdn.example.com/white-shared.png",
+						Attributes:  map[string]string{"Color": "white", "Size": "30x40cm"},
+					}},
+				},
+				{
+					SkcName:      "white",
+					SaleName:     "white",
+					SupplierCode: "SKU-WHITE-35-STYLE",
+					ImageInfo:    &sheinpub.ImageDraft{MainImage: "https://cdn.example.com/white-shared.png"},
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "SKU-WHITE-35",
+						MainImage:   "https://cdn.example.com/white-shared.png",
+						Attributes:  map[string]string{"Color": "white", "Size": "35x50cm"},
+					}},
+				},
+			},
+		},
+	}
+
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				VariantProductImages: []SheinStudioVariantImageSet{
+					{VariantSKU: "SKU-WHITE-30", Color: "white", ImageURLs: []string{"https://cdn.example.com/white-shared.png"}},
+				},
+			},
+		},
+	}, &SDSSyncSummary{
+		Status: "completed",
+		VariantResults: []SDSSyncSummary{
+			{VariantSKU: "SKU-WHITE-30", VariantColor: "white", Status: "completed", MockupImageURLs: []string{"https://cdn.example.com/white-shared.png"}},
+		},
+	})
+
+	if blocked {
+		t.Fatalf("blocked = true, warning = %q", warning)
+	}
+}
+
 func sheinImageSet(main string) *common.ImageSet {
 	return &common.ImageSet{MainImage: main}
 }

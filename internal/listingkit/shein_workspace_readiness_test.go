@@ -753,6 +753,36 @@ func TestBuildSheinSubmitReadinessBlocksWhenMultipleSKUsLackSaleAttributes(t *te
 	task := makeReadySheinTask()
 	task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID = 0
 	task.Result.Shein.SaleAttributeResolution.SKUAttributes = nil
+	task.Result.Shein.SaleAttributeResolution.SecondarySourceDimension = "尺码"
+	task.Result.Shein.SaleAttributeResolution.TemplateOptions = []sheinpub.SaleAttributeTemplateOption{
+		{
+			AttributeID: 27,
+			Name:        "Color",
+			NameEn:      "Color",
+			SKCScope:    true,
+			Important:   true,
+		},
+		{
+			AttributeID: 87,
+			Name:        "Size",
+			NameEn:      "Size",
+		},
+	}
+	task.Result.Shein.SaleAttributeResolution.Candidates = []sheinpub.SaleAttributeCandidateInfo{
+		{
+			SourceDimension: "颜色",
+			Name:            "Color",
+			AttributeID:     27,
+			SKCScope:        true,
+			SelectedScope:   "primary",
+		},
+		{
+			SourceDimension: "尺码",
+			Name:            "Size",
+			AttributeID:     87,
+			SelectedScope:   "secondary",
+		},
+	}
 	task.Result.Shein.RequestDraft.SKCList[0].SKUList = append(
 		task.Result.Shein.RequestDraft.SKCList[0].SKUList,
 		SheinSKUDraft{
@@ -797,6 +827,87 @@ func TestBuildSheinSubmitReadinessBlocksWhenMultipleSKUsLackSaleAttributes(t *te
 	}
 	if !found {
 		t.Fatalf("expected sale_attributes blocker, got %+v", readiness.BlockingItems)
+	}
+}
+
+func TestBuildSheinSubmitReadinessAllowsPrimaryOnlyMultiSKUWhenSecondaryTemplateIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	primaryValueID := 739
+	task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID = 0
+	task.Result.Shein.SaleAttributeResolution.SKUAttributes = nil
+	task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID = 1001184
+	task.Result.Shein.SaleAttributeResolution.PrimarySourceDimension = "Color"
+	task.Result.Shein.SaleAttributeResolution.SecondarySourceDimension = "Size"
+	task.Result.Shein.SaleAttributeResolution.TemplateOptions = []sheinpub.SaleAttributeTemplateOption{
+		{
+			AttributeID: 1001184,
+			Name:        "Style Type",
+			NameEn:      "Style Type",
+			Important:   true,
+		},
+		{
+			AttributeID: 27,
+			Name:        "Color",
+			NameEn:      "Color",
+		},
+	}
+	task.Result.Shein.SaleAttributeResolution.Candidates = []sheinpub.SaleAttributeCandidateInfo{
+		{
+			SourceDimension: "Color",
+			Name:            "Style Type",
+			AttributeID:     1001184,
+			SelectedScope:   "primary",
+		},
+	}
+	task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute = &SheinResolvedSaleAttribute{
+		Scope:            "skc",
+		Name:             "Style Type",
+		Value:            "white",
+		AttributeID:      1001184,
+		AttributeValueID: &primaryValueID,
+	}
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList = append(
+		task.Result.Shein.RequestDraft.SKCList[0].SKUList,
+		SheinSKUDraft{
+			SupplierSKU: "SKU-2",
+		},
+	)
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes = nil
+	task.Result.Shein.PreviewProduct.SKCList[0].SaleAttribute = sheinproduct.SaleAttribute{
+		AttributeID:      1001184,
+		AttributeValueID: 739,
+	}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS = append(
+		task.Result.Shein.PreviewProduct.SKCList[0].SKUS,
+		sheinproduct.SKU{
+			SupplierSKU: "SKU-2",
+		},
+	)
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList = nil
+	task.Result.Shein.SkcList[0].SKUs = append(
+		task.Result.Shein.SkcList[0].SKUs,
+		PlatformVariant{
+			SKU: "SKU-2",
+			Attributes: map[string]string{
+				"Color": "white",
+				"Size":  "35×50cm",
+			},
+		},
+	)
+
+	readiness := buildSheinSubmitReadiness(task.Result.Shein)
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if !readiness.Ready {
+		t.Fatalf("ready = false, want true when secondary is optional; readiness=%+v", readiness)
+	}
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "sale_attributes" {
+			t.Fatalf("unexpected sale_attributes blocker: %+v", readiness.BlockingItems)
+		}
 	}
 }
 

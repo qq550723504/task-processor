@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
@@ -44,12 +44,14 @@ export function SheinSaleAttributeReviewCard({
   isApplying?: boolean;
   onConfirmCurrentSaleAttributes?: (() => void) | null;
   onRegenerateSaleAttributes?: (() => void) | null;
-  onApplyManualSaleAttributes?: ((payload: {
-    primaryOption?: SheinSaleAttributeTemplateOption | null;
-    secondaryOption?: SheinSaleAttributeTemplateOption | null;
-    skcSelections: Record<string, ManualSaleAttributeSelection>;
-    skuSelections: Record<string, ManualSaleAttributeSelection>;
-  }) => void) | null;
+  onApplyManualSaleAttributes?:
+    | ((payload: {
+        primaryOption?: SheinSaleAttributeTemplateOption | null;
+        secondaryOption?: SheinSaleAttributeTemplateOption | null;
+        skcSelections: Record<string, ManualSaleAttributeSelection>;
+        skuSelections: Record<string, ManualSaleAttributeSelection>;
+      }) => void)
+    | null;
 }) {
   const current = editorContext?.sale_attributes?.current;
   if (!current) {
@@ -77,7 +79,6 @@ export function SheinSaleAttributeReviewCard({
       statusTone={statusTone}
       current={current}
       isApplying={isApplying}
-      key={`${current.status ?? ""}-${current.primary_attribute_id ?? 0}-${current.secondary_attribute_id ?? 0}-${current.template_options?.length ?? 0}-${current.skc_patches?.length ?? 0}`}
       onApplyManualSaleAttributes={onApplyManualSaleAttributes}
       onConfirmCurrentSaleAttributes={onConfirmCurrentSaleAttributes}
       onRegenerateSaleAttributes={onRegenerateSaleAttributes}
@@ -98,16 +99,20 @@ function SheinSaleAttributeReviewContent({
   applyErrorMessage?: string | null;
   statusMessage?: string | null;
   statusTone?: "default" | "success";
-  current: NonNullable<NonNullable<SheinEditorContext["sale_attributes"]>["current"]>;
+  current: NonNullable<
+    NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+  >;
   isApplying?: boolean;
   onConfirmCurrentSaleAttributes?: (() => void) | null;
   onRegenerateSaleAttributes?: (() => void) | null;
-  onApplyManualSaleAttributes?: ((payload: {
-    primaryOption?: SheinSaleAttributeTemplateOption | null;
-    secondaryOption?: SheinSaleAttributeTemplateOption | null;
-    skcSelections: Record<string, ManualSaleAttributeSelection>;
-    skuSelections: Record<string, ManualSaleAttributeSelection>;
-  }) => void) | null;
+  onApplyManualSaleAttributes?:
+    | ((payload: {
+        primaryOption?: SheinSaleAttributeTemplateOption | null;
+        secondaryOption?: SheinSaleAttributeTemplateOption | null;
+        skcSelections: Record<string, ManualSaleAttributeSelection>;
+        skuSelections: Record<string, ManualSaleAttributeSelection>;
+      }) => void)
+    | null;
 }) {
   const manualTemplateOptions = useMemo(
     () =>
@@ -119,9 +124,21 @@ function SheinSaleAttributeReviewContent({
     [current.template_options],
   );
   const primaryTemplateOptions = useMemo(() => {
-    const importantOptions = manualTemplateOptions.filter((option) => option.important);
-    return importantOptions.length > 0 ? importantOptions : manualTemplateOptions;
+    const importantOptions = manualTemplateOptions.filter(
+      (option) => option.important,
+    );
+    return importantOptions.length > 0
+      ? importantOptions
+      : manualTemplateOptions;
   }, [manualTemplateOptions]);
+  const secondaryRequired = isSecondarySaleAttributeRequired(current);
+  const hasMatchingSecondaryTemplate =
+    hasMatchingSecondaryTemplateOption(current);
+  const secondaryTemplateUnavailable =
+    !secondaryRequired &&
+    !hasMatchingSecondaryTemplate &&
+    !current.secondary_attribute_id &&
+    Boolean(current.secondary_source_dimension?.trim());
   const skcAttributes = current.skc_attributes?.slice(0, 2) ?? [];
   const skuAttributes = current.sku_attributes?.slice(0, 3) ?? [];
   const candidates = current.candidates ?? [];
@@ -146,15 +163,86 @@ function SheinSaleAttributeReviewContent({
       candidates,
       currentAttributeID: current.secondary_attribute_id,
       emptyFallback: true,
+      preferEmptyWhenUnmatched: !secondaryRequired,
       ignoreCurrentSelection: hasMissingValueIDs,
       scope: "secondary",
       sourceDimension: current.secondary_source_dimension,
     }) ?? "",
   );
-  const [primaryOptionID, setPrimaryOptionID] = useState(initialPrimaryOptionID);
-  const [secondaryOptionID, setSecondaryOptionID] = useState(initialSecondaryOptionID);
-  const [skcSelections, setSKCSelections] = useState<Record<string, ManualSaleAttributeSelection>>({});
-  const [skuSelections, setSKUSelections] = useState<Record<string, ManualSaleAttributeSelection>>({});
+  const [primaryOptionID, setPrimaryOptionID] = useState(
+    initialPrimaryOptionID,
+  );
+  const [secondaryOptionID, setSecondaryOptionID] = useState(
+    initialSecondaryOptionID,
+  );
+  const [hasExplicitEmptySecondarySelection, setHasExplicitEmptySecondarySelection] =
+    useState(false);
+  const [skcSelections, setSKCSelections] = useState<
+    Record<string, ManualSaleAttributeSelection>
+  >({});
+  const [skuSelections, setSKUSelections] = useState<
+    Record<string, ManualSaleAttributeSelection>
+  >({});
+  const [manualDetailsOpen, setManualDetailsOpen] = useState(hasMissingValueIDs);
+  const manualStateSyncKey = useMemo(
+    () =>
+      JSON.stringify({
+        initialPrimaryOptionID,
+        initialSecondaryOptionID,
+        hasMissingValueIDs,
+        primarySourceDimension: current.primary_source_dimension ?? "",
+        secondarySourceDimension: current.secondary_source_dimension ?? "",
+        candidates: candidates.map((candidate) => ({
+          attributeID: candidate.attribute_id ?? "",
+          name: candidate.name ?? "",
+          scope: candidate.selected_scope ?? "",
+          skcScope: Boolean(candidate.skc_scope),
+          sourceDimension: candidate.source_dimension ?? "",
+        })),
+        templateOptions: manualTemplateOptions.map((option) => ({
+          attributeID: option.attribute_id ?? "",
+          important: Boolean(option.important),
+          name: option.name_en ?? option.name ?? "",
+          skcScope: Boolean(option.skc_scope),
+          valueIDs: (option.attribute_value_list ?? []).map((value) =>
+            String(value.attribute_value_id ?? value.value_en ?? value.value ?? ""),
+          ),
+        })),
+        skcPatches: (current.skc_patches ?? []).map((patch) => ({
+          supplierCode: patch.supplier_code ?? "",
+          skcName: patch.skc_name ?? "",
+          attributes: patch.attributes ?? {},
+          skuPatches: (patch.sku_patches ?? []).map((skuPatch) => ({
+            supplierSKU: skuPatch.supplier_sku ?? "",
+            attributes: skuPatch.attributes ?? {},
+          })),
+        })),
+      }),
+    [
+      candidates,
+      current.primary_source_dimension,
+      current.secondary_source_dimension,
+      current.skc_patches,
+      hasMissingValueIDs,
+      initialPrimaryOptionID,
+      initialSecondaryOptionID,
+      manualTemplateOptions,
+    ],
+  );
+
+  useEffect(() => {
+    setPrimaryOptionID(initialPrimaryOptionID);
+    setSecondaryOptionID(initialSecondaryOptionID);
+    setHasExplicitEmptySecondarySelection(false);
+    setSKCSelections({});
+    setSKUSelections({});
+    setManualDetailsOpen(hasMissingValueIDs);
+  }, [
+    hasMissingValueIDs,
+    initialPrimaryOptionID,
+    initialSecondaryOptionID,
+    manualStateSyncKey,
+  ]);
 
   const primaryAttributes = skcAttributes.filter(
     (attribute) => attribute.attribute_id === current.primary_attribute_id,
@@ -163,9 +251,13 @@ function SheinSaleAttributeReviewContent({
     (attribute) => attribute.attribute_id === current.secondary_attribute_id,
   );
   const fallbackPrimaryAttributes =
-    primaryAttributes.length > 0 ? primaryAttributes : skcAttributes.slice(0, 1);
+    primaryAttributes.length > 0
+      ? primaryAttributes
+      : skcAttributes.slice(0, 1);
   const fallbackSecondaryAttributes =
-    secondaryAttributes.length > 0 ? secondaryAttributes : skuAttributes.slice(0, 1);
+    secondaryAttributes.length > 0
+      ? secondaryAttributes
+      : skuAttributes.slice(0, 1);
   const primaryCandidates = matchingCandidates(
     candidates,
     current.primary_attribute_id,
@@ -223,12 +315,15 @@ function SheinSaleAttributeReviewContent({
       (option) => String(option.attribute_id ?? "") === secondaryOptionID,
     )
       ? secondaryOptionID
+      : hasExplicitEmptySecondarySelection && !secondaryRequired
+        ? ""
       : String(
           pickTemplateOptionID({
             options: secondaryTemplateOptions,
             candidates,
             currentAttributeID: current.secondary_attribute_id,
             emptyFallback: true,
+            preferEmptyWhenUnmatched: !secondaryRequired,
             ignoreCurrentSelection: hasMissingValueIDs,
             scope: "secondary",
             sourceDimension: current.secondary_source_dimension,
@@ -236,8 +331,39 @@ function SheinSaleAttributeReviewContent({
         );
   const secondaryOption =
     secondaryTemplateOptions.find(
-      (option) => String(option.attribute_id ?? "") === selectedSecondaryOptionID,
+      (option) =>
+        String(option.attribute_id ?? "") === selectedSecondaryOptionID,
     ) ?? null;
+
+  useEffect(() => {
+    if (secondaryOptionID !== selectedSecondaryOptionID) {
+      setSecondaryOptionID(selectedSecondaryOptionID);
+    }
+  }, [secondaryOptionID, selectedSecondaryOptionID]);
+
+  const previousPrimaryAttributeIDRef = useRef<number | null | undefined>(
+    primaryOption?.attribute_id,
+  );
+  const previousSecondaryAttributeIDRef = useRef<number | null | undefined>(
+    secondaryOption?.attribute_id,
+  );
+
+  useEffect(() => {
+    if (previousPrimaryAttributeIDRef.current !== primaryOption?.attribute_id) {
+      previousPrimaryAttributeIDRef.current = primaryOption?.attribute_id;
+      setSKCSelections({});
+    }
+  }, [primaryOption?.attribute_id]);
+
+  useEffect(() => {
+    if (
+      previousSecondaryAttributeIDRef.current !== secondaryOption?.attribute_id
+    ) {
+      previousSecondaryAttributeIDRef.current = secondaryOption?.attribute_id;
+      setSKUSelections({});
+    }
+  }, [secondaryOption?.attribute_id]);
+
   const canManualEdit =
     Boolean(onApplyManualSaleAttributes) &&
     (current.skc_patches?.length ?? 0) > 0 &&
@@ -245,27 +371,85 @@ function SheinSaleAttributeReviewContent({
   const allSKCSelected =
     (current.skc_patches ?? []).length > 0 &&
     (current.skc_patches ?? []).every(
-      (patch) => patch.supplier_code && hasManualSelection(skcSelections[patch.supplier_code]),
+      (patch) =>
+        patch.supplier_code &&
+        hasManualSelection(skcSelections[patch.supplier_code]),
     );
   const allSKUSelected =
-    !secondaryOption ||
-    (current.skc_patches ?? []).flatMap((patch) => patch.sku_patches ?? []).every(
-      (patch) => patch.supplier_sku && hasManualSelection(skuSelections[patch.supplier_sku]),
-    );
+    (!secondaryRequired && !secondaryOption) ||
+    (current.skc_patches ?? [])
+      .flatMap((patch) => patch.sku_patches ?? [])
+      .every(
+        (patch) =>
+          patch.supplier_sku &&
+          hasManualSelection(skuSelections[patch.supplier_sku]),
+      );
   const canSaveManual =
-    canManualEdit && Boolean(primaryOption?.attribute_id) && allSKCSelected && allSKUSelected;
-  const recommendedActionText = canRegenerate
-    ? "推荐先点「重新生成属性」；如果结果仍不准确，再展开下面的手工修正规格。"
-    : canConfirm
-      ? "当前结果已经可以直接使用。确认无误后，直接点「直接确认当前结果」。"
-      : canManualEdit
-        ? "如果系统结果不准确，展开下面的手工修正规格，按 3 步逐项修改。"
-        : "请先检查系统当前识别结果。";
+    canManualEdit &&
+    Boolean(primaryOption?.attribute_id) &&
+    (!secondaryRequired || Boolean(secondaryOption?.attribute_id)) &&
+    allSKCSelected &&
+    allSKUSelected;
+  const statusLabel = canRegenerate
+    ? "建议重新生成"
+    : secondaryRequired
+      ? "需要补其他规格"
+      : !secondaryRequired && canConfirm
+        ? "可直接确认"
+        : current.status
+          ? presentSaleReviewStatus(current.status)
+          : undefined;
+  const statusDescription = canRegenerate
+    ? "当前结果还不能直接使用，建议先重新生成属性后再继续确认。"
+    : secondaryRequired
+      ? "当前商品需要补齐其他规格后，才能继续确认销售属性。"
+      : secondaryTemplateUnavailable
+        ? "主规格结果已可用，当前类目下其他规格可以跳过。"
+        : canConfirm
+          ? "当前主规格和其他规格结果已经可以直接确认。"
+          : "请先检查当前识别结果。";
+  const actionDescription = canRegenerate
+    ? "先重新生成可用模板或 value_id；如果结果仍不准确，再展开手工修正规格。"
+    : canConfirm && !secondaryRequired
+      ? "确认无误后，直接提交当前结果即可。"
+      : secondaryRequired
+        ? "先进入手工修正规格，补齐其他规格字段和值。"
+        : canManualEdit
+          ? "如果系统结果不准确，再展开手工修正规格逐项修改。"
+          : "当前结果还需要进一步检查。";
   const customValueDeniedNote = findCustomValueDeniedNote(current.review_notes);
   const customValueDeniedAttributeName =
     fallbackSecondaryAttributes[0]?.name ??
     fallbackPrimaryAttributes[0]?.name ??
     undefined;
+  const primaryAction = canRegenerate
+    ? {
+        label: isApplying ? "重新生成中..." : "重新生成属性",
+        onClick: () => onRegenerateSaleAttributes?.(),
+      }
+    : canConfirm && !secondaryRequired
+      ? {
+          label: isApplying ? "保存中..." : "直接确认当前结果",
+          onClick: () => onConfirmCurrentSaleAttributes?.(),
+        }
+      : canManualEdit
+        ? {
+            label: manualDetailsOpen ? "收起手工修正" : "展开手工修正",
+            onClick: () => setManualDetailsOpen((open) => !open),
+          }
+        : null;
+  const secondaryAction =
+    canRegenerate && canManualEdit
+      ? {
+          label: manualDetailsOpen ? "收起手工修正" : "展开手工修正",
+          onClick: () => setManualDetailsOpen((open) => !open),
+        }
+      : null;
+  const hasProcessingNotes =
+    Boolean(current.selection_summary?.length) ||
+    Boolean(current.review_notes?.length) ||
+    skcAttributes.length > 0 ||
+    skuAttributes.length > 0;
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
@@ -286,53 +470,13 @@ function SheinSaleAttributeReviewContent({
               SHEIN 销售属性确认
             </p>
             <p className="mt-1 text-sm leading-6 text-zinc-700">
-              先确认主规格，再确认其他规格。主规格通常是颜色/款式，其他规格通常是尺寸/件数。
+              {statusDescription}
             </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            {canRegenerate ? (
-              <Button
-                className="h-9 w-full px-3 text-xs sm:w-auto"
-                disabled={isApplying}
-                variant="secondary"
-                onClick={() => onRegenerateSaleAttributes?.()}
-              >
-                {isApplying ? "重新生成中..." : "重新生成属性"}
-              </Button>
-            ) : null}
-            {canSaveManual ? (
-              <Button
-                className="h-9 w-full px-3 text-xs sm:w-auto"
-                disabled={isApplying}
-                onClick={() =>
-                  onApplyManualSaleAttributes?.({
-                    primaryOption,
-                    secondaryOption,
-                    skcSelections,
-                    skuSelections,
-                  })
-                }
-              >
-                {isApplying ? "保存中..." : "保存手工修正"}
-              </Button>
-            ) : null}
-            {canConfirm ? (
-              <Button
-                className="h-9 w-full px-3 text-xs sm:w-auto"
-                disabled={isApplying}
-                variant="secondary"
-                onClick={() => onConfirmCurrentSaleAttributes?.()}
-              >
-                {isApplying ? "保存中..." : "直接确认当前结果"}
-              </Button>
-            ) : null}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
-          {current.status ? (
-            <span>状态 {presentSaleReviewStatus(current.status)}</span>
-          ) : null}
+          {statusLabel ? <span>状态 {statusLabel}</span> : null}
           {current.primary_attribute_id ? (
             <span>主规格 {current.primary_attribute_id}</span>
           ) : null}
@@ -341,7 +485,7 @@ function SheinSaleAttributeReviewContent({
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <ResultSummaryCard
             description="系统当前识别到的主规格"
             mapped={formatResolvedAttributeMap(fallbackPrimaryAttributes[0])}
@@ -349,57 +493,81 @@ function SheinSaleAttributeReviewContent({
             value={formatResolvedAttributeValue(fallbackPrimaryAttributes[0])}
           />
           <ResultSummaryCard
-            description="系统当前识别到的其他规格"
-            mapped={formatResolvedAttributeMap(fallbackSecondaryAttributes[0])}
+            description={
+              secondaryTemplateUnavailable
+                ? "当前类目存在其他规格字段，但没有可用于当前来源维度的模板，这一步可以跳过。"
+                : "系统当前识别到的其他规格"
+            }
+            mapped={
+              secondaryTemplateUnavailable
+                ? undefined
+                : formatResolvedAttributeMap(fallbackSecondaryAttributes[0])
+            }
             title="其他规格"
-            value={formatResolvedAttributeValue(fallbackSecondaryAttributes[0], "未识别或未使用")}
-          />
-          <ResultSummaryCard
-            description="当前系统建议的下一步"
-            title="下一步"
             value={
-              canRegenerate
-                ? "重新生成属性"
-                : canConfirm
-                  ? "直接确认当前结果"
-                  : canManualEdit
-                    ? "手工修正规格"
-                    : "先检查当前结果"
+              secondaryTemplateUnavailable
+                ? "当前来源维度暂无可用模板"
+                : formatResolvedAttributeValue(
+                    fallbackSecondaryAttributes[0],
+                    "未识别或未使用",
+              )
             }
           />
         </div>
 
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
-          <p className="text-sm font-medium text-zinc-900">怎么操作</p>
-          <p className="mt-1 text-sm leading-6 text-zinc-700">
-            1 先选主规格字段；2 再选其他规格字段；3 最后给每个 SKC/SKU 填值。没有合适模板值时，可以直接手工输入。
-          </p>
-          <p className="mt-1 text-xs leading-5 text-zinc-500">
-            如果系统当前结果已经正确，可以直接确认；只有不准确时，才需要手工修正。
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
-          <p className="text-sm font-medium text-sky-950">推荐操作</p>
-          <p className="mt-1 text-sm leading-6 text-sky-900">{recommendedActionText}</p>
-        </div>
+        {primaryAction ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              当前操作
+            </p>
+            <p className="mt-2 text-sm leading-6 text-sky-950">
+              {actionDescription}
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button
+                className="h-9 w-full px-3 text-xs sm:w-auto"
+                disabled={isApplying}
+                onClick={primaryAction.onClick}
+              >
+                {primaryAction.label}
+              </Button>
+              {secondaryAction ? (
+                <Button
+                  className="h-9 w-full px-3 text-xs sm:w-auto"
+                  disabled={isApplying}
+                  variant="secondary"
+                  onClick={secondaryAction.onClick}
+                >
+                  {secondaryAction.label}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {customValueDeniedNote ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
-            <p className="text-sm font-medium text-amber-950">当前类目不支持该销售属性自定义值</p>
+            <p className="text-sm font-medium text-amber-950">
+              当前类目不支持该销售属性自定义值
+            </p>
             <p className="mt-1 text-sm leading-6 text-amber-900">
               当前类目的
-              {customValueDeniedAttributeName ? `「${customValueDeniedAttributeName}」` : "该销售属性"}
+              {customValueDeniedAttributeName
+                ? `「${customValueDeniedAttributeName}」`
+                : "该销售属性"}
               不支持自定义值。请优先改选模板已有值；如果模板值仍然不覆盖当前商品规格，建议切换类目后再重试。
             </p>
-            <p className="mt-1 text-xs leading-5 text-amber-700">{customValueDeniedNote}</p>
+            <p className="mt-1 text-xs leading-5 text-amber-700">
+              {customValueDeniedNote}
+            </p>
           </div>
         ) : null}
 
         {hasMissingValueIDs ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
             <p className="text-sm leading-6 text-amber-900">
-              当前销售属性只有 `attribute_id`，还缺少真实 `value_id`，不能直接确认。
+              当前销售属性只有 `attribute_id`，还缺少真实
+              `value_id`，不能直接确认。
               你可以先重新生成属性；如果结果仍不准确，下面也可以手工修正规格。
             </p>
           </div>
@@ -417,12 +585,15 @@ function SheinSaleAttributeReviewContent({
         {canManualEdit ? (
           <details
             className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3"
-            open={hasMissingValueIDs}
+            open={manualDetailsOpen}
+            onToggle={(event) =>
+              setManualDetailsOpen(event.currentTarget.open)
+            }
           >
             <summary className="cursor-pointer list-none">
               <SectionHeading
                 description="只有系统结果不准确时，才需要展开这里手工修正。保存后会写入 SKC/SKU 规格，并优先用文本值向 SHEIN 换取真实 value_id。"
-                title="结果不对？再手工修正规格"
+                title="手工修正规格"
                 tone="amber"
               />
             </summary>
@@ -435,15 +606,30 @@ function SheinSaleAttributeReviewContent({
                   options={primaryTemplateOptions}
                   value={primaryOptionID}
                 />
-                <TemplateOptionSelect
-                  allowEmpty
-                  id="shein-sale-attribute-secondary-template"
-                  label={`第 2 步：其他规格字段${current.secondary_source_dimension ? ` · 来源 ${current.secondary_source_dimension}` : ""}`}
-                  onChange={setSecondaryOptionID}
-                  options={secondaryTemplateOptions}
-                  placeholder="不填写其他规格"
-                  value={secondaryOptionID}
-                />
+                {secondaryTemplateUnavailable ? (
+                  <OptionalSecondaryTemplateNotice
+                    label={`第 2 步：其他规格字段（选填）${current.secondary_source_dimension ? ` · 来源 ${current.secondary_source_dimension}` : ""}`}
+                  />
+                ) : (
+                  <TemplateOptionSelect
+                    allowEmpty={!secondaryRequired}
+                    id="shein-sale-attribute-secondary-template"
+                    label={`第 2 步：其他规格字段（${secondaryRequired ? "必填" : "选填"}）${current.secondary_source_dimension ? ` · 来源 ${current.secondary_source_dimension}` : ""}`}
+                    onChange={(value) => {
+                      setHasExplicitEmptySecondarySelection(
+                        !secondaryRequired && value === "",
+                      );
+                      setSecondaryOptionID(value);
+                    }}
+                    options={secondaryTemplateOptions}
+                    placeholder={
+                      secondaryRequired
+                        ? "请选择其他规格字段"
+                        : "不填写其他规格"
+                    }
+                    value={selectedSecondaryOptionID}
+                  />
+                )}
               </div>
               <div className="space-y-3">
                 {(current.skc_patches ?? []).map((patch) => (
@@ -453,8 +639,14 @@ function SheinSaleAttributeReviewContent({
                     primaryOption={primaryOption}
                     secondaryOption={secondaryOption}
                     primarySourceDimension={current.primary_source_dimension}
-                    secondarySourceDimension={current.secondary_source_dimension}
-                    skcSelection={patch.supplier_code ? skcSelections[patch.supplier_code] : undefined}
+                    secondarySourceDimension={
+                      current.secondary_source_dimension
+                    }
+                    skcSelection={
+                      patch.supplier_code
+                        ? skcSelections[patch.supplier_code]
+                        : undefined
+                    }
                     skuSelections={skuSelections}
                     onSKCChange={(selection) => {
                       if (!patch.supplier_code) {
@@ -474,24 +666,54 @@ function SheinSaleAttributeReviewContent({
                   />
                 ))}
               </div>
+              {canSaveManual ? (
+                <div className="flex justify-end">
+                  <Button
+                    className="h-9 w-full px-3 text-xs sm:w-auto"
+                    disabled={isApplying}
+                    onClick={() =>
+                      onApplyManualSaleAttributes?.({
+                        primaryOption,
+                        secondaryOption,
+                        skcSelections,
+                        skuSelections,
+                      })
+                    }
+                  >
+                    {isApplying ? "保存中..." : "保存手工修正"}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </details>
         ) : null}
 
-        <div className="grid gap-4 2xl:grid-cols-2">
-          {fallbackPrimaryAttributes.length > 0 || fallbackSecondaryAttributes.length > 0 ? (
-            <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
+        {candidates.length > 0 ? (
+          <details
+            className={`rounded-2xl border p-3 ${
+              isPartial
+                ? "border-amber-200 bg-amber-50/70"
+                : "border-zinc-200 bg-zinc-50/80"
+            }`}
+            id="shein-sale-attribute-unresolved-group"
+          >
+            <summary className="cursor-pointer list-none">
               <SectionHeading
-                description="这里汇总系统当前识别到的主规格和其他规格，先在这里判断结果是否正确。"
-                title="当前识别结果"
-                tone="sky"
+                description="需要排查时，再展开查看系统为什么会这样匹配。普通使用时可以忽略这里。"
+                title="查看匹配原因"
+                tone={isPartial ? "amber" : "zinc"}
               />
+            </summary>
+            <div className="mt-3 space-y-4">
               {fallbackPrimaryAttributes.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
                     主规格
                   </p>
-                  <SaleAttributeList attributes={fallbackPrimaryAttributes} scopeFallback="skc" />
+                  <SaleAttributeList
+                    attributes={fallbackPrimaryAttributes}
+                    scopeFallback="skc"
+                  />
                   <CandidateReasonList
                     candidates={primaryCandidates}
                     emptyText="暂无主规格候选说明。"
@@ -503,7 +725,10 @@ function SheinSaleAttributeReviewContent({
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-600">
                     其他规格
                   </p>
-                  <SaleAttributeList attributes={fallbackSecondaryAttributes} scopeFallback="sku" />
+                  <SaleAttributeList
+                    attributes={fallbackSecondaryAttributes}
+                    scopeFallback="sku"
+                  />
                   <CandidateReasonList
                     candidates={secondaryCandidates}
                     emptyText="暂无其他规格候选说明。"
@@ -511,56 +736,40 @@ function SheinSaleAttributeReviewContent({
                 </div>
               ) : null}
             </div>
-          ) : null}
+          </details>
+        ) : null}
 
-          {skcAttributes.length > 0 || skuAttributes.length > 0 ? (
-            <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
-              <SectionHeading
-                description="这些销售属性已经进入当前 SHEIN 资料包。"
-                title="当前写入资料包的规格"
-                tone="emerald"
-              />
-              <SaleAttributeList attributes={skcAttributes} scopeFallback="skc" />
-              <SaleAttributeList attributes={skuAttributes} scopeFallback="sku" />
-            </div>
-          ) : null}
-
-          {candidates.length > 0 ? (
-            <details
-              className={`rounded-2xl border p-3 ${
-                isPartial
-                  ? "border-amber-200 bg-amber-50/70"
-                  : "border-zinc-200 bg-zinc-50/80"
-              }`}
-              id="shein-sale-attribute-unresolved-group"
-            >
-              <summary className="cursor-pointer list-none">
-                <SectionHeading
-                  description="需要排查时，再展开查看系统为什么会这样匹配。普通使用时可以忽略这里。"
-                  title="为什么会这样匹配"
-                  tone={isPartial ? "amber" : "zinc"}
-                />
-              </summary>
-              <div className="mt-3 space-y-3">
-                <CandidateReasonList candidates={candidates} />
-              </div>
-            </details>
-          ) : null}
-        </div>
-
-        {current.selection_summary?.length || current.review_notes?.length ? (
+        {hasProcessingNotes ? (
           <details className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
             <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              处理说明
+              查看处理说明
             </summary>
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-3">
+              {skcAttributes.length > 0 || skuAttributes.length > 0 ? (
+                <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                    资料包中的规格
+                  </p>
+                  <SaleAttributeList
+                    attributes={skcAttributes}
+                    scopeFallback="skc"
+                  />
+                  <SaleAttributeList
+                    attributes={skuAttributes}
+                    scopeFallback="sku"
+                  />
+                </div>
+              ) : null}
               {current.selection_summary?.map((line) => (
                 <p className="text-sm leading-6 text-zinc-700" key={line}>
                   {line}
                 </p>
               ))}
               {current.review_notes?.map((note, index) => (
-                <p className="text-sm leading-6 text-zinc-700" key={`${index}-${note}`}>
+                <p
+                  className="text-sm leading-6 text-zinc-700"
+                  key={`${index}-${note}`}
+                >
                   {note}
                 </p>
               ))}
@@ -590,7 +799,10 @@ function TemplateOptionSelect({
   placeholder?: string;
 }) {
   return (
-    <Label className="block rounded-xl border border-zinc-200 bg-white px-3 py-2" htmlFor={id}>
+    <Label
+      className="block rounded-xl border border-zinc-200 bg-white px-3 py-2"
+      htmlFor={id}
+    >
       <span className="block text-sm font-medium text-zinc-950">{label}</span>
       <Select
         className="mt-2 rounded-xl"
@@ -601,12 +813,29 @@ function TemplateOptionSelect({
       >
         <option value="">{allowEmpty ? "不使用" : placeholder}</option>
         {options.map((option) => (
-          <option key={option.attribute_id} value={String(option.attribute_id ?? "")}>
+          <option
+            key={option.attribute_id}
+            value={String(option.attribute_id ?? "")}
+          >
             {formatTemplateOptionLabel(option)}
           </option>
         ))}
       </Select>
     </Label>
+  );
+}
+
+function OptionalSecondaryTemplateNotice({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50/70 px-3 py-2">
+      <p className="text-sm font-medium text-zinc-950">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-zinc-700">
+        当前类目存在其他规格字段，但没有可用于当前来源维度的模板，可保持只使用主规格。
+      </p>
+      <p className="mt-1 text-xs leading-5 text-zinc-500">
+        如果只是尺寸这类来源维度没有映射模板，这一步不用强行选择；只有主规格结果不准确时，再继续手工修正。
+      </p>
+    </div>
   );
 }
 
@@ -629,7 +858,10 @@ function ManualSKCMappingRow({
   skcSelection?: ManualSaleAttributeSelection;
   skuSelections: Record<string, ManualSaleAttributeSelection>;
   onSKCChange: (selection: ManualSaleAttributeSelection) => void;
-  onSKUChange: (supplierSKU: string, selection: ManualSaleAttributeSelection) => void;
+  onSKUChange: (
+    supplierSKU: string,
+    selection: ManualSaleAttributeSelection,
+  ) => void;
 }) {
   return (
     <div className="space-y-3 rounded-xl border border-zinc-200 bg-white/80 p-3">
@@ -640,7 +872,8 @@ function ManualSKCMappingRow({
           </p>
           <p className="mt-1 text-xs text-zinc-600">
             {primarySourceDimension || "主来源维度"}：
-            {resolveSourceValue(patch.attributes, primarySourceDimension) || "未识别"}
+            {resolveSourceValue(patch.attributes, primarySourceDimension) ||
+              "未识别"}
           </p>
         </div>
         <ValueOptionSelect
@@ -648,7 +881,10 @@ function ManualSKCMappingRow({
           label="第 3 步：主规格值"
           onChange={onSKCChange}
           options={primaryOption?.attribute_value_list ?? []}
-          sourceValue={resolveSourceValue(patch.attributes, primarySourceDimension)}
+          sourceValue={resolveSourceValue(
+            patch.attributes,
+            primarySourceDimension,
+          )}
           value={skcSelection}
         />
       </div>
@@ -664,7 +900,10 @@ function ManualSKCMappingRow({
               </p>
               <p className="mt-1 text-xs text-zinc-600">
                 {secondarySourceDimension || "次来源维度"}：
-                {resolveSourceValue(skuPatch.attributes, secondarySourceDimension) || "未识别"}
+                {resolveSourceValue(
+                  skuPatch.attributes,
+                  secondarySourceDimension,
+                ) || "未识别"}
               </p>
               <div className="mt-2">
                 <ValueOptionSelect
@@ -676,8 +915,15 @@ function ManualSKCMappingRow({
                     }
                   }}
                   options={secondaryOption.attribute_value_list ?? []}
-                  sourceValue={resolveSourceValue(skuPatch.attributes, secondarySourceDimension)}
-                  value={skuPatch.supplier_sku ? skuSelections[skuPatch.supplier_sku] : undefined}
+                  sourceValue={resolveSourceValue(
+                    skuPatch.attributes,
+                    secondarySourceDimension,
+                  )}
+                  value={
+                    skuPatch.supplier_sku
+                      ? skuSelections[skuPatch.supplier_sku]
+                      : undefined
+                  }
                 />
               </div>
             </div>
@@ -700,12 +946,19 @@ function ValueOptionSelect({
   label: string;
   value?: ManualSaleAttributeSelection;
   onChange: (value: ManualSaleAttributeSelection) => void;
-  options: NonNullable<SheinSaleAttributeTemplateOption["attribute_value_list"]>;
+  options: NonNullable<
+    SheinSaleAttributeTemplateOption["attribute_value_list"]
+  >;
   sourceValue?: string;
 }) {
-  const selectValue = value?.textValue?.trim() ? "" : String(value?.valueId ?? "");
+  const selectValue = value?.textValue?.trim()
+    ? ""
+    : String(value?.valueId ?? "");
   return (
-    <Label className="block rounded-xl border border-zinc-200 bg-white px-3 py-2" htmlFor={id}>
+    <Label
+      className="block rounded-xl border border-zinc-200 bg-white px-3 py-2"
+      htmlFor={id}
+    >
       <span className="block text-sm font-medium text-zinc-950">{label}</span>
       <Select
         className="mt-2 rounded-xl"
@@ -714,8 +967,10 @@ function ValueOptionSelect({
         value={selectValue}
         onChange={(event) =>
           onChange({
-            valueId: event.target.value ? Number(event.target.value) : undefined,
-            textValue: value?.textValue,
+            valueId: event.target.value
+              ? Number(event.target.value)
+              : undefined,
+            textValue: "",
           })
         }
       >
@@ -733,7 +988,11 @@ function ValueOptionSelect({
         <Input
           id={`${id}-text`}
           name={`${id}-text`}
-          placeholder={sourceValue ? `手工输入，建议值：${sourceValue}` : "手工输入销售属性值"}
+          placeholder={
+            sourceValue
+              ? `手工输入，建议值：${sourceValue}`
+              : "手工输入销售属性值"
+          }
           value={value?.textValue ?? ""}
           onChange={(event) =>
             onChange({
@@ -743,7 +1002,8 @@ function ValueOptionSelect({
           }
         />
         <p className="text-xs text-zinc-500">
-          可直接选择模板值；如果没有合适值，就手工输入，系统会优先向 SHEIN 换取真实值 ID。
+          可直接选择模板值；如果没有合适值，就手工输入，系统会优先向 SHEIN
+          换取真实值 ID。
         </p>
       </div>
     </Label>
@@ -763,11 +1023,15 @@ function ResultSummaryCard({
 }) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white/90 p-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+        {title}
+      </p>
       <p className="mt-2 text-sm font-medium text-zinc-950">{value}</p>
       <p className="mt-1 text-xs leading-5 text-zinc-600">{description}</p>
       {mapped ? (
-        <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500">{mapped}</p>
+        <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+          {mapped}
+        </p>
       ) : null}
     </div>
   );
@@ -788,16 +1052,20 @@ function pickTemplateOptionID({
   candidates,
   currentAttributeID,
   emptyFallback,
+  preferEmptyWhenUnmatched,
   ignoreCurrentSelection,
   scope,
   sourceDimension,
 }: {
   options: SheinSaleAttributeTemplateOption[];
   candidates: NonNullable<
-    NonNullable<NonNullable<SheinEditorContext["sale_attributes"]>["current"]>["candidates"]
+    NonNullable<
+      NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+    >["candidates"]
   >;
   currentAttributeID?: number;
   emptyFallback?: boolean;
+  preferEmptyWhenUnmatched?: boolean;
   ignoreCurrentSelection?: boolean;
   scope: "primary" | "secondary";
   sourceDimension?: string;
@@ -816,7 +1084,9 @@ function pickTemplateOptionID({
           candidate.selected_scope === scope &&
           normalizeSaleAttributeToken(candidate.source_dimension) ===
             normalizeSaleAttributeToken(sourceDimension) &&
-          options.some((option) => option.attribute_id === candidate.attribute_id),
+          options.some(
+            (option) => option.attribute_id === candidate.attribute_id,
+          ),
       )
     : undefined;
   const byScopedCandidate = candidates.find(
@@ -841,10 +1111,39 @@ function pickTemplateOptionID({
       ? options.find((option) => option.skc_scope)
       : options.find((option) => !option.skc_scope);
 
+  if (
+    preferEmptyWhenUnmatched &&
+    !byCurrent &&
+    !bySourceCandidate &&
+    !byScopedCandidate &&
+    !bySourceName
+  ) {
+    return "";
+  }
+
   const ordered = ignoreCurrentSelection
-    ? [byPrimaryLabel, bySourceCandidate, byScopedCandidate, bySourceName, byScopeFallback, byCurrent]
-    : [byCurrent, byPrimaryLabel, bySourceCandidate, byScopedCandidate, bySourceName, byScopeFallback];
-  const match = ordered.find((option): option is SheinSaleAttributeTemplateOption => Boolean(option));
+    ? [
+        byPrimaryLabel,
+        bySourceCandidate,
+        byScopedCandidate,
+        bySourceName,
+        byScopeFallback,
+        byCurrent,
+      ]
+    : [
+        byCurrent,
+        byPrimaryLabel,
+        bySourceCandidate,
+        byScopedCandidate,
+        bySourceName,
+        byScopeFallback,
+      ];
+  const match = ordered.find(
+    (option): option is SheinSaleAttributeTemplateOption => Boolean(option),
+  );
+  if (!match && preferEmptyWhenUnmatched) {
+    return "";
+  }
   return match?.attribute_id ?? (emptyFallback ? "" : options[0]?.attribute_id);
 }
 
@@ -858,7 +1157,9 @@ function sortSaleAttributeTemplateOptions(
     if (Boolean(left.skc_scope) !== Boolean(right.skc_scope)) {
       return left.skc_scope ? -1 : 1;
     }
-    return String(left.name_en ?? left.name ?? left.attribute_id ?? "").localeCompare(
+    return String(
+      left.name_en ?? left.name ?? left.attribute_id ?? "",
+    ).localeCompare(
       String(right.name_en ?? right.name ?? right.attribute_id ?? ""),
       undefined,
       { sensitivity: "base" },
@@ -866,8 +1167,124 @@ function sortSaleAttributeTemplateOptions(
   });
 }
 
+function isSecondarySaleAttributeRequired(
+  current: NonNullable<
+    NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+  >,
+) {
+  const skcPatches = current.skc_patches ?? [];
+  const hasMultiSKUWithinSingleSKC = skcPatches.some(
+    (patch) => (patch.sku_patches?.length ?? 0) > 1,
+  );
+  if (!hasMultiSKUWithinSingleSKC) {
+    return false;
+  }
+  const secondarySourceDimension = current.secondary_source_dimension?.trim();
+  if (!secondarySourceDimension) {
+    return false;
+  }
+  const hasSecondarySourceVariation = skcPatches.some((patch) => {
+    const values = new Set(
+      (patch.sku_patches ?? [])
+        .map((skuPatch) => {
+          const entries = Object.entries(skuPatch.attributes ?? {});
+          const match = entries.find(([key]) =>
+            saleDimensionMatches(key, secondarySourceDimension),
+          );
+          return match?.[1]?.trim();
+        })
+        .filter((value): value is string => Boolean(value)),
+    );
+    return values.size > 1;
+  });
+  if (!hasSecondarySourceVariation) {
+    return false;
+  }
+  return hasMatchingSecondaryTemplateOption(current);
+}
+
+function hasMatchingSecondaryTemplateOption(
+  current: NonNullable<
+    NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+  >,
+) {
+  const secondarySourceDimension = current.secondary_source_dimension?.trim();
+  if (!secondarySourceDimension) {
+    return false;
+  }
+  const hasSecondaryCandidate = (current.candidates ?? []).some((candidate) => {
+    if (
+      !candidate.attribute_id ||
+      candidate.attribute_id === current.primary_attribute_id
+    ) {
+      return false;
+    }
+    if (candidate.skc_scope) {
+      return false;
+    }
+    return (
+      saleDimensionMatches(
+        candidate.source_dimension,
+        secondarySourceDimension,
+      ) || saleDimensionMatches(candidate.name, secondarySourceDimension)
+    );
+  });
+  if (hasSecondaryCandidate) {
+    return true;
+  }
+  return (current.template_options ?? []).some((option) => {
+    if (
+      !option.attribute_id ||
+      option.attribute_id === current.primary_attribute_id
+    ) {
+      return false;
+    }
+    if (option.skc_scope) {
+      return false;
+    }
+    return (
+      saleDimensionMatches(option.name, secondarySourceDimension) ||
+      saleDimensionMatches(option.name_en, secondarySourceDimension)
+    );
+  });
+}
+
+function saleDimensionMatches(left?: string | null, right?: string | null) {
+  const normalizedLeft = normalizeSaleDimension(left);
+  const normalizedRight = normalizeSaleDimension(right);
+  return normalizedLeft !== "" && normalizedLeft === normalizedRight;
+}
+
+function normalizeSaleDimension(value?: string | null) {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "color":
+    case "colour":
+    case "颜色":
+    case "颜色分类":
+      return "color";
+    case "size":
+    case "尺码":
+    case "尺寸":
+    case "规格":
+      return "size";
+    case "quantity":
+    case "count":
+    case "件数":
+    case "数量":
+      return "quantity";
+    case "style":
+    case "style type":
+    case "款式":
+    case "类型":
+      return "style";
+    default:
+      return (value ?? "").trim().toLowerCase();
+  }
+}
+
 function formatTemplateOptionLabel(option: SheinSaleAttributeTemplateOption) {
-  const base = option.name_en ?? option.name ?? String(option.attribute_id ?? "");
+  const base =
+    option.name_en ?? option.name ?? String(option.attribute_id ?? "");
   if (option.important) {
     return `${base} · 主规格`;
   }
@@ -875,7 +1292,10 @@ function formatTemplateOptionLabel(option: SheinSaleAttributeTemplateOption) {
 }
 
 function normalizeSaleAttributeToken(value?: string) {
-  return (value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function hasManualSelection(selection?: ManualSaleAttributeSelection) {
@@ -894,14 +1314,14 @@ function formatResolvedAttributeValue(
   return `${name}：${value}`;
 }
 
-function formatResolvedAttributeMap(
-  attribute?: SheinResolvedSaleAttribute,
-) {
+function formatResolvedAttributeMap(attribute?: SheinResolvedSaleAttribute) {
   if (!attribute?.attribute_id) {
     return undefined;
   }
   return `attribute_id ${attribute.attribute_id}${
-    attribute.attribute_value_id ? ` · value_id ${attribute.attribute_value_id}` : ""
+    attribute.attribute_value_id
+      ? ` · value_id ${attribute.attribute_value_id}`
+      : ""
   }`;
 }
 

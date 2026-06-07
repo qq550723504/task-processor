@@ -41,6 +41,22 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 		if len(groupVariants) == 0 {
 			continue
 		}
+		if shouldSplitVariantGroupPerVariant(groupVariants, resolution) {
+			for _, groupVariant := range groupVariants {
+				groupAttributes := common.CloneMap(groupVariant.Attributes)
+				skcName := resolveSKCNameWithResolution(baseTitle, groupingKey, groupAttributes, groupVariant, resolution)
+				mainImageURL := common.FirstNonEmpty(groupVariant.Image, images.MainImage)
+				result = append(result, variantGroup{
+					skcName:      skcName,
+					saleName:     skcName,
+					supplierCode: groupVariant.SKU,
+					mainImageURL: mainImageURL,
+					attributes:   groupAttributes,
+					skus:         []common.Variant{groupVariant},
+				})
+			}
+			continue
+		}
 		representative := groupVariants[0]
 		groupAttributes := commonAttributes(groupVariants)
 		skcName := resolveSKCNameWithResolution(baseTitle, groupingKey, groupAttributes, representative, resolution)
@@ -55,6 +71,81 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 		})
 	}
 	return result
+}
+
+func shouldSplitVariantGroupPerVariant(groupVariants []common.Variant, resolution *SaleAttributeResolution) bool {
+	if len(groupVariants) <= 1 || resolution == nil {
+		return false
+	}
+	if strings.TrimSpace(resolution.SecondarySourceDimension) == "" {
+		return false
+	}
+	if resolution.SecondaryAttributeID > 0 {
+		return false
+	}
+	if hasUsableSecondaryCandidateForSourceDimension(resolution) {
+		return false
+	}
+	secondaryValues := make(map[string]struct{}, len(groupVariants))
+	for _, groupVariant := range groupVariants {
+		value := strings.TrimSpace(lookupAttributeValue(groupVariant.Attributes, resolution.SecondarySourceDimension))
+		if value == "" {
+			continue
+		}
+		secondaryValues[normalizeText(value)] = struct{}{}
+	}
+	return len(secondaryValues) > 1
+}
+
+func hasUsableSecondaryCandidateForSourceDimension(resolution *SaleAttributeResolution) bool {
+	if resolution == nil {
+		return false
+	}
+	secondarySourceDimension := strings.TrimSpace(resolution.SecondarySourceDimension)
+	if secondarySourceDimension == "" {
+		return false
+	}
+	for _, candidate := range resolution.Candidates {
+		if candidate.AttributeID == 0 || candidate.SKCScope {
+			continue
+		}
+		if candidate.SelectedScope == "secondary" {
+			return true
+		}
+		if saleDimensionMatches(candidate.SourceDimension, secondarySourceDimension) ||
+			saleDimensionMatches(candidate.Name, secondarySourceDimension) {
+			return true
+		}
+	}
+	for _, option := range resolution.TemplateOptions {
+		if option.AttributeID == 0 || option.SKCScope {
+			continue
+		}
+		if saleDimensionMatches(option.Name, secondarySourceDimension) ||
+			saleDimensionMatches(option.NameEn, secondarySourceDimension) {
+			return true
+		}
+	}
+	return false
+}
+
+func saleDimensionMatches(left string, right string) bool {
+	return normalizeSaleDimension(left) != "" && normalizeSaleDimension(left) == normalizeSaleDimension(right)
+}
+
+func normalizeSaleDimension(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "color", "colour", "颜色", "颜色分类":
+		return "color"
+	case "size", "尺码", "尺寸", "规格":
+		return "size"
+	case "quantity", "count", "件数", "数量":
+		return "quantity"
+	case "style", "style type", "款式", "类型":
+		return "style"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
 }
 
 func resolveSKCNameWithResolution(baseTitle string, groupingKey string, attributes map[string]string, representative common.Variant, resolution *SaleAttributeResolution) string {

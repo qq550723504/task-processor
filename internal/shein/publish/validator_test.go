@@ -129,6 +129,44 @@ func TestPublishProductValidatorAllowsResolvedVariantMappings(t *testing.T) {
 	}
 }
 
+func TestPublishProductValidatorAllowsPrimaryOnlyMultiSKUWhenConfigured(t *testing.T) {
+	validator := NewPublishProductValidator()
+	input := &ValidationInput{
+		AllowPrimaryOnlyMultiSKU: true,
+		ProductData: &sheinproduct.Product{
+			CategoryID:            100,
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Bag"}},
+			MultiLanguageDescList: []sheinproduct.LanguageContent{{Language: "en", Name: "Bag desc"}},
+			ProductAttributeList: []sheinproduct.ProductAttribute{
+				{AttributeID: 101, AttributeExtraValue: "Canvas"},
+			},
+			SKCList: []sheinproduct.SKC{
+				{
+					SaleAttribute: sheinproduct.SaleAttribute{AttributeID: 1001184, AttributeValueID: 11},
+					SKUS: []sheinproduct.SKU{
+						{
+							SupplierSKU:   "sku-white-30x40",
+							CostInfo:      &sheinproduct.CostInfo{CostPrice: "10", Currency: "USD"},
+							PriceInfoList: []sheinproduct.PriceInfo{{SubSite: "US", BasePrice: 12, Currency: "USD"}},
+							StockInfoList: []sheinproduct.StockInfo{{InventoryNum: 1, MerchantWarehouseCode: "DEFAULT"}},
+						},
+						{
+							SupplierSKU:   "sku-white-35x50",
+							CostInfo:      &sheinproduct.CostInfo{CostPrice: "10", Currency: "USD"},
+							PriceInfoList: []sheinproduct.PriceInfo{{SubSite: "US", BasePrice: 12, Currency: "USD"}},
+							StockInfoList: []sheinproduct.StockInfo{{InventoryNum: 1, MerchantWarehouseCode: "DEFAULT"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := validator.validateResolvedMappings(input); err != nil {
+		t.Fatalf("expected primary-only multi sku mappings to pass, got %v", err)
+	}
+}
+
 func TestPublishProductValidatorPreValidateAllowsNilContextForStandaloneValidation(t *testing.T) {
 	validator := NewPublishProductValidator()
 	input := &ValidationInput{

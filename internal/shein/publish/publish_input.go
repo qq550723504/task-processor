@@ -61,8 +61,9 @@ func buildPublishRetryInput(ctx *shein.TaskContext) (*PublishRetryInput, error) 
 }
 
 type ValidationInput struct {
-	Task        *model.Task
-	ProductData *sheinproduct.Product
+	Task                     *model.Task
+	ProductData              *sheinproduct.Product
+	AllowPrimaryOnlyMultiSKU bool
 }
 
 func buildValidationInput(ctx *shein.TaskContext) (*ValidationInput, error) {
@@ -74,8 +75,9 @@ func buildValidationInput(ctx *shein.TaskContext) (*ValidationInput, error) {
 	}
 
 	return &ValidationInput{
-		Task:        ctx.Task,
-		ProductData: ctx.ProductData,
+		Task:                     ctx.Task,
+		ProductData:              ctx.ProductData,
+		AllowPrimaryOnlyMultiSKU: shouldAllowPrimaryOnlyMultiSKU(ctx, ctx.ProductData),
 	}, nil
 }
 

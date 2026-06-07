@@ -297,7 +297,7 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 	}
 }
 
-func TestBuildRequestSKCsPreferVariantSpecificDimensions(t *testing.T) {
+func TestBuildRequestSKCsSplitsIntoSingleSKUPerSKCWhenSecondaryTemplateIsUnavailable(t *testing.T) {
 	canonical := &canonical.Product{
 		Title: "Floor Mat",
 		Specifications: &canonical.ProductSpecs{
@@ -326,14 +326,49 @@ func TestBuildRequestSKCsPreferVariantSpecificDimensions(t *testing.T) {
 		SecondarySourceDimension: "Size",
 	})
 	requestSKCs := buildRequestSKCs(groups, &common.ImageSet{MainImage: "main.jpg"}, common.DefaultSites("US"), canonical, PricingPolicy{})
-	if len(requestSKCs) != 1 || len(requestSKCs[0].SKUList) != 2 {
+	if len(requestSKCs) != 2 {
 		t.Fatalf("request skcs = %+v", requestSKCs)
+	}
+	if len(requestSKCs[0].SKUList) != 1 || len(requestSKCs[1].SKUList) != 1 {
+		t.Fatalf("request skc sku counts = %d/%d, want 1/1", len(requestSKCs[0].SKUList), len(requestSKCs[1].SKUList))
 	}
 	if requestSKCs[0].SKUList[0].Length != "40" || requestSKCs[0].SKUList[0].Width != "30" || requestSKCs[0].SKUList[0].Height != "2" {
 		t.Fatalf("first sku dimensions = %+v", requestSKCs[0].SKUList[0])
 	}
-	if requestSKCs[0].SKUList[1].Length != "50" || requestSKCs[0].SKUList[1].Width != "40" || requestSKCs[0].SKUList[1].Height != "3" {
-		t.Fatalf("second sku dimensions = %+v", requestSKCs[0].SKUList[1])
+	if requestSKCs[1].SKUList[0].Length != "50" || requestSKCs[1].SKUList[0].Width != "40" || requestSKCs[1].SKUList[0].Height != "3" {
+		t.Fatalf("second sku dimensions = %+v", requestSKCs[1].SKUList[0])
+	}
+}
+
+func TestBuildRequestSKCsKeepsGroupedSKUsWhenSecondaryAttributeIsAvailable(t *testing.T) {
+	canonical := &canonical.Product{
+		Title: "Floor Mat",
+		Variants: []canonical.Variant{
+			{
+				SKU:        "SKU-40",
+				Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "40x60cm"}},
+				Dimensions: &canonical.Dimensions{Length: 40, Width: 30, Height: 2, Unit: "cm"},
+				Stock:      5,
+				IsDefault:  true,
+			},
+			{
+				SKU:        "SKU-50",
+				Attributes: map[string]canonical.Attribute{"Color": {Value: "White"}, "Size": {Value: "50x80cm"}},
+				Dimensions: &canonical.Dimensions{Length: 50, Width: 40, Height: 3, Unit: "cm"},
+				Stock:      5,
+			},
+		},
+	}
+
+	variants := common.BuildVariants(canonical)
+	groups := buildVariantGroups("Floor Mat", variants, &common.ImageSet{MainImage: "main.jpg"}, &SaleAttributeResolution{
+		PrimarySourceDimension:   "Color",
+		SecondarySourceDimension: "Size",
+		SecondaryAttributeID:     87,
+	})
+	requestSKCs := buildRequestSKCs(groups, &common.ImageSet{MainImage: "main.jpg"}, common.DefaultSites("US"), canonical, PricingPolicy{})
+	if len(requestSKCs) != 1 || len(requestSKCs[0].SKUList) != 2 {
+		t.Fatalf("request skcs = %+v, want 1 skc with 2 skus", requestSKCs)
 	}
 }
 
