@@ -83,15 +83,23 @@ func selectGenerationPanelRecoveryDescriptors(items []GenerationPanelResourceDes
 		return nil, nil
 	}
 	sort.SliceStable(recoverable, func(i, j int) bool {
-		li := generationPanelRecoveryPriority(recoverable[i])
-		lj := generationPanelRecoveryPriority(recoverable[j])
+		li := generationRecoveryProfileForHint(recoverable[i].RecoveryHint).Priority
+		lj := generationRecoveryProfileForHint(recoverable[j].RecoveryHint).Priority
 		if li != lj {
 			return li < lj
 		}
 		if recoverable[i].Role != recoverable[j].Role {
 			return recoverable[i].Role < recoverable[j].Role
 		}
-		return generationPanelResourceCacheKey(recoverable[i]) < generationPanelResourceCacheKey(recoverable[j])
+		leftKey := ""
+		if recoverable[i].Descriptor != nil {
+			leftKey = recoverable[i].Descriptor.CacheKey
+		}
+		rightKey := ""
+		if recoverable[j].Descriptor != nil {
+			rightKey = recoverable[j].Descriptor.CacheKey
+		}
+		return leftKey < rightKey
 	})
 	primary := recoverable[0]
 	return &primary, recoverable
@@ -102,17 +110,6 @@ func isGenerationPanelResourceRecoverable(item GenerationPanelResourceDescriptor
 		return false
 	}
 	return item.RecoveryTarget != nil || item.Retryable
-}
-
-func generationPanelRecoveryPriority(item GenerationPanelResourceDescriptor) int {
-	return generationRecoveryProfileForHint(item.RecoveryHint).Priority
-}
-
-func generationPanelResourceCacheKey(item GenerationPanelResourceDescriptor) string {
-	if item.Descriptor == nil {
-		return ""
-	}
-	return item.Descriptor.CacheKey
 }
 
 func applyGenerationPanelResourceRecovery(item *GenerationPanelResourceDescriptor) {
