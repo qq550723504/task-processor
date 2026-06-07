@@ -2,7 +2,12 @@ package listingkit
 
 import (
 	"time"
+
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
+
+type RevisionDiffPreview = sheinworkspace.RevisionDiffPreview
+type RevisionFieldChange = sheinworkspace.RevisionFieldChange
 
 type ApplyRevisionRequest struct {
 	Platform              string                `json:"platform"`
