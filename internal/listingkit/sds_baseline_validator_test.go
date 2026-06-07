@@ -151,8 +151,11 @@ func TestWarmSDSBaselineReturnsBlockedWhenRequiredFieldsMissing(t *testing.T) {
 			ParentProductID:  9001,
 			PrototypeGroupID: 7001,
 			VariantID:        101,
+			DesignType:       "material",
 			ProductName:      "Baseline product",
-			// Missing LayerID and PrintableWidth/Height to trigger blocked status
+			PrintableWidth:   1000,
+			PrintableHeight:  1000,
+			// Missing LayerID to trigger blocked status
 		},
 	})
 	if err != nil {
