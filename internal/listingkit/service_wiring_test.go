@@ -272,7 +272,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 		},
 		{
 			name: "shein store client",
-			file: "service_shein_store_client.go",
+			file: "service_submit_context_resolver.go",
 			needles: []string{
 				"buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)",
 			},
