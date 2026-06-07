@@ -110,6 +110,21 @@ func TestTaskGenerationQueueReadResponsePhaseBoundary(t *testing.T) {
 	})
 }
 
+func TestTaskGenerationQueueReadResponseOwnerHelpersStayLocal(t *testing.T) {
+	t.Parallel()
+
+	source := readTaskGenerationSourceFile(t, "task_generation_queue_read_response.go")
+
+	assertSourceContainsAll(t, source, []string{
+		"func buildGenerationQueueDeltaToken(",
+		"func fmtRenderSummarySignature(",
+		"listinggeneration.IsReadNotModified(",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"buildGenerationReviewDeltaToken(",
+	})
+}
+
 func assertSourceOrderedContains(t *testing.T, source string, needles []string) {
 	t.Helper()
 

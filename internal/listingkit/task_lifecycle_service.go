@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -124,6 +125,86 @@ func (s *taskLifecycleService) ListTasks(ctx context.Context, query *TaskListQue
 		Taxonomy: BuildTaskListTaxonomy(),
 		Items:    items,
 	}, nil
+}
+
+func buildTaskListSummary(tasks []Task) *TaskListSummary {
+	if len(tasks) == 0 {
+		return nil
+	}
+	summary := &TaskListSummary{
+		StatusCounts:              make(map[string]int),
+		SheinWorkflowStatusCounts: make(map[string]int),
+		SheinWorkQueueCounts:      make(map[string]int),
+		SheinActionQueueCounts:    make(map[string]int),
+		SheinBlockerCounts:        make(map[string]int),
+		SheinWarningCounts:        make(map[string]int),
+	}
+	for i := range tasks {
+		item := buildTaskListItem(&tasks[i])
+		incrementTaskListSummary(summary, item)
+	}
+	return pruneEmptyTaskListSummary(summary)
+}
+
+func incrementTaskListSummary(summary *TaskListSummary, item TaskListItem) {
+	if summary == nil {
+		return
+	}
+	if item.Status != "" {
+		summary.StatusCounts[string(item.Status)]++
+	}
+	if item.SheinWorkflowStatus != "" {
+		summary.SheinWorkflowStatusCounts[item.SheinWorkflowStatus]++
+	}
+	if item.SheinWorkQueue != "" {
+		summary.SheinWorkQueueCounts[item.SheinWorkQueue]++
+	}
+	if item.SheinActionQueue != "" {
+		summary.SheinActionQueueCounts[item.SheinActionQueue]++
+	}
+	for _, key := range item.SheinBlockingKeys {
+		if key != "" {
+			summary.SheinBlockerCounts[key]++
+		}
+	}
+	for _, key := range item.SheinWarningKeys {
+		if key != "" {
+			summary.SheinWarningCounts[key]++
+		}
+	}
+}
+
+func pruneEmptyTaskListSummary(summary *TaskListSummary) *TaskListSummary {
+	if summary == nil {
+		return nil
+	}
+	if len(summary.StatusCounts) == 0 {
+		summary.StatusCounts = nil
+	}
+	if len(summary.SheinWorkflowStatusCounts) == 0 {
+		summary.SheinWorkflowStatusCounts = nil
+	}
+	if len(summary.SheinWorkQueueCounts) == 0 {
+		summary.SheinWorkQueueCounts = nil
+	}
+	if len(summary.SheinActionQueueCounts) == 0 {
+		summary.SheinActionQueueCounts = nil
+	}
+	if len(summary.SheinBlockerCounts) == 0 {
+		summary.SheinBlockerCounts = nil
+	}
+	if len(summary.SheinWarningCounts) == 0 {
+		summary.SheinWarningCounts = nil
+	}
+	if summary.StatusCounts == nil &&
+		summary.SheinWorkflowStatusCounts == nil &&
+		summary.SheinWorkQueueCounts == nil &&
+		summary.SheinActionQueueCounts == nil &&
+		summary.SheinBlockerCounts == nil &&
+		summary.SheinWarningCounts == nil {
+		return nil
+	}
+	return summary
 }
 
 func (s *taskLifecycleService) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {
@@ -287,4 +368,37 @@ func (s *taskLifecycleService) scheduleAsyncEnqueueRetry(ctx context.Context, ta
 
 func (s *taskLifecycleService) persistEnqueueFailure(ctx context.Context, taskID string, errorMsg string, cause error) error {
 	return persistClassifiedTaskFailure(ctx, s.repo, taskID, errorMsg, cause)
+}
+
+func validateRequest(req *GenerateRequest) error {
+	if len(req.ImageURLs) == 0 && strings.TrimSpace(req.Text) == "" && strings.TrimSpace(req.ProductURL) == "" {
+		return fmt.Errorf("at least one of image_urls, text, or product_url must be provided")
+	}
+	if len(req.ImageURLs) > 10 {
+		return fmt.Errorf("too many image URLs (max 10)")
+	}
+	if len(req.Platforms) == 0 {
+		return fmt.Errorf("at least one platform is required")
+	}
+	if err := validateSheinStudioAspectRatio(req); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSheinStudioAspectRatio(req *GenerateRequest) error {
+	if req == nil || req.Options == nil || req.Options.SheinStudio == nil || req.Options.SDS == nil {
+		return nil
+	}
+	studio := req.Options.SheinStudio
+	sds := req.Options.SDS
+	if studio.SourceDesignWidth <= 0 || studio.SourceDesignHeight <= 0 || sds.PrintableWidth <= 0 || sds.PrintableHeight <= 0 {
+		return nil
+	}
+	sourceRatio := float64(studio.SourceDesignWidth) / float64(studio.SourceDesignHeight)
+	targetRatio := float64(sds.PrintableWidth) / float64(sds.PrintableHeight)
+	if math.Abs(sourceRatio-targetRatio)/targetRatio > 0.25 {
+		return fmt.Errorf("shein studio source image ratio differs too much from SDS printable area ratio")
+	}
+	return nil
 }

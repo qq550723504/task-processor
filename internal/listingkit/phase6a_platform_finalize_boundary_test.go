@@ -69,6 +69,9 @@ func TestWorkflowPlatformFinalizeCoverageGuardStaysInFinalizePhase(t *testing.T)
 	} {
 		src, err := os.ReadFile(tc.file)
 		if err != nil {
+			if !tc.shouldExist && os.IsNotExist(err) {
+				continue
+			}
 			t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
 		}
 		content := string(src)

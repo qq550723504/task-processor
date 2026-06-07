@@ -104,6 +104,18 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 	return preview, nil
 }
 
+func appendRevisionHistory(result *ListingKitResult, record ListingKitRevisionRecord) {
+	if result == nil {
+		return
+	}
+	if record.RevisionID == "" {
+		record.RevisionID = newRevisionHistoryRecordID()
+	}
+	result.RevisionHistoryTotal++
+	result.RevisionHistory = append(result.RevisionHistory, record)
+	result.RevisionHistory = applyRevisionHistoryRetention(result.RevisionHistory)
+}
+
 func (s *taskRevisionService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error) {
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {

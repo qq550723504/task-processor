@@ -24,6 +24,14 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	return s.taskLifecycleOrDefault().GetTaskResult(ctx, taskID)
 }
 
+func (s *service) GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error) {
+	return s.taskRevisionOrDefault().GetTaskRevisionHistory(ctx, taskID, query)
+}
+
+func (s *service) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {
+	return s.taskRevisionOrDefault().GetTaskRevisionHistoryDetail(ctx, taskID, revisionID, query)
+}
+
 func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {
 	return s.taskLifecycleOrDefault().ListTasks(ctx, query)
 }

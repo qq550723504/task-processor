@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -9,11 +8,7 @@ import (
 func TestWorkflowPlatformSummaryPhaseFileOwnsCompletionNotReviewCompatibility(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("workflow_platform_summary_phase.go")
-	if err != nil {
-		t.Fatalf("ReadFile(workflow_platform_summary_phase.go) error = %v", err)
-	}
-	content := string(src)
+	content := readExactMethodSource(t, "workflow_platform_finalize_phase.go", "func (p *platformSummaryPhase) run(")
 
 	finalizeCall := "newWorkflowRecorder(final).FinalizeSummary()"
 	syncPreviewCall := "syncAssetRenderPreviews(final)"
@@ -23,12 +18,12 @@ func TestWorkflowPlatformSummaryPhaseFileOwnsCompletionNotReviewCompatibility(t 
 		syncPreviewCall,
 	} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("workflow_platform_summary_phase.go should contain %q", needle)
+			t.Fatalf("platform summary phase should contain %q", needle)
 		}
 	}
 
-	if strings.Index(content, finalizeCall) > strings.Index(content, syncPreviewCall) {
-		t.Fatalf("workflow_platform_summary_phase.go should finalize summary before syncing asset render previews")
+	if orderedNeedlesOutOfSequence(content, finalizeCall, syncPreviewCall) {
+		t.Fatalf("platform summary phase should finalize summary before syncing asset render previews")
 	}
 
 	for _, needle := range []string{
@@ -40,7 +35,13 @@ func TestWorkflowPlatformSummaryPhaseFileOwnsCompletionNotReviewCompatibility(t 
 		"buildPlatformAssetDispatchPhase(",
 	} {
 		if strings.Contains(content, needle) {
-			t.Fatalf("workflow_platform_summary_phase.go should not contain %q", needle)
+			t.Fatalf("platform summary phase should not contain %q", needle)
 		}
 	}
+}
+
+func orderedNeedlesOutOfSequence(source string, first string, second string) bool {
+	firstIndex := strings.Index(source, first)
+	secondIndex := strings.Index(source, second)
+	return firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex
 }

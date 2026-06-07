@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"errors"
+	"strings"
 
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
@@ -9,6 +10,10 @@ import (
 var ErrRevisionHistoryRecordNotFound = errors.New("revision history record not found")
 
 type ListingKitRevisionHistoryDetail = sheinworkspace.HistoryDetail[ListingKitRevisionRecord, RevisionRestorePreviewPayload]
+
+type RevisionHistoryDetailQuery struct {
+	CompareTo string `form:"compare_to"`
+}
 
 func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {
 	if result == nil {
@@ -62,6 +67,15 @@ func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, que
 	}
 
 	return nil, ErrRevisionHistoryRecordNotFound
+}
+
+func normalizeRevisionHistoryDetailQuery(query *RevisionHistoryDetailQuery) RevisionHistoryDetailQuery {
+	if query == nil {
+		return RevisionHistoryDetailQuery{}
+	}
+	return RevisionHistoryDetailQuery{
+		CompareTo: strings.TrimSpace(query.CompareTo),
+	}
 }
 
 func restoreDetailContextValue(detail *revisionHistoryRestoreDetailData) *RevisionHistoryRestoreContext {

@@ -1,13 +1,5 @@
 package listingkit
 
-func stringPointerOrNil(value string) *string {
-	if value == "" {
-		return nil
-	}
-	copied := value
-	return &copied
-}
-
 func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {
 	if set == nil {
 		return nil

@@ -435,3 +435,11 @@ func TestGetTaskRevisionHistoryDetailMarksRestoreUnsupportedWithoutCurrentShein(
 		t.Fatalf("restore messages = %+v", detail.RestorePayload)
 	}
 }
+
+func stringPointerOrNil(value string) *string {
+	if value == "" {
+		return nil
+	}
+	copied := value
+	return &copied
+}

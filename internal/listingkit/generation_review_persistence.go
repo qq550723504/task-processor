@@ -57,9 +57,14 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 	if decision == "" {
 		return nil
 	}
-	platform := targetPlatform(target)
-	slot := targetSlot(target)
-	capability := targetCapability(target)
+	platform := ""
+	slot := ""
+	capability := ""
+	if target != nil && target.QueueQuery != nil {
+		platform = target.QueueQuery.Platform
+		slot = target.QueueQuery.Slot
+		capability = target.QueueQuery.PreviewCapability
+	}
 	if session != nil {
 		platform = firstNonEmpty(session.SelectedPlatform, platform)
 		slot = firstNonEmpty(session.SelectedSlot, slot)
@@ -90,11 +95,30 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 		record.AssetRevision = preview.AssetRevision
 		record.PreviewRevision = preview.PreviewRevision
 		record.TaskRevision = preview.TaskRevision
-	} else if slotState := findGenerationReviewSlot(session, platform, slot, capability); slotState != nil {
-		record.AssetID = slotState.AssetID
-		record.AssetRevision = slotState.AssetRevision
-		record.PreviewRevision = slotState.PreviewRevision
-		record.TaskRevision = slotState.TaskRevision
+	} else if session != nil {
+		for i := range session.SlotNavigation {
+			item := &session.SlotNavigation[i]
+			if normalizeReviewKey(item.Platform) != normalizeReviewKey(platform) || normalizeReviewKey(item.Slot) != normalizeReviewKey(slot) {
+				continue
+			}
+			if capability != "" && item.FocusCapability != capability && len(item.PreviewCapabilities) > 0 {
+				matched := false
+				for _, previewCapability := range item.PreviewCapabilities {
+					if previewCapability == capability {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+			record.AssetID = item.AssetID
+			record.AssetRevision = item.AssetRevision
+			record.PreviewRevision = item.PreviewRevision
+			record.TaskRevision = item.TaskRevision
+			break
+		}
 	}
 	return record
 }
@@ -121,46 +145,4 @@ func generationReviewWorkflowMessage(actionKey, platform, slot, capability strin
 		return workflow.Message
 	}
 	return ""
-}
-
-func targetPlatform(target *AssetGenerationActionTarget) string {
-	if target == nil || target.QueueQuery == nil {
-		return ""
-	}
-	return target.QueueQuery.Platform
-}
-
-func targetSlot(target *AssetGenerationActionTarget) string {
-	if target == nil || target.QueueQuery == nil {
-		return ""
-	}
-	return target.QueueQuery.Slot
-}
-
-func targetCapability(target *AssetGenerationActionTarget) string {
-	if target == nil || target.QueueQuery == nil {
-		return ""
-	}
-	return target.QueueQuery.PreviewCapability
-}
-
-func findGenerationReviewSlot(session *GenerationReviewSession, platform, slot, capability string) *GenerationReviewSlot {
-	if session == nil {
-		return nil
-	}
-	for i := range session.SlotNavigation {
-		item := &session.SlotNavigation[i]
-		if normalizeReviewKey(item.Platform) != normalizeReviewKey(platform) || normalizeReviewKey(item.Slot) != normalizeReviewKey(slot) {
-			continue
-		}
-		if capability == "" || item.FocusCapability == capability || len(item.PreviewCapabilities) == 0 {
-			return item
-		}
-		for _, previewCapability := range item.PreviewCapabilities {
-			if previewCapability == capability {
-				return item
-			}
-		}
-	}
-	return nil
 }

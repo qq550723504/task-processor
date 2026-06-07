@@ -6,6 +6,10 @@ func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *App
 	return s.taskRevisionOrDefault().ApplyTaskRevision(ctx, taskID, req)
 }
 
+func (s *service) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {
+	return s.taskRevisionOrDefault().ValidateTaskRevision(ctx, taskID, req)
+}
+
 func (s *service) taskRevisionOrDefault() *taskRevisionService {
 	if s.taskRevision != nil {
 		return s.taskRevision

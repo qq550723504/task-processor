@@ -46,10 +46,9 @@ func TestTaskGenerationActionExecuteRequestHandoffRequestShapingBoundary(t *test
 	t.Run("queue_request_shaping_owner_keeps_only_queue_query_clone_handoff", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue_request.go")
-		buildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue_request.go", "buildTaskGenerationActionExecuteRequestHandoffQueueRequestPhase")
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue_request.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_queue_request.go", "run")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_queue.go")
+		buildSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_queue.go", "buildTaskGenerationActionExecuteRequestHandoffQueueRequestPhase")
+		source := readExactMethodSource(t, "task_generation_action_execute_request_handoff_queue.go", "func (p *taskGenerationActionExecuteRequestHandoffQueueRequestPhase) run(")
 
 		assertSourceContainsAll(t, fileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffQueueRequestPhase()",
@@ -69,15 +68,6 @@ func TestTaskGenerationActionExecuteRequestHandoffRequestShapingBoundary(t *test
 			"buildTaskGenerationActionExecuteRequestHandoffResultDispatchPhase(",
 			"fromRetryPage(",
 			"fromQueuePage(",
-		})
-		assertFunctionCallsContainAll(t, callNames, []string{"cloneGenerationQueueQuery"})
-		assertFunctionCallsExcludeAll(t, callNames, []string{
-			"GetTaskGenerationQueue",
-			"RetryTaskGenerationTasks",
-			"cloneRetryGenerationTasksRequest",
-			"buildTaskGenerationActionExecuteRequestHandoffResultDispatchPhase",
-			"fromRetryPage",
-			"fromQueuePage",
 		})
 	})
 }

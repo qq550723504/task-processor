@@ -50,8 +50,8 @@ func TestSheinSubmitReadinessSummaryBoundary(t *testing.T) {
 	t.Run("shared_summary_seam_owns_summary_post_shape_policy", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "submit_readiness_summary_shein.go", "shapeSheinSubmitReadinessSummary")
-		callNames := readNamedFunctionCallNames(t, "submit_readiness_summary_shein.go", "shapeSheinSubmitReadinessSummary")
+		source := readNamedFunctionSource(t, "shein_submit_readiness.go", "shapeSheinSubmitReadinessSummary")
+		callNames := readNamedFunctionCallNames(t, "shein_submit_readiness.go", "shapeSheinSubmitReadinessSummary")
 
 		assertSourceContainsAll(t, source, []string{
 			"if shape.prependFirstBlocker {",

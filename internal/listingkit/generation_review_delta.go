@@ -1,9 +1,6 @@
 package listingkit
 
-import (
-	"fmt"
-	"strconv"
-)
+import "fmt"
 
 func buildGenerationReviewDeltaToken(session *GenerationReviewSession) string {
 	if session == nil {
@@ -59,73 +56,4 @@ func normalizeGenerationActionResponseMode(mode string) string {
 	default:
 		return "full"
 	}
-}
-
-func buildGenerationQueueDeltaToken(page *GenerationQueuePage, query *GenerationQueueQuery) string {
-	if page == nil {
-		return ""
-	}
-	summarySig := ""
-	if page.Summary != nil {
-		summarySig = fmt.Sprintf(
-			"%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d",
-			page.Summary.TotalItems,
-			page.Summary.ReadyItems,
-			page.Summary.FallbackItems,
-			page.Summary.MissingItems,
-			page.Summary.QueuedItems,
-			page.Summary.RunningItems,
-			page.Summary.CompletedItems,
-			page.Summary.FailedItems,
-			page.Summary.StubbedItems,
-			page.Summary.RetryableItems,
-			page.Summary.PreviewableItems,
-			page.Summary.ApprovedSections,
-			page.Summary.DeferredSections,
-			page.Summary.ReviewPendingSections,
-		)
-	}
-	itemSig := ""
-	for _, item := range page.Items {
-		itemSig += hashRenderRevision(
-			item.TaskID,
-			item.Platform,
-			item.Slot,
-			item.State,
-			item.ExecutionMode,
-			item.ExecutionQuality,
-			item.QualityGrade,
-			item.AssetID,
-			item.ReviewDecision,
-			item.ReviewStatus,
-			strconv.FormatBool(item.RenderPreviewAvailable),
-		)
-	}
-	querySig := ""
-	if query != nil {
-		querySig = hashRenderRevision(
-			query.Platform,
-			query.Slot,
-			query.State,
-			query.ExecutionMode,
-			query.ExecutionQuality,
-			query.QualityGrade,
-			query.QualityGradeLabel,
-			query.PreviewCapability,
-			query.SortBy,
-			query.SortOrder,
-			strconv.Itoa(resolveGenerationQueuePage(query)),
-			strconv.Itoa(resolveGenerationQueuePageSize(query)),
-			strconv.FormatBool(query.RenderPreviewAvailablePresent && query.RenderPreviewAvailable),
-			strconv.FormatBool(query.RetryablePresent && query.Retryable),
-		)
-	}
-	return hashRenderRevision(
-		page.TaskID,
-		page.UpdatedAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00"),
-		strconv.Itoa(page.Total),
-		summarySig,
-		itemSig,
-		querySig,
-	)
 }

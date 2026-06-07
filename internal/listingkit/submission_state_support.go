@@ -52,13 +52,6 @@ func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
 	return SheinWorkflowStatusPendingConfirmation
 }
 
-func latestSheinSubmissionEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {
-	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
-		return nil
-	}
-	return &pkg.SubmissionEvents[0]
-}
-
 func latestSheinSubmissionOutcomeEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {
 	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
 		return nil
