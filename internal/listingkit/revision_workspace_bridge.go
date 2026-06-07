@@ -90,7 +90,7 @@ func buildRevisionRestorePreviewFromDetail(detail *ListingKitRevisionHistoryDeta
 			CompareTo:         "current",
 			CompareRevisionID: "current",
 			RelationLabel:     "当前版本",
-			DiffPreview:       buildSheinRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft),
+			DiffPreview:       sheinworkspace.BuildRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft),
 		}
 	}
 	return sheinworkspace.RebuildRestorePreviewPayload(detail.RestorePayload, compare)
