@@ -11,12 +11,18 @@ type taskGenerationTasksReadSnapshot struct {
 	tasks []assetgeneration.Task
 }
 
+type taskGenerationTasksReadPagePhase struct{}
+
 type taskGenerationTasksReadSnapshotPhase struct {
 	service *taskGenerationService
 }
 
 func buildTaskGenerationTasksReadSnapshotPhase(service *taskGenerationService) *taskGenerationTasksReadSnapshotPhase {
 	return &taskGenerationTasksReadSnapshotPhase{service: service}
+}
+
+func buildTaskGenerationTasksReadPagePhase() *taskGenerationTasksReadPagePhase {
+	return &taskGenerationTasksReadPagePhase{}
 }
 
 func (p *taskGenerationTasksReadSnapshotPhase) run(ctx context.Context, taskID string) (*taskGenerationTasksReadSnapshot, error) {
@@ -37,4 +43,17 @@ func (p *taskGenerationTasksReadSnapshotPhase) run(ctx context.Context, taskID s
 		task:  task,
 		tasks: tasks,
 	}, nil
+}
+
+func (p *taskGenerationTasksReadPagePhase) run(snapshot *taskGenerationTasksReadSnapshot, query *GenerationTaskQuery) *GenerationTaskPage {
+	if snapshot == nil {
+		snapshot = &taskGenerationTasksReadSnapshot{task: &Task{}}
+	}
+	if snapshot.task == nil {
+		snapshot.task = &Task{}
+	}
+	filtered := filterGenerationTasks(snapshot.tasks, query)
+	sorted := sortGenerationTasks(filtered, query)
+	paged, meta := paginateGenerationTasks(sorted, query)
+	return buildGenerationTaskPage(snapshot.task.ID, snapshot.task.UpdatedAt, filtered, paged, meta)
 }

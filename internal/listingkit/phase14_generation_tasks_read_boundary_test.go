@@ -53,7 +53,7 @@ func TestTaskGenerationTasksReadSnapshotOwnershipBoundary(t *testing.T) {
 func TestTaskGenerationTasksReadPageOwnershipBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_tasks_read_page.go", "func (p *taskGenerationTasksReadPagePhase) run(")
+	source := readExactMethodSource(t, "task_generation_tasks_read_snapshot.go", "func (p *taskGenerationTasksReadPagePhase) run(")
 
 	assertSourceOccurrenceCount(t, source, "filterGenerationTasks(", 1)
 	assertSourceOccurrenceCount(t, source, "sortGenerationTasks(", 1)
