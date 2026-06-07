@@ -8,8 +8,8 @@ func TestActionTargetImpactFinalSliceBoundary(t *testing.T) {
 	t.Run("action_target_impact_platforms_clone_home_owns_only_platforms_slice", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_impact_platforms_clone.go", "applyAssetGenerationActionImpactPlatformsClone")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_impact_platforms_clone.go", "applyAssetGenerationActionImpactPlatformsClone")
+		source := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "applyAssetGenerationActionImpactPlatformsClone")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_target_clone.go", "applyAssetGenerationActionImpactPlatformsClone")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.Platforms = append([]string(nil), impact.Platforms...)",
@@ -28,8 +28,8 @@ func TestActionTargetImpactFinalSliceBoundary(t *testing.T) {
 	t.Run("action_target_impact_quality_grades_clone_home_owns_only_quality_grades_slice", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_impact_quality_grades_clone.go", "applyAssetGenerationActionImpactQualityGradesClone")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_impact_quality_grades_clone.go", "applyAssetGenerationActionImpactQualityGradesClone")
+		source := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "applyAssetGenerationActionImpactQualityGradesClone")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_target_clone.go", "applyAssetGenerationActionImpactQualityGradesClone")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.QualityGrades = append([]string(nil), impact.QualityGrades...)",
@@ -48,8 +48,8 @@ func TestActionTargetImpactFinalSliceBoundary(t *testing.T) {
 	t.Run("action_target_impact_states_clone_home_owns_only_states_slice", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_impact_states_clone.go", "applyAssetGenerationActionImpactStatesClone")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_impact_states_clone.go", "applyAssetGenerationActionImpactStatesClone")
+		source := readNamedFunctionSource(t, "task_generation_action_target_clone.go", "applyAssetGenerationActionImpactStatesClone")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_target_clone.go", "applyAssetGenerationActionImpactStatesClone")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.States = append([]string(nil), impact.States...)",

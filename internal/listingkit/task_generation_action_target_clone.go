@@ -23,3 +23,24 @@ func cloneAssetGenerationActionImpact(impact *AssetGenerationActionImpact) *Asse
 	applyAssetGenerationActionImpactStatesClone(impact, &cloned)
 	return &cloned
 }
+
+func applyAssetGenerationActionImpactPlatformsClone(impact *AssetGenerationActionImpact, cloned *AssetGenerationActionImpact) {
+	if impact == nil || cloned == nil {
+		return
+	}
+	cloned.Platforms = append([]string(nil), impact.Platforms...)
+}
+
+func applyAssetGenerationActionImpactQualityGradesClone(impact *AssetGenerationActionImpact, cloned *AssetGenerationActionImpact) {
+	if impact == nil || cloned == nil {
+		return
+	}
+	cloned.QualityGrades = append([]string(nil), impact.QualityGrades...)
+}
+
+func applyAssetGenerationActionImpactStatesClone(impact *AssetGenerationActionImpact, cloned *AssetGenerationActionImpact) {
+	if impact == nil || cloned == nil {
+		return
+	}
+	cloned.States = append([]string(nil), impact.States...)
+}
