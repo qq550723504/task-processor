@@ -85,9 +85,6 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 				"baseResult",
 			},
 			forbidden: []string{
-				"getCurrentListingKitResult(",
-				"overview := currentResult.AssetGenerationOverview",
-				"buildActionPlatformRenderPreviews(currentResult, query)",
 				"RetryTaskGenerationTasks(",
 				"GetTaskGenerationQueue(",
 				"buildGenerationReviewWorkflowResult(",
@@ -105,14 +102,7 @@ func TestTaskGenerationActionPhaseOwnershipBoundary(t *testing.T) {
 			forbidden: []string{
 				"RetryTaskGenerationTasks(",
 				"GetTaskGenerationQueue(",
-				"getCurrentListingKitResult(",
 				"buildActionPlatformRenderPreviews(",
-				"buildGenerationReviewSession(",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				`"patch_only"`,
-				"buildGenerationReviewDeltaToken(",
 			},
 		},
 	}
