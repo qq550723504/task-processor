@@ -92,7 +92,14 @@ func applyGenerationResolvedActionSummaryToReviewSessionResponse(response *Gener
 	if response == nil {
 		return nil
 	}
-	response.ResolvedActionSummary = buildGenerationResolvedActionSummaryFromReviewTarget(response.RecoverySummary, reviewSessionResponseTarget(response))
+	var target *GenerationReviewTarget
+	if response.Session != nil {
+		target = response.Session.FocusedTarget
+		if target == nil {
+			target = response.Session.DefaultTarget
+		}
+	}
+	response.ResolvedActionSummary = buildGenerationResolvedActionSummaryFromReviewTarget(response.RecoverySummary, target)
 	return response
 }
 
@@ -199,16 +206,6 @@ func buildGenerationResolvedActionSummaryFromReviewTarget(summary *GenerationRec
 		return nil
 	}
 	return resolved
-}
-
-func reviewSessionResponseTarget(response *GenerationReviewSessionResponse) *GenerationReviewTarget {
-	if response == nil || response.Session == nil {
-		return nil
-	}
-	if response.Session.FocusedTarget != nil {
-		return response.Session.FocusedTarget
-	}
-	return response.Session.DefaultTarget
 }
 
 func generationResolvedActionTitle(actionKey string) string {
