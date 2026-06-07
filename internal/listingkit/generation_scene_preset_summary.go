@@ -47,32 +47,3 @@ func buildGenerationScenePresetSummaryFromMetadata(metadata map[string]string) *
 		CustomSceneHint: summary.CustomSceneHint,
 	}
 }
-
-func hasGenerationScenePresetSummary(summary *GenerationScenePresetSummary) bool {
-	return listinggeneration.HasScenePresetSummary(toGenerationScenePresetSummary(summary))
-}
-
-func cloneGenerationScenePresetSummary(summary *GenerationScenePresetSummary) *GenerationScenePresetSummary {
-	if summary == nil {
-		return nil
-	}
-	cloned := *summary
-	return &cloned
-}
-
-func toGenerationScenePresetSummary(summary *GenerationScenePresetSummary) *listinggeneration.ScenePresetSummary {
-	if summary == nil {
-		return nil
-	}
-	return &listinggeneration.ScenePresetSummary{
-		PromptKey:       summary.PromptKey,
-		DefaultsSource:  summary.DefaultsSource,
-		SceneCategory:   summary.SceneCategory,
-		SceneStyle:      summary.SceneStyle,
-		BackgroundTone:  summary.BackgroundTone,
-		Composition:     summary.Composition,
-		PropsLevel:      summary.PropsLevel,
-		AudienceHint:    summary.AudienceHint,
-		CustomSceneHint: summary.CustomSceneHint,
-	}
-}

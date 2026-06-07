@@ -145,6 +145,14 @@ func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[gener
 	*items = append(*items, item)
 }
 
+func cloneGenerationScenePresetSummary(summary *GenerationScenePresetSummary) *GenerationScenePresetSummary {
+	if summary == nil {
+		return nil
+	}
+	cloned := *summary
+	return &cloned
+}
+
 func indexAssetRenderPreviews(result *ListingKitResult) map[string]AssetRenderPreview {
 	out := make(map[string]AssetRenderPreview)
 	if result == nil {
