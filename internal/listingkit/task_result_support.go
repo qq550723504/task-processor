@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -53,6 +54,21 @@ func effectiveCatalogProduct(result *ListingKitResult) *catalog.Product {
 		return result.CatalogProduct
 	}
 	return catalog.BuildProduct(result.CanonicalProduct)
+}
+
+func cloneListingKitResult(result *ListingKitResult) (*ListingKitResult, error) {
+	if result == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	var cloned ListingKitResult
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return nil, err
+	}
+	return &cloned, nil
 }
 
 func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
