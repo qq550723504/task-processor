@@ -38,6 +38,18 @@ type sheinRepairClonedFields struct {
 	reviewNotes             []string
 }
 
+func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {
+	if set == nil {
+		return nil
+	}
+	return &PlatformImageSet{
+		MainImage:    set.MainImage,
+		WhiteBgImage: set.WhiteBgImage,
+		Gallery:      append([]string(nil), set.Gallery...),
+		SourceImages: append([]string(nil), set.SourceImages...),
+	}
+}
+
 func cloneSheinRepairFields(payload *SheinRepairPatchPayload) sheinRepairClonedFields {
 	if payload == nil {
 		return sheinRepairClonedFields{}
