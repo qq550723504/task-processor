@@ -273,18 +273,6 @@ function SheinSaleAttributeReviewContent({
     fallbackSecondaryAttributes[0]?.name ??
     fallbackPrimaryAttributes[0]?.name ??
     undefined;
-  const primaryAction = canRegenerate
-    ? {
-        label: isApplying ? "重新生成中..." : "重新生成属性",
-        onClick: () => onRegenerateSaleAttributes?.(),
-      }
-    : canConfirm && !secondaryRequired
-      ? {
-          label: isApplying ? "保存中..." : "直接确认当前结果",
-          onClick: () => onConfirmCurrentSaleAttributes?.(),
-        }
-      : null;
-  const secondaryAction = null;
   const hasProcessingNotes =
     Boolean(current.selection_summary?.length) ||
     Boolean(current.review_notes?.length) ||
@@ -355,7 +343,7 @@ function SheinSaleAttributeReviewContent({
           />
         </div>
 
-        {primaryAction ? (
+        {canRegenerate || (canConfirm && !secondaryRequired) ? (
           <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
               当前操作
@@ -367,20 +355,20 @@ function SheinSaleAttributeReviewContent({
               <Button
                 className="h-9 w-full px-3 text-xs sm:w-auto"
                 disabled={isApplying}
-                onClick={primaryAction.onClick}
+                onClick={
+                  canRegenerate
+                    ? () => onRegenerateSaleAttributes?.()
+                    : () => onConfirmCurrentSaleAttributes?.()
+                }
               >
-                {primaryAction.label}
+                {canRegenerate
+                  ? isApplying
+                    ? "重新生成中..."
+                    : "重新生成属性"
+                  : isApplying
+                    ? "保存中..."
+                    : "直接确认当前结果"}
               </Button>
-              {secondaryAction ? (
-                <Button
-                  className="h-9 w-full px-3 text-xs sm:w-auto"
-                  disabled={isApplying}
-                  variant="secondary"
-                  onClick={secondaryAction.onClick}
-                >
-                  {secondaryAction.label}
-                </Button>
-              ) : null}
             </div>
           </div>
         ) : null}
