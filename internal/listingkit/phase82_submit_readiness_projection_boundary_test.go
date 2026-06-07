@@ -63,12 +63,12 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 	t.Run("task_state_helpers_delegate_readiness_projection_bundle_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		overviewSource := readNamedFunctionSource(t, "task_state_support.go", "buildSheinTaskStatusOverviewWithPod")
-		overviewCalls := readNamedFunctionCallNames(t, "task_state_support.go", "buildSheinTaskStatusOverviewWithPod")
-		blockingSource := readNamedFunctionSource(t, "task_state_support.go", "sheinBlockingKeysWithPod")
-		blockingCalls := readNamedFunctionCallNames(t, "task_state_support.go", "sheinBlockingKeysWithPod")
-		warningSource := readNamedFunctionSource(t, "task_state_support.go", "sheinWarningKeysWithPod")
-		warningCalls := readNamedFunctionCallNames(t, "task_state_support.go", "sheinWarningKeysWithPod")
+		overviewSource := readNamedFunctionSource(t, "task_list_item_support.go", "buildSheinTaskStatusOverviewWithPod")
+		overviewCalls := readNamedFunctionCallNames(t, "task_list_item_support.go", "buildSheinTaskStatusOverviewWithPod")
+		blockingSource := readNamedFunctionSource(t, "task_list_item_support.go", "sheinBlockingKeysWithPod")
+		blockingCalls := readNamedFunctionCallNames(t, "task_list_item_support.go", "sheinBlockingKeysWithPod")
+		warningSource := readNamedFunctionSource(t, "task_list_item_support.go", "sheinWarningKeysWithPod")
+		warningCalls := readNamedFunctionCallNames(t, "task_list_item_support.go", "sheinWarningKeysWithPod")
 
 		assertSourceContainsAll(t, overviewSource, []string{
 			"projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)",
