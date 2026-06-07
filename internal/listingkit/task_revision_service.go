@@ -104,6 +104,21 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 	return preview, nil
 }
 
+func buildRevisionHistorySnapshot(platform string, result *ListingKitResult) *SheinEditorContext {
+	if result == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "shein":
+		if result.Shein == nil {
+			return nil
+		}
+		return buildSheinEditorContext(result.Shein)
+	default:
+		return nil
+	}
+}
+
 func appendRevisionHistory(result *ListingKitResult, record ListingKitRevisionRecord) {
 	if result == nil {
 		return
