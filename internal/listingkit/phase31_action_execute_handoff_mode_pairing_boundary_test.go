@@ -8,15 +8,16 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingBoundary(t *testing
 	t.Run("mode_routing_seam_ends_at_local_mode_pairing_owner", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
-		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_mode_routing.go", "run")
+		source := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff.go", "run")
+		callNames := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff.go", "run")
 
 		assertSourceContainsAll(t, source, []string{
-			"pairing := buildTaskGenerationActionExecuteRequestHandoffModePairingPhase(p.service)",
-			"return pairing.runRetryable(ctx, taskID, target)",
-			"return pairing.runQueue(ctx, taskID, target)",
+			"buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase(p.service).run(ctx, taskID, target)",
 		})
 		assertSourceExcludesAll(t, source, []string{
+			"pairing := buildTaskGenerationActionExecuteRequestHandoffModePairingPhase(p.service)",
+			"pairing.runRetryable(ctx, taskID, target)",
+			"pairing.runQueue(ctx, taskID, target)",
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase(p.service).run(ctx, taskID, target)",
 			"buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase().run(retryPage)",
 			"buildTaskGenerationActionExecuteRequestHandoffQueuePhase(p.service).run(ctx, taskID, target)",
@@ -29,9 +30,8 @@ func TestTaskGenerationActionExecuteRequestHandoffModePairingBoundary(t *testing
 			"buildTaskGenerationActionExecuteRequestHandoffResultAdaptationPhase(",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"buildTaskGenerationActionExecuteRequestHandoffModePairingPhase",
-			"runRetryable",
-			"runQueue",
+			"buildTaskGenerationActionExecuteRequestHandoffModeRoutingPhase",
+			"run",
 		})
 		assertFunctionCallsExcludeAll(t, callNames, []string{
 			"buildTaskGenerationActionExecuteRequestHandoffRetryPhase",

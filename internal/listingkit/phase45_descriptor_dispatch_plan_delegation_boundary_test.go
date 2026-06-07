@@ -30,11 +30,11 @@ func TestGenerationNavigationDescriptorDispatchPlanDelegationBoundary(t *testing
 	t.Run("descriptor_clone_shape_home_keeps_dispatch_plan_out_of_aggregate_run", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "run")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDescriptor")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDescriptor")
 
 		assertSourceContainsAll(t, source, []string{
-			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",
+			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.DispatchPlan = cloneGenerationNavigationDispatchPlan(descriptor.DispatchPlan)",

@@ -31,11 +31,11 @@ func TestGenerationNavigationDescriptorFollowUpReadRoutingPairingBoundary(t *tes
 	t.Run("descriptor_clone_shape_pairing_home_routes_directly_through_pairing_home", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "run")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDescriptor")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDescriptor")
 
 		assertSourceContainsAll(t, source, []string{
-			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",
+			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.FollowUpReads = make([]GenerationNavigationFollowUpRead, 0, len(descriptor.FollowUpReads))",

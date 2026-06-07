@@ -31,11 +31,11 @@ func TestGenerationNavigationDescriptorResidualPairingBoundary(t *testing.T) {
 	t.Run("descriptor_clone_shape_pairing_home_routes_pairing_through_local_home", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "run")
-		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "run")
+		source := readNamedFunctionSource(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDescriptor")
+		callNames := readNamedFunctionCallNames(t, "generation_navigation_target_identity.go", "cloneGenerationNavigationDescriptor")
 
 		assertSourceContainsAll(t, source, []string{
-			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, cloned)",
+			"applyGenerationNavigationDescriptorCloneShapePairing(descriptor, &cloned)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"cloned.Conditional = cloneGenerationConditionalState(descriptor.Conditional)",

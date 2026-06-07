@@ -8,8 +8,8 @@ func TestSharedRetryRequestFinalCloneBoundary(t *testing.T) {
 	t.Run("retry_request_taskid_clone_home_owns_only_taskid_slice_clone", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_retry_request_taskid_clone.go", "applyRetryGenerationTasksRequestTaskIDClone")
-		callNames := readNamedFunctionCallNames(t, "task_generation_retry_request_taskid_clone.go", "applyRetryGenerationTasksRequestTaskIDClone")
+		source := readNamedFunctionSource(t, "task_generation_shared_clone.go", "applyRetryGenerationTasksRequestTaskIDClone")
+		callNames := readNamedFunctionCallNames(t, "task_generation_shared_clone.go", "applyRetryGenerationTasksRequestTaskIDClone")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.TaskIDs = append([]string(nil), req.TaskIDs...)",
@@ -26,8 +26,8 @@ func TestSharedRetryRequestFinalCloneBoundary(t *testing.T) {
 	t.Run("retry_request_slot_clone_home_owns_only_slot_slice_clone", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_generation_retry_request_slot_clone.go", "applyRetryGenerationTasksRequestSlotClone")
-		callNames := readNamedFunctionCallNames(t, "task_generation_retry_request_slot_clone.go", "applyRetryGenerationTasksRequestSlotClone")
+		source := readNamedFunctionSource(t, "task_generation_shared_clone.go", "applyRetryGenerationTasksRequestSlotClone")
+		callNames := readNamedFunctionCallNames(t, "task_generation_shared_clone.go", "applyRetryGenerationTasksRequestSlotClone")
 
 		assertSourceContainsAll(t, source, []string{
 			"cloned.Slots = append([]string(nil), req.Slots...)",
