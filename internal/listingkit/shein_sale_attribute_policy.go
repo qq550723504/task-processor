@@ -24,15 +24,15 @@ func sheinHasMultiSKUWithinSingleSKC(pkg *SheinPackage) bool {
 	if pkg == nil {
 		return false
 	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
+	if pkg.DraftPayload != nil {
+		for _, skc := range pkg.DraftPayload.SKCList {
 			if len(skc.SKUList) > 1 {
 				return true
 			}
 		}
 	}
-	if pkg.PreviewProduct != nil {
-		for _, skc := range pkg.PreviewProduct.SKCList {
+	if pkg.PreviewPayload != nil {
+		for _, skc := range pkg.PreviewPayload.SKCList {
 			if len(skc.SKUS) > 1 {
 				return true
 			}
