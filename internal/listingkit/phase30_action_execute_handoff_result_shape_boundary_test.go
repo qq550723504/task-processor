@@ -8,11 +8,11 @@ func TestTaskGenerationActionExecuteRequestHandoffResultShapeBoundary(t *testing
 	t.Run("unified_handoff_result_shape_stays_in_local_result_shape_home", func(t *testing.T) {
 		t.Parallel()
 
-		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_shape.go")
-		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_shape.go", "fromRetryNormalization")
-		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_shape.go", "fromRetryNormalization")
-		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_shape.go", "fromQueueNormalization")
-		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_shape.go", "fromQueueNormalization")
+		fileSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_dispatch.go")
+		retrySource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_dispatch.go", "fromRetryNormalization")
+		retryCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_dispatch.go", "fromRetryNormalization")
+		queueSource := readNamedFunctionSource(t, "task_generation_action_execute_request_handoff_result_dispatch.go", "fromQueueNormalization")
+		queueCalls := readNamedFunctionCallNames(t, "task_generation_action_execute_request_handoff_result_dispatch.go", "fromQueueNormalization")
 
 		assertSourceContainsAll(t, fileSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffResultShapePhase()",
@@ -80,7 +80,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultShapeBoundary(t *testing
 	t.Run("branch_specific_result_seams_stay_outside_unified_result_shape_owner", func(t *testing.T) {
 		t.Parallel()
 
-		shapeSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_shape.go")
+		shapeSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_dispatch.go")
 
 		assertSourceExcludesAll(t, shapeSource, []string{
 			"func buildTaskGenerationActionExecuteRequestHandoffRetryResultPhase(",

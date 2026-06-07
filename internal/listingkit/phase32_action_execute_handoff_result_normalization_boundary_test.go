@@ -73,7 +73,7 @@ func TestTaskGenerationActionExecuteRequestHandoffResultNormalizationBoundary(t 
 		t.Parallel()
 
 		adaptationSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_adaptation.go")
-		shapeSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_shape.go")
+		shapeSource := readTaskGenerationSourceFile(t, "task_generation_action_execute_request_handoff_result_dispatch.go")
 
 		assertSourceExcludesAll(t, adaptationSource, []string{
 			"taskGenerationActionExecuteRequestHandoffResultNormalization{",
