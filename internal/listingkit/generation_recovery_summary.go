@@ -14,7 +14,7 @@ func buildGenerationRecoverySummaryFromQueue(queue *GenerationWorkQueue) *Genera
 }
 
 func buildGenerationRecoverySummaryFromDescriptors(items []GenerationPanelResourceDescriptor) *GenerationRecoverySummary {
-	primary, recommended := buildGenerationPanelRecoverySelections(items)
+	primary, recommended := selectGenerationPanelRecoveryDescriptors(items)
 	if primary == nil {
 		return nil
 	}
@@ -66,11 +66,6 @@ func cloneGenerationPanelResourceDescriptors(items []GenerationPanelResourceDesc
 		out = append(out, *cloned)
 	}
 	return out
-}
-
-func buildGenerationPanelRecoverySelections(items []GenerationPanelResourceDescriptor) (*GenerationPanelResourceDescriptor, []GenerationPanelResourceDescriptor) {
-	primary, recommended := selectGenerationPanelRecoveryDescriptors(items)
-	return primary, recommended
 }
 
 func selectGenerationPanelRecoveryDescriptors(items []GenerationPanelResourceDescriptor) (*GenerationPanelResourceDescriptor, []GenerationPanelResourceDescriptor) {

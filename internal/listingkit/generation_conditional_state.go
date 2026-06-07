@@ -302,7 +302,7 @@ func applyGenerationConditionalStateToPanelUpdate(update *GenerationReviewPanelU
 	applyConditionalStateToReviewPatch(update.ReviewPatch, update.Conditional)
 	update.FocusedDescriptors = buildGenerationPanelFocusedDescriptors(update)
 	update.ChangedDescriptors = buildGenerationPanelChangedDescriptors(update)
-	update.PrimaryRecoveryDescriptor, update.RecommendedRecoveryDescriptors = buildGenerationPanelRecoverySelections(append(append([]GenerationPanelResourceDescriptor{}, update.FocusedDescriptors...), update.ChangedDescriptors...))
+	update.PrimaryRecoveryDescriptor, update.RecommendedRecoveryDescriptors = selectGenerationPanelRecoveryDescriptors(append(append([]GenerationPanelResourceDescriptor{}, update.FocusedDescriptors...), update.ChangedDescriptors...))
 	return update
 }
 
@@ -312,7 +312,7 @@ func applyGenerationConditionalStateToNavigationDispatchResponse(response *Gener
 	}
 	response.Conditional = buildGenerationConditionalState(response.DeltaToken, response.NotModified, false)
 	response.ResourceDescriptors = buildGenerationDispatchResponseDescriptors(response)
-	response.PrimaryRecoveryDescriptor, response.RecommendedRecoveryDescriptors = buildGenerationPanelRecoverySelections(response.ResourceDescriptors)
+	response.PrimaryRecoveryDescriptor, response.RecommendedRecoveryDescriptors = selectGenerationPanelRecoveryDescriptors(response.ResourceDescriptors)
 	return applyGenerationResolvedActionSummaryToNavigationDispatchResponse(response)
 }
 
