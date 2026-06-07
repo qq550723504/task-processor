@@ -169,80 +169,19 @@ function SheinSaleAttributeReviewContent({
       sourceDimension: current.secondary_source_dimension,
     }) ?? "",
   );
-  const [primaryOptionID, setPrimaryOptionID] = useState(
-    initialPrimaryOptionID,
-  );
-  const [secondaryOptionID, setSecondaryOptionID] = useState(
-    initialSecondaryOptionID,
-  );
-  const [hasExplicitEmptySecondarySelection, setHasExplicitEmptySecondarySelection] =
-    useState(false);
-  const [skcSelections, setSKCSelections] = useState<
-    Record<string, ManualSaleAttributeSelection>
-  >({});
-  const [skuSelections, setSKUSelections] = useState<
-    Record<string, ManualSaleAttributeSelection>
-  >({});
-  const [manualDetailsOpen, setManualDetailsOpen] = useState(hasMissingValueIDs);
-  const manualStateSyncKey = useMemo(
-    () =>
-      JSON.stringify({
-        initialPrimaryOptionID,
-        initialSecondaryOptionID,
-        hasMissingValueIDs,
-        primarySourceDimension: current.primary_source_dimension ?? "",
-        secondarySourceDimension: current.secondary_source_dimension ?? "",
-        candidates: candidates.map((candidate) => ({
-          attributeID: candidate.attribute_id ?? "",
-          name: candidate.name ?? "",
-          scope: candidate.selected_scope ?? "",
-          skcScope: Boolean(candidate.skc_scope),
-          sourceDimension: candidate.source_dimension ?? "",
-        })),
-        templateOptions: manualTemplateOptions.map((option) => ({
-          attributeID: option.attribute_id ?? "",
-          important: Boolean(option.important),
-          name: option.name_en ?? option.name ?? "",
-          skcScope: Boolean(option.skc_scope),
-          valueIDs: (option.attribute_value_list ?? []).map((value) =>
-            String(value.attribute_value_id ?? value.value_en ?? value.value ?? ""),
-          ),
-        })),
-        skcPatches: (current.skc_patches ?? []).map((patch) => ({
-          supplierCode: patch.supplier_code ?? "",
-          skcName: patch.skc_name ?? "",
-          attributes: patch.attributes ?? {},
-          skuPatches: (patch.sku_patches ?? []).map((skuPatch) => ({
-            supplierSKU: skuPatch.supplier_sku ?? "",
-            attributes: skuPatch.attributes ?? {},
-          })),
-        })),
-      }),
-    [
-      candidates,
-      current.primary_source_dimension,
-      current.secondary_source_dimension,
-      current.skc_patches,
-      hasMissingValueIDs,
-      initialPrimaryOptionID,
-      initialSecondaryOptionID,
-      manualTemplateOptions,
-    ],
-  );
-
-  useEffect(() => {
-    setPrimaryOptionID(initialPrimaryOptionID);
-    setSecondaryOptionID(initialSecondaryOptionID);
-    setHasExplicitEmptySecondarySelection(false);
-    setSKCSelections({});
-    setSKUSelections({});
-    setManualDetailsOpen(hasMissingValueIDs);
-  }, [
-    hasMissingValueIDs,
+  const manualSaleAttributeFormKey = [
+    current.primary_attribute_id ?? "",
+    current.secondary_attribute_id ?? "",
+    current.primary_source_dimension ?? "",
+    current.secondary_source_dimension ?? "",
+    primaryTemplateOptions.map((option) => option.attribute_id).join(","),
+    candidates.map((candidate) => candidate.attribute_id).join(","),
+    candidates.length,
+    (current.skc_patches ?? []).length,
+    hasMissingValueIDs ? "1" : "0",
     initialPrimaryOptionID,
     initialSecondaryOptionID,
-    manualStateSyncKey,
-  ]);
+  ].join("|");
 
   const primaryAttributes = skcAttributes.filter(
     (attribute) => attribute.attribute_id === current.primary_attribute_id,
@@ -298,98 +237,10 @@ function SheinSaleAttributeReviewContent({
     Boolean(onRegenerateSaleAttributes) &&
     isPartial &&
     (hasMissingValueIDs || needsTemplateRefresh);
-  const primaryOption =
-    primaryTemplateOptions.find(
-      (option) => String(option.attribute_id ?? "") === primaryOptionID,
-    ) ?? null;
-  const secondaryTemplateOptions = useMemo(
-    () =>
-      manualTemplateOptions.filter(
-        (option) => option.attribute_id !== primaryOption?.attribute_id,
-      ),
-    [manualTemplateOptions, primaryOption?.attribute_id],
-  );
-  const selectedSecondaryOptionID =
-    secondaryOptionID &&
-    secondaryTemplateOptions.some(
-      (option) => String(option.attribute_id ?? "") === secondaryOptionID,
-    )
-      ? secondaryOptionID
-      : hasExplicitEmptySecondarySelection && !secondaryRequired
-        ? ""
-      : String(
-          pickTemplateOptionID({
-            options: secondaryTemplateOptions,
-            candidates,
-            currentAttributeID: current.secondary_attribute_id,
-            emptyFallback: true,
-            preferEmptyWhenUnmatched: !secondaryRequired,
-            ignoreCurrentSelection: hasMissingValueIDs,
-            scope: "secondary",
-            sourceDimension: current.secondary_source_dimension,
-          }) ?? "",
-        );
-  const secondaryOption =
-    secondaryTemplateOptions.find(
-      (option) =>
-        String(option.attribute_id ?? "") === selectedSecondaryOptionID,
-    ) ?? null;
-
-  useEffect(() => {
-    if (secondaryOptionID !== selectedSecondaryOptionID) {
-      setSecondaryOptionID(selectedSecondaryOptionID);
-    }
-  }, [secondaryOptionID, selectedSecondaryOptionID]);
-
-  const previousPrimaryAttributeIDRef = useRef<number | null | undefined>(
-    primaryOption?.attribute_id,
-  );
-  const previousSecondaryAttributeIDRef = useRef<number | null | undefined>(
-    secondaryOption?.attribute_id,
-  );
-
-  useEffect(() => {
-    if (previousPrimaryAttributeIDRef.current !== primaryOption?.attribute_id) {
-      previousPrimaryAttributeIDRef.current = primaryOption?.attribute_id;
-      setSKCSelections({});
-    }
-  }, [primaryOption?.attribute_id]);
-
-  useEffect(() => {
-    if (
-      previousSecondaryAttributeIDRef.current !== secondaryOption?.attribute_id
-    ) {
-      previousSecondaryAttributeIDRef.current = secondaryOption?.attribute_id;
-      setSKUSelections({});
-    }
-  }, [secondaryOption?.attribute_id]);
-
   const canManualEdit =
     Boolean(onApplyManualSaleAttributes) &&
     (current.skc_patches?.length ?? 0) > 0 &&
     manualTemplateOptions.length > 0;
-  const allSKCSelected =
-    (current.skc_patches ?? []).length > 0 &&
-    (current.skc_patches ?? []).every(
-      (patch) =>
-        patch.supplier_code &&
-        hasManualSelection(skcSelections[patch.supplier_code]),
-    );
-  const allSKUSelected =
-    (!secondaryRequired && !secondaryOption) ||
-    (current.skc_patches ?? [])
-      .flatMap((patch) => patch.sku_patches ?? [])
-      .every(
-        (patch) =>
-          patch.supplier_sku &&
-          hasManualSelection(skuSelections[patch.supplier_sku]),
-      );
-  const canSaveManual =
-    canManualEdit &&
-    Boolean(primaryOption?.attribute_id) &&
-    (!secondaryRequired || Boolean(secondaryOption?.attribute_id)) &&
-    allSKCSelected &&
-    allSKUSelected;
   const statusLabel = canRegenerate
     ? "建议重新生成"
     : secondaryRequired
@@ -432,19 +283,8 @@ function SheinSaleAttributeReviewContent({
           label: isApplying ? "保存中..." : "直接确认当前结果",
           onClick: () => onConfirmCurrentSaleAttributes?.(),
         }
-      : canManualEdit
-        ? {
-            label: manualDetailsOpen ? "收起手工修正" : "展开手工修正",
-            onClick: () => setManualDetailsOpen((open) => !open),
-          }
-        : null;
-  const secondaryAction =
-    canRegenerate && canManualEdit
-      ? {
-          label: manualDetailsOpen ? "收起手工修正" : "展开手工修正",
-          onClick: () => setManualDetailsOpen((open) => !open),
-        }
       : null;
+  const secondaryAction = null;
   const hasProcessingNotes =
     Boolean(current.selection_summary?.length) ||
     Boolean(current.review_notes?.length) ||
@@ -583,109 +423,24 @@ function SheinSaleAttributeReviewContent({
         ) : null}
 
         {canManualEdit ? (
-          <details
-            className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3"
-            open={manualDetailsOpen}
-            onToggle={(event) =>
-              setManualDetailsOpen(event.currentTarget.open)
-            }
-          >
-            <summary className="cursor-pointer list-none">
-              <SectionHeading
-                description="只有系统结果不准确时，才需要展开这里手工修正。保存后会写入 SKC/SKU 规格，并优先用文本值向 SHEIN 换取真实 value_id。"
-                title="手工修正规格"
-                tone="amber"
-              />
-            </summary>
-            <div className="mt-3 space-y-3">
-              <div className="grid gap-3 2xl:grid-cols-2">
-                <TemplateOptionSelect
-                  id="shein-sale-attribute-primary-template"
-                  label={`第 1 步：主规格字段${current.primary_source_dimension ? ` · 来源 ${current.primary_source_dimension}` : ""}`}
-                  onChange={setPrimaryOptionID}
-                  options={primaryTemplateOptions}
-                  value={primaryOptionID}
-                />
-                {secondaryTemplateUnavailable ? (
-                  <OptionalSecondaryTemplateNotice
-                    label={`第 2 步：其他规格字段（选填）${current.secondary_source_dimension ? ` · 来源 ${current.secondary_source_dimension}` : ""}`}
-                  />
-                ) : (
-                  <TemplateOptionSelect
-                    allowEmpty={!secondaryRequired}
-                    id="shein-sale-attribute-secondary-template"
-                    label={`第 2 步：其他规格字段（${secondaryRequired ? "必填" : "选填"}）${current.secondary_source_dimension ? ` · 来源 ${current.secondary_source_dimension}` : ""}`}
-                    onChange={(value) => {
-                      setHasExplicitEmptySecondarySelection(
-                        !secondaryRequired && value === "",
-                      );
-                      setSecondaryOptionID(value);
-                    }}
-                    options={secondaryTemplateOptions}
-                    placeholder={
-                      secondaryRequired
-                        ? "请选择其他规格字段"
-                        : "不填写其他规格"
-                    }
-                    value={selectedSecondaryOptionID}
-                  />
-                )}
-              </div>
-              <div className="space-y-3">
-                {(current.skc_patches ?? []).map((patch) => (
-                  <ManualSKCMappingRow
-                    key={patch.supplier_code ?? patch.skc_name}
-                    patch={patch}
-                    primaryOption={primaryOption}
-                    secondaryOption={secondaryOption}
-                    primarySourceDimension={current.primary_source_dimension}
-                    secondarySourceDimension={
-                      current.secondary_source_dimension
-                    }
-                    skcSelection={
-                      patch.supplier_code
-                        ? skcSelections[patch.supplier_code]
-                        : undefined
-                    }
-                    skuSelections={skuSelections}
-                    onSKCChange={(selection) => {
-                      if (!patch.supplier_code) {
-                        return;
-                      }
-                      setSKCSelections((state) => ({
-                        ...state,
-                        [patch.supplier_code!]: selection,
-                      }));
-                    }}
-                    onSKUChange={(supplierSKU, selection) =>
-                      setSKUSelections((state) => ({
-                        ...state,
-                        [supplierSKU]: selection,
-                      }))
-                    }
-                  />
-                ))}
-              </div>
-              {canSaveManual ? (
-                <div className="flex justify-end">
-                  <Button
-                    className="h-9 w-full px-3 text-xs sm:w-auto"
-                    disabled={isApplying}
-                    onClick={() =>
-                      onApplyManualSaleAttributes?.({
-                        primaryOption,
-                        secondaryOption,
-                        skcSelections,
-                        skuSelections,
-                      })
-                    }
-                  >
-                    {isApplying ? "保存中..." : "保存手工修正"}
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          </details>
+          <SheinManualSaleAttributeForm
+            key={manualSaleAttributeFormKey}
+            canApplyManual={Boolean(onApplyManualSaleAttributes)}
+            current={current}
+            currentHasMissingValueIDs={hasMissingValueIDs}
+            isApplying={Boolean(isApplying)}
+            onApplyManualSaleAttributes={onApplyManualSaleAttributes}
+            primaryOptionCandidates={primaryTemplateOptions}
+            secondaryOptionCandidates={manualTemplateOptions}
+            secondaryRequired={secondaryRequired}
+            secondaryTemplateUnavailable={secondaryTemplateUnavailable}
+            selectedSourceDimensions={{
+              primarySourceDimension: current.primary_source_dimension,
+              secondarySourceDimension: current.secondary_source_dimension,
+            }}
+            initialPrimaryOptionID={initialPrimaryOptionID}
+            initialSecondaryOptionID={initialSecondaryOptionID}
+          />
         ) : null}
 
         {candidates.length > 0 ? (
@@ -778,6 +533,249 @@ function SheinSaleAttributeReviewContent({
         ) : null}
       </div>
     </Card>
+  );
+}
+
+function SheinManualSaleAttributeForm({
+  canApplyManual,
+  current,
+  currentHasMissingValueIDs,
+  isApplying,
+  onApplyManualSaleAttributes,
+  primaryOptionCandidates,
+  secondaryOptionCandidates,
+  secondaryRequired,
+  secondaryTemplateUnavailable,
+  selectedSourceDimensions,
+  initialPrimaryOptionID,
+  initialSecondaryOptionID,
+}: {
+  canApplyManual: boolean;
+  current: NonNullable<
+    NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+  >;
+  currentHasMissingValueIDs: boolean;
+  isApplying: boolean;
+  onApplyManualSaleAttributes?:
+    | (((payload: {
+        primaryOption?: SheinSaleAttributeTemplateOption | null;
+        secondaryOption?: SheinSaleAttributeTemplateOption | null;
+        skcSelections: Record<string, ManualSaleAttributeSelection>;
+        skuSelections: Record<string, ManualSaleAttributeSelection>;
+      }) => void) | null);
+  primaryOptionCandidates: SheinSaleAttributeTemplateOption[];
+  secondaryOptionCandidates: SheinSaleAttributeTemplateOption[];
+  secondaryRequired: boolean;
+  secondaryTemplateUnavailable: boolean;
+  selectedSourceDimensions: {
+    primarySourceDimension?: string;
+    secondarySourceDimension?: string;
+  };
+  initialPrimaryOptionID: string;
+  initialSecondaryOptionID: string;
+}) {
+  const candidates = current.candidates ?? [];
+  const [primaryOptionID, setPrimaryOptionID] = useState(
+    initialPrimaryOptionID,
+  );
+  const [secondaryOptionID, setSecondaryOptionID] = useState(
+    initialSecondaryOptionID,
+  );
+  const [hasExplicitEmptySecondarySelection, setHasExplicitEmptySecondarySelection] =
+    useState(false);
+  const [skcSelections, setSKCSelections] = useState<
+    Record<string, ManualSaleAttributeSelection>
+  >({});
+  const [skuSelections, setSKUSelections] = useState<
+    Record<string, ManualSaleAttributeSelection>
+  >({});
+  const [manualDetailsOpen, setManualDetailsOpen] = useState(
+    currentHasMissingValueIDs,
+  );
+  const primaryOption = primaryOptionCandidates.find(
+    (option) => String(option.attribute_id ?? "") === primaryOptionID,
+  ) ?? null;
+  const secondaryTemplateOptions = useMemo(
+    () =>
+      secondaryOptionCandidates.filter(
+        (option) => option.attribute_id !== primaryOption?.attribute_id,
+      ),
+    [secondaryOptionCandidates, primaryOption?.attribute_id],
+  );
+  const selectedSecondaryOptionID =
+    secondaryOptionID &&
+    secondaryTemplateOptions.some(
+      (option) => String(option.attribute_id ?? "") === secondaryOptionID,
+    )
+      ? secondaryOptionID
+      : hasExplicitEmptySecondarySelection && !secondaryRequired
+        ? ""
+      : String(
+          pickTemplateOptionID({
+            options: secondaryTemplateOptions,
+            candidates,
+            currentAttributeID: current.secondary_attribute_id,
+            emptyFallback: true,
+            preferEmptyWhenUnmatched: !secondaryRequired,
+            ignoreCurrentSelection: currentHasMissingValueIDs,
+            scope: "secondary",
+            sourceDimension: current.secondary_source_dimension,
+          }) ?? "",
+        );
+  const secondaryOption =
+    secondaryTemplateOptions.find(
+      (option) =>
+        String(option.attribute_id ?? "") === selectedSecondaryOptionID,
+    ) ?? null;
+
+  const allSKCSelected =
+    (current.skc_patches ?? []).length > 0 &&
+    (current.skc_patches ?? []).every(
+      (patch) =>
+        patch.supplier_code &&
+        hasManualSelection(skcSelections[patch.supplier_code]),
+    );
+  const allSKUSelected =
+    (!secondaryRequired && !secondaryOption) ||
+    (current.skc_patches ?? [])
+      .flatMap((patch) => patch.sku_patches ?? [])
+      .every(
+        (patch) =>
+          patch.supplier_sku &&
+          hasManualSelection(skuSelections[patch.supplier_sku]),
+      );
+  const canSaveManual =
+    canApplyManual &&
+    Boolean(primaryOption?.attribute_id) &&
+    (!secondaryRequired || Boolean(secondaryOption?.attribute_id)) &&
+    allSKCSelected &&
+    allSKUSelected;
+
+  const previousPrimaryAttributeIDRef = useRef<number | null | undefined>(
+    primaryOption?.attribute_id,
+  );
+  const previousSecondaryAttributeIDRef = useRef<number | null | undefined>(
+    secondaryOption?.attribute_id,
+  );
+
+  useEffect(() => {
+    if (previousPrimaryAttributeIDRef.current !== primaryOption?.attribute_id) {
+      previousPrimaryAttributeIDRef.current = primaryOption?.attribute_id;
+      setSKCSelections({});
+    }
+  }, [primaryOption?.attribute_id]);
+
+  useEffect(() => {
+    if (
+      previousSecondaryAttributeIDRef.current !== secondaryOption?.attribute_id
+    ) {
+      previousSecondaryAttributeIDRef.current = secondaryOption?.attribute_id;
+      setSKUSelections({});
+    }
+  }, [secondaryOption?.attribute_id]);
+
+  return (
+    <details
+      className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3"
+      open={manualDetailsOpen}
+      onToggle={(event) => setManualDetailsOpen(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer list-none">
+        <SectionHeading
+          description="只有系统结果不准确时，才需要展开这里手工修正。保存后会写入 SKC/SKU 规格，并优先用文本值向 SHEIN 换取真实 value_id。"
+          title="手工修正规格"
+          tone="amber"
+        />
+      </summary>
+      <div className="mt-3 space-y-3">
+        <div className="grid gap-3 2xl:grid-cols-2">
+          <TemplateOptionSelect
+            id="shein-sale-attribute-primary-template"
+            label={`第 1 步：主规格字段${selectedSourceDimensions.primarySourceDimension ? ` · 来源 ${selectedSourceDimensions.primarySourceDimension}` : ""}`}
+            onChange={setPrimaryOptionID}
+            options={primaryOptionCandidates}
+            value={primaryOptionID}
+          />
+          {secondaryTemplateUnavailable ? (
+            <OptionalSecondaryTemplateNotice
+              label={`第 2 步：其他规格字段（选填）${selectedSourceDimensions.secondarySourceDimension ? ` · 来源 ${selectedSourceDimensions.secondarySourceDimension}` : ""}`}
+            />
+          ) : (
+            <TemplateOptionSelect
+              allowEmpty={!secondaryRequired}
+              id="shein-sale-attribute-secondary-template"
+              label={`第 2 步：其他规格字段（${secondaryRequired ? "必填" : "选填"}）${selectedSourceDimensions.secondarySourceDimension ? ` · 来源 ${selectedSourceDimensions.secondarySourceDimension}` : ""}`}
+              onChange={(value) => {
+                setHasExplicitEmptySecondarySelection(
+                  !secondaryRequired && value === "",
+                );
+                setSecondaryOptionID(value);
+              }}
+              options={secondaryTemplateOptions}
+              placeholder={
+                secondaryRequired
+                  ? "请选择其他规格字段"
+                  : "不填写其他规格"
+              }
+              value={selectedSecondaryOptionID}
+            />
+          )}
+        </div>
+        <div className="space-y-3">
+          {(current.skc_patches ?? []).map((patch) => (
+            <ManualSKCMappingRow
+              key={patch.supplier_code ?? patch.skc_name}
+              patch={patch}
+              primaryOption={primaryOption}
+              secondaryOption={secondaryOption}
+              primarySourceDimension={selectedSourceDimensions.primarySourceDimension}
+              secondarySourceDimension={
+                selectedSourceDimensions.secondarySourceDimension
+              }
+              skcSelection={
+                patch.supplier_code
+                  ? skcSelections[patch.supplier_code]
+                  : undefined
+              }
+              skuSelections={skuSelections}
+              onSKCChange={(selection) => {
+                if (!patch.supplier_code) {
+                  return;
+                }
+                setSKCSelections((state) => ({
+                  ...state,
+                  [patch.supplier_code!]: selection,
+                }));
+              }}
+              onSKUChange={(supplierSKU, selection) =>
+                setSKUSelections((state) => ({
+                  ...state,
+                  [supplierSKU]: selection,
+                }))
+              }
+            />
+          ))}
+        </div>
+        {canSaveManual ? (
+          <div className="flex justify-end">
+            <Button
+              className="h-9 w-full px-3 text-xs sm:w-auto"
+              disabled={isApplying}
+              onClick={() =>
+                onApplyManualSaleAttributes?.({
+                  primaryOption,
+                  secondaryOption,
+                  skcSelections,
+                  skuSelections,
+                })
+              }
+            >
+              {isApplying ? "保存中..." : "保存手工修正"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </details>
   );
 }
 
