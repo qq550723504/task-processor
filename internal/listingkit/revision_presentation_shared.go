@@ -1,5 +1,11 @@
 package listingkit
 
+const (
+	revisionPresentationSceneApplySuccess   = "apply_success"
+	revisionPresentationSceneRestoreSuccess = "restore_success"
+	revisionPresentationSceneRestorePreview = "restore_preview"
+)
+
 type revisionPresentationData struct {
 	Status        string
 	Title         string

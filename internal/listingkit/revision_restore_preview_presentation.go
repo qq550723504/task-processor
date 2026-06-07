@@ -1,5 +1,7 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+
 func buildRevisionRestorePreviewPresentation(
 	record *ListingKitRevisionRecord,
 	context *RevisionHistoryRestoreContext,
@@ -19,7 +21,7 @@ func buildRevisionRestorePreviewPresentation(
 		Highlights:    append([]string(nil), data.Highlights...),
 	}
 
-	return buildRevisionInteractionPresentation(
+	return sheinworkspace.BuildSuccessPresentation(
 		revisionPresentationSceneRestorePreview,
 		append([]string(nil), data.NextActions...),
 		&RevisionResultMessages{
