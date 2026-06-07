@@ -104,11 +104,12 @@ func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselin
 	switch status {
 	case SDSBaselineStatusBaselineCached, SDSBaselineStatusReady:
 		readiness.CacheStatus = status
-		readiness.ValidationStatus = normalizedSDSBaselineValidationStatus(entry.ValidationStatus)
+		validationStatus := normalizedSDSBaselineValidationStatus(entry.ValidationStatus)
 		if status == SDSBaselineStatusReady &&
-			readiness.ValidationStatus == SDSBaselineValidationStatusUnknown {
-			readiness.ValidationStatus = SDSBaselineValidationStatusReady
+			validationStatus == SDSBaselineValidationStatusUnknown {
+			validationStatus = SDSBaselineValidationStatusReady
 		}
+		readiness.ValidationStatus = validationStatus
 		if entry.CanonicalProductBase == nil {
 			readiness.CacheStatus = SDSBaselineStatusFailed
 			readiness.Status = SDSBaselineStatusFailed
@@ -133,7 +134,6 @@ func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselin
 		}
 
 		// Auto-revalidate if blocked due to missing design type (backward compatibility fix)
-		validationStatus := normalizedSDSBaselineValidationStatus(entry.ValidationStatus)
 		validationReasonCode := strings.TrimSpace(entry.ValidationReasonCode)
 		if validationStatus == SDSBaselineValidationStatusBlocked &&
 			validationReasonCode == SDSBaselineReasonCodeMissingDesignType {
