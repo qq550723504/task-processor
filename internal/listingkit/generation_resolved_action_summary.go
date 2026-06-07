@@ -173,10 +173,32 @@ func buildGenerationResolvedActionSummaryFromActionTarget(summary *GenerationRec
 	if navigation == nil {
 		navigation = buildGenerationReviewActionNavigationTarget(target)
 	}
+	title := "Review Generation Action"
+	reason := "Review the current generation action."
+	switch target.ActionKey {
+	case assetGenerationActionGenerateMissingAssets:
+		title = "Generate Missing Assets"
+		reason = "Required slots are still missing assets."
+	case assetGenerationActionUpgradeFallbackAssets:
+		title = "Upgrade Fallback Assets"
+		reason = "Fallback assets still cover publish-critical slots."
+	case assetGenerationActionRetryFailedGeneration:
+		title = "Retry Failed Generation"
+		reason = "Some generation steps failed and should be retried."
+	case assetGenerationActionContinuePublishReview:
+		title = "Continue Publish Review"
+		reason = "Asset coverage is ready to continue publish review."
+	case assetGenerationActionReviewReadyAssets:
+		title = "Review Ready Assets"
+		reason = "Review the current ready assets and sidecars."
+	case assetGenerationActionRetrySectionGeneration:
+		title = "Retry Section Generation"
+		reason = "Retry the current section generation path."
+	}
 	resolved := &GenerationResolvedActionSummary{
 		SourceKind:       "generation_action",
-		Title:            generationResolvedActionTitle(target.ActionKey),
-		Summary:          generationResolvedActionReason(target.ActionKey),
+		Title:            title,
+		Summary:          reason,
 		CTAKind:          "generation_action",
 		ActionKey:        target.ActionKey,
 		NavigationTarget: navigation,
@@ -206,42 +228,4 @@ func buildGenerationResolvedActionSummaryFromReviewTarget(summary *GenerationRec
 		return nil
 	}
 	return resolved
-}
-
-func generationResolvedActionTitle(actionKey string) string {
-	switch actionKey {
-	case assetGenerationActionGenerateMissingAssets:
-		return "Generate Missing Assets"
-	case assetGenerationActionUpgradeFallbackAssets:
-		return "Upgrade Fallback Assets"
-	case assetGenerationActionRetryFailedGeneration:
-		return "Retry Failed Generation"
-	case assetGenerationActionContinuePublishReview:
-		return "Continue Publish Review"
-	case assetGenerationActionReviewReadyAssets:
-		return "Review Ready Assets"
-	case assetGenerationActionRetrySectionGeneration:
-		return "Retry Section Generation"
-	default:
-		return "Review Generation Action"
-	}
-}
-
-func generationResolvedActionReason(actionKey string) string {
-	switch actionKey {
-	case assetGenerationActionGenerateMissingAssets:
-		return "Required slots are still missing assets."
-	case assetGenerationActionUpgradeFallbackAssets:
-		return "Fallback assets still cover publish-critical slots."
-	case assetGenerationActionRetryFailedGeneration:
-		return "Some generation steps failed and should be retried."
-	case assetGenerationActionContinuePublishReview:
-		return "Asset coverage is ready to continue publish review."
-	case assetGenerationActionReviewReadyAssets:
-		return "Review the current ready assets and sidecars."
-	case assetGenerationActionRetrySectionGeneration:
-		return "Retry the current section generation path."
-	default:
-		return "Review the current generation action."
-	}
 }
