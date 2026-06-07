@@ -96,131 +96,120 @@ func TestTaskGenerationActionPhaseOwnershipServiceEntryBoundary(t *testing.T) {
 		})
 	})
 
-	testCases := []struct {
-		name      string
-		path      string
-		required  []string
-		forbidden []string
-	}{
-		{
-			name: "entry_phase_owns_bootstrap_and_resolution",
-			path: "task_generation_action_entry.go",
-			required: []string{
-				"getCurrentAssetGenerationQueue(",
-				"getCurrentListingKitResult(",
-				"buildTaskGenerationActionTargetResolutionPhase().run(queue, req)",
-				"buildAssetGenerationActionImpact(",
-				"buildGenerationReviewSession(",
-				"GenerationActionExecutionResult{",
-			},
-			forbidden: []string{
-				"executeLayerTemporalAction(",
-				"RetryTaskGenerationTasks(",
-				"GetTaskGenerationQueue(",
-				"persistGenerationReviewDecision(",
-				"buildTaskGenerationActionRefreshPhase(",
-				"buildTaskGenerationActionProjectionPhase(",
-				"buildTaskGenerationActionFinalizePhase(",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				"buildGenerationReviewDeltaToken(",
-				"applyGenerationConditionalStateToActionResult(",
-			},
-		},
-		{
-			name: "execute_phase_owns_local_action_execution",
-			path: "task_generation_action_execute.go",
-			required: []string{
-				"buildTaskGenerationActionExecuteRequestHandoffPhase(p.service).run(",
-				"buildGenerationReviewSession(",
-				"handoff.persistenceQueue",
-			},
-			forbidden: []string{
-				"executeLayerTemporalAction(",
-				"getCurrentAssetGenerationQueue(",
-				"getCurrentListingKitResult(",
-				"buildAssetGenerationOverview(",
-				"resolveAssetGenerationActionTarget(",
-				"RetryTaskGenerationTasks(",
-				"GetTaskGenerationQueue(",
-				"cloneGenerationQueueQuery(",
-				"cloneRetryGenerationTasksRequest(",
-				"switch target.InteractionMode {",
-				"generationWorkQueueFromRetryPage(",
-				"generationWorkQueueFromPage(",
-				"persistGenerationReviewDecision(",
-				"buildActionPlatformRenderPreviews(",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				"buildGenerationReviewDeltaToken(",
-				"applyGenerationConditionalStateToActionResult(",
-			},
-		},
-		{
-			name: "persist_phase_owns_persisted_review_handoff",
-			path: "task_generation_action_persist.go",
-			required: []string{
-				"isPersistedGenerationReviewAction(target.ActionKey)",
-				"execution.persistenceSession",
-				"persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)",
-			},
-			forbidden: []string{
-				"executeLayerTemporalAction(",
-				"getCurrentAssetGenerationQueue(",
-				"getCurrentListingKitResult(",
-				"buildAssetGenerationOverview(",
-				"resolveAssetGenerationActionTarget(",
-				"buildGenerationReviewSession(",
-				"RetryTaskGenerationTasks(",
-				"GetTaskGenerationQueue(",
-				"buildActionPlatformRenderPreviews(",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				"buildGenerationReviewDeltaToken(",
-				"applyGenerationConditionalStateToActionResult(",
-			},
-		},
-		{
-			name: "finalize_phase_owns_projection_copy_back",
-			path: "task_generation_action_finalize.go",
-			required: []string{
-				"result.Overview = projection.Overview",
-				"result.Queue = projection.Queue",
-				"result.Retry = projection.Retry",
-				"result.ReviewPatch = projection.ReviewPatch",
-				"result.PlatformRenderPreviews = projection.PlatformRenderPreviews",
-				"applyGenerationConditionalStateToActionResult(result)",
-			},
-			forbidden: []string{
-				"executeLayerTemporalAction(",
-				"getCurrentAssetGenerationQueue(",
-				"getCurrentListingKitResult(",
-				"buildAssetGenerationOverview(",
-				"resolveAssetGenerationActionTarget(",
-				"buildGenerationReviewSession(",
-				"RetryTaskGenerationTasks(",
-				"GetTaskGenerationQueue(",
-				"persistGenerationReviewDecision(",
-				"buildActionPlatformRenderPreviews(",
-				"buildGenerationReviewWorkflowResult(",
-				"applyGenerationReviewWorkflow(",
-				"buildGenerationReviewSessionPatch(",
-				"buildGenerationReviewDeltaToken(",
-			},
-		},
-	}
+	t.Run("entry_phase_owns_bootstrap_and_resolution", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			source := readTaskGenerationSourceFile(t, tc.path)
-			assertSourceContainsAll(t, source, tc.required)
-			assertSourceExcludesAll(t, source, tc.forbidden)
+		source := readTaskGenerationSourceFile(t, "task_generation_action_entry.go")
+		assertSourceContainsAll(t, source, []string{
+			"getCurrentAssetGenerationQueue(",
+			"getCurrentListingKitResult(",
+			"buildTaskGenerationActionTargetResolutionPhase().run(queue, req)",
+			"buildAssetGenerationActionImpact(",
+			"buildGenerationReviewSession(",
+			"GenerationActionExecutionResult{",
 		})
-	}
+		assertSourceExcludesAll(t, source, []string{
+			"executeLayerTemporalAction(",
+			"RetryTaskGenerationTasks(",
+			"GetTaskGenerationQueue(",
+			"persistGenerationReviewDecision(",
+			"buildTaskGenerationActionRefreshPhase(",
+			"buildTaskGenerationActionProjectionPhase(",
+			"buildTaskGenerationActionFinalizePhase(",
+			"buildGenerationReviewWorkflowResult(",
+			"applyGenerationReviewWorkflow(",
+			"buildGenerationReviewSessionPatch(",
+			"buildGenerationReviewDeltaToken(",
+			"applyGenerationConditionalStateToActionResult(",
+		})
+	})
+
+	t.Run("execute_phase_owns_local_action_execution", func(t *testing.T) {
+		t.Parallel()
+
+		source := readExactMethodSource(t, "task_generation_action_execute.go", "func (p *taskGenerationActionExecutePhase) run(")
+		assertSourceContainsAll(t, source, []string{
+			"buildTaskGenerationActionExecuteRequestHandoffPhase(p.service).run(",
+			"buildGenerationReviewSession(",
+			"handoff.persistenceQueue",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"executeLayerTemporalAction(",
+			"getCurrentAssetGenerationQueue(",
+			"getCurrentListingKitResult(",
+			"buildAssetGenerationOverview(",
+			"resolveAssetGenerationActionTarget(",
+			"RetryTaskGenerationTasks(",
+			"GetTaskGenerationQueue(",
+			"cloneGenerationQueueQuery(",
+			"cloneRetryGenerationTasksRequest(",
+			"switch target.InteractionMode {",
+			"generationWorkQueueFromRetryPage(",
+			"generationWorkQueueFromPage(",
+			"persistGenerationReviewDecision(",
+			"buildActionPlatformRenderPreviews(",
+			"buildGenerationReviewWorkflowResult(",
+			"applyGenerationReviewWorkflow(",
+			"buildGenerationReviewSessionPatch(",
+			"buildGenerationReviewDeltaToken(",
+			"applyGenerationConditionalStateToActionResult(",
+		})
+	})
+
+	t.Run("persist_phase_owns_persisted_review_handoff", func(t *testing.T) {
+		t.Parallel()
+
+		source := readExactMethodSource(t, "task_generation_action_execute.go", "func (p *taskGenerationActionPersistPhase) run(")
+		assertSourceContainsAll(t, source, []string{
+			"isPersistedGenerationReviewAction(target.ActionKey)",
+			"execution.persistenceSession",
+			"persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"executeLayerTemporalAction(",
+			"getCurrentAssetGenerationQueue(",
+			"getCurrentListingKitResult(",
+			"buildAssetGenerationOverview(",
+			"resolveAssetGenerationActionTarget(",
+			"buildGenerationReviewSession(",
+			"RetryTaskGenerationTasks(",
+			"GetTaskGenerationQueue(",
+			"buildActionPlatformRenderPreviews(",
+			"buildGenerationReviewWorkflowResult(",
+			"applyGenerationReviewWorkflow(",
+			"buildGenerationReviewSessionPatch(",
+			"buildGenerationReviewDeltaToken(",
+			"applyGenerationConditionalStateToActionResult(",
+		})
+	})
+
+	t.Run("finalize_phase_owns_projection_copy_back", func(t *testing.T) {
+		t.Parallel()
+
+		source := readExactMethodSource(t, "task_generation_action_execute.go", "func (p *taskGenerationActionFinalizePhase) run(")
+		assertSourceContainsAll(t, source, []string{
+			"result.Overview = projection.Overview",
+			"result.Queue = projection.Queue",
+			"result.Retry = projection.Retry",
+			"result.ReviewPatch = projection.ReviewPatch",
+			"result.PlatformRenderPreviews = projection.PlatformRenderPreviews",
+			"applyGenerationConditionalStateToActionResult(result)",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"executeLayerTemporalAction(",
+			"getCurrentAssetGenerationQueue(",
+			"getCurrentListingKitResult(",
+			"buildAssetGenerationOverview(",
+			"resolveAssetGenerationActionTarget(",
+			"buildGenerationReviewSession(",
+			"RetryTaskGenerationTasks(",
+			"GetTaskGenerationQueue(",
+			"persistGenerationReviewDecision(",
+			"buildActionPlatformRenderPreviews(",
+			"buildGenerationReviewWorkflowResult(",
+			"applyGenerationReviewWorkflow(",
+			"buildGenerationReviewSessionPatch(",
+			"buildGenerationReviewDeltaToken(",
+		})
+	})
 }
