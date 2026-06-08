@@ -187,6 +187,28 @@ export function SheinCategoryReviewCard({
           </div>
         ) : null}
 
+        {/* 类目解析失败时的提示 */}
+        {model.isReviewNeeded &&
+        !model.suggestedCategory?.category_id &&
+        !model.currentCategory?.category_id &&
+        (model.currentCategory?.review_notes?.length ?? 0) > 0 ? (
+          <Alert variant="destructive">
+            <AlertDescription>
+              <p className="font-semibold">类目解析失败</p>
+              <div className="mt-2 space-y-1 text-xs">
+                {model.currentCategory!.review_notes!.map((note, index) => (
+                  <p key={index} className="text-rose-600">
+                    • {note}
+                  </p>
+                ))}
+              </div>
+              <p className="mt-3 text-xs font-medium text-zinc-700">
+                👉 请使用下方的“手工选类目”功能手动搜索并选择正确的类目。
+              </p>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <div className="space-y-3 rounded-2xl border border-zinc-200/80 bg-white/70 p-4">
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-600">

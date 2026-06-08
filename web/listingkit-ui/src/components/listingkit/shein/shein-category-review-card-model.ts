@@ -47,6 +47,16 @@ export function buildSheinCategoryReviewModel(
     Boolean(suggestedCategory?.category_id) &&
     suggestedCategory?.category_id === currentCategory?.category_id;
 
+  // 检查类目解析失败的情况(review_notes 中有错误信息)
+  const hasCategoryResolutionError =
+    (currentCategory?.review_notes?.length ?? 0) > 0 &&
+    currentCategory!.review_notes!.some(note => 
+      note.includes("解析失败") || 
+      note.includes("AI提取") || 
+      note.includes("context deadline exceeded") ||
+      note.includes("API失败")
+    );
+
   if (
     !currentCategory?.category_id &&
     !currentCategory?.category_path?.length &&
@@ -70,7 +80,8 @@ export function buildSheinCategoryReviewModel(
     isReviewNeeded: Boolean(
       recommendCategoryReview ||
         categoryReviewReason ||
-        (suggestedCategory?.category_id && !isSuggestionApplied),
+        (suggestedCategory?.category_id && !isSuggestionApplied) ||
+        hasCategoryResolutionError, // 类目解析失败时也需要审核
     ),
   };
 }
