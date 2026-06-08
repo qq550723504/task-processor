@@ -12,6 +12,27 @@ Use this document as the default refactoring authority when making broad package
 
 Older local plans are still useful for historical context and detailed task breakdowns, but they should not override the project-wide plan unless a newer ADR or refactoring document explicitly says so.
 
+## Boundary rules and enforcement
+
+Use these files before starting broad package moves:
+
+- [../architecture/project-boundaries.md](../architecture/project-boundaries.md) - allowed ownership, forbidden import directions, placement rules, and review checklist.
+- [../../scripts/analyze-project-deps.ps1](../../scripts/analyze-project-deps.ps1) - advisory dependency analysis script for package file counts, largest files, ListingKit import pressure, and likely boundary violations.
+
+Recommended first command from the repository root:
+
+```powershell
+./scripts/analyze-project-deps.ps1
+```
+
+To make the script fail when it detects advisory boundary violations:
+
+```powershell
+./scripts/analyze-project-deps.ps1 -FailOnViolation
+```
+
+The script is advisory at first. Known legacy exceptions should be documented before promoting it to CI enforcement.
+
 ## Current active direction
 
 The current active direction is:
