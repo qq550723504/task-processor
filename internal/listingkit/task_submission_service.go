@@ -2,11 +2,10 @@ package listingkit
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 
+	apperrors "task-processor/internal/core/errors"
 	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
@@ -120,7 +119,7 @@ func (s *taskSubmissionService) normalizeSubmitTarget(ctx context.Context, taskI
 
 func (s *taskSubmissionService) acquireSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
 	if s.acquireSheinSubmitTask == nil {
-		return nil, nil, fmt.Errorf("submit task acquisition is not configured")
+		return nil, nil, apperrors.New(apperrors.ErrCodeSystem, "submit task acquisition is not configured")
 	}
 	return s.acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
 }
@@ -132,14 +131,14 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	}
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrapf(err, apperrors.ErrCodeTaskNotFound, "failed to get task %s", taskID)
 	}
 	if task.Result == nil {
-		return nil, ErrTaskResultUnavailable
+		return nil, apperrors.New(apperrors.ErrCodeTaskProcessing, "task result is not available yet")
 	}
 	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	if pkg == nil || pkg.SubmissionState == nil {
-		return nil, fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
+		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
 	}
 	report := pkg.SubmissionState
 	action := strings.TrimSpace(report.LastAction)
@@ -152,18 +151,18 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	}
 	record := sheinSubmissionRecordForAction(report, action)
 	if record == nil {
-		return nil, fmt.Errorf("%w: shein submission record is not available", ErrSubmitBlocked)
+		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission record is not available")
 	}
 	supplierCode := strings.TrimSpace(record.SupplierCode)
 	if supplierCode == "" {
 		supplierCode = sheinSubmitSupplierCode(nil, pkg)
 	}
 	if supplierCode == "" {
-		return nil, fmt.Errorf("%w: shein supplier code is not available", ErrSubmitBlocked)
+		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein supplier code is not available")
 	}
 	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrapf(err, apperrors.ErrCodePlatformError, "failed to build shein product API for task %s", taskID)
 	}
 	var otherAPI sheinother.OtherAPI
 	if s.buildSheinSubmitOtherAPI != nil {
@@ -180,22 +179,22 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 	confirmation, remoteErr := s.resolveSheinSubmitRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, sheinRemoteLookupSPUName(pkg, action), defaultConfirmed, fallbackMessage, startedAt, taskID)
 	task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
 		if task.Result == nil {
-			return fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
+			return apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
 		}
 		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 		if pkg == nil || pkg.SubmissionState == nil {
-			return fmt.Errorf("%w: shein submission is not available", ErrSubmitBlocked)
+			return apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
 		}
 		currentAction := strings.TrimSpace(pkg.SubmissionState.LastAction)
 		if currentAction == "" {
 			currentAction = action
 		}
 		if currentAction != action {
-			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
+			return apperrors.Wrap(ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
 		}
 		currentRecord := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 		if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
-			return fmt.Errorf("%w: shein submission changed during refresh", ErrSubmitInProgress)
+			return apperrors.Wrap(ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
 		}
 		appendSheinSubmissionEvent(pkg, listingsubmission.BuildRefreshConfirmRemoteRunningEvent(taskID, action, requestID, startedAt))
 		if confirmation.event != nil {
@@ -223,7 +222,7 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 
 func (s *taskSubmissionService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	if s.resolveRemoteStatus == nil {
-		return nil, errors.New("submit remote status resolution is not configured")
+		return nil, apperrors.New(apperrors.ErrCodeSystem, "submit remote status resolution is not configured")
 	}
 	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }
