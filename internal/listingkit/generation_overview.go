@@ -1,7 +1,9 @@
 package listingkit
 
 import (
-	"strings"
+	
+	"task-processor/internal/listingkit/core"
+"strings"
 
 	listinggeneration "task-processor/internal/listingkit/generation"
 )
@@ -141,7 +143,7 @@ func previewReadyPlatformsForQueue(summary *GenerationWorkQueueSummary) []string
 			out = append(out, platform)
 		}
 	}
-	return sortedUniqueStrings(out)
+	return core.SortedUniqueStrings(out)
 }
 
 func previewReadyCapabilitiesForQueue(summary *GenerationWorkQueueSummary) []string {
@@ -154,7 +156,7 @@ func previewReadyCapabilitiesForQueue(summary *GenerationWorkQueueSummary) []str
 			out = append(out, capability)
 		}
 	}
-	return sortedUniqueStrings(out)
+	return core.SortedUniqueStrings(out)
 }
 
 func reviewActionReason(summary *GenerationWorkQueueSummary) string {
@@ -197,7 +199,7 @@ func blockingPlatformsForQueue(queue *GenerationWorkQueue) []string {
 			out = append(out, platform)
 		}
 	}
-	return sortedUniqueStrings(out)
+	return core.SortedUniqueStrings(out)
 }
 
 func blockingQualityGradesForQueue(summary *GenerationWorkQueueSummary) []string {
